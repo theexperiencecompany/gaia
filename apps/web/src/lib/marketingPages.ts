@@ -9,7 +9,7 @@ export interface MarketingPage {
   category: MarketingPageCategory;
 }
 
-/** Static marketing pages listed by /feed.xml and /llms.txt; data-driven pages come from their own getters. */
+/** Static marketing pages listed by /feed and /llms.txt; data-driven pages come from their own getters. */
 export const MARKETING_PAGES: readonly MarketingPage[] = [
   {
     path: "",

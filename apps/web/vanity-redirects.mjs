@@ -16,6 +16,7 @@ export const VANITY_REDIRECT_PAIRS = [
   ["/request-feature", "https://gaia.featurebase.app"],
   ["/desktop", "/download"],
   ["/support", "/contact"],
+  ["/self-host", "/cli"],
 ];
 
 const TARGET_BY_PATH = new Map(VANITY_REDIRECT_PAIRS);

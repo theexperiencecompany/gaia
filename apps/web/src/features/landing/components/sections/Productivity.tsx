@@ -32,7 +32,7 @@ export default function UseCasesSectionLanding() {
         <div className="mt-2 flex flex-col gap-3 sm:flex-row">
           <SiteLink href={"/use-cases"}>
             <RaisedButton
-              className="rounded-xl text-black! before:rounded-xl hover:scale-105 gap-1"
+              className="rounded-xl before:rounded-xl hover:scale-105 gap-1"
               color="#00bbff"
             >
               View More

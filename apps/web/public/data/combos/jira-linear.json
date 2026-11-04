@@ -4,7 +4,7 @@
   "toolASlug": "jira",
   "toolB": "Linear",
   "toolBSlug": "linear",
-  "tagline": "Sync Jira and Linear so teams using both stay perfectly aligned",
+  "tagline": "Sync Jira and Linear so teams using both stay aligned",
   "metaTitle": "Jira + Linear Integration: Cross-Team Issue Sync",
   "metaDescription": "Give teams on Jira and Linear visibility into each other's issues with status kept in sync. GAIA helps when you migrate between the two. See the setup steps.",
   "keywords": [
@@ -15,55 +15,55 @@
     "engineering tool integration",
     "Jira to Linear migration"
   ],
-  "intro": "Many organizations have teams that use Jira and teams that use Linear. Enterprise departments use Jira for compliance and audit trails while product engineering teams prefer Linear for speed. When these teams collaborate, work coordination requires manual translation between the two systems — a constant overhead that slows cross-team projects.\n\nGAIA synchronizes Jira and Linear so cross-team work is visible in both places. Issues created in Linear for a cross-functional feature appear in Jira for the enterprise team. Jira ticket status changes flow back to Linear. Teams use their preferred tool while GAIA keeps the shared work in sync.",
+  "intro": "Many organizations split their teams across two issue trackers. Enterprise departments use Jira for compliance and audit trails while product engineering teams prefer Linear for speed. When these teams collaborate, work coordination requires manual translation between the two systems — a constant overhead that slows cross-team projects.\n\nGAIA synchronizes the two so cross-team work is visible in both places. Issues created in Linear for a cross-functional feature appear in Jira for the enterprise team. Status changes on those tickets are written back to the original issues. Teams use their preferred tool while GAIA keeps the shared work in sync.",
   "useCases": [
     {
       "title": "Cross-team issue visibility",
-      "description": "When a Linear team creates an issue that requires input from a Jira team (like infrastructure or security), GAIA creates a linked Jira ticket so the work is tracked in both systems."
+      "description": "When one team creates an issue that requires input from another team (like infrastructure or security), GAIA creates a linked ticket in the other system so the work is tracked in both."
     },
     {
-      "title": "Status sync across Jira and Linear",
-      "description": "Issue status changes in either Jira or Linear propagate to the linked issue in the other system, so both teams always see current status without checking the other tool."
+      "title": "Status sync between linked issues",
+      "description": "Status changes on an issue in either system propagate to the linked issue in the other, so both teams always see current status without checking the other tool."
     },
     {
       "title": "Migration assistance",
-      "description": "Teams migrating from Jira to Linear use GAIA to run both tools in parallel during transition, keeping historical Jira issues linked to new Linear counterparts without losing audit history."
+      "description": "Teams migrating from Jira to Linear use GAIA to run both in parallel during the transition, keeping historical issues linked to their new counterparts without losing audit history."
     },
     {
-      "title": "Dependency tracking across tools",
-      "description": "When a Linear issue is blocked by a Jira ticket, GAIA links the dependency and notifies both teams so blockers are visible regardless of which tool each team checks."
+      "title": "Dependency tracking across teams",
+      "description": "When one team's issue is blocked by a ticket in the other team's system, GAIA links the dependency and notifies both teams so blockers are visible regardless of which tool each team checks."
     },
     {
-      "title": "Executive reporting across both platforms",
-      "description": "GAIA compiles status from both Jira and Linear into a unified report for leadership, showing project health across teams without requiring executives to access either platform directly."
+      "title": "Executive reporting across teams",
+      "description": "GAIA compiles status from both systems into a unified report for leadership, showing project health across teams without requiring executives to access either one directly."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Jira and Linear to GAIA",
-      "description": "Authorize GAIA with your Jira instance and Linear workspace. Map which Jira projects correspond to which Linear teams for routing."
+      "description": "Authorize GAIA with your Jira instance and Linear workspace. Map which projects correspond to which teams for routing."
     },
     {
       "step": "Configure sync rules and field mappings",
-      "description": "Define which issue types sync between systems, how priority and status fields map across the two tools, and which events trigger cross-system updates."
+      "description": "Define which issue types sync between the systems, how priority and status fields map from one to the other, and which events trigger cross-system updates."
     },
     {
       "step": "Teams work independently, GAIA keeps them aligned",
-      "description": "Each team works in their preferred tool. GAIA handles all cross-tool synchronization automatically so collaboration happens without tool-switching overhead."
+      "description": "Each team works in its preferred tool. GAIA handles all cross-tool synchronization automatically so collaboration happens without tool-switching overhead."
     }
   ],
   "faqs": [
     {
-      "question": "Can GAIA handle the different priority scales between Jira and Linear?",
-      "answer": "Yes. GAIA maps Jira's priority levels (Highest, High, Medium, Low, Lowest) to Linear's priority scale (Urgent, High, Medium, Low, No priority) intelligently, and you can customize the mapping."
+      "question": "Can GAIA handle the different priority scales between the two systems?",
+      "answer": "Yes. GAIA maps the five source levels (Highest, High, Medium, Low, Lowest) to the target scale (Urgent, High, Medium, Low, No priority) intelligently, and you can customize the mapping."
     },
     {
-      "question": "Does GAIA sync comments between Jira and Linear?",
-      "answer": "Yes. Comments added to issues in either tool sync to the linked issue in the other system, so conversation context is preserved regardless of where team members prefer to comment."
+      "question": "Does GAIA sync comments between the two systems?",
+      "answer": "Yes. Comments added to issues in either system sync to the linked issue in the other, so conversation context is preserved regardless of where team members prefer to comment."
     },
     {
       "question": "Is this suitable for compliance-heavy Jira workflows?",
-      "answer": "GAIA respects Jira's audit and compliance requirements. It creates issues and adds comments through the standard Jira API so all changes are properly attributed and logged in Jira's audit trail."
+      "answer": "GAIA respects audit and compliance requirements. It creates issues and adds comments through the standard API, so all changes are properly attributed and logged in the audit trail."
     }
   ]
 }

@@ -4,7 +4,7 @@
   "toolASlug": "github",
   "toolB": "Google Drive",
   "toolBSlug": "google-drive",
-  "tagline": "Backup repo docs to Drive and link design assets from Drive to repos",
+  "tagline": "Back up repo docs to Google Drive and link design assets to code repos",
   "metaTitle": "GitHub Google Drive Integration: Back Up Docs and Assets",
   "metaDescription": "Keep repository docs safe and easy to share outside GitHub. GAIA backs them up to Google Drive and saves release notes on every release. See the setup steps.",
   "keywords": [
@@ -15,55 +15,55 @@
     "connect GitHub and Google Drive",
     "repository documentation backup"
   ],
-  "intro": "Development teams store code in GitHub and shared files in Google Drive, but the two ecosystems rarely reference each other. A design asset in Drive has no link to the GitHub PR that implements it. Documentation written in GitHub Markdown is not accessible to non-technical stakeholders who live in Google Docs. When a repository is archived or a team offboards, the context that lived only in GitHub is not always preserved alongside the project files in Drive.\n\nGAIA connects GitHub and Google Drive to create a persistent bridge between code and file storage. Repository documentation can be automatically backed up to Drive folders at regular intervals or when significant changes are merged. Design assets, mockups, and specification documents stored in Drive can be automatically linked to relevant GitHub pull requests. Non-technical stakeholders get read-only access to documentation through Drive without needing GitHub accounts.\n\nThis integration is especially useful for agencies, consultancies, and product companies that need to deliver documentation to clients (who live in Drive), for compliance-driven teams that must retain documentation artifacts outside of GitHub, and for any team that wants to ensure long-term project context is stored in a platform with richer file management capabilities.",
+  "intro": "Development teams keep code in GitHub and shared files in Google Drive, but the two rarely reference each other. A design asset in the shared folders has no link to the pull request that implements it. Documentation written in Markdown is not accessible to non-technical stakeholders who live in Google Docs. When a repository is archived or a team offboards, the context that lived only in the repo is not always preserved alongside the project files.\n\nGAIA links the two to create a persistent bridge between code and file storage. Repository documentation can be automatically backed up to matching folders at regular intervals or when significant changes are merged. Design assets, mockups, and specification documents stored in the folders can be automatically linked to relevant pull requests. Non-technical stakeholders get read-only access to documentation through the folders without needing a repository account.\n\nThis is especially useful for agencies, consultancies, and product companies that need to deliver documentation to clients (who work in the shared folders), for compliance-driven teams that must keep documentation artifacts outside the repo, and for any team that wants long-term project context stored in Google Drive, with its richer file management capabilities.",
   "useCases": [
     {
-      "title": "Auto-backup repository documentation to Drive",
-      "description": "GAIA monitors GitHub for merged PRs that modify documentation files and automatically exports updated Markdown files to a corresponding Google Drive folder, converting them to Google Docs format for easy stakeholder access."
+      "title": "Auto-backup repository docs to Google Drive",
+      "description": "GAIA watches merged pull requests that change documentation files, exports the updated Markdown files to the matching folder, and converts them to Google Docs format for easy stakeholder access."
     },
     {
-      "title": "Link Drive design assets to GitHub pull requests",
-      "description": "When a pull request is opened that implements a feature with matching design assets in Drive, GAIA adds a comment to the PR with direct links to the relevant Drive files so reviewers can check the implementation against design specifications without leaving GitHub."
+      "title": "Link design assets to new pull requests",
+      "description": "When a pull request is opened that implements a feature with matching design assets in the folders, GAIA adds a comment to the pull request with direct links to the relevant files so reviewers can check the implementation against design specifications without leaving the repo."
     },
     {
-      "title": "Organize Drive folders by GitHub repository structure",
-      "description": "GAIA can mirror your GitHub repository structure in a Google Drive folder, creating subfolders for documentation, design, and meeting notes that align with the repository layout so project context is organized consistently across both platforms."
+      "title": "Organize the folders to match repository structure",
+      "description": "GAIA can mirror your repository structure in a folder, creating subfolders for documentation, design, and meeting notes that align with the repository layout so project context is organized consistently across both platforms."
     },
     {
-      "title": "Share release notes to Drive on GitHub releases",
-      "description": "When a new GitHub release is published, GAIA exports the release notes to a Google Doc in the project's Drive folder, making the changelog accessible to non-technical stakeholders, clients, and the broader organization without requiring GitHub access."
+      "title": "Share release notes to Google Drive on each release",
+      "description": "When a new release is published, GAIA exports the release notes to a Google Doc in the project's folder, making the changelog accessible to non-technical stakeholders, clients, and the broader organization without requiring repository access."
     },
     {
-      "title": "Notify team when Drive design assets are updated",
-      "description": "When a designer updates a Drive file linked to an open GitHub PR, GAIA posts a comment on that PR alerting the developer and reviewer that the design spec has changed, reducing the risk of shipping an implementation based on outdated designs."
+      "title": "Notify team when design assets are updated",
+      "description": "When a designer updates a file linked to an open pull request, GAIA posts a comment on that pull request alerting the developer and reviewer that the design spec has changed, reducing the risk of shipping an implementation based on outdated designs."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect GitHub and Google Drive to GAIA",
-      "description": "Authenticate your GitHub repositories and Google Drive account through GAIA's integration settings. Specify which repositories should be monitored and which Drive folder or Shared Drive should serve as the documentation destination."
+      "description": "Authenticate your repositories and your Google Drive account through GAIA's integration settings. Specify which repositories should be monitored and which folder or Shared Drive should serve as the documentation destination."
     },
     {
       "step": "Configure sync and backup preferences",
-      "description": "Tell GAIA which file types to sync, how often to run backups, how to name and organize Drive files, and which Drive folders contain assets that should be linked back to GitHub. You can set per-repository or organization-wide rules."
+      "description": "Tell GAIA which file types to sync, how often to run backups, how to name and organize files, and which folders contain assets that should be linked back to the repository. You can set per-repository or organization-wide rules."
     },
     {
-      "step": "GAIA keeps Drive and GitHub in sync automatically",
-      "description": "GAIA monitors GitHub for documentation changes and Drive for asset updates, running sync and notification workflows automatically. Your team's file storage always reflects the current state of the codebase and vice versa."
+      "step": "GAIA keeps both sides in sync automatically",
+      "description": "GAIA watches the repositories for documentation changes and the folders for asset updates, running sync and notification workflows automatically. Your team's file storage always reflects the current state of the codebase and vice versa."
     }
   ],
   "faqs": [
     {
-      "question": "Can GAIA sync GitHub Wiki pages to Google Drive as well as repository files?",
-      "answer": "Yes. GAIA can export GitHub Wiki pages to Google Drive in addition to repository Markdown files. Wiki exports are converted to Google Docs format so they are fully editable and accessible to non-technical collaborators who need to contribute to documentation."
+      "question": "Can GAIA export GitHub Wiki pages as well as repository files?",
+      "answer": "Yes. GAIA can export Wiki pages to the destination folder in addition to repository Markdown files. Wiki exports are converted to Google Docs format so they are fully editable and accessible to non-technical collaborators who need to contribute to documentation."
     },
     {
-      "question": "How does GAIA match Drive files to GitHub pull requests?",
-      "answer": "GAIA uses folder structure conventions, file naming patterns, and labels or branch names in GitHub to identify matching Drive assets. You can also include a Drive folder link in a PR description or configure explicit mappings between repository paths and Drive folders."
+      "question": "How does GAIA match files to pull requests?",
+      "answer": "GAIA uses folder structure conventions, file naming patterns, and labels or branch names in the repo to identify matching assets. You can also include a folder link in a pull request description or configure explicit mappings between repository paths and folders."
     },
     {
       "question": "Does GAIA support Google Shared Drives for team-wide storage?",
-      "answer": "Yes. GAIA works with both personal Google Drive and Google Shared Drives (formerly Team Drives), making it suitable for organizations that manage all project files in a centralized Shared Drive accessible to the whole team."
+      "answer": "Yes. GAIA works with both personal storage and Google Shared Drives (formerly Team Drives), making it suitable for organizations that manage all project files in a centralized Shared Drive accessible to the whole team."
     }
   ]
 }

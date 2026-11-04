@@ -60,7 +60,7 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
         <div className="absolute inset-0 -z-10">
           <ProgressiveImage
             webpSrc="/images/wallpapers/bands_gradient_1.webp"
-            pngSrc="/images/wallpapers/bands_gradient_1.png"
+            pngSrc="/images/wallpapers/bands_gradient_1.webp"
             alt="Gradient background"
             className="object-cover"
             shouldHaveInitialFade
@@ -112,7 +112,7 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           <GetStartedButton
             text="Get started"
             btnColor="#000000"
-            classname="text-white! text-base h-12 rounded-2xl"
+            classname="text-base h-12 rounded-2xl"
           />
         </m.div>
       </section>

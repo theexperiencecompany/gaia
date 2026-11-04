@@ -16,6 +16,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
+import http.client
 import json
 from pathlib import Path
 import re
@@ -29,7 +30,7 @@ USER_AGENT = "gaia-seo-audit/1.0 (+https://heygaia.io)"
 TIMEOUT_S = 30
 RETRIES = 2
 LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
-LOCALE_PREFIX = re.compile(r"^/(de|es|fr|ja|ko|pt-BR)(?=/|$)")
+LOCALE_PREFIX = re.compile(r"^/(de|es|fr|ja|ko|pt-br)(?=/|$)")
 SNIPPET_CONFIG = Path(__file__).resolve().parents[3] / "apps/web/src/config/seoSnippet.json"
 _SNIPPET = json.loads(SNIPPET_CONFIG.read_text())
 TITLE_RANGE = (_SNIPPET["titleLength"]["min"], _SNIPPET["titleLength"]["max"])
@@ -70,7 +71,8 @@ def fetch(url: str, method: str = "GET", host: str | None = None) -> Response:
         except urllib.error.HTTPError as exc:
             if exc.code < 500 or attempt == RETRIES:
                 return Response(exc.code, {k.lower(): v for k, v in exc.headers.items()}, "")
-        except (urllib.error.URLError, TimeoutError) as exc:
+        # HTTPException: a body cut short (IncompleteRead) or a dropped connection (RemoteDisconnected).
+        except (urllib.error.URLError, TimeoutError, http.client.HTTPException) as exc:
             if attempt == RETRIES:
                 return Response(0, {}, f"transport error: {exc}")
         time.sleep(2**attempt)

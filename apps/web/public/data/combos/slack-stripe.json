@@ -4,7 +4,7 @@
   "toolASlug": "slack",
   "toolB": "Stripe",
   "toolBSlug": "stripe",
-  "tagline": "Get real-time Stripe payment alerts and revenue summaries in Slack",
+  "tagline": "Get real-time payment alerts and revenue summaries from Stripe in Slack",
   "metaTitle": "Stripe Slack Integration: Post Payments to a Slack Channel",
   "metaDescription": "Post new payments, failed charges, and revenue milestones to the Slack channels you pick. GAIA filters out test transactions. See the setup steps.",
   "keywords": [
@@ -15,55 +15,55 @@
     "connect Slack and Stripe",
     "Stripe Slack webhook"
   ],
-  "intro": "Stripe processes your revenue in real time, but that data lives in the Stripe dashboard where most of your team never goes. Sales teams want to celebrate new customers. Finance wants to know about failed charges immediately. Leadership wants revenue milestones surfaced as they happen. Currently, all of this requires either manually checking Stripe or waiting for a weekly report that is already outdated.\n\nGAIA connects Stripe and Slack so that payment events are surfaced in the channels where your team is already paying attention. New subscriptions post to #sales for a real-time win celebration. Failed payments alert your customer success team in #support so they can proactively reach out. Revenue milestones trigger automated announcements. Your team gets a live pulse on the business without anyone having to maintain dashboards or relay information manually.\n\nThis integration is essential for SaaS companies, subscription businesses, and e-commerce teams where revenue events require coordinated responses from sales, finance, customer success, and leadership.",
+  "intro": "Stripe processes your revenue in real time, but that data lives in a dashboard most of your team never opens. Sales teams want to celebrate new customers. Finance wants to know about failed charges immediately. Leadership wants revenue milestones surfaced as they happen. Currently, all of this requires either manually checking the dashboard or waiting for a weekly report that is already outdated.\n\nGAIA connects the two so payment events show up in the Slack channels where your team is already paying attention. New subscriptions post to #sales for a real-time win celebration. Failed payments alert your customer success team in #support so they can proactively reach out. Revenue milestones trigger automated announcements. Your team gets a live pulse on the business without anyone having to maintain dashboards or relay information manually.\n\nThis integration is essential for SaaS companies, subscription businesses, and e-commerce teams where revenue events require coordinated responses from sales, finance, customer success, and leadership.",
   "useCases": [
     {
       "title": "New customer payment alerts in Slack",
-      "description": "When a new customer completes their first Stripe payment or activates a subscription, GAIA posts a celebration notification to your #sales or #wins Slack channel with the customer name, plan, and MRR impact so the whole team can share in the win and customer success can begin onboarding immediately."
+      "description": "When a new customer completes a first payment or activates a subscription, GAIA posts a celebration notification to your #sales or #wins channel with the customer name, plan, and MRR impact so the whole team can share in the win and customer success can begin onboarding immediately."
     },
     {
       "title": "Failed payment alerts to customer success",
-      "description": "When a Stripe charge fails, GAIA immediately posts an alert to your #support or #customer-success Slack channel with the customer's name, plan, failed amount, and failure reason so your team can reach out proactively before the customer even realizes there is a problem."
+      "description": "When a charge fails, GAIA immediately posts an alert to your #support or #customer-success channel with the customer's name, plan, failed amount, and failure reason so your team can reach out proactively before the customer even realizes there is a problem."
     },
     {
       "title": "Revenue milestone announcements",
-      "description": "Configure GAIA to post to your #general or #wins channel when Stripe MRR crosses key milestones, $10K, $50K, $100K, so the whole company gets to celebrate growth moments in real time rather than waiting for a quarterly review."
+      "description": "Configure GAIA to post to your #general or #wins channel when MRR crosses key milestones, $10K, $50K, $100K, so the whole company gets to celebrate growth moments in real time rather than waiting for a quarterly review."
     },
     {
       "title": "Daily and weekly revenue digests",
-      "description": "GAIA posts a structured daily revenue summary to your #finance channel every morning: new MRR, churned MRR, net new revenue, total active subscriptions, and any anomalies detected, giving your finance and leadership teams a daily financial pulse without opening Stripe."
+      "description": "GAIA posts a structured daily revenue summary to your #finance channel every morning: new MRR, churned MRR, net new revenue, total active subscriptions, and any anomalies detected, giving your finance and leadership teams a daily financial pulse without opening the dashboard."
     },
     {
       "title": "Chargeback and dispute alerts",
-      "description": "When a Stripe dispute or chargeback is opened, GAIA sends an immediate alert to your #finance or #ops Slack channel with the transaction details and dispute deadline so your team can begin assembling evidence before the response window closes."
+      "description": "When a dispute or chargeback is opened, GAIA sends an immediate alert to your #finance or #ops channel with the transaction details and dispute deadline so your team can begin assembling evidence before the response window closes."
     }
   ],
   "howItWorks": [
     {
-      "step": "Connect Slack and Stripe to GAIA",
-      "description": "Authorize GAIA in your Slack workspace and provide your Stripe API key. GAIA uses read-only Stripe access by default and Stripe webhook events to receive real-time payment notifications."
+      "step": "Connect both apps to GAIA",
+      "description": "Authorize GAIA in your Slack workspace and provide your Stripe API key. GAIA uses read-only access by default and webhook events to receive real-time payment notifications."
     },
     {
       "step": "Configure your payment event routing",
-      "description": "Specify which Stripe events should post to which Slack channels, what information to include in each notification, and what thresholds or conditions apply for milestone alerts and digest schedules."
+      "description": "Specify which payment events should post to which channels, what information to include in each notification, and what thresholds or conditions apply for milestone alerts and digest schedules."
     },
     {
-      "step": "GAIA delivers Stripe events to Slack in real time",
-      "description": "GAIA listens to Stripe webhooks and posts formatted notifications to the configured Slack channels as payment events occur. Your team gets a live view of business revenue without anyone acting as a manual relay from the Stripe dashboard."
+      "step": "GAIA delivers payment events to Slack in real time",
+      "description": "GAIA listens to the webhooks and posts formatted notifications to the configured channels as payment events occur. Your team gets a live view of business revenue without anyone acting as a manual relay from the dashboard."
     }
   ],
   "faqs": [
     {
-      "question": "Can I control which Slack channels receive which types of Stripe events?",
-      "answer": "Yes. You can route different Stripe events to different channels. New subscriptions can go to #sales, failed payments to #support, disputes to #finance, and revenue summaries to #leadership — ensuring each team gets the relevant financial information without noise."
+      "question": "Can I control which channels receive which types of payment events?",
+      "answer": "Yes. You can route different payment events to different channels. New subscriptions can go to #sales, failed payments to #support, disputes to #finance, and revenue summaries to #leadership — ensuring each team gets the relevant financial information without noise."
     },
     {
-      "question": "Can GAIA suppress notifications for small test transactions in Stripe?",
-      "answer": "Yes. GAIA can filter out Stripe test mode events and can apply minimum threshold filters so that low-value transactions below a defined amount do not generate Slack notifications, keeping your channels focused on meaningful payment events."
+      "question": "Can GAIA suppress notifications for small test transactions?",
+      "answer": "Yes. GAIA can filter out test mode events and can apply minimum threshold filters so that low-value transactions below a defined amount do not generate notifications, keeping your channels focused on meaningful payment events."
     },
     {
       "question": "Does GAIA support Stripe Connect for platforms with multiple sub-accounts?",
-      "answer": "GAIA supports standard Stripe accounts fully. For Stripe Connect platforms, basic payment notifications are supported but deep sub-account analytics are on the roadmap. Contact the GAIA team for specific Connect use cases."
+      "answer": "GAIA fully supports standard accounts. For Connect platforms, basic payment notifications are supported but deep sub-account analytics are on the roadmap. Contact the GAIA team for specific Connect use cases."
     }
   ]
 }

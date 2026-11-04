@@ -53,6 +53,7 @@ export const buildTurnMessageRecord = (
   status: IMessage["status"],
   error: string | null = null,
   emojiAck: EmojiAckStamp | null = null,
+  stopped = false,
 ): IMessage => ({
   id: meta.botMessageId,
   conversationId: meta.conversationId,
@@ -80,6 +81,7 @@ export const buildTurnMessageRecord = (
   error,
   kind: emojiAck?.kind,
   reacts_to_message_id: emojiAck ? emojiAck.reactsToMessageId : undefined,
+  stopped: stopped || null,
   replyToMessageId: meta.options.replyToMessage?.id ?? null,
   replyToMessageData: meta.options.replyToMessage,
 });

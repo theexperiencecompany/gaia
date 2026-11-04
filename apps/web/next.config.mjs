@@ -6,6 +6,8 @@ import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
 import { expandCanonicalRedirects } from "./canonical-redirects.mjs";
+import { NEXT_SECURITY_HEADER_RULES } from "./security-headers.mjs";
+import { POSTHOG_HOST } from "./third-party-origins.mjs";
 import { vanityRedirects } from "./vanity-redirects.mjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
@@ -36,10 +38,7 @@ const useCloudflareImageLoader = process.env.IMAGE_LOADER === "cloudflare";
 // PostHog proxies through /ingest to stay first-party and survive ad blockers,
 // following NEXT_PUBLIC_POSTHOG_HOST for region-correct ingestion. PostHog Cloud
 // serves SDK bundles from a sibling <region>-assets host; self-hosted uses the same origin (the unmatched fallback).
-const posthogHost = (
-  process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com"
-).replace(/\/+$/, "");
-const posthogAssetsHost = posthogHost.replace(
+const posthogAssetsHost = POSTHOG_HOST.replace(
   /^(https?:\/\/)(us|eu)\.i\.posthog\.com$/,
   "$1$2-assets.i.posthog.com",
 );
@@ -170,6 +169,10 @@ const nextConfig = {
     ],
   },
   images: {
+    // The largest source image on the site is 2442px and no layout exceeds
+    // 1920 CSS px; asking Cloudflare for 3840 upscaled files (500KB+) with no
+    // visible gain on any viewport.
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     // Offload optimization to Cloudflare Image Resizing (/cdn-cgi/image/) via a
     // custom loader — edge-cached, off the worker. Requires Transformations enabled
     // on the zone; gated on the Cloudflare build (see image-loader.ts), else falls through to Next's built-in optimizer.
@@ -211,19 +214,22 @@ const nextConfig = {
     ...(process.env.NODE_ENV === "development" ? ["dev.ts", "dev.tsx"] : []),
   ],
   async headers() {
+    // ISR hub pages send s-maxage only; browsers need max-age and a validator.
+    // Scope it to those routes: static pages already pass, app routes need
+    // their private/no-store headers.
+    const marketingHubs = ["alternative-to", "automate", "compare", "learn", "for", "blog", "use-cases"];
+    const buildLastModified = new Date().toUTCString();
     return [
-      // Baseline security headers on every route. A full Content-Security-Policy
-      // is intentionally deferred — a wrong CSP silently breaks the app and can't
-      // be verified by a build alone, so it needs its own scoped rollout.
+      ...NEXT_SECURITY_HEADER_RULES,
       {
-        source: "/:path*",
+        source: `/:locale(de|es|fr|ja|ko|pt-br)?/(${marketingHubs.join("|")})/:path*`,
         headers: [
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "X-Content-Type-Options", value: "nosniff" },
           {
-            key: "Referrer-Policy",
-            value: "strict-origin-when-cross-origin",
+            key: "Cache-Control",
+            value:
+              "public, max-age=0, s-maxage=60, stale-while-revalidate=86400",
           },
+          { key: "Last-Modified", value: buildLastModified },
         ],
       },
       // /_next/static/*: intentionally NOT setting a custom Cache-Control here.
@@ -255,6 +261,12 @@ const nextConfig = {
         source: "/sitemap.xml",
         destination: "/api/sitemap-xml",
       },
+      // Markdown variant of a page for agents (src/app/md). A separate URL,
+      // not Accept negotiation, because the edge cache does not key on Vary.
+      {
+        source: "/:path+.md",
+        destination: "/md/:path+",
+      },
       {
         source: "/ingest/static/:path*",
         destination: `${posthogAssetsHost}/static/:path*`,
@@ -265,11 +277,11 @@ const nextConfig = {
       },
       {
         source: "/ingest/:path*",
-        destination: `${posthogHost}/:path*`,
+        destination: `${POSTHOG_HOST}/:path*`,
       },
       {
         source: "/ingest/flags",
-        destination: `${posthogHost}/flags`,
+        destination: `${POSTHOG_HOST}/flags`,
       },
     ];
   },
@@ -295,6 +307,10 @@ export default withSentryConfig(
 
   org: "gaia-la",
   project: "gaia-frontend",
+  // One release for the upload and for the events: the CI commit SHA.
+  release: process.env.SENTRY_RELEASE
+    ? { name: process.env.SENTRY_RELEASE }
+    : undefined,
 
   // Only print logs for uploading source maps in CI
   silent: !process.env.CI,
@@ -305,8 +321,11 @@ export default withSentryConfig(
   // Upload a larger set of source maps for prettier stack traces (increases build time)
   widenClientFileUpload: true,
 
-  // Keep source maps in the build output so browsers can load them (don't delete after Sentry upload)
-  hideSourceMaps: false,
+  // Sentry uploads the maps but never deletes them: web-build.yml removes them
+  // from the deployed .open-next tree, and the build checks after it read .next's.
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: false,
+  },
 
   // Uncomment to route Sentry requests through a Next.js rewrite to bypass
   // ad-blockers (raises server load/hosting cost); ensure the route doesn't collide with Next.js middleware or client-side error reporting fails.

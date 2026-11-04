@@ -51,7 +51,7 @@ from app.models.composio_schemas.gmail import (
     GmailThreadResult,
     GmailUnreadLabelCounts,
     GmailUnreadQueryCounts,
-    TimeframeLiteral,
+    Timeframe,
 )
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.integrations.gmail import GmailThreadData
@@ -69,11 +69,14 @@ from app.services.composio.custom_tools.gmail_constants import (
     INLINE_LIMIT_CHARS,
     MAX_ABSOLUTE_MESSAGES,
     MAX_READ_SUBAGENTS,
+    NAMED_TIMEFRAME_DEFAULT_MAX,
+    NO_TIMEFRAME_DEFAULT_MAX,
     OFFLOAD_DIR,
     OFFLOAD_FILE_PREFIX,
     OFFLOAD_MIN_MESSAGES,
     OFFLOAD_PREVIEW_SIZE,
-    TIMEFRAME_DEFAULT_MAX,
+    RELATIVE_TIMEFRAME_DEFAULT_MAX,
+    RELATIVE_TIMEFRAME_LONG_MAX,
 )
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request_sync
 from app.services.contact_service import build_contact_index
@@ -144,11 +147,16 @@ def _gmail_proxy(
 # =============================================================================
 
 
-def _timeframe_clause(timeframe: TimeframeLiteral, tz: Timezone) -> str:
-    """Translate a timeframe enum to a Gmail after:/before: clause.
+def _relative_days(timeframe: str) -> int:
+    """Count the calendar days a relative timeframe (14d, 2w, 3m) spans."""
+    match = re.fullmatch(r"(\d+)([dwmy])", timeframe)
+    if match is None:
+        raise ValueError(f"not a relative timeframe: {timeframe!r}")
+    return int(match.group(1)) * _DAYS_PER_UNIT[match.group(2)]
 
-    Returns "" for unrecognized values (caller falls back to default cap).
-    """
+
+def _timeframe_clause(timeframe: Timeframe, tz: Timezone) -> str:
+    """Translate a timeframe to a Gmail after:/before: clause."""
     today = tz.now().date()
 
     if timeframe in ("today", "yesterday", "tomorrow"):
@@ -163,17 +171,10 @@ def _timeframe_clause(timeframe: TimeframeLiteral, tz: Timezone) -> str:
         )
         return _date_window_clause(monday, days=7)
 
-    match = re.fullmatch(r"(\d+)([dwmy])", timeframe)
-    if match:
-        n = int(match.group(1))
-        days = n * _DAYS_PER_UNIT[match.group(2)]
-        # "last N days" is inclusive of today, so the window spans N calendar
-        # days: [today - (N-1), today]. _date_window_clause makes the end
-        # exclusive (today + 1).
-        start = today - datetime.timedelta(days=days - 1)
-        return _date_window_clause(start, end_date=today)
-
-    return ""
+    # "last N days" is inclusive of today, so the window spans N calendar days:
+    # [today - (N-1), today]. _date_window_clause makes the end exclusive (today + 1).
+    start = today - datetime.timedelta(days=_relative_days(timeframe) - 1)
+    return _date_window_clause(start, end_date=today)
 
 
 def _date_window_clause(
@@ -197,16 +198,29 @@ def _gmail_date(d: datetime.date) -> str:
     return d.isoformat().replace("-", "/")
 
 
+def _default_max(timeframe: Timeframe | None) -> int:
+    """Return the message cap a timeframe implies when the call sets no max_messages."""
+    if timeframe is None:
+        return NO_TIMEFRAME_DEFAULT_MAX
+    if timeframe in NAMED_TIMEFRAME_DEFAULT_MAX:
+        return NAMED_TIMEFRAME_DEFAULT_MAX[timeframe]
+    days = _relative_days(timeframe)
+    return next(
+        (cap for max_days, cap in RELATIVE_TIMEFRAME_DEFAULT_MAX if days <= max_days),
+        RELATIVE_TIMEFRAME_LONG_MAX,
+    )
+
+
 def _resolve_timeframe(
-    timeframe: TimeframeLiteral | None,
+    timeframe: Timeframe | None,
     query: str | None,
     tz: Timezone,
 ) -> tuple[str, int]:
-    """Resolve a timeframe enum + raw query to (combined_query, default_max).
+    """Resolve a timeframe + raw query to (combined_query, default_max).
 
     Honors an explicit after:/before: in query over timeframe.
     """
-    default_max = TIMEFRAME_DEFAULT_MAX.get(timeframe or "", 100)
+    default_max = _default_max(timeframe)
 
     explicit_after_or_before = query and ("after:" in query or "before:" in query)
     if explicit_after_or_before:

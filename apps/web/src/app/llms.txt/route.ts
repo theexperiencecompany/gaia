@@ -15,6 +15,7 @@ import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
 import { getAllPersonas } from "@/features/personas/data/personasData";
 import { MARKETING_PAGES } from "@/lib/marketingPages";
+import { link, oneLine } from "@/lib/pageMarkdown/markdown";
 import { siteConfig } from "@/lib/seo";
 
 export const revalidate = 3600;
@@ -33,22 +34,9 @@ const STATIC_PAGES: LlmsEntry[] = MARKETING_PAGES.map((page) => ({
   notes: page.description,
 }));
 
-/** Collapse whitespace so titles/descriptions stay on one markdown line. */
-function oneLine(value: string): string {
-  return value
-    .replace(/[\r\n]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** Escape square brackets so titles can't break the `[title](url)` syntax. */
-function escapeTitle(value: string): string {
-  return oneLine(value).replaceAll("[", "(").replaceAll("]", ")");
-}
-
 function toLine(entry: LlmsEntry): string {
   const notes = entry.notes ? `: ${oneLine(entry.notes)}` : "";
-  return `- [${escapeTitle(entry.name)}](${entry.url})${notes}`;
+  return `- ${link(entry.name, entry.url)}${notes}`;
 }
 
 function section(heading: string, entries: LlmsEntry[]): string[] {

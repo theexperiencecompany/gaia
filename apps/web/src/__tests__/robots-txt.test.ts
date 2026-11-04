@@ -41,6 +41,16 @@ describe("robots.txt", () => {
     }
   });
 
+  it("lists only XML sitemaps as Sitemap, never a feed", () => {
+    const sitemaps = ROBOTS.split("\n")
+      .filter((line) => line.startsWith("Sitemap:"))
+      .map((line) => new URL(line.slice("Sitemap:".length).trim()).pathname);
+    expect(sitemaps.length).toBeGreaterThan(0);
+    for (const sitemap of sitemaps) {
+      expect(sitemap, sitemap).toMatch(/(^|\/)sitemap\.xml$/);
+    }
+  });
+
   it("blocks no page the sitemap lists", async () => {
     const entries = (
       await Promise.all(LOCAL_SHARDS.map((id) => getSitemapEntries(id)))

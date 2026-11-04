@@ -1,4 +1,4 @@
-import { SiteLink } from "@/components/seo/SiteLink";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import type {
   GuideData,
   GuideSection,
@@ -7,13 +7,10 @@ import type {
 export function GuideHeader({ guide }: { readonly guide: GuideData }) {
   return (
     <>
-      <nav className="mb-8 text-sm text-zinc-500">
-        <SiteLink href="/" className="hover:text-zinc-300">
-          Home
-        </SiteLink>
-        <span className="mx-2">/</span>
-        <span className="text-zinc-300">{guide.breadcrumbName}</span>
-      </nav>
+      <PageBreadcrumbs
+        className="mb-8"
+        items={[{ label: "Home", href: "/" }, { label: guide.breadcrumbName }]}
+      />
       <header className="mb-16">
         <h1 className="mb-6 font-serif text-5xl font-normal text-white md:text-6xl">
           {guide.heading}

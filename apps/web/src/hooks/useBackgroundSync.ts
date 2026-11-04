@@ -22,7 +22,8 @@ const useSyncStatusStore = create<SyncStatusState>((set) => ({
   setSyncError: (error) => set({ syncError: error }),
 }));
 
-export const useBackgroundSync = () => {
+/** Keep the local conversation cache in sync with the server while enabled. */
+export const useBackgroundSync = (enabled: boolean) => {
   const lastSyncTimeRef = useRef(0);
   const initialSyncCompleted = useSyncStatusStore(
     (state) => state.initialSyncCompleted,
@@ -35,7 +36,11 @@ export const useBackgroundSync = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined" || typeof document === "undefined") {
+    if (
+      !enabled ||
+      typeof window === "undefined" ||
+      typeof document === "undefined"
+    ) {
       return;
     }
 
@@ -92,7 +97,7 @@ export const useBackgroundSync = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("online", handleOnline);
     };
-  }, [setInitialSyncCompleted, setSyncError]);
+  }, [enabled, setInitialSyncCompleted, setSyncError]);
 
   return { isSyncing, error };
 };

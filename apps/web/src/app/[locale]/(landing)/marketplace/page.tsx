@@ -3,6 +3,7 @@ import { Suspense } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
 import { MarketplaceDirectory } from "@/features/integrations/components/MarketplaceDirectory";
+import { marketplaceDirectoryPages } from "@/features/integrations/lib/marketplaceDirectoryPages";
 import {
   getAllCommunityIntegrations,
   getNativeIntegrations,
@@ -52,6 +53,7 @@ export default async function MarketplacePage() {
     getNativeIntegrations(),
     getAllCommunityIntegrations(),
   ]);
+  const directoryPages = marketplaceDirectoryPages(native, community);
   const webPageSchema = generateWebPageSchema(
     PAGE_TITLE,
     PAGE_DESCRIPTION,
@@ -95,9 +97,18 @@ export default async function MarketplacePage() {
               Integration Marketplace
             </h1>
             <p className="max-w-2xl text-lg font-light text-foreground-500">
-              Discover and automate your favorite tools with AI. Browse
-              community-built MCP integrations to connect Gmail, Slack, Notion,
-              GitHub, and many more services to your AI assistant.
+              GAIA&apos;s integration marketplace is the catalogue of tools GAIA
+              can connect to. It combines native integrations such as Gmail,
+              Slack, Notion, GitHub, and Google Calendar with community-built
+              MCP servers that extend the assistant to other services. Each
+              listing explains what the integration exposes and how to connect
+              it to your account. Use the search field to find a tool by name,
+              filter by category, and sort by popularity, recency, or name. The
+              directory below lists the integrations alphabetically, with
+              further pages linked at the bottom, so you can jump straight to a
+              detail page. If a tool is missing, MCP is the extension path:
+              build the server, publish it, and it can appear here for other
+              users.
             </p>
           </div>
           {/* useSearchParams opts the grid into client rendering; the header
@@ -105,7 +116,12 @@ export default async function MarketplacePage() {
           <Suspense>
             <IntegrationsPageClient />
           </Suspense>
-          <MarketplaceDirectory native={native} community={community} />
+          {directoryPages[0] && (
+            <MarketplaceDirectory
+              hubPage={directoryPages[0]}
+              totalPages={directoryPages.length}
+            />
+          )}
         </div>
         <FinalSection />
       </div>

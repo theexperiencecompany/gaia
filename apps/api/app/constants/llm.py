@@ -247,7 +247,6 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
         "call_executor",
         "cancel_executor",
         "spawn_subagent",
-        "handoff",
         "deep_research",
         "browser_task",
         # bash carries its own deadline down (the e2b server-side command timeout,
@@ -290,7 +289,7 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # Changing the default model is high blast radius: update DEFAULT_MAX_TOKENS
 # (else fractional-token middleware fails to build) and add a MODEL_PRICING entry.
 # Text-only default for every tier: image tool results are captioned, not shown.
-DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+DEFAULT_MODEL_NAME = "openai/gpt-6-luna"
 # The HIL intent judge runs here, not AUX_MODEL_NAME: accuracy and tail latency
 # beat sharing the graph lane's cache. The eval (50 scenarios, real LLMs) put
 # this at 42/50 in 1.9s p95 vs the default's 40/50 in 20s p95. Changing re-runs it.
@@ -298,7 +297,7 @@ HIL_JUDGE_MODEL_NAME = "google/gemini-3.5-flash-lite"
 # OpenRouter `models`-array fallback for the judge only: tried in order on
 # rate limits, downtime, and moderation refusals — never on verdicts. The
 # fallback's bias is fail-safe (it over-asks rather than over-approves).
-HIL_JUDGE_FALLBACK_MODEL_NAMES: tuple[str, ...] = ("deepseek/deepseek-v4-flash-0731",)
+HIL_JUDGE_FALLBACK_MODEL_NAMES: tuple[str, ...] = (DEFAULT_MODEL_NAME,)
 # Stand-in when a call reports no model id. Priced at DEFAULT_PRICING rather
 # than its real rate, so its appearance is an alertable bug, not a benign
 # default — both metering routes log it loudly.
@@ -322,7 +321,6 @@ DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 # concurrent same-provider requests wipe each other's cached chains mid-read
 # (measured: comms chain collapses to ~0 vs. ~99.5% held with Gemini).
 MEMORY_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
-DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
 # The model behind every image -> text call. Deliberately NOT tied to
 # DEFAULT_MODEL_NAME (may be text-only): a blind describer fails SILENTLY

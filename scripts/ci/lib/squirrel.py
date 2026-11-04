@@ -25,8 +25,8 @@ PASSING_STATUSES = {"pass", "skip"}
 SCORE_PREFIX = "score:"
 PERFECT_SCORE = 100
 UPDATE_HINT = "SMOKE_SQUIRREL_UPDATE=1 on the smoke-web.sh subcommand that checks it"
-# BCP 47 region casing, which hreflang requires: /pt-BR is the locale prefix, not a stray capital.
-LOCALE_PREFIX = re.compile(r"^/pt-BR(?=/|$)")
+# BCP 47 region casing, which hreflang requires: /pt-br is the locale prefix.
+LOCALE_PREFIX = re.compile(r"^/pt-br(?=/|$)")
 BASELINE_HEADER = """\
 # squirrelscan at --level surface, which `scripts/ci/smoke-web.sh` holds to this
 # file. `<rule id>=<count>` is the most pages (or, for a site-wide check, items)
@@ -42,19 +42,14 @@ BASELINE_HEADER = """\
 """
 
 
-def _feed_is_not_a_sitemap(rule: str, page: str) -> bool:
-    """Google reads the RSS feed robots.txt lists as a sitemap; squirrel only parses sitemap XML."""
-    return rule == "crawl/sitemap-valid" and urllib.parse.urlparse(page).path == "/feed.xml"
-
-
 def _locale_casing(rule: str, page: str) -> bool:
-    """Ignore pt-BR's capitals when they are the only capitals in the path."""
+    """Ignore pt-br's capitals when they are the only capitals in the path."""
     path = urllib.parse.urlparse(page).path
     rest = LOCALE_PREFIX.sub("", path)
     return rule == "url/lowercase" and rest != path and rest == rest.lower()
 
 
-FALSE_POSITIVES = (_feed_is_not_a_sitemap, _locale_casing)
+FALSE_POSITIVES = (_locale_casing,)
 
 
 def _false_positive(rule: str, page: str) -> bool:

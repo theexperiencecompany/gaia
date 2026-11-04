@@ -15,55 +15,55 @@
     "Asana Discord notifications",
     "team project management Discord"
   ],
-  "intro": "Teams that collaborate on Discord need project updates to come to them rather than requiring constant tab-switching to Asana. When task completions, new assignments, and missed deadlines live only inside Asana, Discord-first teams miss critical context and fall out of sync with project progress.\n\nGAIA connects Asana and Discord so the project events that matter most are automatically surfaced in the right Discord channels. Task completions appear in team channels, new assignments notify individuals in DMs, and milestone achievements trigger announcements to the whole server. Teams that live in Discord can stay fully informed about Asana project health without leaving their primary communication platform.\n\nThis integration works especially well for developer communities, gaming studios, and remote-first companies that use Discord as their primary team hub and Asana for structured project management.",
+  "intro": "Teams that collaborate on Discord need project updates to come to them rather than requiring constant tab-switching to Asana. When task completions, new assignments, and missed deadlines live only in the project, teams that work in chat miss critical context and fall out of sync with project progress.\n\nGAIA connects the two so the project events that matter most are automatically surfaced in the right channels. Task completions appear in team channels, new assignments notify individuals in DMs, and milestone achievements trigger announcements to the whole server. Teams that live in chat can stay fully informed about project health without leaving their primary communication hub.\n\nThis integration works especially well for developer communities, gaming studios, and remote-first companies that use Discord as their primary team hub and Asana for structured project management.",
   "useCases": [
     {
-      "title": "Post task completions to team channels",
-      "description": "When a task is marked complete in Asana, GAIA posts a formatted update to the designated Discord channel, keeping the team informed of progress and giving completions the visibility they deserve."
+      "title": "Post Asana task completions to team channels",
+      "description": "When a task is marked complete in Asana, GAIA posts a formatted update to the designated channel, keeping the team informed of progress and giving completions the visibility they deserve."
     },
     {
       "title": "Notify assignees of new tasks via Discord DM",
-      "description": "When a task is assigned in Asana, GAIA sends a direct message to the assignee on Discord with the task title, description, due date, and a link to Asana, ensuring immediate awareness without email."
+      "description": "When a task is assigned, GAIA sends the assignee a direct message on Discord with the task title, description, due date, and a link back to the task, ensuring immediate awareness without email."
     },
     {
       "title": "Announce project milestones",
-      "description": "When an Asana milestone is reached, GAIA posts a milestone announcement to the relevant Discord channel or server announcement channel, giving the whole team visibility into major project achievements."
+      "description": "When a milestone is reached, GAIA posts a milestone announcement to the relevant channel or server announcement channel, giving the whole team visibility into major project achievements."
     },
     {
       "title": "Overdue task alerts",
-      "description": "GAIA checks Asana daily for overdue tasks and posts a digest to the project manager's Discord DM or a dedicated alerts channel, ensuring nothing slips through without notice."
+      "description": "GAIA checks daily for overdue tasks and posts a digest to the project manager's DM or a dedicated alerts channel, ensuring nothing slips through without notice."
     },
     {
       "title": "Daily standup digest",
-      "description": "Each morning GAIA posts a structured standup digest to a Discord channel listing tasks due today, tasks completed yesterday, and any blockers flagged in Asana, replacing manual standup preparation."
+      "description": "Each morning GAIA posts a structured standup digest to a channel listing tasks due today, tasks completed yesterday, and any blockers flagged in the project, replacing manual standup preparation."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Asana and Discord to GAIA",
-      "description": "Authorize GAIA to access your Asana workspace and your Discord server. Configure which Asana projects or teams map to which Discord channels."
+      "description": "Authorize GAIA to access your Asana workspace and your Discord server. Configure which projects or teams map to which channels."
     },
     {
-      "step": "Choose which events trigger Discord messages",
-      "description": "Select the Asana events, task creation, assignment, completion, overdue, milestone, that should generate Discord notifications, and specify the target channel or user for each event type."
+      "step": "Choose which events trigger messages",
+      "description": "Select the events (task creation, assignment, completion, overdue, milestone) that should generate notifications, and specify the target channel or user for each event type."
     },
     {
       "step": "GAIA delivers real-time project updates",
-      "description": "GAIA monitors Asana continuously and posts formatted notifications to Discord as events occur, keeping your team informed without anyone checking Asana manually."
+      "description": "GAIA monitors the project continuously and posts formatted notifications as events occur, keeping your team informed without anyone checking tasks by hand."
     }
   ],
   "faqs": [
     {
       "question": "Can I create Asana tasks from Discord messages?",
-      "answer": "Yes. You can mention GAIA in a Discord message and ask it to create an Asana task with a specific title, assignee, and due date. GAIA will confirm the task creation and post the Asana link back to the channel."
+      "answer": "Yes. You can mention GAIA in a message and ask it to create a task with a specific title, assignee, and due date. GAIA will confirm the task creation and post the task link back to the channel."
     },
     {
-      "question": "Can GAIA post to multiple Discord channels for different Asana projects?",
-      "answer": "Yes. You can configure per-project channel mappings so that updates from different Asana projects route to different Discord channels, keeping notifications organized and relevant."
+      "question": "Can GAIA post to multiple channels for different projects?",
+      "answer": "Yes. You can configure per-project channel mappings so that updates from different projects route to different channels, keeping notifications organized and relevant."
     },
     {
-      "question": "Will GAIA create noise by posting every small Asana update?",
-      "answer": "No. You have full control over which event types generate Discord posts. Most teams configure GAIA to post only completions, milestone events, and overdue alerts to keep channels signal-rich."
+      "question": "Will GAIA create noise by posting every small update?",
+      "answer": "No. You have full control over which event types generate posts. Most teams configure GAIA to post only completions, milestone events, and overdue alerts to keep channels signal-rich."
     }
   ]
 }

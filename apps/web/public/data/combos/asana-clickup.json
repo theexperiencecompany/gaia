@@ -15,55 +15,55 @@
     "cross-platform project management",
     "task sync Asana ClickUp"
   ],
-  "intro": "Many growing organizations run Asana and ClickUp simultaneously — one team adopted Asana early, another migrated to ClickUp, and now both coexist without talking to each other. The result is duplicated task entry, mismatched statuses, and project leads who spend hours reconciling two separate sources of truth.\n\nGAIA eliminates the manual overhead of managing projects across both platforms. When a task is created or updated in Asana, GAIA mirrors the change in ClickUp and vice versa, keeping assignees, due dates, and completion statuses consistent. Teams can continue using their preferred tool while leadership gets a consolidated view of project health.\n\nThis integration is especially valuable during platform migrations, when departments have different tool preferences, or when client-facing projects need to live in one system while internal execution happens in another.",
+  "intro": "Many growing organizations run two project tools at once — one team adopted Asana early, another migrated to ClickUp, and now both coexist without talking to each other. The result is duplicated task entry, mismatched statuses, and project leads who spend hours reconciling two separate sources of truth.\n\nGAIA removes the manual overhead of managing projects across both tools. When a task is created or updated in Asana, GAIA mirrors the change in ClickUp and vice versa, keeping assignees, due dates, and completion statuses consistent. Teams can continue using their preferred tool while leadership gets a consolidated view of project health.\n\nThis integration is especially valuable during platform migrations, when departments have different tool preferences, or when client-facing projects need to live in one system while internal execution happens in another.",
   "useCases": [
     {
-      "title": "Mirror task creation across platforms",
-      "description": "When a new task is created in Asana with an assigned team member and due date, GAIA automatically creates a corresponding task in ClickUp so both platforms reflect the same work without manual duplication."
+      "title": "Mirror task creation between the two tools",
+      "description": "When a new task is created in Asana with an assigned team member and due date, GAIA automatically creates a corresponding task in ClickUp so both reflect the same work without manual duplication."
     },
     {
       "title": "Sync task completion status bidirectionally",
-      "description": "When a task is marked complete in either Asana or ClickUp, GAIA updates the counterpart record immediately, preventing stale open items from cluttering project views in either tool."
+      "description": "When a task is marked complete in either tool, GAIA updates the counterpart record immediately, preventing stale open items from cluttering project views on either side."
     },
     {
       "title": "Unified cross-team reporting",
-      "description": "GAIA aggregates task data from both Asana and ClickUp to generate a single weekly status report, giving leadership consistent project visibility without requiring everyone to switch tools."
+      "description": "GAIA aggregates task data from both tools to generate a single weekly status report, giving leadership consistent project visibility without requiring everyone to switch tools."
     },
     {
-      "title": "Escalate blockers between systems",
-      "description": "When a task in ClickUp is flagged as blocked, GAIA creates a dependency flag on the linked Asana task so project managers in both systems are aware and can intervene quickly."
+      "title": "Escalate ClickUp blockers to Asana",
+      "description": "When a task is flagged as blocked, GAIA creates a dependency flag on the linked task in the other tool, so project managers on both sides are aware and can intervene quickly."
     },
     {
       "title": "Deadline drift alerts",
-      "description": "GAIA monitors due dates across both platforms and alerts the team when a task's deadline in one system does not match the other, preventing schedule confusion before it becomes a delivery issue."
+      "description": "GAIA monitors due dates in both tools and alerts the team when a task's deadline in one does not match the other, preventing schedule confusion before it becomes a delivery issue."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect both workspaces to GAIA",
-      "description": "Authorize GAIA to access your Asana workspace and your ClickUp workspace. GAIA maps projects and lists between the two platforms so it knows which items correspond to each other."
+      "description": "Authorize GAIA to access your Asana workspace and your ClickUp workspace. GAIA maps projects and lists between the two workspaces so it knows which items correspond to each other."
     },
     {
       "step": "Define sync rules and field mappings",
-      "description": "Tell GAIA which Asana projects should sync with which ClickUp lists, and configure how fields map between them, assignees, priorities, due dates, and custom fields."
+      "description": "Tell GAIA which projects should sync with which lists, and configure how fields map between them: assignees, priorities, due dates, and custom fields."
     },
     {
-      "step": "GAIA keeps both platforms current",
-      "description": "GAIA monitors both systems for changes and propagates updates bidirectionally so teams in each platform always see current, accurate task data."
+      "step": "GAIA keeps both sides current",
+      "description": "GAIA monitors both workspaces for changes and propagates updates bidirectionally so teams on each side always see current, accurate task data."
     }
   ],
   "faqs": [
     {
       "question": "Can GAIA handle a one-time migration from Asana to ClickUp?",
-      "answer": "Yes. GAIA can bulk-read all tasks from an Asana project and create corresponding tasks in a ClickUp list, preserving titles, descriptions, assignees, and due dates. After migration you can turn off the sync or keep it active for a transition period."
+      "answer": "Yes. GAIA can bulk-read all tasks from the source project and create corresponding tasks in the destination list, preserving titles, descriptions, assignees, and due dates. After migration you can turn off the sync or keep it active for a transition period."
     },
     {
-      "question": "What happens if a task is edited in both platforms simultaneously?",
-      "answer": "GAIA applies a last-write-wins rule by default and flags the conflict in a designated Slack channel or email digest so a human can review. You can also configure one platform to always be the system of record."
+      "question": "What happens if a task is edited in both tools at the same time?",
+      "answer": "GAIA applies a last-write-wins rule by default and flags the conflict in a designated Slack channel or email digest so a human can review. You can also configure one tool to always be the system of record."
     },
     {
-      "question": "Do custom fields in ClickUp sync with custom fields in Asana?",
-      "answer": "GAIA supports mapping custom fields by name or type. If field names differ between platforms, you can define explicit mappings during setup. Fields without a counterpart are logged but not discarded."
+      "question": "Do custom fields sync between the two tools?",
+      "answer": "GAIA supports mapping custom fields by name or type. If field names differ between the tools, you can define explicit mappings during setup. Fields without a counterpart are logged but not discarded."
     }
   ]
 }

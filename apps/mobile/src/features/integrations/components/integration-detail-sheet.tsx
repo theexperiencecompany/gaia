@@ -14,7 +14,7 @@ import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { getIntegrationTools } from "../api/integrations-api";
-import type { Integration, IntegrationTool } from "../types";
+import type { Integration, IntegrationToolApproval } from "../types";
 import { IntegrationDetailHeader } from "./IntegrationDetailHeader";
 import { IntegrationToolsPanel } from "./IntegrationToolsPanel";
 
@@ -40,7 +40,7 @@ export const IntegrationDetailSheet = forwardRef<
 
   const [isOpen, setIsOpen] = useState(false);
   const [integration, setIntegration] = useState<Integration | null>(null);
-  const [tools, setTools] = useState<IntegrationTool[]>([]);
+  const [tools, setTools] = useState<IntegrationToolApproval[]>([]);
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);

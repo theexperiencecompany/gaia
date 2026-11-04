@@ -8,6 +8,7 @@ export type ServerEventName =
   | "ai:llm_call_completed"
   | "approval:decided"
   | "bot:audio_transcribed"
+  | "bot:chat_opened"
   | "bot:session_reset"
   | "browser:engine_switched"
   | "browser:handoff_resolved"
@@ -136,6 +137,7 @@ export type ServerEventName =
   | "subscription:lapsed"
   | "subscription:renewed"
   | "support:form_submitted"
+  | "todos:chat_opened"
   | "todos:created"
   | "todos:deleted"
   | "todos:inbox_desk_provisioned"
@@ -232,8 +234,6 @@ export type WebEventName =
 
 export type BotEventName =
   | "bot:auth_initiated"
-  | "bot:chat_completed"
-  | "bot:chat_started"
   | "bot:command_executed"
   | "bot:error"
   | "bot:file_delivered"
@@ -354,14 +354,11 @@ export interface EventProperties {
     "transcript_length": number;
   };
   "bot:auth_initiated": Record<string, never>;
-  "bot:chat_completed": {
-    "duration_ms": number;
-    "response_length": number;
-    "streaming_enabled": boolean;
-  };
-  "bot:chat_started": {
-    "message_length": number;
-    "streaming_enabled": boolean;
+  "bot:chat_opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "platform": string;
   };
   "bot:command_executed": {
     "command": string;
@@ -1387,6 +1384,8 @@ export interface EventProperties {
     "subscription_id": string;
     "plan_name": "Pro";
     "currency": string;
+    "product_id"?: string;
+    "billing_interval"?: string;
     "amount"?: number;
     "amount_charged_pre_tax"?: number;
     "currency_charged"?: string;
@@ -1410,6 +1409,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "subscription_id": string;
+    "product_id": string;
+    "billing_interval": string;
   };
   "subscription:failed": {
     "source": "onboarding" | "payment_success_page";
@@ -1421,6 +1422,8 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "subscription_id": string;
     "status": "failed" | "on_hold";
+    "product_id": string;
+    "billing_interval": string;
   };
   "subscription:page_viewed": {
     "source": "landing_pricing";
@@ -1436,6 +1439,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "subscription_id": string;
+    "product_id": string;
+    "billing_interval": string;
     "currency": string;
     "amount_charged_pre_tax"?: number;
     "currency_charged"?: string;
@@ -1450,6 +1455,12 @@ export interface EventProperties {
     "attachment_count": number;
   };
   "thanks:page_viewed": Record<string, never>;
+  "todos:chat_opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "todo_id": string;
+  };
   "todos:created": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1661,11 +1672,11 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "origin": "user_created" | "chat_agent" | "todo_converted" | "todo_requested";
     "workflow_id"?: string;
     "trigger_type"?: string;
     "steps_count"?: number;
     "generated_immediately"?: boolean;
-    "from_todo"?: boolean;
     "is_todo_workflow"?: boolean;
   };
   "workflow:deactivated": {

@@ -11,7 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.mongodb.indexes import create_payment_indexes, create_playbook_indexes
+from app.db.mongodb.indexes import (
+    create_conversation_indexes,
+    create_payment_indexes,
+    create_playbook_indexes,
+)
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 
 # ---------------------------------------------------------------------------
@@ -417,6 +421,27 @@ class TestCreatePlaybookIndexes:
         mock_get_collection.assert_called_once_with("playbooks")
         collection.create_index.assert_awaited_once_with(
             [("workflow_id", 1), ("user_id", 1)], unique=True
+        )
+
+
+class TestCreateConversationIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_a_tracked_todo_has_at_most_one_chat(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """A run and an "Open chat" tap at once both create; the unique binding makes one of them lose."""
+        collection = MagicMock()
+        collection.create_index = AsyncMock()
+        mock_get_collection.return_value = collection
+
+        await create_conversation_indexes()
+
+        mock_get_collection.assert_called_once_with("conversations")
+        collection.create_index.assert_any_await(
+            [("user_id", 1), ("todo_id", 1)],
+            unique=True,
+            name="user_todo_conversation_unique",
+            partialFilterExpression={"todo_id": {"$type": "string"}},
         )
 
 

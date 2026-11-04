@@ -95,8 +95,8 @@ describe("canonical redirects", () => {
       permanent: true,
     });
     expect(rows).toContainEqual({
-      source: "/pt-BR/automate/teams-slack",
-      destination: "/pt-BR/automate/slack-teams",
+      source: "/pt-br/automate/teams-slack",
+      destination: "/pt-br/automate/slack-teams",
       permanent: true,
     });
     expect(rows).toContainEqual({

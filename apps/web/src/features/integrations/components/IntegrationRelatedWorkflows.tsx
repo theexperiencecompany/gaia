@@ -22,8 +22,6 @@ interface IntegrationRelatedWorkflowsProps {
    * - "section": full marketplace section styling (rounded-3xl card, large heading).
    */
   readonly variant?: "sidebar" | "section";
-  /** Optional name of the integration to personalise the section copy. */
-  readonly integrationName?: string;
   /** Server-fetched workflows; when present no client fetch runs. */
   readonly initialWorkflows?: CommunityWorkflow[];
 }
@@ -51,7 +49,6 @@ export function IntegrationRelatedWorkflows({
   integrationId,
   limit = 4,
   variant = "sidebar",
-  integrationName,
   initialWorkflows,
 }: Readonly<IntegrationRelatedWorkflowsProps>) {
   const { data, isLoading } = useQuery({
@@ -94,9 +91,8 @@ export function IntegrationRelatedWorkflows({
             Workflows that use this integration
           </h2>
           <p className="text-zinc-400 text-sm leading-relaxed">
-            {integrationName
-              ? `Featured and community workflows that automate ${integrationName} with GAIA. Clone any of them in one click.`
-              : "Featured and community workflows powered by this integration. Clone any of them in one click."}
+            Featured and community workflows that automate this integration with
+            GAIA. Clone any of them in one click.
           </p>
         </div>
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">

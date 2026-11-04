@@ -9,7 +9,7 @@ export default function GetStartedButton({
   small_text = false,
   text = "Get Started",
   btnColor = "#00bbff",
-  classname = "text-black!",
+  classname = "",
   href = "/signup",
 }: {
   small_text?: boolean;

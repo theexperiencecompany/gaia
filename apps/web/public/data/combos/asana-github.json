@@ -14,37 +14,37 @@
     "product engineering sync",
     "Asana GitHub workflow"
   ],
-  "intro": "Product work lives in Asana. Engineering work lives in GitHub. The handoff between them is where context gets lost and communication breaks down. GAIA automates the link between Asana tasks and GitHub development work so both tools stay accurate and both teams stay aligned.",
+  "intro": "Product work lives in Asana. Engineering work lives in GitHub. The handoff between them is where context gets lost and communication breaks down. GAIA automates the link between tasks and development work so both tools stay accurate and both teams stay aligned.",
   "useCases": [
     {
       "title": "Link GitHub PRs to Asana tasks",
-      "description": "GAIA detects when a GitHub PR references an Asana task and creates a bidirectional link, so engineers see the product context in GitHub and product managers see code progress in Asana."
+      "description": "GAIA detects when a PR references a task and creates a bidirectional link, so engineers see the product context on the pull request and product managers see code progress on the task."
     },
     {
-      "title": "Asana task completion from PR merge",
-      "description": "When a GitHub PR that implements an Asana task is merged, GAIA marks the task complete automatically, eliminating the need for engineers to update project management tools."
+      "title": "Task completion from PR merge",
+      "description": "When a PR that implements a task is merged, GAIA marks the task complete automatically, eliminating the need for engineers to update project management tools."
     },
     {
       "title": "Development progress in Asana",
-      "description": "Asana tasks linked to GitHub work show PR status (open, in review, merged) so product managers have real-time development visibility without asking engineers for updates."
+      "description": "Tasks linked to development work show PR status (open, in review, merged) so product managers have real-time development visibility without asking engineers for updates."
     },
     {
       "title": "Bug task from GitHub issue",
-      "description": "High-priority GitHub issues automatically create corresponding Asana tasks in the QA or bug project, ensuring all reported bugs enter the product management workflow."
+      "description": "High-priority issues automatically create corresponding tasks in the QA or bug project, ensuring all reported bugs enter the product management workflow."
     },
     {
       "title": "Release coordination",
-      "description": "When a GitHub release is published, GAIA updates all linked Asana tasks to 'Released' and notifies stakeholders, closing the product delivery loop."
+      "description": "When a release is published, GAIA updates all linked tasks to 'Released' and notifies stakeholders, closing the product delivery loop."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Asana and GitHub to GAIA",
-      "description": "Authorize GAIA with your Asana workspace and GitHub organization. Map repositories to Asana projects."
+      "description": "Authorize GAIA with your Asana workspace and GitHub organization. Map repositories to projects."
     },
     {
       "step": "Configure the linking convention",
-      "description": "Decide how PRs reference Asana tasks, by task URL in the PR description, by task ID in branch names, or by GAIA's intelligent matching based on content."
+      "description": "Decide how PRs reference tasks, by task URL in the PR description, by task ID in branch names, or by GAIA's intelligent matching based on content."
     },
     {
       "step": "Let GAIA maintain cross-tool accuracy",
@@ -53,16 +53,16 @@
   ],
   "faqs": [
     {
-      "question": "How should engineers reference Asana tasks in their GitHub PRs?",
-      "answer": "GAIA supports several conventions: including the Asana task URL in the PR description, adding the task ID to the branch name, or using a specific PR description format you define. GAIA adapts to your existing workflow."
+      "question": "How should engineers reference tasks in their PRs?",
+      "answer": "GAIA supports several conventions: including the task URL in the PR description, adding the task ID to the branch name, or using a specific PR description format you define. GAIA adapts to your existing workflow."
     },
     {
       "question": "Can product managers trigger GitHub actions from Asana?",
-      "answer": "Limited GitHub actions can be triggered from Asana via GAIA, such as creating an issue or requesting a review. Full repository access stays with engineers for security reasons."
+      "answer": "Limited actions can be triggered from the task side via GAIA, such as creating an issue or requesting a review. Full repository access stays with engineers for security reasons."
     },
     {
-      "question": "Does this work with Asana's approval tasks for QA sign-off?",
-      "answer": "Yes. GAIA can be configured to create an Asana approval task when a PR is merged, routing a QA sign-off step to the appropriate team member before marking the feature complete."
+      "question": "Does this work with approval tasks for QA sign-off?",
+      "answer": "Yes. GAIA can be configured to create an approval task when a PR is merged, routing a QA sign-off step to the appropriate team member before marking the feature complete."
     }
   ]
 }

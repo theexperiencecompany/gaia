@@ -14,51 +14,51 @@
     "gaia microsoft teams asana",
     "teams asana workflow"
   ],
-  "intro": "Project managers track work in Asana while the team communicates in Microsoft Teams, creating a gap where task updates and chat decisions live in separate places. Important action items decided in Teams never make it into Asana, and Asana deadline changes go unnoticed by teammates in Teams.\n\nGAIA closes this gap by posting Asana project milestones and task updates to Teams channels and by letting team members create Asana tasks directly from Teams messages. Work gets captured where decisions are made and tracked where projects are managed.",
+  "intro": "Project managers track work in Asana while the team communicates in Microsoft Teams, creating a gap where task updates and chat decisions live in separate places. Important action items decided in chat never make it into the project, and deadline changes go unnoticed by teammates in the channel.\n\nGAIA closes this gap by posting project milestones and task updates to Teams channels and by letting team members create Asana tasks directly from messages. Work gets captured where decisions are made and tracked where projects are managed.",
   "useCases": [
     {
       "title": "Post Asana milestone updates to Teams",
-      "description": "When a project milestone is completed in Asana, GAIA posts a celebration update to the Teams project channel. The whole team sees progress without needing to open Asana."
+      "description": "When a project milestone is completed, GAIA posts a celebration update to the project channel. The whole team sees progress without needing to open the project."
     },
     {
       "title": "Create Asana tasks from Teams messages",
-      "description": "React to any Teams message with a designated emoji or use a slash command to have GAIA create an Asana task from it. Action items are captured automatically without leaving the conversation."
+      "description": "React to any message with a designated emoji or use a slash command to have GAIA create a task from it. Action items are captured automatically without leaving the conversation."
     },
     {
       "title": "Deadline approaching alerts",
-      "description": "GAIA monitors Asana tasks approaching their due date and posts a warning to the Teams channel. Assignees are tagged so nothing slips past a deadline unnoticed."
+      "description": "GAIA monitors tasks approaching their due date and posts a warning to the channel. Assignees are tagged so nothing slips past a deadline unnoticed."
     },
     {
-      "title": "Daily standup digest from Asana",
-      "description": "Before standup each morning, GAIA posts a digest of each team member's Asana tasks due today to the Teams standup channel. The team arrives at standup already up to speed."
+      "title": "Daily standup digest",
+      "description": "Before standup each morning, GAIA posts a digest of each team member's tasks due today to the standup channel. The team arrives at standup already up to speed."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Microsoft Teams and Asana to GAIA",
-      "description": "Authorize GAIA with your Teams tenant and Asana workspace. GAIA links your Asana projects to their corresponding Teams channels."
+      "description": "Authorize GAIA with your tenant and workspace. GAIA links your projects to their corresponding channels."
     },
     {
       "step": "Configure update triggers and task creation rules",
-      "description": "Choose which Asana events post to Teams and how Teams message commands map to Asana projects. GAIA gives you per-project control."
+      "description": "Choose which project events post to channels and how message commands map to projects. GAIA gives you per-project control."
     },
     {
       "step": "GAIA automates task and project communication",
-      "description": "Asana events appear in Teams as formatted cards with direct links, and Teams-originated tasks are created in Asana with full context. Both tools stay current automatically."
+      "description": "Project events appear in the channel as formatted cards with direct links, and tasks started from chat are created with full context. Both tools stay current automatically."
     }
   ],
   "faqs": [
     {
       "question": "Can any Teams member create Asana tasks, or only admins?",
-      "answer": "Any Teams member whose Asana account is connected to GAIA can create tasks from Teams messages. You can restrict this to specific roles if needed."
+      "answer": "Any team member whose account is connected to GAIA can create tasks from messages. You can restrict this to specific roles if needed."
     },
     {
-      "question": "Which Asana events can trigger Teams messages?",
+      "question": "Which events can trigger channel messages?",
       "answer": "GAIA supports task completion, milestone achieved, due date approaching, task assigned, and project status changed as trigger events. You choose which ones to enable."
     },
     {
-      "question": "Does GAIA support Asana portfolios and goals?",
-      "answer": "Yes. GAIA can post portfolio-level status updates and goal progress to Teams channels so leadership gets high-level visibility without drilling into Asana."
+      "question": "Does GAIA support portfolios and goals?",
+      "answer": "Yes. GAIA can post portfolio-level status updates and goal progress to channels so leadership gets high-level visibility without drilling into the project."
     }
   ]
 }

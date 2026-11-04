@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { fillCurrentYear } from "@/lib/feature-data";
 import type { BestHubConfig } from "./bestAssistantHubConfig";
 import type { RankedPick } from "./bestAssistantHubData";
@@ -13,13 +13,10 @@ export interface BestHubRankedProps {
 
 export function BestHubBreadcrumb({ config }: BestHubConfigProps) {
   return (
-    <nav className="mb-8 text-sm text-zinc-500">
-      <Link href="/" className="hover:text-zinc-300">
-        Home
-      </Link>
-      <span className="mx-2">/</span>
-      <span className="text-zinc-300">{config.breadcrumbName}</span>
-    </nav>
+    <PageBreadcrumbs
+      className="mb-8"
+      items={[{ label: "Home", href: "/" }, { label: config.breadcrumbName }]}
+    />
   );
 }
 

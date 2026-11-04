@@ -50,8 +50,9 @@ from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.constants.todos import TodoActivityEvent
+from app.constants.todos import TodoActivityEvent, TodoWakeKind
 from app.models.chat_models import ConversationSource
+from app.models.message_models import TodoRunWake
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
@@ -172,6 +173,12 @@ def _request() -> TodoRunRequest:
         todo_title="Watch the staging deploy",
         task="Execute the following scheduled task: Watch the staging deploy",
         conversation_id="run-conv-1",
+        fresh_thread=False,
+        wake=TodoRunWake(
+            kind=TodoWakeKind.SCHEDULE,
+            trigger_names=[],
+            approval_summary=None,
+        ),
     )
 
 
@@ -222,12 +229,68 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
         assert seams.send.await_args.kwargs["notification_text"] == message
 
-    async def test_the_run_conversation_is_never_written(self) -> None:
-        """It has no transport and does not exist: a save there 404s and drops the result."""
-        with _seams(todo=_todo()) as seams:
+    @pytest.mark.regression
+    async def test_a_silence_tag_inside_the_message_never_reaches_the_chat_app(self) -> None:
+        """Live: a daily check-in wrote its recap and its silence in one bubble, and both were sent."""
+        message = "Alex still needs a reply; the inbox fix remains unpushed."
+        narrated = (
+            f"{message} <SILENCE>Pending actions already noted.</SILENCE>{NEW_MESSAGE_BREAKER}"
+        )
+        with _seams(todo=_todo(), narrated=narrated) as seams:
             await run_todo_on_executor(_request())
 
-        seams.save_to_conversation.assert_not_awaited()
+        assert seams.send.await_args.kwargs["notification_text"].strip() == message
+
+    async def test_the_executors_own_report_is_kept_in_the_todos_chat(self) -> None:
+        """Regression: the run's conversation was a throwaway, so nothing the run did was left to open."""
+        broadcast = AsyncMock()
+        with (
+            _seams(todo=_todo()) as seams,
+            patch.object(rd, "websocket_manager", MagicMock(broadcast_to_user=broadcast)),
+        ):
+            await run_todo_on_executor(_request())
+
+        (saved,) = seams.save_to_conversation.await_args.args
+        run = seams.execute.await_args.args[2]
+        assert saved.conversation_id == "run-conv-1"
+        (message,) = saved.messages
+        # The report itself, not comms' retelling: the chat is the record of the run.
+        assert (message.type, message.response, message.error) == ("bot", EXECUTOR_REPORT, None)
+        # Under the placeholder id the live stream rendered into, so it replaces it.
+        assert message.message_id == run.task_id
+        # Every run adds one, so the chat is capped at its newest messages.
+        assert seams.save_to_conversation.await_args.kwargs["max_messages"] == (
+            todo_constants.TODO_CONVERSATION_MAX_MESSAGES
+        )
+        user_id, event = broadcast.await_args.args
+        assert user_id == USER.user_id
+        assert event["type"] == "conversation.new_message"
+        assert event["conversation_id"] == "run-conv-1"
+        assert event["message"]["message_id"] == run.task_id
+        assert event["message"]["task_id"] == run.task_id
+        assert event["message"]["response"] == EXECUTOR_REPORT
+
+    async def test_a_failed_run_is_kept_in_the_todos_chat_as_its_error(self) -> None:
+        with (
+            _seams(
+                todo=_todo(), executor=_ExecutorResult("The calendar API was down.", "error")
+            ) as seams,
+            patch.object(rd, "websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
+            pytest.raises(TodoRunFailedError),
+        ):
+            await run_todo_on_executor(_request())
+
+        (message,) = seams.save_to_conversation.await_args.args[0].messages
+        assert (message.response, message.error) == ("", "The calendar API was down.")
+        seams.send.assert_not_awaited()
+
+    async def test_a_report_the_chat_cannot_keep_still_reaches_the_user(self) -> None:
+        """The record and the message are independent: losing one must not lose the other."""
+        with _seams(todo=_todo()) as seams:
+            seams.save_to_conversation.side_effect = RuntimeError("mongo is down")
+            await run_todo_on_executor(_request())
+
+        assert seams.send.await_args.kwargs["notification_text"] == NARRATED
 
     async def test_the_executor_runs_the_brief_itself_in_background_mode(self) -> None:
         with _seams(todo=_todo()) as seams:

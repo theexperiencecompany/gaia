@@ -26,13 +26,24 @@ from posthog import Posthog
 import pytest
 from starlette.types import Receive, Scope, Send
 
-# Hypothesis profiles: PR lanes select "ci" (25 examples) to keep feedback
-# short; master/local keep "default" (200). suppress differing_executors
-# since mutmut's in-process runner reinstantiates the @given class per mutant.
+# "ci" (PRs, queue) is derandomized so the queue reproduces the PR's verdict; "ci-full"
+# (master) explores, seeded per commit by pytest.sh's --hypothesis-seed.
+# differing_executors: mutmut's in-process runner reinstantiates the @given class.
 _hypothesis_settings.register_profile(
     "ci",
     max_examples=25,
     deadline=None,
+    derandomize=True,
+    database=None,
+    suppress_health_check=[HealthCheck.differing_executors],
+)
+_hypothesis_settings.register_profile(
+    "ci-full",
+    max_examples=200,
+    deadline=None,
+    # Explicit: under CI=true a new profile inherits Hypothesis's built-in "ci", which derandomizes.
+    derandomize=False,
+    database=None,
     suppress_health_check=[HealthCheck.differing_executors],
 )
 _hypothesis_settings.register_profile(
@@ -298,6 +309,7 @@ assert isinstance(_settings_module.inject_infisical_secrets, MagicMock), (
 assert isinstance(_secrets_module.inject_infisical_secrets, MagicMock), (
     "hermetic fence broken: secrets.inject_infisical_secrets is not mocked"
 )
+
 
 # Registers the PostHog provider the way production startup does, since the
 # test app's lifespan is a no-op; POSTHOG_PROJECT_TOKEN is blanked above so
@@ -746,7 +758,7 @@ def core_tool_registry() -> Iterator[None]:
     registry = ToolRegistry()
     registry.setup()
     with patch(
-        "app.services.mcp.mcp_client.get_tool_registry",
+        "app.services.mcp.tool_naming.get_tool_registry",
         new_callable=AsyncMock,
         return_value=registry,
     ):

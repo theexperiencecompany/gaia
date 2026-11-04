@@ -57,6 +57,9 @@ def _shard(tmp_path: Path, testfile: str, **env: str) -> subprocess.CompletedPro
             # `mutation/app/does_not_exist.py` reached the gate of run
             # 34586506166 from a fixture just like this one.
             "GAIA_VERDICT_DIR": str(tmp_path / "verdicts"),
+            # Its env is built from scratch, so conftest's staging dir does not reach it:
+            # off Linux the shard would stage in apps/api, under other tests' tree walks.
+            "MUTMUT_WORKDIR_BASE": str(tmp_path / "mutation-work"),
             **env,
         },
         capture_output=True,

@@ -66,6 +66,19 @@ export default async function BlogPage() {
         <div className="flex min-h-screen w-full justify-center px-4 py-28 sm:px-6 lg:px-8">
           <div className="w-full max-w-(--breakpoint-lg) space-y-2">
             <h1 className="font-serif text-4xl sm:text-6xl">Blog</h1>
+            <p className="max-w-2xl text-base leading-relaxed text-zinc-400">
+              The GAIA blog is where the team writes about what we build and
+              why. Posts cover product releases, engineering decisions, and
+              practical guides to AI assistants, automation, email, calendars,
+              and tasks. Some entries announce a new feature; others explain how
+              it works, the tradeoffs behind it, and what it changes in a
+              working day. Use the category filters to narrow the list by topic,
+              or start with the featured posts if you are new. Every post is
+              dated, so you can tell what is current. The archive goes back to
+              early 2025, so older posts also show how the product and its
+              thinking have changed. Read it to follow the product&apos;s
+              direction, not just its changelog.
+            </p>
             <BlogList blogs={blogsMeta} />
           </div>
         </div>

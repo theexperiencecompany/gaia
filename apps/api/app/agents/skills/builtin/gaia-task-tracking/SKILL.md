@@ -69,7 +69,7 @@ Completes in this conversation. Create → delegate → document → complete.
 
 ```
 search_todo_context → (nothing relevant found) → create_tracked_todo(waiting_on="time", scheduled_at="1h")
-→ handoff to subagent → collect activity report
+→ activate the integration and do the work → note ids and outcomes
 → edit activity.md (dated entry at the end) and canvas.md (Current State, Learnings)
 → complete_tracked_todo
 ```
@@ -177,7 +177,7 @@ One short line per rule. Rewrite a rule the new feedback changes instead of addi
 
 ## activity.md
 
-Chronological, oldest first, one dated entry per event. After subagents return, record their structured reports here:
+Chronological, oldest first, one dated entry per event. After acting (or after a spawned subagent returns), record what was done here:
 
 ```markdown
 - 2026-03-26T09:12:00+00:00 Gmail agent: sent email to rahul@example.com re: Q2 contract renewal.
@@ -298,7 +298,7 @@ References are appended (not replaced) and must be the user's own todos. Each ru
 
 Before calling `complete_tracked_todo`, `edit` the `## Learnings` section of canvas.md. Future similar tasks will reference these.
 
-**Good:** "Sarah responds in 2-3 days", "approval takes 1 week", "batch the Linear + Notion updates in one handoff"
+**Good:** "Sarah responds in 2-3 days", "approval takes 1 week", "batch the Linear + Notion updates in one pass"
 **Bad:** "went well", restating the timeline, obvious observations
 
 ## Lifecycle
@@ -311,7 +311,7 @@ Before calling `complete_tracked_todo`, `edit` the `## Learnings` section of can
 
 ### After Acting
 
-- Add dated entries to activity.md from subagent reports
+- Add dated entries to activity.md for what you did (and from spawned subagents' results)
 - Rewrite Current State in canvas.md
 - Update properties if needed (`update_tracked_todo`)
 
@@ -340,7 +340,7 @@ create_tracked_todo(
     scheduled_at="1h",  # only if this turn ends before it is completed
     initial_canvas="# Sent Q2 report to Sarah\n\n## Key Details\n- Recipient: sarah@example.com\n\n## Current State\n\n## Learnings\n",
 )
-# handoff to Gmail → collect report → add entry to activity.md → complete
+# activate gmail → draft, confirm, send via execute → add entry to activity.md → complete
 ```
 
 ### Long-running: follow-up with expiry

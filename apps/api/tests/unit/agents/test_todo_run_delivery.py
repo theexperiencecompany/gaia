@@ -59,6 +59,7 @@ class _Seams:
     capture: MagicMock
     in_app: AsyncMock
     target: AsyncMock
+    report: AsyncMock
 
     def entry(self) -> str:
         return self.activity.await_args.args[3]
@@ -78,11 +79,13 @@ def _seams(
         capture=MagicMock(),
         in_app=AsyncMock(),
         target=AsyncMock(return_value=InApp(reason="no_chat_app")),
+        report=AsyncMock(),
     )
     repo = MagicMock()
     repo.get_by_id = AsyncMock(return_value=todo)
     with (
         patch.object(trd, "narrate_executor_result", seams.narrate),
+        patch.object(trd, "record_executor_report", seams.report),
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", repo),
@@ -376,6 +379,18 @@ class TestTheWideEventSaysWhatHappened:
         assert event["todo_delivery"] == {"todo_id": "todo-1", "result_type": "error"}
         seams.narrate.assert_not_awaited()
         seams.activity.assert_not_awaited()
+        # Not narrated, but the chat's next turn must know the run failed.
+        seams.report.assert_awaited_once_with("run-conv", "boom", "error")
+
+    async def test_with_delivery_off_the_report_is_still_kept_for_the_chats_next_turn(
+        self,
+    ) -> None:
+        with _seams(todo=_todo(notify_on_run=False)) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        seams.narrate.assert_not_awaited()
+        seams.send.assert_not_awaited()
+        seams.report.assert_awaited_once_with("run-conv", "report", "result")
 
     async def test_a_deleted_todo_is_a_warning_naming_it(self) -> None:
         with _seams(todo=None):

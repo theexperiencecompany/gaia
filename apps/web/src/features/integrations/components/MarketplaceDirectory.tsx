@@ -1,25 +1,27 @@
 import Link from "next/link";
 
+import { HubPagination } from "@/components/seo/HubPageNav";
+import { MARKETPLACE_PATH } from "@/features/integrations/lib/marketplaceDirectoryPages";
 import type { CommunityIntegration } from "@/features/integrations/types";
+import type { HubPage, HubSection } from "@/lib/hubPagination";
 
 interface MarketplaceDirectoryProps {
-  readonly native: readonly CommunityIntegration[];
-  readonly community: readonly CommunityIntegration[];
+  readonly hubPage: HubPage<CommunityIntegration>;
+  readonly totalPages: number;
 }
 
-interface DirectoryColumnProps {
-  readonly heading: string;
-  readonly integrations: readonly CommunityIntegration[];
-}
-
-function DirectoryColumn({ heading, integrations }: DirectoryColumnProps) {
-  if (integrations.length === 0) return null;
-  const sorted = [...integrations].sort((a, b) => a.name.localeCompare(b.name));
+function DirectoryColumn({
+  section,
+}: {
+  readonly section: HubSection<CommunityIntegration>;
+}) {
   return (
-    <div>
-      <h3 className="mb-4 text-sm font-medium text-zinc-300">{heading}</h3>
+    <div id={section.id}>
+      <h3 className="mb-4 text-sm font-medium text-zinc-300">
+        {section.label}
+      </h3>
       <ul className="columns-2 gap-x-6 text-sm sm:columns-3">
-        {sorted.map((integration) => (
+        {section.items.map((integration) => (
           <li key={integration.slug} className="mb-2 break-inside-avoid">
             <Link
               href={`/marketplace/${integration.slug}`}
@@ -34,19 +36,26 @@ function DirectoryColumn({ heading, integrations }: DirectoryColumnProps) {
   );
 }
 
-/** Server-rendered A to Z of every integration, so each detail page is one crawlable link from the marketplace. */
+/** Server-rendered A to Z of every integration across the directory's pages, so each detail page is one crawlable link from the marketplace. */
 export function MarketplaceDirectory({
-  native,
-  community,
+  hubPage,
+  totalPages,
 }: MarketplaceDirectoryProps) {
-  if (native.length === 0 && community.length === 0) return null;
   return (
     <section className="mt-24">
       <h2 className="mb-8 text-2xl font-medium text-white">All integrations</h2>
-      <div className="grid gap-12 md:grid-cols-2">
-        <DirectoryColumn heading="Built by GAIA" integrations={native} />
-        <DirectoryColumn heading="Community" integrations={community} />
+      <div className="mb-12 grid gap-12 md:grid-cols-2">
+        {hubPage.sections.map((section) => (
+          <DirectoryColumn key={section.id} section={section} />
+        ))}
       </div>
+      <HubPagination
+        hubPath={MARKETPLACE_PATH}
+        current={hubPage.page}
+        total={totalPages}
+        label="Integration directory pages"
+        pageLabel={(page) => `Integration directory, page ${page}`}
+      />
     </section>
   );
 }

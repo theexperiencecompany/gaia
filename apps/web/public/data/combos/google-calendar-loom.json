@@ -15,59 +15,59 @@
     "async meeting workflow",
     "connect Google Calendar and Loom"
   ],
-  "intro": "The best meetings start with shared context and end with a clear record — but most meetings do neither. Attendees arrive without reviewing relevant background, and decisions made during the call are poorly documented afterward. Loom offers a simple way to record context-setting briefs before meetings and concise recaps after them, but without automation, creating and sharing those videos requires discipline that's hard to maintain across a full calendar.\n\nGAIA connects Google Calendar and Loom to build async context into every meeting automatically. When a meeting appears on your calendar, GAIA can remind you to record a Loom brief so attendees arrive informed. After the meeting, GAIA prompts you to record a recap and then shares the Loom link with all attendees directly, creating a searchable async record without manual distribution.\n\nThis integration is particularly valuable for distributed teams across time zones where pre-read context reduces the need for long synchronous meetings, for managers who run recurring check-ins where a brief async update could replace a full meeting, and for teams committed to async-first communication who want their calendar workflows to reflect that principle.",
+  "intro": "The best meetings start with shared context and end with a clear record — but most meetings do neither. Attendees arrive without reviewing relevant background, and decisions made during the call are poorly documented afterward. Loom offers a simple way to record context-setting briefs before meetings and concise recaps after them, but without automation, creating and sharing those videos requires discipline that's hard to maintain across a full calendar.\n\nGAIA connects the two to build async context into every meeting automatically. When a meeting appears on your Google Calendar, GAIA can remind you to record a brief so attendees arrive informed. After the meeting, GAIA prompts you to record a recap and then shares the Loom link with all attendees directly, creating a searchable async record without manual distribution.\n\nThis integration is particularly valuable for distributed teams across time zones where pre-read context reduces the need for long synchronous meetings, for managers who run recurring check-ins where a brief async update could replace a full meeting, and for teams committed to async-first communication who want their calendar workflows to reflect that principle.",
   "useCases": [
     {
       "title": "Pre-meeting Loom brief reminders",
-      "description": "The day before a scheduled Google Calendar meeting, GAIA reminds you to record a short Loom brief with the agenda and context so attendees can prepare and the meeting itself can focus on decisions."
+      "description": "The day before a scheduled meeting, GAIA reminds you to record a short Loom brief with the agenda and context so attendees can prepare and the meeting itself can focus on decisions."
     },
     {
       "title": "Post-meeting recap video prompts",
-      "description": "Within minutes of a Google Calendar meeting ending, GAIA prompts you to record a brief Loom recap summarizing decisions and next steps, while the discussion is still fresh."
+      "description": "Within minutes of a meeting ending, GAIA prompts you to record a brief recap summarizing decisions and next steps, while the discussion is still fresh."
     },
     {
       "title": "Auto-share Loom recaps with attendees",
-      "description": "Once a post-meeting Loom is recorded, GAIA shares the video link with all Google Calendar attendees via email or calendar event comment so the record reaches everyone automatically."
+      "description": "Once a post-meeting video is recorded, GAIA shares the link with all attendees via email or calendar event comment so the record reaches everyone automatically."
     },
     {
-      "title": "Replace recurring meetings with async Loom updates",
-      "description": "For recurring Google Calendar meetings, GAIA can suggest replacing selected occurrences with a Loom update when the agenda doesn't require live discussion, reducing meeting load."
+      "title": "Replace recurring meetings with async updates",
+      "description": "For recurring Google Calendar meetings, GAIA can suggest replacing selected occurrences with a video update when the agenda doesn't require live discussion, reducing meeting load."
     },
     {
       "title": "Onboarding video library from calendar events",
-      "description": "GAIA tracks Loom videos recorded for recurring training or onboarding calendar events and organizes them into a Loom folder so new team members can access the full video library."
+      "description": "GAIA tracks videos recorded for recurring training or onboarding events and organizes them into a folder so new team members can access the full video library."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Google Calendar and Loom to GAIA",
-      "description": "Authenticate your Google account and your Loom workspace in GAIA's settings. Grant GAIA calendar read access and Loom library access so it can track events and videos."
+      "description": "Authenticate your Google account and your workspace in GAIA's settings. Grant GAIA calendar read access and Loom library access so it can track events and videos."
     },
     {
       "step": "Set your meeting brief and recap preferences",
-      "description": "Configure which calendar events should trigger brief reminders and recap prompts, how far in advance to send the reminder, and where recorded Looms should be filed."
+      "description": "Configure which calendar events should trigger brief reminders and recap prompts, how far in advance to send the reminder, and where recorded videos should be filed."
     },
     {
       "step": "GAIA automates the async meeting loop",
-      "description": "GAIA monitors your calendar for upcoming and completed meetings, sends reminders at the right time, and shares recorded Loom videos with attendees automatically."
+      "description": "GAIA monitors your calendar for upcoming and completed meetings, sends reminders at the right time, and shares recorded videos with attendees automatically."
     }
   ],
   "faqs": [
     {
       "question": "Can I choose which meeting types trigger Loom reminders?",
-      "answer": "Yes. You can configure GAIA to trigger reminders only for external meetings, only for meetings above a certain duration, or only for events with specific keywords in the title."
+      "answer": "Yes. You can configure reminders only for external meetings, only for meetings above a certain duration, or only for events with specific keywords in the title."
     },
     {
-      "question": "Does GAIA share the Loom link via calendar event updates or email?",
-      "answer": "You can choose either method. GAIA can add the Loom link as a comment to the Google Calendar event, send it via email to attendees, or both."
+      "question": "Does GAIA share the recap link via calendar event updates or email?",
+      "answer": "You can choose either method. GAIA can add the link as a comment to the calendar event, send it via email to attendees, or both."
     },
     {
-      "question": "What if I don't record a Loom after a meeting?",
+      "question": "What if I don't record a recap after a meeting?",
       "answer": "GAIA sends one reminder prompt and then stops. It does not send repeated reminders for the same meeting if you choose not to record."
     },
     {
-      "question": "Can GAIA help schedule a meeting to replace a Loom that needs live discussion?",
-      "answer": "Yes. If you record a Loom that prompts follow-up questions requiring a live call, you can ask GAIA to find a time on Google Calendar and schedule a meeting with the relevant attendees."
+      "question": "Can GAIA help schedule a meeting when a recorded video needs live discussion?",
+      "answer": "Yes. If a recording prompts follow-up questions requiring a live call, you can ask GAIA to find a time on the calendar and schedule a meeting with the relevant attendees."
     }
   ]
 }

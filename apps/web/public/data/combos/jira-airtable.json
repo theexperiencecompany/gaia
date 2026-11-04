@@ -4,7 +4,7 @@
   "toolASlug": "jira",
   "toolB": "Airtable",
   "toolBSlug": "airtable",
-  "tagline": "Sync Jira sprint data with Airtable for cross-functional reporting",
+  "tagline": "Sync sprint data from Jira into Airtable for cross-functional reporting",
   "metaTitle": "Jira + Airtable Integration: Jira Issues as Airtable Records",
   "metaDescription": "Sync Jira issues to Airtable records and send Airtable intake forms to the Jira backlog. GAIA builds roadmap views. See the setup steps.",
   "keywords": [
@@ -15,59 +15,59 @@
     "Jira to Airtable records",
     "cross-functional reporting Jira"
   ],
-  "intro": "Operations, program management, and business teams love Airtable for its flexible views, formulas, and reporting. Engineering teams depend on Jira for sprint management, issue tracking, and release planning. When these groups need to collaborate on roadmaps, resourcing, or executive reporting, the data gap between Jira and Airtable forces manual exports and stale spreadsheets.\n\nGAIA bridges Jira and Airtable in real time. Jira issues, epics, sprints, and version data flow into Airtable records automatically, giving business teams the database views they need without a Jira license. Airtable intake forms generate Jira tickets automatically. Executive dashboards built in Airtable pull live sprint velocity and burn-down data from Jira.\n\nFor enterprise organizations using Airtable as a cross-functional operations hub, this integration makes engineering delivery data a first-class citizen in every operational report.",
+  "intro": "Operations, program management, and business teams love Airtable for its flexible views, formulas, and reporting. Engineering teams depend on Jira for sprint management, issue tracking, and release planning. When these groups need to collaborate on roadmaps, resourcing, or executive reporting, the data gap between the two forces manual exports and stale spreadsheets.\n\nGAIA bridges that gap in real time. Issues, epics, sprints, and version data flow into Airtable records automatically, giving business teams the database views they need without a Jira license. Intake forms generate tickets automatically. Executive dashboards built on those records pull live sprint velocity and burn-down data.\n\nFor enterprise organizations that run a cross-functional operations hub in Airtable, this integration makes engineering delivery data a first-class citizen in every operational report.",
   "useCases": [
     {
       "title": "Jira issues as Airtable records",
-      "description": "GAIA syncs Jira issues to a configured Airtable table, with records for each ticket containing status, assignee, priority, sprint, fix version, and story points, updated in real time."
+      "description": "GAIA syncs issues to a configured table, with a record for each ticket containing status, assignee, priority, sprint, fix version, and story points, updated in real time."
     },
     {
       "title": "Airtable intake forms to Jira backlog",
-      "description": "Business teams submit requests via Airtable forms. GAIA converts qualifying submissions into Jira issues automatically and writes the Jira ticket link back to the Airtable record."
+      "description": "Business teams submit requests via forms. GAIA converts qualifying submissions into backlog issues automatically and writes the ticket link back to the originating record."
     },
     {
-      "title": "Executive roadmap dashboard in Airtable",
-      "description": "GAIA feeds Jira epic and version data into a dedicated Airtable base configured as an executive roadmap view, giving leadership accurate delivery timelines without Jira access."
+      "title": "Executive roadmap dashboard",
+      "description": "GAIA feeds epic and version data into a dedicated base configured as an executive roadmap view, giving leadership accurate delivery timelines without access to the issue tracker."
     },
     {
       "title": "Sprint velocity tracking",
-      "description": "GAIA writes Jira sprint velocity and story point completion data to Airtable after each sprint, enabling operations teams to build capacity planning models using native Airtable formulas."
+      "description": "GAIA writes sprint velocity and story point completion data to the table after each sprint, enabling operations teams to build capacity planning models using native formulas."
     },
     {
       "title": "SLA monitoring for customer-linked tickets",
-      "description": "GAIA syncs Jira tickets tagged with customer identifiers to Airtable and triggers alerts when tickets approach or breach SLA thresholds, based on Airtable automation rules."
+      "description": "GAIA syncs tickets tagged with customer identifiers into the base and triggers alerts when they approach or breach SLA thresholds, based on automation rules in the base."
     }
   ],
   "howItWorks": [
     {
-      "step": "Connect Jira and Airtable to GAIA",
-      "description": "Authenticate your Jira instance and Airtable account in GAIA's settings. Specify the Airtable base and table where Jira issue data should be synced."
+      "step": "Connect both tools to GAIA",
+      "description": "Authenticate both accounts in GAIA's settings. Specify the base and table where issue data should be synced."
     },
     {
       "step": "Map Jira fields to Airtable columns",
-      "description": "Define the mapping between Jira issue fields and Airtable table columns. GAIA provides a default schema covering standard Jira fields and supports custom field mapping for advanced configurations."
+      "description": "Define the mapping between issue fields and table columns. GAIA provides a default schema covering standard fields and supports custom field mapping for advanced configurations."
     },
     {
-      "step": "GAIA keeps Airtable updated with live Jira data",
-      "description": "GAIA monitors Jira for changes and updates Airtable records in real time. Airtable form submissions are also monitored and converted to Jira issues on a configurable schedule."
+      "step": "GAIA keeps records current with live data",
+      "description": "GAIA monitors for changes and updates records in real time. Form submissions are also monitored and converted to issues on a configurable schedule."
     }
   ],
   "faqs": [
     {
       "question": "Does GAIA sync Jira epics and sprints as well as individual issues?",
-      "answer": "Yes. GAIA can sync Jira epics, sprints, and versions to separate Airtable tables or as linked records, giving you a relational database view of your entire Jira project structure."
+      "answer": "Yes. GAIA can sync epics, sprints, and versions to separate tables or as linked records, giving you a relational database view of your entire project structure."
     },
     {
-      "question": "Can Airtable users update Jira tickets by editing Airtable records?",
-      "answer": "Selective writeback is supported. You can configure specific columns (like assignee or priority) to push updates back to Jira when changed in Airtable, while keeping other fields read-only."
+      "question": "Can Airtable users update tickets by editing records?",
+      "answer": "Selective writeback is supported. You can configure specific columns (like assignee or priority) to push updates back to the ticket when changed in the record, while keeping other fields read-only."
     },
     {
-      "question": "How often does GAIA sync Jira data to Airtable?",
+      "question": "How often does GAIA sync data between the two?",
       "answer": "By default, GAIA syncs in near real time for high-signal events (status changes, assignments, new issues) and on a periodic schedule for bulk data like sprint velocity metrics."
     },
     {
-      "question": "Can I use this to build a public-facing roadmap in Airtable?",
-      "answer": "Yes. GAIA can sync a filtered subset of Jira issues (e.g., issues tagged as public roadmap items) to an Airtable base configured for public sharing, giving you a live roadmap without manual updates."
+      "question": "Can I use this to build a public-facing roadmap?",
+      "answer": "Yes. GAIA can sync a filtered subset of issues (e.g., issues tagged as public roadmap items) to a base configured for public sharing, giving you a live roadmap without manual updates."
     }
   ]
 }

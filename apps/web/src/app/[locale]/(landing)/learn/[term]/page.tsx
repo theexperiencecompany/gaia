@@ -4,6 +4,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
@@ -12,6 +13,7 @@ import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslate
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import { getTranslatedCombo } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { localizePath } from "@/i18n/config";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { LEARN_DOCS_LINKS } from "@/lib/docs-links";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
@@ -72,39 +74,30 @@ export default async function GlossaryTermPage({ params }: PageProps) {
     notFound();
   }
 
+  const termPath = `/learn/${term}`;
+  const breadcrumbs = [
+    { name: "Home", url: siteConfig.url },
+    { name: "Glossary", url: localizePath("/learn", locale) },
+    { name: data.term, url: localizePath(termPath, locale) },
+  ];
+
   const webPageSchema = generateWebPageSchema(
     data.metaTitle,
     data.metaDescription,
-    `${siteConfig.url}/learn/${term}`,
-    [
-      { name: "Home", url: siteConfig.url },
-      {
-        name: "Glossary",
-        url: `${siteConfig.url}/learn`,
-      },
-      {
-        name: data.term,
-        url: `${siteConfig.url}/learn/${term}`,
-      },
-    ],
+    `${siteConfig.url}${localizePath(termPath, locale)}`,
+    breadcrumbs,
   );
 
-  const breadcrumbSchema = generateBreadcrumbSchema([
-    { name: "Home", url: siteConfig.url },
-    { name: "Glossary", url: `${siteConfig.url}/learn` },
-    {
-      name: data.term,
-      url: `${siteConfig.url}/learn/${term}`,
-    },
-  ]);
+  const breadcrumbSchema = generateBreadcrumbSchema(breadcrumbs);
 
   const faqSchema = generateFAQSchema(data.faqs);
 
-  const definedTermSchema = generateDefinedTermSchema(
-    data.term,
-    data.definition,
-    `${siteConfig.url}/learn/${term}`,
-  );
+  const definedTermSchema = generateDefinedTermSchema({
+    term: data.term,
+    definition: data.definition,
+    path: termPath,
+    locale,
+  });
 
   const docsGuides = LEARN_DOCS_LINKS[term] ?? [];
 
@@ -133,18 +126,14 @@ export default async function GlossaryTermPage({ params }: PageProps) {
       />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
-        {/* Breadcrumb */}
-        <nav className="mb-8 text-sm text-zinc-500">
-          <SiteLink href="/" className="hover:text-zinc-300">
-            {t("common.home")}
-          </SiteLink>
-          <span className="mx-2">/</span>
-          <SiteLink href="/learn" className="hover:text-zinc-300">
-            {t("glossary.breadcrumb")}
-          </SiteLink>
-          <span className="mx-2">/</span>
-          <span className="text-zinc-300">{data.term}</span>
-        </nav>
+        <PageBreadcrumbs
+          className="mb-8"
+          items={[
+            { label: t("common.home"), href: "/" },
+            { label: t("glossary.breadcrumb"), href: "/learn" },
+            { label: data.term },
+          ]}
+        />
 
         {/* Definition Hero */}
         <header className="mb-16">

@@ -16,55 +16,55 @@
     "connect Linear and Discord",
     "post Linear updates to Discord"
   ],
-  "intro": "Engineering teams that use Discord as their primary communication platform often miss Linear updates because important context stays siloed in the issue tracker. An issue moving to Blocked has no way to interrupt the Discord conversation. A sprint completing with a great velocity goes unannounced. New issues assigned to engineers sit unread while the team chats in Discord.\n\nGAIA brings Linear into Discord by routing the right events to the right channels automatically. High-priority issues get announced in the engineering channel. Blockers alert the relevant team leads. Sprint completions trigger automated summaries. Engineers can even create and update Linear issues directly from Discord commands without switching tools.\n\nThis integration is particularly valuable for remote-first engineering teams that treat Discord as their virtual office and want Linear activity to surface there naturally rather than requiring constant tab-switching.",
+  "intro": "Engineering teams that use Discord as their primary communication platform often miss Linear updates because important context stays siloed in the issue tracker. An issue moving to Blocked has no way to interrupt the conversation. A sprint completing with a great velocity goes unannounced. New issues assigned to engineers sit unread while the team chats.\n\nGAIA brings Linear updates into the team's chat by routing the right events to the right channels automatically. High-priority issues get announced in the engineering channel. Blockers alert the relevant team leads. Sprint completions trigger automated summaries. Engineers can even create and update issues directly from chat commands without switching tools.\n\nThis integration is particularly valuable for remote-first engineering teams that treat Discord as their virtual office and want issue activity to surface there naturally rather than requiring constant tab-switching.",
   "useCases": [
     {
       "title": "Post issue assignments to personal Discord DMs",
-      "description": "When a Linear issue is assigned to an engineer, GAIA sends them a Discord DM with the issue title, priority, description, and a direct link so they are notified immediately in the tool they are already using."
+      "description": "When an issue is assigned to an engineer, GAIA sends them a Discord DM with the issue title, priority, description, and a direct link so they are notified immediately in the tool they are already using."
     },
     {
       "title": "Announce sprint completions to the engineering channel",
-      "description": "When a Linear cycle ends, GAIA posts a formatted sprint summary to the designated Discord channel showing issues completed, carry-over, team velocity, and top contributors to celebrate the team's work."
+      "description": "When a Linear cycle ends, GAIA posts a formatted sprint summary to the designated channel showing issues completed, carry-over, team velocity, and top contributors to celebrate the team's work."
     },
     {
       "title": "Alert the team to new high-priority issues",
-      "description": "When a Linear issue is created or upgraded to Urgent priority, GAIA immediately posts an alert to the engineering Discord channel with full context so the team can react and assign it without delay."
+      "description": "When an issue is created or upgraded to Urgent priority, GAIA immediately posts an alert to the engineering channel with full context so the team can react and assign it without delay."
     },
     {
       "title": "Post blocker alerts to the leads channel",
-      "description": "When a Linear issue transitions to Blocked, GAIA sends a structured alert to the team leads Discord channel including the blocking dependency, the affected engineer, and the issue's current due date so blockers are resolved quickly."
+      "description": "When an issue transitions to Blocked, GAIA sends a structured alert to the team leads channel including the blocking dependency, the affected engineer, and the issue's current due date so blockers are resolved quickly."
     },
     {
       "title": "Create Linear issues from Discord commands",
-      "description": "Engineers can type a GAIA command in Discord to create a new Linear issue without leaving the chat. GAIA prompts for title, priority, and assignee, creates the issue, and posts the confirmation link back to the channel."
+      "description": "Engineers can type a GAIA command to create a new issue without leaving the chat. GAIA prompts for title, priority, and assignee, creates the issue, and posts the confirmation link back to the channel."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Linear and Discord to GAIA",
-      "description": "Authorize GAIA with your Linear workspace and invite the GAIA bot to your Discord server. Map Linear teams to Discord channels during setup."
+      "description": "Authorize GAIA with your Linear workspace and invite the GAIA bot to your Discord server. Map teams to channels during setup."
     },
     {
       "step": "Configure notification rules and channel routing",
-      "description": "Choose which Linear events generate Discord notifications, which channels should receive which event types, and the format of notification messages."
+      "description": "Choose which events generate notifications, which channels should receive which event types, and the format of notification messages."
     },
     {
-      "step": "Linear activity flows into Discord automatically",
-      "description": "GAIA monitors Linear for the configured events and posts formatted updates to the right Discord channels in real time. The team stays informed without leaving Discord."
+      "step": "Issue activity reaches the channels automatically",
+      "description": "GAIA watches the workspace for the configured events and posts formatted updates to the right channels in real time. The team stays informed without leaving the chat."
     }
   ],
   "faqs": [
     {
-      "question": "Can GAIA send Linear notifications to different Discord channels based on the team or project?",
-      "answer": "Yes. You can configure channel routing rules so that Linear Team A notifications go to #team-alpha and Team B notifications go to #team-beta. You can also route by event type, priority, or label."
+      "question": "Can GAIA send Linear notifications to different channels based on the team or project?",
+      "answer": "Yes. You can configure channel routing rules so that Team A notifications go to #team-alpha and Team B notifications go to #team-beta. You can also route by event type, priority, or label."
     },
     {
-      "question": "Can engineers interact with Linear issues directly from Discord?",
-      "answer": "Yes. GAIA supports Discord slash commands for common Linear actions including creating issues, updating status, adding comments, and querying the current sprint state. Responses are posted in-thread so the channel stays clean."
+      "question": "Can engineers interact with issues directly from Discord?",
+      "answer": "Yes. GAIA supports slash commands for common actions including creating issues, updating status, adding comments, and querying the current sprint state. Responses are posted in-thread so the channel stays clean."
     },
     {
-      "question": "How does GAIA handle Discord notification fatigue?",
-      "answer": "You control the event filters. Most teams configure GAIA to notify only on priority thresholds (e.g., Urgent and High only), specific labels, or specific issue state transitions rather than every Linear event. This keeps Discord signal-to-noise high."
+      "question": "How does GAIA handle notification fatigue?",
+      "answer": "You control the event filters. Most teams configure GAIA to notify only on priority thresholds (e.g., Urgent and High only), specific labels, or specific issue state transitions rather than every event. This keeps the signal-to-noise ratio high."
     }
   ]
 }

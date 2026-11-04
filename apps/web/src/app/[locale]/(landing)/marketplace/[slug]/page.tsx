@@ -23,6 +23,7 @@ import {
   generateFAQSchema,
   generateHowToSchema,
   generatePageMetadata,
+  generatePersonSchema,
   generateProOffer,
   generateWebPageSchema,
   siteConfig,
@@ -127,7 +128,12 @@ export default async function IntegrationPage({ params }: Props) {
     `Automate ${integration.name} with GAIA AI assistant. Connect ${integration.name} to your AI-powered workflow with ${integration.toolCount || 0} available tools.`,
     pageUrl,
     breadcrumbItems,
-    integration.publishedAt ?? undefined,
+    integration.publishedAt
+      ? {
+          published: integration.publishedAt,
+          modified: integration.publishedAt,
+        }
+      : undefined,
   );
 
   const integrationSchema = {
@@ -141,10 +147,7 @@ export default async function IntegrationPage({ params }: Props) {
     operatingSystem: "Web",
     offers: generateProOffer(),
     ...(integration.creator?.name && {
-      author: {
-        "@type": "Person" as const,
-        name: integration.creator.name,
-      },
+      author: generatePersonSchema({ name: integration.creator.name }),
     }),
     ...(integration.toolCount && {
       featureList: integration.tools

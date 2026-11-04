@@ -6,19 +6,7 @@ import {
   type PageMetadataOptions,
 } from "@/lib/seo";
 
-import { defaultLocale, locales } from "./config";
-
-/**
- * Prefix a path with the locale segment for non-default locales, matching the
- * `as-needed` routing (default locale has no prefix). Unknown locales fall back
- * to the unprefixed (default-locale) path.
- */
-function localizePath(path: string, locale: string): string {
-  const normalized = path.startsWith("/") ? path : `/${path}`;
-  const isLocalized =
-    locale !== defaultLocale && (locales as readonly string[]).includes(locale);
-  return isLocalized ? `/${locale}${normalized}` : normalized;
-}
+import { defaultLocale, locales, localizePath } from "./config";
 
 /**
  * Generate hreflang alternate links for a given path.

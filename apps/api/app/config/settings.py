@@ -516,6 +516,8 @@ class Settings(BrowserHostSettings):
     # ----------------------------------------------
     COMPOSIO_WEBHOOK_SECRET: str | None = None
     DODO_WEBHOOK_PAYMENTS_SECRET: str | None = None
+    # Cloudflare Turnstile secret; the public contact form is refused without it.
+    TURNSTILE_SECRET_KEY: str | None = None
 
     # ----------------------------------------------
     # Content Management

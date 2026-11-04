@@ -4,7 +4,7 @@
   "toolASlug": "airtable",
   "toolB": "Slack",
   "toolBSlug": "slack",
-  "tagline": "Send Airtable record alerts and digests to Slack, and save Slack messages as Airtable records",
+  "tagline": "Send Airtable record alerts and digests to Slack, and save channel messages as records",
   "metaTitle": "Airtable Slack Integration: Record Alerts and Daily Digests",
   "metaDescription": "Get Slack alerts when Airtable records change, filtered to the views you care about. GAIA also creates records from Slack messages. See the setup steps.",
   "keywords": [
@@ -14,7 +14,7 @@
     "gaia airtable slack",
     "airtable slack workflow"
   ],
-  "intro": "An Airtable Slack integration posts Airtable record changes into Slack and turns Slack messages into Airtable records. Airtable already has one built in: create an Airtable automation with a trigger such as \"When a record is created\", \"When a record is updated\" or \"When a record enters a view\", add a Slack action that sends a message, and pick the channel. For one fixed alert, that is the fastest setup. GAIA covers what that action cannot do: digests written for people, deciding which channel a change belongs in, and saving Slack messages back to Airtable.\n\nThe two directions run differently in GAIA. Slack to Airtable is event-driven: GAIA's Slack trigger fires on each new message in the channels you choose (you can exclude bot messages, direct messages and thread replies), and the workflow creates or updates the record. Airtable to Slack runs on a schedule, because Airtable does not push changes to GAIA. On each run GAIA lists the records that match your filter, for example records in a view or records whose Last modified time is after the previous run, and posts a summary. Every 15 minutes suits an intake queue; once a morning is enough for a pipeline digest.\n\nIf you need a Slack post within seconds of every edit, stay inside Airtable: its Slack action, or a \"Run script\" step that sends the record to a Slack incoming webhook URL, fires as soon as the record changes. The same split applies when Gmail or Google Sheets join the flow. GAIA has event triggers for new Gmail messages and new Google Sheets rows, so \"when a lead emails, add a record in Airtable and tell #sales\" runs as each email arrives. Typeform is not one of GAIA's integrations; for Typeform to Airtable to Slack, use Typeform's own Airtable and Slack connections.\n\nExample workflow: \"Every weekday at 9:00, list records in the Deals table of my Sales base where Stage is Closed Won and the record was modified since yesterday, and post them to #sales-wins with deal name, owner and amount.\"",
+  "intro": "Connecting a base to a workspace channel does two jobs: it posts record changes into the channel and turns messages into records. Airtable already has this built in: create an automation with a trigger such as \"When a record is created\", \"When a record is updated\" or \"When a record enters a view\", add a Slack action that sends a message, and pick the channel. For one fixed alert, that is the fastest setup. GAIA covers what that action cannot do: digests written for people, deciding which channel a change belongs in, and saving messages back to the base.\n\nThe two directions run differently in GAIA. Saving messages is event-driven: GAIA's Slack trigger fires on each new message in the channels you choose (you can exclude bot messages, direct messages and thread replies), and the workflow creates or updates the record. Posting to channels runs on a schedule, because Airtable does not push changes to GAIA. On each run GAIA lists the records that match your filter, for example records in a view or records whose Last modified time is after the previous run, and posts a summary. Every 15 minutes suits an intake queue; once a morning is enough for a pipeline digest.\n\nIf you need a post within seconds of every edit, stay inside the base: its built-in message action, or a \"Run script\" step that sends the record to an incoming webhook URL, fires as soon as the record changes. The same split applies when Gmail or Google Sheets join the flow. GAIA has event triggers for new Gmail messages and new Google Sheets rows, so \"when a lead emails, add a record to the base and tell #sales\" runs as each email arrives. Typeform is not one of GAIA's integrations; for a Typeform-to-base-to-channel flow, use Typeform's own connections to both tools.\n\nExample workflow: \"Every weekday at 9:00, list records in the Deals table of my Sales base where Stage is Closed Won and the record was modified since yesterday, and post them to #sales-wins with deal name, owner and amount.\"",
   "useCases": [
     {
       "title": "Record status change notifications in Slack",
@@ -22,54 +22,54 @@
     },
     {
       "title": "Create Airtable records from Slack messages",
-      "description": "GAIA's Slack trigger reads new messages in the channels you pick. A message like \"lead: Dana Ruiz, Acme, wants a demo next week\" becomes a record in your Leads table with name, company and request filled in. You tell the workflow which messages count, so ordinary chatter is left alone."
+      "description": "GAIA's new-message trigger reads new messages in the channels you pick. A message like \"lead: Dana Ruiz, Acme, wants a demo next week\" becomes a record in your Leads table with name, company and request filled in. You tell the workflow which messages count, so ordinary chatter is left alone."
     },
     {
       "title": "New record alerts for intake workflows",
       "description": "GAIA checks your intake table on the schedule you set and posts new records (form submissions, bug reports, requests) to the responsible channel, grouped into one message per run so the channel does not flood."
     },
     {
-      "title": "Daily Airtable summary digests in Slack",
-      "description": "GAIA posts a morning digest of key Airtable metrics, open tasks, pipeline value, pending requests, to the team Slack channel. Everyone starts the day with the same data."
+      "title": "Daily Airtable summary digests for the team",
+      "description": "GAIA posts a morning digest of key metrics from the base (open tasks, pipeline value, pending requests) to the team channel. Everyone starts the day with the same data."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Airtable and Slack to GAIA",
-      "description": "Authorize GAIA with your Airtable account and Slack workspace. GAIA can then read and write records in the bases you grant and post to the Slack channels it can access."
+      "description": "Authorize GAIA with your Airtable account and Slack workspace. GAIA can then read and write records in the bases you grant and post to the channels it can access."
     },
     {
       "step": "Describe the workflow and pick its trigger",
-      "description": "Write what should happen in plain English, then choose the trigger: a Slack new-message trigger for Slack to Airtable, or a schedule (every 15 minutes, hourly, daily) for Airtable to Slack. Name the base, table, fields and channel so each message carries useful context."
+      "description": "Write what should happen in plain English, then choose the trigger: a new-message trigger on the channel for saving messages to the base, or a schedule (every 15 minutes, hourly, daily) for posting records to the channel. Name the base, table, fields and channel so each message carries useful context."
     },
     {
       "step": "GAIA runs it in the background",
-      "description": "Scheduled runs read Airtable and post to Slack, and new Slack messages create or update records as they arrive. Run the workflow manually once to check the output before you rely on it."
+      "description": "Scheduled runs read the base and post to channels, and new messages create or update records as they arrive. Run the workflow manually once to check the output before you rely on it."
     }
   ],
   "faqs": [
     {
       "question": "Can I filter notifications to only specific Airtable views?",
-      "answer": "Yes. Name the view in the workflow (for example \"Open bugs - P1\") and GAIA lists only the records in that view, so the Slack channel sees the same filter your team uses in Airtable."
+      "answer": "Yes. Name the view in the workflow (for example \"Open bugs - P1\") and GAIA lists only the records in that view, so the channel sees the same filter your team uses in the base."
     },
     {
-      "question": "Which Airtable field types can trigger Slack notifications?",
-      "answer": "None trigger GAIA directly, because Airtable does not send change events to GAIA. GAIA reads records on a schedule and can filter on any field an Airtable formula can test: single select, status, checkbox, dates, numbers or Last modified time. For a trigger on the field change itself, use an Airtable automation with \"When a record is updated\" and a Slack action."
+      "question": "Which field types can trigger channel notifications?",
+      "answer": "None trigger GAIA directly, because the base does not send change events to GAIA. GAIA reads records on a schedule and can filter on any field a formula can test: single select, status, checkbox, dates, numbers or Last modified time. For a trigger on the field change itself, use an automation in the base with \"When a record is updated\" and an action that sends a message to the channel."
     },
     {
-      "question": "Can Slack notifications include linked record data from related tables?",
-      "answer": "Yes. GAIA can pull in linked record fields and roll-up values to include in Slack notifications, giving recipients complete context from related tables."
+      "question": "Can notifications include linked record data from related tables?",
+      "answer": "Yes. GAIA can pull in linked record fields and roll-up values to include in the messages, giving recipients complete context from related tables."
     },
     {
-      "question": "How do I automatically send Slack notifications when an Airtable record is updated?",
-      "answer": "In Airtable: create an automation with the trigger \"When a record is updated\", choose the fields to watch, add a Slack action, and set the channel and message. It posts moments after the edit. With GAIA: create a scheduled workflow such as \"Every 15 minutes, find records in Requests modified since the last run and post a one-line summary of each to #ops.\" GAIA adds summaries and routing; Airtable is faster for one fixed alert."
+      "question": "How do I automatically send Slack notifications when a record is updated?",
+      "answer": "In the base: create an automation with the trigger \"When a record is updated\", choose the fields to watch, add an action that sends a message, and set the channel and message. It posts moments after the edit. With GAIA: create a scheduled workflow such as \"Every 15 minutes, find records in Requests modified since the last run and post a one-line summary of each to #ops.\" GAIA adds summaries and routing; the built-in automation is faster for one fixed alert."
     },
     {
-      "question": "Can I connect Airtable to Slack with a webhook?",
-      "answer": "Yes, from the Airtable side. Create a Slack incoming webhook for the channel, then add a \"Run script\" action to an Airtable automation that sends the record fields to that URL as a POST request. GAIA does not receive Airtable webhooks, so use this route for a raw message per change and GAIA for scheduled digests or messages written for people."
+      "question": "Can a webhook connect the base to a channel?",
+      "answer": "Yes, from the base's side. Create an incoming webhook for the channel, then add a \"Run script\" action to an automation in the base that sends the record fields to that URL as a POST request. GAIA does not receive webhooks from the base, so use this route for a raw message per change and GAIA for scheduled digests or messages written for people."
     },
     {
-      "question": "Can I connect Airtable, Gmail and Slack together?",
+      "question": "Can I connect Gmail, the base and a channel together?",
       "answer": "Yes. Connect all three to GAIA and describe the flow, for example: \"When an email arrives from a new client, create a record in my Clients table and post the name and request to #new-clients.\" The Gmail trigger starts the workflow as each email arrives. Google Sheets works the same way through its new-row trigger."
     }
   ]

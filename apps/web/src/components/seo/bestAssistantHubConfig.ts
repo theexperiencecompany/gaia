@@ -34,11 +34,6 @@ export interface BestHubConfig {
   readonly faqs: Array<{ question: string; answer: string }>;
   readonly comparisonsTitle: string;
   readonly alternativesTitle: string;
-  /**
-   * When true, the bottom link lists cover every comparison and
-   * alternative guide instead of just this hub's ranked pool.
-   */
-  readonly listAll?: boolean;
 }
 
 export function generateBestHubMetadata(

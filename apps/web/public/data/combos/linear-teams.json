@@ -15,7 +15,7 @@
     "Linear issue alerts Teams",
     "dev team Microsoft Teams workflow"
   ],
-  "intro": "Organizations that standardized on Microsoft Teams for communication often have engineering teams using Linear for issue tracking. Without integration, engineering updates live exclusively in Linear while the rest of the organization communicates in Teams — creating a visibility gap that forces stakeholders to request manual status updates constantly.\n\nGAIA bridges Linear and Microsoft Teams so engineering progress is visible to the entire organization in the communication tool they already use. Issue assignments, sprint updates, PR merges, and escalations appear in the relevant Teams channels as formatted notifications. Non-engineers can ask GAIA in Teams for the status of any Linear project without needing a Linear account.\n\nFor enterprise teams running on Microsoft 365, this integration fits naturally into an existing Teams-centric workflow and eliminates the need for separate project status meetings.",
+  "intro": "Organizations that standardized on Microsoft Teams for communication often have engineering teams using Linear for issue tracking. Without integration, engineering updates stay in the tracker while the rest of the organization talks in chat — creating a visibility gap that forces stakeholders to request manual status updates constantly.\n\nGAIA bridges the two so engineering progress is visible to the entire organization in the chat app they already use. Issue assignments, sprint updates, PR merges, and escalations appear in the relevant channels as formatted notifications. Non-engineers can ask GAIA in Teams for the status of any Linear project without needing an account.\n\nFor enterprise teams running on Microsoft 365, this integration fits naturally into an existing chat-centric workflow and eliminates the need for separate project status meetings.",
   "useCases": [
     {
       "title": "Sprint progress channel updates",
@@ -23,51 +23,51 @@
     },
     {
       "title": "Issue assignment notifications",
-      "description": "When a Linear issue is assigned, GAIA sends a Teams message to the assigned engineer with full issue details, due date, and a direct link to the issue."
+      "description": "When a Linear issue is assigned, GAIA sends a message to the assigned engineer with full issue details, due date, and a direct link to the issue."
     },
     {
       "title": "Cross-functional release announcements",
-      "description": "When a Linear cycle completes, GAIA posts a formatted release summary to the organization-wide Teams channel listing all shipped features, with links to any associated documentation."
+      "description": "When a cycle completes, GAIA posts a formatted release summary to the organization-wide channel listing all shipped features, with links to any associated documentation."
     },
     {
       "title": "Escalation alerts to management channels",
-      "description": "When a Linear issue is escalated to Urgent or a cycle is at risk of missing its target date, GAIA posts an alert to the engineering manager's Teams channel for immediate attention."
+      "description": "When an issue is escalated to Urgent or a cycle is at risk of missing its target date, GAIA posts an alert to the engineering manager's channel for immediate attention."
     },
     {
       "title": "Linear queries from Teams",
-      "description": "Team members can ask GAIA directly in Teams, 'What's in the current sprint?' or 'Who owns the login bug?', and receive an accurate answer pulled live from Linear."
+      "description": "Team members can ask GAIA directly in chat, 'What's in the current sprint?' or 'Who owns the login bug?', and receive an accurate answer pulled live from the workspace."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Linear and Microsoft Teams to GAIA",
-      "description": "Authenticate your Linear workspace and install the GAIA app in your Microsoft Teams organization. Configure the Teams channels where Linear notifications should be posted."
+      "description": "Authenticate your Linear workspace and install the GAIA app in your Microsoft Teams organization. Configure the channels where notifications should be posted."
     },
     {
       "step": "Configure notification preferences",
-      "description": "Define which Linear events generate Teams notifications, sprint events, issue assignments, priority changes, PR links, and map each event type to the appropriate Teams channel."
+      "description": "Define which events generate notifications (sprint events, issue assignments, priority changes, PR links) and map each event type to the appropriate channel."
     },
     {
       "step": "GAIA delivers updates and answers queries",
-      "description": "GAIA posts real-time Linear updates to Teams and responds to natural language queries about issue status, cycle progress, and team workload directly within Teams conversations."
+      "description": "GAIA posts real-time updates to the channels and responds to natural language queries about issue status, cycle progress, and team workload directly within conversations."
     }
   ],
   "faqs": [
     {
-      "question": "Does GAIA support Teams channels within specific Teams (team spaces)?",
-      "answer": "Yes. GAIA can post to any channel in any team space within your Microsoft Teams organization. You can map different Linear teams to different Teams channels with full granularity."
+      "question": "Does GAIA support channels within specific teams (team spaces)?",
+      "answer": "Yes. GAIA can post to any channel in any team space within your organization. You can map different issue-tracker teams to different channels with full granularity."
     },
     {
-      "question": "Can Teams users create Linear issues without opening Linear?",
-      "answer": "Yes. Users can describe a bug or feature request to GAIA in a Teams chat or channel, and GAIA creates the Linear issue and confirms the link in the conversation."
+      "question": "Can users create issues from chat without opening Linear?",
+      "answer": "Yes. Users can describe a bug or feature request to GAIA in a chat or channel, and GAIA creates the issue and confirms the link in the conversation."
     },
     {
       "question": "Does GAIA support Teams Adaptive Cards for richer notifications?",
-      "answer": "Yes. GAIA uses Adaptive Cards to format Linear notifications in Teams, including issue titles, descriptions, priority badges, assignees, and action buttons for common Linear operations."
+      "answer": "Yes. GAIA uses Adaptive Cards to format notifications, including issue titles, descriptions, priority badges, assignees, and action buttons for common issue operations."
     },
     {
-      "question": "Is this compatible with Teams on mobile?",
-      "answer": "Yes. GAIA's Teams integration works on the Teams mobile app as well as desktop and web. Notifications appear in real time across all Teams clients."
+      "question": "Is this compatible with mobile?",
+      "answer": "Yes. The integration works on the mobile app as well as desktop and web. Notifications appear in real time across all clients."
     }
   ]
 }

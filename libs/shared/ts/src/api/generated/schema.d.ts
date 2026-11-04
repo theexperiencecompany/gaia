@@ -111,6 +111,8 @@ export interface paths {
         /**
          * Set Tool Approval
          * @description Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.
+         *
+         *     tool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).
          */
         put: operations["approvals_set_tool_approval"];
         post?: never;
@@ -3453,6 +3455,7 @@ export interface paths {
          *
          *     Args:
          *         return_url: Optional URL to redirect to after authentication.
+         *         screen_hint: The AuthKit screen to open on; /signup asks for sign-up.
          *
          *     Returns:
          *         RedirectResponse: Redirects the user to the WorkOS SSO authorization URL
@@ -4043,6 +4046,26 @@ export interface paths {
          *         - Manual instructions if OAuth not configured
          */
         post: operations["platform_links_initiate_platform_connect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform-links/{platform}/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Platform Chat Endpoint
+         * @description Open the DM chat of a linked Telegram, WhatsApp or iMessage account.
+         */
+        post: operations["platform_links_open_platform_chat_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5023,6 +5046,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/requests/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a contact request without signing in
+         * @description Create a support or feature request from the public contact form. Verifies a Cloudflare Turnstile token and is rate-limited per client IP.
+         */
+        post: operations["support_submit_public_support_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/requests/with-attachments": {
         parameters: {
             query?: never;
@@ -5116,6 +5159,26 @@ export interface paths {
         get: operations["todos_get_todo_canvas"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/todos/{todo_id}/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Todo Conversation Endpoint
+         * @description Return a tracked todo's own chat, creating it before its first run; it is never listed.
+         */
+        post: operations["todos_open_todo_conversation_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6836,6 +6899,8 @@ export interface components {
         BatchSyncResponse: {
             /** Conversations */
             conversations: components["schemas"]["ConversationSyncRow"][];
+            /** Missing */
+            missing: string[];
         };
         /**
          * BlobStoreKind
@@ -8007,6 +8072,8 @@ export interface components {
             /** Starred */
             starred?: boolean | null;
             system_purpose?: components["schemas"]["SystemPurpose"] | null;
+            /** Todo Id */
+            todo_id?: string | null;
             /** Updatedat */
             updatedAt?: string | null;
             /** User Id */
@@ -8146,6 +8213,8 @@ export interface components {
             /** Starred */
             starred: boolean | null;
             system_purpose: components["schemas"]["SystemPurpose"] | null;
+            /** Todo Id */
+            todo_id: string | null;
             /** Updatedat */
             updatedAt: string | null;
         };
@@ -10508,6 +10577,23 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** IntegrationToolApproval */
+        IntegrationToolApproval: {
+            /**
+             * Approval Key
+             * @description Key the user's per-tool approval override is stored under; send it back unchanged.
+             */
+            approval_key: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Destructive
+             * @default false
+             */
+            destructive?: boolean;
+            /** Name */
+            name: string;
+        };
         /**
          * IntegrationToolsResponse
          * @description Full tool list for a single integration (catalog data, on demand).
@@ -10524,7 +10610,7 @@ export interface components {
              * Tools
              * @default []
              */
-            tools: components["schemas"]["IntegrationTool"][];
+            tools: components["schemas"]["IntegrationToolApproval"][];
         };
         /**
          * InviteCreatedResponse
@@ -11595,8 +11681,11 @@ export interface components {
             /** Selectedtool */
             selectedTool?: string | null;
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
+            /** Stopped */
+            stopped?: boolean | null;
             /** Subtype */
             subtype?: string | null;
+            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
             /** Tool Data */
             tool_data?: components["schemas"]["ToolDataEntry"][] | null;
             /** Toolcategory */
@@ -11656,8 +11745,11 @@ export interface components {
             /** Selectedtool */
             selectedTool?: string | null;
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
+            /** Stopped */
+            stopped?: boolean | null;
             /** Subtype */
             subtype?: string | null;
+            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
             /** Tool Data */
             tool_data?: components["schemas"]["ToolDataEntry"][] | null;
             /** Toolcategory */
@@ -12795,6 +12887,17 @@ export interface components {
          */
         PlanType: "free" | "pro";
         /**
+         * PlatformConversationResponse
+         * @description The linked platform's DM chat, opened from the settings page.
+         */
+        PlatformConversationResponse: {
+            /**
+             * Conversation Id
+             * @description Conversation id of the platform's DM chat
+             */
+            conversation_id: string;
+        };
+        /**
          * PlatformLinkEntry
          * @description One linked platform account — the single shape for this entry.
          *
@@ -13223,6 +13326,39 @@ export interface components {
              * @default []
              */
             tools?: components["schemas"]["IntegrationTool"][];
+        };
+        /**
+         * PublicSupportRequestCreate
+         * @description A contact-form request that may come from a visitor with no GAIA session.
+         */
+        PublicSupportRequestCreate: {
+            /**
+             * Description
+             * @description Detailed description
+             */
+            description: string;
+            /**
+             * Email
+             * @description Where to reply; required unless the caller is signed in with an email
+             */
+            email?: string | null;
+            /**
+             * Name
+             * @description Optional name to address
+             */
+            name?: string | null;
+            /**
+             * Title
+             * @description Title of the request
+             */
+            title: string;
+            /**
+             * Turnstile Token
+             * @description Cloudflare Turnstile response token
+             */
+            turnstile_token: string;
+            /** @description Type of request (support or feature) */
+            type: components["schemas"]["SupportRequestType"];
         };
         /**
          * PublicWorkflowCard
@@ -14940,9 +15076,9 @@ export interface components {
             user_email: string;
             /**
              * User Id
-             * @description ID of the user who created the request
+             * @description ID of the user who created the request; null for a visitor
              */
-            user_id: string;
+            user_id: string | null;
             /**
              * User Name
              * @description Name of the user who created the request
@@ -14999,6 +15135,14 @@ export interface components {
             activity: string;
             /** Content */
             content: string;
+        };
+        /**
+         * TodoConversationResponse
+         * @description The tracked todo's own chat, where its runs execute; kept out of the chat list.
+         */
+        TodoConversationResponse: {
+            /** Conversation Id */
+            conversation_id: string;
         };
         /**
          * TodoCounts
@@ -15307,6 +15451,17 @@ export interface components {
              */
             workflow_id: string | null;
         };
+        /**
+         * TodoRunWake
+         * @description What woke one run of a tracked todo, shown on the user's side of its chat.
+         */
+        TodoRunWake: {
+            /** Approval Summary */
+            approval_summary: string | null;
+            kind: components["schemas"]["TodoWakeKind"];
+            /** Trigger Names */
+            trigger_names: string[];
+        };
         /** TodoStats */
         TodoStats: {
             /** By Priority */
@@ -15380,6 +15535,12 @@ export interface components {
             /** Workflow Id */
             workflow_id?: string | null;
         };
+        /**
+         * TodoWakeKind
+         * @description What woke a tracked todo's run: its schedule, a watched event, or an approval it waited on.
+         * @enum {string}
+         */
+        TodoWakeKind: "schedule" | "trigger" | "approval";
         /**
          * TodoWorkflowGenerationResponse
          * @description Result of asking for a todo's workflow to be generated.
@@ -17212,6 +17373,7 @@ export type IntegrationsConfigResponse = components['schemas']['IntegrationsConf
 export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
+export type IntegrationToolApproval = components['schemas']['IntegrationToolApproval'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
@@ -17335,6 +17497,7 @@ export type PlanDuration = components['schemas']['PlanDuration'];
 export type PlanResponse = components['schemas']['PlanResponse'];
 export type PlanTier = components['schemas']['PlanTier'];
 export type PlanType = components['schemas']['PlanType'];
+export type PlatformConversationResponse = components['schemas']['PlatformConversationResponse'];
 export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];
 export type PollPairingRequest = components['schemas']['PollPairingRequest'];
@@ -17353,6 +17516,7 @@ export type ProviderTestFailure = components['schemas']['ProviderTestFailure'];
 export type ProviderTestResponse = components['schemas']['ProviderTestResponse'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
+export type PublicSupportRequestCreate = components['schemas']['PublicSupportRequestCreate'];
 export type PublicWorkflowCard = components['schemas']['PublicWorkflowCard'];
 export type PublicWorkflowsResponse = components['schemas']['PublicWorkflowsResponse'];
 export type PublicWorkflowStep = components['schemas']['PublicWorkflowStep'];
@@ -17452,14 +17616,17 @@ export type SupportRequestSubmissionResponse = components['schemas']['SupportReq
 export type SupportRequestType = components['schemas']['SupportRequestType'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
+export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
 export type TodoistNewTaskCreatedConfig = components['schemas']['TodoistNewTaskCreatedConfig'];
 export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
 export type TodoResponse = components['schemas']['TodoResponse'];
+export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
+export type TodoWakeKind = components['schemas']['TodoWakeKind'];
 export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflowGenerationResponse'];
 export type TodoWorkflowGenerationStatus = components['schemas']['TodoWorkflowGenerationStatus'];
 export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];
@@ -26854,6 +27021,7 @@ export interface operations {
         parameters: {
             query?: {
                 return_url?: string | null;
+                screen_hint?: ("sign-up" | "sign-in") | null;
             };
             header?: never;
             path?: never;
@@ -28313,6 +28481,55 @@ export interface operations {
                 };
             };
             /** @description iMessage requires an E.164 phone number in the body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    platform_links_open_platform_chat_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformConversationResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30903,6 +31120,57 @@ export interface operations {
             };
         };
     };
+    support_submit_public_support_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicSupportRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportRequestSubmissionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     support_submit_support_request_with_attachments: {
         parameters: {
             query?: never;
@@ -31257,6 +31525,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TodoCanvasResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    todos_open_todo_conversation_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoConversationResponse"];
                 };
             };
             /** @description Unprocessable Entity */

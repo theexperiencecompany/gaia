@@ -172,61 +172,36 @@ jobs:
           RELEASE_IMAGES: ${{ inputs.release_images }}
         run: bash scripts/ci/release.sh cli-release-images
 
-      # Map affected project list to the image scopes: api (api + voice-agent),
-      # bots, and web.
+      # Which images this push changes: the nx.json release groups (apps = api +
+      # voice-agent, bots) with an affected docker:build task, and web's.
+      - name: Ask nx which images this push changes
+        id: nx
+        run: bash scripts/ci/changes.sh affected --since-last-success
+
       - name: Check affected projects
         id: affected
         env:
           CLI_RELEASE: ${{ steps.cli-release.outputs.required }}
+          API: ${{ contains(fromJSON(steps.nx.outputs.release_groups), 'apps') }}
+          BOTS: ${{ contains(fromJSON(steps.nx.outputs.release_groups), 'bots') }}
+          WEB: ${{ contains(fromJSON(steps.nx.outputs.tasks), 'web:docker:build') }}
         run: |
-          # Fail loud: a broken nx invocation must fail this job, not silently
-          # yield an empty list (which would skip image builds and deploys).
           set -euo pipefail
-          # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
+          api=$API
+          bots=$BOTS
+          web=$WEB
 
-          echo "Affected projects:"
-          echo "$AFFECTED"
-
-          api=false
-          bots=false
-          web=false
-
-          if echo "$AFFECTED" | grep -qx "api" || echo "$AFFECTED" | grep -qx "voice-agent"; then
-            api=true
-          fi
-
-          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp" || echo "$AFFECTED" | grep -qx "bot-imessage"; then
-            bots=true
-          fi
-
-          if echo "$AFFECTED" | grep -qx "web"; then
-            web=true
-          fi
-
-          # Force build if images don't exist in GHCR yet (first-time bootstrap).
-          # Only check on master branch to avoid unnecessary builds on feature branches.
+          # Force a group's build when one of its images has no :latest in GHCR
+          # yet (first-time bootstrap); the repos come from lib/image-repos.sh.
           if [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            image_missing() {
-              ! docker manifest inspect "$1" > /dev/null 2>&1
-            }
-
-            if [ "$api" = "false" ]; then
-              if image_missing "ghcr.io/theexperiencecompany/gaia:latest" || image_missing "ghcr.io/theexperiencecompany/gaia-voice-agent:latest"; then
-                echo "⚠️ API/voice-agent image missing from GHCR — forcing build"
-                api=true
-              fi
+            missing="$(bash scripts/ci/release.sh missing-latest)"
+            if [[ "$missing" == *apps* && "$api" = "false" ]]; then
+              echo "⚠️ An apps image is missing from GHCR — forcing build"
+              api=true
             fi
-
-            if [ "$bots" = "false" ]; then
-               if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-imessage:latest"; then
-                echo "⚠️ Bot image(s) missing from GHCR — forcing build"
-                bots=true
-              fi
+            if [[ "$missing" == *bots* && "$bots" = "false" ]]; then
+              echo "⚠️ A bot image is missing from GHCR — forcing build"
+              bots=true
             fi
           fi
 
@@ -311,7 +286,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Determine version scheme
         if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots_image == 'true'
@@ -415,14 +390,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Same build as apps/api/project.json docker:build, for linux/arm64. Its
       # own cache ref: a per-platform cache written to the shared :buildcache
       # would overwrite the amd64 build's cache on every run.
       - name: Build and push API arm64 image by digest
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: apps/api/Dockerfile
@@ -457,7 +432,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Add arm64 to the API release tag
         env:
@@ -502,7 +477,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build and push the self-host bot arm64 images by digest
         id: build
@@ -536,7 +511,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Tag the self-host bots :<sha> for amd64 + arm64
         env:
@@ -580,7 +555,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Layer cache lives in GHCR, not the GHA cache service: the type=gha
       # export of this image measured 449s of the 951s job (the GHA cache API
@@ -589,7 +564,7 @@ jobs:
       # never overwrite each other's cache.
       - name: Build and push web image by digest
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: apps/web/Dockerfile
@@ -629,7 +604,7 @@ jobs:
       web_sha: ${{ github.sha }}
     steps:
       - name: Download image digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: web-digest-*
           path: ${{ runner.temp }}/web-digests
@@ -643,7 +618,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # phase=build runs BEFORE the quality gate, so it publishes only the
       # immutable :<sha> tag (the duplicate -t below collapses to one);
@@ -716,7 +691,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Same phase rule as docker-web: no :latest before the gate — the
       # deploy's `deploy.sh retag` (post-convergence) and promote-latest
@@ -737,7 +712,7 @@ jobs:
           fi
 
       - name: Build and push Grafana image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .infra/docker/observability/grafana
           file: .infra/docker/observability/grafana/Dockerfile
@@ -811,6 +786,10 @@ jobs:
     needs: [deployment-plan]
     if: always() && inputs.phase != 'build' && needs.deployment-plan.outputs.backend_orphaned == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # failing-checks reads this commit's check-runs to name the cause.
+      checks: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -824,16 +803,22 @@ jobs:
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          COLOR: "#ff6b6b"
-          MESSAGE: |
-            🚨 **Publish Without Deploy Detected**
-            **Commit:** `${{ github.sha }}`
-            **Branch:** ${{ github.ref_name }}
-            **Actor:** ${{ github.actor }}
-            **Backend images (api/voice-agent/bots) were published to GHCR (immutable tags) but the backend deploy did NOT run.** docker-release result: `${{ needs.deployment-plan.outputs.docker_release_result }}`.
-            `:latest` did not move — it is re-pointed only after a successful deploy — so restarts on the Swarm host keep the deployed build. But master is now ahead of production: the published images are sitting undeployed.
-            **To ship them:** fix the red lane and re-run the master workflow (or push a fix). `gh workflow run build.yml --ref master -f deployment_mode=deploy` redeploys only what `:latest` currently points at — the last successfully deployed build, not this run's images.
-        run: bash scripts/ci/deploy.sh notify
+          GH_TOKEN: ${{ github.token }}
+          STATE: deploy_blocked
+          SUBJECT: backend images published, prod did not get them
+          IMPACT: unchanged, still on the last deployed build. Nothing is broken; this build is not live.
+          ACTION: fix the red lane, then re-run the master run to ship this build.
+          CLEARS_WHEN: a master run's quality-gate goes green and its deploy runs.
+        run: |
+          set -euo pipefail
+          sha="${GITHUB_SHA:-$(git rev-parse HEAD)}"
+          # One API call. A failed lookup must not read as "nothing failed" —
+          # say the cause is unknown and keep the alert.
+          if ! cause=$(bash scripts/ci/deploy.sh failing-checks "$sha" 1); then
+            cause="check-run lookup failed on ${sha:0:8} — see this run's log"
+            echo "::warning::failing-checks lookup failed; the message states the cause as unknown"
+          fi
+          CAUSE="$cause" bash scripts/ci/deploy.sh notify
 
   # Trigger backend production deploy only when deploy plan allows it.
   trigger-deploy:

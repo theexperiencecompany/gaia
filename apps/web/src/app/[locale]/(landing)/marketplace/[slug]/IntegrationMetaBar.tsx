@@ -83,6 +83,7 @@ function CommunityCreatorCard({
           name={creator.name || undefined}
           size="sm"
           className="h-6 w-6"
+          imgProps={{ width: 24, height: 24 }}
         />
       ) : (
         <UserCircle02Icon width={24} height={24} className="text-zinc-400" />

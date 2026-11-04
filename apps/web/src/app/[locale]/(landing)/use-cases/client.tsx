@@ -25,7 +25,17 @@ export default function UseCasesPageClient({
             See what's Possible
           </h1>
           <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">
-            Practical use cases showing how GAIA works for you
+            These are the workflows GAIA runs for people every day: triaging
+            email, preparing for meetings, protecting focus time, turning
+            conversations into tasks, and keeping the tools a project depends on
+            in sync. Filter by category to find a pattern close to your own
+            work, then open a use case to see the trigger, the steps involved,
+            and the tools it uses. You can run a workflow as shown, adapt it to
+            your accounts, or describe the outcome you want in plain English and
+            let GAIA assemble the equivalent. The community section below
+            collects workflows published by other users; open one to see how it
+            is built, then run it yourself. New examples appear as the product
+            and the community grow.
           </p>
         </div>
         <UseCaseSection

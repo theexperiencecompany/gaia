@@ -4,7 +4,7 @@
   "toolASlug": "todoist",
   "toolB": "ClickUp",
   "toolBSlug": "clickup",
-  "tagline": "Bridge personal Todoist task capture with ClickUp team project management",
+  "tagline": "Bridge personal task capture in Todoist with team project management in ClickUp",
   "metaTitle": "Todoist + ClickUp Integration: Personal and Team Tasks",
   "metaDescription": "Capture tasks in Todoist and run them in ClickUp, with completion synced both ways. GAIA pulls in your assignments. See the setup steps.",
   "keywords": [
@@ -15,51 +15,51 @@
     "sync Todoist to ClickUp",
     "ClickUp Todoist workflow"
   ],
-  "intro": "ClickUp is a powerful team project management platform with rich hierarchy, custom fields, and reporting capabilities. Todoist is the personal task manager that individuals reach for when they need fast, frictionless capture. Many professionals who work inside ClickUp for team collaboration still rely on Todoist for their own GTD-style inbox, creating a persistent gap between personal intentions and team-visible commitments.\n\nGAIA bridges this gap by acting as an intelligent relay between Todoist and ClickUp. Personal action items captured in Todoist can be promoted to ClickUp tasks in the right list and with the right metadata when they need team visibility. ClickUp tasks assigned to you flow into Todoist so your personal review happens in one place. Status updates propagate in both directions so neither system falls behind.\n\nThis integration is ideal for individual contributors who want to use Todoist as their personal capture tool without abandoning the ClickUp workflows their team depends on, and for managers who track their own actions in Todoist but need those actions visible in ClickUp for accountability.",
+  "intro": "ClickUp offers team project management with rich hierarchy, custom fields, and reporting capabilities. Todoist is the personal task manager individuals reach for when they need fast, frictionless capture. Many professionals collaborate with their team in the project manager but still rely on the personal one for their own GTD-style inbox, creating a persistent gap between personal intentions and team-visible commitments.\n\nGAIA bridges this gap by acting as an intelligent relay between the two. Personal action items captured in Todoist can be promoted to ClickUp tasks in the right list and with the right metadata when they need team visibility. Tasks assigned to you flow into your personal inbox so your review happens in one place. Status updates propagate in both directions so neither side falls behind.\n\nThis suits individual contributors who want a personal capture tool without abandoning the workflows their team depends on, and managers who track their own actions privately but need those actions visible to the team for accountability.",
   "useCases": [
     {
       "title": "Capture in Todoist, execute in ClickUp",
-      "description": "Use Todoist's fast-capture interface during meetings or on the go, then let GAIA automatically promote relevant tasks to ClickUp with the correct space, folder, list, and assignee pre-filled based on project context."
+      "description": "Use the fast-capture interface during meetings or on the go, then let GAIA automatically promote relevant tasks to the team workspace with the correct space, folder, list, and assignee pre-filled based on project context."
     },
     {
       "title": "Pull assigned ClickUp tasks into Todoist",
-      "description": "GAIA monitors ClickUp for tasks assigned to you and mirrors them into your Todoist inbox with due dates and priorities so your daily review can happen entirely within Todoist without switching to ClickUp."
+      "description": "GAIA monitors for tasks assigned to you and mirrors them into your personal inbox with due dates and priorities, so your daily review can happen entirely in one app without switching to the team workspace."
     },
     {
-      "title": "Sync task completion across both tools",
-      "description": "When you check off a task in Todoist, GAIA marks the linked ClickUp task complete and vice versa, ensuring your team's project views always reflect your actual progress without manual double-entry."
+      "title": "Sync task completion in both directions",
+      "description": "When you check off a task on one side, GAIA marks the linked task complete on the other, and vice versa, ensuring your team's project views always reflect your actual progress without manual double-entry."
     },
     {
       "title": "Weekly workload overview",
-      "description": "Each week GAIA generates a combined view of your Todoist personal tasks and ClickUp assignments grouped by project, helping you spot overload and balance commitments before deadlines arrive."
+      "description": "Each week GAIA generates a combined view of your personal tasks and team assignments grouped by project, helping you spot overload and balance commitments before deadlines arrive."
     },
     {
       "title": "Meeting action item distribution",
-      "description": "After a meeting where actions are captured in Todoist, GAIA distributes the relevant items to the appropriate ClickUp lists for each team member, turning meeting notes into trackable team tasks automatically."
+      "description": "After a meeting where actions are captured personally, GAIA distributes the relevant items to the appropriate lists for each team member, turning meeting notes into trackable team tasks automatically."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Todoist and ClickUp to GAIA",
-      "description": "Authenticate both Todoist and ClickUp in GAIA's integration settings. GAIA uses OAuth for secure access and only requests permissions for the workspaces and projects you specify."
+      "description": "Authenticate both accounts in GAIA's integration settings. GAIA uses OAuth for secure access and only requests permissions for the workspaces and projects you specify."
     },
     {
       "step": "Map projects and define promotion rules",
-      "description": "Define which Todoist projects correspond to ClickUp spaces and lists. Set rules for when GAIA should automatically promote a Todoist task to ClickUp, for example, tasks tagged with a specific label or assigned a certain priority."
+      "description": "Define which personal projects correspond to team spaces and lists. Set rules for when GAIA should automatically promote a task to the team workspace, for example, tasks tagged with a specific label or assigned a certain priority."
     },
     {
       "step": "GAIA syncs tasks in both directions continuously",
-      "description": "GAIA monitors both platforms for new tasks, assignments, and status changes, propagating updates automatically so your personal and team views always reflect the same reality."
+      "description": "GAIA monitors both sides for new tasks, assignments, and status changes, propagating updates automatically so your personal and team views always reflect the same reality."
     }
   ],
   "faqs": [
     {
       "question": "Does GAIA support ClickUp's custom task statuses?",
-      "answer": "Yes. During setup you can map Todoist's completion states to any custom status in your ClickUp workspace. This means tasks can progress through your team's specific workflow stages as they move between tools."
+      "answer": "Yes. During setup you can map the personal app's completion states to any custom status in your team workspace. This means tasks can progress through your team's specific workflow stages as they move between tools."
     },
     {
-      "question": "Can I sync only specific Todoist projects to ClickUp?",
-      "answer": "Absolutely. You choose exactly which Todoist projects participate in the sync. Personal projects like shopping lists or private goals stay in Todoist only, while work projects are bridged to the relevant ClickUp spaces."
+      "question": "Can I sync only specific Todoist projects?",
+      "answer": "Absolutely. You choose exactly which projects participate in the sync. Personal projects like shopping lists or private goals stay in the personal app only, while work projects are bridged to the relevant team spaces."
     },
     {
       "question": "Will GAIA create duplicate tasks if both tools update at the same time?",

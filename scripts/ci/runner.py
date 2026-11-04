@@ -35,10 +35,10 @@ Subcommands:
                       interpreter or no pyvenv.cfg, so uv recreates it.
   with-slots N -- cmd Acquire N host CPU tokens (lib/cpu-slots.sh), run cmd,
                       release them.
-  spawn NAME -- cmd   Start cmd in the background so a job's checks run side by
-                      side; its log, exit code and step summary are kept apart.
-  join NAME           Wait for a spawned check, print its log as a group, append
-                      its step summary, annotate a failure, exit with its code.
+  run-job JOB         Run JOB's checks detect selected (nx tasks whose target's
+                      metadata.ci.job is JOB, minus the reused) through nx,
+                      under this runner's CPU budget, and write each task's
+                      result for `verdict.py post-statuses`.
   health              Print, as JSON, what the box is actually doing: the home
                       listener pool, load average, thread count, who holds CPU
                       slots, and how many mutmut/pytest processes are running.
@@ -69,8 +69,8 @@ Env contract:
   prime-archive       ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE, GAIA_REPO
                       (checkout to scan when run from a copy outside the repo).
   parallel            PYTEST_WORKER_GB (1.5) — per-xdist-worker RAM budget.
-  spawn / join        RUNNER_TEMP (required: the files live in $RUNNER_TEMP/bg),
-                      GITHUB_STEP_SUMMARY (spawn redirects it, join appends).
+  run-job             JOB_TASKS (detect's job_tasks), REUSED (detect's reused),
+                      RESULTS_FILE (where the task results land; required).
   health              GITHUB_REPOSITORY, RUNNER_LABEL (gaia-home); reads the
                       cpu-slots pool dir, never takes from it.
 """
@@ -93,6 +93,7 @@ import sys
 import time
 import urllib.parse
 
+from lib import nx_affected
 from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
 
 HERE = Path(__file__).resolve().parent
@@ -276,8 +277,8 @@ def class_demand() -> dict[RunnerClass, int]:
     slices = records(json.loads(TEST_SLICES_JSON.read_text()), "slices")
     with_services = sum(1 for s in slices if field_of(s, "services", str) == "true")
     return {
-        # detect, lint-node, lint-python, lint-mixed, python-audit, scan
-        RunnerClass.LIGHT: 6,
+        # detect, lint-node, lint-python, lint-mixed, repo-policy, python-audit, scan
+        RunnerClass.LIGHT: 7,
         # probe, ts-build-test, docker-image, plus the slices that need no services
         RunnerClass.HEAVY: 3 + len(slices) - with_services,
         # the slices that need services (test-python, test-python-engines), test-mutation's wave
@@ -688,10 +689,11 @@ def cmd_requeue_stranded(_args: list[str]) -> int:
             ok(f"requeue-stranded: runners labelled '{label}' are online — nothing is stranded")
             return 0
         case HomeState.UNKNOWN:
+            # Touch nothing, but fail: a sweep that cannot see the runners has not done its job.
             warn(
                 "requeue-stranded: the runners API could not be probed — not touching any run on an unknown"
             )
-            return 0
+            return 1
     failed = 0
     for run_id in _requeue_candidates(gh, repo):
         stranded = _stranded_job(gh, repo, run_id, label, limit)
@@ -747,6 +749,21 @@ def _cancel(gh: GitHub, repo: str, run_id: int, why: str) -> None:
     ok(f"cancelled {why} run {run_id}")
 
 
+# A production deploy is never cancelled mid-flight: a cancelled wrangler deploy
+# leaves R2's prerendered cache half-filled. The newer run deploys after it,
+# queued behind the deploy job's own concurrency group.
+DEPLOY_JOB_PREFIX = "deploy-web"
+
+
+def _deploying(gh: GitHub, repo: str, run_id: int) -> bool:
+    jobs = gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?filter=latest&per_page=100", "jobs")
+    return any(
+        field_of(job, "name", str).startswith(DEPLOY_JOB_PREFIX)
+        and field_of(job, "status", str) == "in_progress"
+        for job in jobs
+    )
+
+
 def _cancel_superseded_branch_runs(gh: GitHub, repo: str, run_id: int) -> None:
     workflow, branch = workflow_file(), head_branch()
     query = urllib.parse.urlencode(
@@ -761,6 +778,9 @@ def _cancel_superseded_branch_runs(gh: GitHub, repo: str, run_id: int) -> None:
     if not older:
         ok(f"no superseded {workflow} runs on {branch}")
     for old in older:
+        if os.environ.get("GITHUB_EVENT_NAME") == "push" and _deploying(gh, repo, old):
+            ok(f"run {old} is deploying to production: left to finish, this run deploys after it")
+            continue
         _cancel(gh, repo, old, "superseded")
 
 
@@ -1155,108 +1175,78 @@ def cmd_with_slots(args: list[str]) -> int:
     )
 
 
-# ── spawn / join ──────────────────────────────────────────────────────────
-
-# A job's steps run one at a time, so a check that runs beside the others starts
-# in one step and reports in a later one. Its output, exit code and step summary
-# land under $RUNNER_TEMP/bg; join replays them so each check keeps its own log,
-# outcome and status. The rc file is written by rename, so join never reads half.
-
-SPAWN_SH = (
-    'rc=0; "$@" || rc=$?; printf "%s\\n" "$rc" > "$GAIA_SPAWN_RC.tmp"; '
-    'mv -f "$GAIA_SPAWN_RC.tmp" "$GAIA_SPAWN_RC"'
-)
-SPAWN_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
-JOIN_POLL_SECS = 1.0
-FAILURE_TAIL_LINES = 40
+# ── run-job ───────────────────────────────────────────────────────────────
+# A grouped job's checks are nx tasks (nx_affected.run). Each check's status is
+# posted the moment its last task finishes, so a red check shows while the slow
+# ones still run; post-statuses at the job's end posts the rest and the verdict.
 
 
-@dataclass(frozen=True)
-class Background:
-    name: str
-    root: Path
-
-    @classmethod
-    def named(cls, name: str) -> Background:
-        temp = os.environ.get("RUNNER_TEMP")
-        if not temp:
-            raise Die("spawn/join: RUNNER_TEMP is not set")
-        if not SPAWN_NAME.fullmatch(name):
-            raise Die(f"spawn/join: {name!r} is not a check name (lowercase, digits, dashes)")
-        root = Path(temp, "bg")
-        root.mkdir(parents=True, exist_ok=True)
-        return cls(name, root)
-
-    def path(self, ext: str) -> Path:
-        return self.root / f"{self.name}.{ext}"
-
-
-def cmd_spawn(args: list[str]) -> int:
-    if len(args) < 3 or args[1] != "--":
-        log("usage: runner.py spawn NAME -- <cmd...>")
-        return 2
-    bg = Background.named(args[0])
-    if bg.path("pid").exists():
-        raise Die(f"spawn: {bg.name} was already started in this job")
-    env = {
-        **os.environ,
-        "GAIA_SPAWN_RC": str(bg.path("rc")),
-        "GITHUB_STEP_SUMMARY": str(bg.path("summary")),
-    }
-    with bg.path("log").open("wb") as out:
-        child = subprocess.Popen(
-            ["bash", "-c", SPAWN_SH, "spawn", *args[2:]],
-            stdin=subprocess.DEVNULL,
-            stdout=out,
-            stderr=subprocess.STDOUT,
-            env=env,
-            start_new_session=True,
-        )
-    bg.path("pid").write_text(f"{child.pid} {time.time()}\n")
-    ok(
-        f"{bg.name}: running in the background (pid {child.pid}); `runner.py join {bg.name}` reports it"
-    )
-    return 0
-
-
-def _wait_for_rc(bg: Background) -> tuple[int, float]:
-    """Block until the spawned check records its exit code; fail loud if it died first."""
-    pid_text = bg.path("pid")
-    if not pid_text.exists():
-        raise Die(f"join: {bg.name} was never spawned in this job")
-    pid, started = pid_text.read_text().split()
-    rc_file = bg.path("rc")
-    while not rc_file.exists():
-        if not _pid_alive(int(pid)) and not rc_file.exists():
-            raise Die(f"join: {bg.name} (pid {pid}) exited without recording an exit code")
-        time.sleep(JOIN_POLL_SECS)
-    return int(rc_file.read_text()), rc_file.stat().st_mtime - float(started)
-
-
-def cmd_join(args: list[str]) -> int:
+def cmd_run_job(args: list[str]) -> int:
     if len(args) != 1:
-        log("usage: runner.py join NAME")
-        return 2
-    bg = Background.named(args[0])
-    rc, elapsed = _wait_for_rc(bg)
-    log_text = bg.path("log").read_text(errors="replace")
-    print(f"::group::{bg.name} — log ({elapsed:.0f}s, exit {rc})", flush=True)
-    sys.stdout.write(log_text if log_text.endswith("\n") or not log_text else log_text + "\n")
-    print("::endgroup::", flush=True)
-    summary = bg.path("summary")
-    step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-    if step_summary and summary.exists():
-        with open(step_summary, "a") as out:
-            out.write(summary.read_text())
-    if rc != 0:
-        tail = log_text.splitlines()[-FAILURE_TAIL_LINES:]
-        print("\n".join(tail), flush=True)
-        print(
-            f"::error title={bg.name}::{bg.name} failed (exit {rc}, {elapsed:.0f}s); "
-            "the full log is the group above",
-            flush=True,
-        )
-    return rc
+        raise Die("usage: runner.py run-job <job>")
+    job = args[0]
+    planned: list[str] = json.loads(os.environ.get("JOB_TASKS") or "{}").get(job, [])
+    reused: dict[str, str] = json.loads(os.environ.get("REUSED") or "{}")
+    results_file = Path(env_required("RESULTS_FILE"))
+    known = nx_affected.checks()
+    tasks = [
+        task for task in planned if known[task].runner == "nx" and known[task].check not in reused
+    ]
+    waiting: dict[str, set[str]] = {}
+    for task in tasks:
+        waiting.setdefault(str(known[task].check), set()).add(task)
+    results: dict[str, nx_affected.TaskResult] = {}
+
+    def on_done(task: str, result: nx_affected.TaskResult) -> None:
+        results[task] = result
+        results_file.write_text(json.dumps(results, indent=2) + "\n")
+        check = str(known[task].check)
+        passed = result["status"] in nx_affected.PASSED
+        if passed:
+            print(
+                f"::group::{check}: passed ({task})\n{result['output']}\n::endgroup::", flush=True
+            )
+        else:
+            print(
+                f"{check}: FAILED ({task}, exit {result['code']})\n{result['output']}", flush=True
+            )
+        waiting[check].discard(task)
+        if not waiting[check]:
+            _post_check_status(job, check, results_file)
+
+    parallel = measure_parallelism().nx
+    passed = nx_affected.run(tasks, parallel, _cpu_slots, on_done)
+    results_file.write_text(json.dumps(results, indent=2) + "\n")
+    ok(f"run-job {job}: {len(tasks)} task(s); {len(planned) - len(tasks)} reused or run by a step")
+    return 0 if passed else 1
+
+
+def _cpu_slots(cores: int) -> list[str]:
+    """Prefix a command so it holds `cores` host CPU tokens while it runs (a no-op off the box)."""
+    return ["bash", "-c", WITH_SLOTS_SH, "with-slots", str(LOG_SH), str(CPU_SLOTS_SH), str(cores)]
+
+
+def _post_check_status(job: str, check: str, results_file: Path) -> None:
+    """Post one finished check's status now; post-statuses at the job's end posts any that did not land."""
+    subprocess.run(
+        [
+            sys.executable, str(HERE / "verdict.py"), "post-statuses", "--job", job,
+            "--check", check, "--results", str(results_file),
+            "--job-tasks", os.environ.get("JOB_TASKS") or "{}",
+            "--reused", os.environ.get("REUSED") or "{}",
+            *_post_target(),
+        ],
+        check=False,
+    )  # fmt: skip
+
+
+def _post_target() -> list[str]:
+    if os.environ.get("NO_POST"):
+        return ["--no-post"]
+    return [
+        "--repo", env_required("GITHUB_REPOSITORY"), "--sha", env_required("HEAD_SHA"),
+        "--run-id", env_required("GITHUB_RUN_ID"), "--run-attempt", env_required("GITHUB_RUN_ATTEMPT"),
+    ]  # fmt: skip
 
 
 # ── health ────────────────────────────────────────────────────────────────
@@ -1376,8 +1366,7 @@ COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "dep-marker": cmd_dep_marker,
     "heal-venv": cmd_heal_venv,
     "with-slots": cmd_with_slots,
-    "spawn": cmd_spawn,
-    "join": cmd_join,
+    "run-job": cmd_run_job,
     "health": cmd_health,
 }
 

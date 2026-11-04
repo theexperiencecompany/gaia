@@ -15,7 +15,7 @@
     "Google Calendar Gmail workflow",
     "inbox to calendar sync"
   ],
-  "intro": "Meeting requests, event invitations, and scheduling threads arrive in Gmail every day, but converting them into calendar events requires manual copy-pasting that breaks your flow. Meanwhile, your calendar holds context that should be informing your email responses — yet Gmail has no idea what your schedule looks like.\n\nGAIA bridges Gmail and Google Calendar so information flows naturally between them. Scheduling emails automatically become draft calendar events. Meeting invitations trigger prep emails with agendas and attendee context. Confirmed events generate follow-up tasks in your inbox. The two tools work as a unified scheduling and communication system.\n\nThis integration is particularly powerful for anyone who manages a high volume of external meetings, coordinates schedules across time zones, or wants to spend less time manually transferring information between their inbox and calendar.",
+  "intro": "Meeting requests, event invitations, and scheduling threads arrive in Gmail every day, but converting them into calendar events requires manual copy-pasting that breaks your flow. Meanwhile, your calendar holds context that should be informing your email responses — yet Gmail has no idea what your schedule looks like.\n\nGAIA bridges email and Google Calendar so information flows naturally between them. Scheduling emails automatically become draft calendar events. Meeting invitations trigger prep emails with agendas and attendee context. Confirmed events generate follow-up tasks in your inbox. The two tools work as a unified scheduling and communication system.\n\nThis integration is particularly powerful for anyone who manages a high volume of external meetings, coordinates schedules across time zones, or wants to spend less time manually transferring information between their inbox and calendar.",
   "useCases": [
     {
       "title": "Create calendar events from scheduling emails",
@@ -23,11 +23,11 @@
     },
     {
       "title": "Meeting prep delivered to your inbox",
-      "description": "The morning of each calendar event, GAIA sends a Gmail summary with the agenda, attendee LinkedIn profiles, relevant email history with those attendees, and any prep notes, so you walk into every meeting informed."
+      "description": "The morning of each calendar event, GAIA sends a summary email with the agenda, attendee LinkedIn profiles, relevant email history with those attendees, and any prep notes, so you walk into every meeting informed."
     },
     {
       "title": "Auto-detect and create events from confirmation emails",
-      "description": "Flight confirmations, hotel reservations, restaurant bookings, and event ticket emails automatically create corresponding Google Calendar entries with all the relevant details extracted."
+      "description": "Flight confirmations, hotel reservations, restaurant bookings, and event ticket emails automatically create corresponding calendar entries with all the relevant details extracted."
     },
     {
       "title": "Follow-up email drafts after meetings",
@@ -35,7 +35,7 @@
     },
     {
       "title": "Availability responses from calendar",
-      "description": "When someone emails asking for your availability, GAIA checks Google Calendar and drafts a reply in Gmail with your open slots formatted cleanly so scheduling doesn't require back-and-forth."
+      "description": "When someone emails asking for your availability, GAIA checks your calendar and drafts a reply with your open slots formatted cleanly so scheduling doesn't require back-and-forth."
     }
   ],
   "howItWorks": [
@@ -49,7 +49,7 @@
     },
     {
       "step": "GAIA keeps email and calendar in sync",
-      "description": "From the moment you connect, GAIA monitors both Gmail and Calendar and keeps them informed about each other. You focus on the conversations and meetings, not the administrative transfer of information."
+      "description": "From the moment you connect, GAIA monitors both the inbox and the calendar and keeps each informed about the other. You focus on the conversations and meetings, not the administrative transfer of information."
     }
   ],
   "faqs": [
@@ -63,7 +63,7 @@
     },
     {
       "question": "Does this work with Google Workspace accounts?",
-      "answer": "Yes. GAIA works with personal Gmail and Google Workspace accounts. For Workspace accounts, the integration respects your organization's sharing and access settings."
+      "answer": "Yes. GAIA works with both personal and Google Workspace accounts. For Workspace accounts, the integration respects your organization's sharing and access settings."
     }
   ]
 }

@@ -139,6 +139,35 @@ def test_notify_posts_to_discord_and_slack(tmp_path: Path, sink: Sink) -> None:
     assert "channel 42" in proc.stdout
 
 
+def test_notify_sends_a_structured_state_message(tmp_path: Path, sink: Sink) -> None:
+    """Send a structured message: the STATE path leaves MESSAGE unset.
+
+    Nothing may read it — Slack's fallback did, and `set -u` killed the send
+    on the first structured message.
+    """
+    proc, _ = run(
+        tmp_path,
+        "notify",
+        {
+            "STATE": "deploy_blocked",
+            "SUBJECT": "prod is 3 commits behind master",
+            "IMPACT": "fine, serving fc67d3d8.",
+            "CAUSE": "ci / security / pip-audit failed on d980793b",
+            "ACTION": "fix pyasn1.",
+            "CLEARS_WHEN": "master's quality-gate goes green.",
+            "DISCORD_WEBHOOK": f"{sink.url}/discord",
+            "SLACK_WEBHOOK": f"{sink.url}/slack",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    by_path = {path.split("?")[0]: body for path, body in sink.posts}
+    assert by_path["/discord"]["embeds"][0]["description"].startswith(
+        "⛔ DEPLOY BLOCKED — prod is 3 commits behind master"
+    )
+    assert by_path["/slack"]["attachments"][0]["fallback"].startswith("⛔ DEPLOY BLOCKED")
+
+
 def test_notify_still_sends_discord_but_fails_when_slack_is_unset(
     tmp_path: Path, sink: Sink
 ) -> None:

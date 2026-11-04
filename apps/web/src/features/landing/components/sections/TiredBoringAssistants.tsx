@@ -516,7 +516,7 @@ export default function Tired() {
                 <div className="tool-icon-btn">
                   <Image
                     src={icon.src}
-                    alt={icon.alt}
+                    alt={`${icon.alt} logo`}
                     width={displaySize}
                     height={displaySize}
                     loading="lazy"
@@ -536,7 +536,7 @@ export default function Tired() {
 
       {/* CTA */}
       <SiteLink href="/integrations" className="mt-6 sm:mt-8">
-        <RaisedButton color="#00bbff" className="text-black!">
+        <RaisedButton color="#00bbff">
           See All Integrations
           <CircleArrowRight02Icon width={20} height={20} />
         </RaisedButton>

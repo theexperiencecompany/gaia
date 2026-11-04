@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { ComboAppIcon } from "@/components/seo/ComboAppIcons";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
@@ -12,6 +13,8 @@ import {
   getTranslatedCombo,
   getTranslatedCombos,
 } from "@/features/integrations/data/getTranslatedCombo";
+import { appPagePath } from "@/features/integrations/lib/comboApps";
+import { relatedComboRows } from "@/features/integrations/lib/relatedCombos";
 import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
@@ -84,16 +87,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
   }
   // getTranslatedCombos is _slugs-driven (victims excluded), so every entry
   // here links a live page.
-  const relatedCombos = allCombos
-    .filter(
-      (c) =>
-        c.slug !== combo &&
-        (c.toolASlug === data.toolASlug ||
-          c.toolBSlug === data.toolBSlug ||
-          c.toolASlug === data.toolBSlug ||
-          c.toolBSlug === data.toolASlug),
-    )
-    .slice(0, 3);
+  const relatedRows = relatedComboRows(data, allCombos);
 
   const docsGuides = getAutomateDocsLinks(data.toolASlug, data.toolBSlug);
 
@@ -101,7 +95,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
 
   const breadcrumbItems = [
     { name: "Home", url: siteConfig.url },
-    { name: "Marketplace", url: `${siteConfig.url}/marketplace` },
+    { name: "Automate", url: `${siteConfig.url}/automate` },
     {
       name: `${data.toolA} + ${data.toolB}`,
       url: pageUrl,
@@ -131,10 +125,11 @@ export default async function AutomateComboPage({ params }: PageProps) {
     getMarketplacePath(data.toolASlug),
     getMarketplacePath(data.toolBSlug),
   ]);
-  const toolAHref =
-    toolAPath ?? `/marketplace?search=${encodeURIComponent(data.toolA)}`;
-  const toolBHref =
-    toolBPath ?? `/marketplace?search=${encodeURIComponent(data.toolB)}`;
+  // URLSearchParams spells a space "+", the form the marketplace URL settles on, so the link never hops.
+  const marketplaceSearch = (tool: string) =>
+    `/marketplace?${new URLSearchParams({ search: tool })}`;
+  const toolAHref = toolAPath ?? marketplaceSearch(data.toolA);
+  const toolBHref = toolBPath ?? marketplaceSearch(data.toolB);
 
   // Head-to-head and alternative guides keyed by the same tool slugs the
   // combo datasets use; only link pages that verifiably exist (never a 404).
@@ -177,11 +172,29 @@ export default async function AutomateComboPage({ params }: PageProps) {
           toolACompareHref={toolACompareHref}
           toolBCompareHref={toolBCompareHref}
         />
-        <RelatedAutomationsGrid
-          heading={t("common.related_automations")}
-          combos={relatedCombos}
-          headingClassName="mb-6 text-2xl font-semibold text-white"
-        />
+        {relatedRows.map((row) => (
+          <RelatedAutomationsGrid
+            key={row.app.slug}
+            heading={t.rich("automate.more_automations_with", {
+              name: row.app.name,
+              app: (chunks) => (
+                <span className="inline-flex items-center gap-2 align-middle">
+                  <ComboAppIcon app={row.app} />
+                  {chunks}
+                </span>
+              ),
+            })}
+            combos={row.combos}
+            headingClassName="text-2xl font-semibold text-white"
+            allLink={{
+              href: appPagePath(row.app.slug),
+              label: t("automate.all_app_automations", {
+                count: row.total,
+                app: row.app.name,
+              }),
+            }}
+          />
+        ))}
         <DocsGuidesSection
           heading={t("common.docs_guides")}
           guides={docsGuides}

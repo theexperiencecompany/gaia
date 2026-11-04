@@ -15,55 +15,55 @@
     "project management Slack bot",
     "ClickUp Slack workflow"
   ],
-  "intro": "Teams coordinate in Slack but their work lives in ClickUp. Decisions made in Slack channels don't always make it to ClickUp tasks, and ClickUp progress updates don't reach the team in Slack. GAIA creates a seamless bridge so your team's communication and task management work together.\n\nWith GAIA, any Slack message can become a ClickUp task in seconds. ClickUp task completions celebrate in Slack. Overdue tasks alert the right people in chat. Your team spends less time switching between tools and more time doing actual work.",
+  "intro": "Teams coordinate in Slack but their work lives in ClickUp. Decisions made in channels don't always make it to tasks, and progress updates don't reach the team in chat. GAIA bridges the two so communication and task management work together.\n\nWith GAIA, any message can become a task in seconds. Task completions get celebrated in Slack. Overdue tasks alert the right people in chat. Your team spends less time switching between apps and more time doing actual work.",
   "useCases": [
     {
-      "title": "Create tasks from Slack with emoji reactions",
-      "description": "React to any Slack message with a task emoji and GAIA automatically creates a ClickUp task from the message content, posted in the configured list with the message context preserved."
+      "title": "Create tasks from messages with emoji reactions",
+      "description": "React to any message with a task emoji and GAIA automatically creates a task from the message content, posted in the configured list with the message context preserved."
     },
     {
-      "title": "ClickUp task update notifications in Slack",
-      "description": "When ClickUp tasks change status, are completed, or become overdue, GAIA posts intelligent updates to the relevant Slack channel so the team stays informed without checking ClickUp."
+      "title": "Task update notifications in Slack",
+      "description": "When tasks change status, are completed, or become overdue, GAIA posts intelligent updates to the relevant channel so the team stays informed without checking ClickUp."
     },
     {
       "title": "Daily ClickUp digest in Slack",
-      "description": "GAIA posts a morning digest to each team member's Slack DM summarizing their ClickUp tasks due today and any overdue items, making prioritization effortless."
+      "description": "GAIA posts a morning digest to each team member's DM summarizing their tasks due today and any overdue items, which makes prioritizing easy."
     },
     {
       "title": "Sprint summary posts",
-      "description": "At the end of each ClickUp sprint, GAIA posts a summary to the team Slack channel showing completed tasks, incomplete items carried over, and velocity metrics."
+      "description": "At the end of each sprint, GAIA posts a summary to the team channel showing completed tasks, incomplete items carried over, and velocity metrics."
     },
     {
       "title": "Blocker escalations",
-      "description": "When a ClickUp task is marked as blocked, GAIA sends a Slack alert to the task owner and project manager so blockers get addressed immediately rather than sitting unnoticed in the task board."
+      "description": "When a task is marked as blocked, GAIA sends an alert to the task owner and project manager so blockers get addressed immediately rather than sitting unnoticed on the board."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Slack and ClickUp to GAIA",
-      "description": "Add GAIA to your Slack workspace and authorize your ClickUp account. Map Slack channels to ClickUp lists and spaces."
+      "description": "Add GAIA to your workspace and authorize your ClickUp account. Map channels to lists and spaces."
     },
     {
       "step": "Set up task creation and notification preferences",
-      "description": "Configure your preferred task creation method and which ClickUp events should generate Slack notifications. Start with task completion and blocker alerts."
+      "description": "Configure your preferred task creation method and which events should generate notifications. Start with task completion and blocker alerts."
     },
     {
       "step": "GAIA bridges chat and task management",
-      "description": "From the moment you connect, GAIA routes Slack action items to ClickUp and ClickUp updates back to Slack, keeping both in sync automatically."
+      "description": "From the moment you connect, GAIA routes action items from chat into tasks and task updates back to chat, keeping both in sync automatically."
     }
   ],
   "faqs": [
     {
       "question": "Can GAIA create ClickUp tasks with subtasks from Slack?",
-      "answer": "Yes. If you describe a task with multiple components in Slack, GAIA can create a parent task with subtasks. You can also ask GAIA to add subtasks to an existing ClickUp task from Slack."
+      "answer": "Yes. If you describe a task with multiple components in chat, GAIA can create a parent task with subtasks. You can also ask GAIA to add subtasks to an existing task from the channel."
     },
     {
-      "question": "Does GAIA support ClickUp's custom statuses when posting Slack updates?",
-      "answer": "Yes. GAIA reads your ClickUp custom statuses and uses them in Slack notifications so updates reflect your actual workflow stages rather than generic status names."
+      "question": "Does GAIA support custom statuses when posting updates?",
+      "answer": "Yes. GAIA reads your custom statuses and uses them in notifications so updates reflect your actual workflow stages rather than generic status names."
     },
     {
-      "question": "Can I control which ClickUp lists generate Slack notifications?",
-      "answer": "Yes. You can enable notifications for specific lists, folders, or spaces and mute others. This prevents notifications from low-priority lists cluttering your team Slack channels."
+      "question": "Can I control which lists generate notifications?",
+      "answer": "Yes. You can enable notifications for specific lists, folders, or spaces and mute others. This prevents low-priority lists from cluttering your team channels."
     }
   ]
 }

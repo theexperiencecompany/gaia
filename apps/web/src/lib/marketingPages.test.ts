@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { GET as getFeed } from "@/app/feed.xml/route";
+import { GET as getFeed } from "@/app/feed/route";
 import { GET as getLlms } from "@/app/llms.txt/route";
 import { MARKETING_PAGES } from "@/lib/marketingPages";
 import { siteConfig } from "@/lib/seo";
@@ -40,7 +40,7 @@ describe("MARKETING_PAGES", () => {
     }
   });
 
-  it("is the static-page item set of /feed.xml", async () => {
+  it("is the static-page item set of /feed", async () => {
     const body = await (await getFeed()).text();
 
     for (const page of MARKETING_PAGES) {

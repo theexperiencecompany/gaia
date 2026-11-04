@@ -2,8 +2,8 @@
   "software-developers": {
     "title": "ソフトウェア開発者向けAIアシスタント",
     "role": "ソフトウェア開発者",
-    "metaTitle": "ソフトウェア開発者向けAIアシスタント: GitHub整理と朝会メモ",
-    "metaDescription": "通知や進捗会議で集中を切らさない。GAIAがGitHubとLinearを整理し、スタンドアップの要約を作り、会議の準備も整えます。仕組みを見てみましょう。",
+    "metaTitle": "ソフトウェア開発者向けAIアシスタント - 開発ワークフローを自動化",
+    "metaDescription": "GAIAはソフトウェア開発者のコードレビュー自動化、GitHubイシュー管理、Linearチケット追跡、日次スタンドアップの効率化を支援します。単純作業を週10時間以上削減できます。",
     "keywords": [
       "開発者向けAIアシスタント",
       "開発者の生産性向上ツール",
@@ -21,17 +21,17 @@
       "開発者向けコンテキスト切替ツール",
       "開発者向けSlack自動化"
     ],
-    "intro": "GitHubの2024年Octoverseレポートによると、ソフトウェア開発者は推定で全体の58％もの時間を非コーディング業務に費やしています。Slackスレッド、GitHub通知、Linearチケット、メールの間を行き来するコンテキスト切替は、質の高いコードを書くために必要な深い集中力を奪います。GAIAは開発者のワークフロー全体を管理する積極的なAIアシスタントとして、GitHub通知の振り分けから日次スタンドアップレポートの準備までサポートし、エディタでの作業により多くの時間を割けるようにします。",
+    "intro": "GitHubの2024年Octoverseレポートによると、ソフトウェア開発者は推定で全体の58％もの時間を非コーディング業務に費やしています。Slackスレッド、通知、課題チケット、メールの間を行き来するコンテキスト切替は、質の高いコードを書くために必要な深い集中力を奪います。GAIAは開発者のワークフロー全体を管理する積極的なAIアシスタントとして、通知の振り分けから日次スタンドアップレポートの準備までサポートし、エディタでの作業により多くの時間を割けるようにします。",
     "painPoints": [
-      "GitHub、Linear、Slack、メール間で常にコンテキスト切替が発生し、集中した作業が分断される",
+      "ツール間で常にコンテキスト切替が発生し、集中した作業が分断される",
       "コードレビュー通知がたまり、マージが滞ったりPRが放置されたりする",
       "スタンドアップ報告やステータス更新を手作業で行うのに毎日30分以上かかる",
       "複数リポジトリ間の依存関係やデプロイ状況の管理が煩雑"
     ],
     "howGaiaHelps": [
       {
-        "title": "GitHub & Linear の自動トリアージ",
-        "description": "GAIAはGitHubの通知やLinearの受信トレイを監視し、緊急性で課題に優先順位を付け、本当に注意すべき内容だけを抽出します。定型的な課題への返信を下書きし、関連するPRを自動的にチケットにリンクします。"
+        "title": "開発ツールの自動トリアージ",
+        "description": "GAIAは通知や課題の受信トレイを監視し、緊急性で課題に優先順位を付け、本当に注意すべき内容だけを抽出します。定型的な課題への返信を下書きし、関連するPRを自動的にチケットにリンクします。"
       },
       {
         "title": "スマートスタンドアップ要約",
@@ -39,13 +39,13 @@
       },
       {
         "title": "事前準備できるカレンダー＆ミーティング",
-        "description": "GAIAはGoogleカレンダーで今後の会議を確認し、関連するLinearチケットやGitHubでの議論を取得。スプリントプランニングやコードレビューの前にブリーフィングノートを作成し、万全の準備ができます。"
+        "description": "GAIAはGoogleカレンダーで今後の会議を確認し、関連するチケットや議論を取得。スプリントプランニングやコードレビューの前にブリーフィングノートを作成し、万全の準備ができます。"
       }
     ],
     "faqs": [
       {
         "question": "GAIAは既存の開発ワークフローにどう統合されますか？",
-        "answer": "GAIAはMCPインテグレーションを通じて、GitHub、Linear、Slack、Googleカレンダーとネイティブ接続します。これらのツールをバックグラウンドで監視し、ユーザーの行動パターンを学習、関連情報を積極的に抽出するので、今まで通りのやり方を変更せずに利用できます。"
+        "answer": "GAIAはMCPインテグレーションを通じて、主要な開発ツールとGoogleカレンダーとネイティブ接続します。これらのツールをバックグラウンドで監視し、ユーザーの行動パターンを学習、関連情報を積極的に抽出するので、今まで通りのやり方を変更せずに利用できます。"
       },
       {
         "question": "GAIAはコードレビューにも役立ちますか？",
@@ -60,8 +60,8 @@
   "product-managers": {
     "title": "プロダクトマネージャー向けAIアシスタント",
     "role": "プロダクトマネージャー",
-    "metaTitle": "プロダクトマネージャー向けAIアシスタント: 報告と要望を集約",
-    "metaDescription": "進捗報告を手作業でまとめる必要はありません。GAIAが関係者向けレポートを下書きし、Slackやメールの機能要望を集め、ロードマップも同期します。仕組みを見てみましょう。",
+    "metaTitle": "プロダクトマネージャー向けAIアシスタント - プロダクト開発を効率化",
+    "metaDescription": "GAIAはプロダクトマネージャーの機能要望の追跡、ステークホルダー向けアップデートの自動化、ツール横断のロードマップ管理、AIブリーフィングによる会議準備を支援します。",
     "keywords": [
       "プロダクトマネージャー向けAIアシスタント",
       "プロダクト管理自動化",
@@ -79,21 +79,21 @@
       "プロダクトマネージャーの会議準備AI",
       "PM向けAsana AI連携"
     ],
-    "intro": "プロダクトマネージャーはエンジニアリング、デザイン、ビジネス、カスタマーサクセスの交点で活躍します。2024年のProductboard調査によると、PMの週の40％以上が進捗報告、会議準備、ツール管理に費やされており、戦略的なプロダクト思考には十分な時間が割かれていません。GAIAはあなたの積極的なAIコパイロットとなり、Linear・Slack・Gmail・Notionなどの情報を横断的に集約し、プロセス管理ではなく本当に大切な「良いプロダクト作り」に集中できるようサポートします。",
+    "intro": "プロダクトマネージャーはエンジニアリング、デザイン、ビジネス、カスタマーサクセスの交点で活躍します。2024年のProductboard調査によると、PMの週の40％以上が進捗報告、会議準備、ツール管理に費やされており、戦略的なプロダクト思考には十分な時間が割かれていません。GAIAはあなたの積極的なAIコパイロットとなり、Slack・Gmail・Notionなどの情報を横断的に集約し、プロセス管理ではなく本当に大切な「良いプロダクト作り」に集中できるようサポートします。",
     "painPoints": [
-      "ステークホルダーへの報告には、LinearやGitHub、Slackチャンネルからの手動データ収集が必要",
+      "ステークホルダーへの報告には、GitHubやSlackチャンネルからの手動データ収集が必要",
       "機能要望がメールやSlack、サポートチケットなどに分散し、全体像が見えづらい",
       "会議が多く、ユーザー調査や戦略立案の時間が十分に取れない",
-      "NotionやLinear上でのロードマップ資料の更新が常に手間になっている"
+      "Notion上でのロードマップ資料の更新が常に手間になっている"
     ],
     "howGaiaHelps": [
       {
         "title": "ステークホルダー向け自動レポート",
-        "description": "GAIAはLinearからスプリント進捗、GitHubからデプロイ情報、Slackのチーム会話を収集し、毎週のステークホルダー向けレポートを自動作成します。ご希望のフォーマットでドラフトし、GmailやSlackから送信が可能です。"
+        "description": "GAIAはプロジェクト管理ツールからスプリント進捗、GitHubからデプロイ情報、チームの会話を収集し、毎週のステークホルダー向けレポートを自動作成します。ご希望のフォーマットでドラフトし、GmailやSlackから送信が可能です。"
       },
       {
         "title": "要望一元管理",
-        "description": "GAIAはGmail・Slack・サポートチャンネルを監視し、寄せられた機能要望をテーマや緊急度ごとに分類。関連する情報も添えて整理されたLinearチケットを自動生成します。"
+        "description": "GAIAはGmail・サポートチャンネルを監視し、寄せられた機能要望をテーマや緊急度ごとに分類。関連する情報も添えて整理された課題チケットを自動生成します。"
       },
       {
         "title": "会議インテリジェンス",
@@ -101,13 +101,13 @@
       },
       {
         "title": "ロードマップ同期",
-        "description": "GAIAはNotionのロードマップドキュメントとLinearのプロジェクトステータスを常に連携させ、ズレがあれば通知して、マイルストーンの変更時に更新案を提案します。"
+        "description": "GAIAはNotionのロードマップドキュメントとプロジェクト管理ツールのステータスを常に連携させ、ズレがあれば通知して、マイルストーンの変更時に更新案を提案します。"
       }
     ],
     "faqs": [
       {
         "question": "GAIAはプロジェクト管理ツールの代わりになりますか？",
-        "answer": "GAIAはLinear、Asana、Notionなど既存のツールを置き換えるのではなく、補完する役割を果たします。これらのツールを連携させ、データの自動連携やインサイトの可視化を進めるインテリジェントなレイヤーとなるため、ツール管理にかける時間を減らし、プロダクト戦略に集中できます。"
+        "answer": "GAIAはAsana、Notionなど既存のツールを置き換えるのではなく、補完する役割を果たします。これらのツールを連携させ、データの自動連携やインサイトの可視化を進めるインテリジェントなレイヤーとなるため、ツール管理にかける時間を減らし、プロダクト戦略に集中できます。"
       },
       {
         "question": "GAIAはステークホルダーとのコミュニケーションをどのように支援しますか？",
@@ -733,8 +733,8 @@
   "sales-professionals": {
     "title": "セールスプロフェッショナル向けAIアシスタント",
     "role": "セールスプロフェッショナル",
-    "metaTitle": "営業向けAIアシスタント: CRM更新とフォローを自動化",
-    "metaDescription": "通話記録や返信の追いかけに時間を取られません。GAIAがCRMを最新に保ち、フォローメールを下書きし、商談準備も整えます。仕組みを見てみましょう。",
+    "metaTitle": "セールスプロフェッショナル向けAIアシスタント - AIでもっと成約を",
+    "metaDescription": "GAIAはセールスプロフェッショナルのCRM更新の自動化、フォローアップの管理、通話準備を支援し、積極的なAIアシスタンスでパイプラインを動かし続けます。",
     "keywords": [
       "セールス向けAIアシスタント",
       "セールス自動化AI",
@@ -754,7 +754,7 @@
     ],
     "intro": "SalesforceのState of Salesレポートによると、セールスプロフェッショナルが実際に販売に費やす時間は全体の28%に過ぎません。残りの時間は、CRMデータ入力、メールでのフォローアップ、会議の準備、および管理タスクに費やされます。多忙な作業に費やされるすべての時間は、関係を構築し、取引を成立させるために費やされない時間です。GAIAは、セールスの運用面を自動化し、見込み客や顧客との有意義な会話など、収益を生み出すものに集中できるようにします。",
     "painPoints": [
-      "CRMデータ入力とパイプラインの更新は、販売に費やすべき時間を消費します。",
+      "データ入力とパイプラインの更新は、販売に費やすべき時間を消費します。",
       "フォローアップのタイミングは重要ですが、50件以上のアクティブな機会を管理していると見逃しがちです。",
       "会議の準備には、LinkedInや会社のウェブサイトで手動で見込み客を調査する必要があります。",
       "一日の終わりと週末のレポート作成には、パイプラインの構築から時間がかかります。"
@@ -774,13 +774,13 @@
       },
       {
         "title": "アクティビティレポート",
-        "description": "GAIAは、メール、カレンダー、およびCRMからの毎日のアクティビティメトリクスと週次のアクティビティメトリクスを自動的に収集し、マネージャー向けのフォーマットされたレポートにまとめ、手動でのレポート作成のオーバーヘッドを排除します。"
+        "description": "GAIAは、メール、カレンダー、および営業ツールからの毎日のアクティビティメトリクスと週次のアクティビティメトリクスを自動的に収集し、マネージャー向けのフォーマットされたレポートにまとめ、手動でのレポート作成のオーバーヘッドを排除します。"
       }
     ],
     "faqs": [
       {
         "question": "GAIAは私のCRMと統合されますか？",
-        "answer": "GAIAは、インタラクションの記録、取引段階の更新、およびパイプラインメトリクスの追跡など、CRM管理のためにHubSpotと統合されます。また、セールスアクティビティを自動的にキャプチャするために、GmailとGoogleカレンダーにも接続します。"
+        "answer": "GAIAは、インタラクションの記録、取引段階の更新、およびパイプラインメトリクスの追跡など、顧客管理のためにHubSpotと統合されます。また、セールスアクティビティを自動的にキャプチャするために、GmailとGoogleカレンダーにも接続します。"
       },
       {
         "question": "GAIAは、フォローアップ管理をどのように支援しますか？",
@@ -1059,704 +1059,700 @@
   "solopreneurs": {
     "title": "ソロープレナー向けAIアシスタント",
     "role": "ソロープレナー",
-    "metaTitle": "ソロプレナー向けAIアシスタント: メール、顧客、フォロー",
-    "metaDescription": "一人でもチームのように回せます。GAIAが受信箱を管理し、顧客との予定を組み、フォローアップを知らせ、定型作業を自動化します。仕組みを見てみましょう。",
+    "metaTitle": "ソロープレナー向けAIアシスタント - ビジネスを自動操縦で",
+    "metaDescription": "GAIAはソロープレナーのメール管理、顧客ワークフローの自動化、スケジュール調整を支援して、1人チームの業務運営をAIの効率で回し続けます。",
     "keywords": [
       "ソロープレナー向けAIアシスタント",
       "ソロープレナー自動化",
       "1人ビジネスAI",
-      "単独ビジネスの生産性",
+      "ソロビジネス生産性",
       "ソロープレナーワークフローツール",
-      "1人ビジネス向けのAI",
-      "ソロープレナーメール管理AI",
-      "ソロープレナー向けの仮想アシスタントの代替",
-      "ソロープレナーカレンダー自動化",
+      "1人ビジネス向けAI",
+      "ソロープレナーのメール管理AI",
+      "ソロープレナー向けバーチャルアシスタント代替",
+      "ソロープレナーのカレンダー自動化",
       "オンラインビジネス自動化AI",
       "ソロープレナーに最適なAI",
-      "ソロープレナータスク管理ツール",
-      "デジタル製品クリエイター向けのAI",
+      "ソロープレナーのタスク管理ツール",
+      "デジタルプロダクト制作者向けAI",
       "サービスビジネス自動化AI",
-      "ソロープレナークライアント管理AI"
+      "ソロープレナーの顧客管理AI"
     ],
-    "intro": "ソロープレナーは、小規模チームに匹敵する収益を生み出しますが、単独で行います。Hiscoxの調査によると、平均的なソロープレナーは週に52時間働き、その時間のほぼ半分が収益を生み出す作業ではなく、ビジネスオペレーションに費やされています。GAIAは、AIチームとして機能し、メール管理、クライアントのスケジュール設定、タスクの調整、および管理上のオーバーヘッドを処理するため、ソロオペレーションは、完全にスタッフが配置されたビジネスの効率で実行されます。",
+    "intro": "ソロープレナーは小規模チームに匹敵する収益を上げますが、それを1人で成し遂げます。Hiscoxの調査では、ソロープレナーの平均労働時間は週52時間で、そのほぼ半分を収益を生む業務ではなく業務運営に費やしています。GAIAはAIチームとして機能し、メール管理、顧客スケジュール、タスク調整、管理オーバーヘッドを担うので、1人運営がフルスタッフのビジネス並みの効率で回ります。",
     "painPoints": [
-      "請求書の発行からカスタマーサポート、マーケティングまで、すべての運用タスクはあなたに降りかかります。",
-      "クライアントコミュニケーション、ベンダーメール、および管理が積み重なると、メールの受信トレイがボトルネックになります。",
-      "専用のオペレーション担当者がいない場合、スケジュールの競合と二重予約が発生します。",
-      "オペレーションから戦略と販売のために十分な時間を確保できない場合、ビジネスの成長は停滞します。"
+      "請求書発行からカスタマーサポート、マーケティングまで、すべての運用タスクが自分に落ちてくる",
+      "顧客連絡、ベンダーメール、事務作業が溜まると、メール受信箱がボトルネックになる",
+      "運用担当者がいないと、スケジュールの衝突やダブルブッキングが起きる",
+      "運営から戦略や営業の時間を捻出できないと、事業成長が停滞する"
     ],
     "howGaiaHelps": [
       {
-        "title": "包括的なメール管理",
-        "description": "GAIA reads, categorizes, and prioritizes every email. It drafts responses for routine messages, flags urgent items, and ensures your inbox never becomes a bottleneck for your business."
+        "description": "GAIAはすべてのメールを読み、分類、優先順位付けします。定型メッセージには返信を下書きし、緊急案件を通知、受信箱がビジネスのボトルネックになるのを防ぎます。",
+        "title": "包括的メール管理"
       },
       {
-        "title": "Client Scheduling & Follow-ups",
-        "description": "GAIA manages your Google Calendar, handles client scheduling requests, sends appointment reminders, and drafts follow-up emails after meetings to maintain professional client relationships."
+        "description": "GAIAはGoogleカレンダーを管理し、顧客のスケジュール依頼に対応、予約リマインドを送り、会議後にフォローアップメールを下書きしてプロフェッショナルな顧客関係を維持します。",
+        "title": "顧客スケジュール＆フォローアップ"
       },
       {
-        "title": "Task & Workflow Automation",
-        "description": "GAIA creates recurring tasks in Todoist, automates multi-step business workflows, and proactively manages your to-do list so nothing slips through the cracks of your one-person operation."
+        "description": "GAIAはTodoistに繰り返しタスクを作成し、複数ステップのビジネスワークフローを自動化、ToDoリストを先回りで管理するので、1人運営の隙間に何も落ちません。",
+        "title": "タスク＆ワークフロー自動化"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA really replace a virtual assistant?",
-        "answer": "For many operational tasks, yes. GAIA handles email triage, scheduling, task management, and follow-ups 24/7 without breaks. It learns your preferences through graph-based memory and improves over time. For tasks requiring human judgment or creativity, GAIA drafts and you approve."
+        "answer": "多くの運用タスクでは、はい。GAIAはメール仕分け、スケジュール、タスク管理、フォローアップを24時間365日休みなく担います。グラフベースのメモリであなたの好みを学習し、時間とともに改善します。人間の判断や創造性が必要なタスクは、GAIAが下書きしてあなたが承認します。",
+        "question": "GAIAは本当にバーチャルアシスタントの代わりになりますか？"
       },
       {
-        "question": "How quickly can a solopreneur set up GAIA?",
-        "answer": "GAIA can be set up in minutes. Connect your Gmail, Google Calendar, and task management tools, and GAIA begins learning your patterns immediately. Most solopreneurs see productivity gains within the first week."
+        "answer": "GAIAは数分で導入できます。Gmail、Googleカレンダー、タスク管理ツールを接続すれば、GAIAはすぐにあなたのパターンを学習し始めます。多くのソロープレナーが最初の1週間で生産性向上を実感します。",
+        "question": "ソロープレナーはGAIAをどれくらい早く導入できますか？"
       }
     ]
   },
   "operations-managers": {
-    "title": "AI Assistant for Operations Managers",
-    "role": "Operations Managers",
-    "metaTitle": "運用マネージャー向けAIアシスタント: 取引先対応とレポート",
-    "metaDescription": "トラブルになる前にプロセスの問題を把握。GAIAが業務フローを見守り、取引先とのメールを整理し、定例の運用レポートも下書きします。仕組みを見てみましょう。",
+    "title": "オペレーションマネージャー向けAIアシスタント",
+    "role": "オペレーションマネージャー",
+    "metaTitle": "オペレーションマネージャー向けAIアシスタント - 業務フローを効率化",
+    "metaDescription": "GAIAはオペレーションマネージャーのプロセス監視の自動化、ベンダー連絡の効率化、KPIの追跡を支援し、チームをまたぐ手作業の運用負荷を削減します。",
     "keywords": [
-      "AI assistant for operations managers",
-      "operations automation AI",
-      "process management tool",
-      "operational efficiency AI",
-      "ops workflow automation",
-      "business operations AI tool",
-      "operations manager productivity tool",
-      "AI for operations teams",
-      "operational reporting automation",
-      "KPI tracking AI tool",
-      "vendor management automation AI",
-      "best AI for operations managers",
-      "cross-department coordination AI",
-      "process monitoring AI assistant",
-      "operations workflow AI"
+      "オペレーションマネージャー向けAIアシスタント",
+      "業務自動化AI",
+      "プロセス管理ツール",
+      "業務効率化AI",
+      "運用ワークフロー自動化",
+      "ビジネスオペレーションAIツール",
+      "オペレーションマネージャー生産性向上ツール",
+      "運用チーム向けAI",
+      "業務レポート自動化",
+      "KPI追跡AIツール",
+      "ベンダー管理自動化AI",
+      "オペレーションマネージャーに最適なAI",
+      "部門横断連携AI",
+      "プロセス監視AIアシスタント",
+      "オペレーションワークフローAI"
     ],
-    "intro": "Operations managers ensure the machinery of business runs smoothly, but the role is inherently reactive. McKinsey research on operational excellence shows that companies with automated operations workflows achieve 25% higher efficiency than those relying on manual processes. GAIA brings AI-powered automation to your operational workflows, proactively monitoring processes, managing vendor communications, and surfacing the data you need to keep operations running at peak efficiency.",
+    "intro": "オペレーションマネージャーはビジネスの仕組みを円滑に回す要ですが、その役割は本質的に受け身になりがちです。オペレーショナルエクセレンスに関するMcKinseyの調査では、手作業のプロセスに頼る企業と比べて、業務フローを自動化した企業は25％高い効率を達成しています。GAIAは業務フローにAIによる自動化をもたらし、プロセスを積極的に監視し、ベンダーとのやり取りを管理し、業務を最高の効率で回し続けるために必要なデータを提示します。",
     "painPoints": [
-      "Process monitoring across systems requires manual checks and spreadsheet-based tracking",
-      "Vendor communication management across dozens of email threads is time-consuming",
-      "KPI tracking and operational reporting demand weekly data compilation from multiple sources",
-      "Cross-departmental coordination on operational initiatives relies heavily on email and meetings"
+      "システムをまたぐプロセス監視には、手動チェックやスプレッドシートでの管理が必要になる",
+      "数十件ものメールスレッドに分散するベンダー連絡の管理は時間がかかる",
+      "KPIの追跡や業務レポートには、複数ソースからの週次データ集計が欠かせない",
+      "業務施策の部門横断調整は、メールや会議に大きく依存している"
     ],
     "howGaiaHelps": [
       {
-        "title": "Automated Process Monitoring",
-        "description": "GAIA monitors your connected tools for process anomalies, tracks operational metrics via Google Sheets and Airtable, and sends proactive alerts when KPIs deviate from targets."
+        "description": "GAIAは連携ツールでプロセスの異常を監視し、Google SheetsやAirtableで業務指標を追跡、KPIが目標から外れたら積極的にアラートを送信します。",
+        "title": "プロセス監視の自動化"
       },
       {
-        "title": "Vendor Communication Management",
-        "description": "GAIA organizes vendor emails by relationship and priority, drafts routine responses, tracks order statuses, and ensures timely follow-ups on outstanding requests."
+        "description": "GAIAはベンダーのメールを関係性や優先度ごとに整理し、定型的な返信を下書き、注文ステータスを追跡、未対応の依頼を確実にフォローアップします。",
+        "title": "ベンダー連絡の管理"
       },
       {
-        "title": "Operational Reporting Automation",
-        "description": "GAIA compiles operational data from your connected tools into formatted reports, distributes them to stakeholders via Slack or email, and maintains historical tracking in Google Sheets."
+        "description": "GAIAは連携ツールから業務データを集約してフォーマット済みレポートを作成し、Slackやメールで関係者に配信、Google Sheetsで履歴管理も維持します。",
+        "title": "業務レポートの自動化"
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA integrate with existing operational systems?",
-        "answer": "GAIA connects to your operational tools through MCP integrations, including Google Sheets, Airtable, Slack, and email. It acts as an intelligent automation layer on top of your existing systems without requiring you to replace anything."
+        "answer": "GAIAはMCP連携を通じて、Google Sheets、Airtable、Slack、メールなどの業務ツールと接続します。既存システムを置き換えることなく、その上に乗るインテリジェントな自動化レイヤーとして機能します。",
+        "question": "GAIAは既存の業務システムとどう連携しますか？"
       },
       {
-        "question": "Can GAIA help with vendor management?",
-        "answer": "Yes. GAIA organizes vendor communications, tracks response timelines, drafts follow-up messages, and maintains vendor interaction history. It ensures consistent vendor management without the manual overhead of tracking dozens of email threads."
+        "answer": "はい。GAIAはベンダーとのやり取りを整理し、返信までの時間を追跡し、フォローアップメッセージを下書きし、ベンダー対応の履歴を管理します。数十件のメールスレッドを手作業で追う負担なく、一貫したベンダー管理を実現します。",
+        "question": "GAIAはベンダー管理にも役立ちますか？"
       }
     ]
   },
   "team-leads": {
-    "title": "AI Assistant for Team Leads",
-    "role": "Team Leads",
-    "metaTitle": "チームリーダー向けAIアシスタント: 朝会と進捗報告を自動化",
-    "metaDescription": "会議を増やさずにチームの状況を把握。GAIAが非同期のスタンドアップを集め、LinearとGitHubの進捗を見える化し、上への報告も下書きします。仕組みを見てみましょう。",
+    "title": "チームリード向けAIアシスタント",
+    "role": "チームリード",
+    "metaTitle": "チームリード向けAIアシスタント - AIでチームを強化",
+    "metaDescription": "GAIAはチームリードのチームコミュニケーション一元管理、スタンドアップ収集の自動化、成果物の追跡を支援して、分散チームの連携を保ち続けます。",
     "keywords": [
-      "AI assistant for team leads",
-      "team leadership automation",
-      "standup automation AI",
-      "team management tool",
-      "team coordination AI",
-      "AI for tech leads",
-      "team lead productivity tool",
-      "automated standup collection tool",
-      "team progress tracking AI",
-      "Slack standup bot alternative",
-      "best AI for team leads",
-      "team blocker tracking AI",
-      "upward reporting automation",
-      "team lead workflow tool",
-      "AI for engineering leads"
+      "チームリード向けAIアシスタント",
+      "チームリーダーシップ自動化",
+      "スタンドアップ自動化AI",
+      "チーム管理ツール",
+      "チーム連携AI",
+      "テックリード向けAI",
+      "チームリード生産性向上ツール",
+      "スタンドアップ自動収集ツール",
+      "チーム進捗追跡AI",
+      "Slackスタンドアップボットの代替",
+      "チームリードに最適なAI",
+      "チームブロッカー追跡AI",
+      "上層部向け報告自動化",
+      "チームリードのワークフローツール",
+      "エンジニアリングリード向けAI"
     ],
-    "intro": "Team leads occupy the critical middle layer between individual contributors and management. Atlassian's research on team effectiveness shows that team leads spend an average of 62% of their time on coordination and communication rather than their own deliverables. Collecting standups, tracking team progress, managing blockers, and communicating upward creates a coordination tax that grows with team size. GAIA automates the coordination layer so you can focus on coaching, mentoring, and removing obstacles for your team.",
+    "intro": "チームリードは、個々のメンバーとマネジメントの間に立つ重要な中間層です。チームの有効性に関するAtlassianの調査によると、チームリードは自分の成果物ではなく、調整やコミュニケーションに平均62％もの時間を使っています。スタンドアップの収集、チームの進捗追跡、ブロッカーの管理、上層部への報告は、チーム規模とともに増大する調整コストとなります。GAIAはこの調整レイヤーを自動化し、コーチングやメンタリング、チームの障害除去に集中できるようにします。",
     "painPoints": [
-      "Daily standup collection and compilation across team members is repetitive and time-consuming",
-      "Tracking individual team member progress across Linear, GitHub, and Slack requires constant context-switching",
-      "Communicating team status upward to management demands regular report formatting",
-      "Balancing individual contributor work with team coordination leaves insufficient time for both"
+      "メンバー横断の日次スタンドアップ収集・まとめは繰り返し作業で時間がかかる",
+      "Linear、GitHub、Slackをまたぐ個々のメンバーの進捗追跡には、絶え間ないコンテキスト切替が必要になる",
+      "チームの状況を上層部に伝えるには、定期的なレポート作成が欠かせない",
+      "個人の実務とチーム調整の両立では、どちらにも十分な時間が取れない"
     ],
     "howGaiaHelps": [
       {
-        "title": "Automated Standup Collection",
-        "description": "GAIA gathers daily updates from team members via Slack, compiles them into formatted standup summaries, and identifies blockers that need your attention. No more chasing people for updates."
+        "description": "GAIAはSlackからメンバーの日次アップデートを集め、フォーマット済みスタンドアップサマリーにまとめ、対応が必要なブロッカーを特定します。アップデートを催促する必要はもうありません。",
+        "title": "スタンドアップの自動収集"
       },
       {
-        "title": "Team Progress Visibility",
-        "description": "GAIA monitors Linear and GitHub for your team's activity, provides real-time progress snapshots, and flags items at risk of missing deadlines before they become problems."
+        "description": "GAIAはLinearやGitHubでチームのアクティビティを監視し、リアルタイムの進捗スナップショットを提供、締め切りに間に合わない恐れのある項目を問題化する前に通知します。",
+        "title": "チーム進捗の可視化"
       },
       {
-        "title": "Upward Reporting",
-        "description": "GAIA compiles weekly team performance reports from your project tools, formats them for management consumption, and delivers them via email or Slack on your preferred schedule."
+        "description": "GAIAはプロジェクトツールから週次のチームパフォーマンスレポートを作成し、マネジメント向けにフォーマット、希望のスケジュールでメールやSlackに配信します。",
+        "title": "上層部向け報告"
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA collect standups from my team?",
-        "answer": "GAIA monitors your team's Slack activity and project tool updates (Linear, GitHub) to compile daily progress summaries. It can also prompt team members directly in Slack for updates and compile the responses into a formatted standup report."
+        "answer": "GAIAはチームのSlackアクティビティやプロジェクトツールの更新（Linear、GitHub）を監視し、日次進捗サマリーを作成します。Slackでメンバーに直接アップデートを促し、回答をフォーマット済みスタンドアップレポートにまとめることもできます。",
+        "question": "GAIAはチームのスタンドアップをどう収集しますか？"
       },
       {
-        "question": "Can GAIA help me identify team blockers early?",
-        "answer": "Yes. GAIA monitors project boards for stalled tickets, tracks PR review times on GitHub, and surfaces Slack conversations about blockers. It proactively alerts you to issues before they impact team velocity."
+        "answer": "はい。GAIAはプロジェクトボードで停滞したチケットを監視し、GitHubでPRレビュー時間を追跡し、ブロッカーに関するSlackの会話を検出します。チームの速度に影響が出る前に、積極的に問題をお知らせします。",
+        "question": "GAIAはチームのブロッカーを早期に見つけられますか？"
       }
     ]
   },
   "executives": {
-    "title": "AI Assistant for Executives",
-    "role": "Executives",
-    "metaTitle": "経営幹部向けAIアシスタント: メール整理と会議準備",
-    "metaDescription": "重要なメールを見逃さず、準備万端で会議へ。GAIAが受信箱を整理し、会議の要点をまとめ、フォローアップまで追跡します。仕組みを見てみましょう。",
+    "title": "エグゼクティブ向けAIアシスタント",
+    "role": "エグゼクティブ",
+    "metaTitle": "エグゼクティブ向けAIアシスタント - 戦略インテリジェンスを自動操縦で",
+    "metaDescription": "GAIAはエグゼクティブの情報過多を管理し、会議準備を自動化し、コミュニケーションを効率化して、業務の要求の中でも戦略的フォーカスを維持できるよう支援します。",
     "keywords": [
-      "AI assistant for executives",
-      "executive productivity AI",
-      "CEO assistant tool",
-      "executive communication automation",
-      "C-suite productivity",
-      "executive AI assistant",
-      "AI for C-suite leaders",
-      "CEO productivity tool",
-      "AI chief of staff",
-      "executive email triage AI",
-      "board meeting prep AI",
-      "best AI for executives",
-      "executive decision intelligence AI",
-      "AI for CEOs and founders",
-      "strategic briefing automation"
+      "エグゼクティブ向けAIアシスタント",
+      "エグゼクティブ生産性AI",
+      "CEOアシスタントツール",
+      "エグゼクティブのコミュニケーション自動化",
+      "C-suiteの生産性",
+      "エグゼクティブAIアシスタント",
+      "C-suiteリーダー向けAI",
+      "CEO生産性向上ツール",
+      "AIチーフオブスタッフ",
+      "エグゼクティブのメール仕分けAI",
+      "取締役会準備AI",
+      "エグゼクティブに最適なAI",
+      "エグゼクティブの意思決定インテリジェンスAI",
+      "CEO・創業者向けAI",
+      "戦略ブリーフィング自動化"
     ],
-    "intro": "Executives make decisions that shape entire organizations, yet a Harvard Business Review study found that CEOs have only 28% of their time for actual strategic work. The rest is consumed by email, meetings, travel, and operational firefighting. The quality of executive decisions depends directly on the quality and timeliness of information they receive. GAIA acts as your AI executive assistant, ensuring you have the right information at the right time while automating the operational overhead that fragments your attention.",
+    "intro": "エグゼクティブの意思決定は組織全体を形作りますが、Harvard Business Reviewの調査によると、CEOが実際の戦略業務に使える時間はわずか28％です。残りはメール、会議、出張、現場の火消しに消えていきます。エグゼクティブの意思決定の質は、受け取る情報の質とタイミングに直結します。GAIAはAIエグゼクティブアシスタントとして、適切な情報を適切なタイミングで届け、注意力を分断する業務のオーバーヘッドを自動化します。",
     "painPoints": [
-      "Email volume at the executive level exceeds 200+ messages daily, with critical items buried in noise",
-      "Meeting preparation across board meetings, investor calls, and team reviews requires extensive briefings",
-      "Information from direct reports, market intelligence, and internal systems arrives in fragmented streams",
-      "Strategic thinking time is constantly eroded by operational demands and urgent requests"
+      "エグゼクティブ層のメール量は1日200通以上にのぼり、重要な案件がノイズに埋もれる",
+      "取締役会、投資家通話、チームレビューに向けた会議準備には、大がかりなブリーフィングが必要になる",
+      "直属の部下、市場インテリジェンス、社内システムからの情報は、分断された流れで届く",
+      "戦略思考の時間は、業務の要求や緊急依頼に絶えず浸食される"
     ],
     "howGaiaHelps": [
       {
-        "title": "Executive Email Intelligence",
-        "description": "GAIA processes every email through an urgency and strategic importance filter. It drafts responses for routine correspondence, escalates critical items immediately, and provides a daily email digest organized by priority."
+        "description": "GAIAはすべてのメールを緊急度と戦略的重要性のフィルターに通します。定型的なやり取りには返信を下書きし、重要な案件は即座にエスカレーション、優先度順に整理した日次メールダイジェストを提供します。",
+        "title": "エグゼクティブメールのインテリジェンス"
       },
       {
-        "title": "Meeting Preparation & Follow-up",
-        "description": "Before every meeting, GAIA compiles comprehensive briefings with relevant data, recent communications, and context from your connected tools. After meetings, it captures action items and tracks their completion."
+        "description": "すべての会議の前に、GAIAは関連データ、最近のやり取り、連携ツールのコンテキストを含む包括的なブリーフィングを作成します。会議後はアクションアイテムを記録し、完了まで追跡します。",
+        "title": "会議準備とフォローアップ"
       },
       {
-        "title": "Strategic Information Synthesis",
-        "description": "GAIA monitors Slack, email, and connected tools for strategic signals, industry developments via Perplexity, and team performance indicators. It delivers morning intelligence briefs so you start every day informed."
+        "description": "GAIAはSlack、メール、連携ツールを監視し、Perplexityによる業界動向や戦略的シグナル、チームパフォーマンス指標を収集します。毎朝のインテリジェンスブリーフィングで、一日を万全の状態で始められます。",
+        "title": "戦略情報の統合"
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA handle confidential executive communications?",
-        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、セルフホストに対応しています。営利組織はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとで、エンタープライズ水準のセキュリティ管理を備えた専用インフラにGAIAをセルフホストでき、経営層の情報の機密性を完全に守れます。データが第三者と共有されたり、モデルの学習に使われたりすることはありません。"
+        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、企業はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでGAIAをセルフホストできます。エグゼクティブは専用インフラ上でGAIAを稼働させ、エンタープライズグレードのセキュリティ管理で完全な機密性を確保できます。第三者へのデータ共有やモデル学習目的の利用は一切ありません。",
+        "question": "GAIAはエグゼクティブの機密通信をどう扱いますか？"
       },
       {
-        "question": "Can GAIA integrate with an existing executive assistant's workflow?",
-        "answer": "Yes. GAIA complements human executive assistants by handling high-volume tasks like email triage, meeting prep compilation, and information synthesis. Your EA can focus on relationship management and high-touch coordination while GAIA handles data-intensive operational tasks."
+        "answer": "はい。GAIAはメール仕分け、会議準備資料の作成、情報統合といった大量業務を担い、人間のエグゼクティブアシスタントを補完します。EAは関係構築やきめ細かな調整に集中でき、GAIAはデータ集約型の業務タスクを処理します。",
+        "question": "GAIAは既存のエグゼクティブアシスタントの業務フローと連携できますか？"
       },
       {
-        "question": "How does GAIA prioritize information for executives?",
-        "answer": "GAIA uses AI to assess urgency, strategic relevance, and sender importance. It learns your priorities over time through graph-based memory, ensuring the information hierarchy it presents aligns with your actual decision-making needs."
-      },
-      {
-        "question": "経営者やCEOに最適なAIアシスタントはどれですか？",
-        "answer": "多くの経営者にとっては、チャットボットではなく受信トレイとカレンダーを回してくれるアシスタントです。GAIAは対応が必要なメールを抽出し、返信を下書きし、会議ごとに事前ブリーフィングを用意し、フォローアップを追跡し、定期的な作業をスケジュールどおりに実行します。CopilotやGeminiはMicrosoft 365やGoogle Workspaceの中で強みを発揮しますが、GAIAはOutlookとGmail、その他のツールと連携します。"
+        "answer": "GAIAはAIで緊急度、戦略的関連性、送信者の重要性を評価します。グラフベースのメモリであなたの優先順位を時間をかけて学習し、提示する情報の階層が実際の意思決定ニーズに合致するよう保ちます。",
+        "question": "GAIAはエグゼクティブ向けに情報をどう優先順位付けしますか？"
       }
     ]
   },
   "real-estate-agents": {
-    "title": "AI Assistant for Real Estate Agents",
-    "role": "Real Estate Agents",
-    "metaTitle": "不動産エージェント向けAIアシスタント: 問い合わせに即返信",
-    "metaDescription": "内見中でも新しい問い合わせに素早く対応。GAIAが返信を下書きし、顧客とのやり取りを追跡し、内見の予定をカレンダーに組みます。仕組みを見てみましょう。",
+    "title": "不動産エージェント向けAIアシスタント",
+    "role": "不動産エージェント",
+    "metaTitle": "不動産エージェント向けAIアシスタント - AIでもっと成約を",
+    "metaDescription": "GAIAは不動産エージェントのリード管理、フォローアップの自動化、内見のスケジュール調整を支援し、積極的なAIコミュニケーション管理でクライアントに常に最新情報を届けます。",
     "keywords": [
-      "AI assistant for real estate agents",
-      "real estate automation",
-      "real estate CRM AI",
-      "showing scheduler AI",
-      "real estate lead management",
-      "AI for real estate lead follow-up",
-      "HubSpot AI for realtors",
-      "Google Calendar showing scheduler",
-      "real estate agent productivity tool",
-      "best AI for real estate agents",
-      "AI for client communication in real estate",
-      "Gmail automation for realtors",
-      "real estate workflow automation",
-      "AI for property briefing preparation",
-      "real estate agent lead response AI"
+      "不動産エージェント向けAIアシスタント",
+      "不動産業務自動化",
+      "不動産CRM AI",
+      "内見スケジューラーAI",
+      "不動産リード管理",
+      "不動産リードフォローアップ向けAI",
+      "不動産業者向けHubSpot AI",
+      "Googleカレンダー内見スケジューラー",
+      "不動産エージェント生産性向上ツール",
+      "不動産エージェントに最適なAI",
+      "不動産のクライアント対応向けAI",
+      "不動産業者向けGmail自動化",
+      "不動産ワークフロー自動化",
+      "物件ブリーフィング準備向けAI",
+      "不動産エージェントのリード対応AI"
     ],
-    "intro": "Real estate is a relationship-driven business where response time directly impacts conversion rates. NAR research shows that agents who respond to leads within 5 minutes are 21x more likely to convert them compared to 30-minute response times. Yet most agents manage 20+ active clients while prospecting for new business, making instant response nearly impossible without automation. GAIA ensures every lead gets a prompt response and every client stays informed throughout their transaction.",
+    "intro": "不動産は人間関係で動くビジネスであり、対応スピードが成約率に直結します。NARの調査では、リードに5分以内に対応するエージェントは、30分対応と比べて成約率が21倍高いことが分かっています。一方で多くのエージェントは、新規開拓を続けながら20件以上のアクティブなクライアントを抱えており、自動化なしに即時対応するのはほぼ不可能です。GAIAはすべてのリードに確実に迅速対応し、取引期間を通じてクライアントに最新情報を届け続けます。",
     "painPoints": [
-      "Lead response time suffers when juggling showings, closings, and client calls simultaneously",
-      "Client communication across email, text, and phone creates scattered conversation histories",
-      "Showing scheduling and coordination with listing agents consumes hours of back-and-forth",
-      "Market updates and neighborhood information need to be shared proactively with active buyers"
+      "内見、決済、クライアント通話を同時にこなしていると、リード対応のスピードが落ちる",
+      "メール、テキスト、電話に分散するクライアント連絡で、会話履歴がバラバラになる",
+      "内見のスケジュール調整や物件担当エージェントとの連携には、何度もの往復で何時間もかかる",
+      "市場動向や地域情報を、購入検討中のクライアントに積極的に共有する必要がある"
     ],
     "howGaiaHelps": [
       {
-        "title": "Instant Lead Response",
-        "description": "GAIA monitors Gmail for new lead inquiries and drafts personalized initial responses within minutes. It categorizes leads by intent and urgency, ensuring hot leads receive immediate attention."
+        "description": "GAIAはGmailで新規リードの問い合わせを監視し、数分以内にパーソナライズされた初回返信を下書きします。リードを意図や緊急度ごとに分類し、ホットリードには確実に即時対応します。",
+        "title": "即時リード対応"
       },
       {
-        "title": "Client Communication Tracking",
-        "description": "GAIA organizes all client communications from Gmail and Slack into per-client timelines, tracks last contact dates, and prompts you to reach out when clients have gone quiet."
+        "description": "GAIAはGmailやSlackのクライアント連絡をすべてクライアントごとのタイムラインに整理し、最終連絡日を追跡、音沙汰がなくなったクライアントには連絡を促します。",
+        "title": "クライアント連絡の追跡"
       },
       {
-        "title": "Showing & Meeting Coordination",
-        "description": "GAIA manages your Google Calendar for showings, coordinates scheduling with listing agents via email, sends confirmation and reminder messages, and prepares property briefings using Google Maps and Yelp neighborhood data."
+        "description": "GAIAはGoogleカレンダーで内見を管理し、メールで物件担当エージェントと日程調整し、確認・リマインドメッセージを送信、Google MapsやYelpの地域データで物件ブリーフィングを作成します。",
+        "title": "内見・会議の調整"
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA help real estate agents respond to leads faster?",
-        "answer": "GAIA monitors your email inbox 24/7 for new lead inquiries and drafts personalized responses immediately. While you are at a showing, GAIA ensures every new lead receives a professional, timely response that keeps them engaged until you can follow up personally."
+        "answer": "GAIAはメール受信箱を24時間365日監視し、新規リードの問い合わせに即座にパーソナライズされた返信を下書きします。あなたが内見中でも、すべての新規リードにプロフェッショナルでタイムリーな返信が届き、あなたが直接フォローアップできるまで関心をつなぎ止めます。",
+        "question": "GAIAは不動産エージェントのリード対応をどう速くしますか？"
       },
       {
-        "question": "Can GAIA help with property research?",
-        "answer": "Yes. GAIA integrates with Google Maps and Yelp to compile neighborhood information, nearby amenities, and area insights. It can prepare property briefings and area comparisons to share with buyers."
+        "answer": "はい。GAIAはGoogle MapsやYelpと連携し、地域情報、周辺施設、エリアの洞察をまとめます。購入者に共有する物件ブリーフィングやエリア比較を作成できます。",
+        "question": "GAIAは物件調査にも役立ちますか？"
       },
       {
-        "question": "Does GAIA integrate with real estate CRMs?",
-        "answer": "GAIA integrates with HubSpot for CRM management and can track client relationships through Gmail. Custom MCP integrations can connect GAIA to specialized real estate platforms."
+        "answer": "GAIAはCRM管理のためにHubSpotと連携し、Gmailを通じてクライアント関係を追跡できます。MCPのカスタム連携で専門の不動産プラットフォームにも接続できます。",
+        "question": "GAIAは不動産CRMと連携しますか？"
       }
     ]
   },
   "lawyers": {
-    "title": "AI Assistant for Lawyers",
-    "role": "Lawyers",
-    "metaTitle": "弁護士向けAIアシスタント: 依頼者対応、期限、書類を管理",
-    "metaDescription": "事務の時間を減らし、請求できる時間を増やす。GAIAが依頼者からのメールを整理し、期限をカレンダーで管理し、書類の下書きも整えます。仕組みを見てみましょう。",
+    "title": "弁護士向けAIアシスタント",
+    "role": "弁護士",
+    "metaTitle": "弁護士向けAIアシスタント - AIで請求可能時間を最大化",
+    "metaDescription": "GAIAは弁護士のクライアント連絡の一元管理、締め切りの追跡、文書作成ワークフローの自動化まで支援して、法務実務の管理負担を大幅に軽減します。",
     "keywords": [
-      "AI assistant for lawyers",
-      "legal productivity AI",
-      "law practice automation",
-      "legal deadline tracking",
-      "lawyer workflow tool"
+      "弁護士向けAIアシスタント",
+      "法務生産性AI",
+      "法律事務所業務自動化",
+      "法務締め切り管理",
+      "弁護士ワークフローツール"
     ],
-    "intro": "Lawyers face the dual pressure of maximizing billable hours while managing extensive administrative requirements. The Clio Legal Trends Report consistently shows that lawyers bill only 2.5 hours of an 8-hour workday on average, with the remainder consumed by email, document management, scheduling, and administrative tasks. GAIA automates the non-billable operational work of legal practice so you can spend more time on the substantive legal work that clients value and you can bill.",
+    "intro": "弁護士は、請求可能時間を最大化しながら膨大な管理業務をこなす二重のプレッシャーに直面しています。Clio Legal Trends Reportが一貫して示すとおり、弁護士が請求できるのは8時間の勤務日のうち平均わずか2.5時間で、残りはメール、文書管理、スケジュール調整、管理業務に消えています。GAIAは法務実務の非請求・運用業務を自動化し、クライアントが価値を認め請求もできる実体的な法務業務により多くの時間を使えるようにします。",
     "painPoints": [
-      "Client communication management across email chains for multiple cases is overwhelming",
-      "Court deadlines, filing dates, and statute of limitations tracking requires meticulous attention",
-      "Document organization and version control across cases creates administrative overhead",
-      "Billing and time tracking interruptions fragment focus on substantive legal work"
+      "複数案件のメールチェーンにまたがるクライアント連絡の管理は膨大になる",
+      "出廷期限、提出日、消滅時効の追跡には細心の注意が必要になる",
+      "案件をまたぐ文書整理やバージョン管理が管理業務を生む",
+      "請求やタイムトラッキングの中断が、実体的な法務業務への集中を分断する"
     ],
     "howGaiaHelps": [
       {
-        "title": "Client Communication Management",
-        "description": "GAIA organizes client emails by case matter, drafts responses for routine inquiries, tracks response deadlines, and ensures no client communication falls through the cracks of a busy practice."
+        "description": "GAIAはクライアントメールを案件ごとに整理し、定型的な問い合わせには返信を下書き、返信期限を追跡、多忙な実務の隙間にクライアント連絡が落ちるのを防ぎます。",
+        "title": "クライアント連絡の管理"
       },
       {
-        "title": "Deadline & Calendar Management",
-        "description": "GAIA tracks critical deadlines in Todoist and Google Calendar, sends proactive reminders with sufficient lead time, and ensures filing dates and court appearances are never missed."
+        "description": "GAIAはTodoistやGoogleカレンダーで重要な締め切りを追跡し、十分な余裕をもって積極的にリマインド、提出日や出廷日を見逃しません。",
+        "title": "締め切り＆カレンダー管理"
       },
       {
-        "title": "Document Workflow Automation",
-        "description": "GAIA organizes case documents in Google Docs and Notion, tracks document versions, and manages review workflows. It ensures the right documents are prepared and accessible when you need them."
+        "description": "GAIAは案件文書をGoogle DocsやNotionに整理し、文書バージョンを追跡、レビューワークフローを管理します。必要なときに適切な文書が準備され、すぐ使える状態を保ちます。",
+        "title": "文書ワークフローの自動化"
       },
       {
-        "title": "Research Assistance",
-        "description": "GAIA leverages Perplexity for legal research queries, organizes findings by case matter in Notion, and helps you build research memos more efficiently."
+        "description": "GAIAはPerplexityを活用して法務リサーチのクエリに対応し、調査結果をNotionで案件ごとに整理、リサーチメモの作成を効率化します。",
+        "title": "リサーチ支援"
       }
     ],
     "faqs": [
       {
-        "question": "Is GAIA secure enough for attorney-client communications?",
-        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、セルフホストに対応しています。法律事務所はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとで自所のインフラにGAIAをセルフホストでき、完全なデータ主権を保ちながら弁護士・依頼者間の秘匿特権を守れます。データが第三者と共有されたり、学習に使われたりすることは一切ありません。"
+        "answer": "GAIAはsource-available（PolyForm Noncommercial）です。法律事務所はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでGAIAを自社インフラにセルフホストでき、完全なデータ主権で弁護士・依頼者間の秘匿特権の保護に役立てられます。第三者へのデータ共有や学習目的の利用は一切ありません。",
+        "question": "GAIAは弁護士・依頼者間の通信にも十分安全ですか？"
       },
       {
-        "question": "How does GAIA help lawyers track deadlines?",
-        "answer": "GAIA monitors your email for deadline-related communications, creates tasks with due dates in Todoist or Google Tasks, and sends proactive reminders with configurable lead times. It ensures critical legal deadlines like filing dates and statute of limitations are tracked reliably."
+        "answer": "GAIAはメールで締め切り関連の連絡を監視し、TodoistやGoogle Tasksに期限付きタスクを作成、設定可能なリードタイムで積極的にリマインドします。提出日や消滅時効といった重要な法務締め切りを確実に追跡します。",
+        "question": "GAIAは弁護士の締め切り管理をどう支援しますか？"
       },
       {
-        "question": "Can GAIA help with legal research?",
-        "answer": "GAIA integrates with Perplexity for AI-powered research and organizes findings in Notion. While it does not replace specialized legal research platforms, it accelerates the research process and helps organize findings by case matter for easy reference."
+        "answer": "GAIAはPerplexityと連携したAIリサーチに対応し、調査結果をNotionに整理します。専門のリーガルリサーチプラットフォームの代わりにはなりませんが、リサーチ作業を加速し、調査結果を案件ごとに整理して参照しやすくします。",
+        "question": "GAIAはリーガルリサーチにも役立ちますか？"
       }
     ]
   },
   "data-analysts": {
-    "title": "AI Assistant for Data Analysts",
-    "role": "Data Analysts",
-    "metaTitle": "データアナリスト向けAIアシスタント: 定例レポートとアラート",
-    "metaDescription": "毎週同じレポートを作り直す必要はありません。GAIAがGoogle Sheetsの定例レポートを自動化し、指標が閾値を超えたら知らせ、依頼も整理します。仕組みを見てみましょう。",
+    "title": "データアナリスト向けAIアシスタント",
+    "role": "データアナリスト",
+    "metaTitle": "データアナリスト向けAIアシスタント - レポートとBI業務を自動化",
+    "metaDescription": "GAIAはデータアナリストの定例レポート自動化、データ閾値アラートの設定、分析ブリーフィングのスケジュール管理を支援し、Excel・Tableau・SQLツール間の手作業データ取得をなくします。",
     "keywords": [
-      "AI assistant for data analysts",
-      "data analyst productivity tool",
-      "automate Excel reports AI",
-      "Google Sheets AI automation",
-      "BI reporting automation",
-      "data analyst workflow tool",
-      "AI for business intelligence",
-      "SQL workflow automation",
-      "data reporting AI assistant",
-      "analyst productivity AI",
-      "automate stakeholder reports",
-      "data team AI tool"
+      "データアナリスト向けAIアシスタント",
+      "データアナリストの生産性向上ツール",
+      "Excelレポート自動化AI",
+      "Google Sheets AI自動化",
+      "BIレポート自動化",
+      "データアナリストのワークフローツール",
+      "ビジネスインテリジェンス向けAI",
+      "SQLワークフロー自動化",
+      "データレポートAIアシスタント",
+      "アナリスト生産性AI",
+      "ステークホルダーレポート自動化",
+      "データチーム向けAIツール"
     ],
-    "intro": "Data analysts are the engine behind business intelligence, yet a 2024 TDWI report found that analysts spend up to 60% of their time on repetitive data pulls, report formatting, and responding to ad-hoc stakeholder requests rather than surfacing strategic insights. GAIA automates the operational side of analytical work, from scheduling recurring reports to alerting on data thresholds, so you can focus on the analysis that actually moves decisions forward.",
+    "intro": "データアナリストはビジネスインテリジェンスを支えるエンジンです。しかし2024年のTDWIレポートによると、アナリストは戦略的なインサイトの発掘ではなく、繰り返しのデータ取得、レポートのフォーマット調整、関係者からの突発的な依頼対応に最大で60％もの時間を費やしています。GAIAは定例レポートのスケジュール管理からデータ閾値のアラートまで、分析業務の運用面を自動化し、意思決定を前に進める分析そのものに集中できる環境を提供します。",
     "painPoints": [
-      "Repetitive report generation across Excel, Tableau, and Power BI consumes hours every week",
-      "Ad-hoc data requests from stakeholders constantly interrupt deep analytical work",
-      "Manual data pulls and copy-pasting between tools introduce errors and slow delivery",
-      "Updating dashboards and notifying stakeholders of metric changes requires manual monitoring",
-      "Scheduling time for deep analysis is difficult when reactive requests dominate the calendar"
+      "Excel・Tableau・Power BIにまたがる定例レポートの作成が、毎週何時間も時間を奪う",
+      "関係者からの突発的なデータ依頼が、集中すべき分析作業をたびたび中断させる",
+      "手作業のデータ取得やツール間のコピー＆ペーストがミスを招き、納品を遅らせる",
+      "ダッシュボードの更新や指標変化の関係者への通知には、手動の監視作業が必要になる",
+      "突発的な依頼に追われていると、深い分析のための時間を確保するのが難しくなる"
     ],
     "howGaiaHelps": [
       {
-        "title": "Recurring Report Automation",
-        "description": "GAIA schedules and triggers recurring report generation workflows, compiles outputs from Google Sheets or connected BI tools, and distributes formatted summaries to stakeholders via Gmail or Slack on your preferred cadence."
+        "description": "GAIAは定例レポート作成ワークフローをスケジュールして実行し、Google Sheetsや連携BIツールの出力をまとめて、希望の頻度でGmailやSlackから関係者向けにフォーマット済みサマリーを配信します。",
+        "title": "定例レポートの自動化"
       },
       {
-        "title": "Data Threshold Alerts",
-        "description": "GAIA monitors key metrics tracked in Google Sheets or connected dashboards and sends proactive email or Slack alerts when values exceed defined thresholds, ensuring stakeholders are informed without constant manual checks."
+        "description": "GAIAはGoogle Sheetsや連携ダッシュボードで追跡する主要指標を監視し、値が設定した閾値を超えたらメールやSlackで積極的にアラートを送信します。手動で常にチェックしなくても、関係者に確実に情報が届きます。",
+        "title": "データ閾値アラート"
       },
       {
-        "title": "Stakeholder Request Triage",
-        "description": "GAIA manages your email and Slack inbox for incoming data requests, prioritizes them by urgency and requester, and drafts acknowledgment responses so no request is lost and you can batch analytical work efficiently."
+        "description": "GAIAはデータ依頼の受信窓口としてメールとSlackを管理し、緊急度や依頼者ごとに優先順位を付け、受領確認の返信を下書きします。依頼の取りこぼしを防ぎ、分析作業をまとめて効率的に進められます。",
+        "title": "関係者リクエストのトリアージ"
       },
       {
-        "title": "Deep Work Calendar Protection",
-        "description": "GAIA analyzes your Google Calendar and blocks dedicated focus time for deep analytical work, protecting uninterrupted sessions from meeting creep and scheduling conflicts."
+        "description": "GAIAはGoogleカレンダーを解析し、深い分析作業のための集中時間を確保します。会議の増加やスケジュールの衝突から、中断のない作業時間を守ります。",
+        "title": "集中時間のカレンダー保護"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA connect directly to my SQL databases or BI tools?",
-        "answer": "GAIA focuses on the operational and communication layer around analytical work: report distribution, stakeholder triage, scheduling, and alerting via Google Sheets and email. Custom MCP integrations can extend GAIA to connect with BigQuery, Tableau, or other BI platforms in your stack."
+        "answer": "GAIAは分析業務の周辺にある運用・コミュニケーション層、すなわちレポート配信、関係者トリアージ、スケジュール管理、Google Sheetsやメール経由のアラートに特化しています。MCPのカスタム連携を拡張すれば、BigQueryやTableauなど利用中のBIプラットフォームとも接続できます。",
+        "question": "GAIAはSQLデータベースやBIツールに直接接続できますか？"
       },
       {
-        "question": "How does GAIA help reduce ad-hoc data request interruptions?",
-        "answer": "GAIA monitors your Gmail and Slack for incoming data requests, categorizes them by urgency, drafts acknowledgment responses, and creates organized task entries in Todoist. This allows you to batch ad-hoc work into dedicated blocks rather than responding reactively throughout the day."
+        "answer": "GAIAはGmailやSlackで届くデータ依頼を監視し、緊急度ごとに分類、受領確認の返信を下書きし、Todoistに整理されたタスクを作成します。その場で反応的に対応するのではなく、突発作業を専用の時間枠にまとめて処理できるようになります。",
+        "question": "GAIAは突発的なデータ依頼による中断をどう減らしますか？"
       },
       {
-        "question": "Is GAIA suitable for enterprise data teams?",
-        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、セルフホストに対応しています。厳格なデータガバナンス要件がある営利組織は、エンタープライズライセンス（GAIAチームにお問い合わせください）のもとでGAIAを自社インフラにセルフホストし、データへのアクセスと連携を完全に管理できます。"
+        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、厳格なデータガバナンスが求められる企業はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでGAIAをセルフホストできます。その場合、自社インフラ上でGAIAを稼働させ、データアクセスや連携を完全にコントロールできます。",
+        "question": "GAIAはエンタープライズのデータチームにも適していますか？"
       }
     ]
   },
   "hr-managers": {
-    "title": "AI Assistant for HR Managers",
-    "role": "HR Managers",
-    "metaTitle": "人事マネージャー向けAIアシスタント: 面接調整と入社手続き",
-    "metaDescription": "人事の受信箱を片付け、日程調整の往復をなくします。GAIAが面接を設定し、メールを整理し、入社手続きのタスクと評価面談の準備も管理します。仕組みを見てみましょう。",
+    "title": "人事マネージャー向けAIアシスタント",
+    "role": "人事マネージャー",
+    "metaTitle": "人事マネージャー向けAIアシスタント - 採用と人事業務を自動化",
+    "metaDescription": "GAIAは人事マネージャーの面接スケジュール自動化、人事受信箱の仕分け、オファーレターの作成、オンボーディングのタスク管理、人事評価サイクルの準備を支援します。",
     "keywords": [
-      "AI assistant for HR managers",
-      "HR automation AI",
-      "recruiting workflow AI",
-      "interview scheduling automation",
-      "HR productivity tool",
-      "onboarding automation AI",
-      "HR operations AI",
-      "human resources AI assistant",
-      "AI for HR teams",
-      "employee management AI",
-      "performance review automation",
-      "HR inbox triage AI"
+      "人事マネージャー向けAIアシスタント",
+      "人事自動化AI",
+      "採用ワークフローAI",
+      "面接スケジュール自動化",
+      "人事生産性向上ツール",
+      "オンボーディング自動化AI",
+      "人事オペレーションAI",
+      "人事向けAIアシスタント",
+      "人事チーム向けAI",
+      "従業員管理AI",
+      "人事評価自動化",
+      "人事受信箱仕分けAI"
     ],
-    "intro": "HR managers sit at the intersection of every employee lifecycle stage, from sourcing candidates to offboarding. SHRM research shows that HR professionals spend over 50% of their time on administrative tasks including scheduling, documentation, email correspondence, and compliance tracking. GAIA automates the high-volume operational work of HR management so you can focus on the human decisions that define culture and employee experience.",
+    "intro": "人事マネージャーは候補者の発掘から退職手続きまで、従業員ライフサイクルのあらゆる段階の交点に立ちます。SHRMの調査によると、人事担当者はスケジュール調整、文書作成、メール対応、コンプライアンス管理などの管理業務に50％以上の時間を使っています。GAIAは人事業務の大量・運用業務を自動化し、文化と従業員体験を形作る人間的な判断に集中できるようにします。",
     "painPoints": [
-      "Coordinating interview schedules across candidates, hiring managers, and panel members consumes hours per role",
-      "Onboarding coordination across IT, finance, and team leads requires constant follow-up",
-      "Tracking employee requests, leave applications, and policy questions across email lacks structure",
-      "Policy document management and distribution to employees is manual and version-prone",
-      "Performance review cycles involve collecting, organizing, and synthesizing input from multiple stakeholders",
-      "Benefits administration emails and open enrollment coordination create seasonal inbox overload"
+      "候補者、採用マネージャー、面接パネル間の面接日程調整は、1職種あたり何時間も消費する",
+      "IT、経理、チームリードをまたぐオンボーディング調整には、絶え間ないフォローアップが必要になる",
+      "メールに分散する従業員からの依頼、休暇申請、ポリシー質問の追跡は体系化されていない",
+      "ポリシー文書の管理や従業員への配布は手作業で、バージョン管理に問題が起きやすい",
+      "人事評価サイクルでは、複数の関係者からのインプット収集・整理・統合が必要になる",
+      "福利厚生関連メールや加入期間の調整が、季節的な受信箱の逼迫を招く"
     ],
     "howGaiaHelps": [
       {
-        "title": "Interview Scheduling Automation",
-        "description": "GAIA coordinates interview logistics across candidates, hiring managers, and panel members via Gmail and Google Calendar. It finds available slots, sends calendar invites with context, and handles reschedule requests automatically."
+        "description": "GAIAはGmailやGoogleカレンダーで候補者、採用マネージャー、面接パネル間の面接ロジスティクスを調整します。空き枠を見つけてコンテキスト付きのカレンダー招待を送り、日程変更依頼も自動で処理します。",
+        "title": "面接スケジュールの自動化"
       },
       {
-        "title": "HR Inbox Triage",
-        "description": "GAIA reads and categorizes your HR inbox by request type, including leave requests, policy questions, onboarding tasks, and benefits queries. It drafts responses for routine questions and flags items that require your direct attention."
+        "description": "GAIAは人事受信箱を読み、休暇申請、ポリシー質問、オンボーディングタスク、福利厚生の問い合わせなど依頼種別ごとに分類します。定型的な質問には返信を下書きし、あなたの直接対応が必要な案件を通知します。",
+        "title": "人事受信箱の仕分け"
       },
       {
-        "title": "Onboarding Task Management",
-        "description": "GAIA creates and tracks onboarding task lists in Notion or Todoist, coordinates with IT and finance via Slack, sends reminders to stakeholders, and ensures every new hire has a complete onboarding experience without manual orchestration."
+        "description": "GAIAはNotionやTodoistでオンボーディングのタスクリストを作成・追跡し、SlackでITや経理と連携、関係者にリマインドを送り、手作業の調整なしにすべての新入社員が完全なオンボーディングを受けられるようにします。",
+        "title": "オンボーディングのタスク管理"
       },
       {
-        "title": "Performance Review Preparation",
-        "description": "GAIA compiles performance review materials from Notion and email, schedules review meetings on Google Calendar, and drafts summary documents so managers walk into review cycles prepared with complete context."
+        "description": "GAIAはNotionやメールから人事評価資料をまとめ、Googleカレンダーで評価面談をスケジュールし、サマリー文書を下書きするので、マネージャーは完全なコンテキストで評価サイクルに臨めます。",
+        "title": "人事評価の準備"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA integrate with BambooHR, Greenhouse, or Workday?",
-        "answer": "GAIA focuses on communication and coordination workflows through Gmail, Google Calendar, Slack, and Notion. Custom MCP integrations can connect GAIA to specialized HR platforms like BambooHR, Greenhouse, or Workday to extend its automation capabilities."
+        "answer": "GAIAはGmail、Googleカレンダー、Slack、Notionを通じたコミュニケーション・連携ワークフローに特化しています。MCPのカスタム連携でBambooHR、Greenhouse、Workdayといった専門の人事プラットフォームに接続し、自動化機能を拡張できます。",
+        "question": "GAIAはBambooHR、Greenhouse、Workdayと連携できますか？"
       },
       {
-        "question": "How does GAIA handle sensitive HR communications?",
-        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、セルフホストに対応しています。営利組織はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでGAIAを自社インフラにセルフホストでき、人事チームはデータを完全に管理して従業員情報を組織内にとどめられます。データが第三者と共有されることはありません。公的機関や非営利団体は、非商用ライセンスのもとで無料でセルフホストできます。"
+        "answer": "GAIAはsource-available（PolyForm Noncommercial）です。営利企業の人事チームはエンタープライズライセンス（GAIAチームにお問い合わせください）のもとで自社インフラにセルフホストでき（非営利・公共の雇用主は非商用ライセンスで無料セルフホスト）、完全なデータコントロールで従業員情報を組織内に保てます。第三者へのデータ共有は一切ありません。",
+        "question": "GAIAはセンシティブな人事連絡をどう扱いますか？"
       },
       {
-        "question": "Can GAIA help manage the performance review cycle?",
-        "answer": "Yes. GAIA tracks review deadlines in Todoist, schedules 1:1 review meetings on Google Calendar, compiles feedback from Notion or email, and drafts summary documents. It manages the logistics of the review cycle so you can focus on the conversations that matter."
+        "answer": "はい。GAIAはTodoistで評価締め切りを追跡し、Googleカレンダーで1on1評価面談をスケジュール、Notionやメールからフィードバックを集約し、サマリー文書を下書きします。評価サイクルの事務作業を担うので、大切な対話に集中できます。",
+        "question": "GAIAは人事評価サイクルの管理にも役立ちますか？"
       }
     ]
   },
   "recruiters": {
-    "title": "AI Assistant for Recruiters",
-    "role": "Recruiters",
-    "metaTitle": "リクルーター向けAIアシスタント: スカウトと面接調整",
-    "metaDescription": "候補者への個別メッセージをコピペなしで。GAIAが文面を下書きし、面接日程を調整し、候補者の要点とフォローアップも管理します。仕組みを見てみましょう。",
+    "title": "リクルーター向けAIアシスタント",
+    "role": "リクルーター",
+    "metaTitle": "リクルーター向けAIアシスタント - ソーシング・面接調整・アプローチを自動化",
+    "metaDescription": "GAIAはリクルーターの大量パーソナライズドアプローチの作成、タイムゾーンをまたぐ面接の自動調整、候補者プロフィールの要約、全求人のフォローアップ管理を支援します。",
     "keywords": [
-      "AI assistant for recruiters",
-      "recruiting automation AI",
-      "candidate sourcing AI",
-      "interview scheduling AI",
-      "recruiting productivity tool",
-      "AI for talent acquisition",
-      "recruiter workflow automation",
-      "ATS automation AI",
-      "hiring automation tool",
-      "recruiter email AI",
-      "candidate outreach automation",
-      "talent acquisition AI"
+      "リクルーター向けAIアシスタント",
+      "採用自動化AI",
+      "候補者ソーシングAI",
+      "面接スケジュールAI",
+      "採用生産性向上ツール",
+      "タレントアクイジション向けAI",
+      "リクルーターワークフロー自動化",
+      "ATS自動化AI",
+      "採用自動化ツール",
+      "リクルーターのメールAI",
+      "候補者アプローチ自動化",
+      "タレントアクイジションAI"
     ],
-    "intro": "Recruiters manage the full candidate lifecycle across multiple open roles simultaneously. LinkedIn's Global Talent Trends report found that recruiters spend over 30% of their time on manual, repetitive tasks including email outreach, interview coordination, and ATS data entry. For every hour spent on administration, that is an hour not spent building relationships with top candidates. GAIA automates the operational side of recruiting so you can focus on talent evaluation and candidate experience.",
+    "intro": "リクルーターは複数の求人を同時に抱え、候補者ライフサイクル全体を管理します。LinkedInのGlobal Talent Trendsレポートによると、リクルーターはメールアプローチ、面接調整、ATSデータ入力といった手作業の繰り返し業務に30％以上の時間を使っています。管理業務に1時間使えば、優秀な候補者との関係構築に使う1時間が失われます。GAIAは採用業務の運用面を自動化し、タレントの評価と候補者体験に集中できるようにします。",
     "painPoints": [
-      "Candidate outreach at scale requires personalizing messages across dozens of prospects per role",
-      "Scheduling interviews across time zones with multiple stakeholders creates back-and-forth coordination chains",
-      "ATS data entry and candidate tracking requires constant manual updates",
-      "Writing and refining job descriptions for new roles is repetitive and time-consuming",
-      "Following up with candidates at the right cadence prevents offer losses but is easy to miss",
-      "Coordinating with hiring managers on candidate feedback and next steps requires constant follow-through"
+      "大量の候補者アプローチには、1職種あたり数十名の見込み先ごとにメッセージをパーソナライズする必要がある",
+      "複数関係者とのタイムゾーンをまたぐ面接調整は、往復の調整チェーンを生む",
+      "ATSデータ入力や候補者追跡には、絶え間ない手動更新が必要になる",
+      "新規求人の職務記述書の作成や洗練は繰り返し作業で時間がかかる",
+      "適切な頻度での候補者フォローアップはオファー損失を防ぐが、見逃しやすい",
+      "採用マネージャーとの候補者フィードバックや次のステップの連携には、絶え間ないフォローが必要になる"
     ],
     "howGaiaHelps": [
       {
-        "title": "Personalized Outreach at Scale",
-        "description": "GAIA drafts personalized candidate outreach emails for each LinkedIn profile or candidate brief, incorporating role-specific context and messaging. Send high-quality outreach at volume without sacrificing personalization."
+        "description": "GAIAはLinkedInプロフィールや候補者概要ごとにパーソナライズされた候補者アプローチメールを下書きし、職種固有のコンテキストやメッセージを盛り込みます。パーソナライズを犠牲にせず、大量の高品質アプローチを送れます。",
+        "title": "大量パーソナライズドアプローチ"
       },
       {
-        "title": "Interview Scheduling Automation",
-        "description": "GAIA coordinates multi-party interview scheduling via Gmail and Google Calendar, finds available slots for candidates and hiring teams, sends invites with preparation context, and handles time zone conversions automatically."
+        "description": "GAIAはGmailやGoogleカレンダーで複数関係者の面接日程を調整し、候補者と採用チームの空き枠を見つけ、準備コンテキスト付きの招待を送り、タイムゾーン変換も自動で処理します。",
+        "title": "面接スケジュールの自動化"
       },
       {
-        "title": "Candidate Briefing Summaries",
-        "description": "Before every candidate call or interview debrief, GAIA compiles a summary of the candidate's profile, recent communications, and interview stage history so you and hiring managers walk in prepared."
+        "description": "候補者通話や面接振り返りの前に、GAIAは候補者のプロフィール、最近のやり取り、面接ステージ履歴のサマリーを作成するので、あなたも採用マネージャーも準備万端で臨めます。",
+        "title": "候補者ブリーフィング要約"
       },
       {
-        "title": "Follow-Up Sequence Management",
-        "description": "GAIA tracks every active candidate and open role in Notion or Todoist, identifies when follow-ups are overdue, and drafts timely outreach to keep candidates engaged throughout the pipeline."
+        "description": "GAIAはNotionやTodoistでアクティブな候補者と求人をすべて追跡し、フォローアップが遅れている案件を特定、候補者の関心を維持するタイムリーなアプローチを下書きします。",
+        "title": "フォローアップシーケンス管理"
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA integrate with Greenhouse, Lever, or Ashby directly?",
-        "answer": "GAIA works with Gmail, Google Calendar, Notion, and Slack to automate recruiting workflows. Custom MCP integrations can connect GAIA to ATS platforms like Greenhouse, Lever, or Ashby to extend automation into those systems."
+        "answer": "GAIAはGmail、Googleカレンダー、Notion、Slackと連携して採用ワークフローを自動化します。MCPのカスタム連携でGreenhouse、Lever、AshbyといったATSプラットフォームに接続し、自動化をそれらのシステムにも拡張できます。",
+        "question": "GAIAはGreenhouse、Lever、Ashbyと直接連携しますか？"
       },
       {
-        "question": "How does GAIA help with high-volume outreach?",
-        "answer": "GAIA drafts personalized outreach emails based on candidate context you provide, manages follow-up sequences, and tracks response rates. It enables you to maintain personalization quality at a volume that would otherwise require a team."
+        "answer": "GAIAはあなたが提供する候補者コンテキストをもとにパーソナライズされたアプローチメールを下書きし、フォローアップシーケンスを管理、返信率を追跡します。チームが必要な量でも、パーソナライズの質を保ったまま対応できます。",
+        "question": "GAIAは大量アプローチにどう役立ちますか？"
       },
       {
-        "question": "Can GAIA help coordinate with distributed hiring teams?",
-        "answer": "Yes. GAIA manages scheduling across time zones, sends preparation briefs to all interviewers via Slack or email, collects feedback reminders after interviews, and keeps hiring managers informed throughout the process without manual coordination."
+        "answer": "はい。GAIAはタイムゾーンをまたぐスケジュールを管理し、Slackやメールで全面接官に準備ブリーフを送り、面接後のフィードバックのリマインドを集め、手作業の調整なしに採用マネージャーに全過程の情報を届け続けます。",
+        "question": "GAIAは分散した採用チームとの連携にも役立ちますか？"
       }
     ]
   },
   "teachers-educators": {
-    "title": "AI Assistant for Teachers and Educators",
-    "role": "Teachers and Educators",
-    "metaTitle": "教師・教育者向けAIアシスタント: 保護者連絡と授業準備",
-    "metaDescription": "保護者へのメール、面談の調整、課題の締め切りをまとめて管理。GAIAが返信を下書きし、面談を設定し、授業計画も整理します。仕組みを見てみましょう。",
+    "title": "教師・教育者向けAIアシスタント",
+    "role": "教師・教育者",
+    "metaTitle": "教師・教育者向けAIアシスタント - 事務作業を減らし、教えることに集中",
+    "metaDescription": "GAIAは教師の保護者連絡の作成、授業計画の整理、保護者面談のスケジュール、課題締め切りの管理、学校事務メールの仕分けを支援して負担を減らします。",
     "keywords": [
-      "AI assistant for teachers",
-      "teacher productivity tool",
-      "AI for educators",
-      "classroom AI assistant",
-      "lesson planning AI",
-      "teacher workflow automation",
-      "education AI tool",
-      "AI for schools",
-      "teaching assistant AI",
-      "educator productivity AI",
-      "school administration AI",
-      "parent communication AI"
+      "教師向けAIアシスタント",
+      "教師の生産性向上ツール",
+      "教育者向けAI",
+      "授業アシスタントAI",
+      "授業計画AI",
+      "教師ワークフロー自動化",
+      "教育AIツール",
+      "学校向けAI",
+      "ティーチングアシスタントAI",
+      "教育者生産性AI",
+      "学校事務AI",
+      "保護者連絡AI"
     ],
-    "intro": "Teaching is one of the most demanding professions in terms of cognitive and emotional labor. A Gates Foundation survey found that teachers work an average of 10.5 hours per day, with over three hours spent on non-instructional administrative tasks. Lesson planning, parent communication, grading coordination, and school administrative requirements consume time that could otherwise go toward student engagement and educational quality. GAIA handles the administrative burden so educators can stay focused on what matters most: their students.",
+    "intro": "教える仕事は、認知的・感情的負荷の面で最も過酷な職業の一つです。Gates Foundationの調査によると、教師は1日平均10.5時間働き、そのうち3時間以上を授業以外の事務作業に費やしています。授業計画、保護者連絡、採点調整、学校事務の要件が、生徒との関わりや教育の質に使える時間を奪っています。GAIAは事務負担を引き受け、教育者が最も大切な生徒に集中し続けられるようにします。",
     "painPoints": [
-      "Drafting and sending parent communications for updates, concerns, and event coordination is time-consuming",
-      "Lesson plan preparation and curriculum organization requires significant time outside classroom hours",
-      "Scheduling and preparing for parent-teacher conferences involves logistical coordination with dozens of families",
-      "Administrative paperwork for school requirements adds bureaucratic overhead to an already full workload",
-      "Tracking student progress and assignment deadlines across multiple classes is difficult to manage manually"
+      "進捗報告、懸念事項、行事調整のための保護者連絡の作成・送信は時間がかかる",
+      "授業計画の作成やカリキュラム整理には、授業時間外のまとまった時間が必要になる",
+      "保護者面談のスケジュール調整や準備には、数十世帯との事務調整が伴う",
+      "学校要件の事務書類が、ただでさえ多い業務に官僚的な上乗せを加える",
+      "複数クラスにまたがる生徒の進捗や課題締め切りの追跡は、手作業の管理が難しい"
     ],
     "howGaiaHelps": [
       {
-        "title": "Parent Communication Management",
-        "description": "GAIA drafts professional parent emails for routine updates, event notifications, progress reports, and individual student concerns. It manages your Gmail inbox by categorizing parent messages and ensuring timely responses."
+        "description": "GAIAは定例報告、行事通知、進捗レポート、個々の生徒の懸念事項について、プロフェッショナルな保護者向けメールを下書きします。Gmailの受信箱を保護者メッセージごとに分類管理し、タイムリーな返信を確実にします。",
+        "title": "保護者連絡の管理"
       },
       {
-        "title": "Lesson Plan and Curriculum Organization",
-        "description": "GAIA organizes lesson plans, curriculum resources, and teaching materials in Notion or Google Docs. It creates structured planning documents and tracks what has been covered across classes."
+        "description": "GAIAは授業計画、カリキュラムリソース、教材をNotionやGoogle Docsに整理します。構造化された計画文書を作成し、クラスごとにどこまで進んだかを追跡します。",
+        "title": "授業計画とカリキュラムの整理"
       },
       {
-        "title": "Parent-Teacher Conference Scheduling",
-        "description": "GAIA coordinates parent-teacher conference scheduling via Google Calendar and Gmail, sends invitations with conference details, handles rescheduling requests, and prepares student progress summaries for each meeting."
+        "description": "GAIAはGoogleカレンダーやGmailで保護者面談の日程を調整し、面談内容を添えて招待を送り、日程変更依頼に対応、各面談向けに生徒の進捗サマリーを作成します。",
+        "title": "保護者面談のスケジュール調整"
       },
       {
-        "title": "Assignment and Deadline Tracking",
-        "description": "GAIA tracks assignment deadlines and school calendar events in Todoist or Google Calendar, sends proactive reminders, and helps manage the administrative rhythm of the academic year."
+        "description": "GAIAはTodoistやGoogleカレンダーで課題締め切りや学校行事を追跡し、積極的にリマインド、学年の事務リズムの管理を支援します。",
+        "title": "課題と締め切りの追跡"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA help manage communications with many parents?",
-        "answer": "Yes. GAIA triages your Gmail inbox, drafts responses for common parent inquiries, and helps you manage high-volume communication periods like grade releases or school events. It ensures no parent email goes unanswered."
+        "answer": "はい。GAIAはGmailの受信箱を仕分けし、よくある保護者の問い合わせに返信を下書きし、成績発表や学校行事といった連絡が集中する時期の大量対応を支援します。保護者からのメールに未返信が出ないようにします。",
+        "question": "GAIAは多くの保護者との連絡を管理できますか？"
       },
       {
-        "question": "How does GAIA assist with lesson planning?",
-        "answer": "GAIA organizes your curriculum materials in Notion or Google Docs, helps structure lesson plans by unit and objective, and tracks what resources have been used. It handles the organizational work so you can focus on the pedagogical decisions."
+        "answer": "GAIAはカリキュラム資料をNotionやGoogle Docsに整理し、単元や目標ごとに授業計画を構造化し、利用済みリソースを追跡します。事務的な整理を担うので、教授法の判断に集中できます。",
+        "question": "GAIAは授業計画にどう役立ちますか？"
       },
       {
-        "question": "Is GAIA suitable for use in schools and educational institutions?",
-        "answer": "GAIAはsource-available（PolyForm Noncommercial）でセルフホストに対応しており、データプライバシー要件のある学校での導入にも適しています。学校や大学などの教育機関は、非商用ライセンスのもとで無料でセルフホストできます（モデルAPIの費用は自己負担）。営利の教育事業者はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでGAIAをセルフホストできます。いずれの場合も、教職員と学生のデータを完全に自分たちの管理下に置けます。"
+        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、データプライバシー要件のある学校導入に適しています。学校などの教育機関は非商用ライセンスで無料セルフホストでき、営利の教育事業者のみエンタープライズライセンス（GAIAチームにお問い合わせください）が必要です。いずれの場合も、教育機関は自社インフラ上でGAIAを稼働させ、教育者や生徒のデータを完全にコントロールできます。",
+        "question": "GAIAは学校や教育機関での利用に適していますか？"
       }
     ]
   },
   "financial-advisors": {
-    "title": "AI Assistant for Financial Advisors",
-    "role": "Financial Advisors",
-    "metaTitle": "ファイナンシャルアドバイザー向けAIアシスタント: 面談準備",
-    "metaDescription": "顧客との面談に準備万端で臨めます。GAIAが事前ブリーフを作り、確認用の顧客メールを下書きし、ポートフォリオ見直しの予定とフォローも管理します。仕組みを見てみましょう。",
+    "title": "ファイナンシャルアドバイザー向けAIアシスタント",
+    "role": "ファイナンシャルアドバイザー",
+    "metaTitle": "ファイナンシャルアドバイザー向けAIアシスタント - 顧客準備とフォローアップを自動化",
+    "metaDescription": "GAIAはファイナンシャルアドバイザーの面談前顧客ブリーフィング作成、コンプライアンス対応の顧客連絡の起草、フォローアップタスク管理、ポートフォリオレビュー頻度のスケジュール、顧客依頼の緊急度別仕分けを支援します。",
     "keywords": [
-      "AI assistant for financial advisors",
-      "wealth management AI",
-      "financial advisor productivity tool",
-      "client meeting prep AI",
-      "financial workflow automation",
-      "advisor email automation",
-      "compliance workflow AI",
-      "financial services AI assistant",
-      "portfolio review automation",
-      "RIA productivity tool",
-      "financial advisor CRM automation",
-      "client communication AI"
+      "ファイナンシャルアドバイザー向けAIアシスタント",
+      "ウェルスマネジメントAI",
+      "ファイナンシャルアドバイザー生産性向上ツール",
+      "顧客面談準備AI",
+      "金融ワークフロー自動化",
+      "アドバイザーのメール自動化",
+      "コンプライアンスワークフローAI",
+      "金融サービスAIアシスタント",
+      "ポートフォリオレビュー自動化",
+      "RIA生産性向上ツール",
+      "ファイナンシャルアドバイザーのCRM自動化",
+      "顧客コミュニケーションAI"
     ],
-    "intro": "Financial advisors manage deeply personal client relationships while navigating complex compliance requirements and a constant stream of market-driven client inquiries. Cerulli Associates research shows that advisors spend less than a third of their time in meaningful client-facing interactions, with the majority consumed by administrative tasks, meeting preparation, and documentation. GAIA automates the operational layer of advisory work so you can invest more time in the advice that clients actually value.",
+    "intro": "ファイナンシャルアドバイザーは深く個人的な顧客関係を担いながら、複雑なコンプライアンス要件と、市場動向に起因する絶え間ない顧客問い合わせに対応しています。Cerulli Associatesの調査によると、アドバイザーが意味のある顧客対面に使う時間は3分の1未満で、大半は管理業務、面談準備、文書作成に消えています。GAIAはアドバイザリー業務の運用レイヤーを自動化し、顧客が本当に価値を感じるアドバイスにより多くの時間を投じられるようにします。",
     "painPoints": [
-      "Client meeting preparation requires manually reviewing email history, account notes, and recent market context",
-      "Compliance documentation requirements add significant overhead to every client communication",
-      "Tracking client requests across email threads makes timely follow-through difficult at scale",
-      "Scheduling quarterly portfolio reviews across a large client book creates calendar coordination complexity",
-      "Preparing performance summaries and account reports for client meetings is manually intensive"
+      "顧客面談の準備には、メール履歴、口座メモ、直近の市場コンテキストの手動確認が必要になる",
+      "コンプライアンス文書の要件が、すべての顧客連絡に大きな上乗せを加える",
+      "メールスレッドに分散する顧客依頼の追跡では、規模が大きくなるとタイムリーな対応が難しい",
+      "大口顧客層にまたがる四半期ポートフォリオレビューのスケジュールは、カレンダー調整が複雑になる",
+      "顧客面談向けのパフォーマンスサマリーや口座レポートの作成は手作業中心になる"
     ],
     "howGaiaHelps": [
       {
-        "title": "Pre-Meeting Client Briefings",
-        "description": "Before every client meeting, GAIA compiles a briefing from your Gmail history with that client, open action items from Todoist, and recent account notes from Notion. Walk into every conversation with complete context and no last-minute scrambling."
+        "description": "すべての顧客面談の前に、GAIAはその顧客とのGmail履歴、Todoistの未完アクション、Notionの最新口座メモからブリーフィングを作成します。直前の慌ただしさなく、完全なコンテキストで会話に臨めます。",
+        "title": "面談前顧客ブリーフィング"
       },
       {
-        "title": "Compliant Client Communication Drafts",
-        "description": "GAIA drafts client-facing emails in your voice and style, following the communication templates and compliance guidelines you establish. It handles routine client correspondence while keeping you in the review and approval loop."
+        "description": "GAIAはあなたの声とスタイルで顧客向けメールを下書きし、あなたが定めた連絡テンプレートとコンプライアンスガイドラインに従います。定型の顧客対応を担いながら、確認・承認ループにはあなたを残します。",
+        "title": "コンプライアンス対応の顧客連絡起草"
       },
       {
-        "title": "Follow-Up Task Management",
-        "description": "After every client meeting, GAIA captures commitments and action items, creates tasks in Todoist with appropriate deadlines, and sends reminders so every client follow-through happens on time."
+        "description": "すべての顧客面談の後、GAIAは約束事やアクションアイテムを記録し、適切な期限でTodoistにタスクを作成、リマインドを送るので、すべての顧客フォローが確実に期限通りに行われます。",
+        "title": "フォローアップタスク管理"
       },
       {
-        "title": "Portfolio Review Cadence Scheduling",
-        "description": "GAIA manages your Google Calendar to schedule and maintain quarterly review cadences across your client book, sends preparation reminders ahead of each review, and helps track which clients are due for outreach."
+        "description": "GAIAはGoogleカレンダーを管理し、顧客層全体の四半期レビュー頻度をスケジュール・維持、毎回のレビュー前に準備リマインドを送り、どの顧客がアプローチ時期かの追跡を支援します。",
+        "title": "ポートフォリオレビュー頻度のスケジュール管理"
       },
       {
-        "title": "Client Request Triage",
-        "description": "GAIA monitors your Gmail for incoming client requests, categorizes them by urgency and type, drafts acknowledgment responses, and creates prioritized task lists so high-urgency requests surface immediately."
+        "description": "GAIAはGmailで届く顧客依頼を監視し、緊急度と種別ごとに分類、受領確認の返信を下書き、優先順位付きタスクリストを作成するので、緊急度の高い依頼が即座に浮上します。",
+        "title": "顧客依頼の仕分け"
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA handle the compliance sensitivity of financial communications?",
-        "answer": "GAIAは、あなたが用意したテンプレートとガイドラインに基づいて顧客向けの連絡を下書きし、送信前には必ずあなたが確認・承認する流れを保ちます。GAIAはsource-available（PolyForm Noncommercial）で、RIAやブローカー・ディーラーはエンタープライズライセンス（GAIAチームにお問い合わせください）のもとで自社インフラにGAIAをセルフホストし、データを完全に管理できます。"
+        "answer": "GAIAはあなたが提供するテンプレートとガイドラインをもとに顧客連絡を下書きし、送信前に確認・承認ループにあなたを残します。GAIAはsource-available（PolyForm Noncommercial）で、RIAやブローカーディーラーといったアドバイザリー会社はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでセルフホストでき、自社インフラ内で完全なデータコントロールとともに導入できます。",
+        "question": "GAIAは金融連絡のコンプライアンス感度にどう対応しますか？"
       },
       {
-        "question": "Can GAIA integrate with Salesforce or financial CRM tools?",
-        "answer": "GAIA works with Gmail, Google Calendar, Notion, and HubSpot out of the box. Custom MCP integrations can connect GAIA to Salesforce or specialized financial advisory CRM platforms to extend its workflow automation."
+        "answer": "GAIAはGmail、Googleカレンダー、Notion、HubSpotにそのまま対応します。MCPのカスタム連携でSalesforceや専門の金融アドバイザリーCRMプラットフォームに接続し、ワークフロー自動化を拡張できます。",
+        "question": "GAIAはSalesforceや金融CRMツールと連携できますか？"
       },
       {
-        "question": "How does GAIA help advisors manage large client books?",
-        "answer": "GAIA maintains per-client context through email history and Notion notes, tracks review cadence schedules on Google Calendar, and surfaces clients who are due for outreach or follow-up. It helps you maintain a high-touch relationship standard across a large book of business."
+        "answer": "GAIAはメール履歴とNotionメモで顧客ごとのコンテキストを維持し、Googleカレンダーでレビュー頻度スケジュールを追跡、アプローチやフォローアップ時期の顧客を提示します。大口顧客層全体で目の行き届いた関係基準を保てるよう支援します。",
+        "question": "GAIAはアドバイザーの大口顧客管理にどう役立ちますか？"
       }
     ]
   },
   "healthcare-professionals": {
-    "title": "AI Assistant for Healthcare Professionals",
-    "role": "Healthcare Professionals",
-    "metaTitle": "医療従事者向けAIアシスタント: 事務メールと日程調整",
-    "metaDescription": "診療の合間の事務作業を減らします。GAIAが臨床以外のメールを整理し、日程を調整し、事務文書を下書きし、文献も整理します。仕組みを見てみましょう。",
+    "title": "医療従事者向けAIアシスタント",
+    "role": "医療従事者",
+    "metaTitle": "医療従事者向けAIアシスタント - 事務負担を軽減",
+    "metaDescription": "GAIAは非診療メールの仕分け、スケジュール管理、リサーチ整理、管理文書の起草を行います。営利事業者はエンタープライズライセンスのもとでセルフホストできます。",
     "keywords": [
-      "AI assistant for doctors",
-      "healthcare productivity AI",
-      "medical workflow automation",
-      "physician administrative AI",
-      "healthcare AI tool",
-      "doctor productivity tool",
-      "clinical workflow AI",
-      "hospital administration AI",
-      "medical professional AI assistant",
-      "HIPAA compliant AI assistant",
-      "healthcare administrative automation",
-      "physician email management AI"
+      "医師向けAIアシスタント",
+      "医療生産性AI",
+      "医療ワークフロー自動化",
+      "医師の事務作業AI",
+      "医療AIツール",
+      "医師の生産性向上ツール",
+      "診療ワークフローAI",
+      "病院管理AI",
+      "医療従事者向けAIアシスタント",
+      "HIPAA対応AIアシスタント",
+      "医療事務自動化",
+      "医師のメール管理AI"
     ],
-    "intro": "医療従事者は、あらゆる職業の中でも特に重い事務負担を抱えています。2024年のAMAの調査によると、医師は事務作業に週平均15.5時間を費やしており、電子的なやり取りや書類作業が、本来なら患者のケアに充てられる時間を奪っています。重要な点として、GAIAは事務・生産性の領域に限定して動作し、臨床システム、電子カルテ、保護対象の医療情報にはアクセスしません。GAIAはsource-available（PolyForm Noncommercial）で、公的医療機関や非営利の医療機関は非商用ライセンスのもとで無料で、営利の医療法人やクリニックはエンタープライズライセンス（GAIAチームにお問い合わせください）のもとで、自組織のインフラにGAIAをセルフホストでき、事務ワークフローにおけるHIPAAなどの要件への対応に役立てられます。",
+    "intro": "医療従事者はあらゆる職業の中でも最重量級の事務負担に直面しています。2024年のAMA調査では、医師は週平均15.5時間を事務作業に費やし、電子連絡や書類作業が患者ケアに使える時間を奪っています。重要な点として、GAIAは厳密に事務・生産性レイヤーでのみ動作します。診療システム、電子カルテ、保護対象の医療情報にはアクセスしません。GAIAはsource-available（PolyForm Noncommercial）で、コンプライアンス要件のある医療機関はセルフホストできます（営利診療所はエンタープライズライセンス（GAIAチームにお問い合わせください）のもと、公衆衛生・非営利組織は非商用ライセンスのもと）。事務ワークフローを自社インフラ内に保ち、要件対応を支えます。",
     "painPoints": [
-      "Administrative email volume including scheduling requests, referrals, and departmental communications creates daily inbox overload",
-      "Scheduling complexity across clinics, hospitals, and patient appointments requires constant coordination",
-      "Staying current with medical research and literature is difficult given time constraints",
-      "Documentation overhead for administrative correspondence and inter-departmental coordination adds non-clinical workload",
-      "Coordinating between departments, specialists, and administrative staff involves extensive back-and-forth communication"
+      "スケジュール依頼、紹介、部門連絡を含む事務メールの量が、毎日の受信箱逼迫を招く",
+      "クリニック、病院、患者予約にまたがるスケジュールの複雑さには、絶え間ない調整が必要になる",
+      "時間の制約から、医学リサーチや文献のキャッチアップが難しい",
+      "事務連絡や部門間調整のための文書作成オーバーヘッドが、非診療の作業負荷を加える",
+      "部門、専門医、事務スタッフ間の調整には、大がかりな往復の連絡が伴う"
     ],
     "howGaiaHelps": [
       {
-        "title": "Non-Clinical Email Triage",
-        "description": "GAIA triages your administrative Gmail inbox, categorizing messages by type including scheduling requests, departmental communications, research updates, and administrative tasks. It drafts responses for routine correspondence and surfaces urgent items immediately. GAIA does not access or process clinical records or protected health information."
+        "description": "GAIAは事務用のGmail受信箱を仕分けし、スケジュール依頼、部門連絡、リサーチ更新、事務タスクなど種別ごとに分類します。定型連絡には返信を下書きし、緊急案件は即座に提示します。GAIAは診療記録や保護対象の医療情報にアクセスも処理もしません。",
+        "title": "非診療メールの仕分け"
       },
       {
-        "title": "Scheduling and Appointment Coordination",
-        "description": "GAIA manages administrative scheduling through Google Calendar, coordinates meeting and appointment logistics via email, and handles the back-and-forth of multi-party scheduling across departments and specialist referrals."
+        "description": "GAIAはGoogleカレンダーで事務スケジュールを管理し、メールで会議・予約のロジスティクスを調整、部門や専門医紹介にまたがる複数関係者の日程の往復に対応します。",
+        "title": "スケジュール・予約の調整"
       },
       {
-        "title": "Research and Literature Organization",
-        "description": "GAIA uses Perplexity to surface relevant medical research and literature, organizes findings in Notion by specialty and topic, and creates structured reading lists so staying current with your field becomes systematic rather than sporadic."
+        "description": "GAIAはPerplexityで関連する医学リサーチや文献を提示し、調査結果をNotionに診療科・トピックごとに整理、体系的なリーディングリストを作成するので、分野のキャッチアップが場当たり的でなく計画的になります。",
+        "title": "リサーチ・文献の整理"
       },
       {
-        "title": "Administrative Correspondence Drafting",
-        "description": "GAIA drafts professional administrative correspondence including inter-departmental emails, referral coordination messages, meeting agendas, and administrative documentation, reducing the time spent on non-clinical writing."
+        "description": "GAIAは部門間メール、紹介調整メッセージ、会議アジェンダ、事務文書を含むプロフェッショナルな事務連絡を下書きし、非診療の文章作成時間を削減します。",
+        "title": "事務連絡の起草"
       },
       {
-        "title": "Consultation Round Preparation",
-        "description": "GAIA organizes administrative materials and schedules for patient consultation rounds, prepares agenda documents from Notion, and ensures all coordination logistics are handled before rounds begin."
+        "description": "GAIAは患者回診向けの事務資料やスケジュールを整理し、Notionからアジェンダ文書を作成、回診開始前にすべての調整ロジスティクスが片付いているようにします。",
+        "title": "回診の準備"
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA access electronic health records or patient data?",
-        "answer": "No. GAIA operates strictly in the administrative and productivity layer. It does not connect to EHR systems, access protected health information, or process any clinical data. It manages administrative email, scheduling, research organization, and non-clinical correspondence only."
+        "answer": "いいえ。GAIAは厳密に事務・生産性レイヤーでのみ動作します。EHRシステムに接続せず、保護対象の医療情報にアクセスせず、診療データを処理しません。事務メール、スケジュール、リサーチ整理、非診療連絡のみを管理します。",
+        "question": "GAIAは電子カルテや患者データにアクセスしますか？"
       },
       {
-        "question": "Can GAIA be deployed in a HIPAA-compliant manner?",
-        "answer": "はい。GAIAはsource-available（PolyForm Noncommercial）で、セルフホストに対応しています。営利の医療法人やクリニックはエンタープライズライセンス（GAIAチームにお問い合わせください）のもとで、公的医療機関や非営利の医療機関は非商用ライセンスのもとで無料で、GAIAを完全に自組織のインフラ内にセルフホストでき、データの流れを完全に管理しながら、事務システムに関する組織や規制上の要件への対応を支えます。"
+        "answer": "GAIAはsource-available（PolyForm Noncommercial）です。営利診療所はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでGAIAをセルフホストでき、公衆衛生・非営利組織は非商用ライセンスのもとで、完全に自社インフラ内に導入し、データフローを完全にコントロールできます。これは事務システムの組織的・規制的要件への対応を支えられます。",
+        "question": "GAIAはHIPAAに準拠した形で導入できますか？"
       },
       {
-        "question": "How does GAIA help physicians manage their administrative email load?",
-        "answer": "GAIA monitors your Gmail for administrative messages, categorizes them by type and urgency, drafts responses for routine requests, and ensures high-priority items surface promptly. Physicians report that administrative email management alone can consume an hour or more daily, which GAIA significantly reduces."
+        "answer": "GAIAはGmailで事務メッセージを監視し、種別と緊急度ごとに分類、定型依頼には返信を下書き、優先度の高い案件を確実に速やかに提示します。事務メール管理だけで1日1時間以上かかるという医師もおり、GAIAはそれを大幅に削減します。",
+        "question": "GAIAは医師の事務メール負荷の管理にどう役立ちますか？"
       }
     ]
   },
@@ -1838,134 +1834,134 @@
     ]
   },
   "chiefs-of-staff": {
-    "title": "GAIA for Chiefs of Staff",
-    "role": "Chiefs of Staff",
-    "metaTitle": "チーフ・オブ・スタッフ向けAIアシスタント: 要点とアクション",
-    "metaDescription": "すべてのスレッドを追わずに経営陣を支えます。GAIAが会議前のブリーフを作り、あらゆるやり取りからアクションを抽出し、関係者向けの報告も下書きします。仕組みを見てみましょう。",
+    "title": "チーフオブスタッフのためのGAIA",
+    "role": "チーフオブスタッフ",
+    "metaTitle": "チーフオブスタッフのためのGAIA — 経営層サポートをスケールで",
+    "metaDescription": "GAIAは面談前ブリーフィングを作成し、すべての連絡からアクションアイテムを抽出、ステークホルダー向けアップデートを下書き、経営層の受信箱を管理します。すべてのスレッドを手作業で追うことなく、オフィスを回せます。",
     "keywords": [
-      "ai chief of staff app",
-      "ai for chiefs of staff",
-      "ai assistant for chief of staff",
-      "chief of staff productivity tool",
-      "ai executive support tool",
-      "ai for cxo support",
-      "chief of staff ai assistant",
-      "ai tool for chief of staff",
-      "executive operations ai",
-      "ai for executive office management"
+      "AIチーフオブスタッフアプリ",
+      "チーフオブスタッフ向けAI",
+      "チーフオブスタッフ向けAIアシスタント",
+      "チーフオブスタッフ生産性向上ツール",
+      "AI経営層サポートツール",
+      "CXOサポート向けAI",
+      "チーフオブスタッフAIアシスタント",
+      "チーフオブスタッフ向けAIツール",
+      "経営オペレーションAI",
+      "経営オフィス管理向けAI"
     ],
-    "intro": "A Chief of Staff is only as effective as their ability to hold context across the entire organization at once — which means any tool that reduces the manual overhead of tracking, briefing, and following up is a direct force multiplier on leadership impact. GAIA acts as that force multiplier: pulling context from the executive's calendar, inbox, and communication channels to prepare briefings before meetings happen, extract action items the moment a meeting ends, and keep stakeholders informed without the CoS writing every update by hand.",
+    "intro": "チーフオブスタッフの有効性は、組織全体のコンテキストを一度に保持できる能力にかかっています。つまり、追跡・ブリーフィング・フォローアップの手作業オーバーヘッドを減らすツールは、リーダーシップへの影響力を直接倍増させるフォースマルチプライヤーです。GAIAはそのフォースマルチプライヤーとして機能します。経営層のカレンダー、受信箱、コミュニケーションチャンネルからコンテキストを引き出し、会議の前にブリーフィングを作成し、会議終了の瞬間にアクションアイテムを抽出、チーフオブスタッフがすべてのアップデートを手書きしなくてもステークホルダーに情報を届け続けます。",
     "painPoints": [
-      "Back-to-back executive meetings leave zero buffer for preparation, so briefings get skipped or rushed even when the stakes are high",
-      "Action items scatter across emails, Slack threads, and meeting notes with no single system pulling them into an accountable list",
-      "Keeping cross-functional stakeholders informed requires writing essentially the same update in five different places",
-      "Managing the executive's inbox and calendar simultaneously while also running your own operational workload creates constant context collapse",
-      "Losing the thread on 10+ active initiatives when context switches happen every 20 minutes across a typical CoS day"
+      "経営層の連続会議で準備の余白がゼロになり、重要案件でもブリーフィングが省略・速成される",
+      "アクションアイテムがメール、Slackスレッド、会議メモに分散し、一つの説明責任リストに集約する仕組みがない",
+      "部門横断のステークホルダーに情報を届けるには、実質同じアップデートを5か所に書く必要がある",
+      "自分の運用業務も回しながら経営層の受信箱とカレンダーを同時に管理すると、絶えずコンテキストが崩壊する",
+      "チーフオブスタッフの典型的な一日は20分ごとにコンテキスト切替が起きるため、10件以上の進行中施策の流れを見失う"
     ],
     "howGaiaHelps": [
       {
-        "title": "Pre-Meeting Briefing Generation",
-        "description": "GAIA reads the executive's upcoming calendar events, pulls relevant email threads and Notion documents, and generates a structured briefing — attendees, context, open action items, and suggested talking points — before each meeting begins."
+        "description": "GAIAは経営層の今後のカレンダーイベントを読み、関連するメールスレッドやNotionドキュメントを引き出し、構造化されたブリーフィング（参加者、コンテキスト、未完アクション、推奨トーキングポイント）を各会議の開始前に作成します。",
+        "title": "面談前ブリーフィングの作成"
       },
       {
-        "title": "Action Item Extraction from All Comms",
-        "description": "GAIA monitors Gmail, Slack, and meeting transcripts to extract explicit and implied action items, assigns owners, and syncs them to Todoist or Notion — so nothing falls through the cracks after a meeting ends."
+        "description": "GAIAはGmail、Slack、会議の文字起こしを監視し、明示的・暗示的なアクションアイテムを抽出、担当者を割り当て、TodoistやNotionに同期します。会議終了後に取りこぼしが起きません。",
+        "title": "全連絡からのアクション抽出"
       },
       {
-        "title": "Automated Stakeholder Update Drafts",
-        "description": "GAIA drafts status update emails and Slack messages for cross-functional stakeholders based on current project state, reducing the time spent writing repetitive updates across initiatives from hours to minutes."
+        "description": "GAIAは現在のプロジェクト状況をもとに、部門横断ステークホルダー向けの進捗アップデートメールやSlackメッセージを下書きします。施策をまたぐ繰り返し文章の作成時間を数時間から数分に短縮します。",
+        "title": "ステークホルダー向けアップデートの自動起草"
       },
       {
-        "title": "Executive Inbox Management",
-        "description": "GAIA triages the executive's Gmail inbox, flags messages that need a decision, drafts responses for routine communications, and surfaces time-sensitive threads — enabling the CoS to manage the exec's email without reading every message individually."
+        "description": "GAIAは経営層のGmail受信箱を仕分けし、判断が必要なメッセージを通知、定型連絡には返信を下書き、緊急性の高いスレッドを提示します。チーフオブスタッフはすべてのメールを読むことなく経営層メールを管理できます。",
+        "title": "経営層受信箱の管理"
       },
       {
-        "title": "Cross-Tool Task Coordination",
-        "description": "With deep integrations via MCP, GAIA connects Gmail, Google Calendar, Slack, Notion, and Todoist into a unified operational layer — so the CoS can track deliverables, deadlines, and decisions across tools from a single interface."
+        "description": "MCPによる深い連携で、GAIAはGmail、Googleカレンダー、Slack、Notion、Todoistを一つの運用レイヤーに接続します。チーフオブスタッフは一つの画面からツール横断で成果物、締め切り、意思決定を追跡できます。",
+        "title": "ツール横断のタスク調整"
       },
       {
-        "title": "Source-Available and Self-Hostable",
-        "description": "GAIAはsource-available（PolyForm Noncommercial）で、データ所在地の要件がある営利組織はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでセルフホストできます（公的機関や非営利団体は非商用ライセンスのもとで無料）。マネージド版のProプランは1人あたり月額{{PRO_MONTHLY_PRICE}}ドルです。"
+        "description": "GAIAはsource-available（PolyForm Noncommercial）です。データレジデンシー要件のある企業はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでセルフホストでき、マネージド版は1人あたり月額${{PRO_MONTHLY_PRICE}}のGAIA Proです。",
+        "title": "Source-Availableでセルフホスト可能"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA actually prepare briefings before meetings automatically?",
-        "answer": "Yes. GAIA reads the executive's Google Calendar, identifies upcoming meetings, pulls relevant email threads and documents from connected tools, and generates a structured briefing including attendee context, open items, and suggested talking points. The briefing is delivered before the meeting starts so preparation happens even on days when there's no buffer time."
+        "answer": "はい。GAIAは経営層のGoogleカレンダーを読み、今後の会議を特定、関連するメールスレッドや文書を連携ツールから引き出し、参加者コンテキスト、未完事項、推奨トーキングポイントを含む構造化ブリーフィングを作成します。ブリーフィングは会議開始前に届くので、余白のない日でも準備が行われます。",
+        "question": "GAIAは本当に会議前にブリーフィングを自動作成できますか？"
       },
       {
-        "question": "How does GAIA handle action item tracking across tools like email, Slack, and meetings?",
-        "answer": "GAIA monitors all connected communication channels simultaneously and extracts action items — explicit requests, implied commitments, and flagged follow-ups — as they surface. It syncs these to Todoist or Notion with owner and due date context, creating a single accountable list that doesn't require manual curation after every conversation."
+        "answer": "GAIAは接続されたすべてのコミュニケーションチャンネルを同時に監視し、明示的な依頼、暗示的な約束、フラグ付きフォローアップといったアクションアイテムが現れた瞬間に抽出します。担当者と期限のコンテキスト付きでTodoistやNotionに同期し、会話のたびに手作業で整理しなくても一つの説明責任リストが作られます。",
+        "question": "GAIAはメール、Slack、会議などツール横断のアクション追跡にどう対応しますか？"
       },
       {
-        "question": "Is GAIA appropriate for managing a C-suite executive's sensitive communications?",
-        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、営利組織はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとで自社インフラ内に完全にセルフホストでき、第三者がデータにアクセスすることはありません。経営層のコミュニケーションを完全に管理する必要がある組織にとって、セルフホストは完全なデータ主権をもたらします。ホスト型での運用を選ぶ場合は、1人あたり月額{{PRO_MONTHLY_PRICE}}ドルのマネージドProプランもご用意しています。"
+        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、自社はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでセルフホストでき、完全に自社インフラ内で導入して第三者のデータアクセスを排除できます。経営層連絡の完全なコントロールが必要な組織にとって、そのセルフホスト導入は完全なデータ主権を提供します。ホスト導入に抵抗のないチーム向けに、1人あたり月額${{PRO_MONTHLY_PRICE}}のマネージドProプランも利用できます。",
+        "question": "GAIAはC-suite経営層のセンシティブな連絡の管理に適していますか？"
       }
     ]
   },
   "virtual-assistants": {
-    "title": "GAIA for Virtual Assistants",
-    "role": "Virtual Assistants",
-    "metaTitle": "オンライン秘書向けAIアシスタント: 複数顧客のメール管理",
-    "metaDescription": "時間を増やさずに担当顧客を増やせます。GAIAが顧客ごとの受信箱を管理し、文脈に合った返信を下書きし、複数のカレンダーで予定を組みます。仕組みを見てみましょう。",
+    "title": "バーチャルアシスタントのためのGAIA",
+    "role": "バーチャルアシスタント",
+    "metaTitle": "バーチャルアシスタントのためのGAIA — 消耗せずにもっと顧客を",
+    "metaDescription": "GAIAはVAの複数顧客受信箱の管理、定型連絡の自動化、顧客カレンダー横断のスケジュール調整、成果物の追跡を支援します。燃え尽きずにキャパシティを拡大できます。",
     "keywords": [
-      "ai for virtual assistants",
-      "ai tools for virtual assistants",
-      "ai assistant for vas",
-      "virtual assistant productivity tool",
-      "ai va tools",
-      "best ai for vas",
-      "ai for online business management",
-      "virtual assistant ai automation",
-      "ai tool for virtual assistants",
-      "ai assistant for remote work"
+      "バーチャルアシスタント向けAI",
+      "バーチャルアシスタント向けAIツール",
+      "VA向けAIアシスタント",
+      "バーチャルアシスタント生産性向上ツール",
+      "VA向けAIツール",
+      "VAに最適なAI",
+      "オンラインビジネス管理向けAI",
+      "バーチャルアシスタントAI自動化",
+      "バーチャルアシスタント向けAIツール",
+      "リモートワーク向けAIアシスタント"
     ],
-    "intro": "The ceiling on a VA's income is almost always capacity — there are only so many hours in a day to track tasks, write emails, and coordinate schedules across multiple clients. GAIA raises that ceiling by automating the repeatable parts of VA work: drafting routine client communications, managing multi-client inboxes, handling scheduling coordination, and tracking deliverables across client contexts. The result is more time for the high-judgment work that actually requires a skilled human, and room to take on additional clients without the workload scaling linearly.",
+    "intro": "VAの収入の上限はほぼ常にキャパシティです。複数顧客にまたがるタスク追跡、メール作成、スケジュール調整に使える時間は1日限りだからです。GAIAはVA業務の繰り返し部分、すなわち定型の顧客連絡の起草、複数顧客受信箱の管理、スケジュール調整、顧客コンテキスト横断の成果物追跡を自動化して、その上限を引き上げます。結果として、熟練の人間が本当に必要な高度な判断業務により多くの時間が残り、作業量が線形に増えることなく追加顧客を引き受けられます。",
     "painPoints": [
-      "Manually tracking tasks, deadlines, and deliverables across three to five client contexts in parallel with no shared system",
-      "Writing essentially the same category of email — meeting confirmations, follow-up nudges, scheduling requests — over and over for different clients",
-      "Scheduling coordination eats a disproportionate share of the day: finding times, sending invites, handling reschedules, chasing confirmations",
-      "Context collapse when switching between clients mid-day, leading to errors, missed details, or time wasted re-reading threads to reorient",
-      "Billing hours on tasks that are fully automatable, which is both inefficient for the VA and a difficult value conversation with cost-conscious clients"
+      "共通システムなしに3～5件の顧客コンテキストを並行して、手作業でタスク、締め切り、成果物を追跡する",
+      "顧客ごとに異なるが実質同じ種類のメール（会議確認、フォローアップの後押し、スケジュール依頼）を何度も書く",
+      "スケジュール調整が一日の不相応な割合を食う。時間探し、招待送信、日程変更対応、確認の催促",
+      "日中の顧客切り替えでコンテキストが崩壊し、ミスや見落とし、再把握のためのスレッド再読で時間を浪費する",
+      "完全自動化できるタスクに時間を請求するが、コスト意識の高い顧客との価値の会話が難しい"
     ],
     "howGaiaHelps": [
       {
-        "title": "Multi-Client Inbox Management",
-        "description": "GAIA manages Gmail inboxes across multiple client accounts, triaging messages by client and urgency, drafting responses for routine communications, and surfacing items that need a human decision — so no client inbox becomes a neglected pile."
+        "description": "GAIAは複数顧客アカウントのGmail受信箱を管理し、顧客と緊急度ごとにメッセージを仕分け、定型連絡には返信を下書き、人間の判断が必要な案件を提示します。顧客受信箱が放置された山になることはありません。",
+        "title": "複数顧客受信箱の管理"
       },
       {
-        "title": "Routine Email Drafting with Client Context",
-        "description": "GAIA drafts client-specific emails — meeting confirmations, follow-up nudges, status updates, scheduling requests — using each client's tone, context, and history, reducing the repetitive writing load without producing generic copy."
+        "description": "GAIAは各顧客のトーン、コンテキスト、履歴を使って、会議確認、フォローアップの後押し、進捗報告、スケジュール依頼といった顧客固有メールを下書きします。定型文にならずに繰り返し文章の負荷を減らします。",
+        "title": "顧客コンテキスト付き定型メール起草"
       },
       {
-        "title": "Scheduling Automation Across Client Calendars",
-        "description": "GAIA handles the full scheduling loop for multiple client Google Calendars: finding available times, sending invites, managing reschedules, and following up on unconfirmed meetings — without the VA manually coordinating each exchange."
+        "description": "GAIAは複数顧客のGoogleカレンダーのスケジュールループ全体を担います。空き時間探し、招待送信、日程変更管理、未確定会議のフォローアップを、VAが一件ずつ手作業調整することなく行います。",
+        "title": "顧客カレンダー横断のスケジュール自動化"
       },
       {
-        "title": "Deliverable Tracking Across Clients",
-        "description": "GAIA extracts commitments and deadlines from client emails and Slack messages, syncs them to Todoist or Notion organized by client, and surfaces upcoming due dates proactively — replacing the manual spreadsheet or sticky note system."
+        "description": "GAIAは顧客メールやSlackメッセージから約束事と締め切りを抽出し、顧客ごとに整理してTodoistやNotionに同期、今後の期限を積極的に提示します。手作業のスプレッドシートや付箋システムに取って代わります。",
+        "title": "顧客横断の成果物追跡"
       },
       {
-        "title": "Integration with Client Tools via MCP",
-        "description": "With deep integrations via MCP, GAIA connects to the tools each client already uses — Notion, Slack, Todoist, Google Workspace — so the VA can operate within the client's existing stack rather than asking every client to adopt something new."
+        "description": "MCPによる深い連携で、GAIAは各顧客がすでに使うツール（Notion、Slack、Todoist、Google Workspace）に接続します。VAはすべての顧客に新しい導入を求めるのではなく、顧客の既存スタック内で業務できます。",
+        "title": "MCPによる顧客ツール連携"
       },
       {
-        "title": "ソース公開型、料金はシンプルな定額",
-        "description": "GAIAはソース公開型（PolyForm Noncommercial）です。業務で使うホスト版は月額{{PRO_MONTHLY_PRICE}}ドルの有料プランで、クライアント数に応じた課金はないため、顧客が増えても利益率が削られません。"
+        "description": "GAIAはsource-available（PolyForm Noncommercial）で、ホスト版GAIAは1人あたり月額${{PRO_MONTHLY_PRICE}}のProプランです。顧客数の増加とともにマージンを削る顧客課金はありません。",
+        "title": "Source-Availableで一律料金"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA manage inboxes for multiple clients at once?",
-        "answer": "Yes. GAIA connects to multiple Gmail accounts simultaneously, triages each inbox independently with client-specific context, and drafts responses in each client's voice. Switching between client contexts is handled by GAIA rather than requiring the VA to manually re-read threads and reorient each time."
+        "answer": "はい。GAIAは複数のGmailアカウントに同時接続し、各受信箱を顧客固有コンテキストで独立して仕分け、各顧客の声で返信を下書きします。顧客コンテキストの切り替えはVAがスレッドを再読して再把握するのではなくGAIAが担います。",
+        "question": "GAIAは複数顧客の受信箱を同時に管理できますか？"
       },
       {
-        "question": "Will GAIA make me less valuable to clients by automating my work?",
-        "answer": "GAIA automates the repeatable, low-judgment tasks — scheduling, routine email drafting, deliverable tracking — which frees your time for the work clients actually pay a premium for: relationship management, judgment calls, complex coordination, and proactive problem-solving. Automation of the grind makes the high-value work more visible, not less."
+        "answer": "GAIAは繰り返しの低判断タスク（スケジュール、定型メール起草、成果物追跡）を自動化します。これにより、顧客が本当にプレミアムを払う業務、すなわち関係管理、判断、複雑な調整、先回りの問題解決に時間が残ります。単純作業の自動化は高価値業務をより見えやすくします。",
+        "question": "GAIAは業務を自動化して私の価値を下げませんか？"
       },
       {
-        "question": "How does GAIA handle client confidentiality?",
-        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、セルフホストに対応しています。クライアント業務は商用利用にあたるため、VAの方はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでGAIAを自分のインフラにセルフホストでき、第三者がクライアントデータにアクセスすることはありません。機密性の高いクライアントとのやり取りを扱うVAにとって、セルフホストはデータを完全に管理する手段になります。ホスト型での運用に抵抗がないVAには、月額{{PRO_MONTHLY_PRICE}}ドルのマネージドProプランもご用意しています。"
+        "answer": "GAIAはsource-available（PolyForm Noncommercial）で、VA事業者はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでセルフホストでき、自社インフラ内で導入して顧客データへの第三者アクセスを排除できます。センシティブな顧客連絡を扱うVAにとって、そのセルフホスト導入は完全なデータコントロールを提供します。ホスト導入に抵抗のないVA向けに、月額${{PRO_MONTHLY_PRICE}}のマネージドProプランも利用できます。",
+        "question": "GAIAは顧客の機密性をどう扱いますか？"
       }
     ]
   },

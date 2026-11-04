@@ -52,7 +52,8 @@ async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR py
     Raises:
         HTTPException: On authentication failure.
     """
-    if not hasattr(request.state, "authenticated") or not request.state.authenticated:
+    user = await get_optional_user(request)
+    if user is None:
         log.info(f"{LogTag.OAUTH} No authenticated user found in request state")
         raise HTTPException(
             status_code=401,
@@ -61,6 +62,18 @@ async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR py
                 "message": "Authentication required",
             },
         )
+    return user
+
+
+# NOSONAR justification: same as get_current_user — reads request.state only.
+async def get_optional_user(request: Request) -> AuthenticatedUser | None:  # NOSONAR python:S7503
+    """Return the session user, or None when the request carries no session (a public route's visitor).
+
+    Raises:
+        HTTPException: When the request is marked authenticated but carries no user.
+    """
+    if not getattr(request.state, "authenticated", False):
+        return None
     # request.state is Starlette's untyped bag; the auth middlewares only ever
     # put an AuthenticatedUser there when authenticated=True, and this is the
     # one place that fact is checked rather than assumed.

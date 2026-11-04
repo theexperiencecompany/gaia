@@ -31,8 +31,7 @@ export function IntegrationRichContent({
               How it works
             </h2>
             <p className="text-zinc-400 text-sm leading-relaxed">
-              Set up your {name} automation in three simple steps, no code
-              required.
+              Set up the automation in three simple steps, no code required.
             </p>
           </div>
           <ol className="space-y-4">
@@ -64,7 +63,7 @@ export function IntegrationRichContent({
               Frequently asked questions
             </h2>
             <p className="text-zinc-400 text-sm leading-relaxed">
-              Everything you need to know about the GAIA {name} integration.
+              Everything you need to know about connecting it to GAIA.
             </p>
           </div>
           <FAQAccordion faqs={faqs} />
@@ -74,13 +73,13 @@ export function IntegrationRichContent({
       {/* Section 4: Related integrations CTA */}
       <section className="rounded-3xl bg-gradient-to-br from-zinc-900/70 to-zinc-900/40 backdrop-blur-md p-8 space-y-4">
         <h2 className="text-2xl font-medium text-foreground">
-          GAIA connects {name} with your entire stack
+          GAIA connects this integration with your entire stack
         </h2>
         <p className="text-zinc-400 text-sm leading-relaxed max-w-2xl">
-          {name} is just one piece of the puzzle. GAIA integrates with the rest
-          of your tools across {categoryLabel.toLowerCase()}, communication,
-          productivity, and more, letting you build cross-tool automations in
-          plain English without writing a single line of code.
+          This integration is just one piece of the puzzle. GAIA integrates with
+          the rest of your tools across {categoryLabel.toLowerCase()},
+          communication, productivity, and more, letting you build cross-tool
+          automations in plain English without writing a single line of code.
         </p>
         <Button
           as={Link}

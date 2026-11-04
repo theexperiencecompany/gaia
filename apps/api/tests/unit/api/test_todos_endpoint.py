@@ -5,6 +5,7 @@ happy path with the service faked, and analytics captures on mutations.
 """
 
 from datetime import UTC, datetime, timedelta, tzinfo
+from typing import Self
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
@@ -29,7 +30,7 @@ from app.models.todo_models import (
 from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflowError
 from app.utils.log_identifiers import user_text_shape
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.todos import TodosToggled, TodosUpdated
+from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled, TodosUpdated
 from tests.conftest import FAKE_USER
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
@@ -445,7 +446,7 @@ class TestListQueryHelpers:
 
         class _RecordingDatetime(datetime):
             @classmethod
-            def now(cls, tz: tzinfo | None = None) -> datetime:
+            def now(cls, tz: tzinfo | None = None) -> Self:
                 now_calls.append(tz)
                 return super().now(tz)
 
@@ -513,18 +514,24 @@ class TestListQueryHelpers:
 
 
 class TestCreateTodoEndpoint:
-    async def test_a_classic_todo_is_created_with_its_workflow(self, client: AsyncClient) -> None:
-        """POST /todos is the classic entry point: the one path that generates a todo's workflow."""
-        with patch(
-            f"{TODOS_ENDPOINT}.TodoService.create_todo_with_workflow",
-            new=AsyncMock(return_value=_todo_response()),
-        ) as create:
+    async def test_creating_a_todo_queues_no_workflow_generation(self, client: AsyncClient) -> None:
+        """A workflow is generated only when the user presses Generate Workflow on the todo."""
+        with (
+            patch(
+                "app.services.todos.todo_service.TodoService.create_todo",
+                new=AsyncMock(return_value=_todo_response()),
+            ) as create,
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                new=AsyncMock(return_value=True),
+            ) as queue,
+        ):
             resp = await client.post("/api/v1/todos", json={"title": "Buy milk"})
 
         assert resp.status_code == 201
-        create.assert_awaited_once()
         assert create.await_args.args[0].title == "Buy milk"
         assert create.await_args.args[1] == "507f1f77bcf86cd799439011"
+        queue.assert_not_called()
 
 
 class TestGenerateTodoWorkflow:
@@ -544,6 +551,29 @@ class TestGenerateTodoWorkflow:
 
         assert resp.status_code == 409
         queue.assert_not_awaited()
+
+    async def test_the_generate_button_queues_the_todos_workflow(self, client: AsyncClient) -> None:
+        queue = AsyncMock(return_value=True)
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.TodoService.get_todo",
+                new=AsyncMock(return_value=_todo_response()),
+            ),
+            patch(f"{TODOS_ENDPOINT}.delete_cache", new=AsyncMock()),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                new=queue,
+            ),
+        ):
+            resp = await client.post("/api/v1/todos/todo-1/workflow")
+
+        assert resp.status_code == 200
+        queue.assert_awaited_once_with(
+            todo_id="todo-1",
+            user_id=_todo_response().user_id,
+            title="Test todo",
+            description="",
+        )
 
 
 class TestUpdateTodoWorkflowLink:
@@ -696,6 +726,71 @@ class TestTodoCanvas:
         assert resp.status_code == 404
         assert resp.json()["message"] == "Todo not found"
         get.assert_awaited_once_with("todo-1", user_id="507f1f77bcf86cd799439011")
+
+
+class TestOpenTodoConversation:
+    """The todo's "Open chat": its own chat, reached through the real service."""
+
+    SERVICE = "app.services.todos.todo_conversation"
+    OWNER = "507f1f77bcf86cd799439011"
+    TODO_ID = "6ab51f1ba7a1fcf0f00ab49a"
+
+    def _todo(self, labels: list[str]) -> TodoDocument:
+        return TodoDocument(id=self.TODO_ID, user_id=self.OWNER, title="Watch it", labels=labels)
+
+    async def test_a_tracked_todo_opens_its_own_chat(self, client: AsyncClient) -> None:
+        chat = AsyncMock(return_value="conv-todo")
+        with (
+            patch(
+                f"{self.SERVICE}.todo_repository.get",
+                new=AsyncMock(return_value=self._todo([GAIA_TRACKED_LABEL])),
+            ) as get,
+            patch(f"{self.SERVICE}.get_or_create_todo_conversation", new=chat),
+            patch(f"{self.SERVICE}.capture") as captured,
+            patch(f"{TODOS_ENDPOINT}.log") as log,
+        ):
+            resp = await client.post(f"/api/v1/todos/{self.TODO_ID}/conversation")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"conversation_id": "conv-todo"}
+        log.set.assert_called_once_with(
+            user={"id": self.OWNER}, todo={"operation": "open_conversation", "id": self.TODO_ID}
+        )
+        log.set_ns.assert_called_once_with("todo", conversation_id="conv-todo")
+        # Only the caller's own todo: another user's id reads as missing.
+        get.assert_awaited_once_with(self.TODO_ID, user_id=self.OWNER)
+        chat.assert_awaited_once_with(self.OWNER, self.TODO_ID, "Watch it")
+        captured.assert_called_once_with(UserId(self.OWNER), TodosChatOpened(todo_id=self.TODO_ID))
+
+    async def test_a_todo_gaia_does_not_track_has_no_chat(self, client: AsyncClient) -> None:
+        chat = AsyncMock()
+        with (
+            patch(
+                f"{self.SERVICE}.todo_repository.get",
+                new=AsyncMock(return_value=self._todo(["errands"])),
+            ),
+            patch(f"{self.SERVICE}.get_or_create_todo_conversation", new=chat),
+        ):
+            resp = await client.post(f"/api/v1/todos/{self.TODO_ID}/conversation")
+
+        assert resp.status_code == 409
+        assert (resp.json()["code"], resp.json()["message"]) == (
+            "todo_not_tracked",
+            "Only a tracked todo has a chat",
+        )
+        chat.assert_not_awaited()
+
+    async def test_a_todo_that_is_not_the_callers_is_404(self, client: AsyncClient) -> None:
+        chat = AsyncMock()
+        with (
+            patch(f"{self.SERVICE}.todo_repository.get", new=AsyncMock(return_value=None)),
+            patch(f"{self.SERVICE}.get_or_create_todo_conversation", new=chat),
+        ):
+            resp = await client.post(f"/api/v1/todos/{self.TODO_ID}/conversation")
+
+        assert resp.status_code == 404
+        assert (resp.json()["code"], resp.json()["message"]) == ("todo_not_found", "Todo not found")
+        chat.assert_not_awaited()
 
 
 class TestReopenOfATakenThread:

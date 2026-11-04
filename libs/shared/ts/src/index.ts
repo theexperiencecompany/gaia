@@ -266,6 +266,7 @@ export {
   buildWorkflowStatusEntry,
   createTodoApi,
   createTodoStore,
+  describeTodoRunWake,
   isWorkflowStatusFresh,
   WORKFLOW_STATUS_TTL_MS,
   WORKFLOW_WS_EVENTS,
@@ -310,6 +311,7 @@ export type {
   IntegrationStatusRecord,
   IntegrationStatusValue,
   IntegrationTool,
+  IntegrationToolApproval,
   IntegrationToolsResponse,
   LLMModel,
   MarketplaceIntegration,
@@ -463,6 +465,8 @@ export {
 export type {
   BuiltinTriggerMeta,
   IntegrationTriggerGroup,
+  TriggerDisplayConfig,
+  TriggerDisplayInfo,
   TriggerFieldSchema,
   TriggerSchema,
 } from "./workflows";
@@ -472,6 +476,7 @@ export {
   findTriggerSchema,
   formatIntegrationLabel,
   getSchemaFieldEntries,
+  getTriggerDisplayInfoBySlug,
   getTriggerLogoKey,
   groupTriggerSchemasByIntegration,
 } from "./workflows";

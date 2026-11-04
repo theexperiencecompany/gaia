@@ -1454,7 +1454,7 @@
     ]
   },
   "chatgpt-teams": {
-    "name": "ChatGPT",
+    "name": "ChatGPT Teams",
     "tagline": "OpenAIの会話型AI",
     "description": "ChatGPTは会話に優れていますが、プロンプトを待機します。GAIAはプロアクティブにワークフローを管理し、タスクを自動化し、多数のツールを自律的にオーケストレーションします。",
     "metaTitle": "プロアクティブな生産性のためのChatGPT Teams代替",

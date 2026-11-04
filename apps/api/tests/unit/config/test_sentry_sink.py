@@ -15,21 +15,24 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 import logging
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.outputs import ChatResult
+from mcp_use.client.connectors.http import HttpConnector
 import pytest
 import sentry_sdk
 from sentry_sdk.consts import OP
 from sentry_sdk.integrations.langchain import LangchainIntegration
-from sentry_sdk.types import Event
+from sentry_sdk.types import Event, Hint
 
 from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.sentry import _make_sentry_loguru_sink
+from shared.py import logging as shared_logging
 from shared.py.logging import _InterceptHandler, env_context
 from shared.py.wide_events import (
     BACKGROUND_LOGGER_NAME,
@@ -37,7 +40,9 @@ from shared.py.wide_events import (
     WORKER_EVENT_NAME,
     WORKER_LOGGER_NAME,
     log,
+    log_context,
 )
+from tests.helpers import pick_free_port
 
 
 def _record(
@@ -237,6 +242,23 @@ def test_a_library_error_log_reaches_sentry_exactly_once(sentry_events: list[Eve
 
 
 @pytest.mark.regression
+async def test_an_unreachable_mcp_server_reports_once_not_per_transport(
+    sentry_events: list[Event],
+) -> None:
+    """Transport lines are duplicates of GAIA's report; the session-task line is not."""
+    with pytest.raises(httpx.ConnectError):
+        await HttpConnector(f"http://127.0.0.1:{pick_free_port()}/mcp").connect()
+
+    messages = [
+        str(event.get("message") or event.get("logentry", {}).get("message", ""))
+        for event in sentry_events
+    ]
+    assert len(sentry_events) == 1, messages
+    assert "transport" not in messages[0].lower()
+    assert "SseConnectionManager" in messages[0]
+
+
+@pytest.mark.regression
 def test_a_failed_llm_attempt_is_left_to_the_retry_policy(sentry_events: list[Event]) -> None:
     # ainvoke_llm retries or falls back on this; the caller reports it only if the policy gives up.
     with sentry_sdk.start_transaction(name="chat turn"):
@@ -293,3 +315,280 @@ def test_only_production_samples_traces_and_profiles(
     global_scope.set_client(None)
 
     assert (options["traces_sample_rate"], options["profiles_sample_rate"]) == (rate, rate)
+
+
+@pytest.mark.regression
+def test_an_mcp_connect_duplicate_does_not_reach_sentry() -> None:
+    """MCPClient.connect reports the same failure with the integration id."""
+    # Read off the module, not imported: importing a constant this PR adds cannot
+    # collect on base, and a collection error is not the red to prove.
+    cap_msg, cap_exc, _scope = _run_sink(
+        _record(
+            message="MCP protocol error during initialization: code=-32601 message='Method not found'",
+            logger_name=shared_logging.MCP_USE_LOGGER_DISPLAY_NAME,
+        )
+    )
+
+    cap_msg.assert_not_called()
+    cap_exc.assert_not_called()
+
+
+@pytest.mark.regression
+def test_an_mcp_background_session_error_still_reaches_sentry() -> None:
+    """The library's task failure has no caller in app/, so it must reach Sentry."""
+    cap_msg, _cap_exc, _scope = _run_sink(
+        _record(
+            message="Error in SseConnectionManager task: unhandled errors in a TaskGroup",
+            logger_name=shared_logging.MCP_USE_LOGGER_DISPLAY_NAME,
+        )
+    )
+
+    cap_msg.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "OAuth initialization failed: no token",
+        "MCP protocol error during initialization: code=-32601 message='Method not found'",
+        "Failed to connect to stdio MCP server",
+        "Both transport methods failed. Streamable HTTP: closed, SSE: failed",
+    ],
+)
+def test_every_connect_transport_line_is_a_duplicate(message: str) -> None:
+    """Each of these is re-raised to MCPClient.connect, which reports it with the id."""
+    cap_msg, cap_exc, _scope = _run_sink(
+        _record(message=message, logger_name=shared_logging.MCP_USE_LOGGER_DISPLAY_NAME)
+    )
+
+    cap_msg.assert_not_called()
+    cap_exc.assert_not_called()
+
+
+def test_a_swallowed_tool_listing_failure_still_reaches_sentry() -> None:
+    """mcp_use catches this one and returns an empty list, so GAIA never re-reports it."""
+    cap_msg, _cap_exc, _scope = _run_sink(
+        _record(
+            message="Error listing tools for connector https://mcp.example: boom",
+            logger_name=shared_logging.MCP_USE_LOGGER_DISPLAY_NAME,
+        )
+    )
+
+    cap_msg.assert_called_once()
+
+
+def _event(**overrides: object) -> Event:
+    """Build a minimal message event, shaped like what capture_message builds."""
+    return cast("Event", {"logentry": {"message": "boom"}, **overrides})
+
+
+def test_a_wide_event_user_becomes_the_sentry_user() -> None:
+    event = sentry_config._before_send(
+        _event(extra={"user": {"id": "67bdb4367c7dd1f0ea343216"}}), {}
+    )
+
+    assert event is not None
+    assert event["user"] == {"id": "67bdb4367c7dd1f0ea343216"}
+
+
+def test_the_user_falls_back_to_a_flat_user_id() -> None:
+    event = sentry_config._before_send(_event(extra={"user_id": "67bdb4367c7dd1f0ea343216"}), {})
+
+    assert event is not None
+    assert event["user"] == {"id": "67bdb4367c7dd1f0ea343216"}
+
+
+def test_an_event_without_a_user_stays_anonymous() -> None:
+    event = sentry_config._before_send(_event(extra={"trace_id": "t1"}), {})
+
+    assert event is not None
+    assert "user" not in event
+
+
+def test_two_messages_differing_only_by_identifiers_share_a_fingerprint() -> None:
+    first = sentry_config._before_send(
+        _event(
+            tags={"logger": "APP"},
+            logentry={"message": "MCP DCR failed for https://x.dev/u/67bdb4367c7dd1f0ea343216"},
+        ),
+        {},
+    )
+    second = sentry_config._before_send(
+        _event(
+            tags={"logger": "APP"},
+            logentry={"message": "MCP DCR failed for https://y.dev/u/aaaaaaaaaaaaaaaaaaaa"},
+        ),
+        {},
+    )
+
+    assert first is not None and second is not None
+    assert first["fingerprint"] == second["fingerprint"]
+
+
+def test_different_messages_keep_different_fingerprints() -> None:
+    first = sentry_config._before_send(_event(logentry={"message": "redis unreachable"}), {})
+    second = sentry_config._before_send(_event(logentry={"message": "mongo unreachable"}), {})
+
+    assert first is not None and second is not None
+    assert first["fingerprint"] != second["fingerprint"]
+
+
+def test_a_message_fingerprint_names_the_logger_that_said_it() -> None:
+    event = sentry_config._before_send(_event(tags={"logger": "MCP_USE"}), {})
+
+    assert event is not None
+    assert event["fingerprint"][1] == "MCP_USE"
+
+
+def test_an_exception_event_is_grouped_by_its_stack_not_its_message() -> None:
+    event = sentry_config._before_send(
+        _event(exception={"values": []}, logentry={"message": "boom 12"}), {}
+    )
+
+    assert event is not None
+    assert "fingerprint" not in event
+
+
+def test_a_retried_llm_attempt_is_dropped_before_anything_else() -> None:
+    trace = {
+        "origin": LangchainIntegration.origin,
+        "op": OP.GEN_AI_CHAT,
+    }
+    assert sentry_config._before_send(_event(contexts={"trace": trace}), {}) is None
+
+
+@pytest.mark.parametrize(
+    ("event", "expected"),
+    [
+        ({"logentry": {"formatted": "boom 4242"}}, ["log", "app", "boom #"]),
+        ({"logentry": {"message": "boom 4242"}}, ["log", "app", "boom #"]),
+        ({"logentry": {}, "message": "boom 4242"}, ["log", "app", "boom #"]),
+        (
+            {"logentry": {"message": "boom 4242"}, "tags": {"logger": "MCP_USE"}, "logger": "x"},
+            ["log", "MCP_USE", "boom #"],
+        ),
+        (
+            {"logentry": {"message": "boom 4242"}, "logger": "sentry.exporter"},
+            ["log", "sentry.exporter", "boom #"],
+        ),
+    ],
+)
+def test_the_fingerprint_reads_every_fallback_in_order(
+    event: dict[str, object], expected: list[str]
+) -> None:
+    """Each source is a fallback: logentry.formatted, then message, then the event's own."""
+    result = sentry_config._before_send(_event(**event), {})
+
+    assert result is not None
+    assert result["fingerprint"] == expected
+
+
+def test_a_very_long_message_is_capped_for_readability() -> None:
+    result = sentry_config._before_send(_event(logentry={"message": "z" * 400}), {})
+
+    assert result is not None
+    assert len(result["fingerprint"][2]) == 160
+
+
+def test_an_event_with_no_message_keeps_sentry_s_own_grouping() -> None:
+    """A blank fingerprint would merge every message-less event into one issue."""
+    result = sentry_config._before_send(_event(logentry={}), {})
+
+    assert result is not None
+    assert "fingerprint" not in result
+
+
+def test_the_hint_reaches_the_llm_attempt_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def record(event: Event, hint: Hint) -> Event:
+        seen["hint"] = hint
+        return event
+
+    monkeypatch.setattr(sentry_config, "_drop_llm_attempt_errors", record)
+    hint: Hint = {"exc_info": (ValueError, ValueError("x"), None)}
+
+    sentry_config._before_send(_event(), hint)
+
+    assert seen["hint"] is hint
+
+
+@pytest.mark.regression
+async def test_an_error_without_user_kwargs_still_reaches_sentry_as_that_user(
+    sentry_events: list[Event],
+) -> None:
+    """A log line binds only its own kwargs; the request's user rides the wide event."""
+    async with log_context("test_operation"):
+        log.set(user={"id": "67bdb4367c7dd1f0ea343216"})
+        log.error("executor run failed")
+
+    assert [event["user"] for event in sentry_events] == [{"id": "67bdb4367c7dd1f0ea343216"}]
+
+
+def test_an_unvalidatable_event_still_reaches_sentry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A raising before_send makes the SDK drop the event, so it ships ungrouped instead."""
+    warning = MagicMock()
+    monkeypatch.setattr(sentry_config.log, "warning", warning)
+
+    event = sentry_config._before_send(_event(tags={"logger": 5}), {})
+
+    assert event is not None
+    assert "fingerprint" not in event
+    warning.assert_called_once_with("sentry_event_shaping_failed", error_type="ValidationError")
+
+
+def test_a_user_without_an_id_still_gets_one() -> None:
+    """Sentry allows a user dict with only a username; the event's own id must join it."""
+    event = sentry_config._before_send(
+        _event(extra={"user": {"id": "67bdb4367c7dd1f0ea343216"}}, user={"username": "a"}),
+        {},
+    )
+
+    assert event is not None
+    assert event["user"] == {"username": "a", "id": "67bdb4367c7dd1f0ea343216"}
+
+
+def test_an_existing_fingerprint_is_not_replaced() -> None:
+    """Scope code may have grouped the event already; ours must not silently undo it."""
+    event = sentry_config._before_send(
+        _event(logentry={"message": "boom 4242"}, fingerprint=["mine"]), {}
+    )
+
+    assert event is not None
+    assert event["fingerprint"] == ["mine"]
+
+
+def test_a_user_that_already_has_an_id_is_left_alone() -> None:
+    """The caller's attribution wins; ours only fills a gap."""
+    event = sentry_config._before_send(
+        _event(user={"id": "existing"}, extra={"user": {"id": "67bdb4367c7dd1f0ea343216"}}),
+        {},
+    )
+
+    assert event is not None
+    assert event["user"] == {"id": "existing"}
+
+
+def test_a_trace_export_failure_never_reaches_sentry() -> None:
+    """It says the collector is unreachable, not that a request failed; Loki keeps the line."""
+    from shared.py.logging import OTEL_LOGGER_DISPLAY_NAME
+
+    cap_msg, cap_exc, _scope = _run_sink(
+        _record(
+            message="Failed to export span batch code: 502, reason: <html>",
+            logger_name=OTEL_LOGGER_DISPLAY_NAME,
+        )
+    )
+
+    cap_msg.assert_not_called()
+    cap_exc.assert_not_called()
+
+
+def test_an_arq_job_failure_is_left_to_the_arq_integration() -> None:
+    """ArqIntegration reports the job with its own trace; this line cannot be deduped."""
+    cap_msg, cap_exc, _scope = _run_sink(_record(message="job failed", logger_name="ARQ"))
+
+    cap_msg.assert_not_called()
+    cap_exc.assert_not_called()

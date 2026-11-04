@@ -550,25 +550,8 @@ class TestBuildExecutorGraph:
         assert kwargs["hooks_config"].require_finish_to_end is True
         assert "save_learned_skill" in kwargs["tools_config"].initial_tool_ids
 
-    async def test_handoff_is_the_delegation_tool_by_default(self):
-        with ExitStack() as stack:
-            deps = _apply_patches(stack)
-            from app.agents.core.graph_builder.build_graph import build_executor_graph
-
-            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
-                pass
-
-            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
-            kwargs, registry = call.kwargs, call.args[1]
-
-        assert "handoff" in kwargs["tools_config"].initial_tool_ids
-        assert "handoff" in registry
-        # activate_integration is always bound; handoff stays for per-user MCP.
-        assert "activate_integration" in kwargs["tools_config"].initial_tool_ids
-        assert "activate_integration" in registry
-
-    async def test_activate_integration_bound_and_handoff_kept(self):
-        """Activation leads with activate_integration but keeps handoff bound: it is the only path for per-user MCP integrations, which cannot be activated in-context, so both live in the bound set and the registry."""
+    async def test_activate_integration_is_the_only_integration_entry_and_handoff_is_gone(self):
+        """Every integration, per-user MCP included, activates in-context: handoff is neither bound nor registered."""
         with ExitStack() as stack:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
@@ -581,11 +564,11 @@ class TestBuildExecutorGraph:
 
         assert "activate_integration" in kwargs["tools_config"].initial_tool_ids
         assert "activate_integration" in registry
-        assert "handoff" in kwargs["tools_config"].initial_tool_ids
-        assert "handoff" in registry
+        assert "handoff" not in kwargs["tools_config"].initial_tool_ids
+        assert "handoff" not in registry
 
     async def test_activate_integration_leads_the_initial_tool_set(self):
-        """activate_integration leads, finish_task follows; the full initial set (handoff included) after."""
+        """activate_integration leads, finish_task follows; the full initial set after."""
         from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
 
         with ExitStack() as stack:
@@ -675,7 +658,6 @@ class TestBuildExecutorGraph:
             assert kwargs["tools_config"].initial_tool_ids == [
                 "activate_integration",
                 "finish_task",
-                "handoff",
                 "execute",
                 "get_tool_schema",
                 "plan_tasks",
@@ -735,7 +717,6 @@ class TestBuildExecutorGraph:
             "chat_llm": deps["llm"],
             "subagent": SubagentStackOptions(
                 excluded_tools={
-                    "handoff",
                     "list_running_subagents",
                     "message_subagent",
                     "cancel_subagent",
@@ -746,17 +727,6 @@ class TestBuildExecutorGraph:
                 inherit_parent_tools=True,
             ),
         }
-
-    async def test_executor_tool_registry_includes_handoff(self):
-        with ExitStack() as stack:
-            deps = _apply_patches(stack)
-            from app.agents.core.graph_builder.build_graph import build_executor_graph
-
-            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
-                pass
-
-            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
-            assert "handoff" in call.args[1]
 
     async def test_executor_pre_model_hooks_includes_todo_hook_and_the_inbox_drain(self):
         with ExitStack() as stack:

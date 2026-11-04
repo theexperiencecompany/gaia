@@ -38,6 +38,8 @@ export const metadata: Metadata = generatePageMetadata({
   image: "/og-image.webp",
 });
 
+const COMPANY_ID = `${siteConfig.url}/#the-experience-company`;
+
 const BRAND_SCHEMA = {
   "@context": "https://schema.org" as const,
   "@type": "WebPage" as const,
@@ -48,6 +50,7 @@ const BRAND_SCHEMA = {
   about: [
     {
       "@type": "Organization" as const,
+      "@id": COMPANY_ID,
       name: "The Experience Company",
       url: siteConfig.url,
     },

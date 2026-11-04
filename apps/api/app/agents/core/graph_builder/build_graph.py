@@ -18,7 +18,6 @@ from app.agents.core.nodes.pre_model_hooks import (
     comms_pre_model_hooks,
     worker_pre_model_hooks,
 )
-from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.integration_activation import activate_integration
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
@@ -51,6 +50,7 @@ from app.agents.tools.subagent_control_tool import (
 )
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
@@ -63,10 +63,8 @@ from app.override.langgraph_bigtool.create_agent import create_agent
 from shared.py.wide_events import log
 
 #: Tools the executor binds before its first turn, ahead of any retrieve_tools call.
-#: "activate_integration" is always bound. `handoff` stays for per-user MCP
-#: integrations that cannot be activated in-context — see build_executor_graph.
+#: "activate_integration" is always bound on top of these — see build_executor_graph.
 EXECUTOR_INITIAL_TOOL_IDS = [
-    "handoff",
     "execute",
     "get_tool_schema",
     "plan_tasks",
@@ -117,7 +115,7 @@ async def build_executor_graph(
     chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
 ) -> AsyncIterator[CompiledAgentGraph]:
-    """Construct and compile the executor agent graph with handoff (per-user MCP only) + activation tools."""
+    """Construct and compile the executor agent graph with the activation tool."""
     if chat_llm is None:
         chat_llm = init_llm()
 
@@ -131,11 +129,7 @@ async def build_executor_graph(
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({t.name: t for t in todo_tools})
 
-    # handoff stays bound for per-user MCP integrations, whose tools never
-    # enter the global registry; activate_integration routes those to
-    # handoff rather than dead-ending them.
-    tool_dict.update({"handoff": handoff_tool})
-    tool_dict.update({"activate_integration": activate_integration})
+    tool_dict.update({ACTIVATE_INTEGRATION_TOOL_NAME: activate_integration})
     # The executor ends through finish_task too: its outcome is what the run's
     # review checks against the tool calls that actually ran.
     tool_dict.update({FINISH_TASK_NAME: finish_task})
@@ -146,14 +140,13 @@ async def build_executor_graph(
     todo_hook = create_todo_pre_model_hook(source="executor")
 
     # Spawned subagents must not see executor-only orchestration tools, and
-    # activate_integration is executor-level: subagents reach integrations
-    # through handoff, never by activating in-context themselves.
+    # activate_integration is executor-level: a spawn inherits the tools the
+    # executor already activated rather than activating in-context itself.
     excluded_subagent_tools = {
-        "handoff",
         "list_running_subagents",
         "message_subagent",
         "cancel_subagent",
-        "activate_integration",
+        ACTIVATE_INTEGRATION_TOOL_NAME,
         # A spawn mines untrusted output; global instructions reach every tier.
         "update_user_instructions",
     }
@@ -186,9 +179,7 @@ async def build_executor_graph(
 
     pre_model_hooks = worker_pre_model_hooks(todo_hook, drains_inbox=True)
 
-    # activate_integration leads; handoff stays for the per-user MCP
-    # integrations activation cannot bind in-context (routed there).
-    initial_tools = ["activate_integration", FINISH_TASK_NAME, *EXECUTOR_INITIAL_TOOL_IDS]
+    initial_tools = [ACTIVATE_INTEGRATION_TOOL_NAME, FINISH_TASK_NAME, *EXECUTOR_INITIAL_TOOL_IDS]
 
     builder = create_agent(
         chat_llm,

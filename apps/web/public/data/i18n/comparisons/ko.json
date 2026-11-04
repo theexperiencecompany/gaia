@@ -1454,7 +1454,7 @@
     ]
   },
   "chatgpt-teams": {
-    "name": "ChatGPT",
+    "name": "ChatGPT Teams",
     "tagline": "OpenAI의 대화형 AI",
     "description": "ChatGPT는 대화에 뛰어나지만 프롬프트를 기다립니다. GAIA는 이메일, 캘린더, 작업을 능동적으로 관리하고 다양한 통합 기능을 조정하며 자율적으로 작동합니다.",
     "metaTitle": "능동형 생산성을 위한 ChatGPT Teams 대안",

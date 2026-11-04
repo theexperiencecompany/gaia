@@ -7,7 +7,12 @@ import JsonLd from "@/components/seo/JsonLd";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import { connect, footerSections } from "@/config/appConfig";
+import { getImageDimensions } from "@/lib/imageDimensions";
 import { siteConfig } from "@/lib/seo";
+
+const FOOTER_GLOW = getImageDimensions(
+  "/images/wallpapers/subtle_glow_deep_blues.webp",
+);
 
 export default function Footer() {
   const navigationSchema: WithContext<SiteNavigationElement> = {
@@ -43,10 +48,11 @@ export default function Footer() {
         <Image
           src="/images/wallpapers/subtle_glow_deep_blues.webp"
           alt=""
-          fill
+          width={FOOTER_GLOW.width}
+          height={FOOTER_GLOW.height}
           sizes="100vw"
           priority={false}
-          className="pointer-events-none z-0 origin-bottom scale-150 select-none object-cover object-bottom"
+          className="pointer-events-none absolute inset-0 z-0 h-full w-full origin-bottom scale-150 object-cover object-bottom select-none"
         />
 
         {/* Fade the footer's top edge into the page background above, so the
@@ -122,7 +128,7 @@ export default function Footer() {
               href="https://twitter.com/madebyexp"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 text-sm text-zinc-200 transition-colors hover:text-primary"
+              className="flex min-h-6 items-center gap-2 text-sm text-zinc-200 transition-colors hover:text-primary"
             >
               {/* Sized to the text's line box so the mark and the wordmark
                   share one height instead of the mark towering over it. */}
@@ -144,13 +150,20 @@ export default function Footer() {
                   target={link.external ? "_blank" : undefined}
                   rel={link.external ? "noopener noreferrer" : undefined}
                   title={link.description}
-                  aria-label={link.label}
-                  className="text-zinc-200 transition-colors hover:text-primary"
+                  aria-label={`${link.label}: ${link.description}`}
+                  className="-m-2 p-2 text-zinc-200 transition-colors hover:text-primary"
                 >
                   {/* Drop each icon's brand color so the row reads as one set
-                      and inherits the hover state. */}
-                  {isValidElement<{ color?: string }>(link.icon)
-                    ? cloneElement(link.icon, { color: undefined })
+                      and inherits the hover state. The icon is decorative:
+                      the link already carries its name in aria-label. */}
+                  {isValidElement<{
+                    color?: string;
+                    "aria-hidden"?: boolean;
+                  }>(link.icon)
+                    ? cloneElement(link.icon, {
+                        color: undefined,
+                        "aria-hidden": true,
+                      })
                     : link.icon}
                 </Link>
               ))}

@@ -187,7 +187,7 @@ Always use HeroUI over raw HTML or custom implementations. HeroUI handles access
 
 `next-intl` v4 with the `[locale]` segment. Config lives in `src/i18n/`:
 
-- `config.ts` — locale list (`en`, `es`, `fr`, `de`, `ja`, `ko`, `pt-BR`) and `defaultLocale = "en"`
+- `config.ts` — locale list (`en`, `es`, `fr`, `de`, `ja`, `ko`, `pt-br`) and `defaultLocale = "en"`
 - `routing.ts` — `localePrefix: "as-needed"` (default locale has no prefix in URL)
 - `request.ts` — server-side locale resolution passed to `createNextIntlPlugin`
 - `navigation.ts` — locale-aware `Link`, `useRouter`, `usePathname` wrappers

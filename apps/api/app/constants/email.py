@@ -29,6 +29,18 @@ MessageFieldLiteral = Literal[
     "labels",
 ]
 
+# Gmail API / snake_case spellings models send for a projected field (prod: "date"
+# alone was 61 refused GMAIL_FETCH_MESSAGES calls), read as the field they name.
+MESSAGE_FIELD_SYNONYMS: dict[str, MessageFieldLiteral] = {
+    "date": "time",
+    "internalDate": "time",
+    "internal_date": "time",
+    "message_id": "id",
+    "thread_id": "threadId",
+    "labelIds": "labels",
+    "label_ids": "labels",
+}
+
 # Curated per-message fields returned when the caller does not specify any:
 # metadata + snippet, deliberately excluding the full `body` and `cc`/`bcc` to
 # keep the LLM payload small. An explicit empty list means "all fields" instead.

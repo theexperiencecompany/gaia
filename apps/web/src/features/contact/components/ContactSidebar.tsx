@@ -11,6 +11,7 @@ import {
   TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
+import { siteConfig } from "@/lib/seo";
 
 const emailLinks = [
   {
@@ -39,27 +40,27 @@ const emailLinks = [
 const socialLinks = [
   {
     ariaLabel: "Discord",
-    href: "https://discord.heygaia.io",
+    href: siteConfig.links.discord,
     Icon: DiscordIcon,
   },
   {
     ariaLabel: "Twitter",
-    href: "https://x.com/trygaia",
+    href: siteConfig.links.twitter,
     Icon: TwitterIcon,
   },
   {
     ariaLabel: "GitHub",
-    href: "https://github.com/theexperiencecompany",
+    href: siteConfig.links.repo,
     Icon: Github,
   },
   {
     ariaLabel: "WhatsApp",
-    href: "https://whatsapp.heygaia.io",
+    href: siteConfig.links.whatsapp,
     Icon: WhatsappIcon,
   },
   {
     ariaLabel: "LinkedIn",
-    href: "https://www.linkedin.com/company/heygaia",
+    href: siteConfig.links.linkedin,
     Icon: LinkedinIcon,
   },
 ];
@@ -68,12 +69,12 @@ export default function ContactSidebar() {
   return (
     <div className="grid gap-10">
       <section aria-labelledby="email-heading">
-        <h3
+        <h2
           id="email-heading"
           className="mb-3 text-base font-semibold tracking-tight"
         >
           Get in Touch
-        </h3>
+        </h2>
         {emailLinks.map(({ href, label, Icon, external }) => (
           <a
             key={label}
@@ -90,12 +91,12 @@ export default function ContactSidebar() {
       </section>
 
       <section aria-labelledby="follow-heading">
-        <h3
+        <h2
           id="follow-heading"
           className="text-base font-semibold tracking-tight"
         >
           Socials
-        </h3>
+        </h2>
         <div className="mt-3 flex items-center gap-2 text-foreground-500">
           {socialLinks.map(({ ariaLabel, href, Icon }) => (
             <a

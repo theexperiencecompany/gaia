@@ -16,55 +16,55 @@
     "Jira Drive sync",
     "engineering docs automation"
   ],
-  "intro": "Every Jira epic has documentation that lives somewhere in Google Drive: the product requirements document, the technical design doc, the stakeholder sign-off email, the post-launch notes. But finding and attaching those documents to the right Jira epic is manual work that often does not happen, leaving engineers to dig through Drive each time they need context.\n\nGAIA builds and maintains the link between Google Drive documents and Jira epics automatically. When a product requirements document is created in Drive with a matching name, GAIA attaches it to the corresponding Jira epic. When an incident is resolved in Jira, GAIA creates a post-mortem document in Drive. The documentation system and the issue tracking system stay connected without anyone manually managing the relationship.\n\nThis integration reduces the context-gathering overhead that slows engineers down at the start of each task and ensures that the rationale behind engineering decisions is always accessible from the Jira issue where the work is tracked.",
+  "intro": "Every Jira epic has documentation that lives somewhere in Google Drive: the product requirements document, the technical design doc, the stakeholder sign-off email, the post-launch notes. But finding and attaching those documents to the right epic is manual work that often does not happen, leaving engineers to dig through folders each time they need context.\n\nGAIA builds and maintains the link between documents and epics automatically. When a product requirements document is created with a matching name, GAIA attaches it to the corresponding epic. When an incident is resolved in Jira, GAIA creates a post-mortem document in Drive. The documentation system and the issue tracking system stay connected without anyone managing the relationship by hand.\n\nThis integration reduces the context-gathering overhead that slows engineers down at the start of each task and ensures that the rationale behind engineering decisions is always accessible from the issue where the work is tracked.",
   "useCases": [
     {
-      "title": "Auto-attach Drive requirement docs to Jira epics",
-      "description": "When a new Google Doc is added to the requirements folder in Drive with a name matching a Jira epic, GAIA attaches the document link to the epic so engineers immediately have access to the full specification without searching Drive."
+      "title": "Auto-attach requirement docs to Jira epics",
+      "description": "When a new Google Doc is added to the requirements folder with a name matching an epic, GAIA attaches the document link to the epic so engineers immediately have access to the full specification without searching."
     },
     {
       "title": "Create Jira epics from new Drive PRDs",
-      "description": "When a Product Requirements Document is created in Drive and marked as Ready for Engineering, GAIA creates a Jira epic with the PRD title, a summary of the requirements, and a link back to the Drive document so engineering can begin planning immediately."
+      "description": "When a Product Requirements Document is created and marked as Ready for Engineering, GAIA creates an epic with the PRD title, a summary of the requirements, and a link back to the document so engineering can begin planning immediately."
     },
     {
-      "title": "Generate post-mortem documents from resolved Jira incidents",
-      "description": "When a Jira incident issue is transitioned to Resolved, GAIA creates a post-mortem document in Drive pre-populated with the incident title, timeline from Jira comments, and a structured template so the team can complete the analysis without starting from a blank page."
+      "title": "Generate post-mortem documents from resolved incidents",
+      "description": "When an incident issue is transitioned to Resolved, GAIA creates a post-mortem document in Drive pre-populated with the incident title, timeline from the issue's comments, and a structured template so the team can complete the analysis without starting from a blank page."
     },
     {
-      "title": "Attach technical design docs to Jira stories",
-      "description": "When an engineer creates a technical design document in Drive and includes a Jira story key in the document title, GAIA attaches the document to the referenced Jira story so future engineers can find the design rationale in the issue."
+      "title": "Attach technical design docs to stories",
+      "description": "When an engineer creates a technical design document and includes a Jira story key in the document title, GAIA attaches the document to the referenced story so future engineers can find the design rationale in the issue."
     },
     {
-      "title": "Maintain a Drive folder structure mirroring Jira projects",
-      "description": "GAIA creates and maintains a Google Drive folder structure that mirrors your Jira project hierarchy. When a new Jira project or epic is created, GAIA creates the corresponding Drive folder so document organization stays consistent automatically."
+      "title": "Maintain a Drive folder structure mirroring your projects",
+      "description": "GAIA creates and maintains a folder structure that mirrors your project hierarchy. When a new project or epic is created, GAIA creates the corresponding folder so document organization stays consistent automatically."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Google Drive and Jira to GAIA",
-      "description": "Authorize GAIA with your Google Workspace account and Jira project. Designate the Drive folders GAIA should monitor and map them to Jira projects."
+      "description": "Authorize GAIA with your Google Workspace account and Jira project. Designate the folders GAIA should monitor and map them to projects."
     },
     {
       "step": "Configure naming conventions and trigger rules",
-      "description": "Define the naming patterns GAIA should use to match Drive documents to Jira epics and stories, which Drive events should create Jira issues, and which Jira events should create Drive documents."
+      "description": "Define the naming patterns GAIA should use to match documents to epics and stories, which document events should create issues, and which issue events should create documents."
     },
     {
-      "step": "Docs attach to Jira issues automatically",
-      "description": "GAIA monitors both platforms and maintains links between documents and issues in real time. Engineers click through from Jira to the right Drive document without searching; documents in Drive reference their linked Jira issues."
+      "step": "Docs attach to issues automatically",
+      "description": "GAIA monitors both sides and maintains links between documents and issues in real time. Engineers click through from the issue to the right document without searching; documents reference their linked issues."
     }
   ],
   "faqs": [
     {
       "question": "Does GAIA require documents to follow a specific naming format?",
-      "answer": "GAIA works best with consistent naming but supports flexible matching patterns including partial name matches and regular expressions. You can also link Drive documents to Jira epics manually and GAIA will maintain those explicit links going forward."
+      "answer": "GAIA works best with consistent naming but supports flexible matching patterns including partial name matches and regular expressions. You can also link documents to epics manually and GAIA will maintain those explicit links going forward."
     },
     {
       "question": "Can GAIA attach files from shared drives, not just personal Drive?",
-      "answer": "Yes. GAIA can access any Google Drive location that the authorized Google account has access to, including shared drives and files shared with the domain. It respects existing Drive sharing permissions and does not modify them."
+      "answer": "Yes. GAIA can access any location the authorized Google account has access to, including shared drives and files shared with the domain. It respects existing sharing permissions and does not modify them."
     },
     {
-      "question": "What happens to Drive links in Jira when a document is moved to a different Drive folder?",
-      "answer": "Google Drive URLs are stable and do not change when a file is moved between folders. Jira links remain valid after file moves. GAIA does log the move event so you have a record of where the document currently lives."
+      "question": "What happens to links in Jira when a document is moved to a different folder?",
+      "answer": "Document URLs are stable and do not change when a file is moved between folders. Existing links remain valid after file moves. GAIA does log the move event so you have a record of where the document currently lives."
     }
   ]
 }

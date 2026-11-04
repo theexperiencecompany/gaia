@@ -14,27 +14,27 @@
     "sync Notion and Todoist",
     "planning to task list automation"
   ],
-  "intro": "Notion is where plans live. Todoist is where tasks get done. The divide between planning documents and actionable to-do lists means action items get buried in Notion pages while your Todoist inbox doesn't reflect what your plans require. GAIA connects the two so plans translate automatically into tasks.",
+  "intro": "Notion is where plans live. Todoist is where tasks get done. The divide between planning documents and actionable to-do lists means action items get buried in pages while your Todoist inbox doesn't reflect what your plans require. GAIA connects the two so plans translate automatically into tasks.",
   "useCases": [
     {
       "title": "Extract tasks from Notion project pages",
-      "description": "GAIA reads Notion project pages, identifies action items and checkbox items, and creates corresponding Todoist tasks with due dates pulled from any dates mentioned in the Notion content."
+      "description": "GAIA reads project pages, identifies action items and checkbox items, and creates corresponding Todoist tasks with due dates pulled from any dates mentioned in the page content."
     },
     {
       "title": "Weekly review sync",
-      "description": "During weekly reviews in Notion, action items you capture in your review page automatically flow to Todoist as tasks for the coming week, closing the loop between reflection and execution."
+      "description": "During weekly reviews in Notion, action items you capture in your review page automatically become tasks for the coming week, closing the loop between reflection and execution."
     },
     {
       "title": "Meeting notes to tasks",
-      "description": "Action items captured in Notion meeting notes become Todoist tasks assigned to the right project, so next-step commitments from meetings don't live only in documents."
+      "description": "Action items captured in meeting notes become tasks assigned to the right project, so next-step commitments from meetings don't live only in documents."
     },
     {
       "title": "Todoist completion synced to Notion",
-      "description": "When you complete a Todoist task, GAIA marks the corresponding Notion checkbox as checked, keeping your Notion project pages current with actual task completion status."
+      "description": "When you complete a task, GAIA marks the corresponding checkbox on the project page as checked, keeping your pages current with actual task completion status."
     },
     {
       "title": "Goal tracking across both tools",
-      "description": "Quarterly goals set in Notion generate Todoist tasks that break down each goal into actionable steps, ensuring your big-picture plans have concrete daily actions attached."
+      "description": "Quarterly goals generate tasks that break down each goal into actionable steps, ensuring your big-picture plans have concrete daily actions attached."
     }
   ],
   "howItWorks": [
@@ -44,25 +44,25 @@
     },
     {
       "step": "Configure sync direction and frequency",
-      "description": "Choose whether sync flows one-way (Notion to Todoist), the other direction, or bidirectionally. Set how often GAIA should check for new items to sync."
+      "description": "Choose whether sync runs one-way from pages to tasks, the other direction, or bidirectionally. Set how often GAIA should check for new items to sync."
     },
     {
       "step": "GAIA bridges planning and execution",
-      "description": "Plans in Notion translate to tasks in Todoist automatically. Completed tasks flow back to Notion. Your planning and execution systems become one coherent workflow."
+      "description": "Plans become tasks automatically. Completed tasks are reflected back in the planning pages. Your planning and execution systems become one coherent workflow."
     }
   ],
   "faqs": [
     {
       "question": "Can GAIA sync Notion database items (not just page content) to Todoist?",
-      "answer": "Yes. GAIA can read Notion databases and create Todoist tasks from database entries, mapping Notion database properties (like due date, assignee, priority) to Todoist task attributes."
+      "answer": "Yes. GAIA can read databases and create tasks from database entries, mapping database properties (like due date, assignee, priority) to task attributes."
     },
     {
-      "question": "What happens if I edit a task in Todoist after GAIA synced it from Notion?",
-      "answer": "By default, Todoist edits don't overwrite the Notion source. GAIA treats Todoist as the execution layer and Notion as the planning layer. You can configure bidirectional sync if you want changes in either tool to update the other."
+      "question": "What happens if I edit a task after GAIA has synced it from its source page?",
+      "answer": "By default, edits to the task don't overwrite the source page. GAIA treats the task list as the execution layer and the pages as the planning layer. You can configure bidirectional sync if you want changes on either side to update the other."
     },
     {
-      "question": "Does GAIA handle Notion's checkbox blocks specifically?",
-      "answer": "Yes. GAIA recognizes Notion checkbox blocks as tasks and can toggle them when the corresponding Todoist task is completed, keeping your Notion pages accurate."
+      "question": "Does GAIA handle checkbox blocks specifically?",
+      "answer": "Yes. GAIA recognizes checkbox blocks as tasks and can toggle them when the corresponding task is completed, keeping your pages accurate."
     }
   ]
 }

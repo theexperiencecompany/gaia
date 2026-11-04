@@ -66,6 +66,7 @@ node_modules/
 **/playwright-report/
 **/.playwright/
 **/blob-report/
+apps/web/e2e/visual/.baseline/
 **/playwright/.cache/
 
 # next.js

@@ -14,27 +14,27 @@
     "gaia airtable google calendar",
     "airtable google calendar sync"
   ],
-  "intro": "Airtable and Google Calendar do not sync with each other on their own, so you need a tool in between. GAIA connects both accounts and works in both directions: it can create an Airtable record from the details of each new Google Calendar event (title, start and end time, attendees, location, description), and it can turn Airtable date fields into Google Calendar events. If you only need to see Airtable dates on your calendar, Airtable's calendar view can share a read-only iCal link that you subscribe to in Google Calendar. Google refreshes subscribed calendars on its own schedule, so changes can take hours to appear.\n\nThe two directions run differently. Calendar to Airtable is event-driven: GAIA's Google Calendar trigger fires when a new event is created on the calendars you pick, and the workflow writes the record. Airtable to calendar runs on a schedule, because Airtable does not push changes to GAIA. On each run GAIA reads the table, creates events for new dates, and moves events whose date changed, so a date edited at 10:05 shows up after the next run. Hourly suits a shared team schedule; once a day is enough for publishing dates.\n\nExample workflow: \"When a new event is added to my Client Calls calendar, create a record in the Meetings table of my CRM base: event title in Name, start time in Date, attendee emails in Attendees, and the event description in Notes.\" A second workflow runs the other way: \"Every weekday at 8am, add an all-day event to my Deadlines calendar for each record in Projects whose Due Date is in the next 14 days, and move the event if the date changed.\"",
+  "intro": "Airtable and Google Calendar do not sync with each other on their own, so you need a tool in between. GAIA connects both accounts and works in both directions: it can create a record in a base from the details of each new calendar event (title, start and end time, attendees, location, description), and it can turn date fields into calendar events. If you only need to see the dates on your calendar, a base's calendar view can share a read-only iCal link that you subscribe to in Google Calendar. Google refreshes subscribed calendars on its own schedule, so changes can take hours to appear.\n\nThe two directions run differently. Calendar to base is event-driven: GAIA's new-event trigger fires when a new event is created on the calendars you pick, and the workflow writes the record. The other direction runs on a schedule, because Airtable does not push changes to GAIA. On each run GAIA reads the table, creates events for new dates, and moves events whose date changed, so a date edited at 10:05 shows up after the next run. Hourly suits a shared team schedule; once a day is enough for publishing dates.\n\nExample workflow: \"When a new event is added to my Client Calls calendar, create a record in the Meetings table of my CRM base: event title in Name, start time in Date, attendee emails in Attendees, and the event description in Notes.\" A second workflow runs the other way: \"Every weekday at 8am, add an all-day event to my Deadlines calendar for each record in Projects whose Due Date is in the next 14 days, and move the event if the date changed.\"",
   "useCases": [
     {
       "title": "Turn Airtable project deadlines into calendar events",
-      "description": "Every date field in your Airtable project tracker becomes a Google Calendar event with the record name and a link back to Airtable. GAIA adds new deadlines on each scheduled run, so they reach everyone's calendar without anyone copying them."
+      "description": "Every date field in your project tracker becomes a calendar event with the record name and a link back to Airtable. GAIA adds new deadlines on each scheduled run, so they reach everyone's calendar without anyone copying them."
     },
     {
       "title": "Content calendar sync to Google Calendar",
-      "description": "Publish dates from an Airtable content calendar appear as Google Calendar events for the content team. Writers and editors see their schedule in the calendar they live in."
+      "description": "Publish dates from the content calendar table appear as events for the content team. Writers and editors see their schedule in the calendar they live in."
     },
     {
       "title": "Event management scheduling",
-      "description": "Event records in Airtable, with venue, time, and organizer, become detailed Google Calendar events with full descriptions. When a record lists attendees, GAIA adds them to the event and Google Calendar sends the invitations."
+      "description": "Event records, with venue, time, and organizer, become detailed calendar events with full descriptions. When a record lists attendees, GAIA adds them to the event and the calendar sends the invitations."
     },
     {
       "title": "Deadline change propagation",
-      "description": "When a due date is pushed in Airtable, GAIA moves the Google Calendar event on its next scheduled run. Nobody prepares for a deadline that has already moved."
+      "description": "When a due date is pushed in the base, GAIA moves the calendar event on its next scheduled run. Nobody prepares for a deadline that has already moved."
     },
     {
       "title": "Log calendar meetings as Airtable records",
-      "description": "Every new event on the calendar you choose becomes a row in Airtable with its title, time, attendees, and description. Sales and recruiting teams get a meeting log they can filter, link to contacts, and report on, without typing anything twice."
+      "description": "Every new event on the calendar you choose becomes a row in the base with its title, time, attendees, and description. Sales and recruiting teams get a meeting log they can filter, link to contacts, and report on, without typing anything twice."
     }
   ],
   "howItWorks": [
@@ -48,33 +48,33 @@
     },
     {
       "step": "Pick the trigger",
-      "description": "Choose the Google Calendar new-event trigger to create Airtable records from calendar events, or a schedule (every hour, every weekday at 8am) to push Airtable dates to the calendar. GAIA runs the workflow in the background and can notify you when it finishes."
+      "description": "Choose the calendar's new-event trigger to create records in the base from calendar events, or a schedule (every hour, every weekday at 8am) to push the dates in the table to the calendar. GAIA runs the workflow in the background and can notify you when it finishes."
     }
   ],
   "faqs": [
     {
       "question": "Can GAIA sync to specific Google Calendars, not just the primary?",
-      "answer": "Yes. In the workflow you name the Google Calendar that receives events from each Airtable table. Different tables can fill different calendars, for example a content calendar and a project calendar."
+      "answer": "Yes. In the workflow you name the calendar that receives events from each table. Different tables can fill different calendars, for example a content calendar and a project calendar."
     },
     {
       "question": "Does GAIA add Google Meet links to calendar events?",
-      "answer": "Yes. GAIA can add a Google Meet link to each calendar event it creates, so a meeting scheduled from an Airtable record already has a video link."
+      "answer": "Yes. GAIA can add a Google Meet link to each event it creates, so a meeting scheduled from a record already has a video link."
     },
     {
       "question": "What happens if an Airtable record is deleted?",
-      "answer": "Airtable does not notify GAIA when a record is deleted. If your workflow tells GAIA to remove events whose record no longer exists, it does that on the next scheduled run; otherwise the event stays on the calendar. Write the rule you want into the workflow."
+      "answer": "The base does not notify GAIA when a record is deleted. If your workflow tells GAIA to remove events whose record no longer exists, it does that on the next scheduled run; otherwise the event stays on the calendar. Write the rule you want into the workflow."
     },
     {
-      "question": "How do I automatically create Airtable records from calendar event details?",
-      "answer": "Connect Google Calendar and Airtable to GAIA, then create a workflow with the Google Calendar new-event trigger and pick which calendars to watch. In the instructions, name the base and table and map each detail to a field, for example title to Name, start time to Date, attendees to Attendees, and description to Notes. Each new event then becomes a record without you copying anything."
+      "question": "How do I automatically create records from calendar event details?",
+      "answer": "Connect both accounts to GAIA, then create a workflow with the new-event trigger and pick which calendars to watch. In the instructions, name the base and table and map each detail to a field, for example title to Name, start time to Date, attendees to Attendees, and description to Notes. Each new event then becomes a record without you copying anything."
     },
     {
-      "question": "Can I send Calendly bookings to Airtable?",
-      "answer": "Yes. When Calendly is connected to your Google Calendar, each booking lands there as a new event, so the same new-event workflow logs it in Airtable. GAIA also connects to Calendly directly, so it can look up scheduled meetings and event types when you ask."
+      "question": "Can I log Calendly bookings as records?",
+      "answer": "Yes. When Calendly is connected to your calendar, each booking lands there as a new event, so the same new-event workflow logs it in the base. GAIA also connects to Calendly directly, so it can look up scheduled meetings and event types when you ask."
     },
     {
-      "question": "Is the Airtable to Google Calendar sync instant?",
-      "answer": "Only the calendar to Airtable direction starts the moment a new event is created. Airtable changes reach the calendar on the schedule you set, such as every hour, because Airtable does not push changes to GAIA. Choose a shorter interval if your dates move often."
+      "question": "Is the table-to-calendar sync instant?",
+      "answer": "Only the calendar-to-table direction starts the moment a new event is created. Changes in the table reach the calendar on the schedule you set, such as every hour, because the base does not push changes to GAIA. Choose a shorter interval if your dates move often."
     }
   ]
 }

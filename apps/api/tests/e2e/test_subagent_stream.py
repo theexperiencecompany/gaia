@@ -54,6 +54,15 @@ def _tool_call(name: str, args: dict[str, Any] | None = None, call_id: str | Non
     return {"name": name, "args": args or {}, "id": call_id, "type": "tool_call"}
 
 
+def _announcing(message_id: str, content: str, tool: str, call_id: str = "tc_1") -> AIMessageChunk:
+    """Build a model chunk that carries text and, in the same message, a tool call."""
+    return AIMessageChunk(
+        content=content,
+        id=message_id,
+        tool_call_chunks=[{"name": tool, "args": "{}", "id": call_id, "index": 0}],
+    )
+
+
 def _context(graph: ScriptedGraph) -> SubagentExecutionContext:
     return SubagentExecutionContext(
         subagent_graph=cast(Any, graph),
@@ -191,14 +200,66 @@ class TestReturnValue:
         _, outcome, _ = await run_subagent(
             flat(
                 agent_update(
-                    AIMessage(content="", tool_calls=[_tool_call("GMAIL_FETCH_MESSAGES")])
+                    AIMessage(
+                        id="run-1", content="", tool_calls=[_tool_call("GMAIL_FETCH_MESSAGES")]
+                    )
                 ),
                 tool_message("3 unread", tool_call_id="tc_1", name="GMAIL_FETCH_MESSAGES"),
-                message(AIMessageChunk(content="You have 3 unread emails.")),
+                message(AIMessageChunk(content="You have 3 unread emails.", id="run-2")),
             )
         )
 
         assert outcome.text == "You have 3 unread emails."
+
+    async def test_text_beside_a_tool_call_is_not_part_of_the_answer(self):
+        """Regression: a scheduled Inbox desk run sent every "Let me check..." step to the user's Telegram, then its briefing."""
+        _, outcome, _ = await run_subagent(
+            flat(
+                message(_announcing("run-1", "Let me fetch the mail.", "GMAIL_FETCH_MESSAGES")),
+                tool_message("3 unread", tool_call_id="tc_1", name="GMAIL_FETCH_MESSAGES"),
+                message(_announcing("run-2", "Now the sweep.", "GMAIL_FETCH_MESSAGES", "tc_2")),
+                tool_message("22 messages", tool_call_id="tc_2", name="GMAIL_FETCH_MESSAGES"),
+                message(AIMessageChunk(content="1 needs you", id="run-3")),
+            )
+        )
+
+        assert outcome.text == "1 needs you"
+
+    async def test_text_streamed_before_the_tool_call_arrives_is_still_dropped(self):
+        """The call's chunks come after the text of the same message, so the text is only known to be narration late."""
+        _, outcome, _ = await run_subagent(
+            flat(
+                message(AIMessageChunk(content="Let me fetch ", id="run-1")),
+                message(_announcing("run-1", "the mail.", "GMAIL_FETCH_MESSAGES")),
+                tool_message("3 unread", tool_call_id="tc_1", name="GMAIL_FETCH_MESSAGES"),
+                message(AIMessageChunk(content="You have 3 unread.", id="run-2")),
+            )
+        )
+
+        assert outcome.text == "You have 3 unread."
+
+    async def test_a_retried_model_attempt_is_not_part_of_the_answer(self):
+        """A retried call streams each attempt under its own message id in one node run; only the last one counts."""
+        node_run = {"langgraph_checkpoint_ns": "agent:7f3"}
+        _, outcome, _ = await run_subagent(
+            flat(
+                message(
+                    _announcing("run-1", "Let me fetch the mail.", "GMAIL_FETCH_MESSAGES"),
+                    **node_run,
+                ),
+                tool_message("3 unread", tool_call_id="tc_1", name="GMAIL_FETCH_MESSAGES"),
+                message(
+                    AIMessageChunk(content="Nothing new at all.", id="run-2a"),
+                    langgraph_checkpoint_ns="agent:9c1",
+                ),
+                message(
+                    AIMessageChunk(content="1 needs you", id="run-2b"),
+                    langgraph_checkpoint_ns="agent:9c1",
+                ),
+            )
+        )
+
+        assert outcome.text == "1 needs you"
 
     async def test_a_resumed_run_that_only_sees_its_tool_result_is_not_narration(self):
         """After a HIL resume, the ToolMessage is the only evidence work happened."""

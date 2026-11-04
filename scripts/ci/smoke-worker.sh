@@ -10,9 +10,27 @@
 # (apps/web/playwright.worker.config.ts) and fails on any uncaught error or
 # unloaded chunk.
 #
+# `visual` instead screenshots the key marketing pages on the same booted worker
+# (apps/web/playwright.visual.config.ts) and fails on any pixel that differs from
+# the baseline; `visual update` captures that baseline, on the base branch's build.
+#
 #   bash scripts/ci/smoke-worker.sh
 #   SMOKE_ROUTES=$'/login Login | GAIA\n/c New Chat | GAIA' bash scripts/ci/smoke-worker.sh
+#   bash scripts/ci/smoke-worker.sh visual [update]
 set -euo pipefail
+
+MODE="${1:-smoke}"
+case "$MODE" in
+  smoke) ;;
+  visual)
+    VISUAL_UPDATE=""
+    if [[ "${2:-}" == "update" ]]; then VISUAL_UPDATE=1; fi
+    ;;
+  *)
+    echo "usage: smoke-worker.sh [visual [update]]" >&2
+    exit 2
+    ;;
+esac
 
 cd "$(dirname "$0")/../.."
 
@@ -75,6 +93,17 @@ if ! grep -q "Ready on" "$LOG"; then
   echo "::error::the worker did not boot"
   tail -30 "$LOG"
   exit 1
+fi
+
+if [[ "$MODE" == "visual" ]]; then
+  cd apps/web
+  export SMOKE_BASE_URL="$BASE_URL" VISUAL_UPDATE
+  if [[ -n "$VISUAL_UPDATE" ]]; then
+    pnpm exec playwright test --config playwright.visual.config.ts --update-snapshots
+  else
+    pnpm exec playwright test --config playwright.visual.config.ts
+  fi
+  exit 0
 fi
 
 fail=0

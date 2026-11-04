@@ -14,55 +14,55 @@
     "Linear Slack notifications",
     "engineering workflow automation"
   ],
-  "intro": "Engineering teams live in Slack. Bugs get reported there, features get discussed there, and incidents get triaged there. But work tracking happens in Linear. The friction of switching between them and manually creating issues means some work never gets properly tracked.\n\nGAIA makes Slack a first-class interface for Linear. Team members can create issues, update statuses, and check progress without leaving Slack. GAIA also brings Linear updates back into Slack so the right channels are always informed when issues are resolved or status changes.",
+  "intro": "Engineering teams live in Slack. Bugs get reported there, features get discussed there, and incidents get triaged there. But work tracking happens in Linear. The friction of switching between them and manually creating issues means some work never gets properly tracked.\n\nGAIA makes Slack a first-class interface for Linear. Team members can create issues, update statuses, and check progress without leaving the conversation. GAIA also brings issue updates back into chat so the right channels are always informed when issues are resolved or status changes.",
   "useCases": [
     {
       "title": "Create Linear issues from Slack messages",
-      "description": "Any Slack message can become a Linear issue with a simple emoji reaction or GAIA command. GAIA extracts the message content and formats it into a proper issue with title, description, and suggested priority."
+      "description": "Any message can become a Linear issue with a simple emoji reaction or GAIA command. GAIA extracts the message content and formats it into a proper issue with title, description, and suggested priority."
     },
     {
-      "title": "Incident tracking from Slack",
-      "description": "When an incident is being discussed in a Slack channel, GAIA creates a tracking issue in Linear automatically, links it to the Slack thread, and updates the issue as the incident evolves."
+      "title": "Incident tracking from a channel",
+      "description": "When an incident is being discussed in a Slack channel, GAIA creates a tracking issue automatically, links it to the thread, and updates the issue as the incident evolves."
     },
     {
       "title": "Linear status updates to Slack",
-      "description": "When a Linear issue changes status, GAIA posts an update to the relevant Slack channel or DMs the issue creator so the team knows about progress without checking Linear manually."
+      "description": "When an issue changes status, GAIA posts an update to the relevant channel or DMs the issue creator so the team knows about progress without manually checking for changes."
     },
     {
-      "title": "Sprint planning from Slack",
-      "description": "During Slack-based sprint planning discussions, GAIA can create multiple Linear issues at once from a structured list shared in the channel, saving the manual entry work."
+      "title": "Sprint planning from chat",
+      "description": "During sprint planning discussions held in chat, GAIA can create multiple issues at once from a structured list shared in the channel, saving the manual entry work."
     },
     {
-      "title": "Standup reporting from Linear to Slack",
-      "description": "GAIA compiles each engineer's Linear activity (completed issues, in-progress work, blockers) and posts personalized standup summaries to Slack every morning."
+      "title": "Standup reporting from issue activity",
+      "description": "GAIA compiles each engineer's activity (completed issues, in-progress work, blockers) and posts personalized standup summaries to the channel every morning."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Slack and Linear to GAIA",
-      "description": "Add GAIA to your Slack workspace and connect your Linear account. Specify which Slack channels correspond to which Linear teams and projects."
+      "description": "Add GAIA to your Slack workspace and connect your Linear account. Specify which channels correspond to which teams and projects."
     },
     {
       "step": "Set up issue creation triggers",
-      "description": "Choose how issues are created, via emoji reactions, slash commands, or GAIA monitoring specific channels for bug reports. Configure default assignees and labels for each channel."
+      "description": "Choose how issues are created: via emoji reactions, slash commands, or GAIA monitoring specific channels for bug reports. Configure default assignees and labels for each channel."
     },
     {
-      "step": "Configure Slack notifications for Linear events",
-      "description": "Specify which Linear status changes should notify which Slack channels or users. Set your notification preferences to avoid alert fatigue while staying informed."
+      "step": "Configure notifications for issue events",
+      "description": "Specify which status changes should notify which channels or users. Set your notification preferences to avoid alert fatigue while staying informed."
     }
   ],
   "faqs": [
     {
-      "question": "Can I update Linear issue status from Slack without opening Linear?",
-      "answer": "Yes. You can ask GAIA in Slack to update an issue status, change assignee, add a comment, or close an issue. GAIA handles the Linear API call and confirms the update in Slack."
+      "question": "Can I update an issue's status from Slack without opening Linear?",
+      "answer": "Yes. You can ask GAIA in chat to update an issue status, change assignee, add a comment, or close an issue. GAIA handles the API call and confirms the update in the same conversation."
     },
     {
-      "question": "How does GAIA handle Linear issue linking to Slack threads?",
-      "answer": "GAIA adds the Slack thread permalink to the Linear issue description automatically, and can also post the Linear issue URL back into Slack so both sides are linked for easy navigation."
+      "question": "How does GAIA handle linking an issue to its originating thread?",
+      "answer": "GAIA adds the thread permalink to the issue description automatically, and can also post the issue URL back into the thread so both sides are linked for easy navigation."
     },
     {
       "question": "Can non-engineers use this integration?",
-      "answer": "Yes. Product managers, designers, and support teams can use Slack to create and check Linear issues without needing Linear access or training. GAIA acts as the translation layer."
+      "answer": "Yes. Product managers, designers, and support teams can use chat to create and check issues without needing direct access or training. GAIA acts as the translation layer."
     }
   ]
 }

@@ -1362,10 +1362,18 @@
             },
             "title": "Conversations",
             "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
           }
         },
         "required": [
-          "conversations"
+          "conversations",
+          "missing"
         ],
         "title": "BatchSyncResponse",
         "type": "object"
@@ -3790,6 +3798,17 @@
               }
             ]
           },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
           "updatedAt": {
             "anyOf": [
               {
@@ -4207,6 +4226,17 @@
               }
             ]
           },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
           "updatedAt": {
             "anyOf": [
               {
@@ -4232,7 +4262,8 @@
           "messages",
           "artifacts",
           "active_stream_id",
-          "has_live_approval"
+          "has_live_approval",
+          "todo_id"
         ],
         "title": "ConversationSyncRow",
         "type": "object"
@@ -9006,6 +9037,41 @@
         "title": "IntegrationTool",
         "type": "object"
       },
+      "IntegrationToolApproval": {
+        "properties": {
+          "approval_key": {
+            "description": "Key the user's per-tool approval override is stored under; send it back unchanged.",
+            "title": "Approval Key",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "destructive": {
+            "default": false,
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "approval_key"
+        ],
+        "title": "IntegrationToolApproval",
+        "type": "object"
+      },
       "IntegrationToolsResponse": {
         "description": "Full tool list for a single integration (catalog data, on demand).",
         "properties": {
@@ -9021,7 +9087,7 @@
           "tools": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/IntegrationTool"
+              "$ref": "#/components/schemas/IntegrationToolApproval"
             },
             "title": "Tools",
             "type": "array"
@@ -11163,6 +11229,17 @@
               }
             ]
           },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
           "subtype": {
             "anyOf": [
               {
@@ -11173,6 +11250,16 @@
               }
             ],
             "title": "Subtype"
+          },
+          "todo_run_wake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TodoRunWake"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "toolCategory": {
             "anyOf": [
@@ -11441,6 +11528,17 @@
               }
             ]
           },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
           "subtype": {
             "anyOf": [
               {
@@ -11451,6 +11549,16 @@
               }
             ],
             "title": "Subtype"
+          },
+          "todo_run_wake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TodoRunWake"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "toolCategory": {
             "anyOf": [
@@ -13944,6 +14052,21 @@
         "title": "PlanType",
         "type": "string"
       },
+      "PlatformConversationResponse": {
+        "description": "The linked platform's DM chat, opened from the settings page.",
+        "properties": {
+          "conversation_id": {
+            "description": "Conversation id of the platform's DM chat",
+            "title": "Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "title": "PlatformConversationResponse",
+        "type": "object"
+      },
       "PlatformLinkEntry": {
         "description": "One linked platform account \u2014 the single shape for this entry.\n\nA ``TypedDict`` rather than a model (Type Safety item 6) because it has two\nconsumers with different needs, and this type serves both without a rival\ncopy. ``PlatformLinkService.get_linked_platforms`` assembles it in-process\nfrom an already-loaded ``UserDocument``, and the outbound-delivery paths\nread it tolerating a legacy non-string ``platformUserId`` (Telegram stores\nchat_id as an int) which they coerce at the envelope; validating there would\nstart raising on those rows \u2014 a behaviour change (item 13). Pydantic still\nvalidates it as a field of ``GetPlatformLinksResponse`` below, so the HTTP\nboundary rejects the same values a ``BaseModel`` here would.",
         "properties": {
@@ -14841,6 +14964,70 @@
           "category"
         ],
         "title": "PublicIntegrationDetailResponse",
+        "type": "object"
+      },
+      "PublicSupportRequestCreate": {
+        "description": "A contact-form request that may come from a visitor with no GAIA session.",
+        "properties": {
+          "description": {
+            "description": "Detailed description",
+            "maxLength": 5000,
+            "minLength": 10,
+            "title": "Description",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where to reply; required unless the caller is signed in with an email",
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional name to address",
+            "title": "Name"
+          },
+          "title": {
+            "description": "Title of the request",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "turnstile_token": {
+            "description": "Cloudflare Turnstile response token",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Turnstile Token",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/SupportRequestType",
+            "description": "Type of request (support or feature)"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "description",
+          "turnstile_token"
+        ],
+        "title": "PublicSupportRequestCreate",
         "type": "object"
       },
       "PublicWorkflowCard": {
@@ -18152,9 +18339,16 @@
             "type": "string"
           },
           "user_id": {
-            "description": "ID of the user who created the request",
-            "title": "User Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID of the user who created the request; null for a visitor",
+            "title": "User Id"
           },
           "user_name": {
             "anyOf": [
@@ -18276,6 +18470,20 @@
           "activity"
         ],
         "title": "TodoCanvasResponse",
+        "type": "object"
+      },
+      "TodoConversationResponse": {
+        "description": "The tracked todo's own chat, where its runs execute; kept out of the chat list.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "title": "TodoConversationResponse",
         "type": "object"
       },
       "TodoCounts": {
@@ -18839,6 +19047,39 @@
         "title": "TodoResponse",
         "type": "object"
       },
+      "TodoRunWake": {
+        "description": "What woke one run of a tracked todo, shown on the user's side of its chat.",
+        "properties": {
+          "approval_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Summary"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TodoWakeKind"
+          },
+          "trigger_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Trigger Names",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "trigger_names",
+          "approval_summary"
+        ],
+        "title": "TodoRunWake",
+        "type": "object"
+      },
       "TodoStats": {
         "properties": {
           "by_priority": {
@@ -19080,6 +19321,16 @@
         },
         "title": "TodoUpdateRequest",
         "type": "object"
+      },
+      "TodoWakeKind": {
+        "description": "What woke a tracked todo's run: its schedule, a watched event, or an approval it waited on.",
+        "enum": [
+          "schedule",
+          "trigger",
+          "approval"
+        ],
+        "title": "TodoWakeKind",
+        "type": "string"
       },
       "TodoWorkflowGenerationResponse": {
         "description": "Result of asking for a todo's workflow to be generated.",
@@ -22616,7 +22867,7 @@
     },
     "/api/v1/approvals/tools/{tool_name}": {
       "put": {
-        "description": "Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.",
+        "description": "Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.\n\ntool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).",
         "operationId": "approvals_set_tool_approval",
         "parameters": [
           {
@@ -34503,7 +34754,7 @@
     },
     "/api/v1/oauth/login/workos": {
       "get": {
-        "description": "Start the WorkOS SSO authentication flow.\n\nArgs:\n    return_url: Optional URL to redirect to after authentication.\n\nReturns:\n    RedirectResponse: Redirects the user to the WorkOS SSO authorization URL",
+        "description": "Start the WorkOS SSO authentication flow.\n\nArgs:\n    return_url: Optional URL to redirect to after authentication.\n    screen_hint: The AuthKit screen to open on; /signup asks for sign-up.\n\nReturns:\n    RedirectResponse: Redirects the user to the WorkOS SSO authorization URL",
         "operationId": "oauth_login_workos",
         "parameters": [
           {
@@ -34520,6 +34771,26 @@
                 }
               ],
               "title": "Return Url"
+            }
+          },
+          {
+            "in": "query",
+            "name": "screen_hint",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "sign-up",
+                    "sign-in"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Screen Hint"
             }
           }
         ],
@@ -36479,6 +36750,69 @@
           }
         },
         "summary": "Initiate Platform Connect",
+        "tags": [
+          "Platform Links"
+        ]
+      }
+    },
+    "/api/v1/platform-links/{platform}/conversation": {
+      "post": {
+        "description": "Open the DM chat of a linked Telegram, WhatsApp or iMessage account.",
+        "operationId": "platform_links_open_platform_chat_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Open Platform Chat Endpoint",
         "tags": [
           "Platform Links"
         ]
@@ -39855,6 +40189,68 @@
         ]
       }
     },
+    "/api/v1/support/requests/public": {
+      "post": {
+        "description": "Create a support or feature request from the public contact form. Verifies a Cloudflare Turnstile token and is rate-limited per client IP.",
+        "operationId": "support_submit_public_support_request",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicSupportRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportRequestSubmissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Submit a contact request without signing in",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
     "/api/v1/support/requests/with-attachments": {
       "post": {
         "description": "Create a new support request or feature request with image attachments. Sends email notifications to support team and user.",
@@ -40884,6 +41280,69 @@
           }
         },
         "summary": "Get Todo Canvas",
+        "tags": [
+          "Todos"
+        ]
+      }
+    },
+    "/api/v1/todos/{todo_id}/conversation": {
+      "post": {
+        "description": "Return a tracked todo's own chat, creating it before its first run; it is never listed.",
+        "operationId": "todos_open_todo_conversation_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "todo_id",
+            "required": true,
+            "schema": {
+              "title": "Todo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Open Todo Conversation Endpoint",
         "tags": [
           "Todos"
         ]

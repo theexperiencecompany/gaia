@@ -1,10 +1,12 @@
 import type {
+  PublicSupportRequestCreate,
   SupportRequestCreate,
   SupportRequestSubmissionResponse,
 } from "@shared/api/generated";
 import { api, binaryField, formDataSerializer } from "@/lib/api/typed";
 
 export type {
+  PublicSupportRequestCreate,
   SupportRequestCreate,
   SupportRequestSubmissionResponse,
 } from "@shared/api/generated";
@@ -30,4 +32,18 @@ export const supportApi = {
           body: requestData,
           errorMessage: "Failed to submit support request",
         }),
+
+  /**
+   * Submit a contact request without a session, behind a Turnstile token.
+   *
+   * Silent: the caller shows the API's own message, which says whether the
+   * bot check or the request itself failed.
+   */
+  submitPublicRequest: (
+    requestData: PublicSupportRequestCreate,
+  ): Promise<SupportRequestSubmissionResponse> =>
+    api.post("/api/v1/support/requests/public", {
+      body: requestData,
+      silent: true,
+    }),
 };

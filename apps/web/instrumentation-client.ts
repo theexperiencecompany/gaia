@@ -29,6 +29,8 @@ if (typeof window !== "undefined") {
 
         Sentry.init({
           dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+          // Inlined at build time; must equal the release the maps upload under.
+          release: process.env.NEXT_PUBLIC_SENTRY_RELEASE,
 
           // Replay integration is lazy-loaded below after init — ~100KB gzipped.
           integrations: [],

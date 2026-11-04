@@ -18,7 +18,6 @@ import { isSelfhostWeb } from "@/lib/selfhost";
 // Routes where login modal should NOT be dismissable (main app routes that require auth)
 const NON_DISMISSABLE_ROUTE_PREFIXES = [
   "/c",
-  "/mail",
   "/integrations",
   "/workflows",
   "/todos",
@@ -122,7 +121,7 @@ function SignInButton({ isLocalAuth, onLocalSignIn }: SignInButtonProps) {
   return (
     <RaisedButton
       color="#00bbff"
-      className="text-md w-full text-primary-foreground!"
+      className="text-md w-full"
       onClick={() => {
         track("navigation:cta_clicked", {
           location: "login_modal",
