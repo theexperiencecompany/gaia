@@ -62,6 +62,8 @@ export const BASE_MESSAGE_SCHEMA = {
   kind: undefined as string | undefined,
   // GAIA id of the message an emoji_ack reacts to (server's reacts_to_message_id).
   reacts_to_message_id: undefined as string | null | undefined,
+  // The user stopped this turn with Stop: a quiet "Stopped" line renders under it.
+  stopped: undefined as boolean | null | undefined,
   // Reactions folded onto this message for render (built client-side by
   // foldReactionAcks, never sent by the server).
   reactions: undefined as MessageReaction[] | undefined,

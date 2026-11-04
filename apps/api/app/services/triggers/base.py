@@ -13,9 +13,12 @@ from typing import Any, Literal, TypedDict
 
 from composio_client import APIStatusError
 from pydantic import BaseModel, Field, StrictInt, ValidationError
+from redis.exceptions import RedisError
 
 from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.log_tags import LogTag
+from app.constants.triggers import TRIGGER_OCCURRENCE_KEY, TRIGGER_OCCURRENCE_TTL_SECONDS
+from app.db.redis import redis_cache
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup, TriggerOptionsQuery
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
@@ -109,6 +112,33 @@ def _log_event_timing(data: Mapping[str, object], now_utc: datetime) -> None:
         )
 
 
+async def _claim_occurrence(workflow_id: str, occurrence: str) -> bool:
+    """Take a workflow's one run for an occurrence; False when another trigger already took it.
+
+    Redis down fires anyway, as batching does: a duplicate reminder beats a missed meeting.
+    """
+    client = redis_cache.redis
+    if client is None:
+        log.warning(f"{LogTag.TRIGGER} Redis unavailable — occurrence dedupe skipped")
+        return True
+    key = TRIGGER_OCCURRENCE_KEY.format(workflow_id=workflow_id, occurrence=occurrence)
+    try:
+        claimed = await client.set(
+            key,
+            "1",  # pragma: no mutate — only the key's presence is read
+            nx=True,
+            ex=TRIGGER_OCCURRENCE_TTL_SECONDS,
+        )
+        return bool(claimed)
+    except RedisError as exc:
+        log.warning(
+            f"{LogTag.TRIGGER} Redis write failed — occurrence dedupe skipped",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return True
+
+
 async def primary_account_for_trigger(user_id: str, composio_slug: str) -> str:
     """Return the account a workflow trigger registers on: its integration's primary.
 
@@ -156,6 +186,17 @@ class TriggerHandler(ABC):
         default is safe; an account-level handler with several events must narrow it.
         """
         return self.trigger_names
+
+    def occurrence_key(
+        self,
+        event_type: str,  # noqa: ARG002 -- interface contract; a handler whose events can repeat narrows by it
+        data: Mapping[str, object],  # noqa: ARG002 -- interface contract; read by handlers that override
+    ) -> str | None:
+        """Name the real-world occurrence an event reports when several triggers report the same one.
+
+        A workflow runs once per occurrence key; None (the default) runs it on every event.
+        """
+        return None
 
     @property
     def registers_instances(self) -> bool:
@@ -439,6 +480,16 @@ class TriggerHandler(ABC):
             if workflow.id is None:
                 log.error(
                     "trigger_workflow_missing_id",
+                    event_type=event_type,
+                    trigger_id=trigger_id,
+                )
+                return False
+            occurrence = self.occurrence_key(event_type, data)
+            if occurrence is not None and not await _claim_occurrence(workflow.id, occurrence):
+                log.info(
+                    "trigger_workflow_occurrence_already_fired",
+                    outcome="duplicate_occurrence",
+                    workflow_id=workflow.id,
                     event_type=event_type,
                     trigger_id=trigger_id,
                 )

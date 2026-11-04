@@ -44,7 +44,9 @@ test("the (main) app shell hydrates", async ({ page }) => {
 
   expect(problems).toEqual([]);
   await expect(page.locator('[data-slot="sidebar-inset"]')).toBeVisible();
-  await expect(page.locator('[data-slot="sidebar"]')).toBeAttached();
+  await expect(page.locator("#main-content")).toBeAttached();
+  // With the API offline no plan is ever read, so the paid sidebar must stay out.
+  await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
 });
 
 test("the login page hydrates and hands off to the OAuth login", async ({

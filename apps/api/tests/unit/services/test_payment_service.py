@@ -233,7 +233,7 @@ class TestGetPlans:
             description=None,
             amount=999,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=None,
             features=[],
             is_active=True,
@@ -315,7 +315,7 @@ class TestGetPlans:
             plan_type=PlanTier.PRO,
             amount=0,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             is_active=True,
             created_at=NOW,
             updated_at=NOW,
@@ -343,7 +343,7 @@ class TestGetPlans:
             plan_type=PlanTier.FREE,
             amount=0,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             is_active=True,
             created_at=NOW,
             updated_at=NOW,
@@ -386,7 +386,7 @@ class TestGetPlans:
             description=None,
             amount=0,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=1,
             features=[],
             is_active=True,
@@ -401,7 +401,7 @@ class TestGetPlans:
             description=None,
             amount=3000,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=1,
             features=[],
             is_active=True,
@@ -430,7 +430,7 @@ class TestGetPlans:
             plan_type=PlanTier.ENTERPRISE,
             amount=0,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=0,
             is_active=True,
             created_at=NOW,
@@ -1360,6 +1360,8 @@ class TestVerifyPaymentCompletion:
             SubscriptionActivated(
                 subscription_id="sub_from_checkout",
                 plan_name="Pro",
+                product_id="prod_abc123",
+                billing_interval="Year",
                 amount=300.0,
                 currency="USD",
                 amount_charged_pre_tax=300.0,
@@ -1962,7 +1964,7 @@ class TestPlanForSubscription:
         retired = _plan(
             name="Pro",
             amount=3000,
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             product_id="prod_m",
             active=False,
         )
@@ -2019,7 +2021,7 @@ class TestGetProPlan:
         cheap = _plan(
             name="Pro",
             amount=1,
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             product_id="prod_m",
         )
         mock_plan_repository.list_plans = AsyncMock(return_value=[cheap])
@@ -2059,7 +2061,7 @@ class TestGetProPlan:
             name="Enterprise",
             plan_type=PlanTier.ENTERPRISE,
             amount=500,
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             product_id="prod_ent",
         )
         mock_plan_repository.list_plans = AsyncMock(return_value=[priced_enterprise, CATALOGUE[1]])

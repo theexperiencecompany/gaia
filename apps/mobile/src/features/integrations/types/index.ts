@@ -15,7 +15,7 @@ export type {
   IntegrationCreator as CommunityIntegrationCreator,
   IntegrationManagedBy,
   IntegrationStatusValue,
-  IntegrationTool,
+  IntegrationToolApproval,
   IntegrationToolsResponse,
   MarketplaceIntegration,
   MyIntegrationItem,
