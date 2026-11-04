@@ -35,11 +35,11 @@
     "@gaia/shared": "workspace:*",
     "@types/node": "^24.13.3",
     "@types/ws": "^8.18.1",
-    "electron": "^43.8.0",
-    "electron-builder": "^26.15.7",
+    "electron": "^43.8.5",
+    "electron-builder": "^26.18.1",
     "electron-vite": "^5.0.0",
     "typescript": "^7.0.2",
-    "vite": "^7.3.6",
+    "vite": "^7.3.7",
     "vitest": "^5.0.5"
   },
   "author": {

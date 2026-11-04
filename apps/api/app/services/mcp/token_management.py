@@ -14,6 +14,7 @@ from app.models.mcp_config import (
     OAuthDiscovery,
     OAuthErrorResponse,
 )
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.mcp_oauth_utils import (
     basic_auth_header,
@@ -214,6 +215,26 @@ async def revoke_tokens(
                     headers["Authorization"] = basic_auth_header(client_id, client_secret)
 
                 await http_client.post(revocation_endpoint, data=data, headers=headers, timeout=10)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.MCP} Token revocation failed for",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+
+async def revoke_integration_tokens(token_store: MCPTokenStore, integration_id: str) -> None:
+    """Revoke OAuth tokens at authorization server per RFC 7009."""
+    try:
+        oauth_config = await token_store.get_oauth_discovery(integration_id)
+        if not oauth_config:
+            return
+
+        resolved = await IntegrationResolver.resolve(integration_id)
+        mcp_config = resolved.mcp_config if resolved else None
+        if mcp_config:
+            await revoke_tokens(token_store, integration_id, mcp_config, oauth_config)
     except Exception as e:
         log.warning(
             f"{LogTag.MCP} Token revocation failed for",

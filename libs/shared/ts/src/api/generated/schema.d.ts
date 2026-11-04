@@ -111,6 +111,8 @@ export interface paths {
         /**
          * Set Tool Approval
          * @description Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.
+         *
+         *     tool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).
          */
         put: operations["approvals_set_tool_approval"];
         post?: never;
@@ -4044,6 +4046,26 @@ export interface paths {
          *         - Manual instructions if OAuth not configured
          */
         post: operations["platform_links_initiate_platform_connect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform-links/{platform}/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Platform Chat Endpoint
+         * @description Open the DM chat of a linked Telegram, WhatsApp or iMessage account.
+         */
+        post: operations["platform_links_open_platform_chat_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10555,6 +10577,23 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** IntegrationToolApproval */
+        IntegrationToolApproval: {
+            /**
+             * Approval Key
+             * @description Key the user's per-tool approval override is stored under; send it back unchanged.
+             */
+            approval_key: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Destructive
+             * @default false
+             */
+            destructive?: boolean;
+            /** Name */
+            name: string;
+        };
         /**
          * IntegrationToolsResponse
          * @description Full tool list for a single integration (catalog data, on demand).
@@ -10571,7 +10610,7 @@ export interface components {
              * Tools
              * @default []
              */
-            tools: components["schemas"]["IntegrationTool"][];
+            tools: components["schemas"]["IntegrationToolApproval"][];
         };
         /**
          * InviteCreatedResponse
@@ -12847,6 +12886,17 @@ export interface components {
          * @enum {string}
          */
         PlanType: "free" | "pro";
+        /**
+         * PlatformConversationResponse
+         * @description The linked platform's DM chat, opened from the settings page.
+         */
+        PlatformConversationResponse: {
+            /**
+             * Conversation Id
+             * @description Conversation id of the platform's DM chat
+             */
+            conversation_id: string;
+        };
         /**
          * PlatformLinkEntry
          * @description One linked platform account — the single shape for this entry.
@@ -17323,6 +17373,7 @@ export type IntegrationsConfigResponse = components['schemas']['IntegrationsConf
 export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
+export type IntegrationToolApproval = components['schemas']['IntegrationToolApproval'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
@@ -17446,6 +17497,7 @@ export type PlanDuration = components['schemas']['PlanDuration'];
 export type PlanResponse = components['schemas']['PlanResponse'];
 export type PlanTier = components['schemas']['PlanTier'];
 export type PlanType = components['schemas']['PlanType'];
+export type PlatformConversationResponse = components['schemas']['PlatformConversationResponse'];
 export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];
 export type PollPairingRequest = components['schemas']['PollPairingRequest'];
@@ -28429,6 +28481,55 @@ export interface operations {
                 };
             };
             /** @description iMessage requires an E.164 phone number in the body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    platform_links_open_platform_chat_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformConversationResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;

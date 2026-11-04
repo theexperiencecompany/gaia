@@ -1,7 +1,5 @@
-import type { HilPreferences } from "@shared/chat";
+import type { HilPreferencesUpdate } from "@shared/chat";
 import { api } from "@/lib/api/typed";
-
-export type { HilPreferences };
 
 // `silent: true` on mutations suppresses the generic toast, NOT the failure —
 // each already has a specific one (setMode's caller, overrideMutation.onError)
@@ -10,13 +8,14 @@ export const approvalsApi = {
   getHilPreferences: () =>
     api.get("/api/v1/approvals/preferences", { silent: true }),
 
-  putHilPreferences: (payload: Partial<HilPreferences>) =>
+  putHilPreferences: (payload: HilPreferencesUpdate) =>
     api.put("/api/v1/approvals/preferences", { body: payload, silent: true }),
 
   // ask: true = always ask, false = never ask, null = clear override (use default).
-  setToolOverride: (toolName: string, ask: boolean | null) =>
+  // approvalKey is the server-issued HIL key (tool_overrides key / approval_key).
+  setToolOverride: (approvalKey: string, ask: boolean | null) =>
     api.put("/api/v1/approvals/tools/{tool_name}", {
-      path: { tool_name: toolName },
+      path: { tool_name: approvalKey },
       body: { ask },
       silent: true,
     }),

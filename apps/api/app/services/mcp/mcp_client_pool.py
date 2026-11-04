@@ -86,6 +86,11 @@ class MCPClientPool:
 
         return client
 
+    def peek(self, user_id: str) -> MCPClient | None:
+        """Return the user's pooled client, or None when this process has none (never creates one)."""
+        pooled = self._clients.get(user_id)
+        return pooled.client if pooled else None
+
     async def _evict(self, user_id: str) -> None:
         """Evict a client from the pool and close its connections."""
         if user_id not in self._clients:
