@@ -829,6 +829,31 @@
       }
     },
     {
+      "event": "bot:chat_opened",
+      "class": "BotChatOpened",
+      "owner": "server",
+      "domain": "bot",
+      "description": "A user opened a linked bot's DM chat from the web settings page.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened a linked bot's DM chat from the web settings page.",
+        "properties": {
+          "platform": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": ["platform"],
+        "title": "BotChatOpened",
+        "type": "object"
+      }
+    },
+    {
       "event": "bot:command_executed",
       "class": "BotCommandExecuted",
       "owner": "bot",

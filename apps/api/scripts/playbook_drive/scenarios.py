@@ -505,23 +505,6 @@ SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        key="X20",
-        title="a handoff playbook through the todos subagent",
-        script=script(
-            tool("handoff", {"subagent_id": "todos", "task": script(_todo("via todos"))}),
-            write([{"call": 1}]),
-        ),
-        fires=[
-            Fire(
-                "authored with a handoff step",
-                lambda observation, _ctx: observation.playbook is not None
-                and observation.playbook.has_handoff,
-                "handoff playbook",
-            ),
-            Fire("replays inside the subagent", replayed_ok, WHY_REPLAY_SUCCESS),
-        ],
-    ),
-    Scenario(
         key="X22",
         title="a decline inside a heal run deletes the playbook",
         before=seed_todos("drive x22 seed"),

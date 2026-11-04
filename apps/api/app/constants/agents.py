@@ -16,6 +16,8 @@ and the site that strips one (strip_internal_agent_tags) can never disagree.
 from enum import StrEnum
 import re
 
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
+
 
 class AgentTag(StrEnum):
     """Tag names framing an internal payload passed between agent tiers."""
@@ -104,10 +106,9 @@ PLAYBOOK_UNPICKABLE_TOOLS = frozenset(
     {
         "call_executor",
         "cancel_executor",
-        "handoff",
         "spawn_subagent",
         "retrieve_tools",
-        "activate_integration",
+        ACTIVATE_INTEGRATION_TOOL_NAME,
     }
 )
 

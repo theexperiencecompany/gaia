@@ -22,9 +22,7 @@ from app.constants.cache import RUN_RECORD_PREFIX, RUN_RECORD_TTL
 from app.models.workflow_execution_models import RecordedCall
 
 STREAM_ID = "stream-invocation"
-CONFIG: RunnableConfig = {
-    "configurable": {"stream_id": STREAM_ID, "subagent_id": "todos_agent", "run_scope": "todos"}
-}
+CONFIG: RunnableConfig = {"configurable": {"stream_id": STREAM_ID, "subagent_id": "todos_agent"}}
 
 
 @tool
@@ -76,11 +74,10 @@ async def test_a_finished_call_is_recorded_with_its_args_and_result(fake_redis: 
     await invoke_tool(answers, {"query": "q"}, CONFIG)
 
     (call,) = await read_run_record(STREAM_ID)
-    assert (call.tool_name, call.args, call.subagent_id, call.subagent, call.failed) == (
+    assert (call.tool_name, call.args, call.subagent_id, call.failed) == (
         "answers",
         {"query": "q"},
         "todos_agent",
-        "todos",
         False,
     )
     assert json.loads(call.result_digest) == {"items": ["q"]}
@@ -285,10 +282,9 @@ def test_a_sync_call_is_recorded_with_the_models_args_and_kept_for_the_ttl(
 
     assert output == f"q in {STREAM_ID}"
     (call,) = _sync_record(sync_redis)
-    assert (call.tool_name, call.args, call.subagent, call.failed) == (
+    assert (call.tool_name, call.args, call.failed) == (
         "reads_config_sync",
         {"query": "asked"},
-        "todos",
         False,
     )
     assert call.result_digest == f"q in {STREAM_ID}"

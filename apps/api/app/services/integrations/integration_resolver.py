@@ -77,8 +77,8 @@ class IntegrationResolver:
                 custom_doc=None,
             )
 
-        # Try custom integration from MongoDB
-        integration = await integration_repository.get(integration_id)
+        # Custom only: a tools-only stub (store_tools upserts one per platform id) is not an Integration.
+        integration = await integration_repository.get_custom(integration_id)
 
         if integration:
             mcp_config = integration.mcp_config

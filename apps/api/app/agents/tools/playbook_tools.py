@@ -26,6 +26,7 @@ from app.constants.agents import (
     PLAYBOOK_TOOL_NAMES,
     PLAYBOOK_UNPICKABLE_TOOLS,
 )
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
@@ -98,12 +99,12 @@ def _explain_validation_error(error: ValidationError | LegacyValidationError) ->
     )
 
 
-def _handoff_targets(state: Mapping[str, Any] | None) -> list[str]:
-    """The subagents this run handed off to, in order, each once.
+def _activated_integrations(state: Mapping[str, Any] | None) -> list[str]:
+    """The integrations this run activated, in order, each once.
 
-    A blocked-run claim is held to this: a subagent id is the integration it
-    fronts, so a run that never handed off to Slack cannot have been blocked on
-    Slack.
+    A blocked-run claim is held to this: activation is how a run reaches an
+    integration, and where an unconnected one shows its connect card, so a run
+    that never activated Slack cannot have been blocked on Slack.
     """
     if state is None:
         return []
@@ -111,10 +112,10 @@ def _handoff_targets(state: Mapping[str, Any] | None) -> list[str]:
     if not isinstance(messages, list):
         return []
     targets = [
-        (call.get("args") or {}).get("subagent_id")
+        (call.get("args") or {}).get("integration_id")
         for message in messages
         for call in getattr(message, "tool_calls", None) or []
-        if call.get("name") == "handoff"
+        if call.get("name") == ACTIVATE_INTEGRATION_TOOL_NAME
     ]
     return [str(target) for target in dict.fromkeys(targets) if target]
 
@@ -175,7 +176,7 @@ async def read_run_record(config: RunnableConfig) -> dict[str, Any]:
     """
     List the tool calls this run has made, numbered, to pick a playbook's steps from.
 
-    Each call shows its tool, where it ran, the args it was sent and the shape
+    Each call shows its tool, the args it was sent and the shape
     of what it returned: the keys a $steps reference can read. Call this right
     before write_playbook; a playbook's steps are these numbers.
     """
@@ -215,8 +216,8 @@ async def write_playbook(
     """
     Freeze calls this workflow run made as its playbook, so later runs replay
     them instead of reasoning the work out again. Pick the calls by their number
-    in read_run_record and mark the values that change per run; the tool, every
-    other argument and where it ran come from the record. The playbook attaches
+    in read_run_record and mark the values that change per run; the tool and every
+    other argument come from the record. The playbook attaches
     to the workflow this run is executing; there is no id to supply.
 
     Nothing is written if a pick is wrong (a number that is not in the record, a
@@ -244,7 +245,7 @@ async def write_playbook(
         log.set_ns("playbook", record_calls=len(record), picks=len(steps))
         if built.body is None:
             return _refused(built.issues, workflow_id)
-        validation = await validate_playbook(built.body, user_id, built.sources)
+        validation = await validate_playbook(built.body, built.sources)
         if not validation.valid:
             return _refused(validation.issues, workflow_id)
         body = built.body
@@ -361,13 +362,13 @@ async def _record_blocked_run(
     )
     if outcome.unrelated:
         # The run's own record says otherwise: neither the workflow's steps nor
-        # this run's handoffs involve what it named. Refused, not recorded, so
+        # this run's activations involve what it named. Refused, not recorded, so
         # the model re-decides with the integration it actually needed.
         named = ", ".join(outcome.unrelated)
         return error_response(
             "integration_not_in_run",
             f"{named} {'is' if len(outcome.unrelated) == 1 else 'are'} not part of this "
-            "workflow's steps and this run never handed off there. Name the integration "
+            "workflow's steps and this run never activated it. Name the integration "
             "the run actually needed, or decline with the kind that says why the "
             "sequence cannot hold.",
         )
@@ -497,7 +498,11 @@ async def _record_decline(
     workflow_id, user_id = workflow.id, workflow.user_id
     if kind in BLOCKED_DECLINE_KINDS:
         return await _record_blocked_run(
-            workflow_id, user_id, kind, integrations or [], used_by_run=_handoff_targets(state)
+            workflow_id,
+            user_id,
+            kind,
+            integrations or [],
+            used_by_run=_activated_integrations(state),
         )
     if kind is DeclineKind.NO_WORK_TODAY:
         # The claim is checked against the run's own record, not taken on

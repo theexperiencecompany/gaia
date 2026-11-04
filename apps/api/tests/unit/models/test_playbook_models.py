@@ -16,7 +16,6 @@ from app.models.playbook_models import (
     DEFAULT_ASK_MAX_TOKENS,
     AskSlot,
     ForEachStep,
-    HandoffStep,
     PlaybookAskAnswer,
     PlaybookStep,
     TimeSlot,
@@ -55,34 +54,10 @@ class TestAskSlotKeys:
 
         assert [item.key for item in ask_slots(steps)] == ["web_search_tool.query_text"]
 
-    def test_a_slot_inside_a_handoff_child_is_keyed_by_the_child_not_the_handoff(self) -> None:
-        """Keying by the handoff would look the value up under a prefix no step ever passes."""
-        steps = [
-            HandoffStep(
-                id="mail",
-                handoff="gmail",
-                steps=[
-                    ToolStep(
-                        id="fetch",
-                        tool="GMAIL_FETCH_MESSAGES",
-                        args={"query": {"$ask": "what to search the inbox for"}},
-                    )
-                ],
-            )
-        ]
-
-        located = ask_slots(steps)
-
-        assert [item.key for item in located] == ["fetch.query"]
-
     def test_slots_come_back_in_execution_order(self) -> None:
         steps: list[PlaybookStep] = [
             ToolStep(id="first", tool="a", args={"x": {"$ask": "one"}}),
-            HandoffStep(
-                id="handed",
-                handoff="gmail",
-                steps=[ToolStep(id="second", tool="b", args={"y": {"$ask": "two"}})],
-            ),
+            ToolStep(id="second", tool="b", args={"y": {"$ask": "two"}}),
             ToolStep(id="third", tool="c", args={"z": {"$ask": "three"}}),
         ]
 
@@ -131,17 +106,6 @@ class TestForEachSourceShape:
 
 @pytest.mark.unit
 class TestStoredDocuments:
-    def test_a_handoff_document_carries_its_id_only_when_it_has_one(self) -> None:
-        child = ToolStep(id="agenda", tool="list_events", args={"calendar_id": "primary"})
-        named = HandoffStep(id="sweep", handoff="calendar", steps=[child]).to_document()
-        unnamed = HandoffStep(handoff="calendar", steps=[child]).to_document()
-        assert named == {
-            "id": "sweep",
-            "handoff": "calendar",
-            "steps": [{"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}}],
-        }
-        assert "id" not in unnamed
-
     def test_an_ask_source_is_stored_without_its_defaults(self) -> None:
         step = ForEachStep(
             id="s",
@@ -166,6 +130,19 @@ class TestStoredDocuments:
         assert TypeAdapter(PlaybookStep).validate_python(stored) == ToolStep(
             id="agenda", tool="list_events", args={}
         )
+
+    @pytest.mark.parametrize(
+        "stored",
+        [
+            {"id": "h", "handoff": "gmail", "steps": [{"id": "f", "tool": "GMAIL_FETCH_EMAILS"}]},
+            {"id": "h", "tool": "GMAIL_FETCH_EMAILS", "handoff": "gmail"},
+        ],
+        ids=["handoff-step", "tool-with-handoff"],
+    )
+    def test_a_stored_handoff_step_is_refused(self, stored: dict[str, Any]) -> None:
+        """No compat read: the flatten migration rewrites these before the deploy."""
+        with pytest.raises(ValidationError, match="handoff"):
+            TypeAdapter(PlaybookStep).validate_python(stored)
 
     def test_a_step_that_is_already_a_model_passes_through(self) -> None:
         step = ToolStep(id="agenda", tool="list_events", args={})

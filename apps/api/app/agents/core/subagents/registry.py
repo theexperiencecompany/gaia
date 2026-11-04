@@ -84,7 +84,7 @@ def _third_party_name_matchers() -> tuple[tuple[Subagent, re.Pattern[str]], ...]
 
 
 # Provider ids that are also ordinary English words: a lowercase occurrence reads
-# as prose, a capitalized one as the product, so foreign_provider_named_in flags
+# as prose, a capitalized one as the product, so providers_named_in counts
 # these only on a capitalized mention. Every other provider flags on any match.
 _COMMON_WORD_PROVIDER_IDS: frozenset[str] = frozenset({"slack", "linear", "notion"})
 
@@ -104,16 +104,6 @@ def providers_named_in(text: str) -> list[Subagent]:
             continue
         named.append(sa)
     return named
-
-
-def foreign_provider_named_in(text: str, target_id: str) -> Subagent | None:
-    """Return the third-party provider text names that is not target_id, if any.
-
-    A task routed to one subagent while naming another credits the named product
-    with work it never did (eight GAIA todos once reached the user as "8 tasks
-    created (Todoist)"). Ids in _COMMON_WORD_PROVIDER_IDS flag only when capitalized.
-    """
-    return next((sa for sa in providers_named_in(text) if sa.id != target_id), None)
 
 
 @CatalogCached

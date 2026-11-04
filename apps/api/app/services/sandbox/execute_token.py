@@ -25,8 +25,6 @@ class ExecuteGrant(BaseModel):
     user_id: str
     run_id: str
     stream_id: str | None = None
-    # The handoff subagent the minting agent ran as, so a script's calls keep its scope.
-    run_scope: str | None = None
     # Which sandbox instance the token was minted for — audit correlation; the
     # route cannot verify network origin, so this is a record, not a check.
     sandbox_id: str | None = None

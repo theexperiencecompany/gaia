@@ -32,7 +32,6 @@ from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
     DeclineKind,
-    PlaybookBody,
     PlaybookDocument,
     PlaybookRunStatus,
     ToolStep,
@@ -46,13 +45,7 @@ from app.models.workflow_models import (
     WorkflowUpdate,
 )
 from app.services.workflow.integration_pause import PauseOutcome
-from app.services.workflow.playbook.parser import (
-    PlaybookValidation,
-    RecordedResult,
-    validate_playbook,
-)
 from app.services.workflow.playbook.record import PlaybookPick
-from app.services.workflow.playbook.tool_space import SubagentTools
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 
 TOOLS_MODULE = "app.agents.tools.playbook_tools"
@@ -334,12 +327,11 @@ class TestWritePlaybook:
     async def test_the_stored_playbook_is_the_recorded_calls_with_only_the_marked_values_changed(
         self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]
     ) -> None:
-        """A subagent's calls become one handoff, an execute call replays through execute as its account, and nothing unmarked moves."""
+        """Each pick is one step in run order, an execute call replays through execute as its account, and nothing unmarked moves."""
         run_record[:] = [
             AGENDA_CALL,
             RecordedCall(
                 tool_name="list_events",
-                subagent="gmail",
                 args={"calendar_id": "2026-11-03"},
                 result_digest=json.dumps({"events": [{"id": "e2"}]}),
             ),
@@ -360,16 +352,6 @@ class TestWritePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
-            # A handoff's children are validated against that subagent's own
-            # space, declared here rather than resolved from a live registry.
-            patch(
-                f"{PARSER_MODULE}.resolve_subagent_tools",
-                AsyncMock(
-                    return_value=SubagentTools(
-                        tools=_FakeRegistry().get_tool_dict(), initial_tool_ids=[]
-                    )
-                ),
-            ),
         ):
             result = await write_playbook.ainvoke(NEW_ARGS | {"steps": picks}, config=_config())
 
@@ -377,10 +359,7 @@ class TestWritePlaybook:
         stored = store.documents[(WORKFLOW_ID, USER_ID)]
         assert [step.to_document() for step in stored.steps] == [
             {"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}},
-            {
-                "handoff": "gmail",
-                "steps": [{"id": "mail", "tool": "list_events", "args": {"calendar_id": "$today"}}],
-            },
+            {"id": "mail", "tool": "list_events", "args": {"calendar_id": "$today"}},
             {
                 "id": "call3",
                 "tool": "execute",
@@ -885,31 +864,6 @@ class TestPlaybookStorageDetails:
             + "; ".join(SIX_ISSUES)
         )
 
-    async def test_the_playbook_is_validated_for_the_user_whose_run_wrote_it(
-        self, store: _FakePlaybookStore, workflows: MagicMock
-    ) -> None:
-        """Tool existence is user-dependent (handoff children run in a subagent's space, MCP tools live on a user's own client), so validating for nobody would misjudge which steps can replay."""
-        seen: list[tuple[PlaybookBody, str]] = []
-
-        async def spying_validate(
-            body: PlaybookBody, user_id: str, sources: list[RecordedResult] | None = None
-        ) -> PlaybookValidation:
-            seen.append((body, user_id))
-            return await validate_playbook(body, user_id, sources)
-
-        with (
-            patch(f"{TOOLS_MODULE}.playbook_repository", store),
-            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
-            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
-            patch(f"{TOOLS_MODULE}.validate_playbook", spying_validate),
-        ):
-            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
-
-        assert result["success"] is True
-        assert [
-            ([step.to_document() for step in body.steps], user_id) for body, user_id in seen
-        ] == [(NEW_STORED_STEPS, USER_ID)]
-
 
 @pytest.mark.unit
 class TestReadPlaybookDetails:
@@ -1359,7 +1313,7 @@ class TestReadRunRecord:
         run_record[:] = [
             RecordedCall(tool_name="retrieve_tools", args={"query": "mail"}),
             _fetch({"messages": [{"id": "m1", "threadId": "t1"}]}),
-            RecordedCall(tool_name="create_todo", subagent="todos", args={"title": "x"}),
+            RecordedCall(tool_name="create_todo", args={"title": "x"}),
             RecordedCall(tool_name="read_run_record", args={}),
         ]
 
@@ -1369,14 +1323,12 @@ class TestReadRunRecord:
             {
                 "call": 1,
                 "tool": "GMAIL_FETCH_MESSAGES",
-                "ran_in": "executor",
                 "args": {"query": "is:unread"},
                 "returned": {"messages": {"list of 1": {"id": "str", "threadId": "str"}}},
             },
             {
                 "call": 2,
                 "tool": "create_todo",
-                "ran_in": "todos",
                 "args": {"title": "x"},
                 "returned": "str",
             },
@@ -1522,23 +1474,23 @@ class TestBlockedDeclines:
     async def test_an_integration_the_run_never_used_is_refused_not_recorded(
         self, store: _FakePlaybookStore
     ) -> None:
-        """The run's own handoffs are the evidence; a claim they don't support is refused so the model names what it actually needed."""
+        """The run's own activations are the evidence; a claim they don't support is refused so the model names what it actually needed."""
         workflows = _FakeWorkflowStore()
-        # Two handoffs to gmail and one answer in between: the answered message
+        # Two activations of gmail and one answer in between: the answered message
         # carries no tool calls, and the target is listed once.
-        handed_off = AIMessage(
+        activated = AIMessage(
             content="",
             tool_calls=[
                 {
                     "id": "h1",
-                    "name": "handoff",
-                    "args": {"subagent_id": "gmail", "task": "read the inbox"},
+                    "name": "activate_integration",
+                    "args": {"integration_id": "gmail"},
                     "type": "tool_call",
                 },
                 {
                     "id": "h2",
-                    "name": "handoff",
-                    "args": {"subagent_id": "gmail", "task": "read it again"},
+                    "name": "activate_integration",
+                    "args": {"integration_id": "gmail"},
                     "type": "tool_call",
                 },
             ],
@@ -1557,7 +1509,7 @@ class TestBlockedDeclines:
                     "kind": "blocked_missing_integration",
                     "integrations": ["slack", "notion"],
                     "reason": "neither is connected",
-                    "state": {"messages": [handed_off, answered]},
+                    "state": {"messages": [activated, answered]},
                 },
                 config=_config(),
             )
@@ -1568,7 +1520,7 @@ class TestBlockedDeclines:
             "success": False,
             "error": "integration_not_in_run",
             "message": "slack, notion are not part of this workflow's steps and this run never "
-            "handed off there. Name the integration the run actually needed, or decline with "
+            "activated it. Name the integration the run actually needed, or decline with "
             "the kind that says why the sequence cannot hold.",
         }
         assert workflows.workflow.activated is True
