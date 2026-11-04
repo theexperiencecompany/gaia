@@ -595,6 +595,37 @@
         }
       }
     },
+    "analytics-contract": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --frozen pytest -c pytest.ini ../../libs/shared/py/tests/test_analytics_catalog.py -q",
+        "cwd": "apps/api"
+      },
+      "inputs": [
+        "{workspaceRoot}/libs/shared/py/analytics/**/*",
+        "{workspaceRoot}/libs/shared/py/tests/test_analytics_catalog.py",
+        "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
+        "{workspaceRoot}/apps/api/app/**/*",
+        "{workspaceRoot}/apps/api/pytest.ini",
+        "{workspaceRoot}/apps/voice-agent/src/**/*",
+        "{workspaceRoot}/apps/web/src/**/*",
+        "{workspaceRoot}/apps/web/instrumentation-client.ts",
+        "{workspaceRoot}/libs/shared/ts/src/bots/**/*",
+        "{workspaceRoot}/apps/bots/**/*",
+        "{workspaceRoot}/uv.lock",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "analytics-contract",
+          "area": "contracts"
+        }
+      }
+    },
     "cli-config-schema": {
       "executor": "nx:run-commands",
       "options": {

@@ -21,6 +21,7 @@ from app.constants.platform_links import (
     Platform,
 )
 from app.db.redis import redis_cache
+from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.pending_platform_registrations import (
     pending_platform_registration_repository,
 )
@@ -567,6 +568,14 @@ class PlatformLinkService:
         linked = await PlatformLinkService.get_linked_platforms(user_id)
         entry: PlatformLinkEntry | None = linked.get(platform)
         pending = await pending_platform_registration_repository.get_for_user(user_id, platform)
+
+        # A session outlives nothing but its link: left in place, the next GAIA user this
+        # account links to continues this user's conversation and agent thread. Ended before
+        # the $unset, because the link is the only record of which sessions are this user's.
+        if entry is not None:
+            await bot_session_repository.delete_for_platform_user(
+                platform=platform, platform_user_id=entry["platformUserId"]
+            )
 
         result = await user_repository.unlink_platform(user_id, platform)
         if result is None:
