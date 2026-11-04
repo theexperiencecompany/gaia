@@ -77,6 +77,14 @@ class TestVerifyAgentToken:
 
 
 class TestCreateAgentToken:
+    def test_the_token_is_signed_with_the_configured_algorithm(self, monkeypatch) -> None:
+        monkeypatch.setattr(agent_auth, "JWT_ALGORITHM", "HS512")
+
+        token = create_agent_token("u-9")
+
+        assert read_jwt(token)[0]["alg"] == "HS512"
+        assert verify_agent_token(token) == AgentTokenInfo(user_id="u-9")
+
     def test_the_token_carries_subject_role_and_an_expiry_window(self) -> None:
         before = datetime.now(UTC).replace(microsecond=0)
         header, claims = read_jwt(create_agent_token("u-9", expires_minutes=7))

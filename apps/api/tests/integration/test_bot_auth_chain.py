@@ -249,7 +249,9 @@ class TestBotTokenService:
         }
         token = forge_jwt(payload, TEST_BOT_SESSION_SECRET, alg=JWT_ALGORITHM)
 
-        with pytest.raises(InvalidTokenError, match="Invalid token role"):
+        with pytest.raises(
+            InvalidTokenError, match="^Token verification failed: Invalid token role$"
+        ):
             verify_bot_session_token(token)
 
     def test_missing_secret_raises_value_error(self) -> None:
