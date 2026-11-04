@@ -396,7 +396,7 @@ async def _indexed_pointer_docs() -> list[SearchItem]:
         SearchItem(
             namespace=op.namespace,
             key=op.key,
-            value=op.value or {},
+            value=dict(op.value or {}),
             created_at=now,
             updated_at=now,
             score=0.9,
