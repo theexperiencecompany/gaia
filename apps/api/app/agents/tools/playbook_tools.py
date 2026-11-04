@@ -3,7 +3,7 @@
 A workflow keeps at most one playbook. There is no edit path and no version
 history, because the agent revises by writing the whole document again, so a
 write always replaces what was there and a rejected write leaves the previous
-playbook untouched. A write picks its steps from the run record by number, so
+playbook untouched. A write picks its steps from the run record by call id, so
 every step is a call this run really made, as it made it.
 """
 
@@ -15,22 +15,18 @@ from typing import Annotated, Any
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-from pydantic import BeforeValidator, TypeAdapter, ValidationError
+from pydantic import BeforeValidator, ValidationError
 from pydantic.v1 import ValidationError as LegacyValidationError
 
 from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.agents.tools.run_record import read_run_record as read_recorded_calls
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
-from app.constants.agents import (
-    PLAYBOOK_REPLAYED_CALLS_KEY,
-    PLAYBOOK_TOOL_NAMES,
-    PLAYBOOK_UNPICKABLE_TOOLS,
-)
+from app.constants.agents import PLAYBOOK_TOOL_NAMES, PLAYBOOK_UNPICKABLE_TOOLS
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.agent_models import agent_configurable, get_user_id
+from app.models.agent_models import get_user_id
 from app.models.playbook_models import (
     BLOCKED_DECLINE_KINDS,
     INTEGRATION_DECLINE_KINDS,
@@ -39,7 +35,6 @@ from app.models.playbook_models import (
     PlaybookRunStatus,
     is_work_call,
 )
-from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import WorkflowDocument, WorkflowUpdate
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.parser import (
@@ -51,7 +46,7 @@ from app.services.workflow.playbook.record import (
     PlaybookPick,
     RecordEntry,
     build_playbook,
-    number_record,
+    record_entries,
     render_record,
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
@@ -140,20 +135,13 @@ def _invoked_call_names(state: Mapping[str, Any] | None) -> list[str]:
     ]
 
 
-#: A stopped replay's calls, as the worker hands them over in the configurable.
-_REPLAYED_CALLS = TypeAdapter(list[RecordedCall])
-
-
 async def _pickable_record(config: RunnableConfig) -> list[RecordEntry]:
-    """Return this run's calls a playbook may replay, numbered.
+    """Return this run's calls a playbook may replay, each with its id.
 
-    A stopped replay's calls come first: they ran before anything this run did,
-    and the fallback brief told the agent not to run them again.
+    A heal run's record opens with the stopped replay's calls (the worker seeds
+    them), so a rewrite can keep a step the replay already ran.
     """
-    raw = agent_configurable(config).get(PLAYBOOK_REPLAYED_CALLS_KEY) or []
-    replayed = _REPLAYED_CALLS.validate_python(raw)
-    recorded = await read_recorded_calls(get_stream_id(config))
-    return number_record([*replayed, *recorded], _UNPICKABLE_TOOLS)
+    return record_entries(await read_recorded_calls(get_stream_id(config)), _UNPICKABLE_TOOLS)
 
 
 def _refused(issues: list[PlaybookIssue], workflow_id: str) -> dict[str, Any]:
@@ -174,11 +162,12 @@ def _refused(issues: list[PlaybookIssue], workflow_id: str) -> dict[str, Any]:
 @tool
 async def read_run_record(config: RunnableConfig) -> dict[str, Any]:
     """
-    List the tool calls this run has made, numbered, to pick a playbook's steps from.
+    List the tool calls this run has made, each with its id, to pick a playbook's steps from.
 
-    Each call shows its tool, the args it was sent and the shape
-    of what it returned: the keys a $steps reference can read. Call this right
-    before write_playbook; a playbook's steps are these numbers.
+    Each call shows its id (its tool and which of that tool's calls it is, e.g.
+    GMAIL_FETCH_EMAILS#1), the args it was sent and the shape of what it
+    returned: the keys a $steps reference can read. Call this right before
+    write_playbook; a playbook's steps are these ids, copied exactly.
     """
     try:
         workflow_id = get_workflow_id(config)
@@ -203,7 +192,7 @@ async def write_playbook(
     steps: Annotated[
         list[PlaybookPick],
         BeforeValidator(decode_json_container),
-        "The calls from read_run_record that did the work, by number: never "
+        "The calls from read_run_record that did the work, by their id: never "
         "discovery, dead ends or retries. Each step replays its call exactly as "
         "recorded, except the values you mark in vary.",
     ],
@@ -215,15 +204,16 @@ async def write_playbook(
 ) -> dict[str, Any]:
     """
     Freeze calls this workflow run made as its playbook, so later runs replay
-    them instead of reasoning the work out again. Pick the calls by their number
-    in read_run_record and mark the values that change per run; the tool and every
+    them instead of reasoning the work out again. Pick the calls by their id in
+    read_run_record, copied exactly, and mark the values that change per run; the tool and every
     other argument come from the record. The playbook attaches
     to the workflow this run is executing; there is no id to supply.
 
-    Nothing is written if a pick is wrong (a number that is not in the record, a
+    Nothing is written if a pick is wrong (an id that is not in the record, a
     path the call does not have, a $steps reference to a field its call did not
-    return); the problems come back so you can fix them and call this again. A
-    successful write replaces the workflow's previous playbook entirely.
+    return) or if it drops an action the previous playbook took for the user; the
+    problems come back so you can fix them and call this again. A successful
+    write replaces the workflow's previous playbook entirely.
 
     Only write a playbook when the same calls would do the work tomorrow with
     only the marked values changed. A run whose calls depend on what it finds is
@@ -241,7 +231,14 @@ async def write_playbook(
             return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
 
         record = await _pickable_record(config)
-        built = build_playbook(description, steps, result_brief, record)
+        stored = await playbook_repository.get_for_workflow(workflow_id, user_id)
+        built = build_playbook(
+            description,
+            steps,
+            result_brief,
+            record,
+            replaces=stored.steps if stored is not None else (),
+        )
         log.set_ns("playbook", record_calls=len(record), picks=len(steps))
         if built.body is None:
             return _refused(built.issues, workflow_id)

@@ -703,6 +703,3 @@ apps/api/tests/unit/workers/test_tracked_todo_tasks.py	return-value
 apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_coverage.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_onboarding_gate.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	attr-defined
-apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	func-returns-value
