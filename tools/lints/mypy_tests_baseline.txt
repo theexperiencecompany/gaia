@@ -368,7 +368,6 @@ apps/api/tests/unit/middleware/test_unhandled_exception_middleware.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	call-arg
 apps/api/tests/unit/models/test_agent_config.py	typeddict-item
-apps/api/tests/unit/models/test_agent_config_reads.py	call-overload
 apps/api/tests/unit/models/test_auth_models.py	call-arg
 apps/api/tests/unit/models/test_authenticated_user_shape.py	arg-type
 apps/api/tests/unit/models/test_authenticated_user_shape.py	call-arg

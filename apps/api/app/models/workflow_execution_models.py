@@ -248,20 +248,17 @@ WorkflowExecutionStatus = Literal["running", "success", "failed", "skipped"]
 
 
 class RecordedCall(BaseModel):
-    """One tool call as it actually ran.
+    """One tool call as it actually ran, recorded by app.agents.tools.invocation.
 
-    Captured from the run's own tool events — the same stream the chat UI
-    renders — so recording costs nothing beyond persisting what was already
-    collected. ``args`` is what makes this useful: it is the material an agent
-    reads to author a playbook, and the cursor a later run picks up from.
+    args is what makes this useful: it is the material an agent reads to author
+    a playbook, and the cursor a later run picks up from.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     tool_name: str
     tool_category: str = ""
-    #: Which subagent ran it, so a recorded delegation keeps its children — a trace
-    #: flattened to the executor level is just one delegating call and useless.
+    #: The subagent whose graph ran it (a spawned subagent), None for the executor.
     subagent_id: str | None = None
     args: dict[str, Any] = Field(default_factory=dict)
     result_digest: str = Field(
