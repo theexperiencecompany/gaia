@@ -1,4 +1,4 @@
-import { Avatar, Progress } from "@heroui/react";
+import { Avatar, ProgressBar } from "@heroui/react";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import type { z } from "zod";
@@ -26,27 +26,45 @@ function ProgressView(props: z.infer<typeof progressSchema>) {
           )}
         </div>
       )}
-      <Progress
+      <ProgressBar
         value={pct}
-        color={props.color ?? "primary"}
+        color={props.color === "primary" ? "accent" : (props.color ?? "accent")}
         size="md"
-        classNames={{ track: "bg-zinc-800" }}
-      />
+        className="w-full"
+      >
+        <ProgressBar.Track className="bg-zinc-800">
+          <ProgressBar.Fill />
+        </ProgressBar.Track>
+      </ProgressBar>
     </div>
   );
+}
+
+function initialsFrom(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 function AvatarView(props: z.infer<typeof avatarSchema>) {
   return (
     <div className="flex items-center gap-2">
       <Avatar
-        name={props.name}
-        src={props.image}
-        showFallback
         size="sm"
-        color={props.color ?? "default"}
-        classNames={{ base: "shrink-0" }}
-      />
+        color={
+          props.color === "primary" ? "accent" : (props.color ?? "default")
+        }
+        className="shrink-0"
+      >
+        {props.image && <Avatar.Image src={props.image} alt={props.name} />}
+        <Avatar.Fallback>
+          {props.initials ?? initialsFrom(props.name)}
+        </Avatar.Fallback>
+      </Avatar>
       {props.showName && (
         <span className="text-sm text-zinc-300">{props.name}</span>
       )}

@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import { CheckmarkCircle02Icon, ComputerIcon } from "@icons";
 import { useState } from "react";
 import { devicesApi } from "@/features/devices/api/devicesApi";
@@ -72,14 +71,14 @@ export function DeviceApprovalPrompt({
         </div>
 
         <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-900 p-3">
-          <Chip variant="flat" color="primary" className="font-mono">
+          <Chip variant="tertiary" color="accent" className="font-mono">
             {code}
           </Chip>
           <Button
-            color="primary"
             size="sm"
-            isLoading={isApproving}
+            isPending={isApproving}
             onPress={approve}
+            variant="primary"
           >
             Approve
           </Button>

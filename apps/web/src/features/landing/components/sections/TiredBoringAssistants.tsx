@@ -1,6 +1,6 @@
 "use client";
 
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import { CircleArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
@@ -503,31 +503,30 @@ export default function Tired() {
                       }
               }
             >
-              <Tooltip
-                content={icon.alt}
-                placement="top"
-                delay={200}
-                closeDelay={0}
-                classNames={{
-                  content:
-                    "bg-zinc-900 text-white text-xs px-2.5 py-1 rounded-lg",
-                }}
-              >
-                <div className="tool-icon-btn">
-                  <Image
-                    src={icon.src}
-                    alt={`${icon.alt} logo`}
-                    width={displaySize}
-                    height={displaySize}
-                    loading="lazy"
-                    className="rounded-xl object-contain"
-                    style={{
-                      width: displaySize,
-                      height: displaySize,
-                      transform: `rotate(${icon.rotate}deg)`,
-                    }}
-                  />
-                </div>
+              <Tooltip delay={200} closeDelay={0}>
+                <Tooltip.Trigger>
+                  <div className="tool-icon-btn">
+                    <Image
+                      src={icon.src}
+                      alt={`${icon.alt} logo`}
+                      width={displaySize}
+                      height={displaySize}
+                      loading="lazy"
+                      className="rounded-xl object-contain"
+                      style={{
+                        width: displaySize,
+                        height: displaySize,
+                        transform: `rotate(${icon.rotate}deg)`,
+                      }}
+                    />
+                  </div>
+                </Tooltip.Trigger>
+                <Tooltip.Content
+                  placement="top"
+                  className="rounded-lg bg-zinc-900 px-2.5 py-1 text-xs text-white"
+                >
+                  {icon.alt}
+                </Tooltip.Content>
               </Tooltip>
             </div>
           );

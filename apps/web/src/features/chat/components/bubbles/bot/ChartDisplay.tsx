@@ -1,6 +1,4 @@
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Button, Spinner, Tabs } from "@heroui/react";
 import {
   Cancel01Icon,
   ChartIcon,
@@ -100,7 +98,7 @@ const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
           <p className="text-xs text-zinc-500">Chart failed to load.</p>
           <Button
             size="sm"
-            variant="flat"
+            variant="tertiary"
             onPress={() => setLoadAttempt((attempt) => attempt + 1)}
           >
             Retry
@@ -366,14 +364,11 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
               onSelectionChange={(key) =>
                 setViewMode(key as "static" | "dynamic")
               }
-              variant="light"
-              classNames={{ tabList: "w-full" }}
               className="mb-3 w-full"
               aria-label="Chart view options"
             >
-              <Tab
-                key="static"
-                title={
+              <Tabs.List className="w-full">
+                <Tabs.Tab id="static">
                   <div className="flex items-center gap-2">
                     <Image02Icon className="h-5 w-5" />
                     Static
@@ -381,11 +376,9 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
                       {staticCharts.length}
                     </div>
                   </div>
-                }
-              />
-              <Tab
-                key="dynamic"
-                title={
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+                <Tabs.Tab id="dynamic">
                   <div className="flex items-center gap-2">
                     <ChartIcon className="h-5 w-5" />
                     Dynamic
@@ -393,8 +386,11 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
                       {dynamicCharts.length}
                     </div>
                   </div>
-                }
-              />
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+              </Tabs.List>
+              <Tabs.Panel id="static">{null}</Tabs.Panel>
+              <Tabs.Panel id="dynamic">{null}</Tabs.Panel>
             </Tabs>
 
             <div className="space-y-2">

@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Copy01Icon, Tick02Icon } from "@icons";
 import type React from "react";
 import { PrismAsyncLight } from "react-syntax-highlighter";
@@ -45,7 +45,7 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
               className="text-xs text-zinc-400 hover:text-gray-300"
               size="sm"
               isIconOnly
-              variant="light"
+              variant="tertiary"
               onPress={onCopy}
             >
               {copied ? (

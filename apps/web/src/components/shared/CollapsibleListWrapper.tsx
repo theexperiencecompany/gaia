@@ -1,5 +1,5 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
 import type { Selection } from "@heroui/react";
+import { Accordion } from "@heroui/react";
 import { type ReactNode, useState } from "react";
 
 interface CollapsibleListWrapperProps {
@@ -36,32 +36,29 @@ export default function CollapsibleListWrapper({
 
   return (
     <div className="w-full">
-      {/* @ts-ignore - HeroUI Accordion has overly complex union types */}
       <Accordion
         className="w-full max-w-(--breakpoint-sm) px-0"
         defaultExpandedKeys={defaultKeys}
-        itemClasses={{ trigger: "cursor-pointer" }}
-        onSelectionChange={(keys) => {
+        onExpandedChange={(keys) => {
           setIsExpanded(keys instanceof Set && keys.has("1"));
         }}
       >
-        <AccordionItem
-          key="1"
-          aria-label={`${label} List`}
-          indicator={null}
-          title={
-            <div className="flex items-center gap-2 text-sm font-normal text-zinc-400 transition hover:text-white">
-              {icon}
-              <div>
-                {isExpanded ? "Hide" : "Show"} {getCountLabel()}
-              </div>
-            </div>
-          }
+        <Accordion.Item
+          id="1"
           className="w-screen max-w-(--breakpoint-sm) px-0"
-          isCompact
         >
-          {children}
-        </AccordionItem>
+          <Accordion.Heading>
+            <Accordion.Trigger className="cursor-pointer">
+              <div className="flex items-center gap-2 text-sm font-normal text-zinc-400 transition hover:text-white">
+                {icon}
+                <div>
+                  {isExpanded ? "Hide" : "Show"} {getCountLabel()}
+                </div>
+              </div>
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>{children}</Accordion.Panel>
+        </Accordion.Item>
       </Accordion>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -24,33 +24,34 @@ export interface PromoBannerProps {
 
 /** Renders a promo action as a link button when it has an href, else a press button. */
 function renderAction(action: PromoBannerAction, isPrimary: boolean) {
-  const variant = action.variant ?? (isPrimary ? "solid" : "flat");
-  const color = action.color ?? (isPrimary ? "primary" : "default");
+  const variant: "primary" | "secondary" =
+    action.variant === "flat" || (action.variant === undefined && !isPrimary)
+      ? "secondary"
+      : "primary";
+  const href = action.href;
 
-  if (action.href) {
+  if (href) {
     return (
       <Button
         key={action.label}
-        as={Link}
-        href={action.href}
+        render={(props) => (
+          <Link
+            {...(props as unknown as React.ComponentProps<typeof Link>)}
+            href={href}
+          />
+        )}
         variant={variant}
-        color={color}
-        endContent={action.icon}
       >
         {action.label}
+        {action.icon}
       </Button>
     );
   }
 
   return (
-    <Button
-      key={action.label}
-      variant={variant}
-      color={color}
-      endContent={action.icon}
-      onPress={action.onPress}
-    >
+    <Button key={action.label} variant={variant} onPress={action.onPress}>
       {action.label}
+      {action.icon}
     </Button>
   );
 }

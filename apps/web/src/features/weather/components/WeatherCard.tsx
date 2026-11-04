@@ -1,5 +1,4 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Switch } from "@heroui/switch";
+import { Accordion, Switch } from "@heroui/react";
 import {
   CloudAngledRainIcon,
   CloudAngledZapIcon,
@@ -329,54 +328,56 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
       {/* weather Details Accordion */}
       <Accordion
         className="mt-2"
-        isCompact
-        selectionMode="multiple"
-        itemClasses={{ indicator: "text-white", trigger: "cursor-pointer" }}
+        allowsMultipleExpanded
         defaultExpandedKeys={["weekly-forecast"]}
       >
         {weatherData.forecast && weatherData.forecast.length > 0 ? (
-          <AccordionItem
-            key="weekly-forecast"
-            aria-label="Weekly Forecast"
-            title={
-              <div className="flex items-center">
-                <span className="text-sm font-normal text-white">
-                  Weekly Forecast
-                </span>
+          <Accordion.Item id="weekly-forecast">
+            <Accordion.Heading>
+              <Accordion.Trigger className="cursor-pointer">
+                <div className="flex items-center">
+                  <span className="text-sm font-normal text-white">
+                    Weekly Forecast
+                  </span>
+                </div>
+                <Accordion.Indicator className="text-white" />
+              </Accordion.Trigger>
+            </Accordion.Heading>
+            <Accordion.Panel>
+              <div className="space-y-2 pb-2">
+                {weatherData.forecast.map((day) => (
+                  <WeeklyForecastRow
+                    key={`${day.temp_max}-${day.temp_min}`}
+                    day={day}
+                    useFahrenheit={useFahrenheit}
+                    weatherTheme={weatherTheme}
+                  />
+                ))}
               </div>
-            }
-          >
-            <div className="space-y-2 pb-2">
-              {weatherData.forecast.map((day) => (
-                <WeeklyForecastRow
-                  key={`${day.temp_max}-${day.temp_min}`}
-                  day={day}
-                  useFahrenheit={useFahrenheit}
-                  weatherTheme={weatherTheme}
-                />
-              ))}
-            </div>
-          </AccordionItem>
+            </Accordion.Panel>
+          </Accordion.Item>
         ) : null}
 
-        <AccordionItem
-          key="weather-details"
-          aria-label="Weather Details"
-          title={
-            <div className="flex items-center">
-              <span className="text-sm font-normal text-white">
-                Additional Information
-              </span>
-            </div>
-          }
-        >
-          <WeatherDetailsGrid
-            weatherData={weatherData}
-            weatherTheme={weatherTheme}
-            sunriseTime={sunriseTime}
-            sunsetTime={sunsetTime}
-          />
-        </AccordionItem>
+        <Accordion.Item id="weather-details">
+          <Accordion.Heading>
+            <Accordion.Trigger className="cursor-pointer">
+              <div className="flex items-center">
+                <span className="text-sm font-normal text-white">
+                  Additional Information
+                </span>
+              </div>
+              <Accordion.Indicator className="text-white" />
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <WeatherDetailsGrid
+              weatherData={weatherData}
+              weatherTheme={weatherTheme}
+              sunriseTime={sunriseTime}
+              sunsetTime={sunsetTime}
+            />
+          </Accordion.Panel>
+        </Accordion.Item>
       </Accordion>
       {/*
       <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-[10px] text-white/80">
@@ -480,10 +481,15 @@ function WeatherLocationHeader({
               <div className="flex items-center justify-between">
                 <span className="text-sm">°F</span>
                 <Switch
-                  checked={useFahrenheit}
-                  onValueChange={onUseFahrenheitChange}
-                  color="default"
-                />
+                  isSelected={useFahrenheit}
+                  onChange={onUseFahrenheitChange}
+                >
+                  <Switch.Content>
+                    <Switch.Control>
+                      <Switch.Thumb />
+                    </Switch.Control>
+                  </Switch.Content>
+                </Switch>
                 <span className="text-sm">°C</span>
               </div>
             </div>

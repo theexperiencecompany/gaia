@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Tooltip } from "@heroui/react";
 import { PlayIcon } from "@icons";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -266,7 +265,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
               >
                 <WorkflowActionButton
                   label={buttonConfig.label}
-                  isLoading={isLoading}
+                  isPending={isLoading}
                   onPress={handlePrimaryAction}
                   variant={buttonConfig.variant}
                 />
@@ -279,18 +278,15 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
   );
 
   return showDescriptionAsTooltip ? (
-    <Tooltip
-      content={workflow?.prompt || displayDescription}
-      placement="top"
-      className="max-w-xs"
-      showArrow
-      classNames={{
-        content: "bg-zinc-800 p-4 rounded-3xl",
-      }}
-      delay={200}
-      closeDelay={0}
-    >
-      {cardContent}
+    <Tooltip delay={200} closeDelay={0}>
+      <Tooltip.Trigger>{cardContent}</Tooltip.Trigger>
+      <Tooltip.Content
+        placement="top"
+        showArrow
+        className="max-w-xs rounded-3xl bg-zinc-800 p-4"
+      >
+        {workflow?.prompt || displayDescription}
+      </Tooltip.Content>
     </Tooltip>
   ) : (
     cardContent
@@ -399,7 +395,7 @@ function getButtonConfig(
   action: WorkflowCardAction,
   customLabel?: string,
   propActionType?: "prompt" | "workflow",
-): { label: string; variant: "primary" | "flat" } {
+): { label: string; variant: "primary" | "secondary" } {
   if (customLabel) {
     return { label: customLabel, variant: "primary" };
   }
@@ -411,13 +407,13 @@ function getButtonConfig(
 
   switch (action) {
     case "run":
-      return { label: "Run", variant: "flat" };
+      return { label: "Run", variant: "secondary" };
     case "create":
       return { label: "Create", variant: "primary" };
     case "insert-prompt":
       return { label: "Insert Prompt", variant: "primary" };
     case "navigate":
-      return { label: "View", variant: "flat" };
+      return { label: "View", variant: "secondary" };
     default:
       return { label: "Try", variant: "primary" };
   }
@@ -426,28 +422,27 @@ function getButtonConfig(
 // Unified action button component
 interface WorkflowActionButtonProps {
   label: string;
-  isLoading: boolean;
+  isPending: boolean;
   onPress: (e: React.MouseEvent) => void;
-  variant?: "primary" | "flat";
+  variant?: "primary" | "secondary";
   size?: "sm" | "md";
 }
 
 function WorkflowActionButton({
   label,
-  isLoading,
+  isPending,
   onPress,
   variant = "primary",
   size = "sm",
 }: WorkflowActionButtonProps) {
-  const buttonVariant = variant === "flat" ? "flat" : "solid";
+  const buttonVariant = variant === "secondary" ? "secondary" : "primary";
 
   return (
     <Button
-      color="primary"
       size={size}
       variant={buttonVariant}
-      className={`font-medium rounded-xl ${variant === "flat" ? "text-primary" : ""}`}
-      isLoading={isLoading}
+      className={`font-medium rounded-xl ${variant === "secondary" ? "text-primary" : ""}`}
+      isPending={isPending}
       onPress={(e) => onPress(e as unknown as React.MouseEvent)}
     >
       {label}

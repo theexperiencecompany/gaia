@@ -1,5 +1,4 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Accordion, Tabs } from "@heroui/react";
 import {
   ArrowUpRight03Icon,
   InternetIcon,
@@ -28,74 +27,75 @@ export default function DeepResearchResultsTabs({
     <div className="w-full">
       <Accordion
         className="w-full max-w-(--breakpoint-sm) px-0"
-        defaultExpandedKeys={["1"]}
+        expandedKeys={isExpanded ? ["1"] : []}
+        onExpandedChange={(keys) => setIsExpanded(keys.has("1"))}
       >
-        <AccordionItem
-          key="1"
-          aria-label="Deep Research Results"
-          indicator={null}
-          title={
-            <div className="h-full w-fit rounded-lg bg-white/10 p-1 px-3 text-sm font-medium transition-colors hover:bg-white/20">
-              {isExpanded
-                ? "Hide Deep research Results"
-                : "Show Deep research Results"}
-            </div>
-          }
-          onPress={() => setIsExpanded((prev) => !prev)}
+        <Accordion.Item
+          id="1"
           className="w-screen max-w-(--breakpoint-sm) px-0"
-          isCompact
         >
-          <Tabs
-            aria-label="Deep Research Results"
-            color="primary"
-            variant="light"
-            classNames={{ base: "p-0" }}
-          >
-            {enhanced_results && enhanced_results.length > 0 && (
-              <Tab
-                key="enhanced"
-                title={
-                  <div className="flex items-center space-x-2">
-                    {/* <DocumentTextIcon className="h-4 w-4" /> */}
-                    <span>Enhanced Results</span>
-                  </div>
-                }
-              >
-                <EnhancedWebResults results={enhanced_results} />
-              </Tab>
-            )}
-
-            {original_search && (
-              <Tab
-                key="original"
-                title={
-                  <div className="flex items-center space-x-2">
-                    <SearchIcon className="h-4 w-4" />
-                    <span>Original Search</span>
-                  </div>
-                }
-              >
-                {original_search && (
-                  <SearchResultsTabs search_results={original_search} />
+          <Accordion.Heading>
+            <Accordion.Trigger aria-label="Deep Research Results">
+              <div className="h-full w-fit rounded-lg bg-white/10 p-1 px-3 text-sm font-medium transition-colors hover:bg-white/20">
+                {isExpanded
+                  ? "Hide Deep research Results"
+                  : "Show Deep research Results"}
+              </div>
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <Tabs variant="secondary" className="p-0">
+              <Tabs.List aria-label="Deep Research Results">
+                {enhanced_results && enhanced_results.length > 0 && (
+                  <Tabs.Tab id="enhanced">
+                    <div className="flex items-center space-x-2">
+                      {/* <DocumentTextIcon className="h-4 w-4" /> */}
+                      <span>Enhanced Results</span>
+                    </div>
+                  </Tabs.Tab>
                 )}
-              </Tab>
-            )}
 
-            {metadata && (
-              <Tab
-                key="metadata"
-                title={
-                  <div className="flex items-center space-x-2">
-                    <InternetIcon />
-                    <span>Search Info</span>
-                  </div>
-                }
-              >
-                <SearchMetadata metadata={metadata} />
-              </Tab>
-            )}
-          </Tabs>
-        </AccordionItem>
+                {original_search && (
+                  <Tabs.Tab id="original">
+                    <div className="flex items-center space-x-2">
+                      <SearchIcon className="h-4 w-4" />
+                      <span>Original Search</span>
+                    </div>
+                  </Tabs.Tab>
+                )}
+
+                {metadata && (
+                  <Tabs.Tab id="metadata">
+                    <div className="flex items-center space-x-2">
+                      <InternetIcon />
+                      <span>Search Info</span>
+                    </div>
+                  </Tabs.Tab>
+                )}
+              </Tabs.List>
+
+              {enhanced_results && enhanced_results.length > 0 && (
+                <Tabs.Panel id="enhanced">
+                  <EnhancedWebResults results={enhanced_results} />
+                </Tabs.Panel>
+              )}
+
+              {original_search && (
+                <Tabs.Panel id="original">
+                  {original_search && (
+                    <SearchResultsTabs search_results={original_search} />
+                  )}
+                </Tabs.Panel>
+              )}
+
+              {metadata && (
+                <Tabs.Panel id="metadata">
+                  <SearchMetadata metadata={metadata} />
+                </Tabs.Panel>
+              )}
+            </Tabs>
+          </Accordion.Panel>
+        </Accordion.Item>
       </Accordion>
     </div>
   );

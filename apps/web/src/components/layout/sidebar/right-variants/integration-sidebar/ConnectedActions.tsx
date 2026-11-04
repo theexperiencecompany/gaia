@@ -1,7 +1,12 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import {
+  Button,
+  ButtonGroup,
+  type ButtonProps,
+  buttonVariants,
+  Tooltip,
+} from "@heroui/react";
 import {
   GlobalIcon,
   LinkSquareIcon,
@@ -36,6 +41,22 @@ interface ConnectedActionsProps {
   onShare: () => void;
 }
 
+/** Renders the tooltip trigger's props onto the button itself, so the button
+ * stays a direct child of the ButtonGroup (and keeps its grouped styling). */
+function asButton(
+  props: React.DetailedHTMLProps<
+    React.HTMLAttributes<HTMLDivElement>,
+    HTMLDivElement
+  >,
+  buttonProps: ButtonProps,
+) {
+  return (
+    <Button {...(props as unknown as ButtonProps)} {...buttonProps}>
+      {buttonProps.children}
+    </Button>
+  );
+}
+
 /** Actions for a connected integration: disconnect, marketplace, publish, share. */
 export function ConnectedActions({
   integration,
@@ -47,104 +68,137 @@ export function ConnectedActions({
   const { isOwnIntegration } = useIntegrationOwnership(integration);
 
   return (
-    <ButtonGroup variant="flat" className="w-full" fullWidth>
+    <ButtonGroup variant="tertiary" className="w-full" fullWidth>
       {disconnect && (
-        <Tooltip content={`${disconnect.label} this integration`}>
-          <Button
-            isIconOnly={useIconOnly}
-            className="w-full"
-            color="danger"
-            onPress={disconnect.onDisconnect}
-            isLoading={disconnect.isPending}
-            isDisabled={disconnect.isPending}
-            aria-label={disconnect.label}
-            startContent={disconnect.isPending ? undefined : disconnect.icon}
-          >
-            {!useIconOnly && disconnect.label}
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger
+            render={(props) =>
+              asButton(props, {
+                isIconOnly: useIconOnly,
+                className: "w-full",
+                onPress: disconnect.onDisconnect,
+                isPending: disconnect.isPending,
+                isDisabled: disconnect.isPending,
+                "aria-label": disconnect.label,
+                variant: "danger",
+                children: (
+                  <>
+                    {!disconnect.isPending && disconnect.icon}
+                    {!useIconOnly && disconnect.label}
+                  </>
+                ),
+              })
+            }
+          />
+          <Tooltip.Content>{`${disconnect.label} this integration`}</Tooltip.Content>
         </Tooltip>
       )}
 
       {integration.isPublic && (
-        <Tooltip content="View on Marketplace">
-          <Button
-            className="w-full"
-            isIconOnly={useIconOnly}
-            as={Link}
-            href={`/marketplace/${integration.slug}`}
-            color="primary"
-            aria-label="View on Marketplace"
-            startContent={
-              <LinkSquareIcon
-                width={18}
-                height={18}
-                className="outline-none!"
-              />
-            }
-          >
-            {!useIconOnly && "View"}
-          </Button>
-        </Tooltip>
-      )}
-
-      {isOwnIntegration && integration.isPublic && publish && (
-        <Tooltip content="Unpublish from Marketplace">
-          <Button
-            isIconOnly={useIconOnly}
-            color="warning"
-            className="w-full"
-            onPress={publish.onPublish}
-            isLoading={publish.isPending}
-            isDisabled={publish.isPending}
-            aria-label="Unpublish"
-            startContent={
-              !publish.isPending ? (
-                <RemoveCircleIcon
+        <Tooltip>
+          <Tooltip.Trigger
+            render={(props) => (
+              <Link
+                {...(props as unknown as React.ComponentProps<typeof Link>)}
+                className={buttonVariants({
+                  variant: "primary",
+                  isIconOnly: useIconOnly,
+                  className: "w-full",
+                })}
+                href={`/marketplace/${integration.slug}`}
+                aria-label="View on Marketplace"
+              >
+                <LinkSquareIcon
                   width={18}
                   height={18}
                   className="outline-none!"
                 />
-              ) : undefined
+                {!useIconOnly && "View"}
+              </Link>
+            )}
+          />
+          <Tooltip.Content>View on Marketplace</Tooltip.Content>
+        </Tooltip>
+      )}
+
+      {isOwnIntegration && integration.isPublic && publish && (
+        <Tooltip>
+          <Tooltip.Trigger
+            render={(props) =>
+              asButton(props, {
+                isIconOnly: useIconOnly,
+                className: "w-full",
+                onPress: publish.onPublish,
+                isPending: publish.isPending,
+                isDisabled: publish.isPending,
+                "aria-label": "Unpublish",
+                variant: "primary",
+                children: (
+                  <>
+                    {!publish.isPending && (
+                      <RemoveCircleIcon
+                        width={18}
+                        height={18}
+                        className="outline-none!"
+                      />
+                    )}
+                    {!useIconOnly && "Unpublish"}
+                  </>
+                ),
+              })
             }
-          >
-            {!useIconOnly && "Unpublish"}
-          </Button>
+          />
+          <Tooltip.Content>Unpublish from Marketplace</Tooltip.Content>
         </Tooltip>
       )}
 
       {isOwnIntegration && !integration.isPublic && publish && (
-        <Tooltip content="Publish to Community Marketplace">
-          <Button
-            isIconOnly={useIconOnly}
-            className="w-full"
-            color="primary"
-            onPress={publish.onPublish}
-            isLoading={publish.isPending}
-            isDisabled={publish.isPending}
-            aria-label="Publish"
-            startContent={
-              !publish.isPending ? (
-                <GlobalIcon width={18} height={18} />
-              ) : undefined
+        <Tooltip>
+          <Tooltip.Trigger
+            render={(props) =>
+              asButton(props, {
+                isIconOnly: useIconOnly,
+                className: "w-full",
+                onPress: publish.onPublish,
+                isPending: publish.isPending,
+                isDisabled: publish.isPending,
+                "aria-label": "Publish",
+                variant: "primary",
+                children: (
+                  <>
+                    {!publish.isPending && (
+                      <GlobalIcon width={18} height={18} />
+                    )}
+                    {!useIconOnly && "Publish"}
+                  </>
+                ),
+              })
             }
-          >
-            {!useIconOnly && "Publish"}
-          </Button>
+          />
+          <Tooltip.Content>Publish to Community Marketplace</Tooltip.Content>
         </Tooltip>
       )}
 
       {integration.isPublic && (
-        <Tooltip content="Copy share link to clipboard">
-          <Button
-            isIconOnly={useIconOnly}
-            className="w-full"
-            color="default"
-            onPress={onShare}
-            aria-label="Share"
-            startContent={<Share08Icon width={18} height={18} />}
-          >
-            {!useIconOnly && "Share"}
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger
+            render={(props) =>
+              asButton(props, {
+                isIconOnly: useIconOnly,
+                className: "w-full",
+                onPress: onShare,
+                "aria-label": "Share",
+                variant: "primary",
+                children: (
+                  <>
+                    <Share08Icon width={18} height={18} />
+                    {!useIconOnly && "Share"}
+                  </>
+                ),
+              })
+            }
+          />
+          <Tooltip.Content>Copy share link to clipboard</Tooltip.Content>
         </Tooltip>
       )}
     </ButtonGroup>

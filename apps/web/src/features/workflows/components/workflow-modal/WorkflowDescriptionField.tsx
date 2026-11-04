@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Tooltip } from "@heroui/react";
 import { SparklesIcon } from "@icons";
 import type { PromptTriggerHint } from "@shared/api/generated";
 import { useMemo, useState } from "react";
@@ -143,28 +142,28 @@ export default function WorkflowDescriptionField({
   };
 
   const generateButton = isPreview ? undefined : (
-    <Tooltip
-      content="Add a title, description, or instructions first"
-      placement="top"
-      isDisabled={canGenerate}
-    >
-      {/* span wrapper keeps the tooltip hoverable while the button is disabled */}
-      <span className="inline-flex">
-        <Button
-          size="sm"
-          variant="light"
-          color="primary"
-          className="h-7 px-2 text-xs"
-          startContent={!isGenerating && <SparklesIcon className="h-4 w-4" />}
-          isLoading={isGenerating}
-          isDisabled={isGenerating || !canGenerate}
-          onPress={handleGenerate}
-        >
-          <TextMorph duration={300}>
-            {hasExistingPrompt ? "Improve with AI" : "Generate with AI"}
-          </TextMorph>
-        </Button>
-      </span>
+    <Tooltip isDisabled={canGenerate}>
+      <Tooltip.Trigger>
+        {/* span wrapper keeps the tooltip hoverable while the button is disabled */}
+        <span className="inline-flex">
+          <Button
+            size="sm"
+            variant="tertiary"
+            className="h-7 px-2 text-xs"
+            isPending={isGenerating}
+            isDisabled={isGenerating || !canGenerate}
+            onPress={handleGenerate}
+          >
+            {!isGenerating && <SparklesIcon className="h-4 w-4" />}
+            <TextMorph duration={300}>
+              {hasExistingPrompt ? "Improve with AI" : "Generate with AI"}
+            </TextMorph>
+          </Button>
+        </span>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="top">
+        Add a title, description, or instructions first
+      </Tooltip.Content>
     </Tooltip>
   );
 

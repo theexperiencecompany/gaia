@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Skeleton, Tooltip } from "@heroui/react";
 import { Share08Icon } from "@icons";
 import { useParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -102,10 +100,18 @@ export default function ProfilePage() {
         )}
 
         {holoCardData && (
-          <Tooltip content="Share profile">
-            <Button isIconOnly variant="flat" onPress={handleShare} size="sm">
-              <Share08Icon size={18} />
-            </Button>
+          <Tooltip>
+            <Tooltip.Trigger>
+              <Button
+                isIconOnly
+                variant="tertiary"
+                onPress={handleShare}
+                size="sm"
+              >
+                <Share08Icon size={18} />
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content>Share profile</Tooltip.Content>
           </Tooltip>
         )}
       </div>

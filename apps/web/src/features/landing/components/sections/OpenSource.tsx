@@ -1,4 +1,4 @@
-import { Avatar, AvatarGroup } from "@heroui/avatar";
+import { Avatar, AvatarGroup } from "@heroui/react";
 import { ArrowRight01Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
@@ -30,29 +30,30 @@ const LazyContributors = lazy(() =>
       contributors: GitHubContributor[];
       totalCount: number;
     }) => (
-      <AvatarGroup
-        isBordered
-        max={8}
-        renderCount={(count) => (
+      <div className="flex flex-wrap items-center justify-center gap-2 max-w-xs sm:max-w-none">
+        <AvatarGroup overlap="ring">
+          {contributors.slice(0, 8).map((contributor) => (
+            <Avatar
+              key={contributor.login}
+              className="cursor-pointer transition-transform hover:scale-110"
+              onClick={() => window.open(contributor.html_url, "_blank")}
+            >
+              <Avatar.Image
+                src={contributor.avatar_url}
+                alt={contributor.login}
+              />
+              <Avatar.Fallback>
+                {contributor.login.slice(0, 2).toUpperCase()}
+              </Avatar.Fallback>
+            </Avatar>
+          ))}
+        </AvatarGroup>
+        {totalCount > 8 && (
           <p className="ms-2 text-small font-medium text-foreground text-nowrap">
-            +{count} others
+            +{totalCount - 8} others
           </p>
         )}
-        total={totalCount}
-        classNames={{ base: "flex-wrap justify-center max-w-xs sm:max-w-none" }}
-      >
-        {contributors.map((contributor) => (
-          <Avatar
-            key={contributor.login}
-            src={contributor.avatar_url}
-            name={contributor.login}
-            as={Link}
-            href={contributor.html_url}
-            target="_blank"
-            className="cursor-pointer transition-transform hover:scale-110"
-          />
-        ))}
-      </AvatarGroup>
+      </div>
     ),
   }),
 );

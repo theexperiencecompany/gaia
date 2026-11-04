@@ -1,11 +1,4 @@
-import { Button } from "@heroui/button";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, Dropdown, Skeleton } from "@heroui/react";
 import { AlertCircleIcon, RedoIcon } from "@icons";
 import { ChevronDown } from "@/components/shared/icons";
 import type { Workflow } from "../../api/workflowApi";
@@ -44,7 +37,7 @@ export default function WorkflowStepsPanel({
           <p className="text-sm font-medium text-danger">Generation failed</p>
           <p className="mt-0.5 text-xs text-zinc-500">{regenerationError}</p>
         </div>
-        <Button variant="flat" size="sm" onPress={onClearError}>
+        <Button variant="tertiary" size="sm" onPress={onClearError}>
           Try again
         </Button>
       </div>
@@ -64,14 +57,13 @@ export default function WorkflowStepsPanel({
           </p>
         </div>
         <Button
-          variant="flat"
+          variant="tertiary"
           size="sm"
-          color="primary"
-          isLoading={isRegenerating}
+          isPending={isRegenerating}
           isDisabled={isRegenerating}
-          startContent={!isRegenerating && <RedoIcon className="h-4 w-4" />}
           onPress={onInitialGeneration}
         >
+          {!isRegenerating && <RedoIcon className="h-4 w-4" />}
           Generate steps
         </Button>
       </div>
@@ -83,50 +75,49 @@ export default function WorkflowStepsPanel({
       <PanelHeader
         badge={`${workflow.steps.length} steps`}
         actions={
-          <Dropdown placement="bottom-end">
-            <DropdownTrigger>
-              <Button
-                variant="flat"
-                size="sm"
-                isLoading={isRegenerating}
-                isDisabled={isRegenerating}
-                endContent={
-                  !isRegenerating && <ChevronDown className="h-4 w-4" />
-                }
-                startContent={
-                  !isRegenerating && <RedoIcon className="h-4 w-4" />
-                }
-              >
-                {isRegenerating ? "Regenerating..." : "Regenerate"}
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu
-              aria-label="Regeneration reasons"
-              variant="flat"
-              onAction={(key) => onRegenerateWithReason(key as string)}
-              disabledKeys={isRegenerating ? ["all"] : []}
+          <Dropdown>
+            <Button
+              variant="tertiary"
+              size="sm"
+              isPending={isRegenerating}
+              isDisabled={isRegenerating}
             >
-              {REGENERATION_REASONS.map((reason) => (
-                <DropdownItem
-                  key={reason.key}
-                  textValue={reason.label}
-                  description={reason.description}
-                  startContent={<reason.icon className={DROPDOWN_ICON} />}
-                >
-                  {reason.label}
-                </DropdownItem>
-              ))}
-            </DropdownMenu>
+              {!isRegenerating && <RedoIcon className="h-4 w-4" />}
+              {isRegenerating ? "Regenerating..." : "Regenerate"}
+              {!isRegenerating && <ChevronDown className="h-4 w-4" />}
+            </Button>
+            <Dropdown.Popover placement="bottom end">
+              <Dropdown.Menu
+                aria-label="Regeneration reasons"
+                onAction={(key) => onRegenerateWithReason(key as string)}
+                disabledKeys={isRegenerating ? ["all"] : []}
+              >
+                {REGENERATION_REASONS.map((reason) => (
+                  <Dropdown.Item
+                    key={reason.key}
+                    id={reason.key}
+                    textValue={reason.label}
+                  >
+                    <reason.icon className={DROPDOWN_ICON} />
+                    <div className="flex flex-col">
+                      <span>{reason.label}</span>
+                      <span className="text-xs text-muted">
+                        {reason.description}
+                      </span>
+                    </div>
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            </Dropdown.Popover>
           </Dropdown>
         }
       />
       <div>
-        <Skeleton
-          className="rounded-2xl"
-          isLoaded={!(isRegenerating || isGenerating)}
-        >
+        {isRegenerating || isGenerating ? (
+          <Skeleton className="h-32 w-full rounded-2xl" />
+        ) : (
           <WorkflowSteps steps={workflow.steps || []} />
-        </Skeleton>
+        )}
       </div>
     </div>
   );

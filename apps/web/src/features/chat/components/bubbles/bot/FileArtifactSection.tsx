@@ -1,6 +1,4 @@
-import { Button } from "@heroui/button";
-import { Card, CardBody } from "@heroui/card";
-import { Chip } from "@heroui/chip";
+import { Button, Card, Chip } from "@heroui/react";
 import { CodeIcon, Download01Icon, File01Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import type React from "react";
@@ -21,30 +19,24 @@ const FILE_TYPE_CONFIG: Record<
   string,
   {
     label: string;
-    color:
-      | "primary"
-      | "secondary"
-      | "success"
-      | "warning"
-      | "danger"
-      | "default";
+    color: "accent" | "default" | "success" | "warning" | "danger";
     icon: "code" | "file";
   }
 > = {
-  md: { label: "Markdown", color: "secondary", icon: "file" },
+  md: { label: "Markdown", color: "default", icon: "file" },
   html: { label: "HTML", color: "warning", icon: "code" },
   htm: { label: "HTML", color: "warning", icon: "code" },
   txt: { label: "Text", color: "default", icon: "file" },
   json: { label: "JSON", color: "success", icon: "code" },
-  py: { label: "Python", color: "primary", icon: "code" },
+  py: { label: "Python", color: "accent", icon: "code" },
   js: { label: "JavaScript", color: "warning", icon: "code" },
-  ts: { label: "TypeScript", color: "primary", icon: "code" },
-  tsx: { label: "TSX", color: "primary", icon: "code" },
+  ts: { label: "TypeScript", color: "accent", icon: "code" },
+  tsx: { label: "TSX", color: "accent", icon: "code" },
   jsx: { label: "JSX", color: "warning", icon: "code" },
-  css: { label: "CSS", color: "secondary", icon: "code" },
+  css: { label: "CSS", color: "default", icon: "code" },
   csv: { label: "CSV", color: "success", icon: "file" },
   tex: { label: "LaTeX", color: "danger", icon: "file" },
-  sql: { label: "SQL", color: "primary", icon: "code" },
+  sql: { label: "SQL", color: "accent", icon: "code" },
   yaml: { label: "YAML", color: "success", icon: "code" },
   yml: { label: "YAML", color: "success", icon: "code" },
   xml: { label: "XML", color: "warning", icon: "code" },
@@ -156,10 +148,9 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
       {panel}
       <Card
         className="group cursor-pointer border border-zinc-700/80 bg-zinc-900/70 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-        isPressable
-        onPress={handleOpen}
+        onClick={handleOpen}
       >
-        <CardBody className="p-3.5">
+        <Card.Content className="p-3.5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-2.5">
               <div className="flex-shrink-0">
@@ -174,7 +165,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
                 <div className="mb-1 flex items-center gap-2.5">
                   <Chip
                     size="sm"
-                    variant="flat"
+                    variant="tertiary"
                     color={config.color}
                     className="text-xs"
                   >
@@ -194,7 +185,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
-                variant="flat"
+                variant="tertiary"
                 className="font-medium text-zinc-200"
                 onPress={handleOpen}
               >
@@ -203,7 +194,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
               <Button
                 isIconOnly
                 size="sm"
-                variant="light"
+                variant="tertiary"
                 className="text-zinc-300 group-hover:text-white"
                 onClick={(event) => {
                   event.preventDefault();
@@ -216,7 +207,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
               </Button>
             </div>
           </div>
-        </CardBody>
+        </Card.Content>
       </Card>
     </>
   );

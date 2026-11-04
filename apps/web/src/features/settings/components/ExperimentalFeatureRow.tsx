@@ -1,7 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Switch } from "@heroui/switch";
+import { Chip, Switch } from "@heroui/react";
 import type { UserFeatureFlagResponse } from "@shared/api/generated";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { FEATURE_STAGE_LABELS } from "@/features/settings/config/featureStages";
@@ -31,14 +30,14 @@ export function ExperimentalFeatureRow({
       }
     >
       <div className="flex items-center gap-3">
-        <Chip size="sm" variant="flat" color="warning">
+        <Chip size="sm" variant="tertiary" color="warning">
           {FEATURE_STAGE_LABELS[feature.stage]}
         </Chip>
         <Switch
           size="sm"
           isSelected={feature.enabled}
           isDisabled={!feature.available || isSaving}
-          onValueChange={(enabled) => setEnabled(feature.key, enabled)}
+          onChange={(enabled) => setEnabled(feature.key, enabled)}
           aria-label={`Turn ${feature.label} ${feature.enabled ? "off" : "on"}`}
         />
       </div>

@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import { Settings01Icon } from "@icons";
 
 interface IntegrationToolsHeadingProps {
@@ -38,24 +37,20 @@ export function IntegrationToolsHeading({
               rather than the default pill, and longer counts grow. */}
           <Chip
             size="sm"
-            variant="flat"
-            radius="full"
-            classNames={{
-              base: "h-5 min-w-5 px-0",
-              content: "px-1.5 text-xs",
-            }}
+            variant="secondary"
+            className="h-5 min-w-5 rounded-full px-0"
           >
-            {toolCount}
+            <Chip.Label className="px-1.5 text-xs">{toolCount}</Chip.Label>
           </Chip>
         </div>
         {isConnected && (
           <Button
             size="sm"
-            variant="light"
+            variant="ghost"
             className="h-7 shrink-0 px-2 text-xs text-zinc-400"
-            startContent={<Settings01Icon className="size-3.5" />}
             onPress={onOpenPermissions}
           >
+            <Settings01Icon className="size-3.5" />
             Permissions
           </Button>
         )}

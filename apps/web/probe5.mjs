@@ -1,0 +1,17 @@
+import { chromium } from "@playwright/test";
+const browser = await chromium.launch();
+const page = await (await browser.newContext({ viewport: { width: 1280, height: 1000 } })).newPage();
+const errs=[]; page.on("console", m=>{ if(m.type()==="error") errs.push(m.text().slice(0,120)); });
+await page.goto("http://localhost:3200/contact", { waitUntil: "networkidle" });
+await page.waitForTimeout(600);
+const trigger = page.locator("button[aria-haspopup='listbox']").first();
+console.log("trigger:", (await trigger.textContent())?.trim());
+await trigger.click();
+await page.waitForTimeout(500);
+console.log("options:", (await page.getByRole("option").allTextContents()).map(s=>s.trim()));
+await page.getByRole("option").nth(1).click();
+await page.waitForTimeout(1500);
+console.log("trigger after:", (await page.locator("button[aria-haspopup='listbox']").first().textContent().catch(()=>"GONE"))?.trim());
+console.log("errorboundary:", (await page.locator("body").innerText()).includes("Something went wrong"));
+console.log("errs:", errs.filter(e=>e.includes("301")).slice(0,2));
+await browser.close();

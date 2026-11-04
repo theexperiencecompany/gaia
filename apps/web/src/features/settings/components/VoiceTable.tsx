@@ -11,7 +11,6 @@ import {
   TableCell,
   TableColumn,
   TableHeader,
-  type TableProps,
   TableRow,
   Tooltip,
 } from "@heroui/react";
@@ -61,7 +60,11 @@ interface VoiceTableProps {
   /** Fired (after persisting) when the selection changes — lets the live
    * session re-point the agent's voice. */
   onSelect?: (voiceId: string) => void;
-  classNames?: TableProps["classNames"];
+  classNames?: {
+    base?: string;
+    wrapper?: string;
+    [key: string]: string | undefined;
+  };
   "aria-label"?: string;
 }
 
@@ -208,8 +211,7 @@ export function VoiceTable({
                 <Button
                   isIconOnly
                   size="sm"
-                  radius="full"
-                  variant="light"
+                  variant="tertiary"
                   aria-label={
                     voice.starred
                       ? `Unstar ${voice.name}`
@@ -260,20 +262,21 @@ export function VoiceTable({
             <div className="flex items-center gap-1.5">
               <span className="text-sm text-zinc-400">{voice.language}</span>
               {voice.languages.length > 1 && (
-                <Tooltip
-                  content={
+                <Tooltip>
+                  <Tooltip.Trigger>
+                    <Chip
+                      size="sm"
+                      variant="tertiary"
+                      className="cursor-default bg-zinc-800 text-zinc-400"
+                    >
+                      +{voice.languages.length - 1}
+                    </Chip>
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>
                     <div className="max-w-56 px-1 py-1.5 text-xs">
                       {voice.languages.join(", ")}
                     </div>
-                  }
-                >
-                  <Chip
-                    size="sm"
-                    variant="flat"
-                    className="cursor-default bg-zinc-800 text-zinc-400"
-                  >
-                    +{voice.languages.length - 1}
-                  </Chip>
+                  </Tooltip.Content>
                 </Tooltip>
               )}
             </div>
@@ -282,11 +285,13 @@ export function VoiceTable({
           return (
             <div className="flex items-center gap-2">
               {voice.country_code ? (
-                <Avatar
-                  src={flagUrl(voice.country_code)}
-                  alt={`${voice.accent} flag`}
-                  className="h-5 w-5 shrink-0"
-                />
+                <Avatar className="h-5 w-5 shrink-0">
+                  <Avatar.Image
+                    src={flagUrl(voice.country_code)}
+                    alt={`${voice.accent} flag`}
+                  />
+                  <Avatar.Fallback />
+                </Avatar>
               ) : (
                 <Globe02Icon className="h-5 w-5 shrink-0 text-zinc-500" />
               )}
@@ -308,8 +313,7 @@ export function VoiceTable({
               <Button
                 isIconOnly
                 size="sm"
-                radius="full"
-                variant="flat"
+                variant="tertiary"
                 aria-label={
                   voice.isPlaying
                     ? `Pause ${voice.name} preview`
@@ -332,38 +336,50 @@ export function VoiceTable({
   );
 
   return (
-    <Table
-      aria-label={ariaLabel}
-      selectionMode="single"
-      classNames={{ tr: "cursor-pointer", ...classNames }}
-      disallowEmptySelection
-      selectedKeys={selectedKeys}
-      onSelectionChange={handleSelectionChange}
-    >
-      <TableHeader columns={columns}>
-        {(column) => (
-          <TableColumn
-            key={column.key}
-            className={column.align === "end" ? "text-right" : undefined}
-          >
-            {column.label}
-          </TableColumn>
-        )}
-      </TableHeader>
-      <TableBody
-        items={rows}
-        isLoading={isLoading}
-        loadingContent={<Spinner size="sm" label="Loading voices" />}
-        emptyContent={isLoading ? " " : "No voices match your filters"}
+    <Table className={classNames?.base}>
+      <Table.Content
+        aria-label={ariaLabel}
+        selectionMode="single"
+        disallowEmptySelection
+        selectedKeys={selectedKeys}
+        onSelectionChange={handleSelectionChange}
+        className={classNames?.wrapper}
       >
-        {(voice) => (
-          <TableRow key={voice.voice_id} textValue={voice.name}>
-            {(columnKey) => (
-              <TableCell>{renderCell(voice, String(columnKey))}</TableCell>
-            )}
-          </TableRow>
-        )}
-      </TableBody>
+        <TableHeader columns={columns}>
+          {(column) => (
+            <TableColumn
+              key={column.key}
+              id={column.key}
+              className={column.align === "end" ? "text-right" : undefined}
+            >
+              {column.label}
+            </TableColumn>
+          )}
+        </TableHeader>
+        <TableBody
+          items={rows}
+          dependencies={[isLoading]}
+          renderEmptyState={() =>
+            isLoading ? (
+              <Spinner size="sm" aria-label="Loading voices" />
+            ) : (
+              "No voices match your filters"
+            )
+          }
+        >
+          {(voice) => (
+            <TableRow
+              key={voice.voice_id}
+              id={voice.voice_id}
+              textValue={voice.name}
+            >
+              {(columnKey) => (
+                <TableCell>{renderCell(voice, String(columnKey))}</TableCell>
+              )}
+            </TableRow>
+          )}
+        </TableBody>
+      </Table.Content>
     </Table>
   );
 }

@@ -1,9 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Kbd } from "@heroui/kbd";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Chip, Kbd, Tooltip } from "@heroui/react";
 import { Alert02Icon, CalendarAdd01Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import Spinner from "@/components/ui/spinner";
@@ -32,27 +29,26 @@ export default function CalendarSidebar() {
 
   return (
     <div className="flex flex-col gap-3">
-      <Tooltip
-        content={
+      <Tooltip>
+        <Tooltip.Trigger>
+          <Button
+            size="sm"
+            fullWidth
+            onPress={handleCreateEvent}
+            className="mb-4 flex justify-start text-sm font-medium text-primary"
+            variant="tertiary"
+            data-keyboard-shortcut="create-event"
+          >
+            <CalendarAdd01Icon width={18} height={18} />
+            New Event
+          </Button>
+        </Tooltip.Trigger>
+        <Tooltip.Content placement="right">
           <span className="flex items-center gap-2">
             New Event
             <Kbd className="text-[10px]">C</Kbd>
           </span>
-        }
-        placement="right"
-      >
-        <Button
-          color="primary"
-          size="sm"
-          fullWidth
-          onPress={handleCreateEvent}
-          className="mb-4 flex justify-start text-sm font-medium text-primary"
-          variant="flat"
-          data-keyboard-shortcut="create-event"
-        >
-          <CalendarAdd01Icon width={18} height={18} />
-          New Event
-        </Button>
+        </Tooltip.Content>
       </Tooltip>
 
       <div>
@@ -62,12 +58,12 @@ export default function CalendarSidebar() {
           <div className="flex justify-center mt-2 mb-1">
             <Chip
               className="mb-2 mx-auto pl-2"
-              variant="flat"
+              variant="tertiary"
               color="danger"
               size="sm"
-              startContent={<Alert02Icon width={15} height={15} />}
             >
-              You have no selected Calendars
+              <Alert02Icon width={15} height={15} />
+              <Chip.Label>You have no selected Calendars</Chip.Label>
             </Chip>
           </div>
         )}

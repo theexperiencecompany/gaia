@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Link } from "@heroui/link";
+import { Button, Link } from "@heroui/react";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import type { z } from "zod";
@@ -124,7 +123,8 @@ function TimelineView(props: z.infer<typeof timelineSchema>) {
                           <Link
                             key={`${item.title}-${link.label}-${link.url}`}
                             href={safeHref}
-                            isExternal
+                            target="_blank"
+                            rel="noreferrer noopener"
                             className={linkClassName}
                           >
                             {link.label}
@@ -142,7 +142,7 @@ function TimelineView(props: z.infer<typeof timelineSchema>) {
                         <Button
                           key={`${item.title}-${action.value}`}
                           size="sm"
-                          variant="flat"
+                          variant="tertiary"
                           onPress={() => triggerAction(action.value)}
                         >
                           {action.label}

@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { PuzzleIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -26,21 +26,19 @@ export default function ConnectOptions({
         <Button
           key={option.href}
           size="sm"
-          variant="flat"
-          startContent={
-            option.integration_id ? (
-              getToolCategoryIcon(option.integration_id, {
-                size: 16,
-                width: 16,
-                height: 16,
-                showBackground: false,
-              })
-            ) : (
-              <PuzzleIcon className="size-4 shrink-0" />
-            )
-          }
+          variant="tertiary"
           onPress={() => router.push(option.href)}
         >
+          {option.integration_id ? (
+            getToolCategoryIcon(option.integration_id, {
+              size: 16,
+              width: 16,
+              height: 16,
+              showBackground: false,
+            })
+          ) : (
+            <PuzzleIcon className="size-4 shrink-0" />
+          )}
           {option.label}
         </Button>
       ))}

@@ -41,5 +41,10 @@ export const SidebarHeaderButton = ({
 
   if (!tooltip) return button;
 
-  return <Tooltip content={tooltip}>{button}</Tooltip>;
+  return (
+    <Tooltip>
+      <Tooltip.Trigger className="contents">{button}</Tooltip.Trigger>
+      <Tooltip.Content>{tooltip}</Tooltip.Content>
+    </Tooltip>
+  );
 };

@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, buttonVariants, Tooltip } from "@heroui/react";
 import {
   AiWebBrowsingIcon,
   Cancel01Icon,
@@ -14,6 +13,7 @@ import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusCh
 import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import { useLiveView } from "@/features/browser/hooks/useLiveView";
 import type { BrowserCardPhase } from "@/features/browser/types";
+import { cn } from "@/lib/utils";
 import type { BrowserHandoffSnapshot } from "@/types/features/browserTaskTypes";
 import { HandoffPrompt } from "../bubbles/bot/HandoffPrompt";
 import { LiveScreen } from "../bubbles/bot/LiveScreen";
@@ -168,8 +168,7 @@ function TabStrip({
         <Button
           isIconOnly
           size="sm"
-          variant="light"
-          radius="full"
+          variant="tertiary"
           className="text-zinc-400"
           aria-label="Close browser panel"
           onPress={onClose}
@@ -202,21 +201,26 @@ function Omnibox({
         </span>
       </div>
       {pageUrl && (
-        <Tooltip content="Open in a new tab" size="sm" delay={400}>
-          <Button
-            as="a"
-            href={pageUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            isIconOnly
-            size="sm"
-            variant="light"
-            radius="full"
-            className="shrink-0 text-zinc-400"
-            aria-label="Open the live browser in a new tab"
-          >
-            <SquareArrowUpRight02Icon className="size-4" />
-          </Button>
+        <Tooltip delay={400}>
+          <Tooltip.Trigger>
+            <a
+              href={pageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                buttonVariants({
+                  variant: "tertiary",
+                  size: "sm",
+                  isIconOnly: true,
+                }),
+                "shrink-0 text-zinc-400",
+              )}
+              aria-label="Open the live browser in a new tab"
+            >
+              <SquareArrowUpRight02Icon className="size-4" />
+            </a>
+          </Tooltip.Trigger>
+          <Tooltip.Content>Open in a new tab</Tooltip.Content>
         </Tooltip>
       )}
     </div>

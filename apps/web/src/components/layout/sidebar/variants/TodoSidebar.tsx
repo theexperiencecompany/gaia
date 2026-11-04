@@ -1,8 +1,7 @@
 "use client";
 
 import type { EventProperties } from "@gaia/shared/analytics/events";
-import { Button } from "@heroui/button";
-import { useDisclosure } from "@heroui/modal";
+import { Button } from "@heroui/react";
 import {
   Calendar01Icon,
   CalendarUpload02Icon,
@@ -125,21 +124,16 @@ function SidebarSection({
           <Button
             key={item.href}
             fullWidth
-            startContent={
-              <item.icon className="w-[20px]" color={item.iconColor} />
-            }
-            endContent={
-              item.count !== undefined && (
-                <span className="ml-auto text-xs">{item.count}</span>
-              )
-            }
             className={`justify-start px-2 text-start text-sm ${activeItem === item.href ? "bg-zinc-800 text-zinc-300" : "text-zinc-500 hover:text-zinc-300"}`}
-            variant="light"
-            radius="sm"
+            variant="tertiary"
             size="sm"
             onPress={() => onItemClick(item)}
           >
+            <item.icon className="w-[20px]" color={item.iconColor} />
             {item.label}
+            {item.count !== undefined && (
+              <span className="ml-auto text-xs">{item.count}</span>
+            )}
           </Button>
         ))
       ) : emptyState ? (
@@ -160,11 +154,7 @@ function SidebarSection({
 export default function TodoSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const {
-    isOpen: addProjectOpen,
-    onOpen: openAddProject,
-    onOpenChange: setAddProjectOpen,
-  } = useDisclosure();
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
   // const [searchQuery, setSearchQuery] = useState("");
 
   // Track initial load to prevent showing spinner on navigation
@@ -332,8 +322,8 @@ export default function TodoSidebar() {
                 <Button
                   isIconOnly
                   size="sm"
-                  variant="light"
-                  onPress={openAddProject}
+                  variant="tertiary"
+                  onPress={() => setAddProjectOpen(true)}
                   className="h-6 w-6 min-w-6"
                 >
                   <PlusSignIcon className="h-3 w-3" />

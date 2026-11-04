@@ -1,14 +1,6 @@
 "use client";
 
-import { Kbd } from "@heroui/kbd";
-import {
-  Button,
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/react";
+import { Button, Kbd, Modal } from "@heroui/react";
 import { useEffect, useEffectEvent, useRef } from "react";
 
 interface ConfirmationDialogProps {
@@ -82,40 +74,47 @@ export function ConfirmationDialog({
 
   return (
     <Modal isOpen={isOpen} onOpenChange={handleOpenChange}>
-      <ModalContent>
-        {(onClose) => (
-          <>
-            <ModalHeader className="flex flex-col gap-1">{title}</ModalHeader>
-            <ModalBody>
+      <Modal.Backdrop>
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex flex-col gap-1">{title}</Modal.Header>
+            <Modal.Body>
               <p>{message}</p>
-            </ModalBody>
-            <ModalFooter>
+            </Modal.Body>
+            <Modal.Footer>
               <Button
-                variant="flat"
+                variant="tertiary"
                 onPress={() => {
                   onCancel();
-                  onClose();
+                  handleOpenChange(false);
                 }}
                 className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-                endContent={<Kbd keys={["escape"]} />}
                 isDisabled={isLoading}
               >
                 {cancelText}
+                <Kbd>
+                  <Kbd.Abbr keyValue="escape" />
+                </Kbd>
               </Button>
               <Button
                 ref={confirmButtonRef}
-                color={variant === "destructive" ? "danger" : "primary"}
                 onPress={handleConfirmPress}
-                endContent={!isLoading && <Kbd keys={["enter"]} />}
-                isLoading={isLoading}
+                variant={variant === "destructive" ? "danger" : "primary"}
+                isPending={isLoading}
                 isDisabled={isLoading}
               >
                 {confirmText}
+                {!isLoading && (
+                  <Kbd>
+                    <Kbd.Abbr keyValue="enter" />
+                  </Kbd>
+                )}
               </Button>
-            </ModalFooter>
-          </>
-        )}
-      </ModalContent>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

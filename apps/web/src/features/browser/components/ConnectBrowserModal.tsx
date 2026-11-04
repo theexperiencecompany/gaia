@@ -1,15 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { Skeleton } from "@heroui/skeleton";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Button, Modal, Skeleton, Tabs } from "@heroui/react";
 import { type ReactNode, useEffect, useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
 import { useWindowOrigin } from "@/hooks/ui/useWindowOrigin";
@@ -84,7 +75,7 @@ function CodeStatus({
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl bg-zinc-900 p-3 text-sm text-zinc-400">
       <span>{text}</span>
-      <Button size="sm" color="primary" onPress={onAction}>
+      <Button size="sm" onPress={onAction} variant="primary">
         {action}
       </Button>
     </div>
@@ -181,19 +172,26 @@ function ConnectBrowserBody({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <ModalHeader>Import browser logins</ModalHeader>
-      <ModalBody className="gap-3">
+      <Modal.Header>
+        <Modal.Heading>Import browser logins</Modal.Heading>
+      </Modal.Header>
+      <Modal.Body className="gap-3">
         <Surface label="Run in Terminal">
           <Tabs
-            size="sm"
-            radius="full"
-            aria-label="How to run it"
             selectedKey={runner}
             onSelectionChange={(key) => setRunner(key as ConnectRunner)}
-            classNames={{ tabList: "bg-zinc-900" }}
           >
+            <Tabs.List aria-label="How to run it" className="bg-zinc-900">
+              {runners.map((r) => (
+                <Tabs.Tab key={r} id={r}>
+                  {RUNNER_TITLES[r]}
+                </Tabs.Tab>
+              ))}
+            </Tabs.List>
             {runners.map((r) => (
-              <Tab key={r} title={RUNNER_TITLES[r]} />
+              <Tabs.Panel key={r} id={r}>
+                {null}
+              </Tabs.Panel>
             ))}
           </Tabs>
           <CommandPanel
@@ -210,15 +208,15 @@ function ConnectBrowserBody({ onClose }: { onClose: () => void }) {
         <Surface glass>
           <FactsList />
         </Surface>
-      </ModalBody>
-      <ModalFooter className="items-center justify-between">
+      </Modal.Body>
+      <Modal.Footer className="items-center justify-between">
         <p className="text-xs text-zinc-500">
           macOS or Linux, with Chromium browsers and Firefox.
         </p>
-        <Button color="primary" size="sm" onPress={onClose}>
+        <Button size="sm" onPress={onClose} variant="primary">
           Done
         </Button>
-      </ModalFooter>
+      </Modal.Footer>
     </>
   );
 }
@@ -233,10 +231,15 @@ export function ConnectBrowserModal({
   onClose,
 }: ConnectBrowserModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" scrollBehavior="inside">
-      <ModalContent>
-        <ConnectBrowserBody onClose={onClose} />
-      </ModalContent>
+    <Modal isOpen={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <Modal.Backdrop>
+        <Modal.Container size="lg">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <ConnectBrowserBody onClose={onClose} />
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

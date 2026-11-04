@@ -8,7 +8,7 @@
 
 "use client";
 
-import { Select, SelectItem } from "@heroui/select";
+import { ListBox, Select, Spinner } from "@heroui/react";
 import { useMemo } from "react";
 
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
@@ -145,17 +145,22 @@ export function CalendarSettings({
           placeholder="Select calendars to monitor"
           selectionMode="multiple"
           className="w-full"
-          isLoading={calendarsLoading}
-          selectedKeys={selectedCalendars}
-          onSelectionChange={(keys) =>
-            handleSelectionChange(keys as Set<string>)
-          }
+          value={Array.from(selectedCalendars)}
+          onChange={(keys) => handleSelectionChange(new Set(keys as string[]))}
         >
-          {calendarItems.map((item) => (
-            <SelectItem key={item.id} textValue={item.name}>
-              {item.name}
-            </SelectItem>
-          ))}
+          <Select.Trigger>
+            {calendarsLoading ? <Spinner size="sm" /> : <Select.Value />}
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {calendarItems.map((item) => (
+                <ListBox.Item key={item.id} id={item.id} textValue={item.name}>
+                  {item.name}
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </TriggerSettingRow>
 

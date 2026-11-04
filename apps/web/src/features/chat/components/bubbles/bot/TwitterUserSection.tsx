@@ -1,6 +1,6 @@
 "use client";
 
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { ScrollShadow } from "@heroui/react";
 import {
   Calendar01Icon,
   CheckmarkBadge02Icon,

@@ -183,7 +183,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                   height: "100%",
                 }}
               >
-                <Spinner size="md" color="primary" />
+                <Spinner size="md" color="accent" />
               </div>
             )}
 
@@ -273,7 +273,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                   height: "100%",
                 }}
               >
-                <Spinner size="md" color="primary" />
+                <Spinner size="md" color="accent" />
               </div>
             )}
           </div>

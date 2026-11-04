@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { ArrowUp02Icon, Clock01Icon, StopIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -93,11 +93,7 @@ export default function SendStopButton({
     }
   };
 
-  const { bg, contentColor } = getButtonStyle(
-    showStop,
-    hasContent,
-    isUploading,
-  );
+  const { contentColor } = getButtonStyle(showStop, hasContent, isUploading);
 
   // Queue widens into a labelled pill; stop/send stay icon-only square buttons.
   const stopCursor = showStop ? "cursor-pointer" : "";
@@ -110,12 +106,10 @@ export default function SendStopButton({
       isIconOnly={!showQueue}
       aria-label={MODE_ARIA_LABEL[mode]}
       className={`transition-all duration-300 ${contentColor} ${shapeClass}`}
-      color={bg}
       // Stop (abort the stream) is always pressable; send/queue is gated on
       // readiness — there must be content AND no in-flight upload, otherwise the
       // submit is dropped by the composer's uploading guard.
-      disabled={!showStop && (!hasContent || isUploading)}
-      radius="full"
+      isDisabled={!showStop && (!hasContent || isUploading)}
       // In stop mode the button aborts the stream rather than submitting, so it
       // must not trigger the composer form. Only send/queue submit.
       type={showStop ? "button" : "submit"}

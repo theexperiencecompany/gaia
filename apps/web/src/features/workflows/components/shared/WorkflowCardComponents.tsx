@@ -1,14 +1,13 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import {
+  Button,
+  ButtonGroup,
+  Chip,
   Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
+  Menu,
+  Tooltip,
 } from "@heroui/react";
-import { Tooltip } from "@heroui/tooltip";
 import {
   Alert01Icon,
   ArrowDown01Icon,
@@ -98,7 +97,7 @@ export function TriggerDisplay({
 }: TriggerDisplayProps) {
   if (triggerLabel === "Manual Trigger" || !triggerLabel) {
     return (
-      <Chip size="sm" variant="flat" radius="sm" className="text-xs">
+      <Chip size="sm" variant="tertiary" className="text-xs">
         Manual
       </Chip>
     );
@@ -137,7 +136,7 @@ export function ActivationStatus({
   const label = activated ? "Activated" : "Deactivated";
 
   return (
-    <Chip color={color} variant="flat" size={size} radius="sm">
+    <Chip color={color} variant="tertiary" size={size}>
       {label}
     </Chip>
   );
@@ -149,24 +148,24 @@ interface SystemWorkflowChipProps {
 
 export function SystemWorkflowChip({ size = "sm" }: SystemWorkflowChipProps) {
   return (
-    <Tooltip
-      content="Automatically created by GAIA when you connected this integration"
-      placement="top"
-      delay={300}
-      closeDelay={0}
-      classNames={{ content: "bg-zinc-800 text-xs max-w-48 text-center" }}
-    >
-      <Chip
-        color="primary"
-        variant="flat"
-        size={size}
-        className="text-primary"
-        startContent={
+    <Tooltip delay={300} closeDelay={0}>
+      <Tooltip.Trigger>
+        <Chip
+          color="accent"
+          variant="tertiary"
+          size={size}
+          className="text-primary"
+        >
           <Image src="/brand/gaia_logo.svg" alt="GAIA" width={14} height={14} />
-        }
+          <Chip.Label className="pl-0.5">System</Chip.Label>
+        </Chip>
+      </Tooltip.Trigger>
+      <Tooltip.Content
+        placement="top"
+        className="bg-zinc-800 text-xs max-w-48 text-center"
       >
-        <span className="pl-0.5">System</span>
-      </Chip>
+        Automatically created by GAIA when you connected this integration
+      </Tooltip.Content>
     </Tooltip>
   );
 }
@@ -231,15 +230,11 @@ export function CreatorAvatar({
   if (!showTooltip) return avatar;
 
   return (
-    <Tooltip
-      content={`Created by ${displayName}`}
-      showArrow
-      closeDelay={0}
-      delay={0}
-      placement="left"
-      color="foreground"
-    >
-      {avatar}
+    <Tooltip closeDelay={0} delay={0}>
+      <Tooltip.Trigger>{avatar}</Tooltip.Trigger>
+      <Tooltip.Content placement="left" showArrow>
+        {`Created by ${displayName}`}
+      </Tooltip.Content>
     </Tooltip>
   );
 }
@@ -258,13 +253,12 @@ export function NeedsSetupChip({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
   return (
     <Chip
       color="warning"
-      variant="flat"
+      variant="tertiary"
       size={size}
-      radius="sm"
       className="cursor-default"
-      startContent={<Alert01Icon width={13} height={13} />}
     >
-      Needs setup
+      <Alert01Icon width={13} height={13} />
+      <Chip.Label>Needs setup</Chip.Label>
     </Chip>
   );
 }
@@ -275,14 +269,16 @@ export function MissingIntegrationsWarning({
   if (!missingIntegrations.length) return null;
 
   return (
-    <Tooltip
-      content={missingIntegrationsMessage(missingIntegrations)}
-      placement="top"
-      delay={200}
-      closeDelay={0}
-      classNames={{ content: "bg-zinc-800 text-xs max-w-56 text-center" }}
-    >
-      <NeedsSetupChip />
+    <Tooltip delay={200} closeDelay={0}>
+      <Tooltip.Trigger>
+        <NeedsSetupChip />
+      </Tooltip.Trigger>
+      <Tooltip.Content
+        placement="top"
+        className="bg-zinc-800 text-xs max-w-56 text-center"
+      >
+        {missingIntegrationsMessage(missingIntegrations)}
+      </Tooltip.Content>
     </Tooltip>
   );
 }
@@ -317,43 +313,41 @@ export function MissingIntegrationsAlert({
 
       {missingIntegrations.length === 1 ? (
         <Button
-          color="warning"
-          variant="flat"
+          variant="tertiary"
           size="sm"
-          isLoading={!!connectingId}
+          isPending={!!connectingId}
           isDisabled={!!connectingId}
           onPress={() => onConnect(missingIntegrations[0].id)}
         >
           Connect {missingIntegrations[0].name}
         </Button>
       ) : (
-        <ButtonGroup color="warning" variant="flat" size="sm">
+        <ButtonGroup size="sm">
           <Button
-            isLoading={!!connectingId}
+            isPending={!!connectingId}
             isDisabled={!!connectingId}
             onPress={() => setIsDropdownOpen((o) => !o)}
           >
             Connect Apps
           </Button>
-          <Dropdown
-            placement="bottom-end"
-            isOpen={isDropdownOpen}
-            onOpenChange={setIsDropdownOpen}
-          >
-            <DropdownTrigger>
+          <Dropdown isOpen={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
+            <Dropdown.Trigger>
               <Button isIconOnly isDisabled={!!connectingId}>
                 <ArrowDown01Icon className="size-3.5" />
               </Button>
-            </DropdownTrigger>
-            <DropdownMenu aria-label="Missing integrations to connect">
-              {missingIntegrations.map((integration) => {
-                const iconUrl = getIntegrationIconUrl(integration.id);
-                return (
-                  <DropdownItem
-                    key={integration.id}
-                    onPress={() => onConnect(integration.id)}
-                    startContent={
-                      iconUrl ? (
+            </Dropdown.Trigger>
+            <Dropdown.Popover placement="bottom end">
+              <Menu aria-label="Missing integrations to connect">
+                {missingIntegrations.map((integration) => {
+                  const iconUrl = getIntegrationIconUrl(integration.id);
+                  return (
+                    <Menu.Item
+                      key={integration.id}
+                      id={integration.id}
+                      textValue={`Connect ${integration.name}`}
+                      onAction={() => onConnect(integration.id)}
+                    >
+                      {iconUrl && (
                         <Image
                           src={iconUrl}
                           alt={integration.name}
@@ -361,14 +355,13 @@ export function MissingIntegrationsAlert({
                           height={16}
                           className="rounded-sm"
                         />
-                      ) : undefined
-                    }
-                  >
-                    Connect {integration.name}
-                  </DropdownItem>
-                );
-              })}
-            </DropdownMenu>
+                      )}
+                      Connect {integration.name}
+                    </Menu.Item>
+                  );
+                })}
+              </Menu>
+            </Dropdown.Popover>
           </Dropdown>
         </ButtonGroup>
       )}

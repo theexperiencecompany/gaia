@@ -17,7 +17,7 @@ const ABOUT_DATA: AboutData = {
   authors: [
     {
       name: "Aryan Randeriya",
-      avatar: "https://avatars.githubusercontent.com/u/64796509?v=4",
+      avatar: "https://github.com/aryanranderiya.png",
       role: "Founder & CEO",
       linkedin: "https://www.linkedin.com/in/aryanranderiya/",
       twitter: "https://twitter.com/aryanranderiya",
@@ -25,7 +25,7 @@ const ABOUT_DATA: AboutData = {
     },
     {
       name: "Dhruv Maradiya",
-      avatar: "https://avatars.githubusercontent.com/u/87976750?v=4",
+      avatar: "https://github.com/dhruv-maradiya.png",
       role: "Founder & CTO",
       linkedin: "https://www.linkedin.com/in/dhruvmaradiya/",
       twitter: "https://twitter.com/dhruvmaradiya",

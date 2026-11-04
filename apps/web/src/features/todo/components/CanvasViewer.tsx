@@ -1,6 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { ActivityIcon, CanvasIcon } from "@icons";
 import type React from "react";
 import { useRef, useState } from "react";
@@ -97,7 +97,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ todoId, todoTitle }) => {
               <p className="truncate text-xs text-zinc-500">{hint}</p>
             </div>
             {isLoading && openFile === name && (
-              <Spinner size="sm" color="default" />
+              <Spinner size="sm" color="current" />
             )}
           </button>
         ))}

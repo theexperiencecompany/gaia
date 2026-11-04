@@ -1,15 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
 import {
+  Button,
+  Input,
+  Label,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { Radio, RadioGroup } from "@heroui/radio";
+  Radio,
+  RadioGroup,
+  TextArea,
+  TextField,
+} from "@heroui/react";
 import { useState } from "react";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { toast } from "@/lib/toast";
@@ -71,46 +71,38 @@ export default function AddProjectModal({
   };
 
   return (
-    <Modal
-      isOpen={open}
-      onOpenChange={onOpenChange}
-      size="md"
-      placement="center"
-    >
-      <ModalContent>
-        {(onClose) => (
-          <>
-            <ModalHeader className="flex flex-col gap-1">
-              Create New Project
-            </ModalHeader>
-            <ModalBody>
+    <Modal isOpen={open} onOpenChange={onOpenChange}>
+      <Modal.Backdrop>
+        <Modal.Container placement="center" size="md">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex flex-col gap-1">
+              <Modal.Heading>Create New Project</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
               <div className="flex flex-col gap-4">
                 {/* Name */}
-                <Input
-                  label="Project Name"
-                  placeholder="Enter project name..."
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, name: e.target.value }))
-                  }
+                <TextField
                   isRequired
-                  autoFocus
-                />
+                  value={formData.name}
+                  onChange={(name) =>
+                    setFormData((prev) => ({ ...prev, name }))
+                  }
+                >
+                  <Label>Project Name</Label>
+                  <Input placeholder="Enter project name..." autoFocus />
+                </TextField>
 
                 {/* Description */}
-                <Textarea
-                  label="Description"
-                  placeholder="Add a description..."
+                <TextField
                   value={formData.description || ""}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      description: e.target.value,
-                    }))
+                  onChange={(description) =>
+                    setFormData((prev) => ({ ...prev, description }))
                   }
-                  minRows={2}
-                  maxRows={3}
-                />
+                >
+                  <Label>Description</Label>
+                  <TextArea placeholder="Add a description..." rows={3} />
+                </TextField>
 
                 {/* Color */}
                 <div>
@@ -123,13 +115,11 @@ export default function AddProjectModal({
                   <RadioGroup
                     id="radiogroupcolorpicker"
                     value={formData.color}
-                    color="default"
-                    onValueChange={(value) =>
+                    onChange={(value) =>
                       setFormData((prev) => ({ ...prev, color: value }))
                     }
                     orientation="horizontal"
-                    classNames={{ wrapper: "flex gap-8 p-3" }}
-                    // className="flex flex-wrap items-start gap-10"
+                    className="flex gap-8 p-3"
                   >
                     {colorOptions.map((option) => (
                       <Radio
@@ -137,33 +127,38 @@ export default function AddProjectModal({
                         value={option.value}
                         className="p-0"
                       >
-                        <div className="flex h-full w-full items-center">
-                          <div
-                            className="h-7 w-7 rounded-full"
-                            style={{ backgroundColor: option.value }}
-                          />
-                        </div>
+                        <Radio.Content>
+                          <Radio.Control>
+                            <Radio.Indicator />
+                          </Radio.Control>
+                          <div className="flex h-full w-full items-center">
+                            <div
+                              className="h-7 w-7 rounded-full"
+                              style={{ backgroundColor: option.value }}
+                            />
+                          </div>
+                        </Radio.Content>
                       </Radio>
                     ))}
                   </RadioGroup>
                 </div>
               </div>
-            </ModalBody>
-            <ModalFooter>
-              <Button variant="light" onPress={onClose}>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="tertiary" onPress={() => onOpenChange(false)}>
                 Cancel
               </Button>
               <Button
-                color="primary"
                 onPress={handleSubmit}
-                isLoading={loading}
+                isPending={loading}
+                variant="primary"
               >
                 Create Project
               </Button>
-            </ModalFooter>
-          </>
-        )}
-      </ModalContent>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

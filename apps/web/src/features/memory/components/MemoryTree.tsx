@@ -1,7 +1,6 @@
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
-import { Spinner } from "@heroui/spinner";
+import { Skeleton, Spinner } from "@heroui/react";
 import { Folder01Icon } from "@icons";
 import type { MemoryEntry, MemoryTreeNode } from "@shared/api/generated";
 import { useCallback, useEffect, useState } from "react";

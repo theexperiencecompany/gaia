@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Download01Icon } from "@icons";
 import type React from "react";
 
@@ -69,7 +69,7 @@ const DownloadButton: React.FC<DownloadButtonProps> = ({
       className="text-xs text-zinc-400 hover:text-gray-300"
       size="sm"
       isIconOnly
-      variant="light"
+      variant="tertiary"
       onPress={handleDownload}
     >
       <Download01Icon width={18} height={18} />

@@ -10,7 +10,7 @@
 
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import * as m from "motion/react-m";
 import { useMemo, useState } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";

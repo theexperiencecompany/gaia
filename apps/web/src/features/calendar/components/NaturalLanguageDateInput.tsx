@@ -1,6 +1,6 @@
 "use client";
 
-import { Input } from "@heroui/input";
+import { InputGroup } from "@heroui/react";
 import { CalendarIcon } from "@icons";
 import { parseDate } from "chrono-node";
 import React, { useId } from "react";
@@ -119,17 +119,15 @@ export const NaturalLanguageDateInput: React.FC<
       </label>
       <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
         <div className="relative">
-          <Input
-            id={baseId}
-            value={inputValue}
-            onChange={(e) => handleInputChange(e.target.value)}
-            placeholder={placeholder}
-            classNames={{
-              input: "text-zinc-200 placeholder:text-zinc-600 pr-10",
-              inputWrapper:
-                "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-            }}
-            endContent={
+          <InputGroup className="bg-zinc-800/30 hover:bg-zinc-800/50 shadow-none">
+            <InputGroup.Input
+              id={baseId}
+              value={inputValue}
+              onChange={(e) => handleInputChange(e.target.value)}
+              placeholder={placeholder}
+              className="text-zinc-200 placeholder:text-zinc-600 pr-10"
+            />
+            <InputGroup.Suffix>
               <PopoverTrigger asChild>
                 <button
                   className="flex items-center justify-center text-zinc-500 transition-colors hover:text-zinc-300"
@@ -139,8 +137,8 @@ export const NaturalLanguageDateInput: React.FC<
                   <CalendarIcon className="size-4" />
                 </button>
               </PopoverTrigger>
-            }
-          />
+            </InputGroup.Suffix>
+          </InputGroup>
         </div>
         <PopoverContent className="w-auto overflow-hidden rounded-2xl border-0 bg-zinc-800 p-0 shadow-xl">
           <div className="p-3">
@@ -298,17 +296,15 @@ export const NaturalLanguageDateRangeInput: React.FC<
       </label>
       <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
         <div className="relative">
-          <Input
-            id={baseId}
-            value={inputValue}
-            onChange={(e) => handleInputChange(e.target.value)}
-            placeholder={placeholder}
-            classNames={{
-              input: "text-zinc-200 placeholder:text-zinc-600 pr-10",
-              inputWrapper:
-                "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-            }}
-            endContent={
+          <InputGroup className="bg-zinc-800/30 hover:bg-zinc-800/50 shadow-none">
+            <InputGroup.Input
+              id={baseId}
+              value={inputValue}
+              onChange={(e) => handleInputChange(e.target.value)}
+              placeholder={placeholder}
+              className="text-zinc-200 placeholder:text-zinc-600 pr-10"
+            />
+            <InputGroup.Suffix>
               <PopoverTrigger asChild>
                 <button
                   className="flex items-center justify-center text-zinc-500 transition-colors hover:text-zinc-300"
@@ -318,8 +314,8 @@ export const NaturalLanguageDateRangeInput: React.FC<
                   <CalendarIcon className="size-4" />
                 </button>
               </PopoverTrigger>
-            }
-          />
+            </InputGroup.Suffix>
+          </InputGroup>
         </div>
         <PopoverContent className="w-auto overflow-hidden rounded-2xl border-0 bg-zinc-800 p-1 shadow-xl">
           <Calendar

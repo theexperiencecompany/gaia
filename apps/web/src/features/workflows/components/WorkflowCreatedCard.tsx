@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import {
   Calendar03Icon,
   CheckmarkCircle02Icon,
@@ -50,7 +49,7 @@ export default function WorkflowCreatedCard({
         return {
           label: cronLabel,
           icon: <Clock01Icon className="size-3.5" />,
-          color: "primary" as const,
+          color: "accent" as const,
           bgColor: "bg-primary/15",
         };
       }
@@ -63,7 +62,7 @@ export default function WorkflowCreatedCard({
               .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
               .join(" ") || "Integration",
           icon: <Calendar03Icon className="size-3.5" />,
-          color: "secondary" as const,
+          color: "default" as const,
           bgColor: "bg-secondary/15",
         };
       default:
@@ -132,14 +131,11 @@ export default function WorkflowCreatedCard({
           </div>
           <Chip
             size="sm"
-            variant="flat"
+            variant="tertiary"
             color="success"
-            startContent={<CheckmarkCircle02Icon className="size-3" />}
-            classNames={{
-              base: "bg-success/15 shrink-0",
-              content: "text-xs font-medium",
-            }}
+            className="shrink-0 bg-success/15 text-xs font-medium"
           >
+            <CheckmarkCircle02Icon className="size-3" />
             Created
           </Chip>
         </div>
@@ -152,28 +148,24 @@ export default function WorkflowCreatedCard({
         {/* Trigger display */}
         <Chip
           size="sm"
-          variant="flat"
+          variant="tertiary"
           color={trigger.color}
-          startContent={trigger.icon}
-          classNames={{
-            base: `${trigger.bgColor} shrink-0`,
-            content: "text-xs font-medium",
-          }}
+          className={`${trigger.bgColor} shrink-0 text-xs font-medium`}
         >
+          {trigger.icon}
           {trigger.label}
         </Chip>
 
         {/* Action button */}
         <Button
           size="sm"
-          color="primary"
-          variant="flat"
-          startContent={<PencilEdit01Icon className="size-3.5" />}
-          isLoading={isLoading}
+          variant="tertiary"
+          isPending={isLoading}
           onPress={handleOpenModal}
           className="mt-1 w-full rounded-xl font-medium"
         >
-          View & Edit
+          <PencilEdit01Icon className="size-3.5" />
+          View &amp; Edit
         </Button>
       </div>
 

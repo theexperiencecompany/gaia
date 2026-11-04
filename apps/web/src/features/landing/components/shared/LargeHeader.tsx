@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -35,7 +35,7 @@ export default function LargeHeader({
         )}
 
         {chipText2 && (
-          <Chip variant="flat" color="danger">
+          <Chip variant="tertiary" color="danger">
             {chipText2}
           </Chip>
         )}

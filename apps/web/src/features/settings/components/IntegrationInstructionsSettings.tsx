@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, Skeleton } from "@heroui/react";
 import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -109,7 +108,7 @@ export function IntegrationInstructionsSettings() {
           >
             <Button
               size="sm"
-              variant="flat"
+              variant="tertiary"
               className="rounded-xl"
               onPress={() => router.push("/integrations")}
             >

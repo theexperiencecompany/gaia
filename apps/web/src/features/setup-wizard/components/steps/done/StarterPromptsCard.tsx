@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { ArrowRight02Icon, SparklesIcon } from "@icons";
 import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
@@ -43,24 +43,20 @@ export function StarterPromptsCard({ prompts }: StarterPromptsCardProps) {
           <m.div key={prompt} variants={ITEM_VARIANTS}>
             <Button
               fullWidth
-              variant="light"
+              variant="ghost"
               size="sm"
               onPress={() => {
                 appendToInput(prompt);
                 router.push("/c");
               }}
               className="h-11 justify-start gap-3 rounded-xl bg-zinc-900 px-3 text-sm font-normal text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
-              startContent={
-                <Icon size={18} className="shrink-0 text-zinc-500" />
-              }
-              endContent={
-                <ArrowRight02Icon
-                  size={14}
-                  className="ml-auto shrink-0 text-zinc-600"
-                />
-              }
             >
+              <Icon size={18} className="shrink-0 text-zinc-500" />
               <span className="truncate text-left">{prompt}</span>
+              <ArrowRight02Icon
+                size={14}
+                className="ml-auto shrink-0 text-zinc-600"
+              />
             </Button>
           </m.div>
         ))}

@@ -1,0 +1,16 @@
+{
+  "name": "@gaia/heroui-migration",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "inventory": "node inventory.mjs",
+    "report": "node report.mjs"
+  },
+  "devDependencies": {
+    "jscodeshift": "^0.15.2"
+  },
+  "dependencies": {
+    "pixelmatch": "^8.0.0",
+    "pngjs": "^7.0.0"
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "drop": {
+    "button": ["color", "radius"],
+    "chip": ["radius"],
+    "spinner": ["variant"],
+    "tabs": ["size", "color", "radius"],
+    "accordion": ["size", "color"],
+    "modal": ["backdrop", "scrollBehavior"],
+    "card": ["shadow", "radius"],
+    "select": ["size", "color", "radius"],
+    "input": ["size", "color", "radius"],
+    "switch": ["color"],
+    "checkbox": ["size", "color", "radius"],
+    "avatar": ["radius"],
+    "popover": ["size", "color", "radius"],
+    "dropdown": ["size", "color"],
+    "slider": ["size", "color"],
+    "link": ["size", "color", "underline"]
+  },
+  "decisions": {
+    "spinner": {
+      "color": {
+        "default": "accent",
+        "primary": "accent"
+      }
+    },
+    "tabs": {
+      "variant": {
+        "solid": "primary",
+        "underlined": "secondary",
+        "light": "secondary"
+      },
+      "color": {
+        "primary": "primary",
+        "default": "default",
+        "secondary": "secondary"
+      }
+    },
+    "accordion": {
+      "variant": {
+        "light": "surface",
+        "shadow": "default",
+        "splitted": "default"
+      }
+    },
+    "modal": {
+      "size": {
+        "xs": "xs",
+        "sm": "sm",
+        "md": "md",
+        "lg": "lg",
+        "xl": "lg",
+        "2xl": "full",
+        "3xl": "full",
+        "4xl": "full",
+        "5xl": "full"
+      }
+    },
+    "badge": {
+      "color": {
+        "primary": "accent",
+        "secondary": "accent"
+      }
+    },
+    "select": {
+      "variant": {
+        "flat": "primary",
+        "bordered": "secondary",
+        "faded": "secondary",
+        "underlined": "secondary"
+      }
+    },
+    "input": {
+      "variant": {
+        "flat": "primary",
+        "bordered": "secondary",
+        "faded": "secondary",
+        "underlined": "secondary",
+        "light": "primary"
+      }
+    },
+    "link": {
+      "color": {
+        "primary": "primary",
+        "foreground": "default",
+        "danger": "danger"
+      }
+    }
+  },
+  "v3dims": {
+    "accordion": ["variant"],
+    "alert-dialog": ["variant", "size"],
+    "autocomplete": ["variant", "fullWidth"],
+    "avatar": ["variant", "size", "color"],
+    "badge": ["variant", "size", "color", "placement"],
+    "button": ["variant", "size", "fullWidth"],
+    "button-group": ["orientation", "fullWidth"],
+    "card": ["variant"],
+    "checkbox": ["variant"],
+    "checkbox-group": ["variant"],
+    "chip": ["variant", "size", "color"],
+    "close-button": ["variant"],
+    "color-field": ["fullWidth"],
+    "color-input-group": ["variant", "fullWidth"],
+    "color-swatch": ["size", "shape"],
+    "color-swatch-picker": ["variant", "size"],
+    "combo-box": ["fullWidth"],
+    "date-field": ["fullWidth"],
+    "date-input-group": ["variant", "fullWidth"],
+    "drawer": ["variant", "placement"],
+    "input": ["variant", "fullWidth"],
+    "input-group": ["variant", "fullWidth"],
+    "input-otp": ["variant"],
+    "kbd": ["variant"],
+    "list-box": ["variant"],
+    "list-box-item": ["variant"],
+    "menu-item": ["variant"],
+    "meter": ["size", "color"],
+    "modal": ["variant", "size"],
+    "number-field": ["variant", "fullWidth"],
+    "pagination": ["size"],
+    "progress-bar": ["size", "color"],
+    "progress-circle": ["size", "color"],
+    "radio-group": ["variant"],
+    "scroll-shadow": ["variant", "orientation"],
+    "search-field": ["variant", "fullWidth"],
+    "select": ["variant", "fullWidth"],
+    "separator": ["variant", "orientation"],
+    "sheet": ["placement"],
+    "spinner": ["size", "color"],
+    "surface": ["variant"],
+    "switch": ["size"],
+    "switch-group": ["orientation"],
+    "table": ["variant"],
+    "tabs": ["variant"],
+    "tag": ["variant", "size"],
+    "textarea": ["variant", "fullWidth"],
+    "textfield": ["fullWidth"],
+    "time-field": ["fullWidth"],
+    "toast": ["variant", "placement"],
+    "toggle-button": ["variant", "size"],
+    "toggle-button-group": ["orientation", "fullWidth"],
+    "toolbar": ["orientation"],
+    "typography": ["color"]
+  }
+}

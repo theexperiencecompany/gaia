@@ -1,6 +1,6 @@
 "use client";
 
-import { Switch } from "@heroui/switch";
+import { Switch } from "@heroui/react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
@@ -104,7 +104,7 @@ export default function NotificationSettings() {
                 isDisabled={
                   !isConnected || loading || togglingPlatform === platform
                 }
-                onValueChange={(enabled) => handleToggle(platform, enabled)}
+                onChange={(enabled) => handleToggle(platform, enabled)}
                 aria-label={`Enable ${label} notifications`}
               />
             </SettingsRow>

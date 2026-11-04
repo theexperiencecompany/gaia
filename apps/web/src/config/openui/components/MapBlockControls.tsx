@@ -32,8 +32,7 @@ export function MapBlockControls({
       <Button
         isIconOnly
         size="sm"
-        variant="flat"
-        radius="lg"
+        variant="tertiary"
         onPress={handleZoomIn}
         aria-label="Zoom in"
         className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
@@ -43,8 +42,7 @@ export function MapBlockControls({
       <Button
         isIconOnly
         size="sm"
-        variant="flat"
-        radius="lg"
+        variant="tertiary"
         onPress={handleZoomOut}
         aria-label="Zoom out"
         className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
@@ -54,8 +52,7 @@ export function MapBlockControls({
       <Button
         isIconOnly
         size="sm"
-        variant="flat"
-        radius="lg"
+        variant="tertiary"
         onPress={handleReset}
         aria-label="Reset view"
         className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"

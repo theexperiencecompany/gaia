@@ -1,8 +1,6 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Accordion, Button, Skeleton } from "@heroui/react";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -76,55 +74,55 @@ export function MemoryTimeline() {
     timelineContent = (
       <Accordion
         defaultExpandedKeys={defaultExpandedKeys}
-        selectionMode="multiple"
-        variant="splitted"
-        itemClasses={{
-          title: "text-sm font-medium text-white",
-          content: "pb-4 pt-0",
-          indicator: "text-zinc-500",
-        }}
+        allowsMultipleExpanded
+        variant="surface"
       >
         {episodes.map((episode) => {
           const date = parseISO(episode.date);
           const hasContent = episode.summary || episode.entries.length > 0;
 
           return (
-            <AccordionItem
+            <Accordion.Item
               key={episode.date}
-              aria-label={format(date, "EEEE, MMM d")}
+              id={episode.date}
               isDisabled={!hasContent}
-              title={
-                <div className="flex items-center gap-2">
-                  <Calendar01Icon className="size-4 shrink-0 text-zinc-500" />
-                  <span className="text-sm font-medium text-white">
-                    {format(date, "EEEE, MMM d")}
-                  </span>
-                  {isToday(date) && (
-                    <span className="text-xs text-primary">Today</span>
-                  )}
-                </div>
-              }
             >
-              {episode.summary && (
-                <p className="text-sm text-zinc-400">{episode.summary}</p>
-              )}
+              <Accordion.Heading>
+                <Accordion.Trigger>
+                  <div className="flex items-center gap-2">
+                    <Calendar01Icon className="size-4 shrink-0 text-zinc-500" />
+                    <span className="text-sm font-medium text-white">
+                      {format(date, "EEEE, MMM d")}
+                    </span>
+                    {isToday(date) && (
+                      <span className="text-xs text-primary">Today</span>
+                    )}
+                  </div>
+                  <Accordion.Indicator className="text-zinc-500" />
+                </Accordion.Trigger>
+              </Accordion.Heading>
+              <Accordion.Panel className="pt-0 pb-4">
+                {episode.summary && (
+                  <p className="text-sm text-zinc-400">{episode.summary}</p>
+                )}
 
-              {episode.entries.length > 0 && (
-                <div className="mt-2 space-y-1.5">
-                  {episode.entries.map((entry) => (
-                    <div
-                      key={`${entry.time}-${entry.text}`}
-                      className="flex items-baseline gap-3"
-                    >
-                      <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                        {entry.time}
-                      </span>
-                      <p className="text-sm text-zinc-300">{entry.text}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </AccordionItem>
+                {episode.entries.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {episode.entries.map((entry) => (
+                      <div
+                        key={`${entry.time}-${entry.text}`}
+                        className="flex items-baseline gap-3"
+                      >
+                        <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                          {entry.time}
+                        </span>
+                        <p className="text-sm text-zinc-300">{entry.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Accordion.Panel>
+            </Accordion.Item>
           );
         })}
       </Accordion>
@@ -141,7 +139,7 @@ export function MemoryTimeline() {
           <Button
             isIconOnly
             size="sm"
-            variant="flat"
+            variant="tertiary"
             className="rounded-xl"
             aria-label="Previous two weeks"
             onPress={() => setRangeEnd(subDays(rangeEnd, JOURNAL_RANGE_DAYS))}
@@ -151,7 +149,7 @@ export function MemoryTimeline() {
           <Button
             isIconOnly
             size="sm"
-            variant="flat"
+            variant="tertiary"
             className="rounded-xl"
             aria-label="Next two weeks"
             isDisabled={atToday}

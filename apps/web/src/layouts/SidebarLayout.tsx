@@ -1,4 +1,4 @@
-import { Kbd } from "@heroui/kbd";
+import { Kbd } from "@heroui/react";
 import { SidebarLeft01Icon, SidebarRight01Icon } from "@icons";
 import type { ReactNode } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";

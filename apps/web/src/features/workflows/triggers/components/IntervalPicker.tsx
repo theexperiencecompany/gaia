@@ -11,9 +11,7 @@
 
 "use client";
 
-import { NumberInput } from "@heroui/number-input";
-import { Select, SelectItem } from "@heroui/select";
-import { Tab, Tabs } from "@heroui/tabs";
+import { ListBox, NumberField, Select, Tabs } from "@heroui/react";
 import { useState } from "react";
 
 const UNIT_FACTOR = { minutes: 1, hours: 60, days: 1440 } as const;
@@ -85,7 +83,6 @@ export function IntervalPicker({
   return (
     <div className="space-y-2">
       <Tabs
-        aria-label="Interval"
         selectedKey={customMode ? "custom" : String(value)}
         onSelectionChange={(k) => {
           const key = String(k);
@@ -96,44 +93,72 @@ export function IntervalPicker({
             onChange(Number(key));
           }
         }}
-        fullWidth
-        classNames={{
-          tabList: "rounded-xl bg-zinc-800/60 p-1",
-          cursor: "rounded-lg bg-zinc-700 shadow-sm",
-          tabContent:
-            "font-medium text-zinc-400 group-data-[selected=true]:text-white",
-          panel: "hidden",
-        }}
+        className="w-full"
       >
+        <Tabs.List
+          aria-label="Interval"
+          className="rounded-xl bg-zinc-800/60 p-1"
+        >
+          {presets.map((p) => (
+            <Tabs.Tab
+              key={String(p)}
+              id={String(p)}
+              className="font-medium text-zinc-400 data-[selected=true]:text-white"
+            >
+              {presetLabel(p)}
+              <Tabs.Indicator className="rounded-lg bg-zinc-700 shadow-sm" />
+            </Tabs.Tab>
+          ))}
+          <Tabs.Tab
+            id="custom"
+            className="font-medium text-zinc-400 data-[selected=true]:text-white"
+          >
+            Custom
+            <Tabs.Indicator className="rounded-lg bg-zinc-700 shadow-sm" />
+          </Tabs.Tab>
+        </Tabs.List>
         {presets.map((p) => (
-          <Tab key={String(p)} title={presetLabel(p)} />
+          <Tabs.Panel key={String(p)} id={String(p)}>
+            {null}
+          </Tabs.Panel>
         ))}
-        <Tab key="custom" title="Custom" />
+        <Tabs.Panel id="custom">{null}</Tabs.Panel>
       </Tabs>
       {customMode && (
         <div className="flex items-center gap-2">
-          <NumberInput
+          <NumberField
             aria-label="Custom interval"
             minValue={1}
             maxValue={maxAmountFor(unit)}
-            hideStepper
             value={amount}
-            onValueChange={(n) => applyCustom(n, unit)}
+            onChange={(n) => applyCustom(n, unit)}
             className="flex-1"
-          />
+          >
+            <NumberField.Group>
+              <NumberField.Input />
+            </NumberField.Group>
+          </NumberField>
           <Select
             aria-label="Unit"
-            selectedKeys={new Set([unit])}
-            onSelectionChange={(keys) =>
-              applyCustom(amount, Array.from(keys)[0] as TimeUnit)
-            }
-            disallowEmptySelection
+            value={unit}
+            onChange={(key) => {
+              if (key != null) applyCustom(amount, key as TimeUnit);
+            }}
             className="w-32 shrink-0"
-            classNames={{ popoverContent: "min-w-fit" }}
           >
-            {units.map((u) => (
-              <SelectItem key={u}>{u}</SelectItem>
-            ))}
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover className="min-w-fit">
+              <ListBox>
+                {units.map((u) => (
+                  <ListBox.Item key={u} id={u} textValue={u}>
+                    {u}
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         </div>
       )}

@@ -1,6 +1,5 @@
-import { Tab, Tabs } from "@heroui/tabs";
+import { Tabs } from "@heroui/react";
 import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
-import type { ReactElement } from "react";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { createDefaultTriggerConfig } from "../../triggers/registry";
@@ -127,36 +126,34 @@ export default function WorkflowTriggerSection({
   return (
     <WorkflowSection label="When should this run?">
       <Tabs
-        aria-label="Trigger type"
         selectedKey={activeTab}
         onSelectionChange={(key) =>
           handleTabChange(key as "manual" | "schedule" | "trigger")
         }
-        fullWidth
-        radius="lg"
-        classNames={{
-          tabList: "rounded-xl bg-zinc-800/60 p-1",
-          cursor: "rounded-lg bg-zinc-700 shadow-sm",
-          tab: "h-9",
-          tabContent:
-            "text-zinc-400 group-data-[selected=true]:text-zinc-100 font-medium",
-        }}
+        className="w-full"
       >
-        {
-          visibleTabs.map((tab) => (
-            <Tab
+        <Tabs.List
+          aria-label="Trigger type"
+          className="w-full rounded-xl bg-zinc-800/60 p-1"
+        >
+          {visibleTabs.map((tab) => (
+            <Tabs.Tab
               key={tab.key}
-              title={
-                <span className="flex items-center gap-1.5">
-                  <tab.icon className="h-4 w-4" />
-                  {tab.label}
-                </span>
-              }
+              id={tab.key}
+              className="h-9 font-medium text-zinc-400 data-[selected=true]:text-zinc-100"
             >
-              <div className="pt-1.5">{renderTabBody(tab.key)}</div>
-            </Tab>
-          )) as ReactElement[]
-        }
+              <span className="flex items-center gap-1.5">
+                <tab.icon className="h-4 w-4" />
+                {tab.label}
+              </span>
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+        {visibleTabs.map((tab) => (
+          <Tabs.Panel key={tab.key} id={tab.key}>
+            <div className="pt-1.5">{renderTabBody(tab.key)}</div>
+          </Tabs.Panel>
+        ))}
       </Tabs>
     </WorkflowSection>
   );

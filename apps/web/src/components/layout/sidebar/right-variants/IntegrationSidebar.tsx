@@ -1,8 +1,7 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { useDisclosure } from "@heroui/react";
-import { Skeleton } from "@heroui/skeleton";
+import { Chip, Skeleton } from "@heroui/react";
+import { useState } from "react";
 
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
 import { InstanceSetupCallout } from "@/features/integrations/components/InstanceSetupNotice";
@@ -67,7 +66,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   // The sidebar only reads its approval state — configuring it lives in the
   // modal behind the Permissions button.
   const permissions = useIntegrationPermissions(integrationTools);
-  const permissionsModal = useDisclosure();
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
 
   // Show the tool skeleton both on the initial on-demand fetch and while a
   // just-connected integration is still discovering tools in the background —
@@ -144,7 +143,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           isConnected={isConnected}
           showToolsSkeleton={showToolsSkeleton}
           isSettling={isSettling}
-          onOpenPermissions={permissionsModal.onOpen}
+          onOpenPermissions={() => setPermissionsOpen(true)}
         />
       </SidebarHeader>
 
@@ -155,9 +154,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               {integrationTools.map((tool) => (
                 <Chip
                   key={tool.name}
-                  variant="bordered"
+                  variant="secondary"
                   color="default"
-                  radius="full"
                   className="font-light border-1 text-zinc-300"
                 >
                   {tool.label}
@@ -186,8 +184,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           name={integration.name}
           tools={integrationTools}
           permissions={permissions}
-          isOpen={permissionsModal.isOpen}
-          onOpenChange={permissionsModal.onOpenChange}
+          isOpen={permissionsOpen}
+          onOpenChange={setPermissionsOpen}
         />
       )}
     </div>

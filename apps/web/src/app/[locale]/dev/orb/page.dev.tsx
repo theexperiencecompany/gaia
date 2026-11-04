@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { useState } from "react";
 import GaiaOrb, { type GaiaOrbState } from "@/components/ui/orb/GaiaOrb";
 
@@ -20,9 +20,7 @@ export default function OrbDevPage() {
           <Button
             key={s}
             size="sm"
-            radius="full"
-            variant={state === s ? "solid" : "flat"}
-            color={state === s ? "primary" : "default"}
+            variant={state === s ? "primary" : "tertiary"}
             onPress={() => setState(s)}
           >
             {s}
@@ -30,8 +28,7 @@ export default function OrbDevPage() {
         ))}
         <Button
           size="sm"
-          radius="full"
-          variant="flat"
+          variant="tertiary"
           onPress={() => setLarge((v) => !v)}
         >
           {large ? "small" : "large"}

@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Button, Input } from "@heroui/react";
 import {
   Camera01Icon,
   Logout02Icon,
@@ -131,10 +130,10 @@ export default function AccountSection({
               <div className="flex items-center space-x-3">
                 <Button
                   onPress={handleSave}
-                  disabled={isLoading}
-                  color="primary"
+                  isDisabled={isLoading}
                   size="sm"
                   fullWidth
+                  variant="primary"
                 >
                   {isLoading ? "Saving..." : "Save Changes"}
                 </Button>
@@ -177,12 +176,11 @@ export default function AccountSection({
           description="Sign out of your account on this device"
         >
           <Button
-            variant="flat"
-            color="danger"
+            variant="danger-soft"
             size="sm"
             onPress={() => setModalAction("logout")}
-            startContent={<Logout02Icon className="h-4 w-4" />}
           >
+            <Logout02Icon className="h-4 w-4" />
             Sign out
           </Button>
         </SettingsRow>

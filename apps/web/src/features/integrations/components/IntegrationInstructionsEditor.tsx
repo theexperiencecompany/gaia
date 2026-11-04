@@ -1,8 +1,8 @@
 "use client";
 
-import { useDisclosure } from "@heroui/react";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import { NoteEditIcon } from "@icons";
+import { useState } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { useInstructions } from "@/features/instructions";
 import type { Integration } from "@/features/integrations/types";
@@ -20,7 +20,9 @@ export const IntegrationInstructionsEditor = ({
   toolNames,
 }: IntegrationInstructionsEditorProps) => {
   const instructions = useInstructions(integration.id);
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [isOpen, setIsOpen] = useState(false);
+  const onOpen = () => setIsOpen(true);
+  const onClose = () => setIsOpen(false);
 
   const preview = instructionsPreview(instructions.instructions?.content ?? "");
   const subtitle = instructions.loadFailed

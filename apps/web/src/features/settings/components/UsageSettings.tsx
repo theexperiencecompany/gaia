@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, Skeleton } from "@heroui/react";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 import {
@@ -50,9 +49,7 @@ function UsageError({ onRetry }: { onRetry: () => void }) {
       </p>
       <Button
         size="sm"
-        color="primary"
-        variant="flat"
-        radius="full"
+        variant="tertiary"
         className="mt-1 font-medium"
         onPress={onRetry}
       >

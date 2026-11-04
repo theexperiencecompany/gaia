@@ -1,8 +1,6 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Chip } from "@heroui/chip";
-import { Progress } from "@heroui/progress";
+import { Accordion, AccordionItem, Chip, ProgressBar } from "@heroui/react";
 import {
   Cancel01Icon,
   CheckmarkCircle02Icon,
@@ -10,7 +8,6 @@ import {
   Loading03Icon,
 } from "@icons";
 import { useEffect, useMemo, useRef } from "react";
-import { ChevronDown } from "@/components/shared/icons";
 import { toTitleCase } from "@/features/chat/utils/chatUtils";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import type {
@@ -50,10 +47,10 @@ const STATUS_COLOR: Record<TodoProgressItem["status"], string> = {
 
 function getProgressColor(
   pct: number,
-): "default" | "primary" | "warning" | "success" {
+): "default" | "accent" | "warning" | "success" {
   if (pct >= 100) return "success";
   if (pct >= 60) return "warning";
-  if (pct > 0) return "primary";
+  if (pct > 0) return "accent";
   return "default";
 }
 
@@ -165,18 +162,17 @@ function SingleSourceCard({
         <span className="text-xs font-medium text-zinc-400">
           {getSourceLabel(source)}
         </span>
-        <Chip
-          size="sm"
-          variant="flat"
-          classNames={{
-            base: "bg-zinc-700/60",
-            content: "text-xs text-zinc-400",
-          }}
-        >
-          {completedCount}/{todos.length}
+        <Chip size="sm" variant="tertiary" className="bg-zinc-700/60">
+          <Chip.Label className="text-xs text-zinc-400">
+            {completedCount}/{todos.length}
+          </Chip.Label>
         </Chip>
       </div>
-      <Progress size="sm" value={pct} color={progressColor} className="mb-3" />
+      <ProgressBar value={pct} color={progressColor} className="mb-3">
+        <ProgressBar.Track>
+          <ProgressBar.Fill />
+        </ProgressBar.Track>
+      </ProgressBar>
       <SourceTaskList todos={todos} isStreaming={isStreaming} />
     </div>
   );
@@ -211,17 +207,7 @@ function MultiSourceAccordion({
 
   return (
     <div className="mt-2 mb-2 animate-scale-in rounded-2xl bg-zinc-800/70 backdrop-blur-xl p-1 w-full max-w-96">
-      <Accordion
-        defaultExpandedKeys={[defaultExpandedKey]}
-        className="px-0"
-        itemClasses={{
-          base: "px-2",
-          title: "text-xs font-medium text-zinc-400",
-          content: "pb-2 pt-0",
-          trigger: "py-2",
-          indicator: "size-3 text-zinc-500",
-        }}
-      >
+      <Accordion defaultExpandedKeys={[defaultExpandedKey]} className="px-0">
         {activeSources.map((source) => {
           const todos = todo_progress[source].todos;
           const completedCount = todos.filter(
@@ -232,38 +218,38 @@ function MultiSourceAccordion({
           const progressColor = getProgressColor(pct);
 
           return (
-            <AccordionItem
-              key={source}
-              indicator={({ isOpen }) => (
-                <ChevronDown
-                  className={`size-3 text-zinc-500 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
-                />
-              )}
-              title={
-                <div className="flex items-center gap-2 w-full pr-1">
-                  <span className="text-xs font-medium text-zinc-400 min-w-0 flex-1 truncate">
-                    {getSourceLabel(source)}
-                  </span>
-                  <Progress
-                    size="sm"
-                    value={pct}
-                    color={progressColor}
-                    className="w-16 shrink-0"
-                  />
-                  <Chip
-                    size="sm"
-                    variant="flat"
-                    classNames={{
-                      base: "bg-zinc-700/60 shrink-0",
-                      content: "text-xs text-zinc-500",
-                    }}
-                  >
-                    {completedCount}/{todos.length}
-                  </Chip>
-                </div>
-              }
-            >
-              <SourceTaskList todos={todos} isStreaming={isStreaming} />
+            <AccordionItem key={source} id={source} className="px-2">
+              <Accordion.Heading>
+                <Accordion.Trigger className="py-2">
+                  <div className="flex items-center gap-2 w-full pr-1">
+                    <span className="text-xs font-medium text-zinc-400 min-w-0 flex-1 truncate">
+                      {getSourceLabel(source)}
+                    </span>
+                    <ProgressBar
+                      value={pct}
+                      color={progressColor}
+                      className="w-16 shrink-0"
+                    >
+                      <ProgressBar.Track>
+                        <ProgressBar.Fill />
+                      </ProgressBar.Track>
+                    </ProgressBar>
+                    <Chip
+                      size="sm"
+                      variant="tertiary"
+                      className="bg-zinc-700/60 shrink-0"
+                    >
+                      <Chip.Label className="text-xs text-zinc-500">
+                        {completedCount}/{todos.length}
+                      </Chip.Label>
+                    </Chip>
+                  </div>
+                  <Accordion.Indicator className="size-3 text-zinc-500" />
+                </Accordion.Trigger>
+              </Accordion.Heading>
+              <Accordion.Panel className="pb-2 pt-0">
+                <SourceTaskList todos={todos} isStreaming={isStreaming} />
+              </Accordion.Panel>
             </AccordionItem>
           );
         })}

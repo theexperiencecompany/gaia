@@ -1,6 +1,4 @@
-import { Button } from "@heroui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, Popover, Skeleton } from "@heroui/react";
 import { CircleArrowRight02Icon, NewsIcon } from "@icons";
 import * as m from "motion/react-m";
 import Image from "next/image";
@@ -130,7 +128,7 @@ function ImageResults({ images }: ImageResultsProps) {
         <Button
           onPress={cycleNext}
           className="relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl bg-zinc-800/80 text-zinc-300 shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-700/80 hover:text-white"
-          variant="flat"
+          variant="tertiary"
           style={{
             rotate: displayImages.length % 2 === 0 ? "8deg" : "-8deg",
           }}
@@ -207,9 +205,9 @@ interface SourcesButtonProps {
 function SourcesButton({ web }: SourcesButtonProps) {
   return (
     <div className="flex justify-start">
-      <Popover placement="top" showArrow disableAnimation backdrop="opaque">
-        <PopoverTrigger>
-          <Button variant="flat" radius="full" size="sm">
+      <Popover>
+        <Popover.Trigger>
+          <Button variant="tertiary" size="sm">
             <div className="flex -space-x-3">
               {web.slice(0, 4).map((result) => {
                 const host = safeUrl(result.url)?.hostname;
@@ -237,10 +235,13 @@ function SourcesButton({ web }: SourcesButtonProps) {
             </div>
             <span className="font-medium text-zinc-300">Search Results</span>
           </Button>
-        </PopoverTrigger>
-        <PopoverContent className="bg-transparent p-0! shadow-none">
+        </Popover.Trigger>
+        <Popover.Content
+          placement="top"
+          className="bg-transparent p-0! shadow-none"
+        >
           <WebResults web={web} />
-        </PopoverContent>
+        </Popover.Content>
       </Popover>
     </div>
   );

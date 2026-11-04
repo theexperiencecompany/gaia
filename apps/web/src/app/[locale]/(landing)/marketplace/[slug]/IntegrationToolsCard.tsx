@@ -1,5 +1,4 @@
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { ScrollShadow } from "@heroui/react";
+import { Card, ScrollShadow } from "@heroui/react";
 import { PackageOpenIcon } from "@icons";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import { ToolCard } from "./ToolCard";
@@ -31,13 +30,13 @@ export function IntegrationToolsCard({
   return (
     <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none rounded-3xl">
       {hasTools && (
-        <CardHeader>
+        <Card.Header>
           <h2 className="text-lg font-normal">
             Available Tools ({integration.toolCount})
           </h2>
-        </CardHeader>
+        </Card.Header>
       )}
-      <CardBody>
+      <Card.Content>
         {hasTools ? (
           <ScrollShadow className="max-h-100">
             <div className="grid grid-cols-2 gap-4">
@@ -54,7 +53,7 @@ export function IntegrationToolsCard({
         ) : (
           <EmptyTools />
         )}
-      </CardBody>
+      </Card.Content>
     </Card>
   );
 }

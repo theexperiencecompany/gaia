@@ -1,6 +1,6 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Accordion, AccordionItem } from "@heroui/react";
 import { ToolsIcon } from "@icons";
 import { useMemo, useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
@@ -164,68 +164,65 @@ export default function UnifiedToolThread({
   return (
     <div className="w-fit max-w-140">
       <Accordion
-        variant="light"
-        isCompact
-        hideIndicator
-        selectedKeys={isExpanded ? ["tools"] : []}
-        onSelectionChange={(keys) => {
-          setIsExpanded(
-            keys === "all" || (keys instanceof Set && keys.has("tools")),
-          );
+        variant="default"
+        expandedKeys={isExpanded ? ["tools"] : []}
+        onExpandedChange={(keys) => {
+          setIsExpanded(keys.has("tools"));
         }}
-        style={{ padding: 0 }}
-        itemClasses={{ trigger: "cursor-pointer py-0" }}
+        className="p-0"
       >
-        <AccordionItem
-          key="tools"
-          title={
-            <div className="flex items-center hover:text-white text-zinc-500">
-              {totalToolCount > 1 && <StackedIcons icons={uniqueIcons} />}
-              <span
-                className={`text-xs font-medium transition-colors duration-200 ${totalToolCount > 1 ? "ml-2" : ""}`}
-              >
-                {/* A turn can be thinking-only (comms reasoning with no tool
-                    call), and "Used 0 tools" is a nonsense label for it. */}
-                {totalToolCount === 0
-                  ? "Thinking"
-                  : `Used ${totalToolCount} tool${totalToolCount === 1 ? "" : "s"}`}
-              </span>
-              <ChevronDown
-                className={`${isExpanded ? "rotate-180" : ""} ml-2 transition-transform duration-200`}
-                width={18}
-                height={18}
-              />
-            </div>
-          }
-        >
-          <div className="py-2">
-            {timeline.map((item, idx) => {
-              const isLast = idx === timeline.length - 1;
+        <AccordionItem key="tools" id="tools">
+          <Accordion.Heading>
+            <Accordion.Trigger className="cursor-pointer py-0">
+              <div className="flex items-center hover:text-white text-zinc-500">
+                {totalToolCount > 1 && <StackedIcons icons={uniqueIcons} />}
+                <span
+                  className={`text-xs font-medium transition-colors duration-200 ${totalToolCount > 1 ? "ml-2" : ""}`}
+                >
+                  {/* A turn can be thinking-only (comms reasoning with no tool
+                      call), and "Used 0 tools" is a nonsense label for it. */}
+                  {totalToolCount === 0
+                    ? "Thinking"
+                    : `Used ${totalToolCount} tool${totalToolCount === 1 ? "" : "s"}`}
+                </span>
+                <ChevronDown
+                  className={`${isExpanded ? "rotate-180" : ""} ml-2 transition-transform duration-200`}
+                  width={18}
+                  height={18}
+                />
+              </div>
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <div className="py-2">
+              {timeline.map((item, idx) => {
+                const isLast = idx === timeline.length - 1;
 
-              if (item.kind === "tool") {
+                if (item.kind === "tool") {
+                  return (
+                    <StepRow
+                      key={itemKeys[idx]}
+                      call={item.data}
+                      isLast={isLast}
+                      pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                      approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
+                    />
+                  );
+                }
+
                 return (
-                  <StepRow
+                  <SubagentRow
                     key={itemKeys[idx]}
-                    call={item.data}
+                    group={item.data}
                     isLast={isLast}
+                    isStreaming={isStreaming}
                     pendingApprovalToolCallIds={pendingApprovalToolCallIds}
                     approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
                   />
                 );
-              }
-
-              return (
-                <SubagentRow
-                  key={itemKeys[idx]}
-                  group={item.data}
-                  isLast={isLast}
-                  isStreaming={isStreaming}
-                  pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-                  approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
-                />
-              );
-            })}
-          </div>
+              })}
+            </div>
+          </Accordion.Panel>
         </AccordionItem>
       </Accordion>
     </div>

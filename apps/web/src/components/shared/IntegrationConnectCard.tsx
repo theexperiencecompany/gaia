@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import type React from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -48,10 +48,10 @@ export const IntegrationConnectCard: React.FC<IntegrationConnectCardProps> = ({
         </p>
       </div>
       <Button
-        color="primary"
         onPress={handleConnect}
         size={small ? "sm" : "md"}
         className="mt-2 px-4"
+        variant="primary"
       >
         {buttonText}
       </Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Checkbox } from "@heroui/checkbox";
+import { Checkbox } from "@heroui/react";
 import { Cancel01Icon, PlusSignIcon, Tick02Icon } from "@icons";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -137,8 +137,6 @@ export default function SubtaskManager({
               <Checkbox
                 isSelected={subtask.completed}
                 onChange={() => handleToggleSubtask(subtask.id)}
-                radius="full"
-                color="success"
                 className="flex-shrink-0"
               />
 

@@ -6,8 +6,7 @@
 
 "use client";
 
-import { Input } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import { Input, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 
 import { TriggerTagInput } from "./TriggerTagInput";
@@ -33,6 +32,18 @@ export function TriggerSelectToggle({
   } = selectProps;
 
   if (!allowManualInput || !useManualInput) {
+    const selectedItems = options
+      .filter((option) => selectedValues.includes(option.value))
+      .map((option) => ({ key: option.value, textValue: option.label }));
+
+    const valueContent = renderValue
+      ? renderValue(selectedItems)
+      : selectedItems.length > 0
+        ? `${selectedItems.length} selected`
+        : isLoading
+          ? "Loading..."
+          : placeholder;
+
     return (
       <div className="space-y-2">
         {searchConfig?.enabled && (
@@ -40,58 +51,58 @@ export function TriggerSelectToggle({
             aria-label={`Search ${label}`}
             placeholder={searchConfig.placeholder || "Type to search..."}
             value={searchConfig.searchValue}
-            onValueChange={searchConfig.onSearchChange}
+            onChange={(e) => searchConfig.onSearchChange(e.target.value)}
             className="w-full"
-            size="sm"
-            isClearable
-            onClear={() => searchConfig.onSearchChange("")}
           />
         )}
         <Select
           aria-label={label}
           placeholder={isLoading ? "Loading..." : placeholder}
           selectionMode="multiple"
-          selectedKeys={new Set(selectedValues)}
-          onSelectionChange={(keys) => {
-            const selected = Array.from(keys) as string[];
-            onSelectionChange(selected);
+          value={selectedValues}
+          onChange={(keys) => {
+            onSelectionChange(keys.map(String));
           }}
-          isLoading={isLoading}
-          renderValue={
-            renderValue as
-              | ((
-                  items: { key?: React.Key; textValue?: string }[],
-                ) => React.ReactNode)
-              | undefined
-          }
           className="w-full"
-          description={
-            <div className="flex justify-between items-center">
-              {description || <span className="text-xs text-zinc-500" />}
-              {allowManualInput && (
-                <button
-                  type="button"
-                  onClick={() => setUseManualInput(true)}
-                  className="text-xs text-primary hover:underline cursor-pointer"
-                >
-                  Or enter manually
-                </button>
-              )}
-            </div>
-          }
         >
-          {isLoading && options.length === 0 ? (
-            <SelectItem key="loading" isDisabled>
-              Loading...
-            </SelectItem>
-          ) : (
-            options.map((option) => (
-              <SelectItem key={option.value} textValue={option.label}>
-                {option.label}
-              </SelectItem>
-            ))
-          )}
+          <Select.Trigger className="w-full">
+            <Select.Value>{valueContent}</Select.Value>
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {isLoading && options.length === 0 ? (
+                <ListBox.Item id="loading" isDisabled textValue="Loading...">
+                  Loading...
+                </ListBox.Item>
+              ) : (
+                options.map((option) => (
+                  <ListBox.Item
+                    key={option.value}
+                    id={option.value}
+                    textValue={option.label}
+                  >
+                    {option.label}
+                  </ListBox.Item>
+                ))
+              )}
+            </ListBox>
+          </Select.Popover>
         </Select>
+        {(description || allowManualInput) && (
+          <div className="flex justify-between items-center">
+            {description || <span className="text-xs text-zinc-500" />}
+            {allowManualInput && (
+              <button
+                type="button"
+                onClick={() => setUseManualInput(true)}
+                className="text-xs text-primary hover:underline cursor-pointer"
+              >
+                Or enter manually
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   }

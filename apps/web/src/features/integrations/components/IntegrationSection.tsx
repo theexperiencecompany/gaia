@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import { RedoIcon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
@@ -65,7 +64,7 @@ const IntegrationRow: React.FC<{
 
       <div className="shrink-0">
         {isConnected && (
-          <Chip size="sm" variant="flat" color="success">
+          <Chip size="sm" variant="tertiary" color="success">
             Connected
           </Chip>
         )}
@@ -78,16 +77,13 @@ const IntegrationRow: React.FC<{
           !isConnected &&
           !integration.instanceSetupRequired && (
             <Button
-              variant="flat"
+              variant="secondary"
               size="sm"
-              color={needsAttention ? "warning" : "primary"}
-              startContent={
-                needsAttention ? <RedoIcon width={16} height={16} /> : undefined
-              }
               onPress={() => {
                 onConnect(integration.id);
               }}
             >
+              {needsAttention ? <RedoIcon width={16} height={16} /> : undefined}
               {CONNECT_ACTION_LABEL[state]}
             </Button>
           )}
@@ -117,7 +113,11 @@ export const IntegrationSection: React.FC<IntegrationSectionProps> = ({
     <div className="mb-8">
       <div className="mb-4 flex items-center gap-3 pl-4">
         <h2 className="text-base font-semibold">{title}</h2>
-        <Chip size="sm" variant="flat" color={chipColor}>
+        <Chip
+          size="sm"
+          variant="tertiary"
+          color={chipColor === "primary" ? "accent" : "default"}
+        >
           {integrations.length}
         </Chip>
       </div>

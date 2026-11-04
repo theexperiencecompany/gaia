@@ -79,9 +79,9 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
               View and manage your events in GAIA.
             </p>
             <Button
-              color="primary"
               className="mt-4"
               onPress={() => connectIntegration("googlecalendar")}
+              variant="primary"
             >
               {connectLabel} Calendar
             </Button>

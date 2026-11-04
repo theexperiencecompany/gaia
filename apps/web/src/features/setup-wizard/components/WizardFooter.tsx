@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { ArrowLeft02Icon, ArrowRight02Icon } from "@icons";
 import * as m from "motion/react-m";
 import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
@@ -27,11 +27,8 @@ export function WizardFooter({
     >
       <div className="flex w-full items-center justify-between gap-2">
         {onBack ? (
-          <Button
-            variant="light"
-            startContent={<ArrowLeft02Icon className="size-4" />}
-            onPress={onBack}
-          >
+          <Button variant="ghost" onPress={onBack}>
+            <ArrowLeft02Icon className="size-4" />
             Back
           </Button>
         ) : (
@@ -39,16 +36,13 @@ export function WizardFooter({
         )}
         <div className="flex items-center gap-2">
           {onSkip && (
-            <Button variant="flat" onPress={onSkip}>
+            <Button variant="tertiary" onPress={onSkip}>
               Skip for now
             </Button>
           )}
-          <Button
-            color="primary"
-            endContent={<ArrowRight02Icon className="size-4" />}
-            onPress={onContinue}
-          >
+          <Button variant="primary" onPress={onContinue}>
             Continue
+            <ArrowRight02Icon className="size-4" />
           </Button>
         </div>
       </div>

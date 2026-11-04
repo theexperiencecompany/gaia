@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import {
   BubbleChatAddIcon,
   Calendar01Icon,
@@ -465,13 +465,12 @@ const DemoSidebar = memo(function DemoSidebar({
             {/* Primary action button — changes per page */}
             <div className="flex w-full justify-center">
               <Button
-                color="primary"
                 size="sm"
                 fullWidth
-                variant="flat"
-                className="mb-4 mt-1 flex justify-start text-sm font-medium text-primary"
-                startContent={primaryAction.icon}
+                variant="tertiary"
+                className="mt-1 mb-4 flex justify-start text-sm font-medium text-primary"
               >
+                {primaryAction.icon}
                 {primaryAction.label}
               </Button>
             </div>

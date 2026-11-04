@@ -1,11 +1,4 @@
-import { Button } from "@heroui/button";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Input } from "@heroui/input";
+import { Button, Dropdown, Input, Menu, TextField } from "@heroui/react";
 import { MoreHorizontalIcon } from "@icons";
 import type {
   ApprovalDecision,
@@ -149,16 +142,16 @@ export default function ApprovalRequestSection({
         <div className="mt-1 text-xs text-zinc-400">{data.summary}</div>
         <div className="mt-3 flex items-center gap-2">
           <Button
-            color="primary"
             size="sm"
             onPress={() => {
               setPhase("idle");
               onApproveTap();
             }}
+            variant="primary"
           >
             Yes, still approve
           </Button>
-          <Button variant="flat" size="sm" onPress={() => setPhase("idle")}>
+          <Button variant="tertiary" size="sm" onPress={() => setPhase("idle")}>
             Back
           </Button>
         </div>
@@ -196,25 +189,24 @@ export default function ApprovalRequestSection({
       <ArgsPreview args={data.args_preview} />
 
       <div className="mt-3 flex items-center gap-2">
-        <Input
+        <TextField
           className="flex-1"
-          size="sm"
-          variant="flat"
-          placeholder="Tell GAIA why (optional)"
           value={feedback}
-          onValueChange={setFeedback}
+          onChange={setFeedback}
           isDisabled={locked}
-        />
+        >
+          <Input placeholder="Tell GAIA why (optional)" />
+        </TextField>
         <Button
-          color="primary"
           size="sm"
           isDisabled={locked}
           onPress={onApproveTap}
+          variant="primary"
         >
           Approve
         </Button>
         <Button
-          variant="flat"
+          variant="tertiary"
           size="sm"
           isDisabled={locked}
           onPress={() => submit("deny")}
@@ -222,26 +214,29 @@ export default function ApprovalRequestSection({
           Deny
         </Button>
         {!data.always_asks && (
-          <Dropdown placement="bottom-end">
-            <DropdownTrigger>
+          <Dropdown>
+            <Dropdown.Trigger>
               <Button
                 isIconOnly
                 size="sm"
-                variant="light"
+                variant="tertiary"
                 isDisabled={locked}
                 aria-label="More approval options"
               >
                 <MoreHorizontalIcon width={18} />
               </Button>
-            </DropdownTrigger>
-            <DropdownMenu aria-label="Approval options">
-              <DropdownItem
-                key="always"
-                onPress={() => submit("approve", "always_tool")}
-              >
-                Always allow this tool
-              </DropdownItem>
-            </DropdownMenu>
+            </Dropdown.Trigger>
+            <Dropdown.Popover placement="bottom end">
+              <Menu aria-label="Approval options">
+                <Menu.Item
+                  id="always"
+                  textValue="Always allow this tool"
+                  onAction={() => submit("approve", "always_tool")}
+                >
+                  Always allow this tool
+                </Menu.Item>
+              </Menu>
+            </Dropdown.Popover>
           </Dropdown>
         )}
       </div>

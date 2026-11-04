@@ -1,8 +1,6 @@
 "use client";
 
-import { Divider } from "@heroui/divider";
-import { Skeleton } from "@heroui/skeleton";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Separator, Skeleton, Tabs } from "@heroui/react";
 import {
   AiBrain01Icon,
   BookOpen01Icon,
@@ -103,7 +101,7 @@ export default function MemoryManagement({
         {stats.map((stat, index) => (
           <div key={stat.label} className="flex items-center">
             {index > 0 && (
-              <Divider
+              <Separator
                 orientation="vertical"
                 className="mx-6 h-8 bg-zinc-700/50"
               />
@@ -124,29 +122,37 @@ export default function MemoryManagement({
       </div>
 
       <Tabs
-        variant="solid"
-        color="primary"
-        radius="full"
+        variant="primary"
         selectedKey={selectedTab}
         onSelectionChange={(key) => setSelectedTab(key as string)}
       >
-        <Tab
-          key="folders"
-          title={<TabTitle icon={Folder01Icon} label="Folders" />}
-        />
-        <Tab
-          key="documents"
-          title={<TabTitle icon={Note01Icon} label="Documents" />}
-        />
-        <Tab
-          key="graph"
-          title={<TabTitle icon={NeuralNetworkIcon} label="Graph" />}
-        />
-        <Tab
-          key="journal"
-          title={<TabTitle icon={BookOpen01Icon} label="Journal" />}
-        />
-        <Tab key="all" title={<TabTitle icon={ListViewIcon} label="All" />} />
+        <Tabs.List>
+          <Tabs.Tab id="folders">
+            <TabTitle icon={Folder01Icon} label="Folders" />
+            <Tabs.Indicator />
+          </Tabs.Tab>
+          <Tabs.Tab id="documents">
+            <TabTitle icon={Note01Icon} label="Documents" />
+            <Tabs.Indicator />
+          </Tabs.Tab>
+          <Tabs.Tab id="graph">
+            <TabTitle icon={NeuralNetworkIcon} label="Graph" />
+            <Tabs.Indicator />
+          </Tabs.Tab>
+          <Tabs.Tab id="journal">
+            <TabTitle icon={BookOpen01Icon} label="Journal" />
+            <Tabs.Indicator />
+          </Tabs.Tab>
+          <Tabs.Tab id="all">
+            <TabTitle icon={ListViewIcon} label="All" />
+            <Tabs.Indicator />
+          </Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel id="folders">{null}</Tabs.Panel>
+        <Tabs.Panel id="documents">{null}</Tabs.Panel>
+        <Tabs.Panel id="graph">{null}</Tabs.Panel>
+        <Tabs.Panel id="journal">{null}</Tabs.Panel>
+        <Tabs.Panel id="all">{null}</Tabs.Panel>
       </Tabs>
 
       <div className="min-h-0 flex-1">

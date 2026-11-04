@@ -1,7 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
+import { Chip, Spinner } from "@heroui/react";
 import type { BrowserCardPhase } from "../types";
 import { BROWSER_STATUS_META } from "../utils";
 
@@ -19,13 +18,11 @@ export function BrowserStatusChip({
       )}
       <Chip
         size="sm"
-        variant="flat"
-        color={meta.color}
+        variant="tertiary"
+        color={meta.color === "primary" ? "accent" : meta.color}
         // Browser accent is #00bbff — apply it to the live "Working" state.
-        classNames={
-          phase.working
-            ? { base: "!bg-[#00bbff]/15", content: "!text-[#00bbff]" }
-            : undefined
+        className={
+          phase.working ? "!bg-[#00bbff]/15 !text-[#00bbff]" : undefined
         }
       >
         {meta.label}

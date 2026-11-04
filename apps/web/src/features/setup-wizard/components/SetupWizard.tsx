@@ -10,8 +10,7 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Button, Spinner } from "@heroui/react";
 import { Alert01Icon } from "@icons";
 import { useState } from "react";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
@@ -49,7 +48,7 @@ export function SetupWizard() {
           Couldn't reach your GAIA instance to check its setup status.
         </p>
         <Button
-          variant="flat"
+          variant="tertiary"
           onPress={() => {
             void refetch();
             void catalogQuery.refetch();

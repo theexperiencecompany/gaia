@@ -1,9 +1,12 @@
 import {
   Autocomplete,
-  AutocompleteItem,
-  AutocompleteSection,
-} from "@heroui/autocomplete";
-import { Skeleton } from "@heroui/skeleton";
+  Header,
+  Input,
+  Label,
+  ListBox,
+  SearchField,
+  Skeleton,
+} from "@heroui/react";
 import type React from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -39,34 +42,31 @@ function renderTriggerSections(
       return 0;
     })
     .map(([integrationId, schemas]) => (
-      <AutocompleteSection
-        key={integrationId}
-        classNames={{
-          base: "mb-1",
-          heading: "px-2 py-1 text-tiny font-medium text-zinc-500",
-        }}
-        title={formatIntegrationName(integrationId)}
-      >
+      <ListBox.Section key={integrationId} id={integrationId}>
+        <Header className="px-2 py-1 text-tiny font-medium text-zinc-500">
+          {formatIntegrationName(integrationId)}
+        </Header>
         {(schemas || []).map((schema) => (
-          <AutocompleteItem
+          <ListBox.Item
             key={schema.slug}
+            id={schema.slug}
             textValue={schema.name}
-            startContent={getToolCategoryIcon(schema.integration_id, {
+            className="group"
+          >
+            {getToolCategoryIcon(schema.integration_id, {
               width: 20,
               height: 20,
               showBackground: false,
             })}
-            className="group"
-          >
             <div className="flex flex-col">
               <span className="text-small">{schema.name}</span>
               <span className="text-tiny text-zinc-500 group-data-[hover=true]:text-zinc-300">
                 {schema.description}
               </span>
             </div>
-          </AutocompleteItem>
+          </ListBox.Item>
         ))}
-      </AutocompleteSection>
+      </ListBox.Section>
     ));
 }
 
@@ -77,13 +77,8 @@ export function TriggerAutocomplete({
   isLoading,
   integrationStatusMap,
 }: TriggerAutocompleteProps) {
-  const {
-    filterValue,
-    setFilterValue,
-    selectedSchema,
-    filteredSchemas,
-    groupedTriggers,
-  } = useTriggerFilter(selectedTrigger, triggerSchemas);
+  const { filterValue, setFilterValue, selectedSchema, groupedTriggers } =
+    useTriggerFilter(selectedTrigger, triggerSchemas);
   const normalizedSelectedKey = selectedSchema?.slug ?? selectedTrigger;
 
   const handleSelectionChange = (key: React.Key | null) => {
@@ -124,36 +119,47 @@ export function TriggerAutocomplete({
     <div className="w-full space-y-2">
       <Autocomplete
         aria-label="Choose an event"
-        label="Event"
-        placeholder="Search apps and events..."
         className="w-full"
         selectedKey={normalizedSelectedKey}
         onSelectionChange={handleSelectionChange}
-        onInputChange={handleInputChange}
-        inputValue={filterValue}
-        items={filteredSchemas}
-        defaultFilter={() => true}
-        classNames={{
-          listboxWrapper: `${Object.keys(groupedTriggers).length > 2 ? "min-h-[300px]" : "h-fit"} p-1`,
-        }}
-        startContent={
-          selectedSchema &&
-          getToolCategoryIcon(selectedSchema.integration_id, {
-            width: 20,
-            height: 20,
-            showBackground: false,
-          })
-        }
-        isClearable
         onClear={() => {
           setFilterValue("");
           onTriggerChange(null);
         }}
-        listboxProps={{
-          emptyContent: "No matching triggers found.",
-        }}
       >
-        {renderTriggerSections(groupedTriggers, integrationStatusMap)}
+        <Label>Event</Label>
+        <Autocomplete.Trigger>
+          {selectedSchema &&
+            getToolCategoryIcon(selectedSchema.integration_id, {
+              width: 20,
+              height: 20,
+              showBackground: false,
+            })}
+          <Autocomplete.Value />
+          <Autocomplete.ClearButton />
+          <Autocomplete.Indicator />
+        </Autocomplete.Trigger>
+        <Autocomplete.Popover>
+          <Autocomplete.Filter filter={() => true}>
+            <SearchField
+              aria-label="Search apps and events"
+              value={filterValue}
+              onChange={handleInputChange}
+            >
+              <Input placeholder="Search apps and events..." />
+            </SearchField>
+            <ListBox
+              aria-label="Triggers"
+              className={`${
+                Object.keys(groupedTriggers).length > 2
+                  ? "min-h-[300px]"
+                  : "h-fit"
+              } p-1`}
+            >
+              {renderTriggerSections(groupedTriggers, integrationStatusMap)}
+            </ListBox>
+          </Autocomplete.Filter>
+        </Autocomplete.Popover>
       </Autocomplete>
 
       {selectedSchema && (

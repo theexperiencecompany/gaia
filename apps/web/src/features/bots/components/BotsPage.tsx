@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Snippet } from "@heroui/snippet";
+import { Button } from "@heroui/react";
 import Image from "next/image";
 import Link from "next/link";
+import type { ComponentProps } from "react";
 import { BOT_PLATFORM_ICONS, BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
 import type { BotConfig } from "../constants";
 import { useBotCards } from "../hooks/useBotCards";
@@ -73,37 +73,41 @@ function BotCard({
           <p className="text-sm text-zinc-500">
             Not set up on this instance. On the server, run:
           </p>
-          <Snippet
-            hideSymbol
-            variant="flat"
-            size="sm"
-            codeString={setupCommand}
-            className="w-full bg-zinc-800 text-zinc-200"
-          >
-            <span className="truncate font-mono text-xs">{setupCommand}</span>
-          </Snippet>
+          <code className="block w-full truncate rounded-lg bg-zinc-800 px-3 py-2 font-mono text-xs text-zinc-200">
+            {setupCommand}
+          </code>
         </div>
       )}
       <div className="flex w-full flex-col gap-2 @min-[22rem]:flex-row @min-[22rem]:justify-end">
         {primaryAction && (
           <Button
-            as={Link}
-            href={primaryAction.href}
-            target={primaryAction.external ? "_blank" : "_self"}
-            rel={primaryAction.external ? "noopener noreferrer" : undefined}
-            color="primary"
+            render={(props) => (
+              <Link
+                {...(props as unknown as ComponentProps<"a">)}
+                href={primaryAction.href}
+                target={primaryAction.external ? "_blank" : "_self"}
+                rel={primaryAction.external ? "noopener noreferrer" : undefined}
+              />
+            )}
             className="w-full @min-[22rem]:w-auto"
+            variant="primary"
           >
             {primaryAction.label}
           </Button>
         )}
         {secondaryAction && (
           <Button
-            as={Link}
-            href={secondaryAction.href}
-            target={secondaryAction.external ? "_blank" : "_self"}
-            rel={secondaryAction.external ? "noopener noreferrer" : undefined}
-            variant="flat"
+            render={(props) => (
+              <Link
+                {...(props as unknown as ComponentProps<"a">)}
+                href={secondaryAction.href}
+                target={secondaryAction.external ? "_blank" : "_self"}
+                rel={
+                  secondaryAction.external ? "noopener noreferrer" : undefined
+                }
+              />
+            )}
+            variant="tertiary"
             className="w-full @min-[22rem]:w-auto"
           >
             {secondaryAction.label}

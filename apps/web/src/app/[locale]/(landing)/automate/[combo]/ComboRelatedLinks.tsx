@@ -1,4 +1,5 @@
-import { Button } from "@heroui/button";
+import { buttonVariants } from "@heroui/react";
+import Link from "next/link";
 import type { ComboSectionProps } from "./ComboSections";
 
 export function ComboMoreLink({ t }: Pick<ComboSectionProps, "t">) {
@@ -11,9 +12,15 @@ export function ComboMoreLink({ t }: Pick<ComboSectionProps, "t">) {
         <p className="mb-6 leading-relaxed text-zinc-400">
           {t("automate.gaia_supports_combos")}
         </p>
-        <Button as="a" href="/marketplace" color="primary" radius="full">
+        <Link
+          href="/marketplace"
+          className={buttonVariants({
+            variant: "primary",
+            className: "rounded-full",
+          })}
+        >
           {t("common.browse_marketplace")}
-        </Button>
+        </Link>
       </div>
     </section>
   );

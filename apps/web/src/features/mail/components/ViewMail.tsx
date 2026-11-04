@@ -1,8 +1,4 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Tooltip } from "@heroui/tooltip";
-import { User } from "@heroui/user";
+import { Accordion, Avatar, Button, Chip, Tooltip } from "@heroui/react";
 import {
   ArrowLeftDoubleIcon,
   ArrowTurnBackwardIcon,
@@ -54,15 +50,12 @@ function AISummary({
       <div className="mb-3 flex w-fit flex-col rounded-xl bg-zinc-800 p-2 shadow-md outline outline-zinc-700">
         <div className="relative flex items-center gap-3 text-sm font-medium text-white">
           <Chip
-            classNames={{
-              content:
-                "text-sm relative flex! flex-row text-primary items-center gap-1 pl-3 font-medium",
-            }}
-            variant="flat"
-            color="primary"
+            className="relative flex! flex-row items-center gap-1 pl-3 text-sm font-medium text-primary"
+            variant="tertiary"
+            color="accent"
           >
             <StarsIcon width={17} height={17} fill={"#00bbff"} />
-            <span>Loading AI Analysis...</span>
+            <Chip.Label>Loading AI Analysis...</Chip.Label>
           </Chip>
         </div>
         <div className="p-2">
@@ -78,15 +71,12 @@ function AISummary({
     <div className="mb-3 flex w-fit flex-col rounded-xl bg-zinc-800 p-2 shadow-md outline outline-zinc-700">
       <div className="relative flex items-center gap-3 text-sm font-medium text-white">
         <Chip
-          classNames={{
-            content:
-              "text-sm relative flex! flex-row text-primary items-center gap-1 pl-3 font-medium",
-          }}
-          variant="flat"
-          color="primary"
+          className="relative flex! flex-row items-center gap-1 pl-3 text-sm font-medium text-primary"
+          variant="tertiary"
+          color="accent"
         >
           <StarsIcon width={17} height={17} fill={"#00bbff"} />
-          <span>GAIA AI Analysis</span>
+          <Chip.Label>GAIA AI Analysis</Chip.Label>
         </Chip>
       </div>
 
@@ -99,29 +89,29 @@ function AISummary({
       <div className="flex flex-wrap gap-2 px-2 pb-2">
         <Chip
           size="sm"
-          variant="flat"
+          variant="tertiary"
           color={
             analysis.importance_level === "URGENT"
               ? "danger"
               : analysis.importance_level === "HIGH"
                 ? "warning"
                 : analysis.importance_level === "MEDIUM"
-                  ? "primary"
+                  ? "accent"
                   : "default"
           }
         >
-          {analysis.importance_level}
+          <Chip.Label>{analysis.importance_level}</Chip.Label>
         </Chip>
 
         {analysis.category && (
-          <Chip size="sm" variant="flat" color="secondary">
-            {analysis.category}
+          <Chip size="sm" variant="tertiary" color="accent">
+            <Chip.Label>{analysis.category}</Chip.Label>
           </Chip>
         )}
 
         {analysis.intent && (
-          <Chip size="sm" variant="flat" color="secondary">
-            {analysis.intent}
+          <Chip size="sm" variant="tertiary" color="accent">
+            <Chip.Label>{analysis.intent}</Chip.Label>
           </Chip>
         )}
       </div>
@@ -129,33 +119,36 @@ function AISummary({
       {/* Semantic Labels */}
       {analysis.semantic_labels && analysis.semantic_labels.length > 0 && (
         <div className="px-2 pb-2">
-          <Accordion variant="light" selectionMode="multiple" className="px-0">
-            <AccordionItem
-              key="labels"
-              aria-label="Semantic Labels"
-              title={
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">Labels</span>
-                  <Chip size="sm" variant="flat" color="default">
-                    {analysis.semantic_labels.length}
-                  </Chip>
-                </div>
-              }
-              className="px-0"
-            >
-              <div className="flex flex-wrap gap-1 pb-2">
-                {analysis.semantic_labels.map((label) => (
-                  <Chip
-                    key={label}
-                    size="sm"
-                    variant="bordered"
-                    color="primary"
-                  >
-                    {label}
-                  </Chip>
-                ))}
-              </div>
-            </AccordionItem>
+          <Accordion variant="default" allowsMultipleExpanded className="px-0">
+            <Accordion.Item id="labels" className="px-0">
+              <Accordion.Heading>
+                <Accordion.Trigger>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">Labels</span>
+                    <Chip size="sm" variant="tertiary" color="default">
+                      <Chip.Label>{analysis.semantic_labels.length}</Chip.Label>
+                    </Chip>
+                  </div>
+                  <Accordion.Indicator />
+                </Accordion.Trigger>
+              </Accordion.Heading>
+              <Accordion.Panel>
+                <Accordion.Body>
+                  <div className="flex flex-wrap gap-1 pb-2">
+                    {analysis.semantic_labels.map((label) => (
+                      <Chip
+                        key={label}
+                        size="sm"
+                        variant="secondary"
+                        color="accent"
+                      >
+                        <Chip.Label>{label}</Chip.Label>
+                      </Chip>
+                    ))}
+                  </div>
+                </Accordion.Body>
+              </Accordion.Panel>
+            </Accordion.Item>
           </Accordion>
         </div>
       )}
@@ -188,18 +181,20 @@ function ThreadMessages({
             className={`rounded-lg p-4 ${isCurrentEmail ? "bg-zinc-800" : "bg-zinc-900"} border-l-2 ${isCurrentEmail ? "border-primary" : "border-zinc-700"}`}
           >
             <div className="mb-2 flex items-start justify-between">
-              <User
-                avatarProps={{
-                  src: "/images/avatars/default.webp",
-                  size: "sm",
-                }}
-                description={messageSenderEmail}
-                name={messageSenderName}
-                classNames={{
-                  name: "font-medium",
-                  description: "text-gray-400",
-                }}
-              />
+              <div className="flex items-center gap-2">
+                <Avatar size="sm">
+                  <Avatar.Image src="/images/avatars/default.webp" />
+                  <Avatar.Fallback>
+                    {messageSenderName?.slice(0, 2) || "?"}
+                  </Avatar.Fallback>
+                </Avatar>
+                <div className="flex flex-col">
+                  <span className="font-medium">{messageSenderName}</span>
+                  <span className="text-sm text-gray-400">
+                    {messageSenderEmail}
+                  </span>
+                </div>
+              </div>
               <div className="text-xs text-gray-400" suppressHydrationWarning>
                 {new Date(message.time).toLocaleString()}
               </div>
@@ -218,11 +213,10 @@ function ThreadMessages({
             <div className="mt-4 flex justify-end">
               <Button
                 size="sm"
-                color="primary"
-                variant="flat"
-                startContent={<ArrowTurnBackwardIcon size={14} />}
+                variant="tertiary"
                 onPress={() => onReply(message)}
               >
+                <ArrowTurnBackwardIcon size={14} />
                 Reply
               </Button>
             </div>
@@ -258,13 +252,7 @@ function ReplyEditor({
             {parseEmail(replyTo.from).name || parseEmail(replyTo.from).email}
           </span>
         </div>
-        <Button
-          size="sm"
-          color="danger"
-          variant="light"
-          isIconOnly
-          onPress={onCancel}
-        >
+        <Button size="sm" variant="ghost" isIconOnly onPress={onCancel}>
           <Cancel01Icon size={16} />
         </Button>
       </div>
@@ -278,12 +266,12 @@ function ReplyEditor({
 
       <div className="mt-2 flex justify-end">
         <Button
-          color="primary"
-          startContent={<SentIcon size={16} />}
           onPress={onSend}
-          isLoading={isSending}
+          isPending={isSending}
           isDisabled={isSending}
+          variant="primary"
         >
+          <SentIcon size={16} />
           {isSending ? "Sending..." : "Send Reply"}
         </Button>
       </div>
@@ -426,21 +414,24 @@ export default function ViewEmail({
         >
           <div className="relative flex h-full w-full grow flex-col overflow-y-auto rounded-l-2xl bg-zinc-900 p-6 pt-4">
             <div className="mb-2 flex w-full justify-end">
-              <Tooltip content="Close" color="foreground">
-                <div className="cursor-pointer">
-                  <Cancel01Icon width={18} onClick={onOpenChange} />
-                </div>
+              <Tooltip>
+                <Tooltip.Trigger>
+                  <div className="cursor-pointer">
+                    <Cancel01Icon width={18} onClick={onOpenChange} />
+                  </div>
+                </Tooltip.Trigger>
+                <Tooltip.Content>Close</Tooltip.Content>
               </Tooltip>
             </div>
             <header className="mb-2 flex items-center gap-2">
               <Button
-                color="primary"
                 className="font-medium"
-                startContent={<MagicWand05Icon />}
-                isLoading={isLoadingAnalysis}
+                isPending={isLoadingAnalysis}
                 onPress={handleAnalyzeEmail}
                 isDisabled={isLoadingAnalysis}
+                variant="primary"
               >
+                <MagicWand05Icon />
                 {isLoadingAnalysis
                   ? "Loading..."
                   : aiAnalysis
@@ -450,19 +441,17 @@ export default function ViewEmail({
 
               <div className="ml-auto flex gap-2">
                 <Button
-                  color="primary"
-                  variant="flat"
-                  startContent={<ArrowTurnBackwardIcon size={16} />}
+                  variant="tertiary"
                   onPress={() => mail && handleReply(mail)}
                 >
+                  <ArrowTurnBackwardIcon size={16} />
                   Reply
                 </Button>
                 <Button
-                  color="primary"
-                  variant="flat"
-                  startContent={<ArrowLeftDoubleIcon size={16} />}
+                  variant="tertiary"
                   onPress={() => mail && handleReply(mail)}
                 >
+                  <ArrowLeftDoubleIcon size={16} />
                   Reply All
                 </Button>
               </div>
@@ -507,18 +496,16 @@ export default function ViewEmail({
                       {he.decode(mail.snippet)}
                     </div>
                   )}
-                  <User
-                    avatarProps={{
-                      src: "/images/avatars/default.webp",
-                      size: "sm",
-                    }}
-                    description={emailFrom}
-                    name={nameFrom}
-                    classNames={{
-                      name: "font-medium",
-                      description: "text-gray-400",
-                    }}
-                  />
+                  <Avatar size="sm">
+                    <Avatar.Image src="/images/avatars/default.webp" />
+                    <Avatar.Fallback>
+                      {nameFrom?.slice(0, 2) || "?"}
+                    </Avatar.Fallback>
+                  </Avatar>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{nameFrom}</span>
+                    <span className="text-sm text-gray-400">{emailFrom}</span>
+                  </div>
                   <div>
                     <hr className="my-4 border-gray-700" />
                     <GmailBody email={mail} />

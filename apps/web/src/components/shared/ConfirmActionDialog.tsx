@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Button,
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/react";
+import { Button, Modal } from "@heroui/react";
 import { useRouter } from "next/navigation";
 
 import { useLogout } from "@/features/auth/hooks/useLogout";
@@ -96,36 +89,36 @@ export function ConfirmActionDialog({
 
   return (
     <Modal isOpen={!!action} onOpenChange={handleOpenChange}>
-      <ModalContent>
-        {(onClose) => (
-          <>
-            <ModalHeader className="flex flex-col gap-1">
+      <Modal.Backdrop>
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex flex-col gap-1">
               {config.title}
-            </ModalHeader>
-            <ModalBody>
+            </Modal.Header>
+            <Modal.Body>
               <p className="text-sm text-zinc-400">{config.description}</p>
-            </ModalBody>
-            <ModalFooter>
+            </Modal.Body>
+            <Modal.Footer>
               <Button
-                variant="flat"
-                onPress={onClose}
+                variant="tertiary"
+                onPress={() => handleOpenChange(false)}
                 className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
               >
                 {config.cancelText}
               </Button>
               <Button
-                color={config.variant === "destructive" ? "danger" : "primary"}
                 onPress={() => {
                   handleConfirm();
-                  onClose();
+                  handleOpenChange(false);
                 }}
               >
                 {config.confirmText}
               </Button>
-            </ModalFooter>
-          </>
-        )}
-      </ModalContent>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

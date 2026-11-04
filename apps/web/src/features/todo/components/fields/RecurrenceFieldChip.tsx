@@ -48,25 +48,22 @@ export default function RecurrenceFieldChip({
             return (
               <Button
                 key={option.value ?? "none"}
-                variant="light"
+                variant="tertiary"
                 fullWidth
-                radius="lg"
                 aria-pressed={isOptionSelected}
                 className={`justify-start gap-2 px-3 text-sm ${
                   isOptionSelected ? "text-zinc-200" : "text-zinc-500"
                 }`}
-                startContent={
-                  option.value === undefined ? (
-                    <Cancel01Icon width={18} height={18} />
-                  ) : (
-                    <RepeatIcon width={18} height={18} />
-                  )
-                }
                 onPress={() => {
                   onChange(option.value);
                   onClose();
                 }}
               >
+                {option.value === undefined ? (
+                  <Cancel01Icon width={18} height={18} />
+                ) : (
+                  <RepeatIcon width={18} height={18} />
+                )}
                 {option.label}
               </Button>
             );

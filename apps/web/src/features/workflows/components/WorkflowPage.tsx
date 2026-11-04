@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { useDisclosure } from "@heroui/modal";
+import { Button, useOverlayState } from "@heroui/react";
 import { type IconProps, RedoIcon } from "@icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, {
@@ -76,12 +75,8 @@ function renderGrid<T extends { id: string }>(
     return (
       <div className="flex flex-col items-center justify-center space-y-4 py-1">
         <p className="text-foreground-400">{error}</p>
-        <Button
-          size="sm"
-          variant="flat"
-          onPress={onRefetch}
-          startContent={<RedoIcon className="h-4 w-4" />}
-        >
+        <Button size="sm" variant="tertiary" onPress={onRefetch}>
+          <RedoIcon className="h-4 w-4" />
           Try Again
         </Button>
       </div>
@@ -143,15 +138,15 @@ export default function WorkflowPage() {
 
   const {
     isOpen: isEditOpen,
-    onOpen: onEditOpen,
-    onOpenChange: onEditOpenChange,
-  } = useDisclosure();
+    open: onEditOpen,
+    toggle: onEditOpenChange,
+  } = useOverlayState();
 
   const {
     isOpen: isCreateOpen,
-    onOpen: onCreateOpen,
-    onOpenChange: onCreateOpenChange,
-  } = useDisclosure();
+    open: onCreateOpen,
+    setOpen: onCreateOpenChange,
+  } = useOverlayState();
 
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(
     null,

@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownSection,
-  DropdownTrigger,
-} from "@heroui/dropdown";
+import { Dropdown, Header } from "@heroui/react";
 import {
   BookBookmark02Icon,
   BookOpen02Icon,
@@ -421,9 +415,6 @@ export default function SettingsMenu({
   return (
     <>
       <Dropdown
-        placement="right"
-        className="bg-secondary-bg text-foreground dark shadow-xl"
-        offset={21}
         isOpen={isMenuOpen}
         onOpenChange={(open) => {
           setIsMenuOpen(open);
@@ -437,75 +428,76 @@ export default function SettingsMenu({
           onOpenChange?.(open);
         }}
       >
-        <DropdownTrigger>{children}</DropdownTrigger>
-        <DropdownMenu aria-label="Settings Menu" variant="faded">
-          {menuSections.map((section) => (
-            <DropdownSection
-              key={section.id}
-              title={section.title}
-              showDivider={section.showDivider}
-              classNames={{ divider: "bg-zinc-800/60" }}
-            >
-              {section.items.map((item: MenuItem) => {
-                const Icon = item.icon;
-                const iconColor =
-                  item.iconColor || socialMediaColorMap[item.key];
+        {children}
+        <Dropdown.Popover
+          placement="right"
+          offset={21}
+          className="bg-secondary-bg text-foreground dark shadow-xl"
+        >
+          <Dropdown.Menu aria-label="Settings Menu">
+            {menuSections.map((section) => (
+              <Dropdown.Section key={section.id}>
+                {section.title && <Header>{section.title}</Header>}
+                {section.items.map((item: MenuItem) => {
+                  const Icon = item.icon;
+                  const iconColor =
+                    item.iconColor || socialMediaColorMap[item.key];
+                  const itemClassName = [
+                    item.color === "danger"
+                      ? "text-danger"
+                      : iconColor
+                        ? "transition"
+                        : "text-zinc-400 transition hover:text-white",
+                    item.customClassNames?.title,
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
 
-                // Handle nested menus (What's new, Download, Resources, Support)
-                if (item.hasSubmenu) {
-                  const menu = submenuByKey[item.key] ?? supportMenu;
+                  // Handle nested menus (What's new, Download, Resources, Support)
+                  if (item.hasSubmenu) {
+                    const menu = submenuByKey[item.key] ?? supportMenu;
 
-                  return (
-                    <DropdownItem
-                      key={item.key}
-                      textValue={item.label}
-                      variant="flat"
-                      onMouseEnter={menu.handleMouseEnter}
-                      onMouseLeave={menu.handleMouseLeave}
-                      className="text-zinc-400 transition hover:text-white"
-                      startContent={Icon && <Icon className={ICON_CLASSES} />}
-                      endContent={
-                        <div className="flex items-center gap-1.5">
+                    return (
+                      <Dropdown.Item
+                        key={item.key}
+                        id={item.key}
+                        textValue={item.label}
+                        onMouseEnter={menu.handleMouseEnter}
+                        onMouseLeave={menu.handleMouseLeave}
+                        className="text-zinc-400 transition hover:text-white"
+                      >
+                        {Icon && <Icon className={ICON_CLASSES} />}
+                        {item.label}
+                        <div className="ml-auto flex items-center gap-1.5">
                           {item.badge}
                           <ChevronRight className="h-4 w-4 text-zinc-500" />
                         </div>
-                      }
-                    >
-                      {item.label}
-                    </DropdownItem>
-                  );
-                }
+                      </Dropdown.Item>
+                    );
+                  }
 
-                return (
-                  <DropdownItem
-                    key={item.key}
-                    textValue={item.label}
-                    variant="flat"
-                    color={item.color}
-                    onPress={() => handleItemAction(item)}
-                    className={
-                      item.color === "danger"
-                        ? "text-danger"
-                        : iconColor
-                          ? "transition"
-                          : "text-zinc-400 transition hover:text-white"
-                    }
-                    style={iconColor ? { color: iconColor } : undefined}
-                    startContent={
-                      item.iconElement ??
-                      (Icon && (
-                        <Icon className={ICON_CLASSES} color={iconColor} />
-                      ))
-                    }
-                    classNames={item.customClassNames}
-                  >
-                    {item.label}
-                  </DropdownItem>
-                );
-              })}
-            </DropdownSection>
-          ))}
-        </DropdownMenu>
+                  return (
+                    <Dropdown.Item
+                      key={item.key}
+                      id={item.key}
+                      textValue={item.label}
+                      variant={item.color === "danger" ? "danger" : "default"}
+                      onAction={() => handleItemAction(item)}
+                      className={itemClassName}
+                      style={iconColor ? { color: iconColor } : undefined}
+                    >
+                      {item.iconElement ??
+                        (Icon && (
+                          <Icon className={ICON_CLASSES} color={iconColor} />
+                        ))}
+                      {item.label}
+                    </Dropdown.Item>
+                  );
+                })}
+              </Dropdown.Section>
+            ))}
+          </Dropdown.Menu>
+        </Dropdown.Popover>
       </Dropdown>
 
       <SettingsSubmenuFlyouts

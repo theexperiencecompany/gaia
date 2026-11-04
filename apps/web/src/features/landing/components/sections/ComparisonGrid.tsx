@@ -1,6 +1,6 @@
 "use client";
 
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import { ArrowRight02Icon, Cancel01Icon, Tick02Icon } from "@icons";
 import Image from "next/image";
 import { SiteLink } from "@/components/seo/SiteLink";
@@ -247,7 +247,7 @@ export default function ComparisonGrid() {
                       c.slug === null ? "bg-primary/5" : ""
                     }`}
                   >
-                    <Tooltip content={c.name} placement="top">
+                    <Tooltip>
                       {c.slug ? (
                         <SiteLink
                           href={`/compare/${c.slug}`}
@@ -261,6 +261,9 @@ export default function ComparisonGrid() {
                           <BrandLogo competitor={c} alt={c.name} />
                         </span>
                       )}
+                      <Tooltip.Content placement="top">
+                        {c.name}
+                      </Tooltip.Content>
                     </Tooltip>
                   </th>
                 ))}

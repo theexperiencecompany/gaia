@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Button, Tabs } from "@heroui/react";
 import { ShuffleIcon } from "@icons";
 import type { UsageActivity } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
@@ -11,7 +10,6 @@ import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import { tokenComparisons } from "./tokenScale";
 import { ACCENT, CARD, HEALTHY, InfoTip } from "./usageChrome";
-import { TAB_CLASSNAMES } from "./usageTabs";
 
 // recharts is heavy, so it loads on demand instead of shipping eagerly with
 // the settings page. The shared promise means every chart here triggers a
@@ -191,8 +189,7 @@ function TokenScaleLine({ tokens }: { tokens: number }) {
         <Button
           isIconOnly
           size="sm"
-          variant="light"
-          radius="full"
+          variant="tertiary"
           className="size-6 min-w-6 shrink-0 text-zinc-500 data-[hover=true]:text-zinc-200"
           aria-label="Show another comparison"
           onPress={next}
@@ -333,15 +330,28 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
             drops to the reading line below — side by side the two groups
             collided and forced the heading to wrap. */}
         <Tabs
-          size="sm"
-          radius="full"
-          aria-label="Metric"
           selectedKey={metric}
           onSelectionChange={(k) => setMetric(k as Metric)}
-          classNames={TAB_CLASSNAMES}
+          className="shrink-0"
         >
-          <Tab key="actions" title="Actions" />
-          <Tab key="tokens" title="Tokens" />
+          <Tabs.List aria-label="Metric" className="bg-zinc-800/80 p-0.5">
+            <Tabs.Tab
+              id="actions"
+              className="h-6 px-2.5 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
+            >
+              Actions
+              <Tabs.Indicator className="bg-zinc-700" />
+            </Tabs.Tab>
+            <Tabs.Tab
+              id="tokens"
+              className="h-6 px-2.5 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
+            >
+              Tokens
+              <Tabs.Indicator className="bg-zinc-700" />
+            </Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel id="actions">{null}</Tabs.Panel>
+          <Tabs.Panel id="tokens">{null}</Tabs.Panel>
         </Tabs>
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-3">
@@ -352,15 +362,26 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
           {isTokens ? "tokens" : "actions"} in the last {rangeLabel}
         </p>
         <Tabs
-          size="sm"
-          radius="full"
-          aria-label="Range"
           selectedKey={range}
           onSelectionChange={(k) => setRange(k as RangeKey)}
-          classNames={TAB_CLASSNAMES}
+          className="shrink-0"
         >
+          <Tabs.List aria-label="Range" className="bg-zinc-800/80 p-0.5">
+            {RANGES.map((r) => (
+              <Tabs.Tab
+                key={r.key}
+                id={r.key}
+                className="h-6 px-2.5 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
+              >
+                {r.label}
+                <Tabs.Indicator className="bg-zinc-700" />
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
           {RANGES.map((r) => (
-            <Tab key={r.key} title={r.label} />
+            <Tabs.Panel key={r.key} id={r.key}>
+              {null}
+            </Tabs.Panel>
           ))}
         </Tabs>
       </div>

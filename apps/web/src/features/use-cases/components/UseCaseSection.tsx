@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -130,26 +129,26 @@ function CategoryChip({
       }}
     >
       <Chip
-        variant={isSelected ? "solid" : "flat"}
-        color={isSelected ? "primary" : "default"}
+        variant={isSelected ? "primary" : "tertiary"}
+        color={isSelected ? "accent" : "default"}
         className={`cursor-pointer capitalize ${isSelected ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
         size="lg"
-        startContent={
-          category === "featured" ? (
-            <StarAward01Icon width={18} height={18} />
-          ) : category === "workflows" ? (
-            <WorkflowCircle03Icon width={18} height={18} />
-          ) : undefined
-        }
         onClick={onClick}
       >
-        {category === "all"
-          ? "All"
-          : category === "featured"
-            ? "Featured"
-            : category === "workflows"
-              ? "Your Workflows"
-              : category}
+        {category === "featured" ? (
+          <StarAward01Icon width={18} height={18} />
+        ) : category === "workflows" ? (
+          <WorkflowCircle03Icon width={18} height={18} />
+        ) : undefined}
+        <Chip.Label>
+          {category === "all"
+            ? "All"
+            : category === "featured"
+              ? "Featured"
+              : category === "workflows"
+                ? "Your Workflows"
+                : category}
+        </Chip.Label>
       </Chip>
     </m.div>
   );
@@ -278,9 +277,8 @@ export default function UseCaseSection({
           >
             <Button
               isIconOnly
-              radius="full"
               size="sm"
-              variant="flat"
+              variant="tertiary"
               onPress={() => setShowUseCases(false)}
               className="text-zinc-300 "
             >
@@ -495,7 +493,7 @@ function UseCaseEmptyStates({
                 Create your first workflow to get started
               </p>
               <Link href={"/workflows"}>
-                <Button color="primary">Create</Button>
+                <Button variant="primary">Create</Button>
               </Link>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { Link } from "@heroui/link";
+import { Link } from "@heroui/react";
 import { Alert01Icon } from "@icons";
 
 /** Shown when this instance only accepts sign-ups through an invite link. */
@@ -9,7 +9,7 @@ export function RegistrationClosedNotice() {
         <Alert01Icon height={17} className="shrink-0" />
         Sign-ups here need an invite link. Ask the person who runs this GAIA.
       </div>
-      <Link href="/login" size="sm" color="primary">
+      <Link href="/login" className="text-sm text-primary hover:underline">
         Sign in instead
       </Link>
     </div>

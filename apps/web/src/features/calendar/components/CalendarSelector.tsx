@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { ViewIcon, ViewOffSlashIcon } from "@icons";
 import { isTooDark } from "@/features/calendar/utils/calendarUtils";
 import type {
@@ -20,22 +20,7 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
     >
       <Chip
         className={`${selected ? "text-zinc-300" : "text-zinc-600"} `}
-        variant="faded"
-        startContent={
-          <div
-            className="mr-2 aspect-square min-h-[12px] min-w-[12px] rounded-full"
-            style={{
-              backgroundColor: computedColor,
-            }}
-          />
-        }
-        endContent={
-          selected ? (
-            <ViewIcon className="mr-1" width={17} height={17} />
-          ) : (
-            <ViewOffSlashIcon className="mr-1" width={17} height={17} />
-          )
-        }
+        variant="secondary"
         style={{
           margin: "0",
           background: "transparent",
@@ -44,9 +29,22 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
           borderRadius: "7px",
         }}
       >
-        <div className="text-sm truncate max-w-[calc(var(--sidebar-width)-90px)] w-[calc(var(--sidebar-width)-90px)]">
-          {calendar.summary}
-        </div>
+        <div
+          className="mr-2 aspect-square min-h-[12px] min-w-[12px] rounded-full"
+          style={{
+            backgroundColor: computedColor,
+          }}
+        />
+        <Chip.Label>
+          <div className="text-sm truncate max-w-[calc(var(--sidebar-width)-90px)] w-[calc(var(--sidebar-width)-90px)]">
+            {calendar.summary}
+          </div>
+        </Chip.Label>
+        {selected ? (
+          <ViewIcon className="mr-1" width={17} height={17} />
+        ) : (
+          <ViewOffSlashIcon className="mr-1" width={17} height={17} />
+        )}
       </Chip>
     </button>
   );

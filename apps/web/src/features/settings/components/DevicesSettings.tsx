@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import { PlusSignIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { DevicesManager } from "@/features/devices/components/DevicesManager";
@@ -16,7 +15,7 @@ export default function DevicesSettings() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-medium">Devices</h2>
-            <Chip size="sm" variant="flat" color="success">
+            <Chip size="sm" variant="tertiary" color="success">
               Beta
             </Chip>
           </div>
@@ -28,12 +27,11 @@ export default function DevicesSettings() {
         </div>
         <Button
           size="sm"
-          variant="flat"
-          color="primary"
+          variant="tertiary"
           className="shrink-0"
-          startContent={<PlusSignIcon className="size-4" />}
           onPress={() => router.push("/settings/devices/approve")}
         >
+          <PlusSignIcon className="size-4" />
           Add device
         </Button>
       </div>

@@ -1,8 +1,7 @@
 "use client";
 
 import type { EventProperties } from "@gaia/shared/analytics/events";
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Tooltip } from "@heroui/react";
 import {
   // Calendar03Icon, // Temporarily disabled
   CheckListIcon,
@@ -78,13 +77,17 @@ export default function SidebarTopButtons() {
   if (pathname.startsWith("/settings")) {
     return (
       <Button
-        as={Link}
-        href="/c"
         size="sm"
-        variant="light"
+        variant="tertiary"
         className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
-        startContent={<ChevronLeft className="size-4" />}
+        render={(props) => (
+          <Link
+            {...(props as unknown as React.ComponentProps<"a">)}
+            href="/c"
+          />
+        )}
       >
+        <ChevronLeft className="size-4" />
         Back to chats
       </Button>
     );
@@ -123,53 +126,55 @@ export default function SidebarTopButtons() {
 
           return (
             <div key={route + label} className="relative">
-              <Tooltip
-                className="rounded-xl"
-                showArrow
-                content={
-                  shortcut ? (
+              <Tooltip delay={0} closeDelay={0}>
+                <Tooltip.Trigger>
+                  <Button
+                    size="sm"
+                    variant={isRouteActive(route) ? "secondary" : "ghost"}
+                    className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
+                    render={(props) => (
+                      <Link
+                        {...(props as unknown as React.ComponentProps<"a">)}
+                        href={route}
+                      />
+                    )}
+                    onPress={() => {
+                      track("navigation:sidebar_clicked", {
+                        destination: route,
+                        label,
+                      });
+                    }}
+                  >
+                    <div className="flex w-full items-center gap-2">
+                      <div className="flex w-[17px] min-w-[17px] items-center justify-center">
+                        <span className="group-topbtns-hover:text-white text-xs">
+                          {React.cloneElement(icon, {
+                            width: 18,
+                            height: 18,
+                          })}
+                        </span>
+                      </div>
+                      <span className="w-[calc(100%-45px)] max-w-[200px] truncate text-left">
+                        {label}
+                      </span>
+                    </div>
+                  </Button>
+                </Tooltip.Trigger>
+                <Tooltip.Content
+                  placement="right"
+                  offset={1}
+                  showArrow
+                  className="rounded-xl"
+                >
+                  {shortcut ? (
                     <span className="flex items-center gap-2 text-sm text-zinc-400 font-light py-1 px-2">
                       <span className="text-xs">Go to {label}</span>
                       <ShortcutKeysDisplay keys={shortcut.keys} />
                     </span>
                   ) : (
                     label
-                  )
-                }
-                offset={1}
-                placement="right"
-                delay={0}
-                closeDelay={0}
-              >
-                <Button
-                  size="sm"
-                  variant={isRouteActive(route) ? "flat" : "light"}
-                  // color={isRouteActive(route) ? "primary" : "default"}
-                  color={"default"}
-                  className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
-                  as={Link}
-                  href={route}
-                  onPress={() => {
-                    track("navigation:sidebar_clicked", {
-                      destination: route,
-                      label,
-                    });
-                  }}
-                >
-                  <div className="flex w-full items-center gap-2">
-                    <div className="flex w-[17px] min-w-[17px] items-center justify-center">
-                      <span className="group-topbtns-hover:text-white text-xs">
-                        {React.cloneElement(icon, {
-                          width: 18,
-                          height: 18,
-                        })}
-                      </span>
-                    </div>
-                    <span className="w-[calc(100%-45px)] max-w-[200px] truncate text-left">
-                      {label}
-                    </span>
-                  </div>
-                </Button>
+                  )}
+                </Tooltip.Content>
               </Tooltip>
             </div>
           );

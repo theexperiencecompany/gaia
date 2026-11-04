@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Button, Input } from "@heroui/react";
 import { Cancel01Icon, PlusSignIcon, Tag01Icon } from "@icons";
 import { useState } from "react";
 
@@ -66,18 +65,13 @@ export default function LabelsFieldChip({
                         onClose();
                       }
                     }}
-                    size="sm"
                     aria-label="Add new label"
-                    classNames={{
-                      input: "text-sm text-zinc-200 placeholder:text-zinc-500",
-                      inputWrapper:
-                        "border-0 bg-zinc-800 hover:bg-zinc-700 focus:bg-zinc-700 data-[focus=true]:bg-zinc-700",
-                    }}
+                    className="border-0 bg-zinc-800 text-sm text-zinc-200 placeholder:text-zinc-500 hover:bg-zinc-700 focus:bg-zinc-700"
                   />
                 </div>
                 <Button
                   size="sm"
-                  variant="light"
+                  variant="tertiary"
                   isDisabled={
                     !newLabel.trim() || value.includes(newLabel.trim())
                   }
@@ -103,7 +97,7 @@ export default function LabelsFieldChip({
                     <Tag01Icon size={12} />
                     {label}
                     <Button
-                      variant="light"
+                      variant="tertiary"
                       size="sm"
                       onPress={() => handleRemoveLabel(label)}
                       className="h-4 w-4 min-w-4 border-0 p-0 text-zinc-400 hover:text-zinc-200"

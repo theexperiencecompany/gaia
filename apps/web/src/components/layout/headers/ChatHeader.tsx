@@ -1,6 +1,6 @@
 "use client";
 
-import { Kbd } from "@heroui/kbd";
+import { Kbd } from "@heroui/react";
 import { BubbleChatAddIcon, PinIcon, SearchIcon } from "@icons";
 import Link from "next/link";
 import ModelSelectorDevControls from "@/components/layout/headers/ModelSelectorDevControls";
@@ -45,7 +45,9 @@ export default function ChatHeader() {
           tooltip={
             <div className="flex items-center gap-2">
               Search
-              <Kbd keys={[modifierKeyName]}> K</Kbd>
+              <Kbd>
+                <Kbd.Abbr keyValue={modifierKeyName} /> K
+              </Kbd>
             </div>
           }
         >

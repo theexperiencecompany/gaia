@@ -1,6 +1,4 @@
-import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Spinner } from "@heroui/spinner";
-import { Tooltip } from "@heroui/tooltip";
+import { ScrollShadow, Spinner, Tooltip } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
@@ -130,37 +128,34 @@ export default function EmailListCard({
           {!!emails &&
             emails.length > 0 &&
             emails.map((email) => (
-              <Tooltip
-                key={email.id}
-                content={`Ask about this email from ${extractSenderName(email.from || "Unknown Sender")}`}
-                showArrow
-                color="foreground"
-                delay={0}
-                closeDelay={0}
-                disableAnimation
-              >
-                <button
-                  type="button"
-                  className="group flex w-full cursor-pointer items-center gap-4 p-3 text-left transition-colors hover:bg-zinc-700"
-                  onClick={() => handleEmailClick(email)}
-                >
-                  <div className="w-40 flex-shrink-0">
-                    <span className="block truncate text-sm font-medium text-gray-300">
-                      {extractSenderName(email.from || "Unknown Sender")}
-                    </span>
-                  </div>
+              <Tooltip key={email.id} delay={0} closeDelay={0}>
+                <Tooltip.Trigger>
+                  <button
+                    type="button"
+                    className="group flex w-full cursor-pointer items-center gap-4 p-3 text-left transition-colors hover:bg-zinc-700"
+                    onClick={() => handleEmailClick(email)}
+                  >
+                    <div className="w-40 flex-shrink-0">
+                      <span className="block truncate text-sm font-medium text-gray-300">
+                        {extractSenderName(email.from || "Unknown Sender")}
+                      </span>
+                    </div>
 
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-white group-hover:text-gray-100">
-                      {email.subject || "Unknown Subject"}
-                    </span>
-                  </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-white group-hover:text-gray-100">
+                        {email.subject || "Unknown Subject"}
+                      </span>
+                    </div>
 
-                  {/* Time */}
-                  <div className="w-20 flex-shrink-0 text-right">
-                    <EmailTime time={email.time || null} />
-                  </div>
-                </button>
+                    {/* Time */}
+                    <div className="w-20 flex-shrink-0 text-right">
+                      <EmailTime time={email.time || null} />
+                    </div>
+                  </button>
+                </Tooltip.Trigger>
+                <Tooltip.Content showArrow>
+                  {`Ask about this email from ${extractSenderName(email.from || "Unknown Sender")}`}
+                </Tooltip.Content>
               </Tooltip>
             ))}
 
@@ -170,7 +165,7 @@ export default function EmailListCard({
           {/* Loading spinner for next page */}
           {isFetchingNextPage && (
             <div className="flex items-center justify-center py-2">
-              <Spinner size="sm" color="default" />
+              <Spinner size="sm" color="current" />
             </div>
           )}
         </ScrollShadow>

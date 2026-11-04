@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Download01Icon } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
@@ -71,8 +71,8 @@ export function DownloadAsset({
               key={`${option.format}-${option.variant || "default"}`}
               size="sm"
               onPress={() => downloadAsset(option.path, option.format)}
-              startContent={<Download01Icon width={15} height={15} />}
             >
+              <Download01Icon width={15} height={15} />
               {option.variant
                 ? `${option.format} (${option.variant})`
                 : option.format}

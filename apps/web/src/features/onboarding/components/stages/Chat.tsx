@@ -7,7 +7,7 @@
 
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import type { MutationStatus } from "@tanstack/react-query";
 import * as m from "motion/react-m";
 import {

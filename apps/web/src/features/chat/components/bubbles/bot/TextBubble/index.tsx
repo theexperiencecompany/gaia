@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import { Alert01Icon, RedoIcon } from "@icons";
 import {
   APPROVAL_REQUEST_TOOL_NAME,
@@ -112,15 +111,12 @@ function FailedResponse({
       className="h-7 min-w-0 shrink-0 px-2 text-xs"
       isDisabled={isRetrying}
       onPress={onRetry}
-      radius="full"
       size="sm"
-      startContent={
-        <div className={isRetrying ? "animate-spin" : ""}>
-          <RedoIcon height={13} width={13} />
-        </div>
-      }
-      variant="flat"
+      variant="tertiary"
     >
+      <div className={isRetrying ? "animate-spin" : ""}>
+        <RedoIcon height={13} width={13} />
+      </div>
       Retry
     </Button>
   );
@@ -177,16 +173,11 @@ function BubbleContent({
     <div className="flex flex-col gap-3">
       <MarkdownRenderer content={content} isStreaming={isStreaming} />
       {!!disclaimer && showDisclaimer && (
-        <Chip
-          className="text-xs font-medium text-warning-500"
-          color="warning"
-          size="sm"
-          startContent={
-            <Alert01Icon className="text-warning-500" height={17} />
-          }
-          variant="flat"
-        >
-          {disclaimer}
+        <Chip color="warning" size="sm" variant="tertiary">
+          <Alert01Icon className="text-warning-500" height={17} />
+          <Chip.Label className="text-xs font-medium text-warning-500">
+            {disclaimer}
+          </Chip.Label>
         </Chip>
       )}
     </div>

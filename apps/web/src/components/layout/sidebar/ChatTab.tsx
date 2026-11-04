@@ -1,5 +1,5 @@
 "use client";
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { ChatBotIcon, Mail01Icon, StarIcon } from "@icons";
 import Link from "next/link";
 import React, { type FC, useState } from "react";
@@ -85,18 +85,20 @@ export const ChatTab: FC<ChatTabProps> = ({
       <Button
         className={`w-full justify-start px-2 font-light text-sm ${isUnread ? "text-white font-normal" : isActive ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
         size="sm"
-        as={Link}
-        href={`/c/${id}`}
-        variant={isActive ? "flat" : "light"}
+        render={(props) => (
+          <Link
+            {...(props as unknown as React.ComponentProps<"a">)}
+            href={`/c/${id}`}
+          />
+        )}
+        variant={isActive ? "secondary" : "ghost"}
         onPress={() => setButtonHovered(false)}
-        startContent={
-          getIcon() &&
+      >
+        {getIcon() &&
           React.cloneElement(getIcon()!, {
             width: 18,
             height: 18,
-          })
-        }
-      >
+          })}
         <div className="flex w-full items-center justify-start gap-2">
           {/* Streaming indicator — amber when blocked on your approval, else
               the blue "actively streaming" pulse. */}

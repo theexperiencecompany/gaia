@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { ShieldIcon } from "@icons";
 import type {
   ApprovalDecision,
@@ -124,15 +124,15 @@ export default function ApprovalRequestGroup({
             {pending.length} actions need your approval
           </div>
           <Button
-            color="primary"
             size="sm"
             isDisabled={batchSubmitting !== null}
             onPress={() => decideAll("approve")}
+            variant="primary"
           >
             Approve all
           </Button>
           <Button
-            variant="flat"
+            variant="tertiary"
             size="sm"
             isDisabled={batchSubmitting !== null}
             onPress={() => decideAll("deny")}
@@ -141,7 +141,7 @@ export default function ApprovalRequestGroup({
           </Button>
           {pending.length >= 3 && (
             <Button
-              variant="bordered"
+              variant="secondary"
               size="sm"
               isDisabled={batchSubmitting !== null}
               onPress={() => setSheetOpen(true)}

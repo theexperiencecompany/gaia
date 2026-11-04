@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Button, Input, Label, TextField } from "@heroui/react";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
 import { SecretInput } from "@/components/shared/SecretInput";
@@ -87,34 +86,40 @@ export function PasswordChangeSection() {
           isRequired
           isDisabled={isSubmitting}
         />
-        <Input
-          type={arePasswordsVisible ? "text" : "password"}
-          label="New password"
+        <TextField
           value={newPassword}
-          onValueChange={setNewPassword}
-          autoComplete="new-password"
-          minLength={MIN_PASSWORD_LENGTH}
+          onChange={setNewPassword}
           isRequired
           isDisabled={isSubmitting}
-        />
-        <Input
-          type={arePasswordsVisible ? "text" : "password"}
-          label="Confirm new password"
+        >
+          <Label>New password</Label>
+          <Input
+            type={arePasswordsVisible ? "text" : "password"}
+            autoComplete="new-password"
+            minLength={MIN_PASSWORD_LENGTH}
+          />
+        </TextField>
+        <TextField
           value={confirmPassword}
-          onValueChange={setConfirmPassword}
-          autoComplete="new-password"
+          onChange={setConfirmPassword}
           isRequired
           isDisabled={isSubmitting}
-        />
+        >
+          <Label>Confirm new password</Label>
+          <Input
+            type={arePasswordsVisible ? "text" : "password"}
+            autoComplete="new-password"
+          />
+        </TextField>
 
         {error && <FormError>{error}</FormError>}
 
         <div>
           <Button
             type="submit"
-            color="primary"
+            variant="primary"
             size="sm"
-            isLoading={isSubmitting}
+            isPending={isSubmitting}
           >
             Update password
           </Button>

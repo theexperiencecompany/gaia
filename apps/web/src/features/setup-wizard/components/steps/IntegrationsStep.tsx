@@ -7,9 +7,7 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, Chip, Skeleton } from "@heroui/react";
 import { CircleArrowUpRight02Icon, ConnectIcon, KeyIcon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
@@ -76,7 +74,7 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
           description="Accounts you sign into, like Gmail or Calendar, so GAIA can work in them."
           accessory={
             connectedCount > 0 && (
-              <Chip size="sm" variant="flat" color="success">
+              <Chip size="sm" variant="soft" color="success">
                 {connectedCount} connected
               </Chip>
             )
@@ -91,11 +89,14 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
                 : "need a Composio key first."}
             </p>
             <Button
-              as={Link}
-              href={COMPOSIO_SETUP_PATH}
+              render={(props) => (
+                <Link
+                  {...(props as unknown as React.ComponentProps<typeof Link>)}
+                  href={COMPOSIO_SETUP_PATH}
+                />
+              )}
               size="sm"
-              variant="flat"
-              color="primary"
+              variant="secondary"
               className="shrink-0"
             >
               {hasComposioKey ? "Set them up" : "Add Composio key"}
@@ -148,8 +149,12 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
                   </div>
                   <Button
                     size="sm"
-                    variant="flat"
-                    color={state === "expired" ? "warning" : "primary"}
+                    variant={state === "expired" ? "tertiary" : "secondary"}
+                    className={
+                      state === "expired"
+                        ? "bg-warning/15 text-warning"
+                        : undefined
+                    }
                     onPress={() => {
                       void connectIntegration(integration.id);
                     }}
@@ -179,15 +184,18 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
       </div>
 
       <Button
-        as={Link}
-        href="/integrations"
-        variant="light"
+        render={(props) => (
+          <Link
+            {...(props as unknown as React.ComponentProps<typeof Link>)}
+            href="/integrations"
+          />
+        )}
+        variant="ghost"
         size="sm"
-        radius="full"
-        endContent={<CircleArrowUpRight02Icon className="size-4" />}
-        className="self-start text-zinc-400"
+        className="self-start rounded-full text-zinc-400"
       >
         Browse all integrations
+        <CircleArrowUpRight02Icon className="size-4" />
       </Button>
     </m.div>
   );

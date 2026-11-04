@@ -1,7 +1,12 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import {
+  Button,
+  FieldError,
+  InputGroup,
+  Label,
+  TextField,
+} from "@heroui/react";
 import { Github01Icon, PlusSignIcon } from "@icons";
 import { useMemo, useState } from "react";
 import { toast } from "@/lib/toast";
@@ -114,32 +119,36 @@ export function SkillImportForm({
         value={target}
         onChange={setTarget}
       />
-      <Input
-        label="GitHub repository"
-        placeholder="owner/repo or a full GitHub URL"
-        value={repoUrl}
-        onValueChange={setRepoUrl}
-        isInvalid={!!repoError}
-        errorMessage={repoError}
-        startContent={<Github01Icon className="size-4 text-white" />}
-        onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing) return;
-          if (e.key === "Enter" && repoValid) handleDiscover();
-        }}
-        endContent={
-          <Button
-            size="sm"
-            color="primary"
-            variant="flat"
-            className="-mr-1 shrink-0 rounded-lg"
-            isLoading={discovering}
-            isDisabled={!repoValid}
-            onPress={handleDiscover}
-          >
-            Find skills
-          </Button>
-        }
-      />
+      <TextField isInvalid={!!repoError}>
+        <Label>GitHub repository</Label>
+        <InputGroup>
+          <InputGroup.Prefix>
+            <Github01Icon className="size-4 text-white" />
+          </InputGroup.Prefix>
+          <InputGroup.Input
+            placeholder="owner/repo or a full GitHub URL"
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Enter" && repoValid) handleDiscover();
+            }}
+          />
+          <InputGroup.Suffix>
+            <Button
+              size="sm"
+              variant="tertiary"
+              className="-mr-1 shrink-0 rounded-lg"
+              isPending={discovering}
+              isDisabled={!repoValid}
+              onPress={handleDiscover}
+            >
+              Find skills
+            </Button>
+          </InputGroup.Suffix>
+        </InputGroup>
+        <FieldError>{repoError}</FieldError>
+      </TextField>
 
       {discovered !== null && discovered.length > 0 && (
         <>
@@ -150,16 +159,13 @@ export function SkillImportForm({
             </span>
             <Button
               size="sm"
-              color="primary"
-              variant="flat"
+              variant="tertiary"
               className="rounded-xl"
-              isLoading={installingAll}
+              isPending={installingAll}
               isDisabled={installBusy && !installingAll}
-              startContent={
-                installingAll ? undefined : <PlusSignIcon className="size-4" />
-              }
               onPress={handleInstallAll}
             >
+              {installingAll ? null : <PlusSignIcon className="size-4" />}
               Add all
             </Button>
           </div>
@@ -177,18 +183,15 @@ export function SkillImportForm({
                 </div>
                 <Button
                   size="sm"
-                  color="primary"
-                  variant="flat"
+                  variant="tertiary"
                   className="rounded-xl"
-                  isLoading={installingPath === skill.path}
+                  isPending={installingPath === skill.path}
                   isDisabled={installBusy && installingPath !== skill.path}
-                  startContent={
-                    installingPath === skill.path ? undefined : (
-                      <PlusSignIcon className="size-4" />
-                    )
-                  }
                   onPress={() => handleInstall(skill)}
                 >
+                  {installingPath === skill.path ? null : (
+                    <PlusSignIcon className="size-4" />
+                  )}
                   Add
                 </Button>
               </div>

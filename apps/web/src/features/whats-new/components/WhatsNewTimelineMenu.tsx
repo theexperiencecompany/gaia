@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { PackageOpenIcon } from "@icons";
 import { track } from "@/lib/analytics";
 import { useWhatsNewStore } from "@/stores/whatsNewStore";
@@ -93,12 +93,12 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
       {/* Footer */}
       <div className="px-3">
         <Button
-          variant="light"
+          variant="tertiary"
           size="sm"
           onPress={handleViewAll}
-          startContent={<PackageOpenIcon className="size-4 shrink-0" />}
           className="justify-start text-zinc-500"
         >
+          <PackageOpenIcon className="size-4 shrink-0" />
           View all releases
         </Button>
       </div>

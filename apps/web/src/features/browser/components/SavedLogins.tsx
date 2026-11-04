@@ -1,17 +1,14 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import {
+  Button,
+  Chip,
   Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Input } from "@heroui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
-import { ScrollShadow } from "@heroui/react";
-import { Skeleton } from "@heroui/skeleton";
+  Popover,
+  ScrollShadow,
+  SearchField,
+  Skeleton,
+} from "@heroui/react";
 import {
   ArcBrowserIcon,
   ChromeIcon,
@@ -85,19 +82,23 @@ function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
   const BrowserLogo = browserIcon(login.source_browser);
 
   return (
-    <Popover isOpen={open} onOpenChange={setOpen} placement="top" showArrow>
-      <PopoverTrigger>
+    <Popover isOpen={open} onOpenChange={setOpen}>
+      <Popover.Trigger>
         <button
           type="button"
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
         >
-          <Chip size="sm" variant="flat" className="bg-zinc-800 text-zinc-300">
-            Imported
+          <Chip
+            size="sm"
+            variant="tertiary"
+            className="bg-zinc-800 text-zinc-300"
+          >
+            <Chip.Label>Imported</Chip.Label>
           </Chip>
         </button>
-      </PopoverTrigger>
-      <PopoverContent className="rounded-2xl bg-zinc-900 p-3">
+      </Popover.Trigger>
+      <Popover.Content placement="top" className="rounded-2xl bg-zinc-900 p-3">
         <div className="flex flex-col gap-3">
           {login.source_browser && (
             <ProvenanceFact
@@ -121,7 +122,7 @@ function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
             />
           )}
         </div>
-      </PopoverContent>
+      </Popover.Content>
     </Popover>
   );
 }
@@ -183,13 +184,12 @@ function LoginRow({
       </div>
       <Button
         size="sm"
-        variant="light"
-        color="danger"
+        variant="ghost"
         className={`h-8 shrink-0 transition-opacity ${isForgetting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-        isLoading={isForgetting}
-        startContent={!isForgetting && <Delete02Icon className="size-4" />}
+        isPending={isForgetting}
         onPress={() => onForget(login.domain)}
       >
+        {!isForgetting && <Delete02Icon className="size-4" />}
         Forget
       </Button>
     </div>
@@ -258,61 +258,58 @@ export function SavedLogins() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {logins.length > 0 && (
-            <Input
-              size="sm"
-              radius="lg"
+            <SearchField
+              aria-label="Search saved sites"
               value={query}
-              onValueChange={setQuery}
-              isClearable
-              onClear={() => setQuery("")}
-              placeholder="Search saved sites…"
-              startContent={<Search01Icon className="size-4 text-zinc-500" />}
+              onChange={setQuery}
               className="max-w-52"
-              classNames={{ inputWrapper: "bg-zinc-800" }}
-            />
+            >
+              <SearchField.Group className="bg-zinc-800">
+                <Search01Icon className="size-4 text-zinc-500" />
+                <SearchField.Input placeholder="Search saved sites…" />
+                <SearchField.ClearButton />
+              </SearchField.Group>
+            </SearchField>
           )}
-          <Dropdown placement="bottom-end">
-            <DropdownTrigger>
+          <Dropdown>
+            <Dropdown.Trigger>
               <Button
                 isIconOnly
                 aria-label="Saved sites actions"
                 size="sm"
-                variant="light"
+                variant="tertiary"
               >
                 <MoreVerticalIcon className="size-4" />
               </Button>
-            </DropdownTrigger>
-            <DropdownMenu aria-label="Saved sites actions">
-              <DropdownItem
-                key="import"
-                textValue="Import from browser"
-                startContent={
+            </Dropdown.Trigger>
+            <Dropdown.Popover placement="bottom end">
+              <Dropdown.Menu
+                aria-label="Saved sites actions"
+                onAction={(key) => {
+                  if (key === "import") setConnectOpen(true);
+                  if (key === "refresh") void refetch();
+                  if (key === "clear") void handleClearAll();
+                }}
+              >
+                <Dropdown.Item id="import" textValue="Import from browser">
                   <DatabaseImportIcon className="size-4 text-zinc-400" />
-                }
-                onPress={() => setConnectOpen(true)}
-              >
-                Import from browser
-              </DropdownItem>
-              <DropdownItem
-                key="refresh"
-                textValue="Refresh"
-                startContent={<RefreshIcon className="size-4 text-zinc-400" />}
-                onPress={() => void refetch()}
-              >
-                Refresh
-              </DropdownItem>
-              <DropdownItem
-                key="clear"
-                textValue="Clear all"
-                color="danger"
-                className="text-danger"
-                isDisabled={logins.length === 0 || isClearingAll}
-                startContent={<Delete02Icon className="size-4" />}
-                onPress={() => void handleClearAll()}
-              >
-                Clear all
-              </DropdownItem>
-            </DropdownMenu>
+                  Import from browser
+                </Dropdown.Item>
+                <Dropdown.Item id="refresh" textValue="Refresh">
+                  <RefreshIcon className="size-4 text-zinc-400" />
+                  Refresh
+                </Dropdown.Item>
+                <Dropdown.Item
+                  id="clear"
+                  textValue="Clear all"
+                  className="text-danger"
+                  isDisabled={logins.length === 0 || isClearingAll}
+                >
+                  <Delete02Icon className="size-4" />
+                  Clear all
+                </Dropdown.Item>
+              </Dropdown.Menu>
+            </Dropdown.Popover>
           </Dropdown>
         </div>
       </div>
@@ -331,7 +328,7 @@ export function SavedLogins() {
       ) : error ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800/40 p-6 text-center text-sm text-zinc-400">
           <span>Couldn&apos;t load your saved sites.</span>
-          <Button size="sm" variant="flat" onPress={() => void refetch()}>
+          <Button size="sm" variant="tertiary" onPress={() => void refetch()}>
             Retry
           </Button>
         </div>
@@ -346,8 +343,8 @@ export function SavedLogins() {
           </p>
           <Button
             size="sm"
-            color="primary"
             onPress={() => setConnectOpen(true)}
+            variant="primary"
           >
             Import
           </Button>

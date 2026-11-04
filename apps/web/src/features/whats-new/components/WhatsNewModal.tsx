@@ -1,14 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { Spinner } from "@heroui/spinner";
+import { Button, buttonVariants, Modal, Spinner } from "@heroui/react";
 import { ArrowLeft02Icon, ArrowRight02Icon, ArrowUpRight01Icon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { track } from "@/lib/analytics";
@@ -83,16 +75,17 @@ export function WhatsNewModal() {
   const release = releases[selectedIndex];
 
   return (
-    <Modal isOpen={isModalOpen} onClose={closeModal} size="2xl" backdrop="blur">
-      <ModalContent>
-        {() => (
-          <>
-            <ModalHeader>What&apos;s new in GAIA</ModalHeader>
+    <Modal isOpen={isModalOpen} onOpenChange={closeModal}>
+      <Modal.Backdrop>
+        <Modal.Container size="lg">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header>What&apos;s new in GAIA</Modal.Header>
 
-            <ModalBody>
+            <Modal.Body>
               {isLoading ? (
                 <div className="flex h-40 items-center justify-center">
-                  <Spinner size="sm" color="primary" />
+                  <Spinner size="sm" color="accent" />
                 </div>
               ) : releases.length === 0 ? (
                 <p className="py-8 text-center text-sm text-zinc-500">
@@ -117,19 +110,19 @@ export function WhatsNewModal() {
                   />
                 </div>
               )}
-            </ModalBody>
+            </Modal.Body>
 
             {showControls && (
-              <ModalFooter className="flex items-center justify-between">
-                <Button
-                  as="a"
+              <Modal.Footer className="flex items-center justify-between">
+                <a
                   href={release?.docsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  variant="light"
-                  size="sm"
-                  endContent={<ArrowUpRight01Icon className="h-3.5 w-3.5" />}
-                  onPress={() =>
+                  className={buttonVariants({
+                    variant: "tertiary",
+                    size: "sm",
+                  })}
+                  onClick={() =>
                     release &&
                     track("whats_new:docs_clicked", {
                       releaseId: release.id,
@@ -137,11 +130,12 @@ export function WhatsNewModal() {
                   }
                 >
                   View all release notes
-                </Button>
+                  <ArrowUpRight01Icon className="h-3.5 w-3.5" />
+                </a>
                 <div className="flex items-center gap-1">
                   <Button
                     isIconOnly
-                    variant="flat"
+                    variant="tertiary"
                     size="sm"
                     isDisabled={!canScrollPrev}
                     onPress={scrollPrev}
@@ -152,7 +146,7 @@ export function WhatsNewModal() {
                   </Button>
                   <Button
                     isIconOnly
-                    variant="flat"
+                    variant="tertiary"
                     size="sm"
                     isDisabled={!canScrollNext}
                     onPress={scrollNext}
@@ -162,11 +156,11 @@ export function WhatsNewModal() {
                     <ArrowRight02Icon className="h-4 w-4" />
                   </Button>
                 </div>
-              </ModalFooter>
+              </Modal.Footer>
             )}
-          </>
-        )}
-      </ModalContent>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

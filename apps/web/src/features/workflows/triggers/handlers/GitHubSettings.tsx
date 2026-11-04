@@ -7,8 +7,7 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
-import { Select, SelectItem } from "@heroui/select";
+import { Button, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -99,8 +98,8 @@ export function GitHubSettings({
     });
   };
 
-  const handleSelectionChange = (keys: "all" | Set<React.Key>) => {
-    const selectedKeys = keys === "all" ? [] : Array.from(keys).map(String);
+  const handleSelectionChange = (keys: React.Key[]) => {
+    const selectedKeys = keys.map(String);
 
     updateTriggerData({
       repos: selectedKeys,
@@ -132,6 +131,16 @@ export function GitHubSettings({
 
   const currentSelectedKeys = triggerData?.repos || [];
 
+  const repoLabel = (repo: string) =>
+    repoOptions.find((option) => option.value === repo)?.label ?? repo;
+
+  const selectValue =
+    currentSelectedKeys.length === 0
+      ? "Select repositories"
+      : currentSelectedKeys.length === 1
+        ? repoLabel(currentSelectedKeys[0] as string) || "1 repository"
+        : `${currentSelectedKeys.length} repositories selected`;
+
   return (
     <TriggerSettingsCard>
       <TriggerSettingRow label="Repositories" wide>
@@ -141,61 +150,64 @@ export function GitHubSettings({
               aria-label="Repositories"
               placeholder="Select repositories"
               selectionMode="multiple"
-              selectedKeys={new Set(currentSelectedKeys)}
-              onSelectionChange={handleSelectionChange}
-              isLoading={isLoading}
-              scrollRef={attachScrollLoader}
+              value={currentSelectedKeys}
+              onChange={handleSelectionChange}
               className="w-full"
-              items={hasNextPage ? [...repoOptions, LOADER_ITEM] : repoOptions}
-              renderValue={(items) => {
-                const count = items.filter(
-                  (item) => item.key !== LOADER_ITEM.value,
-                ).length;
-                if (count === 0) return "Select repositories";
-                if (count === 1) return items[0]?.textValue || "1 repository";
-                return `${count} repositories selected`;
-              }}
-              description={
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-zinc-500">
-                    {repoOptions.length} loaded
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setUseManualInput(true)}
-                    className="text-xs text-primary hover:underline cursor-pointer"
-                  >
-                    Or enter manually
-                  </button>
-                </div>
-              }
             >
-              {(item) => (
-                <SelectItem
-                  key={item.value}
-                  textValue={item.label}
-                  isReadOnly={item.isLoader}
-                  className={item.isLoader ? "h-unit-8" : ""}
-                >
-                  {item.isLoader ? (
-                    <div className="flex justify-center w-full">
-                      <span className="text-xs text-zinc-500">
-                        {item.label}
-                      </span>
-                    </div>
-                  ) : (
-                    item.label
-                  )}
-                </SelectItem>
-              )}
+              <Select.Trigger className="w-full">
+                <Select.Value>
+                  {isLoading && currentSelectedKeys.length === 0
+                    ? "Loading..."
+                    : selectValue}
+                </Select.Value>
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox ref={attachScrollLoader}>
+                  {(hasNextPage
+                    ? [...repoOptions, LOADER_ITEM]
+                    : repoOptions
+                  ).map((item) => (
+                    <ListBox.Item
+                      key={item.value}
+                      id={item.value}
+                      textValue={item.label}
+                      isDisabled={item.isLoader}
+                      className={item.isLoader ? "h-unit-8" : ""}
+                    >
+                      {item.isLoader ? (
+                        <div className="flex justify-center w-full">
+                          <span className="text-xs text-zinc-500">
+                            {item.label}
+                          </span>
+                        </div>
+                      ) : (
+                        item.label
+                      )}
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
             </Select>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-zinc-500">
+                {repoOptions.length} loaded
+              </span>
+              <button
+                type="button"
+                onClick={() => setUseManualInput(true)}
+                className="text-xs text-primary hover:underline cursor-pointer"
+              >
+                Or enter manually
+              </button>
+            </div>
             {hasNextPage && !isLoading && (
               <Button
                 size="sm"
-                variant="light"
+                variant="tertiary"
                 className="w-full text-xs"
                 onPress={() => fetchNextPage()}
-                isLoading={isFetchingNextPage}
+                isPending={isFetchingNextPage}
               >
                 Load more repositories
               </Button>

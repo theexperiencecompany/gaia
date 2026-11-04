@@ -5,7 +5,7 @@
 
 "use client";
 
-import { Switch } from "@heroui/switch";
+import { Switch } from "@heroui/react";
 
 interface TriggerToggleRowProps {
   label: string;
@@ -29,7 +29,7 @@ export function TriggerToggleRow({
       <Switch
         size="sm"
         isSelected={isSelected}
-        onValueChange={onValueChange}
+        onChange={onValueChange}
         aria-label={label}
       />
     </div>

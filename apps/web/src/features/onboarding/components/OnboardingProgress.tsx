@@ -4,14 +4,7 @@
  * a modal before invoking the caller-supplied `onRestart`.
  */
 
-import { Button } from "@heroui/button";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+import { Button, Modal } from "@heroui/react";
 import { RedoIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo, useState } from "react";
@@ -79,13 +72,11 @@ function OnboardingProgressImpl({
       {onRestart && currentStep !== 0 && (
         <Button
           size="sm"
-          variant="flat"
-          radius="full"
+          variant="tertiary"
           onPress={() => setConfirmOpen(true)}
-          isLoading={isRestarting}
+          isPending={isRestarting}
           isDisabled={isRestarting}
           isIconOnly={isMobile}
-          startContent={!isRestarting && !isMobile && <RedoIcon size={14} />}
           // A phone has no spare bottom edge (the composer lives there), so
           // the restart is a small icon in the top-right corner instead.
           className={
@@ -93,48 +84,53 @@ function OnboardingProgressImpl({
           }
           aria-label="Restart onboarding"
         >
-          {isMobile
-            ? !isRestarting && <RedoIcon size={16} />
-            : isRestarting
-              ? "Restarting…"
-              : "Restart Onboarding"}
+          {isMobile ? (
+            !isRestarting && <RedoIcon size={16} />
+          ) : isRestarting ? (
+            "Restarting…"
+          ) : (
+            <>
+              {!(isRestarting || isMobile) && <RedoIcon size={14} />}
+              Restart Onboarding
+            </>
+          )}
         </Button>
       )}
 
-      <Modal
-        isOpen={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        size="md"
-        backdrop="blur"
-        placement="center"
-      >
-        <ModalContent>
-          {(onClose) => (
-            <>
-              <ModalHeader>Start from scratch?</ModalHeader>
-              <ModalBody>
+      <Modal isOpen={confirmOpen} onOpenChange={setConfirmOpen}>
+        <Modal.Backdrop>
+          <Modal.Container placement="center" size="md">
+            <Modal.Dialog>
+              <Modal.CloseTrigger aria-label="Close" />
+              <Modal.Header>
+                <Modal.Heading>Start from scratch?</Modal.Heading>
+              </Modal.Header>
+              <Modal.Body>
                 <p className="text-sm text-zinc-400">
                   This wipes your answers, linked apps and what I've learned
                   about you. Nothing about your subscription changes.
                 </p>
-              </ModalBody>
-              <ModalFooter>
-                <Button variant="flat" onPress={onClose}>
+              </Modal.Body>
+              <Modal.Footer>
+                <Button
+                  variant="tertiary"
+                  onPress={() => setConfirmOpen(false)}
+                >
                   Cancel
                 </Button>
                 <Button
-                  color="danger"
                   onPress={() => {
-                    onClose();
+                    setConfirmOpen(false);
                     onRestart?.();
                   }}
+                  variant="danger"
                 >
                   Restart
                 </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
     </nav>
   );

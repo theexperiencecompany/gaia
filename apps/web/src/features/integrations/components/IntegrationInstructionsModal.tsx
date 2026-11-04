@@ -1,15 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/kbd";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Button, Kbd, Modal, Tabs } from "@heroui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // The renderer takes streamdown's Components, not react-markdown's: the two are
 // structurally incompatible, and react-markdown's is not assignable to it.
@@ -154,117 +145,135 @@ export const IntegrationInstructionsModal = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={handleClose}
-      size="2xl"
-      backdrop="blur"
-      scrollBehavior="inside"
-      className="rounded-2xl border border-zinc-800 bg-zinc-900/95 outline-0 backdrop-blur-3xl"
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
     >
-      <ModalContent>
-        <ModalHeader className="flex gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-zinc-800">
-            <IntegrationIcon
-              integrationId={integration.id}
-              iconUrl={integration.iconUrl}
-              category={integration.category}
-              size={26}
-            />
-          </div>
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-lg font-semibold text-zinc-100">
-              Custom instructions for {integration.name}
-            </span>
-            <span className="text-sm font-light text-zinc-400">
-              Tell GAIA how you use {integration.name}.
-              {canMention ? " Type @ to mention a tool." : ""} Markdown
-              supported.
-            </span>
-          </div>
-        </ModalHeader>
-
-        <ModalBody className="gap-3">
-          <Tabs
-            aria-label="Instructions editor"
-            selectedKey={tab}
-            onSelectionChange={(key) => setTab(String(key))}
-            variant="solid"
-            classNames={{
-              tabList: "bg-zinc-800/60",
-              cursor: "bg-zinc-700",
-              panel: "px-0 pb-0 pt-2",
-            }}
-          >
-            <Tab key="write" title="Write">
-              <MentionEditor
-                value={value}
-                onChange={setValue}
-                toolNames={toolNames}
-                renderMentionIcon={renderMentionIcon}
-                maxLength={MAX_INSTRUCTIONS_CHARS}
-                placeholder={`e.g. Focus on #eng, #design, and #pm.\nNever post to #general.\nDefault to a friendly, concise tone.`}
-              />
-
-              <div className="mt-2 flex items-center justify-between text-xs font-light text-zinc-500">
-                <span>
-                  {canMention
-                    ? "Type @ to mention a tool"
-                    : "Markdown supported"}
-                </span>
-                <span>
-                  {value.length} / {MAX_INSTRUCTIONS_CHARS}
+      <Modal.Backdrop variant="blur">
+        <Modal.Container placement="center" size="lg">
+          <Modal.Dialog className="max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900/95 outline-0 backdrop-blur-3xl">
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex gap-3">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-zinc-800">
+                <IntegrationIcon
+                  integrationId={integration.id}
+                  iconUrl={integration.iconUrl}
+                  category={integration.category}
+                  size={26}
+                />
+              </div>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <Modal.Heading className="text-lg font-semibold text-zinc-100">
+                  Custom instructions for {integration.name}
+                </Modal.Heading>
+                <span className="text-sm font-light text-zinc-400">
+                  Tell GAIA how you use {integration.name}.
+                  {canMention ? " Type @ to mention a tool." : ""} Markdown
+                  supported.
                 </span>
               </div>
-            </Tab>
+            </Modal.Header>
 
-            <Tab key="preview" title="Preview">
-              <div className="min-h-60 rounded-2xl bg-zinc-800/50 p-4">
-                {value.trim() ? (
-                  <MarkdownRenderer
-                    content={previewContent}
-                    className="text-sm"
-                    components={previewComponents}
-                    extraLinkProtocols={MENTION_PROTOCOLS}
+            <Modal.Body className="gap-3">
+              <Tabs
+                selectedKey={tab}
+                onSelectionChange={(key) => setTab(String(key))}
+                variant="primary"
+              >
+                <Tabs.List
+                  aria-label="Instructions editor"
+                  className="bg-zinc-800/60"
+                >
+                  <Tabs.Tab id="write">
+                    Write
+                    <Tabs.Indicator className="bg-zinc-700" />
+                  </Tabs.Tab>
+                  <Tabs.Tab id="preview">
+                    Preview
+                    <Tabs.Indicator className="bg-zinc-700" />
+                  </Tabs.Tab>
+                </Tabs.List>
+
+                <Tabs.Panel id="write" className="px-0 pt-2 pb-0">
+                  <MentionEditor
+                    value={value}
+                    onChange={setValue}
+                    toolNames={toolNames}
+                    renderMentionIcon={renderMentionIcon}
+                    maxLength={MAX_INSTRUCTIONS_CHARS}
+                    placeholder={`e.g. Focus on #eng, #design, and #pm.\nNever post to #general.\nDefault to a friendly, concise tone.`}
                   />
-                ) : (
-                  <p className="py-12 text-center text-sm text-zinc-500">
-                    Nothing to preview yet. Switch to Write and add some
-                    guidance.
-                  </p>
+
+                  <div className="mt-2 flex items-center justify-between text-xs font-light text-zinc-500">
+                    <span>
+                      {canMention
+                        ? "Type @ to mention a tool"
+                        : "Markdown supported"}
+                    </span>
+                    <span>
+                      {value.length} / {MAX_INSTRUCTIONS_CHARS}
+                    </span>
+                  </div>
+                </Tabs.Panel>
+
+                <Tabs.Panel id="preview" className="px-0 pt-2 pb-0">
+                  <div className="min-h-60 rounded-2xl bg-zinc-800/50 p-4">
+                    {value.trim() ? (
+                      <MarkdownRenderer
+                        content={previewContent}
+                        className="text-sm"
+                        components={previewComponents}
+                        extraLinkProtocols={MENTION_PROTOCOLS}
+                      />
+                    ) : (
+                      <p className="py-12 text-center text-sm text-zinc-500">
+                        Nothing to preview yet. Switch to Write and add some
+                        guidance.
+                      </p>
+                    )}
+                  </div>
+                </Tabs.Panel>
+              </Tabs>
+
+              {hasConflict && (
+                <InstructionsConflictNotice
+                  isSaving={isSaving}
+                  isRefreshing={isRefreshing}
+                  onLoadLatest={loadLatest}
+                  onKeepMine={handleKeepMine}
+                />
+              )}
+            </Modal.Body>
+
+            <Modal.Footer>
+              <Button
+                variant="tertiary"
+                onPress={handleClose}
+                isDisabled={isSaving}
+              >
+                Cancel
+                <Kbd>
+                  <Kbd.Abbr keyValue="escape" />
+                </Kbd>
+              </Button>
+              <Button
+                onPress={handleSave}
+                isPending={isSaving}
+                isDisabled={!canSave}
+                variant="primary"
+              >
+                Save instructions
+                {!isSaving && (
+                  <Kbd>
+                    <Kbd.Abbr keyValue={modifierKeyName} />
+                    <Kbd.Abbr keyValue="enter" />
+                  </Kbd>
                 )}
-              </div>
-            </Tab>
-          </Tabs>
-
-          {hasConflict && (
-            <InstructionsConflictNotice
-              isSaving={isSaving}
-              isRefreshing={isRefreshing}
-              onLoadLatest={loadLatest}
-              onKeepMine={handleKeepMine}
-            />
-          )}
-        </ModalBody>
-
-        <ModalFooter>
-          <Button
-            variant="light"
-            onPress={handleClose}
-            isDisabled={isSaving}
-            endContent={<Kbd keys={["escape"]} />}
-          >
-            Cancel
-          </Button>
-          <Button
-            color="primary"
-            onPress={handleSave}
-            isLoading={isSaving}
-            isDisabled={!canSave}
-            endContent={!isSaving && <Kbd keys={[modifierKeyName, "enter"]} />}
-          >
-            Save instructions
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 };

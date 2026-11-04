@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
+import { Button, Chip, Spinner } from "@heroui/react";
 import { Clock01Icon, Tag01Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
@@ -36,7 +34,7 @@ export function SubTodosSection({
       <p className="text-xs font-medium text-zinc-400">
         Sub-todos ({openCount} open)
       </p>
-      {isLoading && <Spinner size="sm" color="default" />}
+      {isLoading && <Spinner size="sm" />}
       {isError && (
         <p className="text-xs text-zinc-500">Couldn't load the sub-todos.</p>
       )}
@@ -51,36 +49,24 @@ export function SubTodosSection({
             </Link>
             <div className="mt-1 flex flex-wrap items-center gap-1">
               {subTodo.completed && (
-                <Chip size="sm" radius="sm" variant="flat" color="success">
+                <Chip size="sm" variant="tertiary" color="success">
                   Completed
                 </Chip>
               )}
               {subTodo.labels.map((label) => (
-                <Chip
-                  key={label}
-                  size="sm"
-                  radius="sm"
-                  variant="flat"
-                  startContent={
-                    <Tag01Icon width={14} height={14} className="mx-1" />
-                  }
-                >
-                  {label}
+                <Chip key={label} size="sm" variant="tertiary">
+                  <Tag01Icon width={14} height={14} className="mx-1" />
+                  <Chip.Label>{label}</Chip.Label>
                 </Chip>
               ))}
               {subTodo.scheduled_at && (
-                <Chip
-                  size="sm"
-                  radius="sm"
-                  variant="flat"
-                  color="primary"
-                  startContent={
-                    <Clock01Icon width={14} height={14} className="mx-1" />
-                  }
-                >
-                  {formatDistanceToNow(new Date(subTodo.scheduled_at), {
-                    addSuffix: true,
-                  })}
+                <Chip size="sm" variant="tertiary" color="accent">
+                  <Clock01Icon width={14} height={14} className="mx-1" />
+                  <Chip.Label>
+                    {formatDistanceToNow(new Date(subTodo.scheduled_at), {
+                      addSuffix: true,
+                    })}
+                  </Chip.Label>
                 </Chip>
               )}
             </div>
@@ -91,8 +77,8 @@ export function SubTodosSection({
       {hasNextPage && (
         <Button
           size="sm"
-          variant="flat"
-          isLoading={isFetchingNextPage}
+          variant="tertiary"
+          isPending={isFetchingNextPage}
           onPress={() => fetchNextPage()}
         >
           Load more

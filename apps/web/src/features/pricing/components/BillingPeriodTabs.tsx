@@ -1,7 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Chip, Tabs } from "@heroui/react";
 import type { Plan } from "../api/pricingApi";
 import {
   type AnnualSavings,
@@ -37,24 +36,23 @@ export function BillingPeriodTabs({
     <Tabs
       selectedKey={isYearly ? "yearly" : "monthly"}
       onSelectionChange={(key) => onChange(key === "yearly")}
-      radius="full"
-      size="lg"
       aria-label="Billing period"
     >
-      <Tab key="monthly" title="Monthly" />
-      <Tab
-        key="yearly"
-        title={
+      <Tabs.List>
+        <Tabs.Tab id="monthly">Monthly</Tabs.Tab>
+        <Tabs.Tab id="yearly">
           <div className="flex items-center gap-2">
             Yearly
             {savings !== null && (
-              <Chip color="primary" size="sm" variant="solid">
+              <Chip color="accent" size="sm" variant="primary">
                 {annualSavingsLabel(savings)}
               </Chip>
             )}
           </div>
-        }
-      />
+        </Tabs.Tab>
+      </Tabs.List>
+      <Tabs.Panel id="monthly">{null}</Tabs.Panel>
+      <Tabs.Panel id="yearly">{null}</Tabs.Panel>
     </Tabs>
   );
 }

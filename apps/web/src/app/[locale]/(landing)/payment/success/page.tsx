@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Button, Spinner } from "@heroui/react";
 import {
   Alert02Icon,
   CheckmarkCircle02Icon,
@@ -215,7 +214,7 @@ export default function PaymentSuccessPage() {
               {!isRestarting && <RedoIcon className="size-4" />}
             </RaisedButton>
             <Button
-              variant="flat"
+              variant="tertiary"
               className="w-full rounded-xl"
               onPress={() => router.push("/pricing")}
             >

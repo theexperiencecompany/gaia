@@ -1,8 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { ArrowRight02Icon } from "@icons";
 import Link from "next/link";
+import type { ComponentProps } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 
@@ -82,15 +83,16 @@ export function IntegrationRichContent({
           automations in plain English without writing a single line of code.
         </p>
         <Button
-          as={Link}
-          href="/marketplace"
-          variant="flat"
-          color="primary"
-          endContent={
-            <ArrowRight02Icon className="h-3.5 w-3.5" aria-hidden="true" />
-          }
+          render={(props) => (
+            <Link
+              {...(props as unknown as ComponentProps<typeof Link>)}
+              href="/marketplace"
+            />
+          )}
+          variant="tertiary"
         >
           Browse all integrations
+          <ArrowRight02Icon className="h-3.5 w-3.5" aria-hidden="true" />
         </Button>
       </section>
 

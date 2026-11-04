@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Cancel01Icon, LinkBackwardIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -151,13 +151,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
 
             <div className="absolute right-2">
               {onRemove && (
-                <Button
-                  type="button"
-                  onPress={onRemove}
-                  isIconOnly
-                  size="sm"
-                  radius="full"
-                >
+                <Button type="button" onPress={onRemove} isIconOnly size="sm">
                   <Cancel01Icon width={14} height={14} />
                 </Button>
               )}

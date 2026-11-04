@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Task01Icon, TaskDone01Icon } from "@icons";
 import type React from "react";
 
@@ -12,7 +12,7 @@ const CopyButton: React.FC<CopyButtonProps> = ({ copied, onPress }) => (
     className="text-xs text-foreground hover:text-gray-300"
     size="sm"
     isIconOnly
-    variant="light"
+    variant="tertiary"
     onPress={onPress}
   >
     {copied ? (

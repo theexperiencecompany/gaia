@@ -1,4 +1,4 @@
-import { Textarea } from "@heroui/input";
+import { TextArea } from "@heroui/react";
 import React, { useCallback, useImperativeHandle } from "react";
 
 import { useSlashCommandDropdownState } from "@/features/chat/hooks/useSlashCommandDropdownState";
@@ -67,7 +67,8 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
     );
 
     const handleTextChange = useCallback(
-      (text: string) => {
+      (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const text = e.target.value;
         onSearchbarTextChange(text);
 
         // Update slash command detection immediately without setTimeout
@@ -75,11 +76,17 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
           const cursorPosition = inputRef.current.selectionStart || 0;
           updateSlashCommandDetection(text, cursorPosition);
         }
+        onHeightChange(e.target.offsetHeight);
       },
-      [onSearchbarTextChange, updateSlashCommandDetection, inputRef],
+      [
+        onSearchbarTextChange,
+        updateSlashCommandDetection,
+        inputRef,
+        onHeightChange,
+      ],
     );
 
-    const handleKeyDownWithSlashCommands: React.KeyboardEventHandler<HTMLInputElement> =
+    const handleKeyDownWithSlashCommands: React.KeyboardEventHandler<HTMLTextAreaElement> =
       useCallback(
         (e) => {
           // First, handle slash command navigation
@@ -87,7 +94,9 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
 
           // If not handled by slash command, pass to original handler
           if (!wasHandledBySlashCommand) {
-            handleKeyDown(e);
+            handleKeyDown(
+              e as unknown as React.KeyboardEvent<HTMLInputElement>,
+            );
           }
         },
         [handleSlashCommandKeyDown, handleKeyDown],
@@ -107,24 +116,15 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
     return (
       <>
         <form onSubmit={handleFormSubmit}>
-          <Textarea
+          <TextArea
             ref={inputRef}
             autoFocus
-            classNames={{
-              inputWrapper:
-                " px-3 data-[hover=true]:bg-zinc-800 group-data-[focus-visible=true]:ring-zinc-800 group-data-[focus-visible=true]:ring-offset-0 shadow-none group-data-[focus-visible=true]:ring-transparent",
-              innerWrapper: `${currentHeight > 24 ? "items-end" : "items-center"} `,
-              input:
-                "font-light focus-visible:border-0! focus-visible:border-transparent!",
-            }}
-            maxRows={13}
-            minRows={1}
+            className={`max-h-[17rem] min-h-9 field-sizing-content px-3 font-light shadow-none focus-visible:border-0! focus-visible:border-transparent! ${currentHeight > 24 ? "self-end" : "self-center"}`}
+            rows={1}
             placeholder="What can I do for you today? (Type '/' for tools)"
-            size="lg"
             value={searchbarText}
-            onHeightChange={onHeightChange}
             onKeyDown={handleKeyDownWithSlashCommands}
-            onValueChange={handleTextChange}
+            onChange={handleTextChange}
             onSelect={handleCursorPositionChange}
             onClick={handleCursorPositionChange}
           />

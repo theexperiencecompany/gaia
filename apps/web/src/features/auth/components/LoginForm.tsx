@@ -1,9 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Link } from "@heroui/link";
-import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
+import { Button, Input, Label, Link, Modal, TextField } from "@heroui/react";
 import { ArrowRight02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
@@ -57,17 +54,19 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
-      <Input
-        type="email"
-        label="Email"
-        placeholder="you@example.com"
+      <TextField
         value={email}
-        onValueChange={setEmail}
-        autoComplete="email"
+        onChange={setEmail}
         isRequired
         isDisabled={isSubmitting}
-        variant="faded"
-      />
+      >
+        <Label>Email</Label>
+        <Input
+          type="email"
+          placeholder="you@example.com"
+          autoComplete="email"
+        />
+      </TextField>
       <SecretInput
         subject="password"
         label="Password"
@@ -76,19 +75,17 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         autoComplete="current-password"
         isRequired
         isDisabled={isSubmitting}
-        variant="faded"
       />
       {/* Self-host has one admin and no email recovery — surface the CLI reset path. This form only renders on local-auth instances (see login/page.tsx). */}
       <div className="flex justify-end">
         <Button
-          variant="light"
+          variant="ghost"
           size="sm"
-          radius="full"
-          endContent={<ArrowRight02Icon size={14} />}
           onPress={() => setShowResetHelp(true)}
-          className="text-xs text-zinc-400"
+          className="rounded-full text-xs text-zinc-400"
         >
           Forgot password?
+          <ArrowRight02Icon size={14} />
         </Button>
       </div>
 
@@ -96,8 +93,8 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
 
       <Button
         type="submit"
-        color="primary"
-        isLoading={isSubmitting}
+        variant="primary"
+        isPending={isSubmitting}
         className="w-full"
       >
         Sign in
@@ -105,40 +102,49 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
 
       {/* This form only renders on self-host instances (local auth), where a
           signup page exists — mirror the signup page's sign-in link. */}
-      <Link href="/signup" size="sm" color="primary" className="self-center">
+      <Link
+        href="/signup"
+        className="self-center text-sm text-primary hover:underline"
+      >
         Need an account? Sign up
       </Link>
 
       <Modal
         isOpen={showResetHelp}
-        onClose={() => setShowResetHelp(false)}
-        size="md"
+        onOpenChange={(open) => setShowResetHelp(open)}
       >
-        <ModalContent>
-          <ModalHeader>Reset admin password</ModalHeader>
-          <ModalBody className="gap-3 pb-6">
-            <p className="text-sm text-zinc-600 dark:text-zinc-300">
-              If you are the admin and forgot your password, run this on the
-              host that runs GAIA:
-            </p>
-            <div className="relative">
-              <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 pr-11 text-xs text-zinc-100">
-                {RESET_CMD}
-              </pre>
-              <CopyButton
-                textToCopy={RESET_CMD}
-                variant="light"
-                size="sm"
-                className="absolute top-2 right-2 text-zinc-400"
-              />
-            </div>
-            <p className="text-xs text-zinc-500">
-              It prints a new password for the admin account and signs out every
-              admin session. Sign in with it, then change it in Settings. Your
-              account and data stay as they are.
-            </p>
-          </ModalBody>
-        </ModalContent>
+        <Modal.Backdrop>
+          <Modal.Container placement="center" size="md">
+            <Modal.Dialog>
+              <Modal.CloseTrigger aria-label="Close" />
+              <Modal.Header>
+                <Modal.Heading>Reset admin password</Modal.Heading>
+              </Modal.Header>
+              <Modal.Body className="gap-3 pb-6">
+                <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                  If you are the admin and forgot your password, run this on the
+                  host that runs GAIA:
+                </p>
+                <div className="relative">
+                  <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 pr-11 text-xs text-zinc-100">
+                    {RESET_CMD}
+                  </pre>
+                  <CopyButton
+                    textToCopy={RESET_CMD}
+                    variant="ghost"
+                    size="sm"
+                    className="absolute top-2 right-2 text-zinc-400"
+                  />
+                </div>
+                <p className="text-xs text-zinc-500">
+                  It prints a new password for the admin account and signs out
+                  every admin session. Sign in with it, then change it in
+                  Settings. Your account and data stay as they are.
+                </p>
+              </Modal.Body>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
     </form>
   );

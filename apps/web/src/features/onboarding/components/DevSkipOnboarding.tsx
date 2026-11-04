@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -47,14 +47,7 @@ export function DevSkipOnboarding() {
 
   return (
     <div className="fixed bottom-4 left-4 z-50">
-      <Button
-        size="sm"
-        radius="full"
-        variant="flat"
-        color="warning"
-        isLoading={loading}
-        onPress={skip}
-      >
+      <Button size="sm" variant="secondary" isPending={loading} onPress={skip}>
         Skip onboarding (dev only)
       </Button>
     </div>

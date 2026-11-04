@@ -1,7 +1,6 @@
 "use client";
 
-import { Button as HeroButton } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Button as HeroButton, Tooltip } from "@heroui/react";
 import {
   AlertCircleIcon,
   CheckmarkBadge01Icon,
@@ -113,15 +112,18 @@ export const EnhancedNotificationCard = ({
           {/* Mark as read button */}
           {notification.status !== NotificationStatus.READ &&
             notification.status !== NotificationStatus.ARCHIVED && (
-              <Tooltip content="Mark as read" delay={300}>
-                <HeroButton
-                  size="sm"
-                  onPress={handleMarkAsRead}
-                  variant="light"
-                  isIconOnly
-                >
-                  <CheckmarkBadge01Icon className="h-4 w-4 text-zinc-500" />
-                </HeroButton>
+              <Tooltip delay={300}>
+                <Tooltip.Trigger>
+                  <HeroButton
+                    size="sm"
+                    onPress={handleMarkAsRead}
+                    variant="tertiary"
+                    isIconOnly
+                  >
+                    <CheckmarkBadge01Icon className="h-4 w-4 text-zinc-500" />
+                  </HeroButton>
+                </Tooltip.Trigger>
+                <Tooltip.Content>Mark as read</Tooltip.Content>
               </Tooltip>
             )}
         </div>

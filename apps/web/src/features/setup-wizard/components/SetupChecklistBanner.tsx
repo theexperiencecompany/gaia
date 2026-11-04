@@ -9,10 +9,11 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { ArrowDown01Icon, Cancel01Icon, Wrench01Icon } from "@icons";
 import * as m from "motion/react-m";
 import Link from "next/link";
+import type { ComponentProps } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
@@ -28,10 +29,11 @@ import { useSetupChecklistStore } from "@/stores/setupChecklistStore";
 function ChecklistAction({ item }: { item: SetupChecklistItem }) {
   return (
     <Button
-      as={Link}
-      href={item.href}
+      render={(props) => (
+        <Link {...(props as unknown as ComponentProps<"a">)} href={item.href} />
+      )}
       size="sm"
-      variant="flat"
+      variant="tertiary"
       className="shrink-0 font-medium"
     >
       {item.actionLabel}
@@ -50,11 +52,10 @@ function DismissButton({
     <Button
       isIconOnly
       size="sm"
-      variant="light"
-      radius="full"
+      variant="tertiary"
       aria-label={label}
       onPress={onDismiss}
-      className="shrink-0 text-zinc-500"
+      className="shrink-0 rounded-full text-zinc-500"
     >
       <Cancel01Icon size={14} />
     </Button>
@@ -127,21 +128,19 @@ export function SetupChecklistBanner({
               </p>
               <Button
                 size="sm"
-                variant="flat"
+                variant="tertiary"
                 className="shrink-0 font-medium"
                 aria-expanded={isExpanded}
-                endContent={
-                  <ArrowDown01Icon
-                    size={14}
-                    className={cn(
-                      "transition-transform duration-200",
-                      isExpanded && "rotate-180",
-                    )}
-                  />
-                }
                 onPress={() => setIsExpanded((open) => !open)}
               >
                 {isExpanded ? "Hide" : "Show"}
+                <ArrowDown01Icon
+                  size={14}
+                  className={cn(
+                    "transition-transform duration-200",
+                    isExpanded && "rotate-180",
+                  )}
+                />
               </Button>
             </div>
           )}

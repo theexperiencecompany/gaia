@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import type { Subscription } from "@/features/pricing/api/pricingApi";
@@ -48,11 +48,10 @@ export function CancelSubscriptionAction({
     <>
       {subscription.status === "active" && !cancellationScheduled && (
         <Button
-          color="danger"
-          variant="light"
+          variant="ghost"
           size="sm"
           className="w-full"
-          isLoading={isCancelling}
+          isPending={isCancelling}
           onPress={handleCancelSubscription}
         >
           Cancel subscription

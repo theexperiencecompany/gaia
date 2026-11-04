@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import {
   createContext,
@@ -89,7 +89,7 @@ export default function RightSidebarSlot() {
     <div className="flex w-full items-center justify-end px-3 pt-3 pb-1">
       <Button
         onPress={close}
-        variant="light"
+        variant="tertiary"
         isIconOnly
         size="sm"
         aria-label="Close"

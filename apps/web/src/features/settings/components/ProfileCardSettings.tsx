@@ -1,8 +1,6 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, ButtonGroup, Skeleton, Tooltip } from "@heroui/react";
 import { Copy01Icon, LinkSquare02Icon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
@@ -101,25 +99,27 @@ export default function ProfileCardSettings() {
           <p className="mt-0.5 text-xs text-zinc-500">A tiny window into you</p>
         </div>
         <ButtonGroup>
-          <Tooltip content="Copy profile link">
+          <Tooltip>
             <Button
               isIconOnly
-              variant="flat"
+              variant="tertiary"
               onPress={handleCopyLink}
               size="sm"
             >
               <Copy01Icon size={16} />
             </Button>
+            <Tooltip.Content>Copy profile link</Tooltip.Content>
           </Tooltip>
-          <Tooltip content="View full profile">
+          <Tooltip>
             <Button
               isIconOnly
-              variant="flat"
+              variant="tertiary"
               onPress={handleOpenProfile}
               size="sm"
             >
               <LinkSquare02Icon size={16} />
             </Button>
+            <Tooltip.Content>View full profile</Tooltip.Content>
           </Tooltip>
         </ButtonGroup>
       </div>
@@ -140,7 +140,7 @@ export default function ProfileCardSettings() {
                 displayData.user_bio.startsWith("Processing")) &&
               // Only show button if Gmail is not connected
               gmailState !== "connected" && (
-                <Button color="primary" onPress={handleConnectGmail}>
+                <Button onPress={handleConnectGmail} variant="primary">
                   {CONNECT_ACTION_LABEL[gmailState]} Gmail for a more
                   personalized bio
                 </Button>

@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { SquareLock01Icon } from "@icons";
 import type React from "react";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -34,10 +34,9 @@ export const CategoryIntegrationStatus: React.FC<
     return (
       <Chip
         size="sm"
-        variant="flat"
+        variant="tertiary"
         color="danger"
         className="flex aspect-square w-fit items-center justify-center"
-        radius="full"
       >
         <SquareLock01Icon className="h-3 w-3" />
       </Chip>

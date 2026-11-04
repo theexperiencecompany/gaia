@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { InboxIcon, QuillWrite01Icon } from "@icons";
 import dynamic from "next/dynamic";
 import { useState } from "react";
@@ -27,12 +27,11 @@ type MailButtonProps = {
 function MailButton({ label, Icon }: MailButtonProps) {
   return (
     <Button
-      startContent={<Icon width={21} height={21} />}
-      variant="light"
-      radius="sm"
+      variant="tertiary"
       size="sm"
       className="flex w-full justify-start text-sm text-foreground-600"
     >
+      <Icon width={21} height={21} />
       {label}
     </Button>
   );
@@ -60,11 +59,10 @@ export default function EmailSidebar() {
       <div className="flex h-full flex-col gap-1">
         <div className="flex w-full justify-center">
           <Button
-            color="primary"
             size="sm"
             className="mx-2 mb-4 flex w-full justify-start text-sm font-medium text-primary"
             onPress={() => setOpen(true)}
-            variant="flat"
+            variant="tertiary"
           >
             <QuillWrite01Icon width={18} height={18} />
             Compose Email

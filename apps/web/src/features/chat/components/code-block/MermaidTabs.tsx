@@ -1,4 +1,4 @@
-import { Tab, Tabs } from "@heroui/tabs";
+import { Tabs } from "@heroui/react";
 import dynamic from "next/dynamic";
 import type React from "react";
 import type { CSSProperties } from "react";
@@ -53,18 +53,26 @@ const MermaidTabs: React.FC<MermaidTabsProps> = ({
       className="px-3"
       disabledKeys={isLoading ? ["editor"] : []}
       selectedKey={activeTab}
-      variant="underlined"
-      classNames={{ tab: "font-sans" }}
-      onSelectionChange={(key) => onTabChange(key as string)}
+      onSelectionChange={(key) => onTabChange(String(key))}
     >
-      <Tab key="preview" className="p-0" title="Flowchart">
+      <Tabs.List aria-label="Diagram">
+        <Tabs.Tab id="preview" className="font-sans">
+          Flowchart
+          <Tabs.Indicator />
+        </Tabs.Tab>
+        <Tabs.Tab id="code" className="font-sans">
+          Code
+          <Tabs.Indicator />
+        </Tabs.Tab>
+      </Tabs.List>
+      <Tabs.Panel id="preview" className="p-0">
         <FlowchartPreview>{children}</FlowchartPreview>
-      </Tab>
-      <Tab key="code" title="Code">
+      </Tabs.Panel>
+      <Tabs.Panel id="code">
         <MermaidCode syntaxHighlighterProps={syntaxHighlighterProps}>
           {children}
         </MermaidCode>
-      </Tab>
+      </Tabs.Panel>
     </Tabs>
   );
 };

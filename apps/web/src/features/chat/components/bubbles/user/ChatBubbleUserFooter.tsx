@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { RedoIcon } from "@icons";
 
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
@@ -54,15 +54,12 @@ export function ChatBubbleUserFooter({
             className="h-7 min-w-0 px-2 text-xs"
             isDisabled={isRetrying}
             onPress={onRetry}
-            radius="full"
             size="sm"
-            startContent={
-              <div className={isRetrying ? "animate-spin" : ""}>
-                <RedoIcon height={13} width={13} />
-              </div>
-            }
-            variant="flat"
+            variant="tertiary"
           >
+            <div className={isRetrying ? "animate-spin" : ""}>
+              <RedoIcon height={13} width={13} />
+            </div>
             Retry
           </Button>
         )}

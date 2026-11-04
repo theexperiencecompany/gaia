@@ -1,7 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
+import { Chip, InputGroup, TextField } from "@heroui/react";
 import { SearchIcon } from "@icons";
 import { useCallback, useMemo, useState } from "react";
 import type { BlogPostMeta } from "@/lib/blog";
@@ -73,10 +72,10 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
         {categories.map((category) => (
           <Chip
             key={category}
-            variant="light"
+            variant="tertiary"
             className="cursor-pointer"
             size="lg"
-            color={selectedCategory === category ? "primary" : "default"}
+            color={selectedCategory === category ? "accent" : "default"}
             onClick={() => handleCategoryChange(category)}
           >
             {category}
@@ -84,16 +83,18 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
         ))}
       </div>
 
-      <Input
-        type="text"
-        placeholder="Search posts..."
+      <TextField
         value={searchQuery}
-        onValueChange={handleSearchChange}
-        startContent={<SearchIcon className="size-5 text-default-400" />}
-        variant="flat"
-        radius="full"
+        onChange={handleSearchChange}
         className="w-full max-w-sm"
-      />
+      >
+        <InputGroup>
+          <InputGroup.Prefix>
+            <SearchIcon className="size-5 text-default-400" />
+          </InputGroup.Prefix>
+          <InputGroup.Input type="text" placeholder="Search posts..." />
+        </InputGroup>
+      </TextField>
     </div>
   );
 }

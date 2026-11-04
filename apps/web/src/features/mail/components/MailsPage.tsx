@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Tooltip } from "@heroui/react";
 import {
   Archive01Icon,
   Cancel01Icon,
@@ -46,16 +45,19 @@ function AIAnalysisIndicator({ hasAnalysis }: { hasAnalysis: boolean }) {
   if (!hasAnalysis) return null;
 
   return (
-    <Tooltip content="AI Analysis Available" color="primary">
-      <div className="flex items-center justify-center">
-        <SparklesIcon
-          width={16}
-          height={16}
-          color="#00bbff"
-          fill="#00bbff"
-          className="drop-shadow-md"
-        />
-      </div>
+    <Tooltip>
+      <Tooltip.Trigger>
+        <div className="flex items-center justify-center">
+          <SparklesIcon
+            width={16}
+            height={16}
+            color="#00bbff"
+            fill="#00bbff"
+            className="drop-shadow-md"
+          />
+        </div>
+      </Tooltip.Trigger>
+      <Tooltip.Content>AI Analysis Available</Tooltip.Content>
     </Tooltip>
   );
 }
@@ -83,72 +85,62 @@ function SelectionToolbar({
   return (
     <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between rounded-md bg-zinc-900 px-1 py-1 text-white backdrop-blur-xl">
       <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          color="default"
-          variant="flat"
-          onPress={onClearSelections}
-          startContent={<Cancel01Icon size={16} />}
-        >
+        <Button size="sm" variant="tertiary" onPress={onClearSelections}>
+          <Cancel01Icon size={16} />
           Clear selection
         </Button>
         <span className="font-medium">{selectedCount} selected</span>
       </div>
       <div className="flex items-center gap-2">
-        <Tooltip content="Mark as read">
-          <Button
-            size="sm"
-            color="default"
-            variant="light"
-            onPress={onMarkAsRead}
-            isIconOnly
-          >
-            <CheckmarkSquare03Icon size={16} />
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button
+              size="sm"
+              variant="tertiary"
+              onPress={onMarkAsRead}
+              isIconOnly
+            >
+              <CheckmarkSquare03Icon size={16} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>Mark as read</Tooltip.Content>
         </Tooltip>
-        <Tooltip content="Mark as unread">
-          <Button
-            size="sm"
-            color="default"
-            variant="light"
-            onPress={onMarkAsUnread}
-            isIconOnly
-          >
-            <SquareIcon size={16} />
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button
+              size="sm"
+              variant="tertiary"
+              onPress={onMarkAsUnread}
+              isIconOnly
+            >
+              <SquareIcon size={16} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>Mark as unread</Tooltip.Content>
         </Tooltip>
-        <Tooltip content="Star">
-          <Button
-            size="sm"
-            color="warning"
-            variant="light"
-            onPress={onStar}
-            isIconOnly
-          >
-            <StarIcon size={16} />
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button size="sm" variant="ghost" onPress={onStar} isIconOnly>
+              <StarIcon size={16} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>Star</Tooltip.Content>
         </Tooltip>
-        <Tooltip content="Archive">
-          <Button
-            size="sm"
-            color="default"
-            variant="light"
-            onPress={onArchive}
-            isIconOnly
-          >
-            <Archive01Icon size={16} />
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button size="sm" variant="tertiary" onPress={onArchive} isIconOnly>
+              <Archive01Icon size={16} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>Archive</Tooltip.Content>
         </Tooltip>
-        <Tooltip content="Move to trash">
-          <Button
-            size="sm"
-            color="danger"
-            variant="light"
-            onPress={onTrash}
-            isIconOnly
-          >
-            <Delete02Icon size={16} />
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button size="sm" variant="ghost" onPress={onTrash} isIconOnly>
+              <Delete02Icon size={16} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>Move to trash</Tooltip.Content>
         </Tooltip>
       </div>
     </div>
@@ -169,7 +161,7 @@ function LoadErrorState({ onRetry }: { onRetry: () => void }) {
           Check your internet connection and try again
         </p>
       </div>
-      <Button color="primary" variant="flat" onPress={onRetry}>
+      <Button variant="tertiary" onPress={onRetry}>
         Retry
       </Button>
     </div>
@@ -229,20 +221,19 @@ function EmailRowActions({
           onClick: (e: React.MouseEvent) => e.stopPropagation(),
         },
       ].map(({ icon: Icon, label, iconProps, onClick }) => (
-        <Tooltip
-          key={label}
-          content={label}
-          placement="top"
-          className="z-50"
-          color="foreground"
-        >
-          <button
-            type="button"
-            className="flex h-6 w-6 cursor-pointer items-center justify-center"
-            onClick={onClick}
-          >
-            <Icon size={19} {...iconProps} />
-          </button>
+        <Tooltip key={label}>
+          <Tooltip.Trigger>
+            <button
+              type="button"
+              className="flex h-6 w-6 cursor-pointer items-center justify-center"
+              onClick={onClick}
+            >
+              <Icon size={19} {...iconProps} />
+            </button>
+          </Tooltip.Trigger>
+          <Tooltip.Content placement="top" className="z-50">
+            {label}
+          </Tooltip.Content>
         </Tooltip>
       ))}
     </div>
@@ -305,25 +296,8 @@ function MailRow({ index, style, data }: ListChildComponentProps<MailRowData>) {
   };
 
   return (
-    <Tooltip
-      showArrow
-      placement="top"
-      delay={400}
-      closeDelay={0}
-      shouldCloseOnInteractOutside={() => true}
-      onOpenChange={fetchSummary}
-      content={
-        <div className="flex w-[300px] flex-col p-1">
-          <div className="text-lg leading-tight font-medium">{title}</div>
-        </div>
-      }
-      onClose={() => {
-        return !!title;
-      }}
-      color="foreground"
-      radius="sm"
-    >
-      <div
+    <Tooltip delay={400} closeDelay={0} onOpenChange={fetchSummary}>
+      <Tooltip.Trigger
         className={`group relative grid w-full cursor-pointer gap-1 p-2 px-4 transition-all duration-200 hover:bg-primary/20 hover:text-primary sm:gap-2 sm:px-1 ${email?.labelIds?.includes("UNREAD") ? "font-medium" : "font-normal text-foreground-400"} sm:grid-cols-[auto_0.3fr_1fr_auto] sm:items-center`}
         style={style}
       >
@@ -387,7 +361,12 @@ function MailRow({ index, style, data }: ListChildComponentProps<MailRowData>) {
             />
           </>
         )}
-      </div>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="top" showArrow>
+        <div className="flex w-[300px] flex-col p-1">
+          <div className="text-lg leading-tight font-medium">{title}</div>
+        </div>
+      </Tooltip.Content>
     </Tooltip>
   );
 }

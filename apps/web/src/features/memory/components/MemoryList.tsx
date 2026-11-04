@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, InputGroup, Skeleton, TextField } from "@heroui/react";
 import {
   AiBrain01Icon,
   ArrowLeft01Icon,
@@ -87,25 +85,25 @@ export function MemoryList({ onChanged }: MemoryListProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <Input
-          size="sm"
-          variant="flat"
-          radius="lg"
-          placeholder="Search memories"
+        <TextField
           value={list.query}
-          onValueChange={list.setQuery}
-          startContent={<Search01Icon className="size-4 text-zinc-500" />}
+          onChange={list.setQuery}
           className="max-w-xs"
-          isClearable
-        />
+        >
+          <InputGroup variant="secondary">
+            <InputGroup.Prefix>
+              <Search01Icon className="size-4 text-zinc-500" />
+            </InputGroup.Prefix>
+            <InputGroup.Input placeholder="Search memories" />
+          </InputGroup>
+        </TextField>
         <div className="flex-1" />
         {totalCount > 0 && (
           <Button
             size="sm"
-            color="danger"
-            variant="flat"
+            variant="danger-soft"
             className="rounded-xl"
-            isLoading={isClearing}
+            isPending={isClearing}
             onPress={handleClearAll}
           >
             Clear all
@@ -113,11 +111,11 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         )}
         <Button
           size="sm"
-          color="primary"
           className="rounded-xl"
-          startContent={<PlusSignIcon className="size-4" />}
           onPress={() => setIsAddModalOpen(true)}
+          variant="primary"
         >
+          <PlusSignIcon className="size-4" />
           Add memory
         </Button>
       </div>
@@ -169,7 +167,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
           <Button
             isIconOnly
             size="sm"
-            variant="flat"
+            variant="tertiary"
             className="rounded-xl"
             aria-label="Previous page"
             isDisabled={page <= 1}
@@ -180,7 +178,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
           <Button
             isIconOnly
             size="sm"
-            variant="flat"
+            variant="tertiary"
             className="rounded-xl"
             aria-label="Next page"
             isDisabled={page >= totalPages}

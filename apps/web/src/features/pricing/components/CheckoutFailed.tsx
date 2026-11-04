@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 
 interface CheckoutFailedProps {
   /** Dodo reported the charge failed (vs. we simply never heard back). */
@@ -25,9 +25,9 @@ export function CheckoutFailed({ declined, onRetry }: CheckoutFailedProps) {
       </p>
       <Button
         size="sm"
-        color="primary"
         className="font-medium text-black"
         onPress={onRetry}
+        variant="primary"
       >
         Try again
       </Button>

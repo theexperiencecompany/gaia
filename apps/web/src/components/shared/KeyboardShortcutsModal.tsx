@@ -1,6 +1,6 @@
 "use client";
 
-import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
+import { Modal } from "@heroui/react";
 
 import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
 import {
@@ -56,27 +56,28 @@ export default function KeyboardShortcutsModal({
   const generalShortcuts = getShortcutsByCategory("general");
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onOpenChange={onOpenChange}
-      size="4xl"
-      backdrop="blur"
-      className="rounded-2xl bg-zinc-900/90 backdrop-blur-3xl outline-0 border-0"
-    >
-      <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">
-          <span className="text-xl font-semibold">Keyboard Shortcuts</span>
-        </ModalHeader>
+    <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Modal.Backdrop>
+        <Modal.Container size="lg">
+          <Modal.Dialog className="rounded-2xl bg-zinc-900/90 backdrop-blur-3xl outline-0 border-0">
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex flex-col gap-1">
+              <Modal.Heading className="text-xl font-semibold">
+                Keyboard Shortcuts
+              </Modal.Heading>
+            </Modal.Header>
 
-        <ModalBody className="gap-6 pb-6">
-          <ShortcutCategory title="Create" shortcuts={createShortcuts} />
-          <ShortcutCategory
-            title="Navigation"
-            shortcuts={navigationShortcuts}
-          />
-          <ShortcutCategory title="General" shortcuts={generalShortcuts} />
-        </ModalBody>
-      </ModalContent>
+            <Modal.Body className="gap-6 pb-6">
+              <ShortcutCategory title="Create" shortcuts={createShortcuts} />
+              <ShortcutCategory
+                title="Navigation"
+                shortcuts={navigationShortcuts}
+              />
+              <ShortcutCategory title="General" shortcuts={generalShortcuts} />
+            </Modal.Body>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

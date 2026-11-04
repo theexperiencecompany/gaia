@@ -1,6 +1,6 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Accordion } from "@heroui/react";
 import type { ProviderFeature } from "@shared/api/generated";
 import type {
   ProviderCatalog,
@@ -28,42 +28,42 @@ export function ProviderFeatureList({
 }: ProviderFeatureListProps) {
   return (
     <Accordion
-      selectionMode="multiple"
-      variant="light"
+      allowsMultipleExpanded
+      variant="default"
       defaultExpandedKeys={openFeature ? [openFeature] : []}
       className="rounded-2xl bg-zinc-900 px-2"
-      itemClasses={{ title: "text-sm", content: "pb-4" }}
     >
       {groups.map((group) => {
         const state = featureState(group, catalog);
         return (
-          <AccordionItem
-            key={group.key}
-            id={featureAnchorId(group.key)}
-            aria-label={group.spec.label}
-            title={
-              <span className="flex items-center gap-2">
-                <span className="font-medium text-zinc-100">
-                  {group.spec.label}
+          <Accordion.Item key={group.key} id={featureAnchorId(group.key)}>
+            <Accordion.Heading>
+              <Accordion.Trigger className="text-sm">
+                <span className="flex flex-col items-start gap-0.5">
+                  <span className="flex items-center gap-2">
+                    <span className="font-medium text-zinc-100">
+                      {group.spec.label}
+                    </span>
+                    <StatusBadge
+                      label={state.badge}
+                      active={state.tone === "working"}
+                    />
+                  </span>
+                  <span className="line-clamp-1 text-xs text-zinc-500">
+                    {state.summary}
+                  </span>
                 </span>
-                <StatusBadge
-                  label={state.badge}
-                  active={state.tone === "working"}
-                />
-              </span>
-            }
-            subtitle={
-              <span className="line-clamp-1 text-xs text-zinc-500">
-                {state.summary}
-              </span>
-            }
-          >
-            <FeatureProviderPicker
-              group={group}
-              catalog={catalog}
-              status={status}
-            />
-          </AccordionItem>
+                <Accordion.Indicator />
+              </Accordion.Trigger>
+            </Accordion.Heading>
+            <Accordion.Panel className="pb-4">
+              <FeatureProviderPicker
+                group={group}
+                catalog={catalog}
+                status={status}
+              />
+            </Accordion.Panel>
+          </Accordion.Item>
         );
       })}
     </Accordion>

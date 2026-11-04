@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button, Tooltip } from "@heroui/react";
 import { CheckmarkBadge01Icon } from "@icons";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
 import { AnimatePresence } from "motion/react";
@@ -90,14 +90,19 @@ export default function DemoNotificationsPopover({
                       </div>
                       {n.unread && (
                         <div className="flex shrink-0 items-center gap-1">
-                          <Button
-                            variant="flat"
-                            size="sm"
-                            isIconOnly
-                            title="Mark as read"
-                          >
-                            <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
-                          </Button>
+                          <Tooltip>
+                            <Tooltip.Trigger>
+                              <Button
+                                variant="tertiary"
+                                size="sm"
+                                isIconOnly
+                                aria-label="Mark as read"
+                              >
+                                <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
+                              </Button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Content>Mark as read</Tooltip.Content>
+                          </Tooltip>
                         </div>
                       )}
                     </div>
@@ -111,7 +116,7 @@ export default function DemoNotificationsPopover({
               <Button size="sm" fullWidth>
                 Mark all as read
               </Button>
-              <Button size="sm" variant="bordered" fullWidth>
+              <Button size="sm" variant="secondary" fullWidth>
                 View all notifications
               </Button>
             </div>

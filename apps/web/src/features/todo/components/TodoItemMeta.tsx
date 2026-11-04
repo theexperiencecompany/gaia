@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import {
   AiBrainIcon,
   AlertCircleIcon,
@@ -56,12 +56,11 @@ function TodoPriorityChip({ priority }: { priority: Todo["priority"] }) {
     <div className="flex items-center gap-1">
       <Chip
         size="sm"
-        variant="flat"
-        radius="sm"
+        variant="tertiary"
         className={`px-2 ${PRIORITY_CHIP_CLASS[priority]}`}
-        startContent={<Flag02Icon width={15} height={15} className="mx-1" />}
       >
-        {capitalize(priority)}
+        <Flag02Icon width={15} height={15} className="mx-1" />
+        <Chip.Label>{capitalize(priority)}</Chip.Label>
       </Chip>
     </div>
   );
@@ -92,14 +91,11 @@ export const TodoItemMeta = memo(function TodoItemMeta({
         <Chip
           className="flex items-center text-zinc-400 px-1"
           size="sm"
-          radius="sm"
           color={dueChipColor(isToday, isOverdue)}
-          variant="flat"
-          startContent={
-            <CalendarCheckOut01Icon width={16} height={16} className="mx-1" />
-          }
+          variant="tertiary"
         >
-          {formatDate(todo.due_date)}
+          <CalendarCheckOut01Icon width={16} height={16} className="mx-1" />
+          <Chip.Label>{formatDate(todo.due_date)}</Chip.Label>
         </Chip>
       )}
 
@@ -107,12 +103,11 @@ export const TodoItemMeta = memo(function TodoItemMeta({
         <Chip
           className="flex items-center text-zinc-400 px-1"
           size="sm"
-          radius="sm"
-          color="primary"
-          variant="flat"
-          startContent={<Clock01Icon width={16} height={16} className="mx-1" />}
+          color="accent"
+          variant="tertiary"
         >
-          {scheduledLabel}
+          <Clock01Icon width={16} height={16} className="mx-1" />
+          <Chip.Label>{scheduledLabel}</Chip.Label>
         </Chip>
       )}
 
@@ -120,14 +115,11 @@ export const TodoItemMeta = memo(function TodoItemMeta({
         <Chip
           className="flex items-center text-zinc-400 px-1"
           size="sm"
-          radius="sm"
           color="warning"
-          variant="flat"
-          startContent={
-            <AlertCircleIcon width={16} height={16} className="mx-1" />
-          }
+          variant="tertiary"
         >
-          Expires {expiresLabel}
+          <AlertCircleIcon width={16} height={16} className="mx-1" />
+          <Chip.Label>Expires {expiresLabel}</Chip.Label>
         </Chip>
       )}
 
@@ -135,12 +127,11 @@ export const TodoItemMeta = memo(function TodoItemMeta({
         <Chip
           className="flex items-center text-primary px-1"
           size="sm"
-          radius="sm"
-          color="primary"
-          variant="flat"
-          startContent={<AiBrainIcon width={14} height={14} className="mx-1" />}
+          color="accent"
+          variant="tertiary"
         >
-          Tracked
+          <AiBrainIcon width={14} height={14} className="mx-1" />
+          <Chip.Label>Tracked</Chip.Label>
         </Chip>
       )}
 
@@ -148,28 +139,22 @@ export const TodoItemMeta = memo(function TodoItemMeta({
         <Chip
           className="flex items-center text-zinc-400 px-1"
           size="sm"
-          radius="sm"
-          variant="flat"
-          startContent={
-            <TaskDone01Icon width={15} height={15} className="mx-1" />
-          }
+          variant="tertiary"
         >
-          {todo.sub_todo_count} sub-todos
+          <TaskDone01Icon width={15} height={15} className="mx-1" />
+          <Chip.Label>{todo.sub_todo_count} sub-todos</Chip.Label>
         </Chip>
       )}
 
       {todoProject && (
         <Chip
           size="sm"
-          variant="flat"
+          variant="tertiary"
           className=" text-zinc-400 px-1"
-          radius="sm"
           style={{ color: todoProject.color }}
-          startContent={
-            <Folder02Icon width={15} height={15} className="mx-1" />
-          }
         >
-          {todoProject.name}
+          <Folder02Icon width={15} height={15} className="mx-1" />
+          <Chip.Label>{todoProject.name}</Chip.Label>
         </Chip>
       )}
 
@@ -178,12 +163,11 @@ export const TodoItemMeta = memo(function TodoItemMeta({
           <Chip
             key={label}
             size="sm"
-            variant="flat"
+            variant="tertiary"
             className="flex items-center text-zinc-400 px-1"
-            radius="sm"
-            startContent={<Tag01Icon width={17} height={17} className="mx-1" />}
           >
-            {capitalize(label)}
+            <Tag01Icon width={17} height={17} className="mx-1" />
+            <Chip.Label>{capitalize(label)}</Chip.Label>
           </Chip>
         ))}
       </div>
@@ -192,17 +176,12 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {/* Checklist progress */}
       {todo.subtasks.length > 0 && (
-        <Chip
-          size="sm"
-          variant="flat"
-          className=" text-zinc-400 px-1"
-          radius="sm"
-          startContent={
-            <CheckmarkCircle02Icon width={15} height={15} className="mx-1" />
-          }
-        >
-          {todo.subtasks.filter((s) => s.completed).length}/
-          {todo.subtasks.length} checklist
+        <Chip size="sm" variant="tertiary" className=" text-zinc-400 px-1">
+          <CheckmarkCircle02Icon width={15} height={15} className="mx-1" />
+          <Chip.Label>
+            {todo.subtasks.filter((s) => s.completed).length}/
+            {todo.subtasks.length} checklist
+          </Chip.Label>
         </Chip>
       )}
     </div>

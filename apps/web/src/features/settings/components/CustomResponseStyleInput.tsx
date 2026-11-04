@@ -1,6 +1,6 @@
 "use client";
 
-import { Input } from "@heroui/input";
+import { Input, TextField } from "@heroui/react";
 
 interface CustomResponseStyleInputProps {
   value: string;
@@ -15,16 +15,14 @@ export function CustomResponseStyleInput({
 }: CustomResponseStyleInputProps) {
   return (
     <div className="space-y-1">
-      <Input
-        placeholder="Describe your preferred response style..."
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        isDisabled={isDisabled}
-        classNames={{
-          input: "bg-zinc-800/50 min-h-[36px] text-sm",
-          inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
-        }}
-      />
+      <TextField isDisabled={isDisabled}>
+        <Input
+          placeholder="Describe your preferred response style..."
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="min-h-[36px] rounded-lg bg-zinc-800/50 px-3 text-sm hover:bg-zinc-700/50"
+        />
+      </TextField>
     </div>
   );
 }

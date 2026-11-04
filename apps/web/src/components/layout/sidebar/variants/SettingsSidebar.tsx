@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
@@ -51,8 +50,7 @@ export default function SettingsSidebar() {
               key={item.key}
               onPress={() => item.href && handleNavigation(item.href)}
               size="sm"
-              variant={isActive ? "flat" : "light"}
-              color={isActive ? "primary" : "default"}
+              variant={isActive ? "secondary" : "ghost"}
               className={`group ${isActive ? "text-primary" : "text-zinc-400 hover:text-white"} flex w-full justify-start`}
             >
               {item.iconElement ??
@@ -64,7 +62,7 @@ export default function SettingsSidebar() {
                 ))}
               <span className="text-sm">{item.label}</span>
               {item.isNew && (
-                <Chip size="sm" variant="flat" color="success">
+                <Chip size="sm" variant="tertiary" color="success">
                   New
                 </Chip>
               )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { FullScreenIcon } from "@icons";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
@@ -91,7 +91,6 @@ export function RecapSlideshow({
         {!atStart && (
           <Button
             isIconOnly
-            radius="full"
             size="sm"
             className="absolute left-2.5 top-1/2 -translate-y-1/2 bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100 data-[hover=true]:bg-black/65"
             aria-label="Previous step"
@@ -103,7 +102,6 @@ export function RecapSlideshow({
         {!atEnd && (
           <Button
             isIconOnly
-            radius="full"
             size="sm"
             className="absolute right-2.5 top-1/2 -translate-y-1/2 bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100 data-[hover=true]:bg-black/65"
             aria-label="Next step"

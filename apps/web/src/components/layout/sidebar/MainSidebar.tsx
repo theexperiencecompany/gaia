@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/kbd";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Kbd, Tooltip } from "@heroui/react";
 import { BubbleChatAddIcon } from "@icons";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -45,29 +43,32 @@ export default function Sidebar() {
   return (
     <div>
       <div className="flex w-full justify-center">
-        <Tooltip
-          content={
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button
+              size="sm"
+              fullWidth
+              render={(props) => (
+                <Link
+                  {...(props as unknown as React.ComponentProps<"a">)}
+                  href="/c"
+                  onClick={prepareNewChat}
+                />
+              )}
+              className="mb-4 flex justify-start text-sm font-medium text-primary"
+              variant="tertiary"
+              data-keyboard-shortcut="create-chat"
+            >
+              <BubbleChatAddIcon width={18} height={18} />
+              New Chat
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content placement="right">
             <span className="flex items-center gap-2">
               New Chat
               <Kbd className="text-[10px]">C</Kbd>
             </span>
-          }
-          placement="right"
-        >
-          <Button
-            color="primary"
-            size="sm"
-            fullWidth
-            as={Link}
-            href="/c"
-            onClick={prepareNewChat}
-            className="mb-4 flex justify-start text-sm font-medium text-primary"
-            variant="flat"
-            data-keyboard-shortcut="create-chat"
-          >
-            <BubbleChatAddIcon width={18} height={18} />
-            New Chat
-          </Button>
+          </Tooltip.Content>
         </Tooltip>
       </div>
       <ChatsList />

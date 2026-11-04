@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Divider } from "@heroui/divider";
+import { Button, Chip, Separator } from "@heroui/react";
 import { CheckmarkCircle02Icon, ComputerIcon } from "@icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -71,8 +69,8 @@ export function ApproveDeviceForm() {
           </p>
         </div>
         <Button
-          color="primary"
           onPress={() => router.push("/settings/devices")}
+          variant="primary"
         >
           Manage devices
         </Button>
@@ -89,7 +87,7 @@ export function ApproveDeviceForm() {
         <div className="flex flex-col gap-1 pt-0.5">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-medium leading-none">Add a device</h2>
-            <Chip size="sm" variant="flat" color="success">
+            <Chip size="sm" variant="tertiary" color="success">
               Beta
             </Chip>
           </div>
@@ -101,14 +99,14 @@ export function ApproveDeviceForm() {
         </div>
       </header>
 
-      <Divider className="bg-zinc-700/50" />
+      <Separator className="bg-zinc-700/50" />
 
       {!cameFromCli && (
         <>
           <div className="py-5">
             <DeviceSetupGuide />
           </div>
-          <Divider className="bg-zinc-700/50" />
+          <Separator className="bg-zinc-700/50" />
         </>
       )}
 
@@ -126,10 +124,10 @@ export function ApproveDeviceForm() {
           isDisabled={isApproving}
         />
         <Button
-          color="primary"
-          isLoading={isApproving}
+          isPending={isApproving}
           isDisabled={code.length < PAIRING_CODE_LENGTH}
           onPress={() => approve(code)}
+          variant="primary"
         >
           Approve device
         </Button>

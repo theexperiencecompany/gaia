@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { ShineBorder } from "@/components/ui/shine-border";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
@@ -38,11 +38,11 @@ export function PaywallNotice({ className }: PaywallNoticeProps = {}) {
         <p className="text-xs text-zinc-400">{copy.composer}</p>
         <Button
           size="sm"
-          color="primary"
           className="shrink-0 font-medium text-black"
           onPress={() =>
             openUpgradeModal(undefined, { source: "composer_notice" })
           }
+          variant="primary"
         >
           {copy.cta}
         </Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Checkbox } from "@heroui/checkbox";
+import { Checkbox } from "@heroui/react";
 import { isTrackedTodo } from "@shared/todos";
 import { memo, useEffect, useRef } from "react";
 import { ChevronRight } from "@/components/shared/icons";
@@ -73,12 +73,10 @@ export default memo(function TodoItem({
   className,
 }: TodoItemProps) {
   const {
-    handleToggleComplete,
     scheduledLabel,
     todoProject,
     isOverdue,
     isToday,
-    checkboxColor,
     checkboxWrapperClassName,
     titleClassName,
   } = useTodoItem({ todo, projects, onUpdate, timezone });
@@ -126,14 +124,16 @@ export default memo(function TodoItem({
         <div className="pointer-events-auto">
           <Checkbox
             isSelected={todo.completed}
-            onChange={handleToggleComplete}
-            color={checkboxColor}
-            radius="full"
-            classNames={{
-              wrapper: checkboxWrapperClassName,
-              label: "w-[30vw]",
+            onChange={(isSelected) => {
+              onUpdate(todo.id, { completed: isSelected });
             }}
-          />
+          >
+            <Checkbox.Content>
+              <Checkbox.Control className={checkboxWrapperClassName}>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+            </Checkbox.Content>
+          </Checkbox>
         </div>
 
         <div className="min-w-0 flex-1">

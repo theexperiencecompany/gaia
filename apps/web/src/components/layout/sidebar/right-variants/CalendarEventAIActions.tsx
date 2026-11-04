@@ -1,12 +1,6 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/react";
+import { Button, ButtonGroup, Dropdown } from "@heroui/react";
 import { ArrowDown01Icon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -87,43 +81,45 @@ export default function CalendarEventAIActions({
   };
 
   return (
-    <ButtonGroup variant="flat" color="primary" fullWidth>
-      <Button
-        onPress={handleAction}
-        className="flex-1 cursor-pointer"
-        startContent={
-          <Image
-            alt="GAIA Logo"
-            src="/images/logos/logo.webp"
-            width={18}
-            height={18}
-          />
-        }
-      >
+    <ButtonGroup variant="secondary" fullWidth>
+      <Button onPress={handleAction} className="flex-1 cursor-pointer">
+        <Image
+          alt="GAIA Logo"
+          src="/images/logos/logo.webp"
+          width={18}
+          height={18}
+        />
         {currentAction.label}
       </Button>
-      <Dropdown placement="bottom-end">
-        <DropdownTrigger>
+      <Dropdown>
+        <Dropdown.Trigger>
           <Button isIconOnly>
             <ArrowDown01Icon className="size-4" />
           </Button>
-        </DropdownTrigger>
-        <DropdownMenu
-          disallowEmptySelection
-          aria-label="AI Actions"
-          className="min-w-[260px]"
-          selectedKeys={selectedAction}
-          selectionMode="single"
-          onSelectionChange={(keys) =>
-            setSelectedAction(keys as Set<ActionKey>)
-          }
-        >
-          {Object.entries(ACTIONS).map(([key, action]) => (
-            <DropdownItem key={key} description={action.description}>
-              {action.label}
-            </DropdownItem>
-          ))}
-        </DropdownMenu>
+        </Dropdown.Trigger>
+        <Dropdown.Popover placement="bottom end">
+          <Dropdown.Menu
+            disallowEmptySelection
+            aria-label="AI Actions"
+            className="min-w-[260px]"
+            selectedKeys={selectedAction}
+            selectionMode="single"
+            onSelectionChange={(keys) =>
+              setSelectedAction(keys as Set<ActionKey>)
+            }
+          >
+            {Object.entries(ACTIONS).map(([key, action]) => (
+              <Dropdown.Item key={key} id={key} textValue={action.label}>
+                <div className="flex flex-col">
+                  <span>{action.label}</span>
+                  <span className="text-xs text-foreground-500">
+                    {action.description}
+                  </span>
+                </div>
+              </Dropdown.Item>
+            ))}
+          </Dropdown.Menu>
+        </Dropdown.Popover>
       </Dropdown>
     </ButtonGroup>
   );

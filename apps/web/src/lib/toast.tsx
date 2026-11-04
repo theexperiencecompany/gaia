@@ -1,8 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { InformationCircleIcon } from "@icons";
-import type { ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes,
+  DetailedHTMLProps,
+  HTMLAttributes,
+  ReactNode,
+} from "react";
 import { type SileoOptions, type SileoPosition, sileo } from "sileo";
 
 // Mutable holder for a toast's id. sileo returns the id only after the toast is
@@ -58,6 +63,15 @@ const DISMISS_CLS = "bg-white/5 text-white/70 data-[hover=true]:bg-white/10";
 // larger radius would exceed half the height and clamp into a full pill.
 const BTN_BASE = "h-7 min-w-0 rounded-xl px-3 font-medium text-xs";
 
+// Sileo renders each toast as a <button>, so the controls inside it render as a
+// div (a nested button would be invalid HTML) while keeping Button's press behaviour.
+const renderAsDiv = (
+  props: DetailedHTMLProps<
+    ButtonHTMLAttributes<HTMLButtonElement>,
+    HTMLButtonElement
+  >,
+) => <div {...(props as unknown as HTMLAttributes<HTMLDivElement>)} />;
+
 // Sileo's own `button` slot only fits one button, so we render our own row here.
 // `idRef` resolves the toast id at click time, since sileo only returns it after creation.
 function ToastControls({
@@ -76,9 +90,9 @@ function ToastControls({
     <div className={twoUp ? "mt-2 grid grid-cols-2 gap-2" : "mt-2"}>
       {action ? (
         <Button
-          as="div"
+          render={renderAsDiv}
           size="sm"
-          variant="flat"
+          variant="tertiary"
           fullWidth
           className={`${BTN_BASE} ${ACTION_CLS[state]}`}
           onPress={action.onClick}
@@ -88,9 +102,9 @@ function ToastControls({
       ) : null}
       {showDismiss ? (
         <Button
-          as="div"
+          render={renderAsDiv}
           size="sm"
-          variant="flat"
+          variant="tertiary"
           fullWidth
           className={`${BTN_BASE} ${DISMISS_CLS}`}
           onPress={() => sileo.dismiss(idRef.id)}

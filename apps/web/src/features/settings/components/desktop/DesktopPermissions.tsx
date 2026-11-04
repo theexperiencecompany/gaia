@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import type { DesktopPermissionStatus } from "@shared/desktop-tools";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -47,7 +46,7 @@ const PERMISSION_ROWS: PermissionRowConfig[] = [
 function statusChip(granted: boolean, known: boolean) {
   if (!known) {
     return (
-      <Chip size="sm" variant="flat" classNames={{ content: "text-xs" }}>
+      <Chip size="sm" variant="tertiary" className="text-xs">
         Unknown
       </Chip>
     );
@@ -55,21 +54,18 @@ function statusChip(granted: boolean, known: boolean) {
   return granted ? (
     <Chip
       size="sm"
-      variant="flat"
+      variant="tertiary"
       color="success"
-      classNames={{
-        base: "bg-success/15",
-        content: "text-xs text-emerald-400",
-      }}
+      className="bg-success/15 text-xs text-emerald-400"
     >
       Granted
     </Chip>
   ) : (
     <Chip
       size="sm"
-      variant="flat"
+      variant="tertiary"
       color="danger"
-      classNames={{ base: "bg-red-500/15", content: "text-xs text-red-400" }}
+      className="bg-red-500/15 text-xs text-red-400"
     >
       Not granted
     </Chip>
@@ -149,7 +145,7 @@ export function DesktopPermissions() {
               {!granted && (
                 <Button
                   size="sm"
-                  variant="flat"
+                  variant="tertiary"
                   className="rounded-xl"
                   onPress={() => {
                     handleRequest(row);
@@ -161,8 +157,7 @@ export function DesktopPermissions() {
               {needsRestart && (
                 <Button
                   size="sm"
-                  variant="flat"
-                  color="primary"
+                  variant="tertiary"
                   className="rounded-xl"
                   onPress={() => getElectronAPI()?.relaunchDesktopApp()}
                 >

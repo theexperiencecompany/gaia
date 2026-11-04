@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Button, Spinner } from "@heroui/react";
 import { AlertCircleIcon, CheckmarkCircle02Icon } from "@icons";
 import type { Workflow } from "../../api/workflowApi";
 import WorkflowSteps from "../shared/WorkflowSteps";
@@ -37,10 +36,10 @@ export default function WorkflowLoadingState({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="light" onPress={onClose}>
+          <Button variant="tertiary" onPress={onClose}>
             Cancel
           </Button>
-          <Button color="primary" onPress={onRetry}>
+          <Button onPress={onRetry} variant="primary">
             Try again
           </Button>
         </div>
@@ -51,7 +50,7 @@ export default function WorkflowLoadingState({
   if (phase === "creating" || phase === "generating") {
     return (
       <div className="flex min-h-[280px] flex-col items-center justify-center gap-4 py-8 text-center">
-        <Spinner size="lg" color="primary" />
+        <Spinner size="lg" color="accent" />
         <div>
           <h3 className="text-base font-semibold text-zinc-100">
             {phase === "generating" ? "Generating steps" : "Creating workflow"}
@@ -84,7 +83,7 @@ export default function WorkflowLoadingState({
                 : ""}
             </p>
           </div>
-          <Button color="primary" variant="flat" onPress={onClose}>
+          <Button variant="tertiary" onPress={onClose}>
             Done
           </Button>
         </div>

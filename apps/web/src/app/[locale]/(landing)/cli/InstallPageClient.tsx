@@ -1,15 +1,16 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tab, Tabs } from "@heroui/tabs";
-import { Tooltip } from "@heroui/tooltip";
-import { CLI_INSTALL_COMMANDS } from "@shared/cli/command-manifest";
-import Image from "next/image";
+import { Button, Table, Tabs, Tooltip } from "@heroui/react";
+import {
+  CLI_COMMAND_DESCRIPTIONS,
+  CLI_INSTALL_COMMANDS,
+} from "@shared/cli/command-manifest";
 import Link from "next/link";
-import { type ReactNode, useState } from "react";
+import { type ComponentProps, type ReactNode, useState } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import CopyButton from "@/components/ui/CopyButton";
 import InlineCode from "@/components/ui/InlineCode";
+import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import SectionHeader from "@/features/landing/components/demo/founders-demo/SectionHeader";
 import NumberedSteps from "@/features/landing/components/shared/NumberedSteps";
 import { copyText } from "@/lib/clipboard";
@@ -36,14 +37,19 @@ function CodeBlock({ code }: { code: string }) {
 
   return (
     <div className="relative flex items-center gap-2 rounded-2xl bg-zinc-900 p-1 px-4 hover:bg-zinc-800/80 transition-colors">
-      <Tooltip content={copied ? "Copied!" : "Click to copy"} closeDelay={0}>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="flex-1 cursor-pointer text-left"
-        >
-          <code className="text-sm text-primary">{code}</code>
-        </button>
+      <Tooltip closeDelay={0}>
+        <Tooltip.Trigger className="flex-1">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="w-full cursor-pointer text-left"
+          >
+            <code className="text-sm text-primary">{code}</code>
+          </button>
+        </Tooltip.Trigger>
+        <Tooltip.Content>
+          {copied ? "Copied!" : "Click to copy"}
+        </Tooltip.Content>
       </Tooltip>
       <CopyButton textToCopy={code} copied={copied} onCopy={handleCopy} />
     </div>
@@ -100,18 +106,39 @@ const installMethods = [
   },
 ];
 
+const cliCommands = [
+  { command: "gaia up", description: CLI_COMMAND_DESCRIPTIONS.up },
+  { command: "gaia status", description: CLI_COMMAND_DESCRIPTIONS.status },
+  { command: "gaia logs", description: CLI_COMMAND_DESCRIPTIONS.logs },
+  { command: "gaia stop", description: CLI_COMMAND_DESCRIPTIONS.stop },
+  { command: "gaia start", description: CLI_COMMAND_DESCRIPTIONS.start },
+  { command: "gaia update", description: CLI_COMMAND_DESCRIPTIONS.update },
+  { command: "gaia doctor", description: CLI_COMMAND_DESCRIPTIONS.doctor },
+  { command: "gaia backup", description: CLI_COMMAND_DESCRIPTIONS.backup },
+  { command: "gaia restore", description: CLI_COMMAND_DESCRIPTIONS.restore },
+  {
+    command: "gaia uninstall",
+    description: CLI_COMMAND_DESCRIPTIONS.uninstall,
+  },
+];
+
 function InstallMethodTabs() {
   return (
-    <Tabs
-      aria-label="Install methods"
-      color="primary"
-      variant="underlined"
-      classNames={{ base: "pb-0 mb-0", panel: "pt-3" }}
-    >
+    <Tabs variant="secondary" className="mb-0 pb-0">
+      <Tabs.ListContainer>
+        <Tabs.List aria-label="Install methods">
+          {installMethods.map((method) => (
+            <Tabs.Tab key={method.key} id={method.key}>
+              {method.title}
+              <Tabs.Indicator />
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+      </Tabs.ListContainer>
       {installMethods.map((method) => (
-        <Tab key={method.key} title={method.title}>
+        <Tabs.Panel key={method.key} id={method.key} className="pt-3">
           <InstallTab code={method.code} hint={method.hint} />
-        </Tab>
+        </Tabs.Panel>
       ))}
     </Tabs>
   );
@@ -173,12 +200,12 @@ export function InstallPageClient() {
     <div className="relative flex min-h-screen w-full flex-col items-center">
       <div className="mx-auto mt-24 w-full max-w-4xl px-4 sm:mt-32 sm:px-6">
         <div className="relative aspect-video w-full overflow-hidden rounded-4xl bg-zinc-900">
-          <Image
-            src="/images/readme/self-host-installer.webp"
-            alt="The GAIA installer: Node.js, the GAIA CLI and Docker installed, then GAIA downloading with a progress bar and a row per service"
-            width={2400}
-            height={1350}
-            priority
+          <ProgressiveImage
+            webpSrc="/images/screenshots/cli.webp"
+            pngSrc="/images/screenshots/cli.png"
+            alt="GAIA CLI"
+            width={1920}
+            height={1080}
             sizes="(min-width: 896px) 896px, 100vw"
             className="h-full w-full rounded-4xl object-cover"
           />
@@ -206,6 +233,30 @@ export function InstallPageClient() {
 
       <section className="relative z-10 w-full max-w-3xl px-6 pt-20">
         <h2 className="mb-8 text-center font-serif text-4xl font-normal text-white sm:text-5xl">
+          Available commands
+        </h2>
+        <Table>
+          <Table.Content aria-label="Available GAIA CLI commands">
+            <Table.Header>
+              <Table.Column isRowHeader>Command</Table.Column>
+              <Table.Column>Description</Table.Column>
+            </Table.Header>
+            <Table.Body>
+              {cliCommands.map((item) => (
+                <Table.Row key={item.command} id={item.command}>
+                  <Table.Cell>
+                    <InlineCode>{item.command}</InlineCode>
+                  </Table.Cell>
+                  <Table.Cell>{item.description}</Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Content>
+        </Table>
+      </section>
+
+      <section className="relative z-10 w-full max-w-3xl px-6 pt-20">
+        <h2 className="mb-8 text-center font-serif text-4xl font-normal text-white sm:text-5xl">
           Questions, answered
         </h2>
         <FAQAccordion faqs={CLI_FAQS} />
@@ -213,24 +264,40 @@ export function InstallPageClient() {
 
       <div className="relative z-10 flex flex-wrap justify-center gap-4 px-6 pb-24 pt-12">
         <Button
-          as={Link}
-          href={SELFHOST_DOCS_URL}
-          color="primary"
-          target="_blank"
-          rel="noopener noreferrer"
+          render={(props) => (
+            <Link
+              {...(props as unknown as ComponentProps<"a">)}
+              href={SELFHOST_DOCS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            />
+          )}
+          variant="primary"
         >
-          Read the self-hosting guide
+          Read Full Documentation
         </Button>
         <Button
-          as={Link}
-          href={siteConfig.links.repo}
-          variant="bordered"
-          target="_blank"
-          rel="noopener noreferrer"
+          render={(props) => (
+            <Link
+              {...(props as unknown as ComponentProps<"a">)}
+              href={siteConfig.links.repo}
+              target="_blank"
+              rel="noopener noreferrer"
+            />
+          )}
+          variant="secondary"
         >
           View on GitHub
         </Button>
-        <Button as={Link} href="/open-source-ai-assistant" variant="light">
+        <Button
+          render={(props) => (
+            <Link
+              {...(props as unknown as ComponentProps<"a">)}
+              href="/open-source-ai-assistant"
+            />
+          )}
+          variant="tertiary"
+        >
           Why self-host GAIA
         </Button>
       </div>

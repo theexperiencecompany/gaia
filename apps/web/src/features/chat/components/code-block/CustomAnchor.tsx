@@ -1,5 +1,4 @@
-import { Skeleton } from "@heroui/skeleton";
-import { Tooltip } from "@heroui/tooltip";
+import { Skeleton, Tooltip } from "@heroui/react";
 import { GlobalIcon } from "@icons";
 import type { URLResponse } from "@shared/api/generated";
 import Image from "next/image";
@@ -376,36 +375,40 @@ const CustomAnchor = memo(
     );
 
     return (
-      <Tooltip
-        showArrow
-        className="relative max-w-[280px] min-w-[280px] border-2 border-zinc-800 bg-secondary-bg p-3 text-white shadow-lg"
-        content={tooltipContent}
-      >
-        <a
-          ref={elementRef}
-          href={href}
-          className={cn(
-            "inline-flex cursor-pointer items-center gap-1 rounded-sm px-1 text-sm font-medium transition-all",
-            lightBackground ? LIGHT_BUBBLE_LINK : DARK_BUBBLE_LINK,
-          )}
-          rel="noopener noreferrer"
-          target={target}
-          onMouseEnter={handleMouseEnter}
-        >
-          {!isStreaming &&
-            metadata?.favicon &&
-            !failedUrls.has(metadata.favicon) && (
-              <Image
-                width={14}
-                height={14}
-                alt="Favicon"
-                className={`h-3.5 w-3.5 shrink-0 ${isEmailHref(href) ? "rounded-full" : "rounded-sm"}`}
-                src={metadata.favicon}
-                onError={() => handleImageError(metadata.favicon!)}
-              />
+      <Tooltip closeDelay={0}>
+        <Tooltip.Trigger render={(props) => <span {...props} />}>
+          <a
+            ref={elementRef}
+            href={href}
+            className={cn(
+              "inline-flex cursor-pointer items-center gap-1 rounded-sm px-1 text-sm font-medium transition-all",
+              lightBackground ? LIGHT_BUBBLE_LINK : DARK_BUBBLE_LINK,
             )}
-          {children}
-        </a>
+            rel="noopener noreferrer"
+            target={target}
+            onMouseEnter={handleMouseEnter}
+          >
+            {!isStreaming &&
+              metadata?.favicon &&
+              !failedUrls.has(metadata.favicon) && (
+                <Image
+                  width={14}
+                  height={14}
+                  alt="Favicon"
+                  className={`h-3.5 w-3.5 shrink-0 ${isEmailHref(href) ? "rounded-full" : "rounded-sm"}`}
+                  src={metadata.favicon}
+                  onError={() => handleImageError(metadata.favicon!)}
+                />
+              )}
+            {children}
+          </a>
+        </Tooltip.Trigger>
+        <Tooltip.Content
+          showArrow
+          className="relative max-w-[280px] min-w-[280px] border-2 border-zinc-800 bg-secondary-bg p-3 text-white shadow-lg"
+        >
+          {tooltipContent}
+        </Tooltip.Content>
       </Tooltip>
     );
   },

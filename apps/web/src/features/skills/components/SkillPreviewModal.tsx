@@ -1,13 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+import { Button, Modal } from "@heroui/react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { SkillTargetIcon } from "./SkillTargetIcon";
 
@@ -36,56 +29,65 @@ export function SkillPreviewModal({
   onClose,
 }: Readonly<SkillPreviewModalProps>) {
   return (
-    <Modal
-      isOpen={skill !== null}
-      onClose={onClose}
-      size="2xl"
-      scrollBehavior="inside"
-    >
-      <ModalContent>
-        {skill && (
-          <>
-            <ModalHeader className="flex items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-zinc-800">
-                <SkillTargetIcon
-                  value={skill.icon}
-                  icon={skill.icon}
-                  size={20}
-                />
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-base font-medium text-white">
-                  {skill.name}
-                </p>
-                <p className="text-xs font-normal text-zinc-500">
-                  {skill.badge
-                    ? `${skill.badge} · ${skill.groupLabel}`
-                    : skill.groupLabel}
-                </p>
-              </div>
-            </ModalHeader>
-            <ModalBody>
-              {skill.description && (
-                <p className="text-sm text-zinc-400">{skill.description}</p>
-              )}
-              {skill.body && (
-                <div className="rounded-xl bg-zinc-900/60 p-4">
-                  <MarkdownRenderer
-                    content={skill.body}
-                    hideCodeToolbar
-                    className="prose-sm prose-p:text-zinc-300 prose-li:text-zinc-300"
-                  />
-                </div>
-              )}
-            </ModalBody>
-            <ModalFooter>
-              <Button variant="light" className="rounded-xl" onPress={onClose}>
-                Close
-              </Button>
-            </ModalFooter>
-          </>
-        )}
-      </ModalContent>
+    <Modal>
+      <Modal.Backdrop
+        isOpen={skill !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) onClose();
+        }}
+      >
+        <Modal.Container size="lg" scroll="inside">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            {skill && (
+              <>
+                <Modal.Header className="flex items-center gap-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-zinc-800">
+                    <SkillTargetIcon
+                      value={skill.icon}
+                      icon={skill.icon}
+                      size={20}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-medium text-white">
+                      {skill.name}
+                    </p>
+                    <p className="text-xs font-normal text-zinc-500">
+                      {skill.badge
+                        ? `${skill.badge} · ${skill.groupLabel}`
+                        : skill.groupLabel}
+                    </p>
+                  </div>
+                </Modal.Header>
+                <Modal.Body>
+                  {skill.description && (
+                    <p className="text-sm text-zinc-400">{skill.description}</p>
+                  )}
+                  {skill.body && (
+                    <div className="rounded-xl bg-zinc-900/60 p-4">
+                      <MarkdownRenderer
+                        content={skill.body}
+                        hideCodeToolbar
+                        className="prose-sm prose-p:text-zinc-300 prose-li:text-zinc-300"
+                      />
+                    </div>
+                  )}
+                </Modal.Body>
+                <Modal.Footer>
+                  <Button
+                    variant="tertiary"
+                    className="rounded-xl"
+                    onPress={onClose}
+                  >
+                    Close
+                  </Button>
+                </Modal.Footer>
+              </>
+            )}
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

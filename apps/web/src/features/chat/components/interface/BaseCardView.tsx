@@ -1,14 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownSection,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Dropdown, Header, Tooltip } from "@heroui/react";
 import {
   ArrowUpRight01Icon,
   RedoIcon,
@@ -83,87 +75,103 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
           {icon}
           <h2 className="font-medium text-zinc-300">{title}</h2>
           {onRefresh && isConnected && (
-            <Tooltip content="Refresh" showArrow placement="bottom">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="light"
-                onPress={onRefresh}
-                isDisabled={isFetching}
-                className="min-w-0 text-zinc-400 transition-colors duration-200 hover:bg-zinc-800"
-              >
-                <div
-                  className={`transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
+            <Tooltip>
+              <Tooltip.Trigger>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="tertiary"
+                  onPress={onRefresh}
+                  isDisabled={isFetching}
+                  className="min-w-0 text-zinc-400 transition-colors duration-200 hover:bg-zinc-800"
                 >
-                  <RedoIcon className="h-4 w-4" />
-                </div>
-              </Button>
+                  <div
+                    className={`transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
+                  >
+                    <RedoIcon className="h-4 w-4" />
+                  </div>
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Content placement="bottom" showArrow>
+                Refresh
+              </Tooltip.Content>
             </Tooltip>
           )}
         </div>
         {hasMenu && (
-          <Dropdown
-            placement="bottom-end"
-            backdrop="opaque"
-            classNames={{ content: "" }}
-          >
-            <DropdownTrigger>
-              <Button
-                size="sm"
-                variant="flat"
-                endContent={<ArrowUpRight01Icon className="h-3.5 w-3.5" />}
-                className="text-xs text-zinc-400"
-              >
-                Ask GAIA
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu
-              aria-label={`${title} actions`}
-              className="w-100"
-              itemClasses={{ description: "whitespace-normal" }}
+          <Dropdown className="text-foreground">
+            <Button
+              size="sm"
+              variant="tertiary"
+              className="text-xs text-zinc-400"
             >
-              {hasActions ? (
-                <DropdownSection title="Ask GAIA" showDivider={!!path}>
-                  {actions.map((action) => (
-                    <DropdownItem
-                      key={action.key}
-                      description={action.description}
-                      startContent={
-                        action.icon ?? (
-                          <ZapIcon className="size-4 text-default-500" />
-                        )
-                      }
-                      onPress={action.onPress}
+              Ask GAIA
+              <ArrowUpRight01Icon className="h-3.5 w-3.5" />
+            </Button>
+            <Dropdown.Popover placement="bottom end">
+              <Dropdown.Menu aria-label={`${title} actions`} className="w-100">
+                {hasActions ? (
+                  <Dropdown.Section id="ask-gaia">
+                    <Header className="px-2 py-1 text-xs text-zinc-500">
+                      Ask GAIA
+                    </Header>
+                    {actions.map((action) => (
+                      <Dropdown.Item
+                        key={action.key}
+                        id={action.key}
+                        textValue={action.label}
+                        onAction={action.onPress}
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            {action.icon ?? (
+                              <ZapIcon className="size-4 text-default-500" />
+                            )}
+                            {action.label}
+                          </div>
+                          <span className="whitespace-normal text-xs text-zinc-500">
+                            {action.description}
+                          </span>
+                        </div>
+                      </Dropdown.Item>
+                    ))}
+                  </Dropdown.Section>
+                ) : (
+                  // Empty fragment needed to satisfy Dropdown.Menu's children type when only path is present
+                  <Dropdown.Section id="empty" className="hidden">
+                    <Dropdown.Item id="__empty__">{"" as string}</Dropdown.Item>
+                  </Dropdown.Section>
+                )}
+                {path ? (
+                  <Dropdown.Section id="navigation">
+                    <Header className="px-2 py-1 text-xs text-zinc-500">
+                      Navigation
+                    </Header>
+                    <Dropdown.Item
+                      id="view-all"
+                      href={path}
+                      textValue="View All"
                     >
-                      {action.label}
-                    </DropdownItem>
-                  ))}
-                </DropdownSection>
-              ) : (
-                // Empty fragment needed to satisfy DropdownMenu's children type when only path is present
-                <DropdownSection aria-label="empty" className="hidden">
-                  <DropdownItem key="__empty__">{"" as string}</DropdownItem>
-                </DropdownSection>
-              )}
-              {path ? (
-                <DropdownSection aria-label="Navigation">
-                  <DropdownItem
-                    key="view-all"
-                    href={path}
-                    description={`Open full ${title.toLowerCase()} page`}
-                    startContent={
-                      <SquareArrowUpRight02Icon className="size-4 text-primary" />
-                    }
-                  >
-                    View All
-                  </DropdownItem>
-                </DropdownSection>
-              ) : (
-                <DropdownSection aria-label="empty" className="hidden">
-                  <DropdownItem key="__empty2__">{"" as string}</DropdownItem>
-                </DropdownSection>
-              )}
-            </DropdownMenu>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <SquareArrowUpRight02Icon className="size-4 text-primary" />
+                          View All
+                        </div>
+                        <span className="whitespace-normal text-xs text-zinc-500">
+                          {`Open full ${title.toLowerCase()} page`}
+                        </span>
+                      </div>
+                    </Dropdown.Item>
+                  </Dropdown.Section>
+                ) : (
+                  <Dropdown.Section id="empty2" className="hidden">
+                    <Dropdown.Item id="__empty2__">
+                      {"" as string}
+                    </Dropdown.Item>
+                  </Dropdown.Section>
+                )}
+              </Dropdown.Menu>
+            </Dropdown.Popover>
           </Dropdown>
         )}
       </div>
@@ -188,8 +196,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                   </p>
                   {onConnect && (
                     <Button
-                      color="primary"
-                      variant="flat"
+                      variant="tertiary"
                       size="sm"
                       onPress={() => onConnect(connectIntegrationId || "")}
                     >

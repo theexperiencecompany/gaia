@@ -1,14 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
 import {
+  Button,
+  Description,
+  FieldError,
+  Input,
+  Label,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+  TextArea,
+  TextField,
+} from "@heroui/react";
 import { useState, useTransition } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MAX_MEMORY_LENGTH } from "@/features/memory/constants";
@@ -64,55 +65,66 @@ export function AddMemoryModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg">
-      <ModalContent>
-        <ModalHeader className="flex-col gap-1">
-          <span>Add memory</span>
-          <span className="text-xs font-normal text-zinc-500">
-            Tell GAIA something specific about yourself, your preferences, or
-            details worth remembering
-          </span>
-        </ModalHeader>
-        <ModalBody>
-          <Textarea
-            placeholder="e.g. I'm vegetarian and allergic to peanuts"
-            value={content}
-            onValueChange={setContent}
-            minRows={3}
-            maxRows={8}
-            isInvalid={content.length > MAX_MEMORY_LENGTH}
-            errorMessage={
-              content.length > MAX_MEMORY_LENGTH
-                ? `Keep it under ${MAX_MEMORY_LENGTH} characters`
-                : undefined
-            }
-            autoFocus
-          />
-          <Input
-            label="Folder"
-            labelPlacement="outside"
-            placeholder="e.g. food-preferences"
-            description="Optional. GAIA files it automatically when left blank."
-            value={categoryPath}
-            onValueChange={setCategoryPath}
-            size="sm"
-          />
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="light" className="rounded-xl" onPress={onClose}>
-            Cancel
-          </Button>
-          <Button
-            color="primary"
-            className="rounded-xl"
-            onPress={handleSave}
-            isLoading={isPending}
-            isDisabled={!content.trim() || content.length > MAX_MEMORY_LENGTH}
-          >
-            Save memory
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+    <Modal isOpen={isOpen} onOpenChange={onClose}>
+      <Modal.Backdrop>
+        <Modal.Container size="lg">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex-col gap-1">
+              <span>Add memory</span>
+              <span className="text-xs font-normal text-zinc-500">
+                Tell GAIA something specific about yourself, your preferences,
+                or details worth remembering
+              </span>
+            </Modal.Header>
+            <Modal.Body>
+              <TextField
+                value={content}
+                onChange={setContent}
+                isInvalid={content.length > MAX_MEMORY_LENGTH}
+              >
+                <TextArea
+                  placeholder="e.g. I'm vegetarian and allergic to peanuts"
+                  rows={3}
+                  autoFocus
+                />
+                <FieldError>
+                  {content.length > MAX_MEMORY_LENGTH
+                    ? `Keep it under ${MAX_MEMORY_LENGTH} characters`
+                    : undefined}
+                </FieldError>
+              </TextField>
+              <TextField value={categoryPath} onChange={setCategoryPath}>
+                <Label>Folder</Label>
+                <Input placeholder="e.g. food-preferences" />
+                <Description>
+                  Optional. GAIA files it automatically when left blank.
+                </Description>
+              </TextField>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button
+                variant="tertiary"
+                className="rounded-xl"
+                onPress={onClose}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="rounded-xl"
+                onPress={handleSave}
+                isPending={isPending}
+                isDisabled={
+                  !content.trim() || content.length > MAX_MEMORY_LENGTH
+                }
+                variant="primary"
+              >
+                Save memory
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

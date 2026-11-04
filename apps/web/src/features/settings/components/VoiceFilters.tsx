@@ -2,12 +2,10 @@
 
 import {
   Autocomplete,
-  AutocompleteItem,
   Avatar,
-  Input,
+  ListBox,
+  SearchField,
   Select,
-  SelectItem,
-  type Selection,
 } from "@heroui/react";
 import {
   FemaleSymbolIcon,
@@ -15,7 +13,7 @@ import {
   MaleSymbolIcon,
   Search01Icon,
 } from "@icons";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import {
@@ -43,12 +41,6 @@ interface VoiceFiltersProps {
   onCountryFilterChange: (value: string) => void;
 }
 
-/** First key of a HeroUI single-select change, or the all-items fallback. */
-const selectedFilterKey = (keys: Selection): string => {
-  const key = keys === "all" ? undefined : Array.from(keys)[0];
-  return typeof key === "string" ? key : ALL_FILTER;
-};
-
 /** Search box + gender/country dropdowns above the voice table. */
 export function VoiceFilters({
   voices,
@@ -59,6 +51,7 @@ export function VoiceFilters({
   countryFilter,
   onCountryFilterChange,
 }: Readonly<VoiceFiltersProps>) {
+  const [countryQuery, setCountryQuery] = useState("");
   // Distinct filter options derived from the loaded voices.
   const genderOptions = useMemo(
     () =>
@@ -87,91 +80,107 @@ export function VoiceFilters({
       (c) => c.accent === countryFilter,
     )?.countryCode;
     countryStartContent = code ? (
-      <Avatar
-        src={flagUrl(code)}
-        alt={`${countryFilter} flag`}
-        className="h-4 w-4 shrink-0"
-      />
+      <Avatar className="h-4 w-4 shrink-0">
+        <Avatar.Image src={flagUrl(code)} alt={`${countryFilter} flag`} />
+        <Avatar.Fallback />
+      </Avatar>
     ) : (
       <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
     );
   }
 
+  const genderLabel =
+    genderFilter === ALL_FILTER ? "All genders" : genderFilter;
+
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <Input
+      <SearchField
         aria-label="Search voices"
-        placeholder="Search voices"
         value={search}
-        onValueChange={onSearchChange}
-        isClearable
-        startContent={<Search01Icon className="h-4 w-4 text-zinc-500" />}
+        onChange={onSearchChange}
         className="sm:max-w-xs"
-      />
+      >
+        <SearchField.Group>
+          <Search01Icon className="h-4 w-4 text-zinc-500" />
+          <SearchField.Input placeholder="Search voices" />
+          <SearchField.ClearButton />
+        </SearchField.Group>
+      </SearchField>
       <Select
         aria-label="Filter by gender"
-        placeholder="Gender"
-        selectedKeys={[genderFilter]}
-        onSelectionChange={(keys) =>
-          onGenderFilterChange(selectedFilterKey(keys))
-        }
-        startContent={
-          genderFilter === ALL_FILTER ? undefined : (
-            <GenderIcon gender={genderFilter} />
-          )
+        selectedKey={genderFilter}
+        onSelectionChange={(key) =>
+          onGenderFilterChange(typeof key === "string" ? key : ALL_FILTER)
         }
         className="sm:max-w-40"
       >
-        {[
-          <SelectItem key={ALL_FILTER}>All genders</SelectItem>,
-          ...genderOptions.map((g) => (
-            <SelectItem key={g} startContent={<GenderIcon gender={g} />}>
-              {g}
-            </SelectItem>
-          )),
-        ]}
+        <Select.Trigger>
+          {genderFilter === ALL_FILTER ? null : (
+            <GenderIcon gender={genderFilter} />
+          )}
+          <Select.Value>{genderLabel}</Select.Value>
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox>
+            <ListBox.Item id={ALL_FILTER} textValue="All genders">
+              All genders
+            </ListBox.Item>
+            {genderOptions.map((g) => (
+              <ListBox.Item key={g} id={g} textValue={g}>
+                <GenderIcon gender={g} />
+                {g}
+              </ListBox.Item>
+            ))}
+          </ListBox>
+        </Select.Popover>
       </Select>
       <Autocomplete
         aria-label="Filter by country"
-        placeholder="Country"
-        // Autocomplete is single-key: null on clear maps back to the all-filter.
         selectedKey={countryFilter}
         onSelectionChange={(key) =>
           onCountryFilterChange(typeof key === "string" ? key : ALL_FILTER)
         }
-        startContent={countryStartContent}
         className="sm:max-w-44"
       >
-        {[
-          <AutocompleteItem
-            key={ALL_FILTER}
-            textValue="All countries"
-            startContent={
-              <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-            }
-          >
-            All countries
-          </AutocompleteItem>,
-          ...countryOptions.map(({ accent, countryCode }) => (
-            <AutocompleteItem
-              key={accent}
-              textValue={accent}
-              startContent={
-                countryCode ? (
-                  <Avatar
-                    src={flagUrl(countryCode)}
-                    alt={`${accent} flag`}
-                    className="h-4 w-4 shrink-0"
-                  />
-                ) : (
-                  <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-                )
-              }
+        <Autocomplete.Trigger>
+          {countryStartContent}
+          <Autocomplete.Value />
+          <Autocomplete.Indicator />
+        </Autocomplete.Trigger>
+        <Autocomplete.Popover>
+          <Autocomplete.Filter>
+            <SearchField
+              aria-label="Search countries"
+              value={countryQuery}
+              onChange={setCountryQuery}
             >
-              {accent}
-            </AutocompleteItem>
-          )),
-        ]}
+              <SearchField.Input placeholder="Country" />
+            </SearchField>
+            <ListBox aria-label="Countries">
+              <ListBox.Item id={ALL_FILTER} textValue="All countries">
+                <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
+                All countries
+              </ListBox.Item>
+              {countryOptions.map(({ accent, countryCode }) => (
+                <ListBox.Item key={accent} id={accent} textValue={accent}>
+                  {countryCode ? (
+                    <Avatar className="h-4 w-4 shrink-0">
+                      <Avatar.Image
+                        src={flagUrl(countryCode)}
+                        alt={`${accent} flag`}
+                      />
+                      <Avatar.Fallback />
+                    </Avatar>
+                  ) : (
+                    <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
+                  )}
+                  {accent}
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Autocomplete.Filter>
+        </Autocomplete.Popover>
       </Autocomplete>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { KeyboardIcon } from "@icons";
 import type { LiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 
@@ -31,12 +31,11 @@ export function LiveKeyboard({ live, className }: LiveKeyboardProps) {
       />
       <Button
         size="sm"
-        variant="flat"
-        radius="full"
+        variant="tertiary"
         className={className}
-        startContent={<KeyboardIcon className="size-4" />}
         onPress={live.openKeyboard}
       >
+        <KeyboardIcon className="size-4" />
         Keyboard
       </Button>
     </>

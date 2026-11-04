@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, Chip, Skeleton } from "@heroui/react";
 import { Tick02Icon } from "@icons";
 import {
   useIsSubscriptionStatusUnknown,
@@ -75,7 +73,7 @@ export function SubscriptionSettings() {
           </div>
           <Chip
             color={statusColor}
-            variant="flat"
+            variant="tertiary"
             size="sm"
             className="mt-1 text-xs"
           >
@@ -135,8 +133,7 @@ export function SubscriptionSettings() {
       <SettingsSection title="Actions">
         <div className="space-y-2 px-4 py-3.5">
           <Button
-            color="primary"
-            variant="flat"
+            variant="tertiary"
             onPress={() =>
               openUpgradeModal(undefined, {
                 dismissible: true,

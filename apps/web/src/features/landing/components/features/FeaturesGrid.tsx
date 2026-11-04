@@ -1,8 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Kbd } from "@heroui/kbd";
+import { Chip, InputGroup, Kbd, TextField } from "@heroui/react";
 import { ArrowRight02Icon, Search01Icon } from "@icons";
 import type { Easing, Variants } from "motion/react";
 import * as m from "motion/react-m";
@@ -75,8 +73,8 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           className="relative z-10 mb-6"
         >
           <Chip
-            variant="flat"
-            color="primary"
+            variant="tertiary"
+            color="accent"
             size="md"
             className="text-primary"
           >
@@ -127,23 +125,24 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           viewport={{ once: true }}
           className="mb-10 flex justify-center"
         >
-          <Input
-            ref={inputRef}
-            placeholder="Search features..."
-            radius="full"
-            size="md"
-            value={search}
-            onValueChange={setSearch}
-            startContent={<Search01Icon className="size-4 shrink-0" />}
-            endContent={
-              !search && (
-                <Kbd keys={["ctrl"]} className="text-xs">
-                  F
-                </Kbd>
-              )
-            }
-            className="max-w-md"
-          />
+          <TextField value={search} onChange={setSearch} className="max-w-md">
+            <InputGroup>
+              <InputGroup.Prefix>
+                <Search01Icon className="size-4 shrink-0" />
+              </InputGroup.Prefix>
+              <InputGroup.Input
+                ref={inputRef}
+                placeholder="Search features..."
+              />
+              {!search && (
+                <InputGroup.Suffix>
+                  <Kbd className="text-xs">
+                    <Kbd.Abbr keyValue="ctrl" />F
+                  </Kbd>
+                </InputGroup.Suffix>
+              )}
+            </InputGroup>
+          </TextField>
         </m.div>
 
         {FEATURE_CATEGORIES.map((category) => {

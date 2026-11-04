@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Select, SelectItem } from "@heroui/select";
+import { Button, Chip, ListBox, Select } from "@heroui/react";
 import type { HilMode } from "@shared/chat";
 import { useRouter } from "next/navigation";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -44,7 +42,7 @@ export function HilApprovalMode() {
     <SettingsSection
       title="Approvals"
       titleAccessory={
-        <Chip size="sm" variant="flat" color="success">
+        <Chip size="sm" variant="tertiary" color="success">
           Beta
         </Chip>
       }
@@ -55,19 +53,29 @@ export function HilApprovalMode() {
         description={MODES.find((m) => m.key === mode)?.description}
       >
         <Select
-          size="sm"
           className="w-48"
           aria-label="Approval mode"
-          selectedKeys={[mode]}
+          value={mode}
           isDisabled={isLoading || isSavingMode}
-          onSelectionChange={(keys) => {
-            const next = Array.from(keys)[0] as HilMode | undefined;
+          onChange={(key) => {
+            const next = key as HilMode | null;
             if (next && next !== mode) handleChange(next);
           }}
         >
-          {MODES.map((m) => (
-            <SelectItem key={m.key}>{m.label}</SelectItem>
-          ))}
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {MODES.map((m) => (
+                <ListBox.Item key={m.key} id={m.key} textValue={m.label}>
+                  {m.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </SettingsRow>
       <SettingsRow
@@ -76,7 +84,7 @@ export function HilApprovalMode() {
       >
         <Button
           size="sm"
-          variant="flat"
+          variant="tertiary"
           className="rounded-xl"
           onPress={() => router.push("/integrations")}
         >

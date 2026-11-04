@@ -34,7 +34,7 @@ export function CopyableContentView(
     return (
       <Button
         size="sm"
-        variant="flat"
+        variant="tertiary"
         onPress={copy}
         aria-label={copied ? "Copied" : "Copy content"}
         className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 transition-colors px-3 py-1.5 min-w-0 h-auto"
@@ -70,7 +70,7 @@ export function CopyableContentView(
         <Button
           isIconOnly
           size="sm"
-          variant="light"
+          variant="tertiary"
           onPress={copy}
           aria-label={copied ? "Copied" : "Copy content"}
           className={cn(

@@ -1,7 +1,4 @@
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Input, Popover, Tooltip } from "@heroui/react";
 import { PlusSignIcon, Search01Icon } from "@icons";
 import { useMemo, useState } from "react";
 import { type Control, useController } from "react-hook-form";
@@ -35,26 +32,23 @@ function IconGrid({ icons, selectedName, onPick }: IconGridProps) {
   return (
     <div className="grid grid-cols-8 gap-1">
       {icons.map((def) => (
-        <Tooltip
-          key={def.name}
-          content={workflowIconLabel(def.name)}
-          delay={300}
-          closeDelay={0}
-          size="sm"
-        >
-          <Button
-            isIconOnly
-            size="sm"
-            variant="light"
-            aria-label={workflowIconLabel(def.name)}
-            className={cn(
-              "text-zinc-300",
-              selectedName === def.name && "bg-zinc-700",
-            )}
-            onPress={() => onPick(def)}
-          >
-            <def.Icon size={18} />
-          </Button>
+        <Tooltip key={def.name} delay={300} closeDelay={0}>
+          <Tooltip.Trigger>
+            <Button
+              isIconOnly
+              size="sm"
+              variant="tertiary"
+              aria-label={workflowIconLabel(def.name)}
+              className={cn(
+                "text-zinc-300",
+                selectedName === def.name && "bg-zinc-700",
+              )}
+              onPress={() => onPick(def)}
+            >
+              <def.Icon size={18} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>{workflowIconLabel(def.name)}</Tooltip.Content>
         </Tooltip>
       ))}
     </div>
@@ -115,13 +109,11 @@ export default function WorkflowIconPicker({
         setIsOpen(open);
         if (!open) setQuery("");
       }}
-      placement="bottom-start"
     >
-      <PopoverTrigger>
+      <Popover.Trigger>
         <Button
           isIconOnly
-          variant="flat"
-          radius="sm"
+          variant="tertiary"
           aria-label={selected ? "Change workflow icon" : "Add workflow icon"}
           className={cn(
             "-mt-0.5 size-10 min-w-10 shrink-0",
@@ -135,27 +127,28 @@ export default function WorkflowIconPicker({
             <PlusSignIcon className="size-5 text-zinc-500" />
           )}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 bg-zinc-800 p-3">
+      </Popover.Trigger>
+      <Popover.Content
+        placement="bottom start"
+        className="w-80 bg-zinc-800 p-3"
+      >
         <div className="flex w-full flex-col gap-3">
-          <Input
-            autoFocus
-            size="sm"
-            value={query}
-            onValueChange={setQuery}
-            placeholder="Search icons..."
-            startContent={
-              <Search01Icon className="size-4 shrink-0 text-zinc-500" />
-            }
-            classNames={{ inputWrapper: "bg-zinc-900" }}
-          />
+          <div className="flex items-center gap-2 rounded-lg bg-zinc-900 px-2">
+            <Search01Icon className="size-4 shrink-0 text-zinc-500" />
+            <Input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search icons..."
+              className="bg-transparent"
+            />
+          </div>
 
           <div className="flex items-center justify-between gap-1">
             {WORKFLOW_ICON_COLORS.map((swatch) => (
               <Button
                 key={swatch}
                 isIconOnly
-                radius="full"
                 aria-label={`Use color ${swatch}`}
                 className={cn(
                   "size-6 min-w-6 shrink-0",
@@ -196,7 +189,7 @@ export default function WorkflowIconPicker({
           {selected && (
             <Button
               size="sm"
-              variant="light"
+              variant="tertiary"
               className="self-start text-zinc-400"
               onPress={() => {
                 iconField.onChange(null);
@@ -208,7 +201,7 @@ export default function WorkflowIconPicker({
             </Button>
           )}
         </div>
-      </PopoverContent>
+      </Popover.Content>
     </Popover>
   );
 }

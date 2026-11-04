@@ -1,10 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Modal, ModalContent } from "@heroui/modal";
-import { ScrollShadow } from "@heroui/react";
-import { Skeleton } from "@heroui/skeleton";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Modal, ScrollShadow, Skeleton, Tooltip } from "@heroui/react";
 import {
   AiWebBrowsingIcon,
   Comment01Icon,
@@ -91,14 +87,15 @@ function TaskMeta({ task }: { task: BrowserTask }) {
       {platform && (
         <>
           <MetaDot />
-          <Tooltip
-            content={`This chat was on ${BOT_PLATFORM_LABELS[platform]}`}
-            size="sm"
-            closeDelay={0}
-          >
-            <span className="inline-flex">
-              <PlatformGlyph platform={platform} className="size-4" />
-            </span>
+          <Tooltip closeDelay={0}>
+            <Tooltip.Trigger>
+              <span className="inline-flex">
+                <PlatformGlyph platform={platform} className="size-4" />
+              </span>
+            </Tooltip.Trigger>
+            <Tooltip.Content>
+              {`This chat was on ${BOT_PLATFORM_LABELS[platform]}`}
+            </Tooltip.Content>
           </Tooltip>
         </>
       )}
@@ -124,8 +121,7 @@ function TaskActions({
         <Button
           isIconOnly
           size="sm"
-          variant="light"
-          radius="full"
+          variant="tertiary"
           className="text-zinc-400"
           aria-label="Open conversation"
           onPress={() => router.push(`/c/${task.conversation_id}`)}
@@ -136,11 +132,9 @@ function TaskActions({
       <Button
         isIconOnly
         size="sm"
-        variant="light"
-        color="danger"
-        radius="full"
+        variant="ghost"
         aria-label="Delete task"
-        isLoading={isDeleting}
+        isPending={isDeleting}
         onPress={() => onDelete(task.id)}
       >
         {!isDeleting && <Delete02Icon className="size-4" />}
@@ -182,18 +176,23 @@ function TaskRow({
       </div>
 
       {hasRecap && (
-        <Modal size="2xl" isOpen={recapOpen} onOpenChange={setRecapOpen}>
-          <ModalContent>
-            <RecapSlideshow
-              title={task.task}
-              enableKeyboard
-              shots={task.frames.map((f, i) => ({
-                index: i + 1,
-                url: f.url,
-                caption: f.caption,
-              }))}
-            />
-          </ModalContent>
+        <Modal isOpen={recapOpen} onOpenChange={setRecapOpen}>
+          <Modal.Backdrop>
+            <Modal.Container size="lg">
+              <Modal.Dialog className="max-w-2xl">
+                <Modal.CloseTrigger aria-label="Close" />
+                <RecapSlideshow
+                  title={task.task}
+                  enableKeyboard
+                  shots={task.frames.map((f, i) => ({
+                    index: i + 1,
+                    url: f.url,
+                    caption: f.caption,
+                  }))}
+                />
+              </Modal.Dialog>
+            </Modal.Container>
+          </Modal.Backdrop>
         </Modal>
       )}
     </>
@@ -217,7 +216,7 @@ export function BrowserTaskHistory() {
       ) : error ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800/40 p-6 text-center text-sm text-zinc-400">
           <span>Couldn&apos;t load your browser tasks.</span>
-          <Button size="sm" variant="flat" onPress={() => void refetch()}>
+          <Button size="sm" variant="tertiary" onPress={() => void refetch()}>
             Retry
           </Button>
         </div>

@@ -86,17 +86,20 @@ export default function TodosHeader() {
       </div>
 
       <div className="relative flex items-center">
-        <Tooltip content="Create new todo">
-          <div className="group/btn [&_svg]:!h-5 [&_svg]:!w-5 [&_svg]:!text-zinc-400 hover:[&_svg]:!text-primary">
-            <TodoModal
-              mode="add"
-              buttonText=""
-              buttonClassName="!p-1.5 !m-0 !bg-transparent !min-w-0 hover:!bg-[#00bbff]/20 data-[hover=true]:!bg-[#00bbff]/20 rounded-xl"
-              onSuccess={async () => {
-                await loadCounts();
-              }}
-            />
-          </div>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <div className="group/btn [&_svg]:!h-5 [&_svg]:!w-5 [&_svg]:!text-zinc-400 hover:[&_svg]:!text-primary">
+              <TodoModal
+                mode="add"
+                buttonText=""
+                buttonClassName="!p-1.5 !m-0 !bg-transparent !min-w-0 hover:!bg-[#00bbff]/20 data-[hover=true]:!bg-[#00bbff]/20 rounded-xl"
+                onSuccess={async () => {
+                  await loadCounts();
+                }}
+              />
+            </div>
+          </Tooltip.Trigger>
+          <Tooltip.Content>Create new todo</Tooltip.Content>
         </Tooltip>
         <NotificationCenter />
       </div>

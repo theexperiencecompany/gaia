@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import { Folder01Icon, HardDriveIcon } from "@icons";
 import type { ProtectedFolder } from "@shared/desktop-tools";
 import { PROTECTED_FOLDERS, useFileAccess } from "../hooks/useFileAccess";
@@ -41,15 +40,14 @@ export function FileAccessSection() {
                 {FOLDER_LABELS[folder]}
               </span>
               {state === "granted" ? (
-                <Chip size="sm" variant="flat" color="success">
+                <Chip size="sm" variant="tertiary" color="success">
                   Allowed
                 </Chip>
               ) : (
                 <Button
                   size="sm"
-                  variant="flat"
-                  color={state === "denied" ? "warning" : "primary"}
-                  isLoading={busy === folder}
+                  variant="tertiary"
+                  isPending={busy === folder}
                   onPress={() => void requestFolder(folder)}
                 >
                   {state === "denied" ? "Denied — retry" : "Allow"}
@@ -62,7 +60,7 @@ export function FileAccessSection() {
         <div className="flex items-center gap-2 text-sm">
           <HardDriveIcon className="size-4 text-zinc-400" />
           <span className="min-w-0 flex-1 truncate">Full Disk Access</span>
-          <Button size="sm" variant="flat" onPress={openFullDiskAccess}>
+          <Button size="sm" variant="tertiary" onPress={openFullDiskAccess}>
             Open System Settings
           </Button>
         </div>
