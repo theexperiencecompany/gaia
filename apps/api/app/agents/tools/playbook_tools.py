@@ -231,14 +231,11 @@ async def write_playbook(
             return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
 
         record = await _pickable_record(config)
+        current_hash = workflow_hash(workflow.prompt, workflow.steps)
         stored = await playbook_repository.get_for_workflow(workflow_id, user_id)
-        built = build_playbook(
-            description,
-            steps,
-            result_brief,
-            record,
-            replaces=stored.steps if stored is not None else (),
-        )
+        # A playbook for an edited workflow binds nothing: the edit may have dropped the action.
+        replaced = stored.steps if stored and stored.workflow_hash == current_hash else []
+        built = build_playbook(description, steps, result_brief, record, replaces=replaced)
         log.set_ns("playbook", record_calls=len(record), picks=len(steps))
         if built.body is None:
             return _refused(built.issues, workflow_id)
@@ -252,7 +249,7 @@ async def write_playbook(
             PlaybookDocument(
                 workflow_id=workflow_id,
                 user_id=user_id,
-                workflow_hash=workflow_hash(workflow.prompt, workflow.steps),
+                workflow_hash=current_hash,
                 authored_run=get_stream_id(config),
                 created_at=now,
                 updated_at=now,

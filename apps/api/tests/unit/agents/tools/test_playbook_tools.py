@@ -1274,40 +1274,67 @@ class TestWritePlaybookAgainstTheAuthoringRun:
             "args": {"thread_id": "$steps.fetch.messages.0.threadId", "body": "hi"},
         }
 
-    async def test_a_heal_rewrite_that_drops_the_reply_is_refused_and_the_playbook_kept(
-        self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]
-    ) -> None:
-        """Regression for pb_724d9611fc77: the heal rewrite lost send_notification and the next fire told the user nothing."""
+    @staticmethod
+    def _stored_reply_playbook(store: _FakePlaybookStore, recipe_hash: str) -> PlaybookDocument:
         now = datetime.now(UTC)
-        healed = PlaybookDocument(
+        stored = PlaybookDocument(
             playbook_id="pb_healed",
             workflow_id=WORKFLOW_ID,
             user_id=USER_ID,
-            workflow_hash="h",
+            workflow_hash=recipe_hash,
             description="Reply to unread mail",
             steps=[
                 ToolStep(id="fetch", tool="GMAIL_FETCH_MESSAGES", args={"query": "is:unread"}),
-                ToolStep(tool="GMAIL_REPLY", args={"thread_id": "t1", "body": "hi"}),
+                ToolStep(id="answer", tool="GMAIL_REPLY", args={"thread_id": "t1", "body": "hi"}),
             ],
             result_brief="Say who was answered.",
             last_run_status=PlaybookRunStatus.SUSPECT,
             created_at=now,
             updated_at=now,
         )
-        store.documents[(WORKFLOW_ID, USER_ID)] = healed
+        store.documents[(WORKFLOW_ID, USER_ID)] = stored
+        return stored
+
+    async def _write_fetch_only(
+        self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]
+    ) -> dict[str, Any]:
         run_record[:] = [_fetch({"messages": [{"id": "m1"}]}), _reply({"sent": [{"id": "1"}]})]
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
         ):
-            result = await write_playbook.ainvoke(
+            return await write_playbook.ainvoke(
                 NEW_ARGS | {"steps": [{"call": "GMAIL_FETCH_MESSAGES#1"}]}, config=_config()
             )
 
+    async def test_a_heal_rewrite_that_drops_the_reply_is_refused_and_the_playbook_kept(
+        self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]
+    ) -> None:
+        """Regression for pb_724d9611fc77: the heal rewrite lost send_notification and the next fire told the user nothing."""
+        current = workflow_hash(_workflow().prompt, _workflow().steps)
+        healed = self._stored_reply_playbook(store, current)
+
+        result = await self._write_fetch_only(store, workflows, run_record)
+
         assert result["success"] is False
-        assert "the playbook this replaces calls GMAIL_REPLY" in result["message"]
+        assert (
+            "the playbook this replaces calls GMAIL_REPLY (step answer), which acts for the user"
+            in result["message"]
+        )
         assert store.documents[(WORKFLOW_ID, USER_ID)] is healed
+
+    async def test_a_playbook_left_stale_by_an_edit_does_not_bind_the_rewrite(
+        self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]
+    ) -> None:
+        """An edit to the workflow may have removed the action on purpose."""
+        self._stored_reply_playbook(store, "before-the-edit")
+
+        result = await self._write_fetch_only(store, workflows, run_record)
+
+        assert result["success"] is True
+        stored = store.documents[(WORKFLOW_ID, USER_ID)]
+        assert [step.tool for step in stored.steps] == ["GMAIL_FETCH_MESSAGES"]
 
     async def test_a_stopped_replays_calls_on_the_record_can_be_picked(
         self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]

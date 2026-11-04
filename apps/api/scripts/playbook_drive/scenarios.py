@@ -348,8 +348,8 @@ SCENARIOS: list[Scenario] = [
             ),
             Fire("replay caps at max_items", for_each_ran(at_least=2, ran=1), "items >= 2, ran 1"),
             # The finishing agent's rewrite is not driven here: in that run the replay's
-            # calls are numbered first, and a scripted model cannot read the record to
-            # pick around them as a real one does.
+            # calls open the record, and a scripted model cannot read the record to pick
+            # around them as a real one does.
             Fire(
                 "empty list after a full replay is suspect",
                 both(reason("replay_suspect"), lifecycle(status="suspect", streak=1)),
