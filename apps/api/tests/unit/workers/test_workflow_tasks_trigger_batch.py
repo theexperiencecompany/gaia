@@ -469,7 +469,10 @@ class TestADrainDueInsideQuietHours:
         self, arq_queue: ArqRedis
     ) -> None:
         workflow = _workflow_gated_by(_BILLING, _POLLED)
-        context = {"trigger_type": "integration", "trigger_batch_key": f"trigger_batch:{_GATED_ID}"}
+        context: dict[str, object] = {
+            "trigger_type": "integration",
+            "trigger_batch_key": f"trigger_batch:{_GATED_ID}",
+        }
         tz = AsyncMock(return_value=Timezone.parse("Asia/Kolkata"))
 
         with (
