@@ -9,18 +9,23 @@ import Sidebar from "@/components/layout/sidebar/MainSidebar";
 import RightSidebarSlot, {
   RightSidebarSlotProvider,
 } from "@/components/layout/sidebar/RightSidebarSlot";
+import { PaidShellOverlays } from "@/components/layouts/PaidShellOverlays";
 import {
   MAIN_CONTENT_ID,
   SkipToContentLink,
 } from "@/components/navigation/SkipToContentLink";
+import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { UNPAID_APP_ROUTES } from "@/features/auth/constants";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
+import { useAppSessionEnabled } from "@/features/pricing/hooks/useEntitlement";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import { useElectron } from "@/hooks/useElectron";
+import { usePathname } from "@/i18n/navigation";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { cn } from "@/lib/utils";
@@ -34,27 +39,6 @@ const UpgradeModal = nextDynamic(
     })),
   { ssr: false },
 );
-const CommandMenu = nextDynamic(
-  () => import("@/features/search/components/CommandMenu"),
-  { ssr: false },
-);
-
-const FirstStepsWidget = nextDynamic(
-  () =>
-    import("@/features/first-steps").then((m) => ({
-      default: m.FirstStepsWidget,
-    })),
-  { ssr: false },
-);
-
-const WhatsNewModal = nextDynamic(
-  () =>
-    import("@/features/whats-new/components/WhatsNewModal").then((m) => ({
-      default: m.WhatsNewModal,
-    })),
-  { ssr: false },
-);
-
 interface HeaderSidebarTriggerProps {
   className?: string;
 }
@@ -70,18 +54,70 @@ const HeaderSidebarTrigger = ({ className }: HeaderSidebarTriggerProps) => {
   );
 };
 
+interface ShellTitleBarProps {
+  collapsed: boolean;
+  /** The sidebar trigger and route header, mounted only with the paid session. */
+  showControls: boolean;
+}
+
+const ShellTitleBar = ({ collapsed, showControls }: ShellTitleBarProps) => {
+  const { isElectron } = useElectron();
+  const { isMac } = usePlatform();
+
+  // On macOS desktop, the top-left corner belongs to the hiddenInset window
+  // controls once the sidebar collapses (offcanvas), so the re-open trigger
+  // must clear them horizontally.
+  const clearTrafficLights = isElectron && isMac && collapsed;
+
+  return (
+    <header
+      className={cn(
+        // Desktop only: the 44px band centres the 36px controls at y=22,
+        // the macOS hiddenInset traffic-light centre (y=16, 12px tall).
+        isElectron
+          ? "flex h-11 shrink-0 items-center justify-between px-2"
+          : "flex shrink-0 items-center justify-between p-2",
+        clearTrafficLights && "pl-20",
+        // Collapsed sidebar no longer supplies the visual separation,
+        // so the top bar takes the border itself.
+        isElectron && collapsed && "border-b border-zinc-800",
+        // Makes the top bar the macOS hiddenInset drag region; buttons
+        // opt back out via the .electron-drag descendant rule in globals.css.
+        isElectron && isMac && "electron-drag",
+      )}
+    >
+      {showControls && (
+        <>
+          <HeaderSidebarTrigger
+            // The collapsed border eats 1px of the header's content box,
+            // which centres the 36px trigger 0.5px high (21.5 vs the
+            // lights' 22). Nudge it back down so it sits pixel-perfect.
+            className={
+              isElectron && collapsed ? "translate-y-[0.5px]" : undefined
+            }
+          />
+          <HeaderManager />
+        </>
+      )}
+    </header>
+  );
+};
+
 export function MainLayoutShell({ children }: { children: ReactNode }) {
   const { isOpen, isMobileOpen, setOpen, setMobileOpen } = useLayoutSidebar();
   const isMobile = useIsMobile();
-  const { isElectron } = useElectron();
-  const { isMac } = usePlatform();
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
-  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const billingEnabled = useDeployment().bills;
+  const pathname = usePathname();
+  // The paid app (sidebar, header, sync, the page itself) mounts only for an
+  // account allowed to use it; until then only the routes an unpaid account
+  // lives on render, so nothing behind the paywall is ever requested.
+  const appSessionEnabled = useAppSessionEnabled();
+  const showPage = appSessionEnabled || UNPAID_APP_ROUTES.includes(pathname);
   // Check if user needs onboarding
   useOnboardingGuard();
-  useBackgroundSync();
+  useBackgroundSync(appSessionEnabled);
 
   useChatStoreSync();
 
@@ -105,11 +141,6 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
 
   // Get the current open state based on mobile/desktop
   const currentOpen = isMobile ? isMobileOpen : isOpen;
-
-  // On macOS desktop, the top-left corner belongs to the hiddenInset window
-  // controls once the sidebar collapses (offcanvas), so the re-open trigger
-  // must clear them horizontally.
-  const clearTrafficLights = isElectron && isMac && !currentOpen;
 
   // @warning: Removing the `target` option from useDrag will cause the HeroUI Buttons to not work properly.
   // For more details, see: https://github.com/hey-gaia/gaia/issues/44
@@ -148,42 +179,20 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
           >
             <div className="relative flex h-screen w-full dark" ref={dragRef}>
               <SkipToContentLink />
-              <SidebarLayout>
-                <Sidebar />
-              </SidebarLayout>
+              {appSessionEnabled && (
+                <SidebarLayout>
+                  <Sidebar />
+                </SidebarLayout>
+              )}
 
               <SidebarInset className="flex h-screen min-w-0 w-auto flex-col bg-primary-bg">
                 {/* Tapping anywhere outside the mobile sidebar dismisses it via
                   the Sheet's own modal overlay (see ui/sidebar), so the shell
                   needs no click handler of its own here. */}
-                <header
-                  className={cn(
-                    // Desktop only: the 44px band centres the 36px controls at y=22,
-                    // the macOS hiddenInset traffic-light centre (y=16, 12px tall).
-                    isElectron
-                      ? "flex h-11 shrink-0 items-center justify-between px-2"
-                      : "flex shrink-0 items-center justify-between p-2",
-                    clearTrafficLights && "pl-20",
-                    // Collapsed sidebar no longer supplies the visual separation,
-                    // so the top bar takes the border itself.
-                    isElectron && !currentOpen && "border-b border-zinc-800",
-                    // Makes the top bar the macOS hiddenInset drag region; buttons
-                    // opt back out via the .electron-drag descendant rule in globals.css.
-                    isElectron && isMac && "electron-drag",
-                  )}
-                >
-                  <HeaderSidebarTrigger
-                    // The collapsed border eats 1px of the header's content box,
-                    // which centres the 36px trigger 0.5px high (21.5 vs the
-                    // lights' 22). Nudge it back down so it sits pixel-perfect.
-                    className={
-                      isElectron && !currentOpen
-                        ? "translate-y-[0.5px]"
-                        : undefined
-                    }
-                  />
-                  <HeaderManager />
-                </header>
+                <ShellTitleBar
+                  collapsed={!currentOpen}
+                  showControls={appSessionEnabled}
+                />
                 {/* Below the title bar so a visible banner never shifts the
                   window controls out of alignment with the traffic lights. */}
                 <StatusBanner />
@@ -192,9 +201,7 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
                   id={MAIN_CONTENT_ID}
                   className="flex flex-1 flex-col overflow-hidden"
                 >
-                  {/* <Suspense fallback={<SuspenseLoader />}> */}
-                  {children}
-                  {/* </Suspense> */}
+                  {showPage ? children : <SuspenseLoader fullHeight />}
                 </div>
               </SidebarInset>
 
@@ -206,17 +213,7 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
               user opened it themselves. Nothing to sell where billing is off. */}
             {billingEnabled && <UpgradeModal />}
 
-            {/* What's New Modal */}
-            <WhatsNewModal />
-
-            {/* Activation checklist; hides itself on /onboarding and /dashboard */}
-            <FirstStepsWidget />
-
-            {/* Global Command Menu */}
-            <CommandMenu
-              open={commandMenuOpen}
-              onOpenChange={setCommandMenuOpen}
-            />
+            {appSessionEnabled && <PaidShellOverlays />}
           </SidebarProvider>
         </RightSidebarSlotProvider>
       </TooltipProvider>

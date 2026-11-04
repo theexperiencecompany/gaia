@@ -317,6 +317,27 @@ class TestSetToolOverride:
         mock_set.assert_awaited_once_with(USER_ID, "email_send", True)
 
     @patch("app.api.v1.endpoints.approvals.set_tool_override", new_callable=AsyncMock)
+    async def test_a_server_scoped_key_is_stored_exactly_as_sent(
+        self, mock_set: AsyncMock, client: AsyncClient
+    ):
+        mock_set.return_value = _prefs(tool_overrides={"mcp:posthog:delete_item": False})
+        resp = await client.put(
+            f"{APPROVALS_BASE}/tools/mcp:posthog:delete_item", json={"ask": False}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["tool_overrides"] == {"mcp:posthog:delete_item": False}
+        mock_set.assert_awaited_once_with(USER_ID, "mcp:posthog:delete_item", False)
+
+    async def test_a_malformed_server_scoped_key_is_a_422_not_a_stored_bomb(
+        self, client: AsyncClient
+    ):
+        with patch("app.services.hil.preferences.user_repository") as repo:
+            repo.set_hil_tool_override = AsyncMock()
+            resp = await client.put(f"{APPROVALS_BASE}/tools/mcp:posthog", json={"ask": False})
+        assert resp.status_code == 422
+        repo.set_hil_tool_override.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.approvals.set_tool_override", new_callable=AsyncMock)
     async def test_clear_override(self, mock_set: AsyncMock, client: AsyncClient):
         mock_set.return_value = _prefs(mode="auto")
         resp = await client.put(f"{APPROVALS_BASE}/tools/email_send", json={"ask": None})
@@ -520,7 +541,9 @@ class TestLedgerAlwaysToolScope:
         mock_decide.assert_awaited_once_with(
             "ap_1",
             user_id=USER_ID,
-            tap=ApprovalDecisionRequest(decision="approve", scope="always_tool", v=0),
+            tap=ApprovalDecisionRequest(
+                decision="approve", feedback=None, scope="always_tool", v=0
+            ),
         )
 
     async def test_a_call_that_always_asks_refuses_the_scope_with_422(

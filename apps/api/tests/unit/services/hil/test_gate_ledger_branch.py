@@ -447,6 +447,7 @@ class TestLedgerRegistration:
                 user_id=USER_ID,
                 fingerprint=fingerprint,
                 tool_name=GATED_TOOL,
+                tool_key=GATED_TOOL,
                 args=GATED_ARGS,
                 summary=GATED_SUMMARY,
                 preview='{"to": "b@x"}',
@@ -696,11 +697,7 @@ class TestLedgerAutoMode:
 
         kwargs = gate_seams.judge.await_args.kwargs
         assert gate_seams.judge.await_args.args == (
-            AutoContext(
-                user_id=USER_ID,
-                history=summarize_history(rows),
-                never_auto_tools=frozenset({"DROP_TABLE"}),
-            ),
+            AutoContext(user_id=USER_ID, history=summarize_history(rows), never_auto=False),
         )
         assert kwargs["call"] == JudgedCall(
             tool_name=GATED_TOOL,

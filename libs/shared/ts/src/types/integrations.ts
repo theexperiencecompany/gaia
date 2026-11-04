@@ -16,6 +16,7 @@ import type {
 export type {
   CreateCustomIntegrationRequest,
   IntegrationTool,
+  IntegrationToolApproval,
   IntegrationToolsResponse,
   MyIntegrationItem,
   MyIntegrationsResponse,

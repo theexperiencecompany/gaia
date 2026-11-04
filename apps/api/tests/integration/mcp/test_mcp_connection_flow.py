@@ -14,6 +14,7 @@ from langchain_core.tools import BaseTool
 import pytest
 
 from app.services.mcp.mcp_client import MCPClient
+from app.services.mcp.server_routing import _find_integration_id_by_server_url
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -162,7 +163,7 @@ class TestMCPConnectionFlow:
             await client.ensure_connected("gone")
 
     async def test_ensure_connected_drops_the_stale_session_it_refused(self):
-        """The warm entry must be evicted too — _find_integration_id_by_server_url routes proxy calls off _clients directly."""
+        """The warm entry must be evicted too — server-URL routing reads the live sessions directly."""
         client = _build_client_with_no_auth("user-revoked-cleanup")
         client._tools["gone"] = [_make_fake_tool("stale_tool")]
         client._clients["gone"] = MagicMock()
@@ -192,7 +193,7 @@ class TestMCPConnectionFlow:
                 AsyncMock(return_value=[]),
             ),
         ):
-            found = await client._find_integration_id_by_server_url("https://mcp.example.com/sse")
+            found = await _find_integration_id_by_server_url(client, "https://mcp.example.com/sse")
 
         assert found is None, "routed a tool call to a revoked integration"
 
@@ -208,7 +209,7 @@ class TestMCPConnectionFlow:
             "app.services.mcp.mcp_client.IntegrationResolver.resolve",
             AsyncMock(return_value=resolved),
         ):
-            found = await client._find_integration_id_by_server_url("https://mcp.example.com/sse")
+            found = await _find_integration_id_by_server_url(client, "https://mcp.example.com/sse")
 
         assert found == "live"
 
@@ -264,10 +265,6 @@ class TestMCPConnectionFlow:
 
     @patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock)
     @patch(
-        "app.services.mcp.mcp_client.integration_repository.clear_tools",
-        new_callable=AsyncMock,
-    )
-    @patch(
         "app.services.mcp.mcp_client.update_user_integration_status",
         new=AsyncMock(),
     )
@@ -275,7 +272,7 @@ class TestMCPConnectionFlow:
         "app.services.mcp.mcp_client.IntegrationResolver.resolve",
         new=AsyncMock(return_value=None),
     )
-    async def test_disconnect_removes_client_from_pool(self, mock_clear_tools, mock_delete_cache):
+    async def test_disconnect_removes_client_from_pool(self, mock_delete_cache):
         client = _build_client_with_no_auth("user-disconnect")
 
         # Pre-populate state as if connect() had already run
