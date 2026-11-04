@@ -16,7 +16,7 @@ import httpx
 import pytest
 from scripts.evals.core.cases import load_case_files
 from scripts.evals.core.cost import EvalCostTracker
-from scripts.evals.core.types import Case, ProviderError
+from scripts.evals.core.types import Case, CaseRun, ProviderError
 from scripts.evals.suites.trigger_gate import (
     DATA_DIR,
     DESK_AUTOMATION,
@@ -28,11 +28,10 @@ from scripts.evals.suites.trigger_gate import (
     GateJournalFields,
     GateMode,
     GateTransport,
-    RecordedRow,
     TriggerGateSuite,
     gate_requests,
     jev_body,
-    read_recorded,
+    quiet_wakes,
     record,
     request_sha,
 )
@@ -40,6 +39,7 @@ import time_machine
 
 from app.constants.trigger_gates import ENFORCED_GATE_KINDS, GateKind, GateOwner
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.models.jev_models import JevDecisionsResponse
 from app.services.triggers.trigger_gate import (
     GateBypass,
     GatedJob,
@@ -68,6 +68,18 @@ RECORDED_QUIET_FALSE_SKIPS = frozenset({"mail-048", "mail-245", "mail-313", "mai
 # The two service-down emails; mail-151 sits at P(urgent) 0.79 to 0.82, so one pass holds it.
 RECORDED_WAKES = frozenset({"mail-094", "mail-151"})
 NOISE_SKIP_FLOOR = 0.70
+
+
+class RecordedRow(GateJournalFields):
+    """One email's line in a recorded pass."""
+
+    case_id: str
+
+
+def read_recorded(path: Path) -> dict[str, RecordedRow]:
+    """Return one recorded pass, keyed by case id."""
+    rows: list[RecordedRow] = [json.loads(line) for line in path.read_text().splitlines()]
+    return {row["case_id"]: row for row in rows}
 
 
 @dataclass(frozen=True)
@@ -184,6 +196,18 @@ def test_the_live_suite_graded_each_email_by_day_as_decide_gate_does(
         assert {c for c, row in p.rows.items() if row["outcome"] == "skip"} == skipped, p.run_id
 
 
+def test_the_live_suite_graded_each_quiet_hours_wake_as_decide_gate_does(
+    cases: dict[str, Case], regraded: list[_Pass]
+) -> None:
+    for p in regraded:
+        woken = _decided(cases, p, GateMode.QUIET, GateBypass)
+        answers = {c: row["requests"][GateMode.QUIET]["response"] for c, row in p.rows.items()}
+        graded = {
+            c for c, a in answers.items() if quiet_wakes(JevDecisionsResponse.model_validate(a))
+        }
+        assert graded == woken, p.run_id
+
+
 def test_by_day_the_desk_gate_skips_no_needs_you_email_but_the_named_and_anonymised(
     cases: dict[str, Case], regraded: list[_Pass]
 ) -> None:
@@ -277,6 +301,32 @@ async def test_a_jev_outage_in_the_live_suite_is_a_provider_error_not_a_verdict(
             await GateTransport().run(
                 cases["mail-001"], cfg, EvalCostTracker(cfg.providers, 1.0), cfg.providers["fake"]
             )
+
+
+def _quiet_run(case_id: str, *, can_wait: float) -> CaseRun:
+    urgent = {"can_wait": can_wait, "service_down": 1 - can_wait}
+    answer = {"type": "choice", "choice": "can_wait", "probabilities": urgent}
+    asked = AskedRequest(request_sha="", response={"answers": {"urgent": answer}})
+    fields = GateJournalFields(gate="system", outcome="run", requests={GateMode.QUIET: asked})
+    return CaseRun(case_id=case_id, end_state=dict(fields))
+
+
+@pytest.mark.parametrize(
+    ("case_id", "can_wait", "score"),
+    [("mail-001", 0.0, 0.0), ("mail-001", 1.0, 1.0), ("mail-094", 0.0, 1.0)],
+    ids=["noise-woken", "noise-held", "service-down-woken"],
+)
+def test_the_live_suite_fails_a_quiet_hours_wake_for_mail_that_can_wait(
+    cases: dict[str, Case], case_id: str, can_wait: float, score: float
+) -> None:
+    assert cases[case_id].expected["urgent"] is (case_id == "mail-094")
+    assert EXTRA["quiet_wake"](cases[case_id], _quiet_run(case_id, can_wait=can_wait)) == score
+
+
+def test_a_live_case_with_no_quiet_hours_answer_fails_the_wake_gate(
+    cases: dict[str, Case],
+) -> None:
+    assert EXTRA["quiet_wake"](cases["mail-094"], CaseRun(case_id="mail-094")) == 0.0
 
 
 def _run_dir(tmp_path: Path, *end_states: GateJournalFields | None) -> Path:

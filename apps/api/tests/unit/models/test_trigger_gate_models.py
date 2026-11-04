@@ -96,8 +96,12 @@ class TestWhereAGateMayLive:
 
     @pytest.mark.parametrize("trigger_type", [TriggerType.SCHEDULE, TriggerType.MANUAL])
     def test_only_an_integration_workflow_takes_a_gate(self, trigger_type: TriggerType) -> None:
-        with pytest.raises(ValidationError, match="a gate needs an integration trigger"):
+        with pytest.raises(ValidationError) as refused:
             _workflow(trigger_type, AUTHORED)
+
+        assert [e["msg"] for e in refused.value.errors()] == [
+            "Value error, a gate needs an integration trigger"
+        ]
 
     def test_an_integration_workflow_takes_a_gate(self) -> None:
         assert _workflow(TriggerType.INTEGRATION, DESK).gate == DESK
