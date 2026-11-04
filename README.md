@@ -1,12 +1,15 @@
 <div align="center">
 
+<a href="https://github.com/theexperiencecompany/gaia/stargazers"><strong>⭐ Star GAIA on GitHub</strong></a><br />
+If it saves you time, a star helps someone else find it.
+
 <img src="apps/desktop/resources/icons/512x512.png" alt="GAIA" width="128" />
 
 # GAIA
 
 **The open-source AI assistant that handles your whole day.**
 
-[![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io)
+[![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?label=Discord&color=5c6af3)](https://discord.heygaia.io) [![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io)
 
 </div>
 
