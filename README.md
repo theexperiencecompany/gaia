@@ -1,7 +1,6 @@
 <div align="center">
 
-<a href="https://github.com/theexperiencecompany/gaia/stargazers"><strong>⭐ Star GAIA on GitHub</strong></a><br />
-If it saves you time, a star helps someone else find it.
+> ⭐ **[Star GAIA on GitHub](https://github.com/theexperiencecompany/gaia/stargazers)** — if it saves you time, a star helps someone else find it.
 
 <img src="apps/desktop/resources/icons/512x512.png" alt="GAIA" width="128" />
 
