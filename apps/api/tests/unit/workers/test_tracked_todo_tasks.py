@@ -77,7 +77,7 @@ from app.constants.todos import (
     TodoActivityEvent,
     TodoWakeKind,
 )
-from app.constants.trigger_gates import SystemGatePreset
+from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import TodoRunWake
@@ -93,7 +93,7 @@ from app.models.todo_models import (
     TodoRunContext,
     TodoUpdate,
 )
-from app.models.trigger_gate_models import QuietHoursBypass, SystemGate
+from app.models.trigger_gate_models import AuthoredGate, QuietHoursBypass, SystemGate, TriggerGate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
     SubscriptionAction,
@@ -108,6 +108,7 @@ from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
 from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
+from app.services.triggers.todo_trigger_window import buffer_todo_trigger_event
 from app.utils import auth_utils
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
@@ -133,7 +134,7 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
-from tests.helpers import UNKNOWN_USER_ID, captured_wide_event, users_get
+from tests.helpers import UNKNOWN_USER_ID, captured_wide_event, live_through, users_get
 from tests.integration_account_factories import make_integration_account, make_integration_record
 
 # Analytics attributes a todo run to its owner, so the owner is a real user id.
@@ -337,6 +338,7 @@ class TestExecuteTrackedTodoLock:
 
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=_pool())),
+            patch(f"{MODULE}.todo_repository.get_by_id", AsyncMock(return_value=_doc())),
             patch(f"{MODULE}.trigger_window_end", AsyncMock(return_value=None)),
             patch(f"{MODULE}._take_trigger_events", AsyncMock(return_value=[_GMAIL_ORIGIN])),
             patch(f"{MODULE}._execute_todo_with_retry", AsyncMock(side_effect=_record)),
@@ -2366,8 +2368,11 @@ class TestOneRunPerOccurrence:
         ):
             yield run
 
-    async def test_a_desk_email_held_overnight_rides_the_morning_run_once(self, queue, fake_redis):
-        """New mail at 02:30 that can wait is held; the 08:00 briefing answers it and the drain finds none."""
+    @pytest.mark.parametrize("drain_first", [False, True], ids=["briefing-first", "drain-first"])
+    async def test_a_desk_email_held_overnight_rides_the_morning_run_once(
+        self, queue, fake_redis, drain_first: bool
+    ):
+        """New mail at 02:30 that can wait is held; the 08:00 briefing answers it, whichever job ARQ starts first."""
         kolkata = Timezone.parse("Asia/Kolkata")
         morning = datetime(2026, 10, 2, 8, tzinfo=kolkata.tzinfo)
         watch = TriggerSubscription(
@@ -2416,7 +2421,11 @@ class TestOneRunPerOccurrence:
         ):
             jev.post(HIL_JEV_URL).mock(return_value=httpx.Response(200, json=can_wait))
             await tracked_todo_service.schedule_execution("todo-1", morning.astimezone(UTC))
-            first_of_thread = {"thread_id": "m-1", "message_id": "m-1", "subject": "Pilot"}
+            first_of_thread: dict[str, object] = {
+                "thread_id": "m-1",
+                "message_id": "m-1",
+                "subject": "Pilot",
+            }
             assert (
                 await dispatch_to_subscribed_todos(
                     "gmail_new_message", None, OWNER_ID, first_of_thread
@@ -2432,11 +2441,16 @@ class TestOneRunPerOccurrence:
             self._worker(row) as run,
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="Asia/Kolkata"))),
         ):
-            assert await _fire(queue, scheduled) == "success:todo-1"
-            assert await _fire(queue, drain) == "skipped:todo-1 (no held trigger events)"
+            for job in [drain, scheduled] if drain_first else [scheduled, drain]:
+                await _fire(queue, job)
+            leftover = [
+                job for job in await _queued(queue) if job.score <= morning.timestamp() * 1000
+            ]
 
         run.assert_awaited_once()
         assert run.await_args.kwargs["origin"] is None
+        assert await fake_redis.llen("trigger_batch:todo:todo-1") == 0
+        assert leftover == []
 
     async def test_a_scheduled_run_leaves_held_payloads_for_their_own_run(self, queue, fake_redis):
         """Only a desk reads what changed itself; another todo's held event is its run's content."""
@@ -2956,6 +2970,150 @@ class TestTriggerEventsCoalesce:
         assert '"m-1"' in self._prompts(run)[1]
         # The window the reply's own run opened, not one claimed before any run began.
         assert int(window_end) >= occurrence_stamp(datetime.now(UTC)) + 890
+
+
+_ANSWERED = AuthoredGate(condition="the reply needs an answer", author=GateAuthor.GAIA)
+# A reply can wait for the morning; by day a reply runs without asking.
+_REPLY_CAN_WAIT = {
+    "answers": {
+        "gate": {
+            "type": "choice",
+            "choice": "needed",
+            "probabilities": {"needed": 0.9, "not_needed": 0.1},
+        },
+        "urgent": {
+            "type": "choice",
+            "choice": "can_wait",
+            "probabilities": {
+                "incident": 0.0,
+                "service_down": 0.0,
+                "meeting": 0.0,
+                "can_wait": 1.0,
+            },
+        },
+    }
+}
+
+
+def _kolkata(day: int, hour: int, minute: int) -> datetime:
+    return datetime(2026, 10, day, hour, minute, tzinfo=KOLKATA)
+
+
+def _hourly_watch(gate: TriggerGate | None) -> TodoDocument:
+    """Build a todo that runs on a reply to thread t-1 at most once an hour, behind gate."""
+    todo = _watching(cooldown_seconds=3600)
+    (watch,) = todo.trigger_subscriptions
+    return todo.model_copy(
+        update={"trigger_subscriptions": [watch.model_copy(update={"gate": gate})]}
+    )
+
+
+class TestQuietHoursHoldAGatedTodosWindow:
+    """A gated todo starts no run inside the user's quiet hours unless an event in it is urgent.
+
+    A window opened before 22:00 can end after it: what it holds then runs at
+    08:00. An ungated todo's window ends as it always has.
+    """
+
+    @contextmanager
+    def _live(self, row: _TodoRow, runs: list[tuple[datetime, list[str]]]) -> Iterator[None]:
+        async def run(request: TodoRunRequest) -> None:
+            assert request.on_started is not None
+            await request.on_started()
+            runs.append((datetime.now(KOLKATA), sorted(set(re.findall(r"m-\d+", request.task)))))
+
+        with (
+            respx.mock(assert_all_called=False) as jev,
+            patch(
+                "app.services.hil.jev_client.resolve",
+                AsyncMock(
+                    return_value=ProviderConfig(api_key="or-key")
+                ),  # pragma: allowlist secret
+            ),
+            patch(f"{_GATE}.is_trigger_gates_enforced", AsyncMock(return_value=True)),
+            patch(
+                f"{_GATE}.get_profile_timezone",
+                AsyncMock(return_value=Timezone.parse("Asia/Kolkata")),
+            ),
+            patch(f"{_GATE}.capture"),
+            patch(f"{MODULE}.todo_repository", row),
+            patch("app.workers.tasks.todo_run_context.todo_repository", row),
+            patch(f"{_DISPATCH}.todo_repository", row),
+            patch(f"{MODULE}.run_todo_on_executor", AsyncMock(side_effect=run)),
+            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="Asia/Kolkata"))),
+            patch(f"{_DISPATCH}.record_activity", AsyncMock()),
+            patch(f"{_DISPATCH}.capture"),
+        ):
+            jev.post(HIL_JEV_URL).mock(return_value=httpx.Response(200, json=_REPLY_CAN_WAIT))
+            yield
+
+    @pytest.mark.parametrize(
+        ("gate", "replies", "runs"),
+        [
+            pytest.param(
+                _ANSWERED,
+                {_kolkata(1, 21, 30): 1, _kolkata(1, 21, 45): 2},
+                [(_kolkata(1, 21, 30), ["m-1"]), (_kolkata(2, 8, 0), ["m-2"])],
+                id="window-ends-inside-quiet-hours",
+            ),
+            pytest.param(
+                _ANSWERED,
+                {_kolkata(1, 21, 30): 1, _kolkata(1, 21, 45): 2, _kolkata(1, 22, 10): 3},
+                [(_kolkata(1, 21, 30), ["m-1"]), (_kolkata(2, 8, 0), ["m-2", "m-3"])],
+                id="window-ends-inside-quiet-hours-holding-a-held-reply",
+            ),
+            pytest.param(
+                None,
+                {_kolkata(1, 21, 30): 1, _kolkata(1, 21, 45): 2},
+                [(_kolkata(1, 21, 30), ["m-1"]), (_kolkata(1, 22, 30), ["m-2"])],
+                id="ungated",
+            ),
+        ],
+    )
+    async def test_what_the_window_holds_at_night_runs_when_quiet_hours_end(
+        self,
+        queue: ArqRedis,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        gate: TriggerGate | None,
+        replies: dict[datetime, int],
+        runs: list[tuple[datetime, list[str]]],
+    ) -> None:
+        row = _TodoRow(_hourly_watch(gate))
+        started: list[tuple[datetime, list[str]]] = []
+
+        async def reply(moment: datetime) -> None:
+            await dispatch_to_subscribed_todos(
+                "gmail_new_message", None, OWNER_ID, _reply_payload(replies[moment])
+            )
+
+        with self._live(row, started):
+            await live_through(queue, list(replies), reply, lambda job: _fire(queue, job))
+
+        assert started == runs
+
+    async def test_a_window_holding_an_urgent_reply_still_drains_at_night(
+        self, queue: ArqRedis
+    ) -> None:
+        """An urgent reply that found a run going waits only for the window, as by day."""
+        todo = _hourly_watch(_ANSWERED)
+        urgent = TriggerOrigin(
+            subscription_id=todo.trigger_subscriptions[0].id,
+            trigger_name="gmail_new_message",
+            payload=_reply_payload(1),
+            quiet_hours_bypass=QuietHoursBypass(reason=_MEETING),
+        )
+        started: list[tuple[datetime, list[str]]] = []
+        night = _kolkata(1, 23, 0)
+
+        with self._live(_TodoRow(todo), started), time_machine.travel(night, tick=False):
+            # How an urgent reply lands on the batch: the lock was held when it fired.
+            assert await buffer_todo_trigger_event("todo-1", urgent)
+            (drain,) = await _queued(queue)
+            result = await _fire(queue, drain)
+
+        assert result == "success:todo-1"
+        assert started == [(night, ["m-1"])]
 
 
 # ---------------------------------------------------------------------------

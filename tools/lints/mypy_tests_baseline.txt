@@ -60,8 +60,6 @@ apps/api/tests/e2e/test_voice_device_realtime_e2e.py	attr-defined
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	arg-type
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	func-returns-value
 apps/api/tests/factories.py	arg-type
-apps/api/tests/helpers.py	assignment
-apps/api/tests/helpers.py	exit-return
 apps/api/tests/integration/agents/conftest.py	attr-defined
 apps/api/tests/integration/agents/test_agent_graph_checkpointing.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_delivery.py	attr-defined

@@ -337,21 +337,21 @@ class TestQuietHours:
             at=datetime(2026, 10, 1, 21, 0, tzinfo=UTC),
         )
 
-        assert job.job_id == f"trigger_batch:{WORKFLOW_ID}"
+        assert job.args[1]["trigger_batch_key"] == f"trigger_batch:{WORKFLOW_ID}"
         assert job.score == _score(datetime(2026, 10, 2, 8, tzinfo=ZoneInfo(KOLKATA)))
         assert json.loads(held)["message_id"] == "t1"
 
-    async def test_a_daily_batch_waits_out_its_day_and_still_misses_the_night(
+    async def test_a_held_email_on_a_daily_batch_drains_that_morning_not_a_day_later(
         self, night: SimpleNamespace
     ) -> None:
-        """A per-email workflow batches a day; one held at 02:30 drains at 08:00 the day after."""
+        """A per-email workflow batches a day; what it held at 02:30 still drains at 08:00."""
         night.jev.mock(return_value=httpx.Response(200, json=_night_body(can_wait=1.0)))
 
         (job,), _ = await _fire_at(
             night, _workflow(), zone=KOLKATA, at=datetime(2026, 10, 1, 21, 0, tzinfo=UTC)
         )
 
-        assert job.score == _score(datetime(2026, 10, 3, 8, tzinfo=ZoneInfo(KOLKATA)))
+        assert job.score == _score(datetime(2026, 10, 2, 8, tzinfo=ZoneInfo(KOLKATA)))
 
     async def test_an_urgent_workflow_runs_now_and_says_why(self, night: SimpleNamespace) -> None:
         night.jev.mock(return_value=httpx.Response(200, json=_night_body(can_wait=0.0)))
