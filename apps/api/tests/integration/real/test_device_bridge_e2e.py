@@ -34,10 +34,13 @@ from unittest.mock import AsyncMock
 from bson import ObjectId
 import httpx
 import pytest
+import websockets
 
+from app.api.v1.middleware.agent_auth import create_agent_token
+from app.config.settings import settings
 from app.services.integrations import custom_crud
 from app.workers.tasks.device_tasks import warm_device_servers
-from tests.helpers import pick_free_port
+from tests.helpers import forge_jwt, hostile_jwts, pick_free_port, read_jwt
 
 pytestmark = [pytest.mark.service, pytest.mark.slow]
 
@@ -803,3 +806,66 @@ class TestRefreshTokenReuseDetection:
         finally:
             await owner.aclose()
             await anon.aclose()
+
+
+class TestDeviceSocketAuth:
+    """The device JWT a paired daemon gets from /device/token opens the live socket; nothing else does."""
+
+    async def _pair_and_exchange(self, live_api_server) -> str:
+        owner = _client(live_api_server.url, str(ObjectId()))
+        anon = _client(live_api_server.url)
+        try:
+            start = await anon.post(
+                "/api/v1/device/pair/start",
+                json={"name": "socket-auth", "platform": "test", "daemon_version": "0.0.0"},
+            )
+            approve = await owner.post(
+                "/api/v1/device/pair/approve", json={"user_code": start.json()["user_code"]}
+            )
+            assert approve.status_code == 200, approve.text
+            poll = await anon.post(
+                "/api/v1/device/pair/poll", json={"device_code": start.json()["device_code"]}
+            )
+            exchange = await anon.post(
+                "/api/v1/device/token", json={"refresh_token": poll.json()["refresh_token"]}
+            )
+            assert exchange.status_code == 200, exchange.text
+            access_token: str = exchange.json()["access_token"]
+            return access_token
+        finally:
+            await owner.aclose()
+            await anon.aclose()
+
+    async def _dial(self, live_api_server, token: str) -> int:
+        """Open the device socket the way the daemon does; return the handshake status."""
+        url = live_api_server.url.replace("http", "ws", 1) + "/api/v1/ws/device"
+        try:
+            async with websockets.connect(
+                url, additional_headers={"Authorization": f"Bearer {token}"}, open_timeout=10
+            ) as socket:
+                return socket.response.status_code
+        except websockets.InvalidStatus as refused:
+            return refused.response.status_code
+
+    async def test_an_exchanged_device_token_opens_the_socket(
+        self, live_api_server, clean_bridge_tables, pro_plan
+    ):
+        token = await self._pair_and_exchange(live_api_server)
+
+        assert await self._dial(live_api_server, token) == 101
+
+    @pytest.mark.parametrize("kind", [*sorted(hostile_jwts({}, "s")), "agent_token", "no_audience"])
+    async def test_a_bad_device_token_is_refused_at_the_handshake(
+        self, live_api_server, clean_bridge_tables, pro_plan, kind
+    ):
+        genuine = await self._pair_and_exchange(live_api_server)
+        claims = read_jwt(genuine)[1]
+        tokens = {
+            **hostile_jwts(claims, settings.AGENT_SECRET),
+            "agent_token": create_agent_token(claims["sub"]),
+            "no_audience": forge_jwt(
+                {k: v for k, v in claims.items() if k != "aud"}, settings.AGENT_SECRET
+            ),
+        }
+
+        assert await self._dial(live_api_server, tokens[kind]) == 403

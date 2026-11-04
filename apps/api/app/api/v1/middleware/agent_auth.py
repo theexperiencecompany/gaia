@@ -1,7 +1,6 @@
 from datetime import UTC, datetime, timedelta
-from typing import cast
 
-from jose import JWTError, jwt
+import jwt
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.config.settings import settings
@@ -33,7 +32,7 @@ def verify_agent_token(token: str) -> AgentTokenInfo | None:
         claims = AgentTokenClaims.model_validate(
             jwt.decode(token, AGENT_SECRET, algorithms=[JWT_ALGORITHM])
         )
-    except (JWTError, ValidationError):
+    except (jwt.PyJWTError, ValidationError):
         return None
     if claims.role != "agent":
         return None
@@ -48,4 +47,4 @@ def create_agent_token(user_id: str, expires_minutes: int = AGENT_TOKEN_EXPIRY_M
         "exp": expire,
         "iat": datetime.now(UTC),
     }
-    return cast(str, jwt.encode(payload, AGENT_SECRET, algorithm=JWT_ALGORITHM))
+    return jwt.encode(payload, AGENT_SECRET, algorithm=JWT_ALGORITHM)
