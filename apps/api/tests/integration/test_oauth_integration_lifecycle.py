@@ -1080,7 +1080,7 @@ class TestIntegrationResolver:
         )
 
         with patch(
-            "app.services.integrations.integration_resolver.integration_repository.get",
+            "app.services.integrations.integration_resolver.integration_repository.get_custom",
             AsyncMock(return_value=custom),
         ):
             resolved = await IntegrationResolver.resolve("my-custom-server")
@@ -1096,7 +1096,7 @@ class TestIntegrationResolver:
     async def test_resolve_nonexistent_returns_none(self) -> None:
         """Resolving a non-existent integration returns None."""
         with patch(
-            "app.services.integrations.integration_resolver.integration_repository.get",
+            "app.services.integrations.integration_resolver.integration_repository.get_custom",
             AsyncMock(return_value=None),
         ):
             resolved = await IntegrationResolver.resolve("does_not_exist_xyz")
@@ -1118,7 +1118,7 @@ class TestIntegrationResolver:
             )
         )
         with patch(
-            "app.services.integrations.integration_resolver.integration_repository.get",
+            "app.services.integrations.integration_resolver.integration_repository.get_custom",
             mock_get,
         ):
             resolved = await IntegrationResolver.resolve("gmail")
@@ -1352,15 +1352,14 @@ class TestMCPIntegrationConnection:
     async def test_connect_auth_required_mcp_returns_redirect(self) -> None:
         """MCP integration requiring OAuth returns redirect with auth URL."""
 
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client.build_oauth_auth_url = AsyncMock(
-            return_value="https://auth.example.com/oauth?client_id=abc"
-        )
-
         with (
             patch(
                 "app.services.integrations.integration_connection_service.get_mcp_client",
-                AsyncMock(return_value=mock_mcp_client),
+                AsyncMock(return_value=AsyncMock()),
+            ),
+            patch(
+                "app.services.integrations.integration_connection_service.build_oauth_auth_url",
+                AsyncMock(return_value="https://auth.example.com/oauth?client_id=abc"),
             ),
             patch(
                 "app.services.integrations.integration_connection_service.update_user_integration_status",

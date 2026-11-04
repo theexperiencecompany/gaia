@@ -2,7 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
-from app.constants.platform_links import PLATFORM_LINK_CODE_FEATURE_KEY
+from app.constants.platform_links import (
+    CHAT_LINK_PLATFORMS,
+    PLATFORM_LINK_CODE_FEATURE_KEY,
+    Platform,
+)
 from app.db.redis import redis_cache
 from app.decorators import enforce_rate_limit
 from app.models.bot_models import LinkTokenRecord
@@ -14,6 +18,7 @@ from app.models.platform_models import (
     LinkPlatformRequest,
     LinkPlatformResponse,
     MintPlatformLinkCodeResponse,
+    PlatformConversationResponse,
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
@@ -28,9 +33,9 @@ from app.services.platform_link_code_service import (
 )
 from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import (
-    Platform,
     PlatformLinkService,
     disconnect_platform_account,
+    open_platform_chat,
     require_platform_plan,
     start_platform_connect,
 )
@@ -229,6 +234,27 @@ async def disconnect_platform(
     schedule_account_sync(user_id)
     log.set(outcome="success")
     return result
+
+
+@router.post("/{platform}/conversation")
+async def open_platform_chat_endpoint(
+    platform: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> PlatformConversationResponse:
+    """Open the DM chat of a linked Telegram, WhatsApp or iMessage account."""
+    user_id = _require_user_id(current_user)
+    log.set(user={"id": user_id}, operation="open_platform_chat", platform=platform)
+
+    if platform not in CHAT_LINK_PLATFORMS:
+        raise create_error(
+            message=f"{platform} has no chat to open",
+            fix="Open chats for Telegram, WhatsApp or iMessage only",
+            status_code=404,
+        )
+
+    conversation_id = await open_platform_chat(user_id, platform, current_user)
+    log.set_ns("platform", conversation_id=conversation_id, outcome="success")
+    return PlatformConversationResponse(conversation_id=conversation_id)
 
 
 @router.post(

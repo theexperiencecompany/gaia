@@ -12,14 +12,14 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from langchain_core.runnables import RunnableLambda
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 import pytest
 import time_machine
 
 from app.agents.prompts import todo_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
 from app.agents.tools.execute.dispatch import dispatch_config_for
-from app.constants.email import MessageFieldLiteral
+from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.models.agent_config import ComposioAccountSelection
 from app.models.common_models import GatherContextInput
@@ -29,6 +29,7 @@ from app.models.composio_schemas.gmail import (
     FetchThreadInput,
 )
 from app.services.composio import account_scope as account_scope_module
+from app.services.composio.custom_tools import gmail_tools as gmail_tools_module
 from app.services.composio.custom_tools.gmail_constants import FETCH_CONCURRENCY
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
@@ -381,6 +382,75 @@ class TestResolveTimeframe:
         combined, _ = _resolve_timeframe("today", "is:unread", Timezone.utc())
         assert combined.startswith("after:")
         assert combined.endswith("is:unread")
+
+    @time_machine.travel(datetime(2026, 10, 20, 12, tzinfo=UTC), tick=False)
+    def test_any_count_of_days_weeks_months_resolves_to_its_window(self):
+        assert _timeframe_clause("14d", Timezone.utc()) == "after:2026/10/07 before:2026/10/21"
+        assert _timeframe_clause("2m", Timezone.utc()) == "after:2026/08/22 before:2026/10/21"
+
+    def test_a_named_timeframe_has_no_day_count(self):
+        with pytest.raises(ValueError, match=r"^not a relative timeframe: 'today'$"):
+            gmail_tools_module._relative_days("today")
+
+    @pytest.mark.parametrize(
+        ("timeframe", "expected_max"),
+        [("2d", 100), ("5d", 200), ("14d", 400), ("30d", 500), ("2m", 500), ("this_week", 200)],
+    )
+    def test_default_cap_scales_with_the_window_length(self, timeframe: str, expected_max: int):
+        _, default_max = _resolve_timeframe(timeframe, None, Timezone.utc())
+        assert default_max == expected_max
+
+
+class TestFetchInputsModelsSend:
+    """Inputs captured from prod GMAIL_FETCH_MESSAGES/FETCH_THREAD calls that the schema refused."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("timeframe", ["14d", "30d", "2d", "2m"])
+    def test_a_relative_timeframe_of_any_length_is_accepted(self, timeframe: str):
+        request = FetchMessagesInput.model_validate(
+            {"query": "invoice OR receipt", "timeframe": timeframe, "max_messages": 40}
+        )
+        assert request.timeframe == timeframe
+
+    @pytest.mark.parametrize("timeframe", ["24h", "this_month", "0d", "fortnight"])
+    def test_an_unsupported_timeframe_is_refused_naming_the_accepted_forms(self, timeframe: str):
+        with pytest.raises(ValidationError) as refused:
+            FetchMessagesInput.model_validate({"timeframe": timeframe})
+        assert refused.value.errors()[0]["msg"] == (
+            f"Value error, timeframe {timeframe!r} is not supported. Use one of: today, "
+            "yesterday, tomorrow, this_week, last_week, next_week, or the last N "
+            "days/weeks/months/years written <N>d / <N>w / <N>m / <N>y (2d, 7d, 14d, 30d, "
+            "2w, 3m, 1y); for anything else (hours, a calendar month) put after:/before: "
+            "in `query` instead."
+        )
+
+    def test_omitted_fields_fall_back_to_the_default_set(self):
+        assert FetchMessagesInput.model_validate({"fields": None}).fields == DEFAULT_SUMMARY_FIELDS
+
+    def test_a_bare_field_name_is_refused_as_not_a_list(self):
+        with pytest.raises(ValueError, match="valid list"):
+            FetchMessagesInput.model_validate({"fields": "date"})
+
+    @pytest.mark.regression
+    def test_the_field_names_models_reach_for_map_onto_the_projected_ones(self):
+        request = FetchMessagesInput.model_validate(
+            {
+                "timeframe": "1d",
+                "fields": ["message_id", "thread_id", "from", "subject", "date", "labelIds"],
+            }
+        )
+        assert request.fields == ["id", "threadId", "from", "subject", "time", "labels"]
+
+    @pytest.mark.regression
+    def test_internal_date_spellings_mean_the_message_time(self):
+        thread = FetchThreadInput.model_validate(
+            {"thread_ids": ["t1"], "fields": ["from", "internalDate", "internal_date", "date"]}
+        )
+        assert thread.fields == ["from", "time"]
+
+    def test_an_unknown_field_is_still_refused(self):
+        with pytest.raises(ValueError, match="isImportant"):
+            FetchMessagesInput.model_validate({"fields": ["from", "isImportant"]})
 
 
 # ---------------------------------------------------------------------------

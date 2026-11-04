@@ -4,11 +4,16 @@ Gmail trigger payload and tool output models.
 Reference: node_modules/@composio/core/generated/gmail.ts
 """
 
-from typing import Any, Literal, NotRequired, Self, TypedDict
+import re
+from typing import Annotated, Any, Literal, NotRequired, Self, TypedDict, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints
 
-from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
+from app.constants.email import (
+    DEFAULT_SUMMARY_FIELDS,
+    MESSAGE_FIELD_SYNONYMS,
+    MessageFieldLiteral,
+)
 
 # =============================================================================
 # Trigger Payloads
@@ -67,24 +72,56 @@ class GmailEmailSentPayload(BaseModel):
 
 # Convenience timeframes the agent can pass instead of computing Gmail's
 # after:/before: operators. Resolved server-side using the user's home timezone.
-TimeframeLiteral = Literal[
+NamedTimeframeLiteral = Literal[
     "today",
     "yesterday",
     "tomorrow",
     "this_week",
     "last_week",
     "next_week",
-    "1d",
-    "3d",
-    "5d",
-    "7d",
-    "1w",
-    "2w",
-    "1m",
-    "3m",
-    "6m",
-    "1y",
 ]
+
+#: "Last N days/weeks/months/years": 14d, 30d, 2w, 3m, 1y. Any count, because models
+#: naturally ask for 14d or 30d and a closed list of counts refused them.
+RELATIVE_TIMEFRAME_PATTERN = r"^[1-9][0-9]*[dwmy]$"
+RelativeTimeframe = Annotated[str, StringConstraints(pattern=RELATIVE_TIMEFRAME_PATTERN)]
+
+_TIMEFRAME_FORMS = (
+    f"{', '.join(get_args(NamedTimeframeLiteral))}, or the last N days/weeks/months/years "
+    "written <N>d / <N>w / <N>m / <N>y (2d, 7d, 14d, 30d, 2w, 3m, 1y)"
+)
+
+
+def _known_timeframe(value: object) -> object:
+    """Refuse an unsupported timeframe with the forms that work, or a query to use instead."""
+    if value is None or value in get_args(NamedTimeframeLiteral):
+        return value
+    if isinstance(value, str) and re.fullmatch(RELATIVE_TIMEFRAME_PATTERN, value):
+        return value
+    raise ValueError(
+        f"timeframe {value!r} is not supported. Use one of: {_TIMEFRAME_FORMS}; "
+        "for anything else (hours, a calendar month) put after:/before: in `query` instead."
+    )
+
+
+Timeframe = Annotated[NamedTimeframeLiteral | RelativeTimeframe, BeforeValidator(_known_timeframe)]
+
+
+def _canonical_fields(value: object) -> object:
+    """Read omitted fields as the default set and Gmail API spellings as the field they name.
+
+    Tool wrappers pass an omitted arg as explicit None; an empty list is kept, it
+    means "all fields". A non-list and unknown names pass through for the list
+    and Literal checks to refuse.
+    """
+    if value is None:
+        return list(DEFAULT_SUMMARY_FIELDS)
+    if not isinstance(value, list) or not all(isinstance(name, str) for name in value):
+        return value
+    return list(dict.fromkeys(MESSAGE_FIELD_SYNONYMS.get(name, name) for name in value))
+
+
+ProjectedFields = Annotated[list[MessageFieldLiteral], BeforeValidator(_canonical_fields)]
 
 BodyProcessingLiteral = Literal["normalize", "raw", "none"]
 
@@ -92,37 +129,27 @@ BodyProcessingLiteral = Literal["normalize", "raw", "none"]
 class FetchMessagesInput(BaseModel):
     """Input for the GMAIL_FETCH_MESSAGES custom tool."""
 
-    timeframe: TimeframeLiteral | None = Field(
+    timeframe: Timeframe | None = Field(
         default=None,
         description=(
             "Convenience range, resolved to Gmail's after:/before: operators "
-            "in the user's home timezone. Ignored if `query` already "
-            "contains after:/before:."
+            "in the user's home timezone: today, yesterday, tomorrow, this_week, "
+            "last_week, next_week, or the last N days/weeks/months/years as "
+            "<N>d / <N>w / <N>m / <N>y (e.g. 2d, 14d, 30d, 2w, 3m, 1y). Ignored "
+            "if `query` already contains after:/before:."
         ),
     )
     query: str | None = Field(
         default=None,
         description="Raw Gmail search query (ANDed with the timeframe clause).",
     )
-    fields: list[MessageFieldLiteral] = Field(
+    fields: ProjectedFields = Field(
         default_factory=lambda: list(DEFAULT_SUMMARY_FIELDS),
         description=(
             "Which fields per message. Defaults to metadata + snippet. "
             "Add 'body' for the processed body. Empty list = all fields."
         ),
     )
-
-    @field_validator("fields", mode="before")
-    @classmethod
-    def _coerce_none_fields(
-        cls, value: list[MessageFieldLiteral] | None
-    ) -> list[MessageFieldLiteral]:
-        # Tool wrappers pass omitted args as explicit None; treat that the same
-        # as omission and fall back to the curated default field set. An empty
-        # list is preserved (it carries the "all fields" meaning downstream).
-        if value is None:
-            return list(DEFAULT_SUMMARY_FIELDS)
-        return value
 
     body_processing: BodyProcessingLiteral = Field(
         default="normalize",
@@ -157,22 +184,13 @@ class FetchThreadInput(BaseModel):
             "with its full message list in conversation order."
         ),
     )
-    fields: list[MessageFieldLiteral] = Field(
+    fields: ProjectedFields = Field(
         default_factory=lambda: list(DEFAULT_SUMMARY_FIELDS),
         description=(
             "Which fields per message. Defaults to metadata + snippet. "
             "Add 'body' for the processed body. Empty list = all fields."
         ),
     )
-
-    @field_validator("fields", mode="before")
-    @classmethod
-    def _coerce_none_fields(
-        cls, value: list[MessageFieldLiteral] | None
-    ) -> list[MessageFieldLiteral]:
-        if value is None:
-            return list(DEFAULT_SUMMARY_FIELDS)
-        return value
 
     body_processing: BodyProcessingLiteral = Field(
         default="normalize",
