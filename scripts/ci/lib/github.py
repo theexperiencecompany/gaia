@@ -29,7 +29,7 @@ import urllib.request
 
 DEFAULT_API_URL = "https://api.github.com"
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
-# GitHub answers a secondary rate limit with a 403 whose body says so; a plain 403 is a refusal.
+# A 403 is a rate limit when its body names a secondary limit or no requests are left; else a refusal.
 SECONDARY_RATE_LIMIT = "secondary rate limit"
 # GitHub's floor for retrying a rate limit that names no Retry-After and has requests left.
 RATE_LIMIT_COOLDOWN_SECS = 60.0
@@ -166,7 +166,11 @@ class GitHub:
                 detail = err.read().decode(errors="replace")[:ERROR_BODY_CHARS]
                 failure = f"HTTP {err.code}: {detail}"
                 rate_limited = err.code == 429 or (
-                    err.code == 403 and SECONDARY_RATE_LIMIT in detail
+                    err.code == 403
+                    and (
+                        SECONDARY_RATE_LIMIT in detail
+                        or err.headers.get("X-RateLimit-Remaining") == "0"
+                    )
                 )
                 if rate_limited:
                     limit = _RateLimit(

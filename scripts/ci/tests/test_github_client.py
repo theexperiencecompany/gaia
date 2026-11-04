@@ -43,6 +43,17 @@ def test_a_rate_limit_with_no_requests_left_waits_until_the_reset(
     assert 25 <= waits[0] <= 31
 
 
+def test_a_primary_rate_limit_403_is_retried_after_the_reset(
+    api: FakeGitHub, waits: list[float]
+) -> None:
+    reset = {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": str(int(time.time()) + 10)}
+    limited = Reply(403, {"message": "API rate limit exceeded"}, headers=reset)
+    api.on("POST", PATH, limited, Reply(201, {}))
+
+    _post(api)
+    assert 5 <= waits[0] <= 11
+
+
 def test_retry_after_is_honoured(api: FakeGitHub, waits: list[float]) -> None:
     api.on("POST", PATH, Reply(429, {}, headers={"Retry-After": "7"}), Reply(201, {}))
 
