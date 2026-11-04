@@ -24,7 +24,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, status
 from fastapi.responses import HTMLResponse, Response
-from jose import JWTError
+from jwt import PyJWTError
 from starlette.websockets import WebSocketState
 import websockets
 
@@ -86,7 +86,7 @@ async def _authorize(code: str, token: str | None) -> _Target | _Denied:
     else:
         try:
             claims = verify_takeover_token(token)
-        except JWTError:
+        except PyJWTError:
             return _Denied("Invalid or expired link")
         if claims.session_id != code:
             return _Denied("Link does not match this session")
