@@ -21,7 +21,7 @@ def _woke(**fields: object) -> TodoDocument:
         "waiting_on": WaitingOn.TIME,
     }
     base.update(fields)
-    return TodoDocument(**base)
+    return TodoDocument.model_validate(base)
 
 
 class TestWhatAFinishedRunLeavesToDo:

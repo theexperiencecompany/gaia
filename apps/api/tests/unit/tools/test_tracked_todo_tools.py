@@ -69,6 +69,7 @@ from app.utils import auth_utils
 from app.utils.timezone import Timezone
 from shared.py.wide_events import spawn_logged_task
 from tests.integration_account_factories import make_integration_account, make_integration_record
+from tests.tool_helpers import tool_coroutine
 
 _FUTURE = (datetime.now(UTC) + timedelta(days=7)).replace(microsecond=0)
 _FUTURE_ISO = _FUTURE.isoformat()
@@ -443,9 +444,9 @@ class TestBuildRecurrenceUpdate:
 
 class TestBuildListDetailParts:
     def _doc(self, **overrides) -> TodoDocument:
-        base = {"user_id": "u1", "title": "t"}
+        base: dict[str, object] = {"user_id": "u1", "title": "t"}
         base.update(overrides)
-        return TodoDocument(**base)
+        return TodoDocument.model_validate(base)
 
     def test_overdue_due_date_is_flagged(self):
         now = datetime.now(UTC)
@@ -1269,9 +1270,9 @@ class TestApplyCronFirstFire:
 
 class TestBuildListDetailPartsScheduling:
     def _doc(self, **overrides) -> TodoDocument:
-        base = {"user_id": "u1", "title": "t"}
+        base: dict[str, object] = {"user_id": "u1", "title": "t"}
         base.update(overrides)
-        return TodoDocument(**base)
+        return TodoDocument.model_validate(base)
 
     def test_scheduled_at_is_shown(self):
         now = datetime.now(UTC)
@@ -1494,9 +1495,9 @@ class TestSearchTodoContext:
 
 class TestUpdateTrackedTodoSuccess:
     def _existing_doc(self, **overrides) -> TodoDocument:
-        base = {"id": "t1", "user_id": "user-1", "title": "t"}
+        base: dict[str, object] = {"id": "t1", "user_id": "user-1", "title": "t"}
         base.update(overrides)
-        return TodoDocument(**base)
+        return TodoDocument.model_validate(base)
 
     async def test_clearing_recurrence_on_an_unscheduled_todo_persists_the_clear(self):
         existing = self._existing_doc(recurrence="daily")
@@ -1786,7 +1787,7 @@ class TestCreateTrackedTodoSuccess:
             "updated_at": now,
         }
         base.update(overrides)
-        return TodoResponse(**base)
+        return TodoResponse.model_validate(base)
 
     async def test_create_without_scheduling_returns_confirmation(self):
         with patch(
@@ -1985,7 +1986,7 @@ class TestCreateThreadTrackedTodo:
     @classmethod
     async def _refused_for(cls, holder: TodoDocument) -> str:
         with patch(cls._CREATE, new_callable=AsyncMock, side_effect=ExternalRefTakenError(holder)):
-            return await create_tracked_todo.coroutine(
+            return await tool_coroutine(create_tracked_todo)(
                 config=_config(), title="t", gmail_thread_id="abc"
             )
 
@@ -2004,7 +2005,9 @@ class TestCreateThreadTrackedTodo:
             make_integration_account("ca_work"), user_id="user-1"
         )
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(config=_config(), title="t", gmail_thread_id="abc")
+            await tool_coroutine(create_tracked_todo)(
+                config=_config(), title="t", gmail_thread_id="abc"
+            )
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
             source=ExternalRefSource.GMAIL_THREAD, id="abc", account="ca_work"
         )
@@ -2019,7 +2022,7 @@ class TestCreateThreadTrackedTodo:
             user_id="user-1",
         )
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(
+            await tool_coroutine(create_tracked_todo)(
                 config=_config(), title="t", gmail_thread_id="abc", gmail_account="personal"
             )
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
@@ -2051,7 +2054,7 @@ class TestCreateThreadTrackedTodo:
             user_id="user-1",
         )
         with patch(self._CREATE, new_callable=AsyncMock) as create:
-            result = await create_tracked_todo.coroutine(
+            result = await tool_coroutine(create_tracked_todo)(
                 config=_config(), title="t", gmail_thread_id="abc", gmail_account=gmail_account
             )
         assert result == refusal

@@ -10,6 +10,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
+from pydantic import BaseModel, Field
 
 from app.agents.core.delegation_window import current_delegation
 from app.constants.agents import (
@@ -54,13 +55,19 @@ def _is_answered(call: ToolCall, answered: set[str]) -> bool:
     return call["id"] in answered
 
 
+class _ExecuteArgs(BaseModel):
+    """The arguments of the execute proxy: the tool it runs and that tool's own arguments."""
+
+    tool_name: str = ""
+    data: dict[str, object] = Field(default_factory=dict)
+
+
 def _effective_call(call: ToolCall) -> tuple[str, Mapping[str, object]]:
     """Return the tool a call really ran, seen through the execute proxy."""
-    args: Mapping[str, object] = call.get("args") or {}
     if call["name"] == EXECUTE_TOOL_NAME:
-        data = args.get("data")
-        return str(args.get("tool_name") or ""), data if isinstance(data, Mapping) else {}
-    return call["name"], args
+        proxied = _ExecuteArgs.model_validate(call["args"])
+        return proxied.tool_name, proxied.data
+    return call["name"], call["args"]
 
 
 def _wakes_later(call: ToolCall) -> bool:
@@ -115,15 +122,29 @@ class OutcomeReview:
         return self.declared is not None and self.problem is None
 
 
+class _FinishArgs(BaseModel):
+    """The arguments of finish_task as the model sent them, valid or not."""
+
+    outcome: object = None
+
+
+def _finish_outcome(call: ToolCall) -> OutcomeState | None:
+    raw = _FinishArgs.model_validate(call["args"]).outcome
+    return OutcomeState(raw) if isinstance(raw, str) and raw in OutcomeState else None
+
+
 def _declared_outcome(delegation: Sequence[AnyMessage]) -> OutcomeState | None:
     for message in reversed(delegation):
         if not isinstance(message, AIMessage):
             continue
         for call in message.tool_calls:
-            if call["name"] == FINISH_TASK_NAME:
-                raw = (call.get("args") or {}).get("outcome")
-                return OutcomeState(raw) if isinstance(raw, str) and raw in OutcomeState else None
+            if _is_finish_task(call):
+                return _finish_outcome(call)
     return None
+
+
+def _is_finish_task(call: ToolCall) -> bool:
+    return call["name"] == FINISH_TASK_NAME
 
 
 def review_outcome(delegation: Sequence[AnyMessage]) -> OutcomeReview:

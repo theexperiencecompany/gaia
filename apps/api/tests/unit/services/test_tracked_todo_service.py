@@ -79,7 +79,7 @@ def _todo_doc(**overrides: object) -> TodoDocument:
         "due_date": None,
     }
     data.update(overrides)
-    return TodoDocument(**data)
+    return TodoDocument.model_validate(data)
 
 
 def _todo_response(**overrides: object) -> TodoResponse:
@@ -92,7 +92,7 @@ def _todo_response(**overrides: object) -> TodoResponse:
         "updated_at": now,
     }
     data.update(overrides)
-    return TodoResponse(**data)
+    return TodoResponse.model_validate(data)
 
 
 @pytest.fixture
@@ -209,9 +209,11 @@ class TestCreateThreadTodo:
         mock_deps.create.return_value = _todo_response()
         mock_repo.update.side_effect = lambda *a, **k: order.append("setup")
 
-        async def register(**kwargs: object) -> tuple[TriggerSubscription, None, bool]:
-            order.append(str(kwargs["trigger_name"]))
-            return await _registered(**kwargs)
+        async def register(
+            *, trigger_name: str, conditions: list[SubscriptionCondition], **rest: object
+        ) -> tuple[TriggerSubscription, None, bool]:
+            order.append(trigger_name)
+            return await _registered(trigger_name=trigger_name, conditions=conditions, **rest)
 
         watch.register.side_effect = register
 

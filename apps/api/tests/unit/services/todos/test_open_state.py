@@ -33,7 +33,7 @@ NOW = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
 def _todo(**fields: object) -> TodoDocument:
     base: dict[str, object] = {"id": "t1", "user_id": "u1", "title": "t"}
     base.update(fields)
-    return TodoDocument(**base)
+    return TodoDocument.model_validate(base)
 
 
 def _waiting(on: WaitingOn, days: float = 3, **fields: object) -> TodoDocument:
