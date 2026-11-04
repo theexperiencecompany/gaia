@@ -1245,7 +1245,7 @@ def _post_target() -> list[str]:
         return ["--no-post"]
     return [
         "--repo", env_required("GITHUB_REPOSITORY"), "--sha", env_required("HEAD_SHA"),
-        "--run-id", env_required("GITHUB_RUN_ID"), "--job-id", env_required("JOB_ID"),
+        "--run-id", env_required("GITHUB_RUN_ID"), "--job-id", env_required("CHECK_RUN_ID"),
     ]  # fmt: skip
 
 
