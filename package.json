@@ -141,7 +141,8 @@
     "patchedDependencies": {
       "sileo@0.1.4": "patches/sileo@0.1.4.patch",
       "@react-aria/label@3.7.23": "patches/@react-aria__label@3.7.23.patch",
-      "@heroui/input@2.4.31": "patches/@heroui__input@2.4.31.patch"
+      "@heroui/input@2.4.31": "patches/@heroui__input@2.4.31.patch",
+      "@heroui/select@2.4.31": "patches/@heroui__select@2.4.31.patch"
     }
   }
 }
