@@ -6,6 +6,9 @@ drift (root CLAUDE.md, Type Safety item 18).
 """
 
 EXECUTE_TOOL_NAME = "execute"
+# The tool that loads an integration into a run; the executor graph, the display
+# formatter and the blocked-run claim check all name it.
+ACTIVATE_INTEGRATION_TOOL_NAME = "activate_integration"
 # The proxy's card label: shown in the UI, never part of what the call does.
 EXECUTE_LABEL_ARG = "task_description"
 # The proxy's arg carrying the real tool's arguments.

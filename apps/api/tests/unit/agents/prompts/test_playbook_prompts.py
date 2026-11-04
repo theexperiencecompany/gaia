@@ -21,7 +21,6 @@ from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSA
 from app.services.workflow.playbook.parser import RecordedResult, dump_playbook, validate_playbook
 
 PARSER = "app.services.workflow.playbook.parser"
-USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 @pytest.fixture(scope="module")
@@ -63,7 +62,7 @@ async def test_a_run_that_made_the_examples_calls_can_write_the_example(
     body: PlaybookBody, registry: ToolRegistry
 ) -> None:
     with patch(f"{PARSER}.get_tool_registry", new=AsyncMock(return_value=registry)):
-        validation = await validate_playbook(body, USER_ID, _run_that_made(body))
+        validation = await validate_playbook(body, _run_that_made(body))
     assert validation.issues == []
 
 

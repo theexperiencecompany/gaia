@@ -595,7 +595,6 @@ class TestBuildDelegation:
             "tool_call_id": "call_abc",
             "task": "draw the flowchart",
             "context": "the user's notes",
-            "integration_id": "",
             "inherited_tool_names": ["create_flowchart"],
             "parent_configurable": parent,
         }

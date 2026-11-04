@@ -129,7 +129,6 @@ def _recorded(
     call = RecordedCall(
         tool_name=tool.name,
         subagent_id=configurable.get("subagent_id"),
-        subagent=configurable.get("run_scope"),
         args=args,
         result_digest=digest,
         # A tool that reports its own failure under a normal return failed all the same.
