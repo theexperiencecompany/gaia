@@ -1,8 +1,4 @@
-"""Shared logic for subagent invocation, used by handoff_tools.py and executor_tool.py.
-
-Lives here (rather than in handoff_tools.py) so those modules import from it,
-avoiding a cyclic dependency.
-"""
+"""Shared logic for subagent invocation, used by delegation.py and executor_tool.py."""
 
 import asyncio
 from dataclasses import dataclass, field, replace
@@ -190,7 +186,6 @@ class ThreadSeed:
     user_id: str | None = None
     subagent_id: str | None = None
     retrieval_query: str | None = None
-    integration_id: str | None = None
     #: The comms turn's request this thread serves; see SectionContext.request_query.
     request_query: str | None = None
 
@@ -209,12 +204,11 @@ async def build_initial_messages(
     callers pass the unenhanced task when task carries hints that would pollute search.
     """
     configurable: AgentConfigurable = seed.configurable
-    tier, user_id, subagent_id, retrieval_query, integration_id = (
+    tier, user_id, subagent_id, retrieval_query = (
         seed.tier,
         seed.user_id,
         seed.subagent_id,
         seed.retrieval_query,
-        seed.integration_id,
     )
 
     log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
@@ -227,7 +221,6 @@ async def build_initial_messages(
             request_query=seed.request_query,
             user_id=user_id,
             subagent_id=subagent_id,
-            integration_id=integration_id,
         ),
     )
     assembled, note = await asyncio.gather(
@@ -257,7 +250,7 @@ async def build_initial_messages(
 async def _executor_presence_note(
     ctx: SectionContext, configurable: AgentConfigurable
 ) -> HumanMessage | None:
-    """Return the executor's surface-change note; handoff and spawned subagents get none."""
+    """Return the executor's surface-change note; every other worker tier gets none."""
     if ctx.tier is not AgentTier.EXECUTOR:
         return None
     return await presence_note_message(
@@ -876,26 +869,13 @@ async def prepare_executor_execution(
     resolved_category = get_subagent_by_id(tool_category) if tool_category else None
     if tool_category and resolved_category:
         tool_hint = f"the '{selected_tool}' tool" if selected_tool else "the user's request"
-        if (
-            resolved_category.managed_by == "mcp"
-            and resolved_category.mcp_config
-            and resolved_category.mcp_config.requires_auth
-        ):
-            enhanced_task = (
-                f"{task}\n\n"
-                f"DIRECT EXECUTION HINT: This request should be handled by "
-                f"'{tool_category}'. Skip retrieve_tools discovery and directly "
-                f'handoff(subagent_id="{tool_category}", task="...") with the full request, then '
-                f"use its result for {tool_hint}."
-            )
-        else:
-            enhanced_task = (
-                f"{task}\n\n"
-                f"DIRECT EXECUTION HINT: This request should be handled by "
-                f"'{tool_category}'. Skip retrieve_tools discovery and directly "
-                f'call activate_integration(integration_id="{tool_category}"), then '
-                f"act on {tool_hint} yourself with its tools."
-            )
+        enhanced_task = (
+            f"{task}\n\n"
+            f"DIRECT EXECUTION HINT: This request should be handled by "
+            f"'{tool_category}'. Skip retrieve_tools discovery and directly "
+            f'call activate_integration(integration_id="{tool_category}"), then '
+            f"act on {tool_hint} yourself with its tools."
+        )
         log.set(
             executor_prep={
                 "direct_hint_applied": True,

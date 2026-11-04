@@ -43,13 +43,11 @@ class SubagentKind(StrEnum):
     """Which delegation tool a subagent run came from — and so how it is rebuilt."""
 
     SPAWN = "spawn"
-    MCP = "mcp"
 
 
 class SubagentResumeItem(TypedDict):
     """How to rebuild a background subagent run, in any process, from what its tool was given.
 
-    integration_id is the per-user MCP id for an MCP run, empty for a spawn;
     parent_configurable is the executor's configurable, persist-safe.
     """
 
@@ -57,7 +55,6 @@ class SubagentResumeItem(TypedDict):
     tool_call_id: str
     task: str
     context: str
-    integration_id: str
     inherited_tool_names: list[str]
     parent_configurable: "AgentConfigurable"
 
@@ -151,11 +148,7 @@ class AgentConfigurable(TypedDict, total=False):
     #: the narrated run still holds the busy lock.
     is_result_narration: bool
     subagent_id: str | None
-    #: The handoff subagent id (``gmail``, ``todos``) whose tool space this run executes
-    #: in, None at the executor. Stamped on every recorded call: a playbook step
-    #: replays in exactly this scope.
-    run_scope: str | None
-    #: Shared VFS session, held constant across the executor and the handoff
+    #: Shared VFS session, held constant across the executor and the
     #: subagents it spawns so all resolve paths against one workspace.
     vfs_session_id: str | None
     #: OpenRouter sticky-routing key — the conversation id, pinned on every
@@ -197,8 +190,8 @@ class AgentConfigurable(TypedDict, total=False):
     langfuse_tags: list[str]
 
     # --- internal flags -----------------------------------------------------
-    #: Set only on a HIL resume re-dispatch; the handoff tool probes it to tell
-    #: a replayed call from a fresh one. Keyed by ``HIL_RESUME_CONFIG_KEY``.
+    #: Set only on a HIL resume re-dispatch, to tell a replayed call from a
+    #: fresh one. Keyed by ``HIL_RESUME_CONFIG_KEY``.
     hil_resume_replay: bool
     #: Set only on a background subagent's own run: the recipe the HIL gate files
     #: on its approvals. Keyed by ``SUBAGENT_RESUME_CONFIG_KEY``.
@@ -261,7 +254,6 @@ class AgentConfigurableView(BaseModel):
     selected_tool: str | None = None
     tool_category: str | None = None
     subagent_id: str | None = None
-    run_scope: str | None = None
     vfs_session_id: str | None = None
     stream_id: str | None = None
     active_todo_id: str | None = None

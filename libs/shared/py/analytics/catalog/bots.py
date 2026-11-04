@@ -8,6 +8,7 @@ from shared.py.analytics.catalog.properties import Identifier
 __all__ = [
     "BotAudioTranscribed",
     "BotAuthInitiated",
+    "BotChatOpened",
     "BotCommandExecuted",
     "BotError",
     "BotFileDelivered",
@@ -96,6 +97,15 @@ class BotReactionDelivered(BotEvent):
     surface: Literal["live", "outbound"]
     delivery: Literal["native", "fallback_text"]
     reason: Identifier | None = None
+
+
+class BotChatOpened(ServerEvent):
+    """A user opened a linked bot's DM chat from the web settings page."""
+
+    event: ClassVar[str] = "bot:chat_opened"
+    budget_per_user_day: ClassVar[int] = 50
+
+    platform: Identifier
 
 
 class BotSessionReset(ServerEvent):

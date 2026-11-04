@@ -152,7 +152,10 @@ async def set_tool_approval(
     payload: SetToolOverrideRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> HILPreferencesResponse:
-    """Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override."""
+    """Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.
+
+    tool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).
+    """
     log.set(
         user={"id": user.user_id},
         hil={"operation": "set_tool_override", "tool": tool_name, "ask": payload.ask},

@@ -43,6 +43,7 @@ from tests.e2e._harness.graph_run import (
     NUDGE_NODE,
     REJECT_NODE,
     TOOLS_NODE,
+    ToolCall,
     call,
     executor_graph,
     run_graph,
@@ -52,7 +53,7 @@ from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
 pytestmark = pytest.mark.e2e
 
 
-def plan(*contents: str, plan_id: str = "p1") -> dict[str, Any]:
+def plan(*contents: str, plan_id: str = "p1") -> ToolCall:
     return call("plan_tasks", {"tasks": [{"content": c} for c in contents]}, plan_id)
 
 
@@ -68,7 +69,7 @@ class TestToolsBoundFromTurnOne:
         [
             "plan_tasks",
             "update_tasks",
-            "handoff",
+            "activate_integration",
             "retrieve_tools",
             # spawn_subagent comes from the middleware stack, not
             # initial_tool_ids — it is the only tool here that depends on

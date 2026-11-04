@@ -3,12 +3,12 @@
 A workflow reuses one conversation forever, so its LangGraph checkpoints used to
 be what carried "what happened last time" — at the cost of re-sending every
 previous run as a full transcript. The threads are reset before each run
-(:mod:app.services.workflow.thread_reset); this is what replaces them: the
-run record's :class:RecordedCall list is rendered into the next run's executor
-brief.
+(:mod:app.services.workflow.thread_reset); the run record
+(app.agents.tools.run_record) replaces them, and the previous run's record is
+rendered here into the next run's executor brief.
 
-Pure by design — no I/O, so the mapping and the rendering stay unit-testable
-against plain dicts. The reads live in execution_service.
+Pure by design: no I/O, so the rendering stays unit-testable. The reads live in
+execution_service.
 """
 
 import json

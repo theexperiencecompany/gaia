@@ -90,7 +90,6 @@ _KEPT_WORDS = frozenset(
 )
 _LOWER = "abcdefghijklmnopqrstuvwxyz"
 _DIGITS = "0123456789"
-_HEX_LIKE = re.compile(r"[0-9a-f-]{8,}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +109,6 @@ class Anonymiser:
             update={
                 "args": self.value(call.args),
                 "result_digest": self.digest(call.result_digest),
-                "subagent": None if call.subagent is None else self.name(call.subagent),
                 "subagent_id": None,
                 "account": None if call.account is None else self.text(call.account),
             }
@@ -125,10 +123,6 @@ class Anonymiser:
         if isinstance(parsed, str):
             return build_result_digest(self.text(parsed))
         return build_result_digest(json.dumps(self.value(parsed)))
-
-    def name(self, value: str) -> str:
-        """An integration or subagent id: kept when it is vocabulary, hashed when it is a row id."""
-        return value if value in self.kept or not _HEX_LIKE.fullmatch(value) else self._hash(value)
 
     def value(self, value: object) -> object:
         if isinstance(value, str):

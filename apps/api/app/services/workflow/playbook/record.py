@@ -1,9 +1,8 @@
 """The run record as an author picks from it, and the playbook built from the picks.
 
 A playbook is built from calls this run actually made. The author names them by
-number and marks the values that change per run; the tool names, every other
-argument and the scope each call ran in come from the record, so none of them
-can be retyped wrong. What is left to refuse is only what a pick itself says:
+number and marks the values that change per run; the tool names and every other
+argument come from the record, so none of them can be retyped wrong. What is left to refuse is only what a pick itself says:
 a number that is not in the record, a path that is not in the call, a value
 that names no placeholder.
 """
@@ -27,7 +26,6 @@ from app.models.playbook_models import (
     TIME_KEY,
     AskSlot,
     ForEachStep,
-    HandoffStep,
     PlaybookBody,
     PlaybookRefusal,
     TimeSlot,
@@ -99,7 +97,6 @@ def render_record(entries: Sequence[RecordEntry]) -> list[dict[str, object]]:
         line: dict[str, object] = {
             "call": entry.number,
             "tool": call.tool_name,
-            "ran_in": call.subagent or "executor",
             "args": call.args,
         }
         if call.account:
@@ -221,21 +218,13 @@ def build_playbook(
     """
     built = BuiltPlaybook(body=None)
     placed = _place(picks, record, built.issues)
-    steps: list[ToolStep | ForEachStep | HandoffStep] = []
+    steps: list[ToolStep | ForEachStep] = []
     for item in placed:
         step = _build_step(item, built.issues)
         if step is None:
             continue
-        call = item.entry.call
-        built.sources.append(RecordedResult(args=call.args, result=item.entry.result))
-        scope = call.subagent
-        last = steps[-1] if steps else None
-        if scope is None:
-            steps.append(step)
-        elif isinstance(last, HandoffStep) and last.handoff == scope:
-            last.steps.append(step)
-        else:
-            steps.append(HandoffStep(handoff=scope, steps=[step]))
+        built.sources.append(RecordedResult(args=item.entry.call.args, result=item.entry.result))
+        steps.append(step)
     if built.issues:
         return built
     if not steps:

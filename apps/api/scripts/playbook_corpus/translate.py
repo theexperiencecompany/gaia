@@ -10,7 +10,7 @@ tool really took. An attempt that cannot be said as picks says why.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -19,7 +19,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.agents.core.subagents.call_record import is_error_envelope
 from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.models.playbook_models import TIME_KEY, AskSlot, is_ask_slot, is_time_slot
-from app.models.workflow_execution_models import RecordedCall
 from app.services.workflow.playbook.placeholders import placeholder_tokens
 from app.services.workflow.playbook.record import (
     PlaybookPick,
@@ -45,13 +44,6 @@ class Unmappable(StrEnum):
     ONLY_FAILED_CALLS = "only_failed_calls"
     #: the run made no pickable call at all before the write.
     EMPTY_RECORD = "empty_record"
-    #: the run handed off, and its stored trace kept none of the subagent's calls
-    #: (September traces recorded only the executor's own calls; fixed in #1618).
-    TRACE_LACKS_SUBAGENT_CALLS = "trace_lacks_subagent_calls"
-
-
-#: Reasons that say the call the author meant is absent from the record.
-_ABSENT = frozenset({Unmappable.EMPTY_RECORD, Unmappable.STEP_NEVER_RAN})
 
 
 class _OldStep(BaseModel):
@@ -70,12 +62,11 @@ class _OldStep(BaseModel):
 
 @dataclass(frozen=True, slots=True)
 class _Wanted:
-    """One call the attempt asked to freeze, with where it said the call ran."""
+    """One call the attempt asked to freeze."""
 
     step: _OldStep
     tool: str
     args: dict[str, object]
-    scope: str | None
 
 
 @dataclass
@@ -85,49 +76,14 @@ class Translation:
     picks: list[PlaybookPick] = field(default_factory=list)
     unmappable: Unmappable | None = None
     detail: str = ""
-    #: What the attempt said that the record replaces (retyped literals, scope).
+    #: What the attempt said that the record replaces (retyped literals).
     dropped: list[str] = field(default_factory=list)
 
 
-class _HandoffArgs(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    subagent_id: str | None = None
-
-
-def silent_handoffs(calls: Sequence[RecordedCall]) -> set[str]:
-    """The subagents the run handed off to whose calls its trace did not keep."""
-    targets = {
-        _HandoffArgs.model_validate(call.args).subagent_id
-        for call in calls
-        if call.tool_name == "handoff"
-    }
-    scoped = {call.subagent for call in calls if call.subagent is not None}
-    return {target for target in targets if target and target not in scoped}
-
-
 def translate(
-    attempt: Mapping[str, object],
-    record: Sequence[RecordEntry],
-    unpickable: frozenset[str],
-    *,
-    silent: Collection[str] = (),
-) -> Translation:
-    """Re-express one old write_playbook call's steps as picks over the record before it.
-
-    silent names the handoffs whose calls the trace lost; a call missing from
-    the record is then the trace's gap, not the author's invention.
-    """
-    translation = _translate(attempt, record, unpickable)
-    if translation.unmappable in _ABSENT and silent:
-        translation.detail = f"{translation.detail}; handoffs without calls: {sorted(silent)}"
-        translation.unmappable = Unmappable.TRACE_LACKS_SUBAGENT_CALLS
-    return translation
-
-
-def _translate(
     attempt: Mapping[str, object], record: Sequence[RecordEntry], unpickable: frozenset[str]
 ) -> Translation:
+    """Re-express one old write_playbook call's steps as picks over the record before it."""
     if not record:
         return Translation(unmappable=Unmappable.EMPTY_RECORD, detail="no pickable call ran")
     raw = decode_json_container(attempt.get("steps"))
@@ -152,11 +108,6 @@ def _translate(
             reason = Unmappable.ONLY_FAILED_CALLS if ran else Unmappable.STEP_NEVER_RAN
             return Translation(unmappable=reason, detail=item.tool)
         used.add(entry.number)
-        if entry.call.subagent != item.scope:
-            translation.dropped.append(
-                f"{item.tool}: written in {item.scope or 'executor'}, ran in "
-                f"{entry.call.subagent or 'executor'}"
-            )
         translation.picks.append(_pick(item, entry, translation.dropped))
     return translation
 
@@ -164,11 +115,11 @@ def _translate(
 def _flatten(
     steps: Sequence[_OldStep], translation: Translation, unpickable: frozenset[str]
 ) -> list[_Wanted]:
-    """Every call the attempt names, in order, with the scope it was written under."""
+    """Every call the attempt names, in order, a handoff group's children in its place."""
     wanted: list[_Wanted] = []
     for step in steps:
         if step.handoff is None:
-            wanted.extend(_wanted(step, None, unpickable))
+            wanted.extend(_wanted(step, unpickable))
             continue
         children = list(step.steps)
         if not children and step.tool is not None:
@@ -188,17 +139,17 @@ def _flatten(
                 )
             ]
         for child in children:
-            wanted.extend(_wanted(child, step.handoff, unpickable))
+            wanted.extend(_wanted(child, unpickable))
     return wanted
 
 
-def _wanted(step: _OldStep, scope: str | None, unpickable: frozenset[str]) -> list[_Wanted]:
+def _wanted(step: _OldStep, unpickable: frozenset[str]) -> list[_Wanted]:
     if step.tool is None:
         return []
     name, args = unwrap_execute_call(step.tool, dict(step.args))
     if name in unpickable:
         return []
-    return [_Wanted(step=step, tool=name, args=args, scope=scope)]
+    return [_Wanted(step=step, tool=name, args=args)]
 
 
 def _match(
@@ -224,7 +175,6 @@ def _match(
         key=lambda entry: (
             entry.number > after,
             _agreement(item.args, entry.call.args),
-            entry.call.subagent == item.scope,
             -entry.number,
         ),
     )
