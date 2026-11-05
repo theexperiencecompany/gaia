@@ -26,7 +26,7 @@ incremental = false
 enable = ["*"]
 # Response time measures how loaded the machine serving the crawl is, not the
 # site: on one build it flagged 0 of 100 pages on one run and 7 on the next.
-disable = ["perf/ttfb"]
+disable = []
 
 # Other sites' uptime is not this site's regression.
 [external_links]
