@@ -319,6 +319,7 @@ async def _bot_rate_limit_notice(
 
     Rate limits are streamed as a ``tool_data`` card for the web UI to render.
     Bots drop ``tool_data``, so without this they'd silently swallow the limit.
+    The card's own message wins, as on web: it names the wall that actually bound.
     Returns the user-facing notice, or ``None`` if ``chunk`` isn't such a card.
 
     The upgrade link is emitted as CommonMark ``[label](url)``; each bot adapter
@@ -334,8 +335,11 @@ async def _bot_rate_limit_notice(
         if isinstance(tool_card.data, dict)
         else BotRateLimitCardData()
     )
-    feature = str(card.feature or "this feature").replace("_", " ")
-    notice = f"⏳ You've reached your {feature} limit. Please try again later."
+    if card.message:
+        notice = f"⏳ {card.message}"
+    else:
+        feature = str(card.feature or "this feature").replace("_", " ")
+        notice = f"⏳ You've reached your {feature} limit. Please try again later."
 
     # Nudge an upgrade only for non-Pro users (Pro is the top tier).
     if card.current_plan != PlanType.PRO.value:
