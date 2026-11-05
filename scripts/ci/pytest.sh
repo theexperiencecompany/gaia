@@ -218,9 +218,10 @@ cmd_slice() {
 cmd_shared_suite() {
   cd "$REPO_ROOT/apps/api"
   # libs/ has no pytest config of its own: -c gives the suite apps/api's
-  # markers, --strict-markers, timeout and warning filters.
+  # markers, --strict-markers, timeout and warning filters. The catalog file is
+  # the ci:analytics-contract check, whose inputs include every emitter source.
   uv run --frozen pytest -c pytest.ini ../../libs/shared/py/tests \
-    --tb=short -q
+    --ignore=../../libs/shared/py/tests/test_analytics_catalog.py --tb=short -q
   ci_ok "gaia-shared tests: OK"
 }
 

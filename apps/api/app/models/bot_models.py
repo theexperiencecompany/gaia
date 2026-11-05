@@ -304,6 +304,7 @@ class BotRateLimitCardData(BaseModel):
 
     feature: JsonValue = None
     current_plan: JsonValue = None
+    message: str | None = None
 
 
 class BotWebStreamPayload(BaseModel):
