@@ -1,9 +1,20 @@
 """Shared test utilities for GAIA API tests."""
 
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterator, Sequence
+import base64
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from contextlib import ExitStack, asynccontextmanager, contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+import hashlib
+import hmac
 import importlib.util
 import json
 import math
@@ -23,6 +34,8 @@ from arq.jobs import JobDef
 from bson import ObjectId
 from bson.errors import InvalidId
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from langchain_core.language_models import ModelProfile
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
@@ -36,6 +49,7 @@ from starlette.requests import Request
 from starlette.types import ASGIApp
 import time_machine
 import uvicorn
+from workos.session import SessionModule
 
 from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
@@ -656,3 +670,141 @@ async def live_through(
             else:
                 return
     raise AssertionError(f"the queue never emptied: {await queue.queued_jobs()}")
+
+
+# ---------------------------------------------------------------------------
+# JWT forging: stdlib HMAC, so a token test never trusts the library it tests
+# ---------------------------------------------------------------------------
+
+_HMAC_HASHES = {"HS256": hashlib.sha256, "HS384": hashlib.sha384, "HS512": hashlib.sha512}
+
+# Tokens minted by python-jose 3.5.0, the JWT library before PyJWT, exp 2100-01-01:
+# a token issued before that swap stays live after the deploy and must still verify.
+JOSE_AGENT_DEVICE_SECRET = "jose-fixture-agent-secret-" + "x" * 16  # pragma: allowlist secret
+JOSE_MINTED_AGENT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWpvc2UiLCJyb2xlIjoiYWdlbnQiLCJleHAiOjQxMDI0NDQ4MDAsImlhdCI6MTc5MzcwMDAwMH0.Mv_SlZ6pQl8tr-LTEZjIKq9PUHg_8qLpdwjLhiSUhCs"  # gitleaks:allow — signed with a test secret
+JOSE_MINTED_DEVICE_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWpvc2UiLCJkZXZpY2VfaWQiOiJkZXYtam9zZSIsImF1ZCI6ImRldmljZS1icmlkZ2UiLCJyb2xlIjoiZGV2aWNlIiwiaWF0IjoxNzkzNzAwMDAwLCJleHAiOjQxMDI0NDQ4MDB9.k1GPpR5z1WmoSx8sk357ksLYY-7fyPIPSuahtijDRfE"  # gitleaks:allow — signed with a test secret
+#: Signed with the local-auth tests' TEST_SECRET; sub u-jose, ver 3.
+JOSE_MINTED_SESSION_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWpvc2UiLCJleHAiOjQxMDI0NDQ4MDAsImlhdCI6MTc5MzcwMDAwMCwidmVyIjozfQ.EOIx7VzYc3TIr8In4C5e-2gac43qUvlVigEFlkve5DQ"  # gitleaks:allow — signed with a test secret
+#: Signed with "a" * 64, the bot tests' BOT_SESSION_TOKEN_SECRET; platform telegram, tg-jose.
+JOSE_MINTED_BOT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWpvc2UiLCJwbGF0Zm9ybSI6InRlbGVncmFtIiwicGxhdGZvcm1fdXNlcl9pZCI6InRnLWpvc2UiLCJyb2xlIjoiYm90IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE3OTM3MDAwMDB9.9xTk_jz9LJ7g3opCxKLlhdSIPuQuVIpSkLcJIa0K8QA"  # gitleaks:allow — signed with a test secret
+#: Signed with "x" * 40, the takeover tests' secret; session sess-jose.
+JOSE_MINTED_TAKEOVER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWpvc2UiLCJzZXNzaW9uX2lkIjoic2Vzcy1qb3NlIiwicm9sZSI6ImJyb3dzZXJfdGFrZW92ZXIiLCJleHAiOjQxMDI0NDQ4MDAsImlhdCI6MTc5MzcwMDAwMH0.p3fvSTs2zoH-aCJ5lNoAF5VcGjxrFSkQjSXC_jdUfWM"  # gitleaks:allow — signed with a test secret
+
+
+def _b64url(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def _b64url_json(value: Mapping[str, object]) -> str:
+    return _b64url(json.dumps(value, separators=(",", ":")).encode())
+
+
+def bot_jwt_claims(user_id: str, platform: str, platform_user_id: str) -> dict[str, object]:
+    """Build the claims of a valid bot session JWT that expires in 15 minutes."""
+    return {
+        "sub": user_id,
+        "platform": platform,
+        "platform_user_id": platform_user_id,
+        "role": "bot",
+        "exp": int((datetime.now(UTC) + timedelta(minutes=15)).timestamp()),
+    }
+
+
+def read_jwt(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return a compact JWT's header and claims, unverified, without any JWT library."""
+    header, claims, _ = token.split(".")
+    return _b64url_json_decode(header), _b64url_json_decode(claims)
+
+
+def _b64url_json_decode(segment: str) -> dict[str, Any]:
+    decoded: dict[str, Any] = json.loads(
+        base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4))
+    )
+    return decoded
+
+
+def forge_jwt(
+    claims: Mapping[str, object],
+    secret: str,
+    *,
+    alg: str = "HS256",
+    header_alg: str | None = None,
+    kid: str | None = None,
+) -> str:
+    """Sign claims as a compact HMAC JWT without any JWT library; header_alg forges the declared alg."""
+    header = {"alg": header_alg or alg, "typ": "JWT", **({"kid": kid} if kid else {})}
+    signing_input = f"{_b64url_json(header)}.{_b64url_json(claims)}"
+    signature = hmac.new(secret.encode(), signing_input.encode(), _HMAC_HASHES[alg]).digest()
+    return f"{signing_input}.{_b64url(signature)}"
+
+
+def forge_rs256_jwt(claims: Mapping[str, object], key: rsa.RSAPrivateKey, *, kid: str) -> str:
+    """Sign claims as a compact RS256 JWT with cryptography alone, the shape WorkOS access tokens take."""
+    header = {"alg": "RS256", "typ": "JWT", "kid": kid}
+    signing_input = f"{_b64url_json(header)}.{_b64url_json(claims)}"
+    signature = key.sign(signing_input.encode(), padding.PKCS1v15(), hashes.SHA256())
+    return f"{signing_input}.{_b64url(signature)}"
+
+
+def rsa_public_jwk(key: rsa.RSAPrivateKey, *, kid: str) -> dict[str, str]:
+    """Publish an RSA key's public half as the JWK a JWKS endpoint serves."""
+    numbers = key.public_key().public_numbers()
+
+    def b64_int(value: int) -> str:
+        return _b64url(value.to_bytes((value.bit_length() + 7) // 8, "big"))
+
+    return {
+        "kty": "RSA",
+        "kid": kid,
+        "use": "sig",
+        "alg": "RS256",
+        "n": b64_int(numbers.n),
+        "e": b64_int(numbers.e),
+    }
+
+
+WORKOS_TEST_CLIENT_ID = "client_workos_session_test"
+WORKOS_TEST_KID = "sso_oidc_key_pair_test"
+
+
+def workos_access_token_claims(**overrides: object) -> dict[str, object]:
+    """Build the claims of a WorkOS access token that expires in five minutes."""
+    now = int(time.time())
+    claims: dict[str, object] = {
+        "sub": "user_01WORKOS",
+        "sid": "session_01WORKOS",
+        "iat": now,
+        "exp": now + 300,
+    }
+    return {**claims, **overrides}
+
+
+def seal_workos_session(access_token: str, cookie_password: str, *, email: str) -> str:
+    """Seal an access token into the wos-session cookie value, as WorkOS AuthKit does."""
+    user = {
+        "object": "user",
+        "id": "user_01WORKOS",
+        "email": email,
+        "email_verified": True,
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+    }
+    return SessionModule.seal_data(
+        {"access_token": access_token, "refresh_token": "refresh_test", "user": user},
+        cookie_password,
+    )
+
+
+def hostile_jwts(claims: Mapping[str, object], secret: str) -> dict[str, str]:
+    """Every way a token for claims can be wrong while still looking like one, by name."""
+    genuine = forge_jwt(claims, secret)
+    header, _, signature = genuine.split(".")
+    return {
+        "expired": forge_jwt({**claims, "exp": int(time.time()) - 60}, secret),
+        "wrong_key": forge_jwt(claims, "a-completely-different-secret-" + "z" * 16),
+        "alg_none": f"{_b64url_json({'alg': 'none', 'typ': 'JWT'})}.{_b64url_json(claims)}.",
+        "other_hmac_alg": forge_jwt(claims, secret, alg="HS512"),
+        "asymmetric_alg_header": forge_jwt(claims, secret, header_alg="RS256"),
+        "tampered_payload": f"{header}.{_b64url_json({**claims, 'sub': 'intruder'})}.{signature}",
+        "garbage": "not-a-jwt",
+    }

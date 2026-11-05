@@ -72,8 +72,6 @@ apps/api/app/schemas/errors.py	TB001
 apps/api/app/schemas/errors.py	TB002
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
-apps/api/app/scripts/delete_user_account.py	TB001
-apps/api/app/scripts/delete_user_account.py	TB002
 apps/api/app/scripts/sync_user_workspaces.py	TB002
 apps/api/app/services/_vfs_scheduler.py	TB002
 apps/api/app/services/bot_token_service.py	TB001

@@ -7,16 +7,24 @@ is faked at the same seam the WorkOS-mode suite uses.
 """
 
 from datetime import UTC, datetime, timedelta
+import time
 from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI, Request
-from jose import jwt
+import pytest
 from starlette.testclient import TestClient
 
+from app.api.v1.middleware import agent_auth
 from app.api.v1.middleware.agent_auth import AgentTokenInfo
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
 from app.models.user_models import UserDocument
+from tests.helpers import (
+    JOSE_AGENT_DEVICE_SECRET,
+    JOSE_MINTED_AGENT_TOKEN,
+    forge_jwt,
+    hostile_jwts,
+)
 
 TEST_SECRET = "test-instance-secret-" + "x" * 16
 ADMIN_ID = "507f1f77bcf86cd799439011"
@@ -31,14 +39,11 @@ def _warm_instance_secret(monkeypatch) -> None:
 
 def _session_token(user_id: str) -> str:
     """Return a valid gaia_session JWT, encoded as issue_session_token does."""
-    return jwt.encode(
-        {
-            "sub": user_id,
-            "exp": datetime.now(UTC) + timedelta(days=1),
-            "iat": datetime.now(UTC),
-        },
+    now = int(datetime.now(UTC).timestamp())
+    return forge_jwt(
+        {"sub": user_id, "exp": now + int(timedelta(days=1).total_seconds()), "iat": now},
         TEST_SECRET,
-        algorithm=JWT_ALGORITHM,
+        alg=JWT_ALGORITHM,
     )
 
 
@@ -162,3 +167,39 @@ class TestLocalModeAgentTokenScope:
         assert resp.json()["authenticated"] is False
         # Never even consulted off the agent paths.
         fake_verify.assert_not_called()
+
+
+class TestLocalModeRealAgentTokens:
+    """The real verify_agent_token behind the middleware, against real and hostile tokens."""
+
+    def _post(self, monkeypatch, token: str) -> tuple[dict, MagicMock]:
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
+        monkeypatch.setattr(agent_auth, "AGENT_SECRET", JOSE_AGENT_DEVICE_SECRET)
+        _warm_instance_secret(monkeypatch)
+        user_doc = UserDocument.model_validate(
+            {"id": ADMIN_ID, "email": "voice@gaia.dev", "name": "Voice User"}
+        )
+        with patch(
+            "app.api.v1.middleware.auth.user_repository.get", return_value=user_doc
+        ) as fake_repo_get:
+            resp = TestClient(_build_local_app()).post(
+                "/api/v1/chat-stream", headers={"Authorization": f"Bearer {token}"}
+            )
+        assert resp.status_code == 200
+        return resp.json(), fake_repo_get
+
+    def test_an_agent_token_minted_by_python_jose_authenticates(self, monkeypatch) -> None:
+        body, fake_repo_get = self._post(monkeypatch, JOSE_MINTED_AGENT_TOKEN)
+        assert body["authenticated"] is True, body
+        assert body["impersonated"] is True
+        fake_repo_get.assert_called_once_with("u-jose")
+
+    @pytest.mark.parametrize("kind", sorted(hostile_jwts({}, "s")))
+    def test_a_hostile_agent_token_stays_anonymous(self, monkeypatch, kind: str) -> None:
+        claims = {"sub": ADMIN_ID, "role": "agent", "exp": int(time.time()) + 600}
+        body, fake_repo_get = self._post(
+            monkeypatch, hostile_jwts(claims, JOSE_AGENT_DEVICE_SECRET)[kind]
+        )
+        assert body["authenticated"] is False
+        fake_repo_get.assert_not_called()
