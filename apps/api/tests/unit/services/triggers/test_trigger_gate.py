@@ -56,6 +56,8 @@ from tests.helpers import captured_wide_event, trigger_gate_seams
 pytestmark = pytest.mark.unit
 
 _MOD = "app.services.triggers.trigger_gate"
+# Where a gate reads whether its kind may skip a run.
+_GATES = "app.models.trigger_gate_models"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 OWNER_ID = "wf_gate_owner01"
 GMAIL = "gmail_new_message"
@@ -527,7 +529,7 @@ class TestShadow:
     ) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
 
-        with patch(f"{_MOD}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
             assert await _skip() == GateRun()
 
         assert _decided(seams).enforced is False
@@ -1106,5 +1108,5 @@ class TestQuietHoursHold:
     async def test_a_kind_outside_the_enforced_set_never_holds(
         self, night: SimpleNamespace
     ) -> None:
-        with patch(f"{_MOD}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
             assert await quiet_hours_hold(AUTHORED, USER_ID) is None

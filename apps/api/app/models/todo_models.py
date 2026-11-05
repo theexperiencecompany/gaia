@@ -9,7 +9,7 @@ from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.todos import GAIA_TRACKED_LABEL, TODO_RECURRENCE_SHORTCUTS
 from app.db.repositories.base import UserScopedDocument
 from app.models.scheduler_models import DeactivationReason
-from app.models.trigger_subscription_models import TriggerSubscription
+from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionView
 from app.models.workflow_models import WorkflowWithIntegrations
 from app.schemas.common import ResponseModel
 from app.utils.schedule import validate_recurring_schedule
@@ -193,7 +193,7 @@ class TodoResponse(TodoBase, ResponseModel):
         default_factory=list,
         description="Tool categories from linked workflow steps for icon display",
     )
-    trigger_subscriptions: list[TriggerSubscription] = Field(
+    trigger_subscriptions: list[TriggerSubscriptionView] = Field(
         default_factory=list,
         description="Read-only; subscriptions are written by trigger registration, not by clients",
     )

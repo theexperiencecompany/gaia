@@ -4,15 +4,18 @@ Covers the MAX_PAGE_NUMBER page bound on the todo list endpoint, the
 happy path with the service faked, and analytics captures on mutations.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Self
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 import pytest
 
 from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.trigger_gates import GateAuthor
 from app.models.todo_models import (
     BulkOperationResponse,
     BulkUpdateRequest,
@@ -27,14 +30,22 @@ from app.models.todo_models import (
     TodoResponse,
     TodoUpdateRequest,
 )
+from app.models.trigger_gate_models import AuthoredGate, TriggerGate
+from app.models.trigger_subscription_models import (
+    SubscriptionAction,
+    SubscriptionResolution,
+    TriggerSubscription,
+)
 from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflowError
 from app.utils.log_identifiers import user_text_shape
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled, TodosUpdated
+from shared.py.analytics.catalog.triggers import TriggerGateEdited
 from tests.conftest import FAKE_USER
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture"
+GATE_SERVICE = "app.services.todos.subscription_gate"
 
 pytestmark = pytest.mark.usefixtures("todo_response_reads")
 
@@ -826,3 +837,134 @@ class TestReopenOfATakenThread:
 
         assert resp.status_code == 409
         assert resp.json()["todo_id"] == "held-1"
+
+
+class TestEditSubscriptionGate:
+    """PATCH /todos/{id}/subscriptions/{id}/gate: the user rewrites or switches one run watch's gate."""
+
+    OWNER = FAKE_USER.user_id
+    GAIA_GATE = AuthoredGate(condition="the email is from a customer", author=GateAuthor.GAIA)
+    PATH = "/api/v1/todos/todo-1/subscriptions/{subscription_id}/gate"
+
+    @classmethod
+    def _todo(cls, *watches: TriggerSubscription, owner: str = OWNER) -> TodoDocument:
+        return TodoDocument(
+            id="todo-1",
+            user_id=owner,
+            title="Billing replies",
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2025, 1, 1, tzinfo=UTC),
+            trigger_subscriptions=list(watches),
+        )
+
+    @staticmethod
+    def _watch(**overrides: object) -> TriggerSubscription:
+        return TriggerSubscription.model_validate(
+            {
+                "id": "watch-1",
+                "trigger_name": "gmail_new_message",
+                "action": SubscriptionAction.EXECUTE,
+                "resolution": SubscriptionResolution.ACCOUNT,
+                **overrides,
+            }
+        )
+
+    @contextmanager
+    def _stored(self, todo: TodoDocument) -> Iterator[tuple[AsyncMock, MagicMock]]:
+        """Serve todo to its owner only, and store a gate write on it as Mongo would."""
+
+        async def get(todo_id: str, *, user_id: str) -> TodoDocument | None:
+            return todo if (todo_id, user_id) == (todo.id, todo.user_id) else None
+
+        async def set_gate(
+            todo_id: str, *, user_id: str, subscription_id: str, gate: TriggerGate
+        ) -> TodoDocument:
+            watches = [
+                w.model_copy(update={"gate": gate}) if w.id == subscription_id else w
+                for w in todo.trigger_subscriptions
+            ]
+            return todo.model_copy(update={"trigger_subscriptions": watches})
+
+        with (
+            patch(f"{GATE_SERVICE}.todo_repository.get", new=AsyncMock(side_effect=get)),
+            patch(
+                f"{GATE_SERVICE}.todo_repository.set_subscription_gate",
+                new=AsyncMock(side_effect=set_gate),
+            ) as write,
+            patch("app.services.triggers.gate_edits.capture") as capture,
+        ):
+            yield write, capture
+
+    async def test_a_rewritten_condition_is_stored_as_the_users(self, client: AsyncClient) -> None:
+        with self._stored(self._todo(self._watch(gate=self.GAIA_GATE))) as (write, capture):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-1"),
+                json={"condition": "the email is about an invoice", "author": "gaia"},
+            )
+
+        assert resp.status_code == 200
+        stored = AuthoredGate(condition="the email is about an invoice", author=GateAuthor.USER)
+        assert write.await_args.kwargs == {
+            "user_id": self.OWNER,
+            "subscription_id": "watch-1",
+            "gate": stored,
+        }
+        gate = resp.json()["trigger_subscriptions"][0]["gate"]
+        assert (gate["display_condition"], gate["author"], gate["enabled"]) == (
+            "the email is about an invoice",
+            "user",
+            True,
+        )
+        capture.assert_called_once_with(
+            UserId(self.OWNER),
+            TriggerGateEdited(owner_type="todo", action="edited", gate_kind="authored"),
+        )
+
+    async def test_turning_it_off_keeps_the_condition(self, client: AsyncClient) -> None:
+        with self._stored(self._todo(self._watch(gate=self.GAIA_GATE))) as (write, _):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-1"), json={"enabled": False}
+            )
+
+        assert resp.status_code == 200
+        assert write.await_args.kwargs["gate"] == self.GAIA_GATE.model_copy(
+            update={"enabled": False}
+        )
+        gate = resp.json()["trigger_subscriptions"][0]["gate"]
+        assert (gate["display_condition"], gate["enabled"]) == (self.GAIA_GATE.condition, False)
+
+    @pytest.mark.parametrize(
+        "action",
+        [SubscriptionAction.NOTIFY, SubscriptionAction.COMPLETE, SubscriptionAction.UNBLOCK],
+    )
+    async def test_a_watch_that_starts_no_run_takes_no_gate(
+        self, client: AsyncClient, action: SubscriptionAction
+    ) -> None:
+        with self._stored(self._todo(self._watch(action=action))) as (write, capture):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-1"),
+                json={"condition": "the email is about an invoice"},
+            )
+
+        assert resp.status_code == 422
+        write.assert_not_awaited()
+        capture.assert_not_called()
+
+    async def test_another_users_todo_is_not_found(self, client: AsyncClient) -> None:
+        theirs = self._todo(self._watch(gate=self.GAIA_GATE), owner="507f1f77bcf86cd799439099")
+        with self._stored(theirs) as (write, _):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-1"), json={"enabled": False}
+            )
+
+        assert resp.status_code == 404
+        write.assert_not_awaited()
+
+    async def test_an_unknown_watch_is_not_found(self, client: AsyncClient) -> None:
+        with self._stored(self._todo(self._watch(gate=self.GAIA_GATE))) as (write, _):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-2"), json={"enabled": False}
+            )
+
+        assert resp.status_code == 404
+        write.assert_not_awaited()

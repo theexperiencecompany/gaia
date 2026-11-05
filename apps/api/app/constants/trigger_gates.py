@@ -43,6 +43,16 @@ class GateOwner(StrEnum):
     TODO = "todo"
 
 
+class GateEditAction(StrEnum):
+    """What one edit did to a job's gate, as trigger:gate_edited reports it."""
+
+    ADDED = "added"
+    EDITED = "edited"
+    DISABLED = "disabled"
+    ENABLED = "enabled"
+    REMOVED = "removed"
+
+
 class GateOutcome(StrEnum):
     """What happened to the run: a shadow gate's verdict still runs."""
 

@@ -35,7 +35,11 @@ from app.models.todo_models import (
     TodoUpdate,
 )
 from app.models.trigger_gate_models import TriggerGate
-from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionStatus
+from app.models.trigger_subscription_models import (
+    SubscriptionAction,
+    TriggerSubscription,
+    TriggerSubscriptionStatus,
+)
 
 # Top-N labels surfaced in the stats aggregation (mirrors the legacy pipeline).
 _STATS_LABEL_LIMIT = 50
@@ -805,6 +809,23 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             scope=user_id,
             extra_filter={"trigger_subscriptions": {"$elemMatch": ungated}},
             array_filters=[{f"watch.{field}": value for field, value in ungated.items()}],
+        )
+
+    async def set_subscription_gate(
+        self, todo_id: str, *, user_id: str, subscription_id: str, gate: TriggerGate
+    ) -> TodoDocument | None:
+        """Store gate on one run watch of the user's todo.
+
+        Returns the todo after the write, or None when the todo is not the user's or
+        has no execute watch with that id: only a watch that starts a run takes a gate.
+        """
+        watch = {"id": subscription_id, "action": SubscriptionAction.EXECUTE.value}
+        return await self._apply_raw_update(
+            self._scoped_filter(todo_id, user_id),
+            {"$set": {"trigger_subscriptions.$[watch].gate": gate.model_dump()}},
+            scope=user_id,
+            extra_filter={"trigger_subscriptions": {"$elemMatch": watch}},
+            array_filters=[{f"watch.{field}": value for field, value in watch.items()}],
         )
 
     async def resume_trigger_subscriptions(

@@ -22,7 +22,6 @@ from app.constants.trigger_gates import (
     AUTHORED_GATE_QUESTION,
     AUTHORED_GATE_RUN_LABEL,
     AUTHORED_GATE_SKIP_MEANING,
-    ENFORCED_GATE_KINDS,
     GMAIL_MESSAGE_TRIGGERS,
     QUIET_HOURS_BYPASS_REASONS,
     SYSTEM_GATE_PRESETS,
@@ -383,7 +382,7 @@ async def quiet_hours_hold(gate: TriggerGate | None, user_id: str) -> GateHold |
     An enforced gate starts no run inside the user's quiet hours; an urgent run is
     decided per event, so the caller says when one is carried.
     """
-    if gate is None or not gate.enabled or gate.kind not in ENFORCED_GATE_KINDS:
+    if gate is None or not gate.enabled or not gate.enforced:
         return None
     if (hold := await _hold_on_users_clock(user_id)) is None:
         return None
@@ -419,7 +418,7 @@ async def _decide(
     else:
         decision = await _ask_jev(gate, event, job.automation, hold=hold)
     with analytics_context(worker_context(Trigger.INTEGRATION_TRIGGER)):
-        enforced = gate.kind in ENFORCED_GATE_KINDS and await is_trigger_gates_enforced(job.user_id)
+        enforced = gate.enforced and await is_trigger_gates_enforced(job.user_id)
         verdict = decision.verdict if enforced else GateRun()
         _record(gate, job, trigger_name, decision, _OUTCOMES[type(verdict)], enforced=enforced)
     return verdict

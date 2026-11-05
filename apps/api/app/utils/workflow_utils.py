@@ -9,7 +9,7 @@ from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
 from app.models.agent_models import read_agent_configurable
-from app.models.trigger_gate_models import AuthoredGateEdit
+from app.models.trigger_gate_models import GateEdit
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -331,7 +331,7 @@ Your job:
 Remember to include a JSON block in your response."""
 
 
-def _edited_gate(draft: FinalizedOutput, workflow: Workflow) -> AuthoredGateEdit | None:
+def _edited_gate(draft: FinalizedOutput, workflow: Workflow) -> GateEdit | None:
     """Return the condition an edit draft names, or None to keep the gate as it is.
 
     A draft with no condition keeps the gate, which is turned off or removed in the
@@ -344,21 +344,19 @@ def _edited_gate(draft: FinalizedOutput, workflow: Workflow) -> AuthoredGateEdit
         or (current is not None and draft.runs_only_when == current.display_condition)
     ):
         return None
-    return AuthoredGateEdit(
-        condition=draft.runs_only_when, enabled=current.enabled if current else True
-    )
+    return GateEdit(condition=draft.runs_only_when, enabled=current.enabled if current else True)
 
 
 async def _edited_fields(
     draft: FinalizedOutput, workflow: Workflow
-) -> dict[str, str | list[str] | TriggerConfig | AuthoredGateEdit]:
+) -> dict[str, str | list[str] | TriggerConfig | GateEdit]:
     """Return the fields an edit draft actually changes.
 
     The assistant re-emits the FULL workflow on every edit, so only persist
     fields that actually changed. This keeps a rename/schedule-only edit from
     rewriting the prompt and triggering an unnecessary step regeneration.
     """
-    update_fields: dict[str, str | list[str] | TriggerConfig | AuthoredGateEdit] = {}
+    update_fields: dict[str, str | list[str] | TriggerConfig | GateEdit] = {}
     if draft.title and draft.title != workflow.title:
         update_fields["title"] = draft.title
     if draft.description and draft.description != (workflow.description or ""):

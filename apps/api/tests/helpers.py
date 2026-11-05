@@ -172,7 +172,7 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
             AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
         ),
         patch(f"{gate}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
-        patch(f"{gate}.ENFORCED_GATE_KINDS", frozenset(GateKind)),
+        patch("app.models.trigger_gate_models.ENFORCED_GATE_KINDS", frozenset(GateKind)),
         patch(f"{gate}.capture", MagicMock()) as capture,
         patch(f"{gate}.get_profile_timezone", AsyncMock(return_value=tz)) as profile_tz,
     ):

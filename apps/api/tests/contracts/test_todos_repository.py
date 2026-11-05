@@ -731,6 +731,48 @@ class TestTodosRepository(UserScopedRepositoryContract):
         stored = await repo.get(doc.id, user_id="u")
         assert [w.gate for w in stored.trigger_subscriptions] == [None]
 
+    async def test_a_gate_is_set_on_the_one_run_watch_it_names(
+        self, repo, make_doc, raw_collection
+    ):
+        desk_mail, other = (
+            _subscription(gate=_DESK_GATE),
+            _subscription(trigger_name="gmail_email_sent"),
+        )
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[desk_mail, other]))
+        off = _DESK_GATE.model_copy(update={"enabled": False})
+
+        written = await repo.set_subscription_gate(
+            doc.id, user_id="u", subscription_id=desk_mail.id, gate=off
+        )
+
+        assert written is not None
+        assert [w.gate for w in written.trigger_subscriptions] == [off, None]
+        raw = await raw_collection.find_one({"_id": ObjectId(doc.id)})
+        assert raw["trigger_subscriptions"][0]["gate"] == {
+            "kind": "system",
+            "preset": "inbox_desk",
+            "enabled": False,
+        }
+
+    @pytest.mark.parametrize(
+        ("owner", "action"),
+        [("intruder", SubscriptionAction.EXECUTE), ("u", SubscriptionAction.NOTIFY)],
+        ids=["another_users_todo", "a_watch_that_starts_no_run"],
+    )
+    async def test_a_gate_write_it_may_not_make_writes_nothing(
+        self, repo, make_doc, raw_collection, owner, action
+    ):
+        watch = _subscription(action=action)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+        before = await raw_collection.find_one({"_id": ObjectId(doc.id)})
+
+        written = await repo.set_subscription_gate(
+            doc.id, user_id=owner, subscription_id=watch.id, gate=_DESK_GATE
+        )
+
+        assert written is None
+        assert await raw_collection.find_one({"_id": ObjectId(doc.id)}) == before
+
     async def test_every_users_open_todo_about_a_ref_is_listed(self, repo, make_doc):
         desk = {"source": ExternalRefSource.INBOX_DESK, "id": "gmail"}
         mine = await repo.create(make_doc(user_id="u1", external_ref=desk))

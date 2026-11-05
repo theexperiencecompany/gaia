@@ -150,6 +150,7 @@ export type ServerEventName =
   | "tool:execute_failed"
   | "tool:used"
   | "trigger:gate_decided"
+  | "trigger:gate_edited"
   | "usage:queried"
   | "user:active"
   | "user:logged_in"
@@ -1577,6 +1578,14 @@ export interface EventProperties {
     "urgent_choice"?: "incident" | "service_down" | "meeting";
     "enforced": boolean;
     "latency_ms"?: number;
+  };
+  "trigger:gate_edited": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "owner_type": "workflow" | "todo";
+    "action": "added" | "edited" | "disabled" | "enabled" | "removed";
+    "gate_kind": "authored" | "system";
   };
   "ui:sidebar_collapsed": Record<string, never>;
   "ui:sidebar_expanded": Record<string, never>;

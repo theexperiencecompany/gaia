@@ -1030,8 +1030,8 @@
         "title": "AuthorDetails",
         "type": "object"
       },
-      "AuthoredGate": {
-        "description": "A plain-text condition, shown to the user as \"Runs only when: <condition>\".",
+      "AuthoredGateView": {
+        "description": "An authored gate as the API returns it, with what the user reads about it.",
         "properties": {
           "author": {
             "$ref": "#/components/schemas/GateAuthor"
@@ -1042,9 +1042,19 @@
             "title": "Condition",
             "type": "string"
           },
+          "display_condition": {
+            "readOnly": true,
+            "title": "Display Condition",
+            "type": "string"
+          },
           "enabled": {
             "default": true,
             "title": "Enabled",
+            "type": "boolean"
+          },
+          "enforced": {
+            "readOnly": true,
+            "title": "Enforced",
             "type": "boolean"
           },
           "kind": {
@@ -1055,31 +1065,14 @@
           }
         },
         "required": [
+          "kind",
           "condition",
-          "author"
+          "author",
+          "enabled",
+          "display_condition",
+          "enforced"
         ],
-        "title": "AuthoredGate",
-        "type": "object"
-      },
-      "AuthoredGateEdit": {
-        "description": "A condition as a client sends it; the server decides who wrote it.",
-        "properties": {
-          "condition": {
-            "maxLength": 300,
-            "minLength": 1,
-            "title": "Condition",
-            "type": "string"
-          },
-          "enabled": {
-            "default": true,
-            "title": "Enabled",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "condition"
-        ],
-        "title": "AuthoredGateEdit",
+        "title": "AuthoredGateView",
         "type": "object"
       },
       "BatchApprovalDecisionRequest": {
@@ -7172,6 +7165,31 @@
         ],
         "title": "GateAuthor",
         "type": "string"
+      },
+      "GateEdit": {
+        "description": "A gate as a client edits it: a new condition, or the current gate turned on or off.\n\nThe server decides who wrote a condition. No condition keeps the current one,\na system preset included, so turning a gate off never loses its text.",
+        "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "GateEdit",
+        "type": "object"
       },
       "GenerateWorkflowPromptRequest": {
         "description": "Request model for AI-generated workflow instructions.",
@@ -18519,12 +18537,30 @@
         "title": "SupportRequestType",
         "type": "string"
       },
-      "SystemGate": {
-        "description": "A preset owned by code; its question and wording are read from the preset table.",
+      "SystemGatePreset": {
+        "description": "A gate whose question, criteria and wording live in code, not on the job.",
+        "enum": [
+          "inbox_desk"
+        ],
+        "title": "SystemGatePreset",
+        "type": "string"
+      },
+      "SystemGateView": {
+        "description": "A system gate as the API returns it: its preset's wording, which the user cannot rewrite.",
         "properties": {
+          "display_condition": {
+            "readOnly": true,
+            "title": "Display Condition",
+            "type": "string"
+          },
           "enabled": {
             "default": true,
             "title": "Enabled",
+            "type": "boolean"
+          },
+          "enforced": {
+            "readOnly": true,
+            "title": "Enforced",
             "type": "boolean"
           },
           "kind": {
@@ -18538,18 +18574,14 @@
           }
         },
         "required": [
-          "preset"
+          "kind",
+          "preset",
+          "enabled",
+          "display_condition",
+          "enforced"
         ],
-        "title": "SystemGate",
+        "title": "SystemGateView",
         "type": "object"
-      },
-      "SystemGatePreset": {
-        "description": "A gate whose question, criteria and wording live in code, not on the job.",
-        "enum": [
-          "inbox_desk"
-        ],
-        "title": "SystemGatePreset",
-        "type": "string"
       },
       "SystemPurpose": {
         "description": "Why a system-generated conversation was created.",
@@ -19076,7 +19108,7 @@
           "trigger_subscriptions": {
             "description": "Read-only; subscriptions are written by trigger registration, not by clients",
             "items": {
-              "$ref": "#/components/schemas/TriggerSubscription"
+              "$ref": "#/components/schemas/TriggerSubscriptionView"
             },
             "title": "Trigger Subscriptions",
             "type": "array"
@@ -20200,8 +20232,16 @@
         "title": "TriggerOptionsResponse",
         "type": "object"
       },
-      "TriggerSubscription": {
-        "description": "A tracked todo's standing interest in one trigger.",
+      "TriggerSubscriptionStatus": {
+        "enum": [
+          "active",
+          "paused"
+        ],
+        "title": "TriggerSubscriptionStatus",
+        "type": "string"
+      },
+      "TriggerSubscriptionView": {
+        "description": "A subscription as the API returns it, its gate with what the user reads about it.",
         "properties": {
           "account_id": {
             "anyOf": [
@@ -20250,17 +20290,17 @@
               {
                 "discriminator": {
                   "mapping": {
-                    "authored": "#/components/schemas/AuthoredGate",
-                    "system": "#/components/schemas/SystemGate"
+                    "authored": "#/components/schemas/AuthoredGateView",
+                    "system": "#/components/schemas/SystemGateView"
                   },
                   "propertyName": "kind"
                 },
                 "oneOf": [
                   {
-                    "$ref": "#/components/schemas/AuthoredGate"
+                    "$ref": "#/components/schemas/AuthoredGateView"
                   },
                   {
-                    "$ref": "#/components/schemas/SystemGate"
+                    "$ref": "#/components/schemas/SystemGateView"
                   }
                 ]
               },
@@ -20303,16 +20343,8 @@
           "action",
           "resolution"
         ],
-        "title": "TriggerSubscription",
+        "title": "TriggerSubscriptionView",
         "type": "object"
-      },
-      "TriggerSubscriptionStatus": {
-        "enum": [
-          "active",
-          "paused"
-        ],
-        "title": "TriggerSubscriptionStatus",
-        "type": "string"
       },
       "TriggerType": {
         "description": "What caused a run.\n\n- MANUAL: Triggered by user action\n- SCHEDULE: Triggered by cron schedule\n- INTEGRATION: Triggered by external service (calendar, email, github, etc.)\n- SCHEDULED_TODO: A tracked todo firing on its own schedule\n- TODO_TRIGGER: A tracked todo woken by an integration event it subscribed to\n\nThe last two were bare strings written at one site and read at another, which\nis exactly the drift an enum exists to stop.",
@@ -21104,7 +21136,7 @@
           "gate": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/AuthoredGateEdit"
+                "$ref": "#/components/schemas/GateEdit"
               },
               {
                 "type": "null"
@@ -22445,17 +22477,17 @@
               {
                 "discriminator": {
                   "mapping": {
-                    "authored": "#/components/schemas/AuthoredGate",
-                    "system": "#/components/schemas/SystemGate"
+                    "authored": "#/components/schemas/AuthoredGateView",
+                    "system": "#/components/schemas/SystemGateView"
                   },
                   "propertyName": "kind"
                 },
                 "oneOf": [
                   {
-                    "$ref": "#/components/schemas/AuthoredGate"
+                    "$ref": "#/components/schemas/AuthoredGateView"
                   },
                   {
-                    "$ref": "#/components/schemas/SystemGate"
+                    "$ref": "#/components/schemas/SystemGateView"
                   }
                 ]
               },
@@ -41517,6 +41549,88 @@
           }
         },
         "summary": "Open Todo Conversation Endpoint",
+        "tags": [
+          "Todos"
+        ]
+      }
+    },
+    "/api/v1/todos/{todo_id}/subscriptions/{subscription_id}/gate": {
+      "patch": {
+        "description": "Rewrite, or turn on or off, the gate on one of a tracked todo's run watches.",
+        "operationId": "todos_edit_subscription_gate_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "todo_id",
+            "required": true,
+            "schema": {
+              "title": "Todo Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GateEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Edit Subscription Gate Endpoint",
         "tags": [
           "Todos"
         ]
