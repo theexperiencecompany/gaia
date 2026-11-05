@@ -877,8 +877,33 @@ class TestTriggerGate:
         ]
         reply: dict[str, object] = {"thread_id": "t-9", "message_id": "m-2", "subject": "Re: pilot"}
 
-        with patch("app.services.triggers.trigger_gate.user_wrote_in_thread", AsyncMock()) as wrote:
-            assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, reply) == 1
+        wrote = AsyncMock(return_value=False)
+        with patch("app.services.triggers.trigger_gate.user_wrote_in_thread", wrote):
+            async with captured_wide_event() as event:
+                assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, reply) == 1
 
         wrote.assert_not_awaited()
         assert not jev.called
+        assert event["trigger_gate"][sub.id]["reason"] == "free_run"
+
+    async def test_a_condition_on_another_field_does_not_track_the_thread(
+        self, deps, jev: respx.Route
+    ) -> None:
+        jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
+        on_subject = SubscriptionCondition(
+            field_name="subject", operator=ConditionOperator.EQUALS, value="t-9"
+        )
+        not_this_thread = SubscriptionCondition(
+            field_name="thread_id", operator=ConditionOperator.NOT_EQUALS, value="t-9"
+        )
+        sub = _subscription(gate=_GATE, conditions=[on_subject, not_this_thread])
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+        reply: dict[str, object] = {"thread_id": "t-8", "message_id": "m-2", "subject": "t-9"}
+
+        wrote = AsyncMock(return_value=False)
+        with patch("app.services.triggers.trigger_gate.user_wrote_in_thread", wrote):
+            assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, reply) == 0
+
+        assert jev.called

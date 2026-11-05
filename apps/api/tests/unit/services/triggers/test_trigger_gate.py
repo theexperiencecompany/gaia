@@ -307,6 +307,29 @@ class TestTheSkipLine:
         assert skip is not None
         assert skip.event == "a slack_new_message event"
 
+    @pytest.mark.parametrize("trigger_name", ["gmail_new_message", "gmail_poll_inbox"])
+    async def test_an_email_with_no_sender_or_subject_is_named_by_its_trigger(
+        self, seams: SimpleNamespace, trigger_name: str
+    ) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
+
+        skip = await _skip(DESK, trigger_name=trigger_name, payload={"sender": "", "subject": ""})
+
+        assert skip is not None
+        assert skip.event == f"a {trigger_name} event"
+
+    async def test_an_event_with_a_blank_title_is_named_by_its_trigger(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
+
+        skip = await _skip(
+            trigger_name="calendar_event_created", payload={"summary": "  ", "calendar_id": "p"}
+        )
+
+        assert skip is not None
+        assert skip.event == "a calendar_event_created event"
+
     async def test_a_long_subject_is_clipped_so_the_line_stays_one_line(
         self, seams: SimpleNamespace
     ) -> None:
@@ -507,7 +530,7 @@ class TestRunsWithoutAskingJev:
     async def test_a_thread_gmail_cannot_be_asked_about_runs_and_says_so(
         self, seams: SimpleNamespace
     ) -> None:
-        seams.wrote.side_effect = RuntimeError("composio down")
+        seams.wrote.side_effect = RuntimeError("x" * 400)
 
         async with captured_wide_event() as event:
             assert await _skip(payload={"message_id": "m2"}) is None
@@ -516,7 +539,8 @@ class TestRunsWithoutAskingJev:
         warnings = event.get("warnings", [])
         assert isinstance(warnings, list)
         (warning,) = [w for w in warnings if w["msg"] == "trigger_gate.thread_unreadable"]
-        assert warning["error"] == "composio down"
+        assert (warning["owner"], warning["job_id"]) == ("workflow", OWNER_ID)
+        assert (warning["error"], warning["error_type"]) == ("x" * 300, "RuntimeError")
 
 
 class TestAnAutomatedThreadIsAskedAbout:
@@ -721,6 +745,20 @@ class TestRecording:
             "enforced": True,
             "latency_ms": 1000,
         }
+
+    @pytest.mark.usefixtures("one_second_answer")
+    async def test_a_run_records_jevs_answer_and_how_long_it_took(
+        self, seams: SimpleNamespace
+    ) -> None:
+        body = _answer(0.3, choice="needed", confidence=0.7, run_label="needed")
+        seams.jev.mock(return_value=httpx.Response(200, json=body))
+
+        async with captured_wide_event() as event:
+            await _skip(owner=GateOwner.TODO)
+
+        decided = event["trigger_gate"][OWNER_ID]
+        assert (decided["choice"], decided["confidence"]) == ("needed", 0.7)
+        assert decided["latency_ms"] == 1000
 
     @pytest.mark.usefixtures("one_second_answer")
     async def test_the_wide_event_records_the_whole_decision_under_the_jobs_id(
