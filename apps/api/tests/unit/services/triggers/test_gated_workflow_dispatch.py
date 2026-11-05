@@ -93,6 +93,9 @@ def seams() -> Iterator[SimpleNamespace]:
         patch(f"{_BASE}.WorkflowQueueService.queue_workflow_execution", AsyncMock()) as queue,
         patch(f"{_BASE}.record_skipped_execution", AsyncMock()) as skipped,
         patch("app.services.triggers.trigger_gate.capture") as capture,
+        patch(
+            "app.services.triggers.trigger_gate.user_wrote_in_thread", AsyncMock(return_value=True)
+        ) as wrote,
     ):
         yield SimpleNamespace(
             jev=router.post(HIL_JEV_URL),
@@ -101,6 +104,7 @@ def seams() -> Iterator[SimpleNamespace]:
             queue=queue,
             skipped=skipped,
             capture=capture,
+            wrote=wrote,
         )
 
 
@@ -119,7 +123,10 @@ async def test_a_skip_records_a_skipped_run_and_claims_nothing(seams: SimpleName
     # The occurrence stays unclaimed, so a later trigger for the same one still runs.
     seams.claim.assert_not_awaited()
     seams.skipped.assert_awaited_once_with(
-        WORKFLOW_ID, USER_ID, TriggerType.INTEGRATION.value, f"Skipped: runs only when {CONDITION}"
+        WORKFLOW_ID,
+        USER_ID,
+        TriggerType.INTEGRATION.value,
+        f'Skipped: "Sale!". Not a match for "{CONDITION}" (99% sure).',
     )
 
 
@@ -148,6 +155,19 @@ async def test_a_real_thread_reply_runs_without_asking_jev(seams: SimpleNamespac
 
     assert not seams.jev.called
     seams.queue.assert_awaited_once()
+
+
+async def test_a_reply_on_a_thread_the_user_never_wrote_in_is_asked_about(
+    seams: SimpleNamespace,
+) -> None:
+    seams.wrote.return_value = False
+    seams.jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
+
+    await _fire([_workflow()], message_id="m2", sender="GitGuardian <security@gitguardian.com>")
+
+    seams.queue.assert_not_awaited()
+    (call,) = seams.skipped.await_args_list
+    assert call.args[3].startswith('Skipped: GitGuardian <security@gitguardian.com>, "Sale!".')
 
 
 async def test_an_ungated_workflow_never_asks_jev(seams: SimpleNamespace) -> None:

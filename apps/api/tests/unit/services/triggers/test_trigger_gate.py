@@ -147,8 +147,11 @@ def seams() -> Iterator[SimpleNamespace]:
         ),
         patch(f"{_MOD}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
         patch(f"{_MOD}.capture", MagicMock()) as capture,
+        patch(f"{_MOD}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
     ):
-        yield SimpleNamespace(jev=router.post(HIL_JEV_URL), enforced=enforced, capture=capture)
+        yield SimpleNamespace(
+            jev=router.post(HIL_JEV_URL), enforced=enforced, capture=capture, wrote=wrote
+        )
 
 
 async def _skip(
@@ -157,6 +160,7 @@ async def _skip(
     trigger_name: str = GMAIL,
     owner: GateOwner = GateOwner.WORKFLOW,
     payload: Mapping[str, object] | None = None,
+    tracked_threads: frozenset[str] = frozenset(),
 ) -> GateSkip | None:
     overrides = dict(payload or {})
     return await gate_skip(
@@ -166,6 +170,7 @@ async def _skip(
             id=OWNER_ID,
             user_id=USER_ID,
             automation="Billing replies: Draft a reply to every billing email from a customer",
+            tracked_threads=tracked_threads,
         ),
         trigger_name=trigger_name,
         payload=_new_thread(**overrides) if trigger_name.startswith("gmail") else overrides,
@@ -219,8 +224,15 @@ class TestTheSkipLine:
 
         skip = await _skip()
 
-        assert skip == GateSkip(condition=BILLING)
-        assert skip.summary == f"Skipped: runs only when {BILLING}"
+        assert skip == GateSkip(
+            event='Acme Billing <billing@acme.com>, "Invoice 4021 is past due"',
+            condition=BILLING,
+            certainty=0.95,
+        )
+        assert skip.summary == (
+            'Skipped: Acme Billing <billing@acme.com>, "Invoice 4021 is past due". '
+            f'Not a match for "{BILLING}" (95% sure).'
+        )
 
     async def test_just_under_the_line_runs(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.949, run_label="needed")))
@@ -259,10 +271,51 @@ class TestTheSkipLine:
         skip = await _skip(DESK)
 
         assert skip is not None
-        assert (
-            skip.summary
-            == "Skipped: runs only when a real person or a real obligation is waiting on you"
+        assert skip.summary == (
+            'Skipped: Acme Billing <billing@acme.com>, "Invoice 4021 is past due". Not a match '
+            'for "a real person or a real obligation is waiting on you" (99% sure).'
         )
+
+    async def test_an_email_with_no_subject_is_named_by_its_sender(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
+
+        skip = await _skip(DESK, payload={"subject": ""})
+
+        assert skip is not None
+        assert skip.event == "Acme Billing <billing@acme.com>"
+
+    async def test_a_calendar_event_is_named_by_its_title(self, seams: SimpleNamespace) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
+
+        skip = await _skip(
+            trigger_name="calendar_event_created",
+            payload={"summary": "  Acme\n kickoff ", "calendar_id": "primary"},
+        )
+
+        assert skip is not None
+        assert skip.event == '"Acme kickoff"'
+
+    async def test_an_event_with_no_title_field_is_named_by_its_trigger(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
+
+        skip = await _skip(trigger_name="slack_new_message", payload={"channel": "C1"})
+
+        assert skip is not None
+        assert skip.event == "a slack_new_message event"
+
+    async def test_a_long_subject_is_clipped_so_the_line_stays_one_line(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
+
+        skip = await _skip(DESK, payload={"subject": "s" * 200})
+
+        assert skip is not None
+        assert skip.event == f'Acme Billing <billing@acme.com>, "{"s" * 120}{ELLIPSIS}"'
 
 
 class TestEveryFailureRuns:
@@ -431,13 +484,67 @@ class TestEveryFailureRuns:
 
 class TestRunsWithoutAskingJev:
     @pytest.mark.parametrize("trigger_name", ["gmail_new_message", "gmail_poll_inbox"])
-    async def test_a_reply_on_an_existing_thread_runs(
+    async def test_a_reply_on_a_thread_the_user_wrote_in_runs(
         self, seams: SimpleNamespace, trigger_name: str
     ) -> None:
-        assert await _skip(trigger_name=trigger_name, payload={"message_id": "m2"}) is None
+        payload = {"message_id": "m2", "gaia_account_id": "acct_work"}
 
+        assert await _skip(trigger_name=trigger_name, payload=payload) is None
+
+        seams.wrote.assert_awaited_once_with(USER_ID, "m1", message_id="m2", account_id="acct_work")
         assert not seams.jev.called
         assert _decided(seams).reason == GateReason.FREE_RUN
+
+    async def test_a_message_on_a_thread_the_job_tracks_runs_without_reading_gmail(
+        self, seams: SimpleNamespace
+    ) -> None:
+        skip = await _skip(payload={"message_id": "m2"}, tracked_threads=frozenset({"m1"}))
+
+        assert skip is None
+        seams.wrote.assert_not_awaited()
+        assert not seams.jev.called
+
+    async def test_a_thread_gmail_cannot_be_asked_about_runs_and_says_so(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.wrote.side_effect = RuntimeError("composio down")
+
+        async with captured_wide_event() as event:
+            assert await _skip(payload={"message_id": "m2"}) is None
+
+        assert not seams.jev.called
+        warnings = event.get("warnings", [])
+        assert isinstance(warnings, list)
+        (warning,) = [w for w in warnings if w["msg"] == "trigger_gate.thread_unreadable"]
+        assert warning["error"] == "composio down"
+
+
+class TestAnAutomatedThreadIsAskedAbout:
+    """A continuation the user never wrote in is not a conversation: GitGuardian reports thread."""
+
+    async def test_it_asks_jev_and_skips_on_a_confident_answer(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.wrote.return_value = False
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
+        report = {
+            "message_id": "m7",
+            "sender": "GitGuardian <security@gitguardian.com>",
+            "subject": "Scan report for acme/api",
+        }
+
+        skip = await _skip(DESK, payload=report)
+
+        assert skip is not None
+        assert skip.event == 'GitGuardian <security@gitguardian.com>, "Scan report for acme/api"'
+        assert _decided(seams).reason == GateReason.JEV_SKIP
+
+    async def test_it_still_runs_when_jev_is_not_sure(self, seams: SimpleNamespace) -> None:
+        seams.wrote.return_value = False
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.94)))
+
+        assert await _skip(DESK, payload={"message_id": "m7"}) is None
+        assert _decided(seams).reason == GateReason.JEV_RUN
 
     @pytest.mark.parametrize(
         "unreadable",
