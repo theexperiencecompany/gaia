@@ -7856,7 +7856,7 @@
             "type": "string"
           },
           "trigger_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Trigger Name",
             "type": "string"
           },
