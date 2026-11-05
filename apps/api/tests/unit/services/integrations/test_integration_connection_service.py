@@ -80,7 +80,9 @@ async def test_bearer_connect_failure_is_logged() -> None:
     with (
         patch.object(service, "get_mcp_client", new_callable=AsyncMock, return_value=mcp_client),
         patch.object(service, "MCPTokenStore") as token_store_cls,
-        patch.object(service, "invalidate_user_integration_caches", new_callable=AsyncMock),
+        patch.object(
+            service, "invalidate_user_integration_caches", new_callable=AsyncMock
+        ) as invalidate,
         patch.object(service, "update_user_integration_status", new_callable=AsyncMock),
     ):
         token_store = token_store_cls.return_value
@@ -94,3 +96,44 @@ async def test_bearer_connect_failure_is_logged() -> None:
     assert result.status == "error"
     assert [str(w.get("error")) for w in event.get("warnings", [])] == [COMPOSIO_DUMP]
     assert event["integration"]["auth_type"] == "bearer"
+    invalidate.assert_awaited_once_with("u1")
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(("tools", "tools_count"), [(["tool-a", "tool-b"], 2), ([], 0)])
+async def test_bearer_connect_stores_the_token_and_reports_what_it_connected(
+    tools: list[str], tools_count: int
+) -> None:
+    mcp_client = MagicMock()
+    mcp_client.connect = AsyncMock(return_value=tools)
+    with (
+        patch.object(service, "get_mcp_client", new_callable=AsyncMock, return_value=mcp_client),
+        patch.object(service, "MCPTokenStore") as token_store_cls,
+        patch.object(service, "invalidate_user_integration_caches", new_callable=AsyncMock),
+        patch.object(
+            service, "update_user_integration_status", new_callable=AsyncMock
+        ) as update_status,
+    ):
+        token_store = token_store_cls.return_value
+        token_store.store_bearer_token = AsyncMock()
+        async with captured_wide_event() as event:
+            result = await service.connect_mcp_integration(
+                "u1", "x", "Acme", False, "/integrations", bearer_token="tok"
+            )
+
+    token_store_cls.assert_called_once_with("u1")
+    token_store.store_bearer_token.assert_awaited_once_with("x", "tok")
+    mcp_client.connect.assert_awaited_once_with("x")
+    update_status.assert_awaited_once_with("u1", "x", "connected")
+    assert result.status == "connected"
+    assert result.integration_id == "x"
+    assert result.name == "Acme"
+    assert result.tools_count == tools_count
+    assert result.message == "Integration connected successfully"
+    assert event["integration"] == {
+        "provider": "Acme",
+        "action": "connect_mcp",
+        "status": "connected",
+        "auth_type": "bearer",
+        "tools_count": tools_count,
+    }

@@ -760,6 +760,7 @@ class TestConnectLinkEndpoint:
                 f"{_MODULE}.IntegrationResolver.resolve", new_callable=AsyncMock, return_value=None
             ),
             patch(f"{_MODULE}.initiate_integration_connection", new_callable=AsyncMock) as initiate,
+            patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
                 f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
@@ -767,6 +768,67 @@ class TestConnectLinkEndpoint:
         assert resp.status_code == 303
         assert "connect_error=could_not_start" in resp.headers["location"]
         initiate.assert_not_awaited()
+        mock_log.set.assert_any_call(outcome="error")
+
+    async def test_a_redirect_without_a_url_cannot_start(self, client: AsyncClient) -> None:
+        result = MagicMock(status="redirect", redirect_url=None, error=None)
+        with (
+            patch(
+                f"{_MODULE}.resolve_and_consume_connect_code",
+                new_callable=AsyncMock,
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="notion", account_id=None
+                ),
+            ),
+            patch(
+                f"{_MODULE}.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="a@b.com"),
+            ),
+            patch(
+                f"{_MODULE}.initiate_integration_connection",
+                new_callable=AsyncMock,
+                return_value=result,
+            ),
+            patch(f"{_MODULE}.capture") as mock_capture,
+        ):
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
+            )
+        assert resp.status_code == 303
+        assert "connect_error=could_not_start" in resp.headers["location"]
+        mock_capture.assert_not_called()
+
+    async def test_a_failed_result_is_not_mistaken_for_a_redirect(
+        self, client: AsyncClient
+    ) -> None:
+        result = MagicMock(status="error", redirect_url="https://oauth.example/go", error="no")
+        with (
+            patch(
+                f"{_MODULE}.resolve_and_consume_connect_code",
+                new_callable=AsyncMock,
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="notion", account_id=None
+                ),
+            ),
+            patch(
+                f"{_MODULE}.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="a@b.com"),
+            ),
+            patch(
+                f"{_MODULE}.initiate_integration_connection",
+                new_callable=AsyncMock,
+                return_value=result,
+            ),
+            patch(f"{_MODULE}.capture") as mock_capture,
+        ):
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
+            )
+        assert resp.status_code == 303
+        assert "connect_error=could_not_start" in resp.headers["location"]
+        mock_capture.assert_not_called()
 
     async def test_invalid_token_redirects_to_error(self, client: AsyncClient) -> None:
         with patch(
