@@ -12,6 +12,7 @@ COMPOSIO_DUMP = (
 )
 
 
+@pytest.mark.regression
 @pytest.mark.asyncio
 async def test_connect_failure_hides_provider_exception_text() -> None:
     resolved = MagicMock(source="platform", managed_by="composio")
@@ -19,9 +20,8 @@ async def test_connect_failure_hides_provider_exception_text() -> None:
     resolved.platform_integration.available = True
     resolved.platform_integration.provider = "trello"
     with (
-        patch.object(
-            service.IntegrationResolver,
-            "resolve",
+        patch(
+            f"{service.__name__}.IntegrationResolver.resolve",
             new_callable=AsyncMock,
             return_value=resolved,
         ),
@@ -40,6 +40,7 @@ async def test_connect_failure_hides_provider_exception_text() -> None:
     assert "Trello" in (result.error or "")
 
 
+@pytest.mark.regression
 @pytest.mark.asyncio
 async def test_mcp_connect_failure_hides_exception_text() -> None:
     target = MagicMock(is_platform=True, integration_id="x", integration_name="Acme", user_id="u1")
@@ -50,6 +51,7 @@ async def test_mcp_connect_failure_hides_exception_text() -> None:
     assert "Acme" in (result.error or "")
 
 
+@pytest.mark.regression
 @pytest.mark.asyncio
 async def test_bearer_connect_failure_hides_exception_text() -> None:
     mcp_client = MagicMock()
