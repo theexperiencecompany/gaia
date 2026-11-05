@@ -2,7 +2,8 @@
 
 Each scenario is one user's chat: a message to the bot endpoint, the comms and
 executor agents, the ARQ worker, a real browser host and engine, the fixture
-site, and the outbound queue the bot would send from. The models are scripted
+site, the self-host proxy a user's live view goes through, and the outbound
+queue the bot would send from. The models are scripted
 (see _stack/fake_models.py), so these prove the product's plumbing and its
 promises (one answer, no leaked secret, a stop that stops, a handoff that hands
 over), never a model's judgement; that is the browser eval's job.
@@ -29,7 +30,9 @@ from tests.integration.real.browser._stack.fixture_site import (
     FORM_RECEIVED,
     LOGIN_FLASH,
     LOGIN_PASSWORD,
+    LOGIN_PASSWORD_AT,
     LOGIN_USER,
+    LOGIN_USERNAME_AT,
     NEW_WINDOW_HEADING,
     SECURE_HEADING,
 )
@@ -61,11 +64,6 @@ def _marker() -> str:
 _LIVE_LINK = re.compile(r"Open the live browser: (\S+)")
 #: Lines a run sends that are not anything it was asked: step captions and the closing recap link.
 _PROGRESS = re.compile(r"^(Step \d+ ·|📽 )")
-_LOGIN_JS = f"""(() => {{
-  document.querySelector('#username').value = '{LOGIN_USER}';
-  document.querySelector('#password').value = '{LOGIN_PASSWORD}';
-  document.querySelector('#login').submit();
-}})()"""
 
 
 def _told(transcript: Transcript) -> list[Delivery]:
@@ -349,7 +347,7 @@ async def test_a_login_is_handed_to_the_user_and_then_reused_without_asking_agai
                     {
                         "request_human_takeover": {
                             "reason": "Sign in with your username and password. After that I'll read the page.",
-                            "category": "credentials",
+                            "category": "sign_in",
                         }
                     }
                 ]
@@ -378,8 +376,15 @@ async def test_a_login_is_handed_to_the_user_and_then_reused_without_asking_agai
     prompt = await wait_for(dm, _LIVE_LINK.pattern, timeout=RUN_SECONDS)
     live_match = _LIVE_LINK.search(prompt.said)
     assert live_match is not None
-    await stack.in_live_page(job_id, _LOGIN_JS)
-    await stack.page_reaches(job_id, "/secure")
+    # The user signs in the only way they can: on the streamed screen, through the proxy.
+    async with stack.live_view(live_match.group(1)) as viewer:
+        assert (await viewer.frame(timeout=RUN_SECONDS)).path == "/login"
+        await viewer.click(*LOGIN_USERNAME_AT)
+        await viewer.type(LOGIN_USER)
+        await viewer.click(*LOGIN_PASSWORD_AT)
+        await viewer.type(LOGIN_PASSWORD)
+        await viewer.press_enter()
+        await viewer.until_on("/secure", timeout=RUN_SECONDS)
     assert await stack.decide_on_live_page(live_match.group(1), "continue") == 200
     result = await stack.finished(job_id)
     await wait_for(dm, LOGIN_FLASH, timeout=RUN_SECONDS)

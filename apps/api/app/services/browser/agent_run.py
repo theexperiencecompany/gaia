@@ -19,7 +19,7 @@ from itertools import compress
 from pathlib import Path
 import shutil
 from time import perf_counter
-from typing import Any, TypedDict, cast
+from typing import Any, Protocol, TypedDict, cast
 
 from browser_use import Agent
 from browser_use.agent.views import ActionResult, AgentHistoryList, AgentOutput, AgentState
@@ -217,6 +217,12 @@ def _remove_directories(*directories: str | Path) -> None:
             )
 
 
+class _SteppingAgent(Protocol):
+    """What the step-end hook reads and writes on Browser-Use's agent: the results of its last step."""
+
+    state: AgentState
+
+
 @dataclass(frozen=True)
 class _Step:
     """The agent step in flight: when it started, the actions it picked, and the card of its own."""
@@ -295,7 +301,9 @@ class BrowserAgentRun:
             log.set_ns("browser", llm_error=type(exc).__name__)
             raise
         async with open_jev_client() as client:
-            browser = GaiaBrowserSession(cdp_url=self._session.cdp_url, user_id=self._user_id)
+            browser = GaiaBrowserSession(
+                cdp_url=self._session.cdp_url, user_id=self._user_id, engine=self._session.engine
+            )
             stalls = self._stalls = StalledLoads(browser)
             browser.event_bus.on(BrowserConnectedEvent, self._on_connected)
             browser.event_bus.on(BrowserConnectedEvent, stalls.attach)
@@ -539,7 +547,7 @@ class BrowserAgentRun:
             frame=frame,
         )
 
-    async def _on_step_end(self, agent: Agent[None, BaseModel]) -> None:
+    async def _on_step_end(self, agent: _SteppingAgent) -> None:
         """Record the step's actions and mirror their results, then wait on whoever a handoff action asked."""
         await self._record_step(agent.state.last_result or [])
         wait, self._wait = self._wait, None

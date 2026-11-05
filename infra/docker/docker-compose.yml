@@ -59,10 +59,6 @@ services:
       # A custom MCP server added as localhost runs on the developer's machine,
       # which this container reaches as host.docker.internal.
       LOOPBACK_HOST_ALIAS: host.docker.internal
-      # Public base for the recap and step-screenshot links (served by THIS api).
-      # Left unset so it falls back to HOST; a friendly vhost such as
-      # browser.heygaia.io must reverse-proxy here, never to the browser host.
-      # BROWSER_LIVE_VIEW_BASE_URL: https://browser.heygaia.io
       # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
       # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
       # unset — the storage helper short-circuits gracefully in that case).

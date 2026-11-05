@@ -3,8 +3,8 @@
 Comms and the executor (streamed, with tools) follow tools/llm-stub's inline
 directives and re-voice a result handed to them word for word; a structured
 one-shot (one tool, unstreamed) gets the emptiest value its schema accepts. The
-Browser-Use agent ({memory, action}) and Jev's text model ({text}) are told apart
-by their json_schema; Jev's decisions and Gemini's embeddings (which seed the
+Browser-Use agent (memory and action, plus its evaluation, next goal and thinking
+outside flash mode) and Jev's text model ({text}) are told apart by their json_schema; Jev's decisions and Gemini's embeddings (which seed the
 tools store) have their own routes. The agent and Jev are scripted per run, found
 by a marker the task carries; targets are named by visible text and resolved to
 the index the request itself offers, so a script acts only on what the real page
@@ -248,8 +248,9 @@ class FakeModels:
             await self.agent_tier_open.wait()
             return self._agent_tier(body)
         if (response_format.get("json_schema") or {}).get("name") == _AGENT_OUTPUT:
-            if properties == {"memory", "action"}:
-                return self._json_content(self._agent_step(messages, schema), messages)
+            if {"memory", "action"} <= properties:
+                answer = _agent_output(self._agent_step(messages, schema), properties)
+                return self._json_content(answer, messages)
             if properties == {"text"}:
                 return self._json_content(self._text_value(messages), messages)
         if system.startswith(_EXTRACT_SYSTEM):
@@ -533,6 +534,19 @@ def _vector(text: str) -> list[float]:
     """Return a stable vector for text: the same text always lands in the same place."""
     seed = hashlib.sha256(text.encode()).digest()
     return [((seed[i % len(seed)] + i) % 256) / 255 - 0.5 for i in range(_EMBEDDING_DIMS)]
+
+
+#: What the scripted agent writes into the fields Browser-Use asks for outside flash mode.
+_AGENT_NARRATION = {
+    "thinking": "Following the run's script.",
+    "evaluation_previous_goal": "The scripted step ran.",
+    "next_goal": "Take the script's next step.",
+}
+
+
+def _agent_output(answer: dict[str, Any], properties: set[str]) -> dict[str, Any]:
+    """Return the script's step in the agent output the request's schema asks for, flash mode or not."""
+    return {**{k: v for k, v in _AGENT_NARRATION.items() if k in properties}, **answer}
 
 
 def _done(text: str, *, success: bool) -> dict[str, Any]:
