@@ -732,7 +732,12 @@ async def subscribe_todo_to_trigger(
         return f"Error: no connected account for {trigger_name} is named {account!r}."
 
     try:
-        subscription, outcome, _created = await register_subscription(
+        gate = (
+            None
+            if runs_only_when is None
+            else AuthoredGate(condition=runs_only_when, author=GateAuthor.GAIA)
+        )
+        subscription, outcome, created = await register_subscription(
             todo_id=todo_id,
             user_id=user_id,
             trigger_name=trigger_name,
@@ -742,15 +747,23 @@ async def subscribe_todo_to_trigger(
             cooldown_seconds=cooldown_seconds,
             trigger_data=trigger_data,
             account_id=account_id,
-            gate=(
-                None
-                if runs_only_when is None
-                else AuthoredGate(condition=runs_only_when, author=GateAuthor.GAIA)
-            ),
+            gate=gate,
         )
     except SubscriptionError as e:
         # The catalog rides along on failure so the retry has what it needs.
         return f"Could not subscribe: {e}\n\n{render_catalog(trigger_name)}"
+
+    if not created and subscription.gate != gate:
+        runs_on = (
+            f"runs only when: {subscription.gate.display_condition}"
+            if subscription.gate
+            else "runs on every event"
+        )
+        return (
+            f"Todo {todo_id} already watches {trigger_name} with these settings "
+            f"(subscription id: {subscription.id}), so nothing new was stored and it still "
+            f"{runs_on}. To change its runs_only_when, unsubscribe it and subscribe again."
+        )
 
     lines = [
         f"Todo {todo_id} is now watching {trigger_name} and will {parsed_action} when it fires.",
