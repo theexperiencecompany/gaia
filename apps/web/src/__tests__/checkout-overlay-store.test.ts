@@ -20,6 +20,11 @@ vi.mock("@/features/pricing/lib/dodoOverlay", () => ({
   closeDodoOverlay: () => closeDodoOverlay(),
 }));
 
+const track = vi.fn();
+vi.mock("@/lib/analytics", () => ({
+  track: (...args: unknown[]) => track(...args),
+}));
+
 import {
   isCheckoutSettled,
   useCheckoutOverlayStore,
@@ -246,10 +251,152 @@ describe("checkout overlay state machine", () => {
     await useCheckoutOverlayStore
       .getState()
       .startCheckout("yearly", "pricing_card");
+    useCheckoutOverlayStore
+      .getState()
+      .handleCheckoutEvent({ event_type: "checkout.opened" });
     getSubscriptionStatus.mockResolvedValue(PRO);
     await advancePolls(2);
 
     // The abandoned loop must not resolve over the newly-opened overlay.
     expect(useCheckoutOverlayStore.getState().phase).toBe("open");
+  });
+});
+
+/** The payloads Dodo's overlay posts, as captured from test mode. */
+const dodoEvent = (event_type: string, message: Record<string, unknown> = {}) =>
+  ({ event_type, data: { message } }) as Parameters<
+    ReturnType<typeof useCheckoutOverlayStore.getState>["handleCheckoutEvent"]
+  >[0];
+
+describe("checkout overlay under manual redirect", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    useCheckoutOverlayStore.getState().reset();
+    createCheckoutSession.mockResolvedValue(SESSION);
+    openDodoOverlay.mockResolvedValue(undefined);
+    getSubscriptionStatus.mockResolvedValue(FREE);
+    verifyPayment.mockResolvedValue({ payment_completed: false });
+  });
+
+  afterEach(() => {
+    useCheckoutOverlayStore.getState().reset();
+    vi.useRealTimers();
+  });
+
+  const handle = (event: ReturnType<typeof dodoEvent>) =>
+    useCheckoutOverlayStore.getState().handleCheckoutEvent(event);
+
+  it("hands a declined charge back as a retryable error, in place", async () => {
+    // Under manualRedirect Dodo leaves the sheet on "Processing…" and only
+    // reports the outcome: without handling it the user is stuck there.
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("monthly", "onboarding");
+    handle(dodoEvent("checkout.opened"));
+    handle(dodoEvent("checkout.pay_button_clicked", { payment_id: "x" }));
+    handle(dodoEvent("checkout.status", { status: "failed" }));
+
+    const { phase, error } = useCheckoutOverlayStore.getState();
+    expect(phase).toBe("idle");
+    expect(isCheckoutSettled(phase)).toBe(true);
+    expect(error).toMatch(/didn't go through/);
+    expect(closeDodoOverlay).toHaveBeenCalled();
+    // A decline is the server's payment:failed, not an abandonment.
+    handle(dodoEvent("checkout.closed"));
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("settles a succeeded charge with the server, without waiting on a webhook", async () => {
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("yearly", "onboarding");
+    handle(dodoEvent("checkout.opened"));
+    handle(dodoEvent("checkout.status", { status: "succeeded" }));
+    expect(useCheckoutOverlayStore.getState().phase).toBe("confirming");
+
+    verifyPayment.mockResolvedValue({ payment_completed: true });
+    await advancePolls(1);
+
+    // No id: the server resolves the user's checkout sessions against Dodo.
+    expect(verifyPayment).toHaveBeenCalledWith(undefined);
+    expect(useCheckoutOverlayStore.getState().phase).toBe("confirmed");
+  });
+
+  it("never sends the tab back into the app on Dodo's redirect request", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", {
+      location: { origin: "https://heygaia.io", assign },
+    });
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("monthly", "onboarding");
+
+    handle(
+      dodoEvent("checkout.redirect_requested", {
+        redirect_to:
+          "https://heygaia.io/onboarding?checkout=returned&email=a%40b.c",
+      }),
+    );
+    expect(assign).not.toHaveBeenCalled();
+
+    // A bank's 3-D Secure page is somewhere the user must actually go.
+    handle(
+      dodoEvent("checkout.redirect_requested", {
+        redirect_to: "https://3ds.bank.example/challenge",
+      }),
+    );
+    expect(assign).toHaveBeenCalledWith(
+      new URL("https://3ds.bank.example/challenge"),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("records how far a closed checkout got, with its plan and source", async () => {
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("yearly", "onboarding");
+    handle(dodoEvent("checkout.opened"));
+    handle(dodoEvent("checkout.customer_details_submitted"));
+    handle(dodoEvent("checkout.payment_page_opened"));
+    handle(dodoEvent("checkout.closed"));
+
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith("payment:checkout_abandoned", {
+      source: "onboarding",
+      billing_cycle: "yearly",
+      furthest_step: "payment_page",
+    });
+    expect(useCheckoutOverlayStore.getState().phase).toBe("idle");
+  });
+
+  it("takes down an overlay that never rendered instead of leaving the page frozen", async () => {
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("monthly", "pricing_card");
+
+    await vi.advanceTimersByTimeAsync(21_000);
+
+    const { phase, error } = useCheckoutOverlayStore.getState();
+    expect(phase).toBe("idle");
+    expect(error).toMatch(/didn't load/);
+    expect(closeDodoOverlay).toHaveBeenCalled();
+    expect(track).toHaveBeenCalledWith("payment:checkout_abandoned", {
+      source: "pricing_card",
+      billing_cycle: "monthly",
+      furthest_step: "not_loaded",
+    });
+  });
+
+  it("leaves a rendered overlay alone past the load timeout", async () => {
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("monthly", "pricing_card");
+    handle(dodoEvent("checkout.opened"));
+
+    await vi.advanceTimersByTimeAsync(21_000);
+
+    expect(useCheckoutOverlayStore.getState().phase).toBe("open");
+    expect(closeDodoOverlay).not.toHaveBeenCalled();
   });
 });
