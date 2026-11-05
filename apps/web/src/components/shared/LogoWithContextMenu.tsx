@@ -197,6 +197,7 @@ export function LogoWithContextMenu({
       <ContextMenuTrigger asChild>
         <Link
           href="/"
+          aria-label="GAIA home"
           className={cn(buttonVariants({ variant: "ghost" }), className)}
         >
           <div className="transition-transform duration-200 hover:scale-[1.02]">
