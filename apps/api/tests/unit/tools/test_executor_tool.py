@@ -11,11 +11,10 @@ from datetime import UTC, datetime
 import json
 import time
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import fakeredis.aioredis
-from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
@@ -34,8 +33,6 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
     EXECUTOR_INBOX_PREFIX,
 )
-from app.constants.executor import HandoffOutcome
-from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import EXECUTOR_INBOX_TTL
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
@@ -59,7 +56,7 @@ from app.utils import background_tasks
 from tests.browser_factories import make_browser_job_state
 
 
-def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[Any]]:
+def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[str]]:
     """Call the undecorated coroutine behind a @tool.
 
     Called directly instead of ainvoke so a test never opens a LangSmith
@@ -68,7 +65,7 @@ def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[Any]]:
     """
     coroutine = cast(StructuredTool, tool_obj).coroutine
     assert coroutine is not None
-    return cast(Callable[..., Awaitable[Any]], coroutine)
+    return cast(Callable[..., Awaitable[str]], coroutine)
 
 
 run_call_executor = tool_function(call_executor)
@@ -89,13 +86,12 @@ async def call_executor_with(
     """
     if acceptance_criteria is None:
         acceptance_criteria = []
-    text, _outcome = await run_call_executor(
+    return await run_call_executor(
         config=config,
         task=task,
         acceptance_criteria=acceptance_criteria,
         **kwargs,
     )
-    return text
 
 
 CONVERSATION_ID = "conv-1"
@@ -365,7 +361,8 @@ class TestCallExecutorLockContention:
 
         handed_over = (
             "It's been added to the work already in progress and will be "
-            "covered in the same answer."
+            "covered in the same answer. Acknowledge it with a reaction or a few plain "
+            "words; never mention runs, task ids, queues, or waiting."
         )
         assert response == handed_over
         assert len(spawned_runs) == 1  # handed-over work must NOT start its own run
@@ -1506,76 +1503,3 @@ class TestAWorkflowFiresReservationIsAdopted:
 
         assert spawned_runs == []
         assert await inbox().count() == 1
-
-
-async def _outcome_of(config: RunnableConfig, task: str = "check my calendar") -> HandoffOutcome:
-    _text, outcome = await run_call_executor(config=config, task=task, acceptance_criteria=[])
-    return outcome
-
-
-@pytest.mark.unit
-class TestTheHandoffSaysWhetherTheTurnEnds:
-    async def test_work_that_started_ends_the_turn(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
-    ) -> None:
-        assert await _outcome_of(config_for()) is HandoffOutcome.STARTED
-
-    async def test_a_same_turn_duplicate_is_already_running(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
-    ) -> None:
-        await _outcome_of(config_for())
-
-        assert await _outcome_of(config_for()) is HandoffOutcome.ALREADY_RUNNING
-
-    async def test_a_new_ask_while_busy_joins_the_running_work(
-        self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
-        spawned_runs: list[dict[str, Any]],
-        fast_redirect: None,
-    ) -> None:
-        await _outcome_of(config_for("stream-1"))
-
-        assert await _outcome_of(config_for("stream-2")) is HandoffOutcome.JOINED
-
-    async def test_a_narration_turn_is_refused(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
-    ) -> None:
-        outcome = await _outcome_of(config_for(is_result_narration=True))
-
-        assert outcome is HandoffOutcome.REFUSED
-
-    async def test_a_dispatch_that_crashed_failed(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
-    ) -> None:
-        with patch.object(
-            executor_tool, "_dispatch_executor", AsyncMock(side_effect=RuntimeError("boom"))
-        ):
-            outcome = await _outcome_of(config_for())
-
-        assert outcome is HandoffOutcome.FAILED
-
-    @pytest.mark.parametrize(
-        ("outcome", "ends"),
-        [
-            (HandoffOutcome.STARTED, True),
-            (HandoffOutcome.JOINED, True),
-            (HandoffOutcome.ALREADY_RUNNING, True),
-            (HandoffOutcome.REFUSED, False),
-            (HandoffOutcome.FAILED, False),
-        ],
-    )
-    def test_only_an_accepted_hand_off_ends_the_turn(
-        self, outcome: HandoffOutcome, ends: bool
-    ) -> None:
-        message = ToolMessage(
-            content="x", tool_call_id="tc", name=CALL_EXECUTOR_NAME, artifact=outcome
-        )
-
-        assert executor_tool.ends_comms_turn(message) is ends
-
-    def test_another_tools_result_never_ends_the_turn(self) -> None:
-        message = ToolMessage(
-            content="x", tool_call_id="tc", name="web_search_tool", artifact=HandoffOutcome.STARTED
-        )
-
-        assert executor_tool.ends_comms_turn(message) is False

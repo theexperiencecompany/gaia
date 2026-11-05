@@ -5,8 +5,6 @@ its handoff to the comms agent. Centralized so the executor runner, capture,
 and any future consumers reference a single source of truth.
 """
 
-from enum import StrEnum
-
 # SSE frame key carrying the executor's narrated answer for voice-mode TTS.
 # Must match VOICE_TTS_KEY in apps/voice-agent/src/constants.py — the voice
 # agent matches on this exact string to decide what to speak.
@@ -83,19 +81,3 @@ INTERRUPTION_NOTICE = (
 # How many of a running executor's latest tool calls comms' status note shows,
 # kept in the holder's progress record (see executor_progress).
 EXECUTOR_PROGRESS_MAX_CALLS = 20
-
-
-class HandoffOutcome(StrEnum):
-    """How a call_executor hand-off went, carried as its tool message's artifact."""
-
-    STARTED = "started"
-    JOINED = "joined"
-    ALREADY_RUNNING = "already_running"
-    REFUSED = "refused"
-    FAILED = "failed"
-
-
-#: Hand-offs whose work is underway: the turn ends silently and the result speaks for it.
-ACCEPTED_HANDOFFS = frozenset(
-    {HandoffOutcome.STARTED, HandoffOutcome.JOINED, HandoffOutcome.ALREADY_RUNNING}
-)

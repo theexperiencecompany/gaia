@@ -888,6 +888,7 @@ def cancelling_comms_script() -> list[Any]:
     """
     return [
         call("call_executor", {"task": "draw the flowchart"}, call_id="tc_exec"),
+        "On it.",
         call("cancel_executor", {"task_ids": []}, call_id="tc_cancel"),
         "Stopped.",
     ]

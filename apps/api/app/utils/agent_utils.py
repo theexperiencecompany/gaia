@@ -295,20 +295,20 @@ def format_browser_action_entry(
 # Special tools with custom display names and categories
 # Format: (category, display_name, show_category)
 _SPECIAL_TOOLS: dict[str, tuple[str, str, bool]] = {
-    "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
+    "retrieve_tools": ("retrieve_tools", "Getting ready", False),
     "call_executor": ("executor", "Working on it", False),
-    "cancel_executor": ("cancel_executor", "Cancelling the task", False),
+    "cancel_executor": ("cancel_executor", "Stopping that", False),
     "browser_step_done": (BROWSER_TOOL_CATEGORY, "Continuing the browser task", False),
     "stop_browser_task": (BROWSER_TOOL_CATEGORY, "Stopping the browser task", False),
     "tell_browser_task": (BROWSER_TOOL_CATEGORY, "Telling the browser task", False),
-    "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
-    ACTIVATE_INTEGRATION_TOOL_NAME: ("integrations", "Activating integration", False),
-    "plan_tasks": ("plan_tasks", "Plan tasks", False),
+    "spawn_subagent": ("spawn_subagent", "Working on part of it", False),
+    ACTIVATE_INTEGRATION_TOOL_NAME: ("integrations", "Opening your app", False),
+    "plan_tasks": ("plan_tasks", "Planning", False),
     # Synthetic card a replayed workflow run leads with — never a callable
     # tool. The playbooks category carries the icon the authoring tools use.
-    "run_playbook": ("playbooks", "Run playbook", True),
-    "update_tasks": ("plan_tasks", "Update tasks", False),
-    "finish_task": ("finish_task", "Finish task", False),
+    "run_playbook": ("playbooks", "Following your usual steps", True),
+    "update_tasks": ("plan_tasks", "Updating the plan", False),
+    "finish_task": ("finish_task", "Wrapping up", False),
 }
 
 

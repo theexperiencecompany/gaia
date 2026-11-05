@@ -17,7 +17,6 @@ from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF
 from app.agents.tools.executor_tool import call_executor
 from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
-from app.constants.executor import HandoffOutcome
 from tests.helpers import load_llm_stub_module
 
 
@@ -85,7 +84,7 @@ async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
     """Invoke call_executor and return the brief it handed to _dispatch_executor."""
     with patch(
         "app.agents.tools.executor_tool._dispatch_executor",
-        new=AsyncMock(return_value=("Task accepted", HandoffOutcome.STARTED)),
+        new=AsyncMock(return_value="Task accepted"),
     ) as mock_dispatch:
         await call_executor.ainvoke(tool_args, config={"configurable": configurable})
     return mock_dispatch.call_args.kwargs["task"]

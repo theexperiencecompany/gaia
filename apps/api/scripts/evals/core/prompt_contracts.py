@@ -213,12 +213,19 @@ CLAUSES: tuple[Clause, ...] = (
         depends_on=("gate:delegation", "data/comms/delegation.yaml"),
     ),
     Clause(
-        name="silent_handoff",
+        name="acknowledge_exactly_once",
         source="comms",
-        starts_at="## Actions: silent until there is something to say",
+        starts_at="## Actions: three moments",
         ends_before="Needs a service they haven't connected",
-        governs="a hand-off is the tool call alone, no acknowledgment; the result is the reply",
+        governs="the three moments: silent call, a reaction or one short ack, then the outcome",
         depends_on=("data/quality/bubbles.yaml", "data/quality/multiturn_extra.yaml"),
+    ),
+    Clause(
+        name="never_echo_task_id",
+        source="comms",
+        starts_at="2. Right after call_executor hands it off:",
+        governs="the internal task_id is never shown to the user",
+        depends_on=("gate:internal_machinery",),
     ),
     Clause(
         name="never_reproduce_internal_tags",

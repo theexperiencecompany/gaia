@@ -11,7 +11,6 @@ import time
 from typing import Annotated
 from uuid import uuid4
 
-from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
@@ -37,7 +36,6 @@ from app.agents.core.background.session import (
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
-from app.constants.executor import ACCEPTED_HANDOFFS, HandoffOutcome
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
@@ -95,16 +93,7 @@ async def _acquire_lock_through_redirect(
     return False
 
 
-#: What call_executor returns: the text comms reads, and how the hand-off went.
-HandoffResult = tuple[str, HandoffOutcome]
-
-
-def ends_comms_turn(message: ToolMessage) -> bool:
-    """Whether this tool result is an accepted hand-off, after which comms says nothing."""
-    return message.name == CALL_EXECUTOR_NAME and message.artifact in ACCEPTED_HANDOFFS
-
-
-@tool(response_format="content_and_artifact")
+@tool
 async def call_executor(
     config: RunnableConfig,
     task: Annotated[
@@ -127,7 +116,7 @@ async def call_executor(
         "'update progress on todo X', 'continue working on Y'). Omit for "
         "general tasks.",
     ] = None,
-) -> HandoffResult:
+) -> str:
     """Delegate a task to the executor agent for background execution.
 
     Use this when the user asks you to do something that requires action
@@ -148,10 +137,7 @@ async def call_executor(
 
     if not conversation_id:
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
-        return (
-            "Internal error: conversation context unavailable. Please try again.",
-            HandoffOutcome.FAILED,
-        )
+        return "Internal error: conversation context unavailable. Please try again."
     if base_configurable.get("is_result_narration"):
         # A result-narration turn must not start work: the run it narrates still
         # holds the busy lock, so a dispatch here queues a duplicate of the task
@@ -163,8 +149,7 @@ async def call_executor(
         return (
             "Not dispatched. This turn only reports a result that already came back; it "
             "cannot start new work. Report what happened, including the failure and its "
-            "reason if it failed, and ask the user whether they want it retried.",
-            HandoffOutcome.REFUSED,
+            "reason if it failed, and ask the user whether they want it retried."
         )
 
     task_id = str(uuid4())
@@ -211,7 +196,7 @@ async def call_executor(
         # delete here freed a FOREIGN lock when failure hit the queue branch,
         # letting a second concurrent executor start in the same conversation.
         await release_lock_if_owned(conversation_id, configurable.get("stream_id"), task_id)
-        return f"Error starting task: {e!s}", HandoffOutcome.FAILED
+        return f"Error starting task: {e!s}"
 
 
 async def _dispatch_executor(
@@ -220,7 +205,7 @@ async def _dispatch_executor(
     task_id: str,
     configurable: AgentConfigurable,
     conversation_id: str,
-) -> HandoffResult:
+) -> str:
     """Core dispatch logic — acquire lock, queue if busy, or spawn."""
     log.set(
         tool={
@@ -265,8 +250,7 @@ async def _dispatch_executor(
             )
             return (
                 "That task is already running from this same message, not "
-                "starting it again. The results are on the way.",
-                HandoffOutcome.ALREADY_RUNNING,
+                "starting it again. The results are on the way."
             )
 
     if not acquired:
@@ -302,8 +286,8 @@ async def _dispatch_executor(
             )
             return (
                 "It's been added to the work already in progress and will be "
-                "covered in the same answer.",
-                HandoffOutcome.JOINED,
+                "covered in the same answer. Acknowledge it with a reaction or a few plain "
+                "words; never mention runs, task ids, queues, or waiting."
             )
 
     # MCP tools load lazily inside each subagent's first use — the old eager
@@ -338,7 +322,7 @@ async def _dispatch_executor(
         task_id=task_id,
         stream_id=stream_id,
     )
-    return handoff_message(task_id), HandoffOutcome.STARTED
+    return handoff_message(task_id)
 
 
 def handoff_message(task_id: str) -> str:

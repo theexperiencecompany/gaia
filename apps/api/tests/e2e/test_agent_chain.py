@@ -416,9 +416,8 @@ class TestCommsToExecutor:
         assert calls["retrieve_tools"] < outputs["tc_retrieve"]
         assert calls["create_flowchart"] < outputs["tc_flow"]
 
-    @pytest.mark.regression
-    async def test_a_hand_off_says_nothing_and_the_result_is_the_reply(self) -> None:
-        """No "on it" after a hand-off: the turn ends at the dispatch and the result does the talking."""
+    async def test_comms_answers_immediately_instead_of_waiting_for_the_executor(self) -> None:
+        """call_executor is fire-and-forget by design — if it ever blocked, the user would stare at nothing."""
         run = await run_chain(
             "draw me a flowchart",
             comms=[
@@ -431,43 +430,7 @@ class TestCommsToExecutor:
         assert run.transcript.result_for("call_executor").startswith(
             "Handed to the executor (task_id:"
         )
-        assert run.transcript.final_text() == ""
-        assert run.delivered == [("Drew the flowchart.", "final")]
-
-    async def test_a_sibling_call_that_needs_an_answer_still_gets_one(self) -> None:
-        """A hand-off ends only its own branch: a tool called beside it sends the turn back to comms."""
-        run = await run_chain(
-            "draw me a flowchart and stop the other thing",
-            comms=[
-                [
-                    call("call_executor", {"task": "draw a flowchart"}, call_id="tc_exec"),
-                    call("cancel_executor", {"task_ids": ["not-running"]}, call_id="tc_cancel"),
-                ],
-                "Nothing else was running.",
-            ],
-            executor=executor_flowchart_script(),
-        )
-
-        assert run.transcript.final_text() == "Nothing else was running."
-        assert run.delivered == [("Drew the flowchart.", "final")]
-
-    async def test_a_refused_hand_off_still_gets_words(self) -> None:
-        """Only an accepted hand-off ends the turn: a dispatch that failed must be told to the user."""
-        with patch(
-            "app.agents.tools.executor_tool._dispatch_executor",
-            new=AsyncMock(side_effect=RuntimeError("redis down")),
-        ):
-            run = await run_chain(
-                "draw me a flowchart",
-                comms=[
-                    call("call_executor", {"task": "draw a flowchart"}, call_id="tc_exec"),
-                    "That didn't start, want me to try again?",
-                ],
-                executor=[],
-            )
-
-        assert run.transcript.result_for("call_executor").startswith("Error starting task")
-        assert run.transcript.final_text() == "That didn't start, want me to try again?"
+        assert run.transcript.final_text() == "On it."
 
     @pytest.mark.regression
     async def test_an_executor_that_reports_nothing_is_delivered_as_a_failure(self) -> None:
@@ -491,6 +454,7 @@ class TestCommsToExecutor:
             executor=executor_flowchart_script(),
         )
 
+        assert run.transcript.final_text() == "On it."
         assert "Drew the flowchart." not in run.transcript.final_text()
         assert run.delivered == [("Drew the flowchart.", "final")]
 
@@ -506,7 +470,7 @@ class TestCommsToExecutor:
         )
 
         assert len(run.saved) == 1
-        assert run.saved[0]["reply"].complete_message == ""
+        assert run.saved[0]["reply"].complete_message == "On it."
         saved_names = [
             entry["data"]["tool_name"] for entry in run.saved[0]["reply"].tool_data["tool_data"]
         ]

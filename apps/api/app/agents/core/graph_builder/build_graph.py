@@ -41,7 +41,7 @@ from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
 )
 from app.agents.tools.discovery_tools import find_integration, search_public_workflows
-from app.agents.tools.executor_tool import call_executor, cancel_executor, ends_comms_turn
+from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.subagent_control_tool import (
     cancel_subagent,
     list_running_subagents,
@@ -269,8 +269,6 @@ async def build_comms_graph(
                 # via add_memory persist — conversational disclosures are lost.
                 memory_node,
             ],
-            # A hand-off is acknowledged by the work itself, never by "on it".
-            ends_turn=ends_comms_turn,
         ),
         agent_config=AgentConfig(agent_name="comms_agent", middleware=middleware),
     )

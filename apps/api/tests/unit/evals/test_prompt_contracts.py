@@ -208,7 +208,7 @@ def test_the_bubble_clause_stops_at_the_end_of_the_bubble_section() -> None:
     assert "Never split structured content" in text
     assert "## What you do yourself" not in text
     assert ":::openui" not in text
-    assert "## Actions: silent until there is something to say" not in text
+    assert "## Actions: three moments" not in text
 
 
 def test_clause_helper_matches_resolve() -> None:

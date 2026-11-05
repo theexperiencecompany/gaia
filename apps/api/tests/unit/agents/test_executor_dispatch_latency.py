@@ -108,7 +108,7 @@ class TestDispatchLatency:
             patch.object(ExecutorRun, "from_configurable", new=classmethod(_capture_from_config)),
             patch.object(et, "spawn_background_task"),
         ):
-            result, _outcome = await et._dispatch_executor(
+            result = await et._dispatch_executor(
                 task="do the thing",
                 task_id="task-live",
                 configurable=_configurable(stream_id),
@@ -128,7 +128,7 @@ class TestDispatchLatency:
             patch.object(et, "redis_cache", _mock_redis(f"{stream_id}:task-first")),
             patch.object(et, "spawn_background_task") as mock_spawn,
         ):
-            result, _outcome = await et._dispatch_executor(
+            result = await et._dispatch_executor(
                 task="do it again",
                 task_id="task-second",
                 configurable=_configurable(stream_id),
@@ -161,7 +161,7 @@ class TestDispatchLatency:
             patch.object(et, "log") as mock_log,
             patch.object(et, "time", new=fake_time),
         ):
-            result, _outcome = await et._dispatch_executor(
+            result = await et._dispatch_executor(
                 task="redirected work",
                 task_id="task-r",
                 configurable=_configurable(stream_id),
