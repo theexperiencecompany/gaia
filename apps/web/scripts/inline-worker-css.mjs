@@ -66,6 +66,8 @@ async function sha256Base64(text) {
 }
 
 async function nonceCsp(html, headers) {
+  const existing = headers.get("content-security-policy") || "";
+  if (existing.includes("nonce-")) return html;
   const nonce = randomNonce();
   html = html.replace(/<script(?![^>]*\ssrc=)([^>]*)>/g, (m, attrs) =>
     attrs.includes("nonce=") ? m : "<script" + attrs + " nonce=\\\"" + nonce + "\\\">");
