@@ -239,18 +239,13 @@ apps/api/tests/unit/api/v1/endpoints/test_instructions.py	misc
 apps/api/tests/unit/app/test_main_smoke.py	arg-type
 apps/api/tests/unit/app/test_main_smoke.py	attr-defined
 apps/api/tests/unit/app/test_worker_smoke.py	attr-defined
-apps/api/tests/unit/browser_host/conftest.py	arg-type
-apps/api/tests/unit/browser_host/conftest.py	return-value
 apps/api/tests/unit/browser_host/test_cdp_mux.py	attr-defined
-apps/api/tests/unit/browser_host/test_engine.py	attr-defined
-apps/api/tests/unit/browser_host/test_host.py	attr-defined
 apps/api/tests/unit/browser_host/test_memory.py	attr-defined
 apps/api/tests/unit/browser_host/test_metrics.py	attr-defined
 apps/api/tests/unit/browser_host/test_process.py	attr-defined
 apps/api/tests/unit/browser_host/test_proxy.py	attr-defined
 apps/api/tests/unit/browser_host/test_proxy.py	index
 apps/api/tests/unit/browser_host/test_proxy.py	var-annotated
-apps/api/tests/unit/browser_host/test_server.py	attr-defined
 apps/api/tests/unit/browser_host/test_storage.py	arg-type
 apps/api/tests/unit/config/test_deployment.py	unused-ignore
 apps/api/tests/unit/config/test_oauth_config.py	attr-defined
@@ -405,8 +400,6 @@ apps/api/tests/unit/services/browser/test_capability_code.py	arg-type
 apps/api/tests/unit/services/browser/test_capability_code.py	assignment
 apps/api/tests/unit/services/browser/test_capability_code.py	attr-defined
 apps/api/tests/unit/services/browser/test_handoff.py	attr-defined
-apps/api/tests/unit/services/browser/test_host_client.py	arg-type
-apps/api/tests/unit/services/browser/test_host_client.py	attr-defined
 apps/api/tests/unit/services/browser/test_job_relay.py	attr-defined
 apps/api/tests/unit/services/browser/test_job_stop.py	attr-defined
 apps/api/tests/unit/services/browser/test_job_teller.py	arg-type
@@ -415,9 +408,6 @@ apps/api/tests/unit/services/browser/test_jobs.py	assignment
 apps/api/tests/unit/services/browser/test_jobs.py	method-assign
 apps/api/tests/unit/services/browser/test_profiles.py	arg-type
 apps/api/tests/unit/services/browser/test_registry.py	attr-defined
-apps/api/tests/unit/services/browser/test_session.py	arg-type
-apps/api/tests/unit/services/browser/test_session.py	attr-defined
-apps/api/tests/unit/services/browser/test_session.py	index
 apps/api/tests/unit/services/browser/test_stalled_loads.py	arg-type
 apps/api/tests/unit/services/browser/test_storage_persistence.py	arg-type
 apps/api/tests/unit/services/browser/test_storage_persistence.py	attr-defined

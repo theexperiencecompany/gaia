@@ -49,12 +49,6 @@ pytestmark = [pytest.mark.asyncio(loop_scope="module"), pytest.mark.timeout(SCEN
 _PASSWORD = "gaia-test-123"  # pragma: allowlist secret
 
 
-@pytest.fixture(autouse=True)
-def _scenario_model_errors(stack: BrowserStack) -> None:
-    """Start each scenario with no model errors: one left over fails every scenario after it, its rerun too."""
-    stack.models.errors.clear()
-
-
 def _marker() -> str:
     """Return a token that ties a run's task to its script."""
     return f"run-{uuid.uuid4().hex[:10]}"

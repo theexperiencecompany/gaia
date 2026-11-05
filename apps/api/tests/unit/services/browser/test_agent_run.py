@@ -155,6 +155,7 @@ class _Harness:
         messages: list[str] | None = None,
         started: bool = True,
         engine: BrowserEngine = BrowserEngine.CHROMIUM,
+        fortress: bool = False,
         resumed_from: AgentState | None = None,
     ) -> None:
         self.frames: list[StepFrame] = []
@@ -167,6 +168,7 @@ class _Harness:
                 cdp_url="ws://browser.test/cdp",
                 host_url="http://browser.test",
                 engine=engine,
+                fortress=fortress,
             ),
             config=CONFIG,
             hooks=RunHooks(
@@ -856,8 +858,17 @@ class TestExecute:
         assert browser.options == {
             "cdp_url": "ws://browser.test/cdp",
             "user_id": "user-1",
-            "engine": BrowserEngine.CHROMIUM,
+            "fortress": False,
         }
+
+    async def test_a_run_on_fortress_tells_its_browser_the_engine_owns_the_fingerprint(
+        self, monkeypatch: pytest.MonkeyPatch, built_with: list[tuple[str, object]]
+    ) -> None:
+        harness = _Harness(fortress=True)
+
+        await harness.run.execute("read my orders")
+
+        assert _Agent.built[-1].options["browser"].options["fortress"] is True
 
     async def test_the_stall_watcher_listens_on_every_connect_of_this_browser(
         self, harness: _Harness

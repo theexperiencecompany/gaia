@@ -304,7 +304,9 @@ class BrowserAgentRun:
             raise
         async with contextlib.AsyncExitStack() as jev_scope:
             browser = GaiaBrowserSession(
-                cdp_url=self._session.cdp_url, user_id=self._user_id, engine=self._session.engine
+                cdp_url=self._session.cdp_url,
+                user_id=self._user_id,
+                fortress=self._session.fortress,
             )
             stalls = self._stalls = StalledLoads(browser)
             browser.event_bus.on(BrowserConnectedEvent, self._on_connected)

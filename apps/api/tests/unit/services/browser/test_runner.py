@@ -91,6 +91,7 @@ def _session(session_id: str = "s-primary") -> BrowserHostSession:
         cdp_url=f"ws://{session_id}",
         host_url=f"http://{session_id}-host",
         engine=BrowserEngine.OBSCURA if session_id == "s-primary" else BrowserEngine.CHROMIUM,
+        fortress=False,
     )
 
 
@@ -620,7 +621,7 @@ async def test_a_run_past_its_budget_never_moves_even_with_its_engine_wedged(
 # ---------------------------------------------------------------------------
 
 
-async def test_the_agent_run_works_for_this_runs_user_ledger_secrets_and_hooks() -> None:
+async def test_the_agent_run_carries_this_runs_ledger_secrets_and_hooks() -> None:
     action_results = AsyncMock()
     user_waiting = AsyncMock(return_value=False)
     runner, _ = _runner(
