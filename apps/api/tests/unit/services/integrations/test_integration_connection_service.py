@@ -48,3 +48,22 @@ async def test_mcp_connect_failure_hides_exception_text() -> None:
     assert result.status == "error"
     assert "Auth config" not in (result.error or "")
     assert "Acme" in (result.error or "")
+
+
+@pytest.mark.asyncio
+async def test_bearer_connect_failure_hides_exception_text() -> None:
+    mcp_client = MagicMock()
+    mcp_client.connect = AsyncMock(side_effect=RuntimeError(COMPOSIO_DUMP))
+    with (
+        patch.object(service, "MCPTokenStore") as token_store_cls,
+        patch.object(service, "invalidate_user_integration_caches", new_callable=AsyncMock),
+    ):
+        token_store = token_store_cls.return_value
+        token_store.store_bearer_token = AsyncMock()
+        token_store.delete_credentials = AsyncMock()
+        result = await service._connect_with_bearer_token("u1", "x", "Acme", "tok", mcp_client)
+
+    assert result.status == "error"
+    assert "Auth config" not in (result.error or "")
+    assert "Acme" in (result.error or "")
+    token_store.delete_credentials.assert_awaited_once_with("x")
