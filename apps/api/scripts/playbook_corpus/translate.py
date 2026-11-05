@@ -13,13 +13,14 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+import re
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.agents.core.subagents.call_record import is_error_envelope
 from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.models.playbook_models import TIME_KEY, AskSlot, is_ask_slot, is_time_slot
-from app.services.workflow.playbook.placeholders import placeholder_tokens
+from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, placeholder_tokens
 from app.services.workflow.playbook.record import (
     PlaybookPick,
     RecordEntry,
@@ -58,6 +59,11 @@ class _OldStep(BaseModel):
     steps: list[_OldStep] = Field(default_factory=list)
     for_each: object = None
     max_items: int | None = None
+
+    @field_validator("tool")
+    @classmethod
+    def _blank_is_no_tool(cls, tool: str | None) -> str | None:
+        return tool or None
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,9 +124,11 @@ def _flatten(
 ) -> list[_Wanted]:
     """Every call the attempt names, in order, a handoff group's children in its place."""
     wanted: list[_Wanted] = []
+    taken: set[str] = set()
     for step in steps:
         if step.handoff is None:
             wanted.extend(_wanted(step, unpickable))
+            taken.update([step.id] if step.id else [])
             continue
         children = list(step.steps)
         if not children and step.tool is not None:
@@ -139,9 +147,51 @@ def _flatten(
                     update={"for_each": step.for_each, "max_items": step.max_items}
                 )
             ]
-        for child in children:
+        for child in _scoped(children, step.handoff, taken):
             wanted.extend(_wanted(child, unpickable))
+            taken.update([child.id] if child.id else [])
     return wanted
+
+
+def _scoped(children: list[_OldStep], handoff: str, taken: set[str]) -> list[_OldStep]:
+    """A group's children with each id another step already took prefixed by the handoff.
+
+    Ids were scoped per handoff group, so two groups could both say "gather"; picks
+    share one namespace, so a clash is renamed and the group's own references follow.
+    """
+    renamed = {
+        child.id: f"{handoff}_{child.id}" for child in children if child.id and child.id in taken
+    }
+    if not renamed:
+        return children
+    return [
+        child.model_copy(
+            update={
+                "id": renamed.get(child.id or "", child.id),
+                "args": _renamed_refs(child.args, renamed),
+                "for_each": _renamed_refs(child.for_each, renamed),
+            }
+        )
+        for child in children
+    ]
+
+
+def _renamed_refs(value: object, renamed: Mapping[str, str]) -> object:
+    """Value with every $steps.<old> reference pointed at its renamed step."""
+
+    def rename(token: re.Match[str]) -> str:
+        old = token.group("path")[1:].split(".", 1)[0]
+        if token.group("root") != "steps" or old not in renamed:
+            return token.group(0)
+        return token.group(0).replace(f"$steps.{old}", f"$steps.{renamed[old]}", 1)
+
+    if isinstance(value, str):
+        return PLACEHOLDER_TOKEN.sub(rename, value)
+    if isinstance(value, dict):
+        return {key: _renamed_refs(item, renamed) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_renamed_refs(item, renamed) for item in value]
+    return value
 
 
 def _wanted(step: _OldStep, unpickable: frozenset[str]) -> list[_Wanted]:
