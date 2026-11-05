@@ -1,6 +1,6 @@
 """Whether the user has written in a Gmail thread, read from the thread's own labels."""
 
-from app.config.oauth_config import get_integration_by_toolkit
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.models.agent_config import ComposioAccountSelection
 from app.models.integrations.gmail import GmailThreadData
 from app.services.composio.account_scope import account_scope
@@ -15,10 +15,9 @@ _THREAD_LABELS_QUERY = {"format": "minimal", "fields": "messages(id,labelIds)"}
 
 async def _account(user_id: str, account_id: str | None) -> ComposioAccountSelection | None:
     """Return the connected account a GAIA account id names; None reads the primary account."""
-    integration = get_integration_by_toolkit(GMAIL_TOOLKIT)
-    if account_id is None or integration is None:
+    if account_id is None:
         return None
-    record = await get_account_record(user_id, integration.id)
+    record = await get_account_record(user_id, GMAIL_INTEGRATION_ID)
     account = record.find_account(account_id) if record else None
     if account is None:
         raise LookupError(f"Gmail account {account_id} is not connected for this user")
