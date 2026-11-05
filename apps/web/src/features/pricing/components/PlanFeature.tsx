@@ -123,7 +123,9 @@ export function PlanFeature({ feature }: PlanFeatureProps) {
   const { segments, runs } = parseFeature(feature);
 
   if (runs.length === 0) {
-    return <span className="whitespace-nowrap text-zinc-300">{feature}</span>;
+    return (
+      <span className="text-zinc-300 sm:whitespace-nowrap">{feature}</span>
+    );
   }
 
   return (
