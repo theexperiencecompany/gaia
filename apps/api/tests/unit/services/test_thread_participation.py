@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.services.composio.account_scope import current_selection
 from app.services.mail.thread_participation import user_wrote_in_thread
 from app.utils.errors import AppError
 from tests.integration_account_factories import (
@@ -17,6 +18,7 @@ from tests.integration_account_factories import (
 pytestmark = pytest.mark.unit
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+PRIMARY = "composio_primary"
 _MOD = "app.services.mail.thread_participation"
 
 
@@ -28,9 +30,19 @@ def composio() -> Iterator[SimpleNamespace]:
     )
     with (
         patch("app.services.composio.proxy_client._get_composio", return_value=client),
-        patch(f"{_MOD}.get_account_record", AsyncMock(return_value=record)),
+        patch(f"{_MOD}.get_account_record", AsyncMock(return_value=record)) as lookup,
+        patch(
+            "app.services.composio.proxy_client.scoped_connected_account_id",
+            wraps=scoped_or_primary,
+        ),
     ):
-        yield SimpleNamespace(proxy=client.tools.proxy)
+        yield SimpleNamespace(proxy=client.tools.proxy, lookup=lookup)
+
+
+def scoped_or_primary(user_id: str, toolkit: str) -> str:
+    """Stand in for the primary lookup, which needs the server loop; a scoped account wins."""
+    selection = current_selection(toolkit)
+    return selection.connected_account_id if selection else PRIMARY
 
 
 def _thread(*labels: list[str]) -> SimpleNamespace:
@@ -68,14 +80,32 @@ async def test_it_reads_the_account_the_event_arrived_on(composio: SimpleNamespa
 
     await _wrote(account_id="ca_2")
 
+    composio.lookup.assert_awaited_once_with(USER_ID, "gmail")
     kwargs = composio.proxy.call_args.kwargs
     assert kwargs["connected_account_id"] == provider_account_id("ca_2")
-    assert kwargs["endpoint"].endswith("/users/me/threads/t1")
-    assert {"name": "format", "type": "query", "value": "minimal"} in kwargs["parameters"]
+    assert (kwargs["method"], kwargs["endpoint"]) == (
+        "GET",
+        "https://gmail.googleapis.com/gmail/v1/users/me/threads/t1",
+    )
+    assert kwargs["parameters"] == [
+        {"name": "format", "type": "query", "value": "minimal"},
+        {"name": "fields", "type": "query", "value": "messages(id,labelIds)"},
+    ]
+
+
+async def test_an_event_with_no_account_reads_the_primary(composio: SimpleNamespace) -> None:
+    composio.proxy.return_value = _thread(["SENT"])
+
+    assert await _wrote(account_id=None) is True
+
+    composio.lookup.assert_not_awaited()
+    assert composio.proxy.call_args.kwargs["connected_account_id"] == PRIMARY
 
 
 async def test_an_account_the_user_no_longer_has_raises(composio: SimpleNamespace) -> None:
-    with pytest.raises(LookupError, match="ca_gone"):
+    with pytest.raises(
+        LookupError, match=r"^Gmail account ca_gone is not connected for this user$"
+    ):
         await _wrote(account_id="ca_gone")
 
     composio.proxy.assert_not_called()
