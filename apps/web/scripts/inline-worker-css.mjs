@@ -45,7 +45,7 @@ function repairAria(html) {
   const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
   return html.replace(/\saria-(describedby|labelledby|controls)="([^"]*)"/g, (match, attr, value) => {
     const kept = value.split(/\s+/).filter((id) => ids.has(id));
-    return kept.length ? ` aria-${attr}="${kept.join(" ")}"` : "";
+    return kept.length ? " aria-" + attr + '="' + kept.join(" ") + '"' : "";
   });
 }
 
