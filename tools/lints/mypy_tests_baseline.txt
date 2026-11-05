@@ -217,7 +217,6 @@ apps/api/tests/unit/api/test_bot_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_endpoint.py	union-attr
 apps/api/tests/unit/api/test_bot_links_endpoint.py	arg-type
 apps/api/tests/unit/api/test_bot_links_endpoint.py	call-arg
-apps/api/tests/unit/api/test_bot_stream_helpers.py	arg-type
 apps/api/tests/unit/api/test_device_self_pair.py	attr-defined
 apps/api/tests/unit/api/test_integrations_user.py	call-arg
 apps/api/tests/unit/api/test_lab_events.py	arg-type
@@ -327,8 +326,6 @@ apps/api/tests/unit/memory/test_management.py	misc
 apps/api/tests/unit/memory/test_reconciliation.py	attr-defined
 apps/api/tests/unit/memory/test_retrieval.py	attr-defined
 apps/api/tests/unit/memory/test_user_time.py	attr-defined
-apps/api/tests/unit/middleware/test_accounting.py	arg-type
-apps/api/tests/unit/middleware/test_accounting.py	attr-defined
 apps/api/tests/unit/middleware/test_loop_guard.py	union-attr
 apps/api/tests/unit/middleware/test_rate_limiter_middleware.py	arg-type
 apps/api/tests/unit/middleware/test_request_timeout.py	arg-type
@@ -473,8 +470,6 @@ apps/api/tests/unit/services/test_conversation_service.py	arg-type
 apps/api/tests/unit/services/test_conversation_service.py	attr-defined
 apps/api/tests/unit/services/test_conversation_service.py	call-arg
 apps/api/tests/unit/services/test_cost_budget_metering.py	attr-defined
-apps/api/tests/unit/services/test_cost_budget_stop_reason.py	attr-defined
-apps/api/tests/unit/services/test_cost_budget_stop_reason.py	misc
 apps/api/tests/unit/services/test_desktop_releases.py	attr-defined
 apps/api/tests/unit/services/test_device_manifest_cache.py	operator
 apps/api/tests/unit/services/test_device_self_pair_service.py	attr-defined
