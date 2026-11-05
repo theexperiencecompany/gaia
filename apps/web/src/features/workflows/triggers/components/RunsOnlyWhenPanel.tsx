@@ -4,7 +4,11 @@ import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
 import { Switch } from "@heroui/switch";
 import { FilterHorizontalIcon, PencilEdit01Icon } from "@icons";
-import type { GateSkipRecord } from "@shared/api/generated";
+import type {
+  AuthoredGateView,
+  GateSkipRecord,
+  SystemGateView,
+} from "@shared/api/generated";
 import { formatDistanceToNowStrict } from "date-fns";
 import { type KeyboardEvent, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -20,19 +24,16 @@ import {
   GATE_RECENT_SKIPS_LABEL,
   GATE_SHADOW_NOTE,
   GATE_SWITCH_LABEL,
-  type GateAuthorLine,
   RUNS_ONLY_WHEN_LABEL,
 } from "../../constants/gates";
+import { gateAuthorLine } from "../../utils/gateEdit";
 
 interface RunsOnlyWhenPanelProps {
   /** The rule the user reads; a system gate's is its preset's wording. */
   condition: string;
   enabled: boolean;
-  /** Who wrote the rule; null while it is only a draft. */
-  author: GateAuthorLine | null;
-  /** Whether the rule may skip a run yet; unknown until a new rule is saved. */
-  enforced?: boolean;
-  recentSkips: GateSkipRecord[];
+  /** The gate as last saved; its author, state and skips describe the rule only while it is unchanged. */
+  saved: AuthoredGateView | SystemGateView | null;
   /** False for a system gate: GAIA owns its wording, so it can only be switched. */
   editable: boolean;
   onConditionSave: (condition: string) => void;
@@ -44,9 +45,7 @@ interface RunsOnlyWhenPanelProps {
 export function RunsOnlyWhenPanel({
   condition,
   enabled,
-  author,
-  enforced,
-  recentSkips,
+  saved,
   editable,
   onConditionSave,
   onEnabledChange,
@@ -54,6 +53,9 @@ export function RunsOnlyWhenPanel({
 }: RunsOnlyWhenPanelProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const hasRule = condition.trim() !== "";
+  const shown = saved && saved.display_condition === condition ? saved : null;
+  const author = shown ? gateAuthorLine(shown) : "user";
+  const enforced = shown?.enforced;
 
   const save = () => {
     const edited = draft?.trim() ?? "";
@@ -86,7 +88,7 @@ export function RunsOnlyWhenPanel({
               : GATE_EMPTY_TITLE}
           </p>
           <p className="truncate text-xs text-zinc-500">
-            {hasRule && author ? GATE_AUTHOR_LINES[author] : GATE_EMPTY_NOTE}
+            {hasRule ? GATE_AUTHOR_LINES[author] : GATE_EMPTY_NOTE}
           </p>
         </div>
         {hasRule && (
@@ -150,7 +152,7 @@ export function RunsOnlyWhenPanel({
       )}
 
       {hasRule && draft === null && enabled && enforced !== false && (
-        <RecentSkips skips={recentSkips} />
+        <RecentSkips skips={shown?.recent_skips ?? []} />
       )}
 
       {editable && draft === null && (

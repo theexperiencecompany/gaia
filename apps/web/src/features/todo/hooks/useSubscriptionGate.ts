@@ -17,9 +17,14 @@ export function useSubscriptionGate(
   );
 
   const save = async (edit: GateEdit) => {
-    // The API layer tells the user when a save fails; the panel keeps showing what is stored.
-    const todo = await editSubscriptionGate(todoId, subscriptionId, edit);
-    updateTodoOptimistic(todoId, todo);
+    try {
+      updateTodoOptimistic(
+        todoId,
+        await editSubscriptionGate(todoId, subscriptionId, edit),
+      );
+    } catch {
+      // The API layer already told the user; the panel keeps showing what is stored.
+    }
   };
 
   return {

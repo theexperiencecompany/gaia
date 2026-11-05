@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import type { AuthoredGateView, SystemGateView } from "@shared/api/generated";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type React from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -14,6 +16,28 @@ const OLDER = {
 };
 const NEWER = { event: 'Uber, "Your receipt"', at: "2026-11-05T09:00:00Z" };
 
+const saved = (
+  overrides: Partial<AuthoredGateView> = {},
+): AuthoredGateView => ({
+  kind: "authored",
+  condition: BILLING,
+  display_condition: BILLING,
+  author: "gaia",
+  enabled: true,
+  enforced: true,
+  recent_skips: [],
+  ...overrides,
+});
+
+const DESK: SystemGateView = {
+  kind: "system",
+  preset: "inbox_desk",
+  display_condition: DESK_TEXT,
+  enabled: true,
+  enforced: true,
+  recent_skips: [],
+};
+
 describe("the runs-only-when panel", () => {
   const renderPanel = (
     overrides: Partial<React.ComponentProps<typeof RunsOnlyWhenPanel>> = {},
@@ -21,9 +45,7 @@ describe("the runs-only-when panel", () => {
     const props = {
       condition: BILLING,
       enabled: true,
-      author: "gaia" as const,
-      enforced: true,
-      recentSkips: [],
+      saved: saved() as AuthoredGateView | SystemGateView | null,
       editable: true,
       onConditionSave: vi.fn(),
       onEnabledChange: vi.fn(),
@@ -79,7 +101,7 @@ describe("the runs-only-when panel", () => {
   });
 
   it("shows a system rule's wording without letting it be rewritten", () => {
-    renderPanel({ condition: DESK_TEXT, editable: false, author: "system" });
+    renderPanel({ condition: DESK_TEXT, editable: false, saved: DESK });
 
     expect(screen.getByText(DESK_TEXT)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Edit rule" })).toBeNull();
@@ -87,13 +109,23 @@ describe("the runs-only-when panel", () => {
   });
 
   it("lists the latest skips newest first", () => {
-    renderPanel({ recentSkips: [OLDER, NEWER] });
+    renderPanel({ saved: saved({ recent_skips: [OLDER, NEWER] }) });
 
     const items = within(screen.getByRole("list")).getAllByRole("listitem");
     expect(items.map((item) => item.textContent)).toEqual([
       expect.stringContaining(NEWER.event),
       expect.stringContaining(OLDER.event),
     ]);
+  });
+
+  it("describes an edited, unsaved rule as the user's, without the old rule's skips", () => {
+    renderPanel({
+      condition: INVOICES,
+      saved: saved({ recent_skips: [NEWER] }),
+    });
+
+    expect(screen.getByText("You wrote this rule")).toBeTruthy();
+    expect(screen.queryByRole("list")).toBeNull();
   });
 
   it("says nothing was skipped yet when the rule has skipped nothing", () => {
@@ -103,7 +135,7 @@ describe("the runs-only-when panel", () => {
   });
 
   it("says a rule still being learned skips nothing, and lists no skips", () => {
-    renderPanel({ enforced: false, recentSkips: [NEWER] });
+    renderPanel({ saved: saved({ enforced: false, recent_skips: [NEWER] }) });
 
     expect(
       screen.getByText(
@@ -120,7 +152,7 @@ describe("the runs-only-when panel", () => {
   });
 
   it("offers to add a rule when there is none", () => {
-    const { onConditionSave } = renderPanel({ condition: "", author: null });
+    const { onConditionSave } = renderPanel({ condition: "", saved: null });
 
     expect(screen.getByText("Runs on every event")).toBeTruthy();
     expect(screen.queryByRole("switch")).toBeNull();
