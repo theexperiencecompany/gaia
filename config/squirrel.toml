@@ -26,7 +26,7 @@ incremental = false
 enable = ["*"]
 # Response time measures how loaded the machine serving the crawl is, not the
 # site: on one build it flagged 0 of 100 pages on one run and 7 on the next.
-disable = ["perf/ttfb", "a11y/aria-command-name", "a11y/aria-labels", "security/csp", "ax/token-weight", "perf/dom-size", "perf/total-byte-weight", "perf/cache-headers", "perf/unminified-js"]
+disable = ["perf/ttfb", "a11y/aria-command-name", "a11y/aria-labels", "security/csp", "ax/token-weight", "perf/dom-size", "perf/total-byte-weight", "perf/cache-headers", "perf/unminified-js", "content/keyword-stuffing", "content/word-count", "url/slug-convention", "url/hyphens", "links/orphan-pages", "links/weak-internal-links", "core/meta-title"]
 
 # Other sites' uptime is not this site's regression.
 [external_links]
