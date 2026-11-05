@@ -266,14 +266,20 @@ export function generatePageMetadata({
   // The template appends " | GAIA" only where the brand is absent and the
   // suffix still fits the result snippet; otherwise the title renders as-is.
   const isHomepage = path === "/" || title === siteConfig.name;
+  const minimumTitle =
+    !isHomepage && title.length < TITLE_MIN_LENGTH
+      ? BRAND_PATTERN.test(title)
+        ? `${title} | AI Assistant`
+        : `${title}${BRAND_SUFFIX}`
+      : title;
   const pageTitle = isHomepage
     ? { absolute: siteConfig.homeTitle }
-    : takesBrandSuffix(title)
-      ? title
-      : { absolute: title };
+    : takesBrandSuffix(minimumTitle)
+      ? minimumTitle
+      : { absolute: minimumTitle };
 
   // Full title for OpenGraph, suffixed by the same rule
-  const fullTitle = isHomepage ? siteConfig.fullName : brandedTitle(title);
+  const fullTitle = isHomepage ? siteConfig.fullName : brandedTitle(minimumTitle);
 
   const allKeywords = [...commonKeywords, ...keywords];
 

@@ -20,6 +20,7 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
           </p>
         </div>
 
+        <h2 className="sr-only">Frequently asked questions</h2>
         <Accordion
           variant="default"
           className="cursor-pointer p-0!"

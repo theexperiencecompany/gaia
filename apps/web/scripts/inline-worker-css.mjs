@@ -58,6 +58,8 @@ async function inlineHtml(response, request, env) {
 
 export default {
   async fetch(request, env, ctx) {
+    const { pathname } = new URL(request.url);
+    if (pathname.startsWith("/_next/static/") || pathname.startsWith("/_next/image") || pathname.startsWith("/images/") || pathname.startsWith("/fonts/") || pathname.startsWith("/.well-known/") || pathname === "/favicon.ico" || pathname === "/robots.txt") return env.ASSETS.fetch(request);
     const response = await baseWorker.fetch(request, env, ctx);
     return inlineHtml(response, request, env);
   },

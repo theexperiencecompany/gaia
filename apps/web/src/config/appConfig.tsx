@@ -422,6 +422,7 @@ export const footerSections: LinkSection[] = [
       { label: "Download GAIA", href: "/download" },
       { label: "Use Cases", href: "/use-cases" },
       { label: "Marketplace", href: "/marketplace" },
+      { label: "CLI", href: "/cli" },
       { label: "Bots", href: "/bots" },
       { label: "Pricing", href: "/pricing" },
       { label: "Roadmap", href: vanityTarget("/roadmap"), external: true },
