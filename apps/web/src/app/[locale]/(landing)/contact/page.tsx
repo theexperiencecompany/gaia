@@ -83,7 +83,6 @@ export default async function ContactPage({
               Send us a message
             </h2>
             <ContactForm
-              aria-labelledby="inquiries-heading"
               initialType={initialType}
               initialTitle={params.title}
               initialDescription={params.description}

@@ -87,6 +87,7 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
       <Input
         type="text"
         placeholder="Search posts..."
+        aria-label="Search posts"
         value={searchQuery}
         onValueChange={handleSearchChange}
         startContent={<SearchIcon className="size-5 text-default-400" />}

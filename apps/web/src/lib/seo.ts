@@ -222,9 +222,10 @@ export function fitTitle(candidates: readonly string[]): string {
         takesBrandSuffix(title) &&
         brandedTitle(title).length >= TITLE_MIN_LENGTH,
     ) ?? candidates.find(takesBrandSuffix);
-  if (branded) return branded;
-  const bare = candidates.find((title) => title.length <= TITLE_MAX_LENGTH);
-  return bare ?? trimAtWord(candidates.at(-1) ?? "", TITLE_MAX_LENGTH);
+  const picked = branded ?? candidates.find((title) => title.length <= TITLE_MAX_LENGTH)
+    ?? trimAtWord(candidates.at(-1) ?? "", TITLE_MAX_LENGTH);
+  if (picked.length >= TITLE_MIN_LENGTH) return picked;
+  return BRAND_PATTERN.test(picked) ? `${picked} | GAIA AI Assistant` : `${picked}${BRAND_SUFFIX}`;
 }
 
 function asSentence(text: string): string {

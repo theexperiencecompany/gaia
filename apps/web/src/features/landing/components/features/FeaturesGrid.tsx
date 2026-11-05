@@ -130,6 +130,7 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           <Input
             ref={inputRef}
             placeholder="Search features..."
+            aria-label="Search features"
             radius="full"
             size="md"
             value={search}

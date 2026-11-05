@@ -24,7 +24,7 @@ const COMPETITORS: CompetitorInfo[] = [
   {
     name: "GAIA",
     slug: null,
-    logo: { type: "image", src: "/brand/gaia_logo.png" },
+    logo: { type: "image", src: "/brand/gaia_logo.svg" },
   },
   {
     name: "OpenClaw",
@@ -34,7 +34,7 @@ const COMPETITORS: CompetitorInfo[] = [
   {
     name: "Poke",
     slug: "poke",
-    logo: { type: "image", src: "/images/icons/poke.png" },
+    logo: { type: "image", src: "/images/icons/poke.webp" },
   },
   {
     name: "ChatGPT",

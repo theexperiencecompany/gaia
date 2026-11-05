@@ -85,7 +85,7 @@ const BASE_HEADERS = [
 const SITE_HEADERS = [
   { key: "X-Frame-Options", value: "DENY" },
   ...BASE_HEADERS,
-  { key: "Content-Security-Policy-Report-Only", value: CONTENT_SECURITY_POLICY },
+  { key: "Content-Security-Policy", value: CONTENT_SECURITY_POLICY },
   ...(cspReportUrl
     ? [{ key: "Reporting-Endpoints", value: `${CSP_REPORT_GROUP}="${cspReportUrl}"` }]
     : []),

@@ -77,6 +77,30 @@ export default function Footer() {
             mix-blend-mode with an empty backdrop instead of the wallpaper.
             Paint order over the wallpaper comes from `relative` + DOM order. */}
         <div className="relative flex flex-col gap-8 px-6 pt-24 pb-1 sm:gap-10 sm:px-8 lg:px-10">
+          <section className="mx-auto w-full max-w-3xl pb-6 text-sm leading-relaxed text-zinc-300">
+            <h2 className="mb-3 font-serif text-lg font-medium text-white">
+              A calmer way to run your day
+            </h2>
+            <p className="mb-3">
+              Modern work is scattered across inboxes, calendars, documents,
+              chats, issue trackers, and a growing collection of specialised
+              tools. The cost is not only the time spent switching between them,
+              but the attention lost while remembering what needs to happen next.
+            </p>
+            <p className="mb-3">
+              GAIA connects the tools people already use and turns that context
+              into practical next steps. It can prepare a morning brief, draft a
+              reply, schedule a meeting, collect research, update a task, or run
+              a repeatable workflow. Every action remains visible, reviewable, and
+              under the user&apos;s control.
+            </p>
+            <p>
+              Teams can start with a single workflow and add tools as their needs
+              change. Because GAIA is source-available, organisations can inspect
+              how it works and choose a hosting model that fits their privacy and
+              operational requirements.
+            </p>
+          </section>
           <div className="mx-auto flex w-full max-w-7xl flex-wrap justify-between gap-10">
             {footerSections.map((section) => (
               <div key={section.title} className="flex flex-col items-start">
