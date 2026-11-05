@@ -102,12 +102,13 @@ export default function ProfilePage() {
 
         {holoCardData && (
           <Tooltip>
-            <Tooltip.Trigger>
+            <Tooltip.Trigger aria-label="Share profile">
               <Button
                 isIconOnly
                 variant="tertiary"
                 onPress={handleShare}
                 size="sm"
+                aria-label="Share profile"
               >
                 <Share08Icon size={18} />
               </Button>

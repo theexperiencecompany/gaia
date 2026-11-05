@@ -198,7 +198,7 @@ const DummyComposer: React.FC<{
 
               {/* Tools Button */}
               <Tooltip>
-                <Tooltip.Trigger>
+                <Tooltip.Trigger aria-label="Browse all tools">
                   <ShadcnButton
                     size="icon"
                     className={`group w- relative h-9 rounded-full border-none bg-zinc-700 p-0 text-zinc-400 hover:bg-zinc-600/90 ${isSlashDropdownOpen && "border-primary/50 bg-primary/20 text-primary"}`}

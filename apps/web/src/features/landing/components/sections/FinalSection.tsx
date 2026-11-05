@@ -84,7 +84,7 @@ export default function FinalSection({
             <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-zinc-300 sm:mt-6 max-[700px]:hidden">
               {SOCIAL_LINKS.map(({ href, ariaLabel, icon, label }) => (
                 <Tooltip key={href}>
-                  <Tooltip.Trigger>
+                  <Tooltip.Trigger aria-label={ariaLabel}>
                     <Link
                       href={href}
                       aria-label={ariaLabel}

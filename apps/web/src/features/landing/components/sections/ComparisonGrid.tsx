@@ -248,6 +248,9 @@ export default function ComparisonGrid() {
                     }`}
                   >
                     <Tooltip>
+                      <Tooltip.Trigger
+                        aria-label={c.slug ? `Compare with ${c.name}` : c.name}
+                      >
                       {c.slug ? (
                         <SiteLink
                           href={`/compare/${c.slug}`}
@@ -261,6 +264,7 @@ export default function ComparisonGrid() {
                           <BrandLogo competitor={c} alt={c.name} />
                         </span>
                       )}
+                      </Tooltip.Trigger>
                       <Tooltip.Content placement="top">
                         {c.name}
                       </Tooltip.Content>

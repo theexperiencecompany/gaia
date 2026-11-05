@@ -504,7 +504,7 @@ export default function Tired() {
               }
             >
               <Tooltip delay={200} closeDelay={0}>
-                <Tooltip.Trigger>
+                <Tooltip.Trigger aria-label={icon.alt}>
                   <div className="tool-icon-btn">
                     <Image
                       src={icon.src}
