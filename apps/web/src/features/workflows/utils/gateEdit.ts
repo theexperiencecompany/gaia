@@ -30,10 +30,9 @@ export function gateEditFor(
     : { enabled: draft.enabled };
 }
 
-/** Who wrote a saved gate's rule, as its panel says it; null for a gate not saved yet. */
+/** Who wrote a saved gate's rule, as its panel says it. */
 export function gateAuthorLine(
-  saved: AuthoredGateView | SystemGateView | null | undefined,
-): GateAuthorLine | null {
-  if (!saved) return null;
+  saved: AuthoredGateView | SystemGateView,
+): GateAuthorLine {
   return saved.kind === "system" ? "system" : saved.author;
 }

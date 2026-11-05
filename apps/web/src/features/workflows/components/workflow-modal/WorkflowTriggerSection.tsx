@@ -7,7 +7,6 @@ import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { RunsOnlyWhenPanel } from "../../triggers/components/RunsOnlyWhenPanel";
 import { createDefaultTriggerConfig } from "../../triggers/registry";
 import { isIntegrationTrigger } from "../../triggers/types";
-import { gateAuthorLine } from "../../utils/gateEdit";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
 import WorkflowSection from "./WorkflowSection";
@@ -80,12 +79,6 @@ export default function WorkflowTriggerSection({
     }
   };
 
-  // The saved rule's author, state and skips describe the draft only while it is unchanged.
-  const shownGate =
-    savedGate && gate.condition === savedGate.display_condition
-      ? savedGate
-      : null;
-
   const renderTabBody = (key: "manual" | "schedule" | "trigger") => {
     if (key === "manual") {
       return (
@@ -138,9 +131,7 @@ export default function WorkflowTriggerSection({
           <RunsOnlyWhenPanel
             condition={gate.condition}
             enabled={gate.enabled}
-            author={shownGate ? gateAuthorLine(shownGate) : "user"}
-            enforced={shownGate?.enforced}
-            recentSkips={shownGate?.recent_skips ?? []}
+            saved={savedGate ?? null}
             editable={savedGate?.kind !== "system"}
             onConditionSave={(condition) =>
               onGateChange({ ...gate, condition })
