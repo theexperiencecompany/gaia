@@ -440,6 +440,17 @@ export const footerSections: LinkSection[] = [
     ],
   },
   {
+    title: "More",
+    links: [
+      { label: "CLI", href: "/cli" },
+      { label: "Airtable alternative", href: "/alternative-to/airtable" },
+      { label: "Activepieces comparison", href: "/compare/activepieces" },
+      { label: "Agency owners", href: "/for/agency-owners" },
+      { label: "Inbox triage", href: "/use-cases/inbox-triage" },
+      { label: "Morning briefing", href: "/use-cases/morning-briefing" },
+    ],
+  },
+  {
     title: "Resources",
     links: [
       {

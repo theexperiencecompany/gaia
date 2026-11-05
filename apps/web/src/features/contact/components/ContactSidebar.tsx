@@ -68,7 +68,7 @@ const socialLinks = [
 export default function ContactSidebar() {
   return (
     <div className="grid gap-10">
-      <section aria-labelledby="email-heading">
+      <section>
         <h2
           id="email-heading"
           className="mb-3 text-base font-semibold tracking-tight"
@@ -90,7 +90,7 @@ export default function ContactSidebar() {
         ))}
       </section>
 
-      <section aria-labelledby="follow-heading">
+      <section>
         <h2
           id="follow-heading"
           className="text-base font-semibold tracking-tight"
