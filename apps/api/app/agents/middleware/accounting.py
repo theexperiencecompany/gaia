@@ -220,7 +220,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             )
             check = BudgetCheck(None, None, None)
 
-        if check.wall is not None and check.stop_reason is not None:
+        wall = check.wall
+        if wall is not None:
+            stop_reason = wall.stop_text(check.plan_type)
             log.warning(
                 "budget_stop",
                 event_name="budget_stop",
@@ -228,17 +230,17 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 user_id=user_id,
                 plan_type=plan_raw,
                 root_request_id=root_request_id,
-                budget_wall=check.wall.value,
+                budget_wall=wall.value,
             )
-            # check.plan_type is always resolved alongside stop_reason (see
-            # get_budget_stop_reason: every return that sets stop_reason also
-            # sets plan_type), so the card always has a real plan to render.
+            # check.plan_type is always resolved alongside the wall (see
+            # get_budget_stop_reason: every return that sets a wall also sets
+            # plan_type), so the card always has a real plan to render.
             if check.plan_type is not None:
-                self._emit_budget_stop_card(check.wall, check.stop_reason, check.plan_type)
+                self._emit_budget_stop_card(wall, stop_reason, check.plan_type)
             return ModelResponse(
                 result=[
                     AIMessage(
-                        content=check.stop_reason,
+                        content=stop_reason,
                         response_metadata={BUDGET_STOP_METADATA_KEY: True},
                     )
                 ]

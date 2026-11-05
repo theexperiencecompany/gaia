@@ -89,6 +89,11 @@ class BudgetWall(StrEnum):
     DAILY_USAGE = "daily_usage"
     TASK_SIZE = "task_size"
 
+    def stop_text(self, plan_type: PlanType | None) -> str:
+        """Return this wall's user-facing stop text, worded for the plan."""
+        free_text, paid_text = _STOP_TEXTS[self]
+        return free_text if plan_type == PlanType.FREE else paid_text
+
 
 _STOP_TEXTS: dict[BudgetWall, tuple[str, str]] = {
     BudgetWall.DAILY_USAGE: (DAILY_BUDGET_STOP_FREE, DAILY_BUDGET_STOP_PRO),
@@ -109,10 +114,7 @@ class BudgetCheck(NamedTuple):
     @property
     def stop_reason(self) -> str | None:
         """The user-facing stop text for the bound wall, worded for the plan."""
-        if self.wall is None:
-            return None
-        free_text, paid_text = _STOP_TEXTS[self.wall]
-        return free_text if self.plan_type == PlanType.FREE else paid_text
+        return self.wall.stop_text(self.plan_type) if self.wall is not None else None
 
 
 def _budget_key(user_id: str, period: RateLimitPeriod) -> str:
