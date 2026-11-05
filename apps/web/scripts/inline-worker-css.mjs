@@ -41,6 +41,14 @@ async function cssFor(env, href) {
   return css;
 }
 
+function repairAria(html) {
+  const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
+  return html.replace(/\saria-(describedby|labelledby|controls)="([^"]*)"/g, (match, attr, value) => {
+    const kept = value.split(/\s+/).filter((id) => ids.has(id));
+    return kept.length ? ` aria-${attr}="${kept.join(" ")}"` : "";
+  });
+}
+
 async function inlineHtml(response, request, env) {
   const type = response.headers.get("content-type") || "";
   if (!type.includes("text/html")) return response;
@@ -51,6 +59,7 @@ async function inlineHtml(response, request, env) {
     const css = await cssFor(env, href);
     if (css) html = html.split(tag).join(\`<style data-href="\${href}">\${css}</style>\`);
   }
+  html = repairAria(html);
   const headers = new Headers(response.headers);
   headers.delete("content-length");
   return new Response(html, { status: response.status, headers });

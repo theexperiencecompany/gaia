@@ -132,9 +132,14 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
               <InputGroup.Prefix>
                 <Search01Icon className="size-4 shrink-0" />
               </InputGroup.Prefix>
-              <InputGroup.Input
+              <input
                 ref={inputRef}
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                aria-label="Search features"
                 placeholder="Search features..."
+                className="input-group__input"
               />
               {!search && (
                 <InputGroup.Suffix>
