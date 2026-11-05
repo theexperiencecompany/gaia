@@ -10,7 +10,7 @@ import pytest
 from app.config.settings import settings
 from app.constants.browser import BROWSER_LIVE_CODE_ENTROPY_BYTES
 from app.schemas.browser import LiveCodeRecord
-from app.services.browser import links, live_code, live_view
+from app.services.browser import live_code, live_view
 
 _URL_SAFE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -75,17 +75,17 @@ async def test_a_live_code_is_a_short_url_safe_slug(
     assert _URL_SAFE_RE.match(code)
 
 
-async def test_link_opens_the_web_live_page_not_the_browser_link_vhost(
+async def test_link_opens_the_web_live_page_not_the_api(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mint = AsyncMock(return_value="Xk3p9qR2mN4t")
     monkeypatch.setattr(live_view, "mint_live_code", mint)
-    monkeypatch.setattr(live_view.settings, "FRONTEND_URL", "https://heygaia.io")
-    monkeypatch.setattr(links.settings, "BROWSER_LIVE_VIEW_BASE_URL", "https://browser.heygaia.io")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://heygaia.io")
+    monkeypatch.setattr(settings, "HOST", "https://api.heygaia.io")
 
     link = await live_view.create_live_view_link("sess-abc", "user-1", "h1")
 
-    # The web app serves the viewer; the recap/screenshot vhost plays no part.
+    # The web app serves the viewer; the API only answers its socket.
     # No session id and no ?t= token in the link: the code is the authority.
     assert link == "https://heygaia.io/live/Xk3p9qR2mN4t"
     mint.assert_awaited_once_with("sess-abc", "user-1", "h1")

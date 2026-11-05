@@ -16,8 +16,8 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FOR_EACH_EXAMPLE,
 )
 from app.agents.tools.core.registry import ToolRegistry
+from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.models.playbook_models import ForEachStep, PlaybookBody, ToolStep
-from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.workflow.playbook.parser import RecordedResult, dump_playbook, validate_playbook
 
 PARSER = "app.services.workflow.playbook.parser"

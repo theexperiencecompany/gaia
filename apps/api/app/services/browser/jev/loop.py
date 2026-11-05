@@ -66,6 +66,7 @@ from app.services.browser.jev.page import (
     StalePage,
     TabUnavailable,
     controls,
+    typed_text,
 )
 from app.services.browser.jev.questions import TEXT_VALUE
 from app.services.browser.jev.secrets import (
@@ -449,7 +450,7 @@ class JevRunner:
 
     def _held(self, action: PageAction, typed: str, held: str | None) -> str | None:
         """Return what the field holds when it is not what was typed; a password's value never shows."""
-        if held is None or held == typed:
+        if held is None or held == typed_text(action, typed):
             return None
         return (
             JEV_SECRET_DIFFERS
