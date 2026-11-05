@@ -45,7 +45,6 @@ import type {
   NotificationPreferences,
   PlatformLink,
   PlatformLinksResponse,
-  QuietHours,
 } from "../types/inapp-notification-types";
 
 const SNAP_POINTS: Array<string | number> = ["90%"];
@@ -103,9 +102,8 @@ const PLATFORM_CHANNELS: PlatformChannelMeta[] = [
   },
 ];
 
-const DEFAULT_QUIET_HOURS: QuietHours = { from: "22:00", to: "08:00" };
-
 const PREFERENCES_QUERY_KEY = ["notification-preferences"] as const;
+const QUIET_HOURS_QUERY_KEY = ["quiet-hours"] as const;
 const CHANNEL_PREFERENCES_QUERY_KEY = [
   "notification-channel-preferences",
 ] as const;
@@ -114,7 +112,6 @@ const PLATFORM_LINKS_QUERY_KEY = ["platform-links"] as const;
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   global: { push: true, in_app: true },
   categories: {},
-  quiet_hours: null,
 };
 
 function isHttpStatus(err: unknown, status: number): boolean {
@@ -377,68 +374,56 @@ function SectionShell({ title, children }: SectionShellProps) {
   );
 }
 
-function parseTimeToDate(value: string): Date {
-  const [h, m] = value.split(":").map((s) => Number.parseInt(s, 10));
+function hourToDate(hour: number): Date {
   const d = new Date();
-  d.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
+  d.setHours(hour, 0, 0, 0);
   return d;
 }
 
-function formatDateToHHMM(date: Date): string {
-  const h = String(date.getHours()).padStart(2, "0");
-  const m = String(date.getMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
+function formatHourLabel(hour: number): string {
+  return hourToDate(hour).toLocaleString(undefined, { hour: "numeric" });
 }
 
-function formatTimeLabel(value: string): string {
-  const d = parseTimeToDate(value);
-  return d.toLocaleString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
-interface QuietHoursSectionProps {
-  prefs: NotificationPreferences;
-  onChange: (next: NotificationPreferences) => void;
-  disabled: boolean;
-}
-
-function QuietHoursSection({
-  prefs,
-  onChange,
-  disabled,
-}: QuietHoursSectionProps) {
+/** Quiet hours from the user's own setting: on/off and the hours GAIA holds what can wait. */
+function QuietHoursSection() {
   const { spacing, fontSize } = useResponsive();
-  const enabled = !!prefs.quiet_hours;
-  const quiet = prefs.quiet_hours ?? DEFAULT_QUIET_HOURS;
-  const [picker, setPicker] = useState<null | "from" | "to">(null);
+  const queryClient = useQueryClient();
+  const [picker, setPicker] = useState<null | "start_hour" | "end_hour">(null);
+  const { data: quiet } = useQuery({
+    queryKey: QUIET_HOURS_QUERY_KEY,
+    queryFn: inAppNotificationsApi.getQuietHours,
+  });
+  const mutation = useMutation({
+    mutationFn: inAppNotificationsApi.updateQuietHours,
+    onSuccess: (saved) =>
+      queryClient.setQueryData(QUIET_HOURS_QUERY_KEY, saved),
+    onError: () => Alert.alert("Error", "Failed to update quiet hours."),
+  });
+  const disabled = mutation.isPending;
 
   const handleToggle = useCallback(
-    (val: boolean) => {
-      onChange({
-        ...prefs,
-        quiet_hours: val ? quiet : null,
-      });
-    },
-    [onChange, prefs, quiet],
+    (enabled: boolean) => quiet && mutation.mutate({ ...quiet, enabled }),
+    [mutation, quiet],
   );
 
   const handleTimeChange = useCallback(
-    (which: "from" | "to", _evt: DateTimePickerEvent, date?: Date) => {
+    (
+      which: "start_hour" | "end_hour",
+      _evt: DateTimePickerEvent,
+      date?: Date,
+    ) => {
       if (Platform.OS === "android") {
         setPicker(null);
       }
-      if (!date) return;
-      const next: QuietHours = {
-        ...quiet,
-        [which]: formatDateToHHMM(date),
-      };
-      onChange({ ...prefs, quiet_hours: next });
+      if (!date || !quiet) return;
+      const next = { ...quiet, [which]: date.getHours() };
+      if (next.start_hour !== next.end_hour) mutation.mutate(next);
     },
-    [onChange, prefs, quiet],
+    [mutation, quiet],
   );
+
+  if (!quiet) return null;
+  const enabled = quiet.enabled;
 
   return (
     <SectionShell title="Quiet Hours">
@@ -456,7 +441,7 @@ function QuietHoursSection({
             Enable quiet hours
           </Text>
           <Text style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
-            Pause notifications during a daily window
+            GAIA holds what can wait until they end
           </Text>
         </View>
         <Switch
@@ -477,7 +462,7 @@ function QuietHoursSection({
             }}
           />
           <Pressable
-            onPress={() => setPicker("from")}
+            onPress={() => setPicker("start_hour")}
             disabled={disabled}
             style={{
               flexDirection: "row",
@@ -496,7 +481,7 @@ function QuietHoursSection({
                 fontWeight: "600",
               }}
             >
-              {formatTimeLabel(quiet.from)}
+              {formatHourLabel(quiet.start_hour)}
             </Text>
           </Pressable>
           <View
@@ -506,7 +491,7 @@ function QuietHoursSection({
             }}
           />
           <Pressable
-            onPress={() => setPicker("to")}
+            onPress={() => setPicker("end_hour")}
             disabled={disabled}
             style={{
               flexDirection: "row",
@@ -523,13 +508,13 @@ function QuietHoursSection({
                 fontWeight: "600",
               }}
             >
-              {formatTimeLabel(quiet.to)}
+              {formatHourLabel(quiet.end_hour)}
             </Text>
           </Pressable>
 
           {picker !== null && (
             <DateTimePicker
-              value={parseTimeToDate(picker === "from" ? quiet.from : quiet.to)}
+              value={hourToDate(quiet[picker])}
               mode="time"
               is24Hour={false}
               display={Platform.OS === "ios" ? "spinner" : "default"}
@@ -767,13 +752,6 @@ export const NotificationPreferencesSheet =
         [prefs, handlePersistPrefs],
       );
 
-      const handleQuietHoursChange = useCallback(
-        async (next: NotificationPreferences) => {
-          await handlePersistPrefs(next, "quiet_hours");
-        },
-        [handlePersistPrefs],
-      );
-
       const handleChannelToggle = useCallback(
         (channel: ChannelPlatform, value: boolean) => {
           channelMutation.mutate({ channel, enabled: value });
@@ -847,13 +825,7 @@ export const NotificationPreferencesSheet =
                   </View>
                 ) : prefs ? (
                   <>
-                    <QuietHoursSection
-                      prefs={prefs}
-                      onChange={(next) => {
-                        void handleQuietHoursChange(next);
-                      }}
-                      disabled={updatingPrefKey === "quiet_hours"}
-                    />
+                    <QuietHoursSection />
 
                     <ChannelsSection
                       links={platformLinks}

@@ -248,7 +248,6 @@ apps/api/tests/unit/api/test_platform_auth_endpoint.py	override
 apps/api/tests/unit/api/test_support_endpoint.py	call-arg
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	index
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	method-assign
-apps/api/tests/unit/api/test_user_endpoint.py	arg-type
 apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_features.py	arg-type
 apps/api/tests/unit/api/v1/endpoints/test_features.py	index

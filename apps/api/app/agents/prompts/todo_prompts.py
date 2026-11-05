@@ -4,7 +4,6 @@ import json
 
 from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
-from app.constants.quiet_hours import QUIET_HOURS_END, QUIET_HOURS_START
 from app.constants.todos import (
     INBOX_DESK_BRIEFING_ITEM_MAX_WORDS,
     INBOX_DESK_FYI_MAX_LINES,
@@ -338,7 +337,7 @@ FYI: grouped by kind with counts, like "4 newsletters · 2 product updates", at 
 Noticed: each conclusion you added or changed in observations.md this run, one line ending "reply to change", like "GitHub notifications are low priority; reply to change".
 Filtered: the number only, from step 3.
 Nothing in any section: say only that nothing is new.
-Woken by new mail, your final report is an alert in the briefing's form and under its rules, with only the Needs you items you opened this run and the events you added or proposed for today or tomorrow; with neither, or between {QUIET_HOURS_START:02d}:00 and {QUIET_HOURS_END:02d}:00 the user's local time, it is only that nothing is new, and the next briefing carries the rest.
+Woken by new mail, your final report is an alert in the briefing's form and under its rules, with only the Needs you items you opened this run and the events you added or proposed for today or tomorrow; with neither, or when this prompt says it is inside the user's quiet hours, it is only that nothing is new, and the next briefing carries the rest.
 GAIA records this run and your report in activity.md itself: write nothing there, write observations.md only in step 9, and edit canvas.md only for step 10. Standing rules are the user's own instructions, never yours, in canvas.md or a todo you open: what you notice goes to observations.md."""
 
 

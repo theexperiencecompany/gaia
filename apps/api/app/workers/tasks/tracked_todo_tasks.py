@@ -84,6 +84,7 @@ from app.services.triggers.todo_trigger_window import (
     trigger_window_end,
 )
 from app.services.triggers.trigger_gate import GateHold, quiet_hours_hold
+from app.services.user_service import get_quiet_hours
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
@@ -701,6 +702,7 @@ async def _execute_on_executor(
         origin=origin,
         coalesced=coalesced,
         local_now=datetime.now(user_tz.tzinfo),
+        quiet_hours=await get_quiet_hours(user_id),
     )
 
     # The todo's own chat, reused by every run so the user can follow them in one

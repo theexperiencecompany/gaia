@@ -15458,6 +15458,35 @@
         "title": "PushTokenResponse",
         "type": "object"
       },
+      "QuietHours": {
+        "additionalProperties": false,
+        "description": "When the user's quiet hours start and end on their own clock; the span may cross midnight.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "end_hour": {
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "End Hour",
+            "type": "integer"
+          },
+          "start_hour": {
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Start Hour",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "start_hour",
+          "end_hour"
+        ],
+        "title": "QuietHours",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "description": "``GET /health/ready``: whether every backing service answered a real request.",
         "properties": {
@@ -43266,8 +43295,22 @@
     },
     "/api/v1/user/me": {
       "get": {
-        "description": "Returns the current authenticated user's details.\nUses the dependency injection to fetch user data.",
+        "description": "Return the signed-in user; the app's session load also stores the browser's zone when none is saved.",
         "operationId": "user_get_me",
+        "parameters": [
+          {
+            "description": "Browser timezone fallback",
+            "in": "header",
+            "name": "x-timezone",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Browser timezone fallback",
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -43432,6 +43475,118 @@
           }
         },
         "summary": "Update User Name",
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/api/v1/user/quiet-hours": {
+      "get": {
+        "description": "The local hours in which GAIA holds what can wait for the morning.",
+        "operationId": "user_read_quiet_hours",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuietHours"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Read Quiet Hours",
+        "tags": [
+          "User"
+        ]
+      },
+      "patch": {
+        "description": "Store the user's quiet hours and echo what was saved.",
+        "operationId": "user_update_quiet_hours",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuietHours"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuietHours"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Quiet Hours",
         "tags": [
           "User"
         ]

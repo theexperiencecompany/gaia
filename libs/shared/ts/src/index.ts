@@ -334,7 +334,6 @@ export type {
   ProjectCreate,
   ProjectUpdate,
   PublicIntegrationResponse,
-  QuietHours,
   Reminder,
   ReminderCreate,
   ReminderStatus,

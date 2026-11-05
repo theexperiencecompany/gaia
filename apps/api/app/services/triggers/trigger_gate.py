@@ -65,9 +65,8 @@ from app.services.mail.thread_participation import user_wrote_in_thread
 from app.services.triggers.condition_matching import resolve_payload_value
 from app.services.triggers.gmail_signals import GmailGateView, gmail_gate_view
 from app.services.triggers.matchable_fields import get_matchable_trigger
-from app.services.user_service import get_profile_timezone
+from app.services.user_service import get_profile_timezone, get_quiet_hours
 from app.utils.general_utils import clip_text
-from app.utils.quiet_hours import after_quiet_hours, in_quiet_hours
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.triggers import TriggerGateDecided
@@ -447,7 +446,8 @@ def _record(
 async def _hold_on_users_clock(user_id: str) -> GateHold | None:
     """Return a hold until the user's quiet hours end when their own clock is inside them now."""
     local_now = datetime.now((await get_profile_timezone(user_id)).tzinfo)
-    return GateHold(after_quiet_hours(local_now)) if in_quiet_hours(local_now) else None
+    hours = await get_quiet_hours(user_id)
+    return GateHold(hours.end_after(local_now)) if hours.contains(local_now) else None
 
 
 async def quiet_hours_hold(gate: TriggerGate | None, user_id: str) -> GateHold | None:

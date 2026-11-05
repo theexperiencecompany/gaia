@@ -125,6 +125,7 @@ export type ServerEventName =
   | "settings:chat_channel_priority_updated"
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
+  | "settings:quiet_hours_updated"
   | "skill:disabled"
   | "skill:enabled"
   | "skill:installed"
@@ -1343,6 +1344,14 @@ export interface EventProperties {
     "mode"?: string;
     "tool_name"?: string;
     "require_approval"?: boolean;
+  };
+  "settings:quiet_hours_updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "enabled": boolean;
+    "start_hour": number;
+    "end_hour": number;
   };
   "skill:disabled": {
     "actor": "user" | "agent";

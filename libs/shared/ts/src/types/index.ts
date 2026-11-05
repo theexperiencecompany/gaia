@@ -44,7 +44,6 @@ export type {
   NotificationActionConfig,
   PlatformLink,
   PlatformLinksResponse,
-  QuietHours,
 } from "./notification";
 export {
   NotificationActionStyle,
