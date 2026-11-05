@@ -50,16 +50,8 @@ function repairAria(html) {
 }
 
 function randomNonce() {
-  const bytes = new Uint8Array(16);
+  const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s);
-}
-
-async function sha256Base64(text) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  const bytes = new Uint8Array(digest);
   let s = "";
   for (const b of bytes) s += String.fromCharCode(b);
   return btoa(s);
@@ -71,20 +63,10 @@ async function nonceCsp(html, headers) {
   const nonce = randomNonce();
   html = html.replace(/<script(?![^>]*\ssrc=)([^>]*)>/g, (m, attrs) =>
     attrs.includes("nonce=") ? m : "<script" + attrs + " nonce=\\\"" + nonce + "\\\">");
-  html = html.replace(/<style([^>]*)>/g, (m, attrs) =>
-    attrs.includes("nonce=") ? m : "<style" + attrs + " nonce=\\\"" + nonce + "\\\">");
-  const values = new Set();
-  html.replace(/\sstyle="([^"]*)"/g, (m, v) => {
-    values.add(v);
-    return m;
-  });
-  const hashes = [];
-  for (const v of values) hashes.push("'sha256-" + (await sha256Base64(v)) + "'");
   const csp = headers.get("content-security-policy");
   if (csp) {
-    let next = csp.split("'unsafe-inline'").join("'unsafe-hashes'");
+    let next = csp.replace(/(script-src[^;]*?)'unsafe-inline'/, "$1'unsafe-hashes'");
     next = next.replace(/(script-src[^;]*)/, "$1 'nonce-" + nonce + "'");
-    next = next.replace(/(style-src[^;]*)/, "$1 'nonce-" + nonce + "' " + hashes.join(" "));
     headers.set("content-security-policy", next);
   }
   return html;
