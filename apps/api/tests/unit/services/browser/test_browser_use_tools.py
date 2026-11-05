@@ -222,7 +222,6 @@ async def _typed(browser_use: _BrowserUse, elements: dict[int, Any], index: int)
     return await _act("input", {"index": index, "text": "E"}, page)
 
 
-@pytest.mark.regression
 async def test_a_code_split_into_boxes_is_never_typed_box_by_box(browser_use: _BrowserUse) -> None:
     """Regression for GAIA-715: the agent typed GitHub's device code box by box and lost characters."""
     result = await _typed(browser_use, _code_boxes(), 11)
