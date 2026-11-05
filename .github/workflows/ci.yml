@@ -228,7 +228,7 @@ jobs:
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: bash scripts/ci/changes.sh base
 
-      - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+      - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
         with:
           main-branch-name: master
 
@@ -343,7 +343,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      actions: read # post-statuses finds this job's URL
       statuses: write # one `ci / <area> / <check>` status per check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -358,6 +357,7 @@ jobs:
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job lint-node
       # Every status run-job did not post (a step's check, a skip, a lost post),
@@ -365,8 +365,9 @@ jobs:
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job lint-node --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+        run: python3 scripts/ci/verdict.py post-statuses --job lint-node --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -395,7 +396,6 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
-      actions: read # post-statuses finds this job's URL
       statuses: write # one `ci / <area> / <check>` status per check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -457,6 +457,7 @@ jobs:
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job lint-python
       # Every status run-job did not post (a step's check, a skip, a lost post),
@@ -464,8 +465,9 @@ jobs:
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job lint-python --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+        run: python3 scripts/ci/verdict.py post-statuses --job lint-python --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -495,7 +497,6 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
-      actions: read # post-statuses finds this job's URL
       statuses: write # one `ci / <area> / <check>` status per check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -530,6 +531,7 @@ jobs:
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job lint-mixed
 
@@ -571,8 +573,9 @@ jobs:
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job lint-mixed --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step analytics-sync=${{ steps.analytics-sync.outcome }} --step analytics-check=${{ steps.analytics-check.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+        run: python3 scripts/ci/verdict.py post-statuses --job lint-mixed --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step analytics-sync=${{ steps.analytics-sync.outcome }} --step analytics-check=${{ steps.analytics-check.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -603,7 +606,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: read # post-statuses finds this job's URL
       statuses: write # one `ci / <area> / <check>` status per check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -619,6 +621,7 @@ jobs:
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job repo-policy
 
@@ -646,8 +649,9 @@ jobs:
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job repo-policy --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step gitleaks=${{ steps.gitleaks.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+        run: python3 scripts/ci/verdict.py post-statuses --job repo-policy --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step gitleaks=${{ steps.gitleaks.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -678,7 +682,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: read # post-statuses finds this job's URL
       statuses: write # one `ci / <area> / <check>` status per check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -700,6 +703,7 @@ jobs:
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job python-audit
       # Every status run-job did not post (a step's check, a skip, a lost post),
@@ -707,8 +711,9 @@ jobs:
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job python-audit --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+        run: python3 scripts/ci/verdict.py post-statuses --job python-audit --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -747,7 +752,6 @@ jobs:
     timeout-minutes: 40
     permissions:
       contents: read
-      actions: read # post-statuses finds this job's URL
       statuses: write # one `ci / <area> / <check>` status per check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -763,6 +767,7 @@ jobs:
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job ts-build-test
       # Every status run-job did not post (a step's check, a skip, a lost post),
@@ -770,8 +775,9 @@ jobs:
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job ts-build-test --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+        run: python3 scripts/ci/verdict.py post-statuses --job ts-build-test --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -820,7 +826,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      actions: read # post-statuses finds this job's URL
       statuses: write # one `ci / <area> / <check>` status per check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -890,8 +895,9 @@ jobs:
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job scan --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step semgrep=${{ steps.semgrep.outcome }} --step trivy=${{ steps.trivy.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+        run: python3 scripts/ci/verdict.py post-statuses --job scan --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step semgrep=${{ steps.semgrep.outcome }} --step trivy=${{ steps.trivy.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
