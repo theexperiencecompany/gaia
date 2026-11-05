@@ -369,10 +369,40 @@ class TestEditKeepsTheGate:
         request = mock_update.await_args.args[1]
         assert set(request.model_dump(exclude_unset=True)) == {"title"}
 
+    async def test_a_condition_drafted_for_an_ungated_workflow_is_added_turned_on(
+        self,
+    ) -> None:
+        workflow = _workflow(_GMAIL)
+        draft = _gmail_draft(runs_only_when="The email is from my boss")
+
+        with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = workflow
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+            )
+
+        request = mock_update.await_args.args[1]
+        assert request.gate == AuthoredGateEdit(condition="The email is from my boss", enabled=True)
+
     def test_the_assistant_is_shown_the_condition_it_must_keep(self) -> None:
         task = build_edit_workflow_task(_gated(), "reply more formally")
 
         assert f"- Runs only when: {_CUSTOMER}\n" in task
+
+    def test_the_assistant_is_told_an_ungated_trigger_runs_on_every_event(self) -> None:
+        task = build_edit_workflow_task(_workflow(_GMAIL), "reply more formally")
+
+        assert (
+            "- Trigger: integration (trigger: gmail_new_message)\n"
+            "- Runs only when: null (every event runs)\n"
+            "- Prompt:\n"
+        ) in task
+
+    def test_a_workflow_with_no_event_shows_the_assistant_no_condition(self) -> None:
+        schedule = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+        lines = build_edit_workflow_task(_workflow(schedule), "run it at ten").splitlines()
+
+        assert lines[lines.index("- Prompt:") - 1].startswith("- Trigger: schedule ")
 
 
 @pytest.mark.unit
