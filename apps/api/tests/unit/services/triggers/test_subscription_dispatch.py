@@ -25,7 +25,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.trigger_gate_models import AuthoredGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
@@ -814,7 +814,7 @@ class TestTriggerGate:
             TODO_ID,
             USER_ID,
             TodoActivityEvent.RUN_SKIPPED,
-            f"Skipped: runs only when {CONDITION}",
+            f'Skipped: "Sale!". Not a match for "{CONDITION}" (99% sure).',
         )
         assert list(event["trigger_gate"]) == [subscription.id]
 
@@ -952,3 +952,37 @@ class TestQuietHours:
         assert not night.called
         deps.enqueue.assert_awaited_once()
         deps.hold_until.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("conditions", "external_ref"),
+        [
+            (
+                [
+                    SubscriptionCondition(
+                        field_name="thread_id", operator=ConditionOperator.EQUALS, value="t-9"
+                    )
+                ],
+                None,
+            ),
+            ([], ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-9")),
+        ],
+        ids=["pinned-by-condition", "the-todos-own-thread"],
+    )
+    async def test_a_reply_on_a_thread_the_todo_tracks_runs_without_asking(
+        self,
+        deps,
+        jev: respx.Route,
+        conditions: list[SubscriptionCondition],
+        external_ref: ExternalRef | None,
+    ) -> None:
+        sub = _subscription(gate=_GATE, conditions=conditions)
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub], external_ref=external_ref)
+        ]
+        reply: dict[str, object] = {"thread_id": "t-9", "message_id": "m-2", "subject": "Re: pilot"}
+
+        with patch("app.services.triggers.trigger_gate.user_wrote_in_thread", AsyncMock()) as wrote:
+            assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, reply) == 1
+
+        wrote.assert_not_awaited()
+        assert not jev.called

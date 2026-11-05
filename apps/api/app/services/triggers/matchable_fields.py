@@ -196,6 +196,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         GMAIL_EMAIL_SENT_TRIGGER_NAME: _GMAIL_EMAIL_SENT,
         "calendar_event_created": MatchableTrigger(
             payload_model=GoogleCalendarEventCreatedPayload,
+            title_field="summary",
             fields=(
                 _f("event_id", _STRING, "Unique id of the event", "7k2m4n6p8q"),
                 _f("calendar_id", _STRING, "Calendar the event lives on", "primary"),
@@ -208,6 +209,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "calendar_event_starting_soon": MatchableTrigger(
             payload_model=GoogleCalendarEventStartingSoonPayload,
+            title_field="summary",
             fields=(
                 _f("event_id", _STRING, "Unique id of the event", "7k2m4n6p8q"),
                 _f("calendar_id", _STRING, "Calendar the event lives on", "primary"),
@@ -263,6 +265,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "google_sheets_new_sheet": MatchableTrigger(
             payload_model=GoogleSheetsNewSheetAddedPayload,
+            title_field="sheet_name",
             fields=(
                 _f("spreadsheet_id", _STRING, "Spreadsheet the sheet was added to", "1BxiMVs0XRA5"),
                 _f("sheet_name", _STRING, "New sheet tab name", "Q4"),
@@ -283,6 +286,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "github_pr_event": MatchableTrigger(
             payload_model=GitHubPullRequestEventPayload,
+            title_field="title",
             fields=(
                 _f("action", _STRING, "What happened to the PR", "opened"),
                 _f("number", _INTEGER, "PR number", "1096"),
@@ -295,6 +299,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "github_issue_added": MatchableTrigger(
             payload_model=GitHubIssueAddedEventPayload,
+            title_field="title",
             fields=(
                 _f("action", _STRING, "What happened to the issue", "opened"),
                 _f("issue_id", _INTEGER, "Unique issue id", "2841003911"),
@@ -345,6 +350,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "slack_channel_created": MatchableTrigger(
             payload_model=SlackChannelCreatedPayload,
+            title_field="name",
             fields=(
                 _f("id", _STRING, "New channel id", "C01ABCDEF"),
                 _f("name", _STRING, "New channel name", "proj-acme"),
