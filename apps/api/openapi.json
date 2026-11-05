@@ -20339,9 +20339,19 @@
           }
         },
         "required": [
+          "id",
           "trigger_name",
+          "account_id",
+          "conditions",
+          "match",
           "action",
-          "resolution"
+          "cooldown_seconds",
+          "resolution",
+          "composio_trigger_ids",
+          "trigger_data",
+          "gate",
+          "status",
+          "created_at"
         ],
         "title": "TriggerSubscriptionView",
         "type": "object"

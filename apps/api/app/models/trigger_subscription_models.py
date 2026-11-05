@@ -14,6 +14,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.trigger_gate_models import QuietHoursBypass, TriggerGate, TriggerGateView
+from app.schemas.common import ResponseModel
 
 
 class MatchableFieldType(StrEnum):
@@ -229,7 +230,7 @@ class TriggerSubscription(BaseModel):
         return self
 
 
-class TriggerSubscriptionView(TriggerSubscription):
+class TriggerSubscriptionView(TriggerSubscription, ResponseModel):
     """A subscription as the API returns it, its gate with what the user reads about it."""
 
     gate: TriggerGateView | None = Field(

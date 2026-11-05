@@ -15955,46 +15955,46 @@ export interface components {
              * Account Id
              * @description GAIA id of the one connected account whose events fire it; None for every account
              */
-            account_id?: string | null;
+            account_id: string | null;
             action: components["schemas"]["SubscriptionAction"];
             /**
              * Composio Trigger Ids
              * @description Empty for account-level triggers, which register no instance
              */
-            composio_trigger_ids?: string[];
+            composio_trigger_ids: string[];
             /** Conditions */
-            conditions?: components["schemas"]["SubscriptionCondition"][];
+            conditions: components["schemas"]["SubscriptionCondition"][];
             /**
              * Cooldown Seconds
              * @description Minimum gap between two fires of this subscription
              * @default 900
              */
-            cooldown_seconds?: number;
+            cooldown_seconds: number;
             /**
              * Created At
              * Format: date-time
              */
-            created_at?: string;
+            created_at: string;
             /**
              * Gate
              * @description The check a fired event must pass before an EXECUTE subscription runs
              */
-            gate?: (components["schemas"]["AuthoredGateView"] | components["schemas"]["SystemGateView"]) | null;
+            gate: (components["schemas"]["AuthoredGateView"] | components["schemas"]["SystemGateView"]) | null;
             /** Id */
-            id?: string;
+            id: string;
             /**
              * @description Whether all conditions must hold (AND) or any one (OR)
              * @default all
              */
-            match?: components["schemas"]["ConditionMatch"];
+            match: components["schemas"]["ConditionMatch"];
             resolution: components["schemas"]["SubscriptionResolution"];
             /** @default active */
-            status?: components["schemas"]["TriggerSubscriptionStatus"];
+            status: components["schemas"]["TriggerSubscriptionStatus"];
             /**
              * Trigger Data
              * @description Registration-time knobs the payload cannot express (a calendar's minutes_before_start). Persisted so a resync rebuilds the trigger with the user's original config instead of resetting to defaults.
              */
-            trigger_data?: {
+            trigger_data: {
                 [key: string]: unknown;
             };
             /** Trigger Name */
