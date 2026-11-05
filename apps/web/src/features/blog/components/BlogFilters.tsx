@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip, InputGroup, TextField } from "@heroui/react";
+import { Chip, Description, InputGroup, Label, TextField } from "@heroui/react";
 import { SearchIcon } from "@icons";
 import { useCallback, useMemo, useState } from "react";
 import type { BlogPostMeta } from "@/lib/blog";
@@ -88,6 +88,8 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
         onChange={handleSearchChange}
         className="w-full max-w-sm"
       >
+        <Label className="sr-only">Search posts</Label>
+        <Description className="sr-only">Search blog posts by title or topic</Description>
         <InputGroup>
           <InputGroup.Prefix>
             <SearchIcon className="size-5 text-default-400" />

@@ -269,7 +269,7 @@ export function generatePageMetadata({
   const minimumTitle =
     !isHomepage && title.length < TITLE_MIN_LENGTH
       ? BRAND_PATTERN.test(title)
-        ? `${title} | AI Assistant`
+        ? `${title} | GAIA AI Assistant`
         : `${title}${BRAND_SUFFIX}`
       : title;
   const pageTitle = isHomepage
