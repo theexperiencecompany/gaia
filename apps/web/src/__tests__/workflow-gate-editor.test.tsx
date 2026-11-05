@@ -71,6 +71,7 @@ vi.mock("@/features/workflows/components/shared/workflowCardHelpers", () => ({
 
 import { initialWorkflowModalUiState } from "@/features/workflows/components/workflow-modal/modalState";
 import { useWorkflowModalActions } from "@/features/workflows/components/workflow-modal/useWorkflowModalActions";
+import { useWorkflowSaveGate } from "@/features/workflows/components/workflow-modal/useWorkflowSaveGate";
 import {
   type WorkflowFormData,
   workflowToFormData,
@@ -270,5 +271,48 @@ describe("saving the workflow editor's gate", () => {
     });
 
     expect(request.gate).toEqual({ condition: INVOICES, enabled: true });
+  });
+});
+
+describe("the editor's save button and the gate", () => {
+  const saveDisabled = (workflow: Workflow, gate: WorkflowFormData["gate"]) => {
+    const { result } = renderHook(() =>
+      useWorkflowSaveGate({
+        mode: "edit",
+        existingWorkflow: workflow,
+        formData: { ...workflowToFormData(workflow), gate },
+        selectedIntegrationSlugs: [],
+        missingTriggerIntegration: null,
+        isCreating: false,
+      }),
+    );
+    return result.current.isSaveDisabled();
+  };
+
+  it("stays off while the gate is as saved", () => {
+    expect(
+      saveDisabled(gatedWorkflow(GAIA_GATE), {
+        condition: BILLING,
+        enabled: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("turns on for a rewritten condition", () => {
+    expect(
+      saveDisabled(gatedWorkflow(GAIA_GATE), {
+        condition: INVOICES,
+        enabled: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("turns on when the gate is switched off", () => {
+    expect(
+      saveDisabled(gatedWorkflow(DESK_GATE), {
+        condition: DESK_TEXT,
+        enabled: false,
+      }),
+    ).toBe(false);
   });
 });
