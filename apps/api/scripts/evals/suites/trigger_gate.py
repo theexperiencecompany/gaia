@@ -4,7 +4,9 @@ Each email's request is built by the production builder (gmail_gate_view, gate_r
 sent through the production client (post_decisions), once by day and once inside quiet
 hours. The journal keeps every request's hash and JEV's answers, so the CI sweep
 (tests/unit/evals/test_trigger_gate_sweep.py) regrades it through decide_gate itself, and a
-prompt edit that is not re-recorded fails there.
+prompt edit that is not re-recorded fails there. Every address and link is on a reserved
+.example domain; the recorded answers were given on an earlier pseudonymisation of the same
+emails and re-keyed to this one, so a re-record is what refreshes them.
 
 Run:  uv run --group backend python -m scripts.evals run --suite trigger-gate --concurrency 6
   TRIGGER_GATE_EVAL_GATE=system|authored (default system)
