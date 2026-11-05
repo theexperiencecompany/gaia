@@ -61,7 +61,10 @@ vi.mock("@/features/workflows/components/shared/workflowCardHelpers", () => ({
 
 import { initialWorkflowModalUiState } from "@/features/workflows/components/workflow-modal/modalState";
 import { useWorkflowModalActions } from "@/features/workflows/components/workflow-modal/useWorkflowModalActions";
-import type { WorkflowFormData } from "@/features/workflows/schemas/workflowFormSchema";
+import {
+  NO_GATE,
+  type WorkflowFormData,
+} from "@/features/workflows/schemas/workflowFormSchema";
 
 const SCHEDULED_FORM: WorkflowFormData = {
   title: "Morning digest",
@@ -78,6 +81,7 @@ const SCHEDULED_FORM: WorkflowFormData = {
     timezone: "UTC",
   },
   notify_on_completion: true,
+  gate: NO_GATE,
 };
 
 describe("creating a scheduled workflow", () => {

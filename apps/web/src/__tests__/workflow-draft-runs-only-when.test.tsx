@@ -83,7 +83,7 @@ const GMAIL_FORM: WorkflowFormData = {
     trigger_name: "gmail_new_message",
   },
   notify_on_completion: true,
-  runs_only_when: BILLING,
+  gate: { condition: BILLING, enabled: true },
 };
 
 const SCHEDULED_FORM: WorkflowFormData = {
@@ -137,6 +137,16 @@ describe("a drafted runs-only-when condition", () => {
     const request = await save(GMAIL_FORM);
 
     expect(request.runs_only_when).toBe(BILLING);
+  });
+
+  it("is dropped when the user turns it off before the workflow exists", async () => {
+    const request = await save({
+      ...GMAIL_FORM,
+      gate: { condition: BILLING, enabled: false },
+    });
+
+    expect(request).toBeDefined();
+    expect(request.runs_only_when).toBeUndefined();
   });
 
   it("is dropped once the user moves the workflow onto a schedule", async () => {
