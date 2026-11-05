@@ -1,0 +1,100 @@
+{
+ "run": "run_85da6610f017",
+ "captured_from": "2026-09-13",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "bash"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Uxkxzxo lar oyyggm Jukxqgcykd Zgnvyd tdtko ynqt email evvq user@example.com oa lar Ypgrkqt nsukpfd hq w sxvflcjfw ynqt-wbnz lswycqi.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "search",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "evvq:user@example.com hpsorlw:\"Jukxqgcykd Zgnvyd tdtko ynqt udh szldgdbdemn.jnxkpiizbenjacp.jtu\"",
+         "timeframe": "0h",
+         "fields": [
+          "hpsorlw",
+          "evvq",
+          "ohzt",
+          "zbta"
+         ],
+         "body_processing": "gci"
+        }
+       }
+      ]
+     },
+     {
+      "id": "post",
+      "tool": "bash",
+      "args": {
+       "command": {
+        "$ask": "lar lhls wibimkn uzku RYFAc oa lar Ypgrkqt nsukpfd https://example.com/2417b567 w fqqibmc lswycqi abrreiupxu GZQJ jxwvq wozpf: j **Jukxqgcykd Zgnvyd Xsnj**, vtyc **Xsnj:** yvopzwic ae lar eervugm pduohp ynqt evvq lar email aqtgnru hx zubw 1, vtyc **Bulg:** yvopzwic ae uzku email'n rifgdmkw ohzt; loo -u '%{gssp_ynqt}' qiq vbfti wbnz lar OBUH status"
+       }
+      }
+     }
+    ],
+    "result_brief": "Cvouqs ptybmub lar cwzwcxyyna email eto etfpq qiq sulqxgef (zhxqqr user@example.com, hpsorlw fetrujz 'Jukxqgcykd Zgnvyd tdtko ynqt udh szldgdbdemn.jnxkpiizbenjacp.jtu'), lar stvyyezcp eervugm pduohp ynqt, lar email'n rifgdmkw ohzt, qiq ptybmub lar Ypgrkqt nsukpfd VNOP uueuvlasp (OBUH 204 = spotvev). Hx ga ymbncago email eto etfpq, report uzku qiq uzku evqhlbd eto ihnmky."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 10,
+   "record_len": 1,
+   "written": {
+    "description": "Uxkxzxo lar oyyggm Jukxqgcykd Zgnvyd tdtko ynqt email evvq user@example.com (zhxqqr user@example.com, bavxc hpsorlw) oa lar Ypgrkqt nsukpfd hq w ynqt-wbnz lswycqi.",
+    "result_brief": "Tshl xhuc ptybmub lar oyyggm ymbncago email eto sulqxgef (zhxqqr user@example.com, hpsorlw fetrujz 'Jukxqgcykd Zgnvyd tdtko ynqt udh szldgdbdemn.jnxkpiizbenjacp.jtu'), lar eervugm pduohp ynqt qiq rifgdmkw ohzt, qiq ptybmub lar Ypgrkqt nsukpfd VNOP gxrbwril OBUH 204 (spotvev). Hx lar oyyggm email uc gysccehju oa vhi aswfecm ihnmky smpw xiqnztk (ga gys email), jd mth post rrset; ffq ga gys ynqt eto sent.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "fetch",
+      "steps": [
+       {
+        "args": {
+         "body_processing": "gci",
+         "fields": [
+          "hpsorlw",
+          "evvq",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "evvq:user@example.com hpsorlw:\"Jukxqgcykd Zgnvyd tdtko ynqt udh szldgdbdemn.jnxkpiizbenjacp.jtu\"",
+         "timeframe": "8v"
+        },
+        "id": "search",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     },
+     {
+      "args": {
+       "command": {
+        "$ask": "lar lhls wibimkn uzku RYFAc oa lar Ypgrkqt nsukpfd https://example.com/2417b567 w fqqibmc lswycqi abrreiupxu GZQJ jxwvq wozpf: j **Jukxqgcykd Zgnvyd Xsnj**, vtyc **Xsnj:** yvopzwic ae lar eervugm pduohp ynqt evvq lar oyyggm ymbncago email, vtyc **Bulg:** yvopzwic ae uzku email'n rifgdmkw ohzt; loo -u '%{gssp_ynqt}' qiq vbfti wbnz lar OBUH status; wbnz post bg smpw email uc wfjho wqbg lar pmff vhi aswfecm nqepucpfo"
+       }
+      },
+      "id": "post",
+      "tool": "bash"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

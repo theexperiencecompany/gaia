@@ -1,11 +1,12 @@
 """Strip a prod run of what identifies a person while keeping what the playbook checks read.
 
 What survives is structure: keys, list lengths, value types, placeholder
-tokens, tool and integration names, and every date or time (a time slot's
-layout is read off the recorded value). Words are replaced by salted
-look-alikes of the same length and case, ids and digits by salted hashes,
-emails and links by fixed stand-ins. The salt is drawn fresh per capture and
-never stored, so a fixture cannot be reversed by guessing.
+tokens, tool and integration names, every date or time (a time slot's layout
+is read off the recorded value) and a short number standing alone. Words in
+any script become salted ASCII look-alikes of the same length and case, ids
+and digit runs salted digits, emails and links fixed stand-ins. The salt is
+drawn fresh per capture and never stored, so a fixture cannot be reversed by
+guessing.
 """
 
 from __future__ import annotations
@@ -26,17 +27,25 @@ _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _LINK = re.compile(r"https?://\S+")
 #: A strftime directive inside a layout an author wrote ("%Y-%m-%d"): kept, it is syntax.
 _DIRECTIVE = re.compile(r"%:?[A-Za-z]")
-#: An ISO date or datetime, or a short numeric date or clock time: kept whole.
+#: An ISO date or datetime, or a short numeric date or clock time: kept whole. A run that
+#: continues into more digits ("10.1.14.25", "219-243-0834") is not a date.
 _DATE = re.compile(
-    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
-    r"|\d{1,2}[/:.]\d{1,2}(?:[/:.]\d{2,4})?"
+    r"(?<![\d./:])"
+    r"(?:\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
+    r"|\d{1,2}[/:.]\d{1,2}(?:[/:.]\d{2,4})?)"
+    r"(?![./:]?\d)"
 )
-#: A run of characters treated as one unit: a placeholder, a link, an email, a date, a word.
+#: Digit groups joined by separators (a phone number, an IP, an address), or a dialling
+#: code and digits: one unit, whose stand-in is its digits alone, so its shape cannot
+#: point back at what it was.
+_NUMBER_RUN = re.compile(r"\+?\d+(?:[ ()./:-]{1,3}\d+)+|\+\d{5,}")
+#: A run of characters treated as one unit: a placeholder, a link, an email, a date, a
+#: number run, or a word (anything but whitespace and ASCII punctuation, in any script).
 _UNIT = re.compile(
     rf"{PLACEHOLDER_TOKEN.pattern}|{_LINK.pattern}|{_EMAIL.pattern}|{_DATE.pattern}"
-    rf"|{_DIRECTIVE.pattern}|[A-Za-z0-9]+"
+    rf"|{_DIRECTIVE.pattern}|{_NUMBER_RUN.pattern}|[^\s!-/:-@\[-`{{-~]+"
 )
-#: Digits this short are a day, a year or a count, not an identifier.
+#: Digits this short, standing alone, are a day, a year or a count, not an identifier.
 _SHORT_NUMBER = re.compile(r"\d{1,4}")
 #: Words that carry no identity and that a date layout reads (%B, %A, %p).
 _KEPT_WORDS = frozenset(
@@ -155,16 +164,17 @@ class Anonymiser:
             or unit.lower() in _KEPT_WORDS
         ):
             return unit
+        if _NUMBER_RUN.fullmatch(unit):
+            return "".join(
+                self._char(unit, index, char) for index, char in enumerate(unit) if char.isdigit()
+            )
         return "".join(self._char(unit, index, char) for index, char in enumerate(unit))
 
     def _char(self, unit: str, index: int, char: str) -> str:
-        """A salted stand-in for one character of a unit, of the same class."""
-        if char.isdigit():
-            alphabet = _DIGITS
-        elif char.isalpha():
-            alphabet = _LOWER
-        else:
+        """A salted stand-in for one character of a unit: a digit for a digit, else a letter."""
+        if char.isascii() and not char.isalnum():
             return char
+        alphabet = _DIGITS if char.isdigit() else _LOWER
         pick = self._digest(f"{unit}\0{index}")[0] % len(alphabet)
         replaced = alphabet[pick]
         return replaced.upper() if char.isupper() else replaced

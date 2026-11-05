@@ -11,6 +11,9 @@ fails here; re-capture with python -m scripts.playbook_corpus to move the line.
 """
 
 import asyncio
+import json
+from pathlib import Path
+import re
 
 import pytest
 from scripts.playbook_corpus.fixture import (
@@ -32,6 +35,43 @@ CORPUS = [
 ATTEMPTS = [(run, attempt) for run in CORPUS for attempt in run.attempts]
 EXPRESSIBLE = [(run, attempt) for run, attempt in ATTEMPTS if attempt.picks is not None]
 PROD = [(run, attempt) for run, attempt in ATTEMPTS if run.origin is Origin.PROD]
+#: What a person's data looks like once it has slipped past the anonymiser.
+LEAKS = {
+    "phone": re.compile(r"\+\d{1,3}[ .-]\(?\d{3}|\+\d{10,14}|\d{3}\)?[ .-]{1,2}\d{3}[ .-]\d{4}"),
+    "ip": re.compile(r"(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?![\d.])"),
+    "non-ascii letter": re.compile(r"[^\W\d_](?<![A-Za-z])"),
+}
+
+
+def _strings(node: object) -> list[str]:
+    """Every key and string in a fixture, nested JSON text (a result digest) decoded too."""
+    if isinstance(node, dict):
+        return [text for key, item in node.items() for text in [key, *_strings(item)]]
+    if isinstance(node, list):
+        return [text for item in node for text in _strings(item)]
+    if not isinstance(node, str):
+        return []
+    if node[:1] in ("{", "["):
+        try:
+            return [node, *_strings(json.loads(node))]
+        except ValueError:
+            return [node]
+    return [node]
+
+
+def _leaks(path: Path) -> list[str]:
+    return [
+        f"{path.name}: {kind} {match.group(0)!r}"
+        for text in _strings(json.loads(path.read_text()))
+        for kind, pattern in LEAKS.items()
+        for match in pattern.finditer(text)
+    ]
+
+
+def test_no_fixture_holds_a_phone_number_an_ip_or_unscrubbed_text() -> None:
+    leaks = [leak for path in sorted(CORPUS_DIR.glob("*.json")) for leak in _leaks(path)]
+
+    assert leaks == []
 
 
 def _id(case: tuple[CorpusRun, CorpusAttempt]) -> str:

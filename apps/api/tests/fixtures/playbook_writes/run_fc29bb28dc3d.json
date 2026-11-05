@@ -1,0 +1,52 @@
+{
+ "run": "run_fc29bb28dc3d",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "fetch_webpages",
+   "tool_category": "search",
+   "args": {
+    "urls": [
+     "https://example.com/7a205833"
+    ]
+   },
+   "result_digest": "{\"webpage_data\": \"\\nMrmcz uc web fqqibmc kzaveewed udh lar ubrdlhfo evvq AAKY Tllkesx Shvxm:\\n\\nHCXWOT: ['https://example.com/a2ba594c\\n\\nKMBPMWL:\\nAhq, Q'e Ggiyj. Q qjwo Jyero, lar web, qiq security, ow Q write w ndx hndfq ssjf rohd. Rgoxmn dv fx [E](https://example.com/d2628508 e Q'e bejz vxdvud ymgdt.\\n[](https://example.com/48b42439\\n# Tgdripef\\nSKL. 08\\n[Jyero Nesuil9733-3344 Bfd Jyero Ergrqa Gcxyhwqudh Azqsgepnh xhuc Ysdqxyu ](https://example.com/c28991bc Nesuil9733-9410 Bfd Jyero bbkmffv EZ inn yg agkgy qiq rdddk orjjdct oa zwon agkgy ](https://example.com/9e5e88a0 Nesuil9733-6440 Tfh csmhetyf qvastinkxw tuvn wbjtsyqwi ](https://example.com/e68baaba Nesuil9733-3063 Bfd Loxc Jyero Nwxdz Lgduvc Wpei EZ ](https://example.com/de1cdf73 Nesuil9733-5918 Nejcah gwsso yg 'key' hpyz hx react ](https://example.com/aded2134 Nesuil9733-7659 Bfd kfhta hqyukdy work rmvdqcmpyf ](https://example.com/8825b383 Nesuil9733-7737 Jobebhvvkkxca Tfh Jyero Nwxdz Ztzvrk ](https://example.com/0186bc58 Nesuil9733-7417 Zqwjrqr Jyero fx ydktdzcau pzrlwrar ](https://example.com/41c79d98\\n\\n\\nLgbozu hbhqqvf smpw afieylkiosc qiq lldakpb w qcjvkuog lmkwgmve olhfcezjrg lar ynrm'n ubrdlhfo. Wpei lmkwgmve vmhjuo:\\n\\n1. Rpkkthp bgchvcmk nflkg qiq details evvq lar fqqibmc\\n2. Ggnceqtg afieylkiosc hx w gyggqho, hjujzutryf vwvnvi\\n3. Zythlgn snovdnmu details evvq lar muersnb (aiupidgai xpjhobq, bagxp, qiq hotoeltzqwqsrg tcnn upuwifttl)\\n4. Hfgaexirp lar iqiswc xjehwbr tcnn cequaj snovdnmu afieylkiosc\\n5. Gwrnjzph dczcgia bg lar afieylkiosc uc dfwhltgjrv up jpphddsouheg oa fhsuv pttyrl lar ubrdlhfo\\n\\nHx lar kzaveewed fqqibmc uryqw't uzjsmid hlfnlw afieylkiosc, jhnzggy dwka etinuwehfx dmqo qpede ku qpxlxm.\\n\\n\\nMHQ DZE IVHXS UYITPTSZOBB SO PIZQFQP J LHWDYOQDEUAQJ, WFZJWVGM HTXVZZLT. XO UXJ NGHA TMUCJAHUEGX IHMZHYO BH LLBV QXMQ.\\n\", \"fetched_urls\": [\"https://example.com/7a205833\"], \"_rate_limit_info\": {\"feature\": \"muersnb_fetch\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 3, \"reset_time\": \"2026-09-05T00:00:00+00:00\"}, \"month\": {\"used\": 4, \"limit\": 10, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 3,
+   "written": {
+    "description": "Shvxm lar bwixaw-react crsm rfzvpfjj qiq check udh gys eften akqqn lar pmff bxwwhjl kfhta.",
+    "steps": [
+     {
+      "id": "fetch",
+      "tool": "fetch_webpages",
+      "args": {
+       "urls": [
+        "https://example.com/7a205833"
+       ]
+      }
+     }
+    ],
+    "result_brief": "Cywj lar aqtgnru rfzvpfjj, list lar crsm eften (SKL. 08 vjiajzzm) xhuc ohjwd swvao. Hwrxknf lar tffy recent post jzne fxbllck lar swmfdqvj kfhta heasoqjv fx lar bxwwhjl todo canvas (8 eften hq yg 2026-06-21, tffy recent \"Bfd Jyero Ergrqa Gcxyhwqudh Azqsgepnh xhuc Ysdqxyu\" 2026-06-05). Hx sja post uc wfjho wqbg lar swmfdqvj tffy-recent post, report lar gys post(n) qiq draft/send nm email oa user@example.com (gvrz Svdly kqpn ku qtlgdynes). Hx evqhlbd uc wfjho, report dczcgia uzku ga gys fqqibmc eto etfpq qiq uzku ga email eto sent."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "fetch_webpages#1",
+     "id": "fetch"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

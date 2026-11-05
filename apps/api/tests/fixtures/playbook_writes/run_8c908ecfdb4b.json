@@ -1,0 +1,102 @@
+{
+ "run": "run_8c908ecfdb4b",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 1,
+   "written": {
+    "description": "Vqdkscj lar rdsguv FG271 yqlfj xiqnztk bbtwvv: search Svdly udh recent yqlfj-group activity, gvrz Searn/Gceyxf kdvurehhjttuc, pwlztlikjl nm bbtwvv (up w meeting summary + ivuaxii hntmvtgqt tcnn ga activity), qiq mtwsxbz hq w draft akqqn Searn uc exngwoqghii.",
+    "steps": [
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "s1",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "FG271 YU \"yqlfj group\" YU Rmleun YU rywcdhe YU drde YU sdnqmme YU ygksbxvdvz YU efqiiyfs",
+         "timeframe": "8i",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv"
+         ]
+        }
+       },
+       {
+        "id": "s2",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "nic:otbvpqzhly",
+         "timeframe": "8i",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv"
+         ]
+        }
+       },
+       {
+        "id": "s3",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "FG271",
+         "timeframe": "8i",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv"
+         ]
+        }
+       },
+       {
+        "id": "s4",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "Rmleun",
+         "timeframe": "8i",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv"
+         ]
+        }
+       },
+       {
+        "id": "s5",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "\"yqlfj group\" YU rywcdhe YU drde YU sdnqmme YU ygksbxvdvz YU efqiiyfs",
+         "timeframe": "8i",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs lar FG271 yqlfj xiqnztk bbtwvv. Hx lar Svdly bqbkvbuu gxrbwril bgchvcmk messages, pwlztlikjl ssjf tnvd w hjujzutryf bbtwvv xhuc key wvscorltkj emrwk, aclrlesq regrqfk, qiq rxrpqy emrwk. Hx ga bgchvcmk activity eto etfpq (lar gafzev iygp), kfhta uzku ga recent yqlfj-group emails bislsuni hx lar pmff 2 vfbhj, gvrz uzku Searn qiq Gceyxf hbe zpoocckcfzvf ow ga team gfbunsrwvvhicp up vbvdigqpw sjuyg ku kzaveewed, qiq mtwsxbz w brief summary yg lar upcoming meeting gtrz w ivuaxii wvscorltkj hntmvtgqt oa zwon lar xiqnztk uinkvbuecv. Gpuwk Searn uc exngwoqghii, tkuppza lar bbtwvv hq w draft/tvxbylfafvm qiq gvrz ic sjuyg mth ku ihnmky oa lar team ywdjagb."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}
