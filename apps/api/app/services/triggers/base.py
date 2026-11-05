@@ -17,6 +17,7 @@ from redis.exceptions import RedisError
 
 from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.log_tags import LogTag
+from app.constants.trigger_gates import GateOwner
 from app.constants.triggers import TRIGGER_OCCURRENCE_KEY, TRIGGER_OCCURRENCE_TTL_SECONDS
 from app.db.redis import redis_cache
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup, TriggerOptionsQuery
@@ -25,6 +26,8 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_accounts import primary_connected_account_id
 from app.services.todos.signal_context import get_signal_matching_context
 from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
+from app.services.triggers.trigger_gate import GatedJob, GateSkip, automation_text, gate_skip
+from app.services.workflow.execution_service import record_skipped_execution
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.redis_utils import RedisPoolManager
@@ -197,6 +200,14 @@ class TriggerHandler(ABC):
         A workflow runs once per occurrence key; None (the default) runs it on every event.
         """
         return None
+
+    def event_signals(
+        self,
+        event_type: str,  # noqa: ARG002 -- interface contract; a handler with derivable signals narrows by it
+        data: Mapping[str, object],  # noqa: ARG002 -- interface contract; read by handlers that override
+    ) -> Mapping[str, object]:
+        """Return fields to derive into an event before anything matches on it; none by default."""
+        return {}
 
     @property
     def registers_instances(self) -> bool:
@@ -401,6 +412,8 @@ class TriggerHandler(ABC):
         )
 
         _log_event_timing(data, now_utc)
+        # Derived once, so workflows, todo conditions and gates all read the same signals.
+        data.update(self.event_signals(event_type, data))
 
         # Find matching workflows using handler's find_workflows method
         # Each handler decides what identifiers it needs (trigger_id, user_id, etc.)
@@ -426,8 +439,13 @@ class TriggerHandler(ABC):
         # per user_id and reuse — avoids repeated Mongo + VFS reads across workflows.
         queued_count = 0
         signal_context_by_user: dict[str, str] = {}
-        for workflow in workflows:
-            if await self._queue_one_workflow(
+        # Concurrently, so one email waits for the slowest JEV call rather than the sum.
+        skips = await asyncio.gather(
+            *(self._gate_workflow(workflow, data, event_type) for workflow in workflows)
+        )
+        # Unmutated: gather returns one result per workflow, so strict can never trip.
+        for workflow, skip in zip(workflows, skips, strict=True):  # pragma: no mutate
+            if skip is None and await self._queue_one_workflow(
                 workflow, data, signal_context_by_user, event_type, trigger_id
             ):
                 queued_count += 1
@@ -466,6 +484,45 @@ class TriggerHandler(ABC):
                 error_type=type(e).__name__,
             )
             return False
+
+    async def _gate_workflow(
+        self, workflow: Workflow, data: dict[str, object], event_type: str
+    ) -> GateSkip | None:
+        """Ask the workflow's gate about this event; a skip is recorded as a skipped run.
+
+        Before the occurrence claim and the batch, so a skipped event leaves
+        nothing behind that marks it handled.
+        """
+        if workflow.id is None:
+            # Not queueable either; _queue_one_workflow reports it.
+            return None
+        skip = await gate_skip(
+            workflow.gate,
+            GatedJob(
+                owner=GateOwner.WORKFLOW,
+                id=workflow.id,
+                user_id=workflow.user_id,
+                automation=automation_text(workflow.title, workflow.description),
+            ),
+            trigger_name=workflow.trigger_config.trigger_name or event_type,
+            payload=data,
+        )
+        if skip is not None:
+            try:
+                await record_skipped_execution(
+                    workflow.id, workflow.user_id, TriggerType.INTEGRATION.value, skip.summary
+                )
+            except Exception as e:
+                # One workflow's history write must not cost the others their dispatch.
+                log.error(
+                    "trigger_workflow_skip_record_failed",
+                    workflow_id=workflow.id,
+                    user_id=workflow.user_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                    exc_info=True,
+                )
+        return skip
 
     async def _queue_one_workflow(
         self,

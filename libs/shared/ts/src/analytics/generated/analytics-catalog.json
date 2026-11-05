@@ -7837,6 +7837,95 @@
       }
     },
     {
+      "event": "trigger:gate_decided",
+      "class": "TriggerGateDecided",
+      "owner": "server",
+      "domain": "trigger",
+      "description": "A trigger gate decided whether a fired event runs its workflow or tracked todo.\n\n    outcome is what the run did and reason is why, so a shadow gate (enforced\n    false) reports reason jev_skip with outcome run.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A trigger gate decided whether a fired event runs its workflow or tracked todo.\n\noutcome is what the run did and reason is why, so a shadow gate (enforced\nfalse) reports reason jev_skip with outcome run.",
+        "properties": {
+          "owner_type": {
+            "enum": ["workflow", "todo"],
+            "title": "Owner Type",
+            "type": "string"
+          },
+          "trigger_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Trigger Name",
+            "type": "string"
+          },
+          "gate_kind": {
+            "enum": ["authored", "system"],
+            "title": "Gate Kind",
+            "type": "string"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "enum": ["gaia", "user"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Author"
+          },
+          "outcome": {
+            "enum": ["run", "skip"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "jev_run",
+              "jev_skip",
+              "free_run",
+              "jev_error",
+              "jev_timeout",
+              "jev_malformed",
+              "jev_unconfigured"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "enforced": {
+            "title": "Enforced",
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Latency Ms"
+          }
+        },
+        "required": [
+          "owner_type",
+          "trigger_name",
+          "gate_kind",
+          "outcome",
+          "reason",
+          "enforced"
+        ],
+        "title": "TriggerGateDecided",
+        "type": "object"
+      }
+    },
+    {
       "event": "ui:sidebar_collapsed",
       "class": "UiSidebarCollapsed",
       "owner": "web",

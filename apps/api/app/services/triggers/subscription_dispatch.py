@@ -18,6 +18,7 @@ from redis.exceptions import RedisError
 
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
 from app.constants.todos import BLOCKING_LABELS, EXECUTE_TRACKED_TODO_TASK, TodoActivityEvent
+from app.constants.trigger_gates import GateOwner
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
 from app.models.notification.notification_models import (
@@ -25,8 +26,9 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationSourceEnum,
 )
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
+    ConditionOperator,
     SubscriptionAction,
     TriggerOrigin,
     TriggerSubscription,
@@ -43,6 +45,7 @@ from app.services.triggers.todo_trigger_window import (
     buffer_todo_trigger_event,
     trigger_window,
 )
+from app.services.triggers.trigger_gate import GatedJob, automation_text, gate_skip
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
@@ -119,6 +122,19 @@ async def _resolve_subscribers(
     return resolved
 
 
+def _tracked_threads(todo: TodoDocument, subscription: TriggerSubscription) -> frozenset[str]:
+    """Return the Gmail threads the todo owns or the subscription is pinned to."""
+    pinned = {
+        str(condition.value)
+        for condition in subscription.conditions
+        if condition.field_name == "thread_id" and condition.operator is ConditionOperator.EQUALS
+    }
+    ref = todo.external_ref
+    if ref is not None and ref.source is ExternalRefSource.GMAIL_THREAD:
+        pinned.add(ref.id)
+    return frozenset(pinned)
+
+
 async def _fire_if_matching(
     todo: TodoDocument,
     subscription: TriggerSubscription,
@@ -142,6 +158,23 @@ async def _fire_if_matching(
     ):
         return False
     if not conditions_match(trigger_name, subscription.conditions, payload, subscription.match):
+        return False
+    # Before any window or cooldown claim: a skipped event must not burn the slot
+    # the next real one needs, nor read as handled. Only an EXECUTE subscription has a gate.
+    skip = await gate_skip(
+        subscription.gate,
+        GatedJob(
+            owner=GateOwner.TODO,
+            id=subscription.id,
+            user_id=todo.user_id,
+            automation=automation_text(todo.title, todo.description),
+            tracked_threads=_tracked_threads(todo, subscription),
+        ),
+        trigger_name=trigger_name,
+        payload=payload,
+    )
+    if skip is not None:
+        await record_activity(todo.id, todo.user_id, TodoActivityEvent.RUN_SKIPPED, skip.summary)
         return False
     if subscription.action is SubscriptionAction.EXECUTE:
         # A run costs an agent turn, so the todo runs once per window and an event
