@@ -382,6 +382,10 @@ class BrowserStack:
         """Opt the user into the fast engine through the settings toggle's own path."""
         await set_user_flag(user.user_id, FeatureFlag.BROWSER_OBSCURA.value, True)
 
+    async def set_jev(self, user: BotUser) -> None:
+        """Opt the user into Jev through the settings toggle's own path; off, the agent runs alone."""
+        await set_user_flag(user.user_id, FeatureFlag.BROWSER_JEV.value, True)
+
     # --- the run --------------------------------------------------------------
 
     async def job_for(self, conversation_id: str, *, timeout: float = 30.0) -> str:

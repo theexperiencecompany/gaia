@@ -12,6 +12,7 @@ import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractContextManager, ExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 import inspect
 import json
 import tempfile
@@ -27,6 +28,7 @@ from pydantic import BaseModel
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.session import RunKind, create_session
 from app.browser_host.wire import SessionInfo
+from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
 from app.constants.agents import AgentTag
 from app.constants.browser import (
@@ -496,10 +498,10 @@ async def browser_job_world(
         ),
         *_host_patches(world, scripted_host),
         # A world with a fallback host is an Obscura user's (Chrome behind it); any
-        # other runs on Chrome, the default engine.
+        # other runs on Chrome, the default engine. Jev stays off, its default.
         patch(
             "app.services.browser.job_runner.is_enabled",
-            AsyncMock(return_value=scripted_host.fallback_url is not None),
+            partial(_obscura_only, scripted_host.fallback_url is not None),
         ),
         # The models and Jev's gateway are never called: the agent and Jev are scripted.
         patch("app.services.browser.agent_run.build_agent_llm", MagicMock(return_value=object())),
@@ -706,6 +708,13 @@ class _Page:
 
 async def _shot_url(index: int) -> str:
     return SHOT_URL_TEMPLATE.format(index=index)
+
+
+async def _obscura_only(
+    obscura: bool, flag: FeatureFlag, user_id: str | None, default: bool | None = None
+) -> bool:
+    """Evaluate a browser flag as this world's user chose: Obscura as given, every other flag off."""
+    return obscura and flag is FeatureFlag.BROWSER_OBSCURA
 
 
 @asynccontextmanager

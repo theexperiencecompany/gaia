@@ -1,4 +1,4 @@
-"""The run's contract with Browser-Use: Jev first on the start page, whole URLs, text-only steps on the run's budget."""
+"""The run's contract with Browser-Use: Jev or the start page first, whole URLs, text-only steps on the run's budget."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ import pytest
 
 from app.constants.browser import (
     BROWSER_AGENT_FAST_ENGINE_NOTE,
+    BROWSER_AGENT_JEV_ROLE,
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
     BROWSER_AGENT_ROLE,
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_HUMAN_CHECKS,
-    BROWSER_TASK_QUOTE_RULE,
     JEV_FIRST_BURST_DONE_WHEN,
     JEV_FIRST_BURST_GOAL,
 )
@@ -33,8 +33,10 @@ CONFIG = BrowserRunConfig(
     handoff_timeout_seconds=60,
     stream_screenshots=True,
     solve_captcha=False,
+    jev=True,
     start_url="https://shop.test/",
 )
+WITHOUT_JEV = replace(CONFIG, jev=False)
 TASK = "log in with <secret>password</secret> and open the orders page"
 
 
@@ -50,10 +52,31 @@ def test_jev_acts_first_on_the_part_of_the_task_the_start_page_is_for() -> None:
             }
         }
     ]
-    # What goes to the user is the system's rule, never words the agent reads as the user's.
-    assert options["task"] == TASK + BROWSER_TASK_QUOTE_RULE
-    assert options["extend_system_message"] == BROWSER_AGENT_ROLE + BROWSER_HUMAN_CHECKS
+    assert options["task"] == TASK
+    assert options["extend_system_message"] == BROWSER_AGENT_JEV_ROLE + BROWSER_HUMAN_CHECKS
     assert options["directly_open_url"] is True
+
+
+def test_without_jev_the_start_page_is_opened_and_the_agent_is_never_told_of_jev() -> None:
+    options = agent_options(TASK, WITHOUT_JEV, RunSecrets({}), resumed=False, fast_engine=True)
+
+    assert options["initial_actions"] == [
+        {"navigate": {"url": "https://shop.test/", "new_tab": False}}
+    ]
+    assert options["extend_system_message"] == (
+        BROWSER_AGENT_ROLE + BROWSER_HUMAN_CHECKS + BROWSER_AGENT_FAST_ENGINE_NOTE
+    )
+    assert "jev" not in options["extend_system_message"].lower()
+    assert "jev" not in options["task"].lower()
+
+
+def test_without_jev_a_resumed_run_or_a_blank_tab_opens_nothing_first() -> None:
+    resumed = agent_options(TASK, WITHOUT_JEV, RunSecrets({}), resumed=True, fast_engine=False)
+    blank = agent_options(
+        TASK, replace(WITHOUT_JEV, start_url=None), RunSecrets({}), resumed=False, fast_engine=False
+    )
+
+    assert (resumed["initial_actions"], blank["initial_actions"]) == (None, None)
 
 
 def test_the_runs_secrets_fill_the_agents_placeholders_and_none_means_none() -> None:
@@ -103,7 +126,7 @@ def test_a_run_resumed_on_the_fallback_engine_is_told_where_it_is_and_stays_ther
     options = agent_options(TASK, config, RunSecrets({}), resumed=True, fast_engine=True)
 
     moved = BROWSER_ENGINE_RESUMED_NOTE.format(page=page)
-    assert options["task"] == TASK + moved + BROWSER_TASK_QUOTE_RULE
+    assert options["task"] == TASK + moved
     # Neither Jev on the whole task again, nor a reopen of its first page.
     assert (options["initial_actions"], options["directly_open_url"]) == (None, False)
 
@@ -122,5 +145,5 @@ def test_an_agent_on_the_fast_engine_is_told_where_it_is() -> None:
     options = agent_options(TASK, CONFIG, RunSecrets({}), resumed=False, fast_engine=True)
 
     assert options["extend_system_message"] == (
-        BROWSER_AGENT_ROLE + BROWSER_HUMAN_CHECKS + BROWSER_AGENT_FAST_ENGINE_NOTE
+        BROWSER_AGENT_JEV_ROLE + BROWSER_HUMAN_CHECKS + BROWSER_AGENT_FAST_ENGINE_NOTE
     )

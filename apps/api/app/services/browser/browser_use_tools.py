@@ -7,6 +7,8 @@ and kept in memory), or an input of a secret's bare name fails and types nothing
 
 Reads: find_elements and search_page results are flagged read-once, or the model
 sees only their count; extract's result carries the page's real title.
+Code boxes: when jev is registered, an input into one box of a code split one
+character per box types nothing and points the agent to jev.
 Pinned to browser-use==0.11.13.
 """
 
@@ -29,6 +31,7 @@ from typing_extensions import override
 
 from app.constants.browser import BROWSER_CODE_BOXES_TO_JEV, BROWSER_CODE_MIN_BOXES
 from app.services.browser.browser_use_session import GaiaBrowserSession
+from app.services.browser.jev.tool import JEV_ACTION
 from app.utils.sites import PLACEHOLDER
 
 #: The one action whose typed text Browser-Use logs only by its placeholder name.
@@ -164,7 +167,11 @@ class GaiaTools(Tools[None]):
         url = _focused_url(browser_session)
         if refused := _refusal(name, params, sensitive_data or {}, url):
             return ActionResult(error=refused)
-        if name == _SECRET_TYPING_ACTION and (boxes := await _code_boxes(browser_session, params)):
+        if (
+            name == _SECRET_TYPING_ACTION
+            and JEV_ACTION in self.registry.registry.actions
+            and (boxes := await _code_boxes(browser_session, params))
+        ):
             return ActionResult(error=BROWSER_CODE_BOXES_TO_JEV.format(count=boxes))
         result = await super().act(
             action=action,
