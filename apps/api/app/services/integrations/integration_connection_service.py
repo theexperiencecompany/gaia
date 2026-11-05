@@ -240,9 +240,7 @@ async def connect_mcp_integration(
 
     # Bearer token flow - store and connect directly
     if bearer_token:
-        return await _connect_with_bearer_token(
-            user_id, integration_id, integration_name, bearer_token, mcp_client
-        )
+        return await _connect_with_bearer_token(target, bearer_token, mcp_client)
 
     # Use provided probe_result or perform probe if needed
     if server_url and not requires_auth and probe_result is None:
@@ -294,56 +292,41 @@ async def connect_mcp_integration(
 
 
 async def _connect_with_bearer_token(
-    user_id: str,
-    integration_id: str,
-    integration_name: str,
+    target: _McpConnectTarget,
     bearer_token: str,
     mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
     """Store bearer token and attempt connection."""
-    token_store = MCPTokenStore(user_id)
-    await token_store.store_bearer_token(integration_id, bearer_token)
+    token_store = MCPTokenStore(target.user_id)
+    await token_store.store_bearer_token(target.integration_id, bearer_token)
+    log.set(integration={"auth_type": "bearer"})
 
     try:
-        tools = await mcp_client.connect(integration_id)
+        tools = await mcp_client.connect(target.integration_id)
         # Busts the full per-user integration cache set (status + tools:user:*).
-        await update_user_integration_status(user_id, integration_id, "connected")
-        tools_count = len(tools) if tools else 0
-        log.set(
-            integration={
-                "provider": integration_name,
-                "action": "connect_mcp",
-                "auth_type": "bearer",
-                "status": "connected",
-                "tools_count": tools_count,
-            }
-        )
-        return ConnectIntegrationResponse(
-            status="connected",
-            integration_id=integration_id,
-            name=integration_name,
-            tools_count=tools_count,
-            message="Integration connected successfully",
-        )
-    except Exception:
+        await update_user_integration_status(target.user_id, target.integration_id, "connected")
+    except Exception as e:
         # Rollback: clean up stored credentials on connection failure
-        await token_store.delete_credentials(integration_id)
-        await invalidate_user_integration_caches(user_id)
-        log.set(
-            integration={
-                "provider": integration_name,
-                "action": "connect_mcp",
-                "auth_type": "bearer",
-                "status": "error",
-            }
-        )
-        return ConnectIntegrationResponse(
-            status="error",
-            integration_id=integration_id,
-            name=integration_name,
-            error=connect_failure_copy(integration_name),
-            message="Connection failed",
-        )
+        await token_store.delete_credentials(target.integration_id)
+        await invalidate_user_integration_caches(target.user_id)
+        return await _handle_connect_failure(target, e)
+
+    tools_count = len(tools) if tools else 0
+    log.set(
+        integration={
+            "provider": target.integration_name,
+            "action": "connect_mcp",
+            "status": "connected",
+            "tools_count": tools_count,
+        }
+    )
+    return ConnectIntegrationResponse(
+        status="connected",
+        integration_id=target.integration_id,
+        name=target.integration_name,
+        tools_count=tools_count,
+        message="Integration connected successfully",
+    )
 
 
 def _composio_connect_target(
