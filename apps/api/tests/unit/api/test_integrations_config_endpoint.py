@@ -6,7 +6,7 @@ only HTTP status codes, response shapes, and error handling are verified.
 """
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 from fastapi import FastAPI
@@ -770,65 +770,31 @@ class TestConnectLinkEndpoint:
         initiate.assert_not_awaited()
         mock_log.set.assert_any_call(outcome="error")
 
-    async def test_a_redirect_without_a_url_cannot_start(self, client: AsyncClient) -> None:
-        result = MagicMock(status="redirect", redirect_url=None, error=None)
-        with (
-            patch(
-                f"{_MODULE}.resolve_and_consume_connect_code",
-                new_callable=AsyncMock,
-                return_value=ConnectLinkBinding(
-                    user_id=_VALID_UID, integration_id="notion", account_id=None
-                ),
-            ),
-            patch(
-                f"{_MODULE}.user_repository.get",
-                new_callable=AsyncMock,
-                return_value=UserDocument(email="a@b.com"),
-            ),
-            patch(
-                f"{_MODULE}.initiate_integration_connection",
-                new_callable=AsyncMock,
-                return_value=result,
-            ),
-            patch(f"{_MODULE}.capture") as mock_capture,
-        ):
-            resp = await client.post(
-                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
-            )
-        assert resp.status_code == 303
-        assert "connect_error=could_not_start" in resp.headers["location"]
-        mock_capture.assert_not_called()
-
-    async def test_a_failed_result_is_not_mistaken_for_a_redirect(
-        self, client: AsyncClient
+    @pytest.mark.parametrize(
+        ("status", "redirect_url"),
+        [("redirect", None), ("error", "https://oauth.example/go")],
+        ids=["no-url", "not-redirect"],
+    )
+    async def test_only_a_redirect_with_a_url_is_followed(
+        self, client: AsyncClient, status: str, redirect_url: str | None
     ) -> None:
-        result = MagicMock(status="error", redirect_url="https://oauth.example/go", error="no")
-        with (
-            patch(
-                f"{_MODULE}.resolve_and_consume_connect_code",
-                new_callable=AsyncMock,
-                return_value=ConnectLinkBinding(
-                    user_id=_VALID_UID, integration_id="notion", account_id=None
-                ),
-            ),
-            patch(
-                f"{_MODULE}.user_repository.get",
-                new_callable=AsyncMock,
-                return_value=UserDocument(email="a@b.com"),
-            ),
-            patch(
-                f"{_MODULE}.initiate_integration_connection",
-                new_callable=AsyncMock,
-                return_value=result,
-            ),
-            patch(f"{_MODULE}.capture") as mock_capture,
-        ):
+        binding = ConnectLinkBinding(user_id=_VALID_UID, integration_id="notion", account_id=None)
+        answer = MagicMock(status=status, redirect_url=redirect_url, error="no")
+        seams = {
+            f"{_MODULE}.resolve_and_consume_connect_code": AsyncMock(return_value=binding),
+            f"{_MODULE}.user_repository.get": AsyncMock(return_value=None),
+            f"{_MODULE}.initiate_integration_connection": AsyncMock(return_value=answer),
+        }
+        with ExitStack() as stack:
+            for target, replacement in seams.items():
+                stack.enter_context(patch(target, replacement))
+            capture = stack.enter_context(patch(f"{_MODULE}.capture"))
             resp = await client.post(
                 f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
             )
         assert resp.status_code == 303
         assert "connect_error=could_not_start" in resp.headers["location"]
-        mock_capture.assert_not_called()
+        capture.assert_not_called()
 
     async def test_invalid_token_redirects_to_error(self, client: AsyncClient) -> None:
         with patch(
