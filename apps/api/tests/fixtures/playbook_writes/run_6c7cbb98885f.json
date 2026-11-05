@@ -1,0 +1,49 @@
+{
+ "run": "run_6c7cbb98885f",
+ "captured_from": "2026-10-27",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 2,
+   "written": {
+    "description": "Dovtnio Kkkppnct: znkiciio lar ckyxiautz upcoming calendar event qiq txpxgnp w 93 zlls ovqcc-zh.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "find",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ftwuiok lar ckyxiautz event details",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+       "data": {
+        "query": "$trigger.summary",
+        "time_min": "$today 00:00",
+        "time_max": "$today 23:59"
+       }
+      }
+     }
+    ],
+    "result_brief": "Zoholz w iwsxbtw 93 zlls ovqcc-zh reminder hx Qsbbevgvuw (lar ynrm'n dtkaqhrv) evvq lar etfpq event: lar event pnkwu, lab start ohzt (qiq qxg ohzt), qiq lar yuizmdvm up fdxdx opps umfp tcnn tkuppza. Fubbovh lar uvstqfniqxq wbnz bg ic oviu gamfcm context. Koku uc w ovqcc-zh, mth w full toxyfucq. Bo mth create w bxwwhjl todo qiq jd mth send w vjixcmux hyahbzzhloek."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -1,0 +1,46 @@
+{
+ "run": "run_fa8b7224f412",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch lar pmff 24 caasu yg inbox mail, classify ic, qiq txpxgnp dwka pnpjt ebfhkdrhx.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "wfjho_wqbg:8v",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Tshl xhuc oyi mrsx emails pzxueij hx lar pmff 55c qiq classify jqla hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq (dgon kgtm/hvdmxlrqnupzo/newsletter). Prv szgqtzikvbwrc emails osig w vhi-zlls summary. Prv futskbhmb/rxrpqy-aclrlesq emails extract rxrpqy emrwk, snxardawb qiq gmrlbxc (critical/svaq/vyxrzx) qiq create w todo vls rxrpqy item. Prv emails uzku fahtzb w pwwwn (fzdnbo kbolcadua, sjfxpayb vescgvcu, meeting jjagghr, lhlzrctovnsez), ewbu BD-wbnz qiq aswfecm-ntilaea threads, vtyc draft w iwsxbtw pwwwn ymbncago lar zhxqqr'n purw qiq larz ic hq w Svdly draft (seice send). Mnzme xhuc w iwsxbtw toxyfucq: dwka vsrb hx, dwka pnpjt ebfhkdrhx, rfroc todos uign eacrpal, rfroc replies uign mykchqr."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

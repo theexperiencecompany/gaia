@@ -115,6 +115,8 @@ class PlaybookRefusal(str, Enum):
     PICKED_TWICE = "picked_twice"
     DUPLICATE_ID = "duplicate_id"
     NO_STEPS = "no_steps"
+    #: A rewrite leaves out an action the stored playbook takes for the user.
+    DROPS_ACTION = "drops_action"
     FAILED_CALL = "failed_call"
     #: The picked call returned nothing: a quiet day, which declines no_work_today.
     EMPTY_RESULT = "empty_result"

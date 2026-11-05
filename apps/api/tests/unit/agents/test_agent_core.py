@@ -21,7 +21,6 @@ from app.agents.llm.lane import AgentRole
 from app.config.settings import settings
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
-    PLAYBOOK_REPLAYED_CALLS_KEY,
     WORKFLOW_LOCK_CONTEXT_KEY,
 )
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
@@ -964,6 +963,39 @@ class TestCallAgentSilent:
         assert UUID(result.stream_id).version == 4
 
     @pytest.mark.asyncio
+    async def test_a_caller_that_seeded_the_run_record_names_the_run_it_keys(self):
+        """The workflow worker opens a heal run's record before the run starts, so the run must be that one."""
+        config = _fresh_config()
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", []),
+            ),
+        ):
+            result = await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                stream_id="seeded-run",
+            )
+
+        assert (config["configurable"]["stream_id"], result.stream_id) == (
+            "seeded-run",
+            "seeded-run",
+        )
+
+    @pytest.mark.asyncio
     async def test_the_detached_executors_tool_data_is_folded_onto_the_message(self):
         config = _fresh_config()
         comms_entry = {"tool": "comms"}
@@ -1695,7 +1727,6 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_notify_on_completion": False,
             PLAYBOOK_FALLBACK_CONTEXT_KEY: "hash_drift at step 3",
             WORKFLOW_LOCK_CONTEXT_KEY: ":fire-task-1",
-            PLAYBOOK_REPLAYED_CALLS_KEY: [{"tool_name": "GMAIL_FETCH_EMAILS"}],
         }
         patches = _common_patches()
         with (
@@ -1732,7 +1763,6 @@ class TestTheWorkflowKeysTheRunStashes:
             # call_executor adopts it instead of queueing the run behind it. Read
             # under a different spelling and every workflow run goes to a dead inbox.
             "executor_lock_reservation": ":fire-task-1",
-            "playbook_replayed_calls": [{"tool_name": "GMAIL_FETCH_EMAILS"}],
         }
 
     @pytest.mark.asyncio
@@ -1771,7 +1801,6 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_notify_on_completion": True,
             "playbook_fallback": None,
             "executor_lock_reservation": None,
-            "playbook_replayed_calls": None,
         }
 
     @pytest.mark.asyncio

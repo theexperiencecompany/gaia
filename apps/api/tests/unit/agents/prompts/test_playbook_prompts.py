@@ -22,7 +22,7 @@ from app.models.playbook_models import ForEachStep, ToolStep
 from app.models.workflow_execution_models import RecordedCall
 from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.workflow.playbook.parser import validate_playbook
-from app.services.workflow.playbook.record import PlaybookPick, build_playbook, number_record
+from app.services.workflow.playbook.record import PlaybookPick, build_playbook, record_entries
 
 PARSER = "app.services.workflow.playbook.parser"
 EXAMPLES = [
@@ -48,7 +48,7 @@ async def test_each_example_write_builds_over_its_record_and_validates(
         str(write["description"]),
         [PlaybookPick.model_validate(step) for step in steps],
         str(write["result_brief"]),
-        number_record(record, ()),
+        record_entries(record, ()),
     )
     assert built.issues == []
     assert built.body is not None
@@ -65,7 +65,7 @@ def test_the_for_each_example_repeats_one_draft_call_over_the_picked_threads() -
         "d",
         [PlaybookPick.model_validate(step) for step in steps],
         "r",
-        number_record(PLAYBOOK_FOR_EACH_RECORD, ()),
+        record_entries(PLAYBOOK_FOR_EACH_RECORD, ()),
     )
     assert built.body is not None
     fetch, drafts = built.body.steps
@@ -84,7 +84,7 @@ def test_each_examples_mail_fetch_stays_inline_for_the_ask_that_reads_it(
         str(write["description"]),
         [PlaybookPick.model_validate(step) for step in steps],
         str(write["result_brief"]),
-        number_record(record, ()),
+        record_entries(record, ()),
     )
     assert built.body is not None
     fetches = [

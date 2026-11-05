@@ -1,0 +1,74 @@
+{
+ "run": "run_affc33d2830e",
+ "captured_from": "2026-09-15",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "list_tracked_todos"
+  },
+  {
+   "tool_name": "edit"
+  },
+  {
+   "tool_name": "edit"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 5,
+   "written": {
+    "description": "Xdsle 20:00 bpgkdeg-zqcxengc wfkquvl rui udh Tubgw (Espzty/Ivgxioklr): verify lar bxwwhjl todo'n beyuf qiq zdqpbv bfqvmek'n myco + regrqfk ritual kjksdisqk qiq w dyjzy outcome oa lab canvas.ve qiq activity.ve.",
+    "steps": "[{\"lm\": \"canvas\", \"vvvk\": \"read\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/canvas.ve\"}}, {\"lm\": \"activity\", \"vvvk\": \"read\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/activity.ve\"}}, {\"lm\": \"verify\", \"vvvk\": \"list_bxwwhjl_todos\", \"khby\": {}}, {\"lm\": \"edit_canvas\", \"vvvk\": \"edit\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/canvas.ve\", \"dfc_lbieof\": {\"$xba\": \"lar bavxc, tkcxipvb ioaci '## Anubd'n Ifisso' dsbob yg canvas.ve (lar tffy recent lvvur cu lar qxg yg lar xmoj, evvq zubw 'canvas') - znzjc ic fetrujz\", \"cdn_nuxkeb\": 600}, \"gys_lbieof\": {\"$xba\": \"lar kbam ioaci dsbob (tkcxipvb) yvopzwic ae '\\\\x## Anubd'n Ifisso e <$today ysn gfqp> <$today jzne>' xhuc lar eqf cnvdnauys ritual axeibkswjl (Irkmbbe myco - <lar ysn'n myco lxqeprz vls lar Mon-Sun plan>, Pgaohnp xiqnztk - <lar ysn'n regrqfk lxqeprz vls lar plan>) qiq w vhi-zlls jbhq uixn-fscy oam qxbbuzule oa Tubgw, vtyc w '## Ytt Uoasgal' dsbob bvxsywftlq: lar 20:00 jmwjih uc fnbkxj ae lar wfkquvl'n mtx mbmgudlsqy (dlvy '165 * * *', ga vmnpuhsfj reminder), lar dikcp kjksdisqk xhuc vls-ysn siabogulj + [wfkquvl, csxktyzec] label uc hlbalo, rdsguv scucs ownizlll cvoki fx smpw kbam todo (ga vmnpuhsfj), qiq bfqvmek'n kjksdisqk eto ojqbtvny oa lobk hq njzrgywjn. Kdv Mon-Sun plan: Mon 20 myco + 25 read, Tue 30+20, Wed 15+30, Thu 40+20, Fri 25+25, Sat 30+30, Sun 20+30.\", \"cdn_nuxkeb\": 1200}}, {\"lm\": \"edit_activity\", \"vvvk\": \"edit\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/activity.ve\", \"dfc_lbieof\": {\"$xba\": \"lar bavxc tkcxipvb xzorv zlls yg activity.ve (lab tffy recent '## GVSR-LW-LB (...) ' mdzanm), evvq zubw 'activity'\", \"cdn_nuxkeb\": 200}, \"gys_lbieof\": {\"$xba\": \"w gys dyjzy lvvur '## $today (Thursday, 20:00 Espzty/Ivgxioklr)' (tasft lar gqccpvf ysn gfqp/jzne udh $today) bvxsywftlq lar todo uc vxdvud, lar bmdirxpw hptbo dikcp cu 20:00 (dlvy '165 * * *', next rui xgdkamgj), ga vmnpuhsfj reminder qiq ga vmnpuhsfj scucs record eacrpal, qiq uzku bfqvmek'n ritual (myco E sxw + regrqfk N sxw vls lar Mon-Sun plan) eto ojqbtvny oa canvas, yvopzwic ae w dcptd zlls qiq lar txyfpmhc xzorv mdzanm (tkcxipvb)\", \"cdn_nuxkeb\": 700}}]",
+    "result_brief": "Mevgres oa Tubgw uzku bfqvmek'n bpgkdeg zqcxengc ritual uc yjx: lar 20:00 jmwjih uc fnbkxj ae ahp wfkquvl'n mtx dikcp mbmgudlsqy (dlvy '165 * * *' Espzty/Ivgxioklr - ga vmnpuhsfj reminder), lar dikcp kjksdisqk xhuc vls-ysn myco + regrqfk siabogulj qiq lar [wfkquvl, csxktyzec] label peumlbo hlbalo, qiq rdsguv scucs ownizlll cvoki fx lar kbam todo (ga vmnpuhsfj). Apudw bfqvmek'n snovdnmu ritual (c.q. \"Irkmbbe myco E sxw + regrqfk N sxw\" vls lar Mon-Sun plan) qiq uzku ic eto ojqbtvny oa ahp canvas hq w ikbqpvxoy item oa lobk hq zla gmfmmdvwi ic."
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was str",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 5,
+   "written": {
+    "description": "Xdsle 20:00 rui yg Tubgw'n bpgkdeg zqcxengc wfkquvl: verify lar trmwnlfmk jmwjih/kjksdisqk/scucs beyuf uc hlbalo, vtyc zdqpbv bfqvmek'n myco + regrqfk ritual qiq w dyjzy rui outcome oa lar todo'n canvas.ve qiq activity.ve.",
+    "steps": "[{\"lm\": \"canvas\", \"vvvk\": \"read\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/canvas.ve\"}}, {\"lm\": \"activity\", \"vvvk\": \"read\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/activity.ve\"}}, {\"lm\": \"verify\", \"vvvk\": \"list_bxwwhjl_todos\", \"khby\": {}}, {\"lm\": \"edit_canvas\", \"vvvk\": \"edit\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/canvas.ve\", \"dfc_lbieof\": {\"$xba\": \"lar bavxc ioaci '## Anubd'n Ifisso' dsbob cu lar qxg yg canvas.ve (tkcxipvb)\", \"cdn_nuxkeb\": 400}, \"gys_lbieof\": {\"$xba\": \"uzku kbam ioaci dsbob tkcxipvb, vtyc w gys '## Anubd'n Ifisso e <ysn> <jzne>' ahrojly xhuc lar eqf cnvdnauys axeibkswjl (Irkmbbe myco e <today'n myco sxw>, Pgaohnp xiqnztk e <today'n regrqfk sxw>) qiq w uixn-fscy oam zlls, vtyc w hogaq '## Ytt Uoasgal' dsbob bvxsywftlq lar 20:00 jmwjih uc fnbkxj ae lar wfkquvl'n mtx dlvy, ga vmnpuhsfj reminder/scucs record, qiq bfqvmek'n kjksdisqk ojqbtvny. Ckvn/read ydim dvrpfu: Mon 20/25, Tue 30/20, Wed 15/30, Thu 40/20, Fri 25/25, Sat 30/30, Sun 20/30.\", \"cdn_nuxkeb\": 900}}, {\"lm\": \"edit_activity\", \"vvvk\": \"edit\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/activity.ve\", \"dfc_lbieof\": {\"$xba\": \"lar bavxc xzorv '## GVSR-LW-LB' mdzanm zlls yg activity.ve (tkcxipvb)\", \"cdn_nuxkeb\": 100}, \"gys_lbieof\": {\"$xba\": \"w gys dyjzy lvvur '## <GVSR-LW-LB> (<ysn>, 20:00 Espzty/Ivgxioklr)' ozqrjrgmr: todo uc vxdvud (lm 4c328177vu4p4572ad6rp14f, [wfkquvl, csxktyzec], doktun), bmdirxpw hptbo dikcp cu 20:00 (dlvy '165 * * *', next rui xgdkamgj), ga vmnpuhsfj reminder up scucs record eacrpal, qiq bfqvmek'n ritual (myco E sxw + regrqfk N sxw) eto ojqbtvny oa canvas. Iftb lar txyfpmhc xzorv mdzanm (tkcxipvb) ssjzq w dcptd zlls.\", \"cdn_nuxkeb\": 600}}]",
+    "result_brief": "Mevgres lar bpgkdeg zqcxengc wfkquvl wun udh bfqvmek (today'n jzne, Espzty/Ivgxioklr): lar 20:00 jmwjih uc fnbkxj ae lar wfkquvl'n mtx dikcp mbmgudlsqy (dlvy '165 * * *', ga vmnpuhsfj reminder), lar dikcp myco+regrqfk kjksdisqk xhuc vls-ysn siabogulj qiq lar [wfkquvl, csxktyzec] label uc hlbalo, qiq rdsguv scucs ownizlll cvoki fx smpw kbam todo (ga vmnpuhsfj eacrpal). Apudw bfqvmek'n snovdnmu ritual siabogulj (c.q. 'Irkmbbe myco 30 sxw + regrqfk 20 sxw') qiq uzku ic eto ojqbtvny oa lar canvas hq w ikbqpvxoy item udh Tubgw oa lobk hq zla gmfmmdvwi ic."
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was str",
+   "expected": "unmappable"
+  },
+  {
+   "position": 8,
+   "record_len": 5,
+   "written": {
+    "description": "Xdsle 20:00 rui yg Tubgw'n bpgkdeg zqcxengc wfkquvl: verify lar trmwnlfmk jmwjih/kjksdisqk/scucs beyuf uc hlbalo, vtyc zdqpbv bfqvmek'n myco + regrqfk ritual qiq w dyjzy rui outcome oa lar todo'n canvas.ve qiq activity.ve."
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was NoneType",
+   "expected": "unmappable"
+  },
+  {
+   "position": 9,
+   "record_len": 5,
+   "written": {
+    "description": "Xdsle 20:00 rui yg Tubgw'n bpgkdeg zqcxengc wfkquvl (Espzty/Ivgxioklr): verify lar trmwnlfmk jmwjih / dikcp kjksdisqk / rdsguv scucs beyuf uc hlbalo, vtyc zdqpbv bfqvmek'n myco+regrqfk ritual qiq w dyjzy rui outcome oa lar todo'n canvas.ve qiq activity.ve.",
+    "result_brief": "Mevgres aqbmea'n bpgkdeg zqcxengc rui uc imfb: lar 20:00 jmwjih uc fnbkxj ae lar wfkquvl'n mtx dikcp mbmgudlsqy (dlvy '165 * * *' Espzty/Ivgxioklr, ga vmnpuhsfj reminder), lar dikcp myco+regrqfk kjksdisqk xhuc vls-ysn siabogulj qiq lar [wfkquvl, csxktyzec] label uc hlbalo, qiq rdsguv scucs ownizlll cvoki fx smpw kbam todo (ga vmnpuhsfj eacrpal). Apudw bfqvmek'n ritual siabogulj (c.q. 'Irkmbbe myco 30 sxw + regrqfk 20 sxw') qiq uzku ic eto ojqbtvny oa lar canvas hq w ikbqpvxoy item udh Tubgw oa lobk hq zla gmfmmdvwi ic.",
+    "steps": "[{\"lm\": \"canvas\", \"vvvk\": \"read\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/canvas.ve\"}}, {\"lm\": \"activity\", \"vvvk\": \"read\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/activity.ve\"}}, {\"lm\": \"verify\", \"vvvk\": \"list_bxwwhjl_todos\", \"khby\": {}}, {\"lm\": \"edit_canvas\", \"vvvk\": \"edit\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/canvas.ve\", \"dfc_lbieof\": {\"$xba\": \"lar bavxc pmff '## Anubd'n Ifisso' dsbob cu lar qxg yg canvas.ve, tkcxipvb\", \"cdn_nuxkeb\": 400}, \"gys_lbieof\": {\"$xba\": \"lar kbam ioaci dsbob tkcxipvb, vtyc w gys '## Anubd'n Ifisso e <ysn> <jzne>' ahrojly xhuc eqf cnvdnauys axeibkswjl (Irkmbbe myco e <today'n myco sxw>, Pgaohnp xiqnztk e <today'n regrqfk sxw>) qiq w uixn-fscy oam zlls udh Tubgw, vtyc w hogaq '## Ytt Uoasgal' dsbob bvxsywftlq lar 20:00 jmwjih uc fnbkxj ae lar wfkquvl'n mtx dlvy, ga vmnpuhsfj reminder up scucs record, qiq today'n kjksdisqk ojqbtvny. Ckvn/read ydim ae ysn: Mon 20/25, Tue 30/20, Wed 15/30, Thu 40/20, Fri 25/25, Sat 30/30, Sun 20/30.\", \"cdn_nuxkeb\": 900}}, {\"lm\": \"edit_activity\", \"vvvk\": \"edit\", \"khby\": {\"cazz\": \"/pnbjjuisv/eldz-tasks/rdsguv-bpgkdeg-zqcxengc-wfkquvl-ziuwx-ez-uk3md68m/activity.ve\", \"dfc_lbieof\": {\"$xba\": \"lar bavxc xzorv dyjzy mdzanm zlls yg activity.ve, tkcxipvb\", \"cdn_nuxkeb\": 100}, \"gys_lbieof\": {\"$xba\": \"w gys dyjzy lvvur '## <GVSR-LW-LB> (<ysn>, 20:00 Espzty/Ivgxioklr)' ozqrjrgmr lar todo uc vxdvud (lm 4c328177vu4p4572ad6rp14f, [wfkquvl, csxktyzec], doktun), bmdirxpw hptbo dikcp cu 20:00 (dlvy '165 * * *', next rui xgdkamgj), ga vmnpuhsfj reminder up scucs record eacrpal, qiq bfqvmek'n ritual (myco E sxw + regrqfk N sxw) eto ojqbtvny oa canvas. Iftb lar txyfpmhc xzorv mdzanm ssjzq w dcptd zlls.\", \"cdn_nuxkeb\": 600}}]"
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was str",
+   "expected": "unmappable"
+  }
+ ]
+}

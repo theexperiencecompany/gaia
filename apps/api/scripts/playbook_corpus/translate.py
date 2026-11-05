@@ -102,12 +102,13 @@ def translate(
         return Translation(unmappable=Unmappable.NO_STEPS, detail="every step was bookkeeping")
     used: set[int] = set()
     for item in wanted:
-        entry = _match(item, record, used, after=max(used, default=0))
-        if entry is None:
+        position = _match(item, record, used, after=max(used, default=-1))
+        if position is None:
             ran = [e for e in record if e.call.tool_name == item.tool]
             reason = Unmappable.ONLY_FAILED_CALLS if ran else Unmappable.STEP_NEVER_RAN
             return Translation(unmappable=reason, detail=item.tool)
-        used.add(entry.number)
+        used.add(position)
+        entry = record[position]
         translation.picks.append(_pick(item, entry, translation.dropped))
     return translation
 
@@ -154,17 +155,17 @@ def _wanted(step: _OldStep, unpickable: frozenset[str]) -> list[_Wanted]:
 
 def _match(
     item: _Wanted, record: Sequence[RecordEntry], used: set[int], *, after: int
-) -> RecordEntry | None:
-    """The recorded call the step was written from: same tool, unused, succeeded.
+) -> int | None:
+    """The record position of the call the step was written from: same tool, unused, succeeded.
 
     A call after the previous pick wins, so the steps keep the order they were
     written in; then the one whose args agree most, then the earliest.
     """
     candidates = [
-        entry
-        for entry in record
+        position
+        for position, entry in enumerate(record)
         if entry.call.tool_name == item.tool
-        and entry.number not in used
+        and position not in used
         and not entry.call.failed
         and not is_error_envelope(entry.result)
     ]
@@ -172,10 +173,10 @@ def _match(
         return None
     return max(
         candidates,
-        key=lambda entry: (
-            entry.number > after,
-            _agreement(item.args, entry.call.args),
-            -entry.number,
+        key=lambda position: (
+            position > after,
+            _agreement(item.args, record[position].call.args),
+            -position,
         ),
     )
 
@@ -201,7 +202,7 @@ def _pick(item: _Wanted, entry: RecordEntry, dropped: list[str]) -> PlaybookPick
         vary[path] = varied
     for_each = _for_each(item.step.for_each)
     return PlaybookPick(
-        call=entry.number,
+        call=entry.call_id,
         id=item.step.id or "",
         vary=vary,
         for_each=for_each,

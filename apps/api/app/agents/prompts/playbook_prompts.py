@@ -17,7 +17,7 @@ import json
 
 from app.models.workflow_execution_models import RecordedCall
 from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
-from app.services.workflow.playbook.record import number_record, render_record
+from app.services.workflow.playbook.record import record_entries, render_record
 
 
 def _recorded(tool_name: str, args: dict[str, object], result: object) -> RecordedCall:
@@ -31,7 +31,7 @@ def _recorded(tool_name: str, args: dict[str, object], result: object) -> Record
 
 def _show_record(calls: list[RecordedCall]) -> str:
     """Return a record as read_run_record shows it, one call per line."""
-    return "\n".join(json.dumps(line) for line in render_record(number_record(calls, ())))
+    return "\n".join(json.dumps(line) for line in render_record(record_entries(calls, ())))
 
 
 #: A run that read unread mail and searched the web about it.
@@ -51,9 +51,9 @@ PLAYBOOK_EXAMPLE_RECORD = [
 PLAYBOOK_EXAMPLE_WRITE: dict[str, object] = {
     "description": "Brief the user on today's unread mail.",
     "steps": [
-        {"call": 1, "id": "inbox"},
+        {"call": "GMAIL_FETCH_MESSAGES#1", "id": "inbox"},
         {
-            "call": 2,
+            "call": "web_search_tool#1",
             "vary": {
                 "query_text": {
                     "$ask": "one web search that would give background on the most "
@@ -104,9 +104,9 @@ PLAYBOOK_FOR_EACH_RECORD = [
 PLAYBOOK_FOR_EACH_WRITE: dict[str, object] = {
     "description": "Draft a reply to every email from a real person that expects one.",
     "steps": [
-        {"call": 1, "id": "inbox"},
+        {"call": "GMAIL_FETCH_MESSAGES#1", "id": "inbox"},
         {
-            "call": 2,
+            "call": "GMAIL_CREATE_EMAIL_DRAFT#1",
             "id": "replies",
             "for_each": {
                 "$ask": "the thread ids above from a real person expecting a reply, "
@@ -130,12 +130,12 @@ This workflow has no working playbook. When you have finished the work above (an
 
 Work through these five for yourself, against the calls you actually made. This is your own reasoning, not part of the run's result:
 1. Which of your calls were discovery or dead ends (finding an id, a channel, a folder, a file, recovering from an error, or an attempt that came back empty, wrong or refused that you then did differently) rather than the work itself? Those are not steps. A playbook replays what WORKED: the call that actually produced the result, with the arguments that made it produce one, not the first thing you tried.
-2. WRITE THE SEQUENCE OUT, before you judge anything. Call read_run_record: it lists every call this run made, numbered, with the args it was sent and the shape of what it returned. Note the numbers of the calls that did the work, and in each one the values that were specific to today. Those values are what you will mark as changing per run, with a placeholder: $now, $today, $now + 1d, $today + 1d 09:00 (a clock time); $user.email, $user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path> and $steps.<step_id>.file; $last_run.<TOOL_NAME>.<path>. A time the tool takes in its own layout is {"$time": "$today + 1d 09:00"}, and the layout is kept from the recorded value. If a value genuinely cannot be frozen or built from those, mark it {"$ask": "what to write"} and a model writes it at replay, right before that step runs. This is rare: a search query usually freezes fine, and anything about the RESULT belongs in result_brief, not in a step. Do this even if you expect to decline; question 4 is about the list you write here, not about your memory of the run.
+2. WRITE THE SEQUENCE OUT, before you judge anything. Call read_run_record: it lists every call this run made, each with its id (the tool and which of its calls it was, like GMAIL_FETCH_MESSAGES#1), the args it was sent and the shape of what it returned. Note the ids of the calls that did the work, and in each one the values that were specific to today. Those values are what you will mark as changing per run, with a placeholder: $now, $today, $now + 1d, $today + 1d 09:00 (a clock time); $user.email, $user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path> and $steps.<step_id>.file; $last_run.<TOOL_NAME>.<path>. A time the tool takes in its own layout is {"$time": "$today + 1d 09:00"}, and the layout is kept from the recorded value. If a value genuinely cannot be frozen or built from those, mark it {"$ask": "what to write"} and a model writes it at replay, right before that step runs. This is rare: a search query usually freezes fine, and anything about the RESULT belongs in result_brief, not in a step. Do this even if you expect to decline; question 4 is about the list you write here, not about your memory of the run.
 3. What has to carry over to the next run (a cursor, a last seen id, a timestamp) so it does not redo work or repeat something someone would notice?
 4. Now look at the list from question 2. Changing data is NEVER a reason to answer no: results, and the words you write from them, are supposed to differ every run, and result_brief and $ask are where that lives. The attendees of today's meeting, the subject of today's mail, the id you just looked up: you have already handled every one of those by marking it with a placeholder, so none of them can be your reason. The only question left is whether the list of CALLS changes: is there a call in it that would not happen tomorrow, or a call missing from it that would? If you cannot point to one such call by name, the answer is yes and you write the playbook.
 5. Did every call you are freezing return the data the workflow needs, as it stands? If a step came back empty, with an error, or partial, and you compensated by reasoning around it, that call is not the work. A playbook replays the call, not your reasoning, so the next run would hand the user the gap you papered over. Run the call that works before freezing, or decline.
 
-If 4 and 5 are both yes, call write_playbook with a description, the steps, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). Each step is one call from read_run_record, by its number. Give it an id when a later step reads its result as $steps.<id>.<path>, and list in vary the values that change per run, by their path in the call's args. Everything you do not mark replays exactly as it was recorded: the tool, every other argument and the account it ran as. You never retype a tool name or an argument. For a run whose record reads:
+If 4 and 5 are both yes, call write_playbook with a description, the steps, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). Each step is one call from read_run_record, named by its id copied exactly as the record shows it. Never count calls yourself: an id is not a position. Give it an id when a later step reads its result as $steps.<id>.<path>, and list in vary the values that change per run, by their path in the call's args. Everything you do not mark replays exactly as it was recorded: the tool, every other argument and the account it ran as. You never retype a tool name or an argument. For a run whose record reads:
 
 """
     + _show_record(PLAYBOOK_EXAMPLE_RECORD)
@@ -187,7 +187,7 @@ If the recorded reason is that a call returned nothing, do not accept that empti
 
 The decision is about the playbook only. Do not pause, deactivate, edit or delete the workflow itself, and do not change its schedule: a source that has nothing today is not a reason to stop a workflow the user set up, and that call is theirs to make.
 
-When the work is finished (and only then), end this run by calling exactly one of write_playbook or disable_playbook. That holds even if you make no further calls because the steps that already ran answer the task: the decision is part of the work, not something that happens only after tool calls. Call read_run_record, then write_playbook with the corrected sequence, or with the same sequence if it turns out to have been right after all and the recorded reason was a one-off. Call disable_playbook with the reason if the sequence cannot hold, because the order of calls depends on what each run finds. Staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
+When the work is finished (and only then), end this run by calling exactly one of write_playbook or disable_playbook. That holds even if you make no further calls because the steps that already ran answer the task: the decision is part of the work, not something that happens only after tool calls. Call read_run_record, then write_playbook with the corrected sequence, or with the same sequence if it turns out to have been right after all and the recorded reason was a one-off. A rewrite keeps every step of the stored playbook that acts for the user (a send, a create, an update, a notification); write_playbook refuses one that drops such a step. Call disable_playbook with the reason if the sequence cannot hold, because the order of calls depends on what each run finds. Staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
 
 Keep all of this out of what you return. The result you hand back is the workflow's own output, the thing the user asked for, and nothing else. Do not narrate the check, do not mention playbooks or this decision at all. Whether you called the tool is the entire record of it.
 </playbook_check>"""
@@ -196,7 +196,7 @@ Keep all of this out of what you return. The result you hand back is the workflo
 #: heal brief on its own says "do the work properly yourself", and without this
 #: block that reads as "repeat the steps that already ran".
 PLAYBOOK_HEAL_ALREADY_RAN = """
-That replay was in this same execution, not a previous one. Its record follows. The steps it lists as already run happened, so finish from where it stopped and do not repeat them:
+That replay was in this same execution, not a previous one. Its record follows. The steps it lists as already run happened, so finish from where it stopped and do not repeat them. Its calls open this run's read_run_record, so a rewrite picks them like any other call:
 {fallback_note}"""
 
 #: What the heal brief says happened, keyed by the recorded run status value.

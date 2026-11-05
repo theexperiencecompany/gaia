@@ -1,0 +1,115 @@
+{
+ "run": "run_2f0cad70ad4e",
+ "captured_from": "2026-10-21",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "get_workflow"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_FREE_BUSY_QUERY"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "events": [
+     {
+      "event_id": "pru1vdbbwc3aaof73lu01g8vdj_11470833J207567R",
+      "calendar_id": "user@example.com"
+     }
+    ]
+   },
+   "result_digest": "{\"data\": {\"events\": [{\"event_id\": \"pru1vdbbwc3aaof73lu01g8vdj_11470833J207567R\", \"calendar_id\": \"user@example.com\", \"event\": {\"id\": \"pru1vdbbwc3aaof73lu01g8vdj_11470833J207567R\", \"summary\": \"Euclx\", \"eventType\": \"iwtqdhh\", \"start\": {\"dateTime\": \"2026-10-21T10:00:00+02:00\", \"timeZone\": \"Espzty/Yricin\"}, \"end\": {\"dateTime\": \"2026-10-21T12:00:00+02:00\", \"timeZone\": \"Espzty/Yricin\"}, \"htmlLink\": \"https://example.com/6217077c\", \"kind\": \"calendar#event\", \"etag\": \"\\\"7486591729352929\\\"\", \"status\": \"tnmalswen\", \"created\": \"2026-03-10T18:37:44.000Z\", \"updated\": \"2026-10-20T20:14:27.848Z\", \"creator\": {\"email\": \"user@example.com\", \"self\": true}, \"organizer\": {\"email\": \"user@example.com\", \"self\": true}, \"recurringEventId\": \"pru1vdbbwc3aaof73lu01g8vdj\", \"originalStartTime\": {\"dateTime\": \"2026-10-21T10:00:00+02:00\", \"timeZone\": \"Espzty/Yricin\"}, \"iCalUID\": \"user@example.com\", \"sequence\": 6, \"reminders\": {\"useDefault\": true}}}], \"errors\": []}, \"error\": null, \"successful\": true}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 6,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar cwzwcxyyna calendar event'n full details qiq fmpvi w 93 zlls reminder xhuc pnkwu, ohzt, qiq opps umfp/yuizmdvm bg tkuppza.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "event",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg lar cwzwcxyyna event'n full details",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT",
+       "data": {
+        "events": [
+         {
+          "event_id": "$trigger.event_id",
+          "calendar_id": "$trigger.calendar_id"
+         }
+        ]
+       }
+      }
+     }
+    ],
+    "result_brief": "Zutiy w 93 zlls reminder hx Bdbzna evvq lar event: zlls 1 lar event pnkwu (summary) qiq lab start ohzt (sxvflcjfw CR:LW hx lar ynrm'n zixgmcwc, xhuc qxg ohzt bg gamfcm); zlls 2 lar yuizmdvm bg tkuppza, nfosudwsn lar fdxdx opps umfp (wjqfbmrikoFeah ljxvoHvawb bff) bg tkuppza; bg tacoqhl vzunbh, kfhta uzku ga yuizmdvm up opps umfp uc yjx. Ttue ic oa 93 hogaq wozpf. Kdv qjjnea uc vhoddpjyu ae lar aklmpxxwg cvuhzyugus hyahbzzhloek; jd mth send w vjixcmux hyahbzzhloek."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  },
+  {
+   "position": 10,
+   "record_len": 7,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar cwzwcxyyna calendar event'n full details qiq fmpvi w 93 zlls reminder xhuc pnkwu, ohzt, qiq opps umfp/yuizmdvm bg tkuppza.",
+    "result_brief": "Zutiy w 93 zlls reminder hx Bdbzna evvq lar event: zlls 1 lar event pnkwu (summary) qiq lab start ohzt (sxvflcjfw CR:LW hx lar ynrm'n zixgmcwc, xhuc qxg ohzt bg gamfcm); zlls 2 lar yuizmdvm bg tkuppza, nfosudwsn lar fdxdx opps umfp (wjqfbmrikoFeah ljxvoHvawb bff) bg tkuppza; bg tacoqhl vzunbh, kfhta uzku ga yuizmdvm up opps umfp uc yjx. Ttue ic oa 93 hogaq wozpf. Kdv qjjnea uc vhoddpjyu ae lar aklmpxxwg cvuhzyugus hyahbzzhloek; jd mth send w vjixcmux hyahbzzhloek.",
+    "steps": [
+     {
+      "args": {
+       "data": {
+        "events": [
+         {
+          "calendar_id": "$trigger.calendar_id",
+          "event_id": "$trigger.event_id"
+         }
+        ]
+       },
+       "task_description": "Ngakdvlg lar cwzwcxyyna event'n full details",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT"
+      },
+      "id": "event",
+      "tool": "execute"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_GET_EVENT#1",
+     "id": "event",
+     "vary": {
+      "events.0.calendar_id": "$trigger.calendar_id",
+      "events.0.event_id": "$trigger.event_id"
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

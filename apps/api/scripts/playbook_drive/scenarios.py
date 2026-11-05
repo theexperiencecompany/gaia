@@ -14,10 +14,9 @@ the script, so an agent run writes or declines twice: a written playbook is
 revision 2 after its first authoring, and a second decline in the same run is
 uncounted. Expectations below are written for that.
 
-A write picks calls by their number in the run record, which counts every
-finished call of the run from 1 in the order it finished: for a script, the
-position of the call in it, the playbook tools included. The re-run appends
-after them, so the numbers a script's write names hold on both passes.
+A write picks calls by the id read_run_record shows: the tool and which of
+its calls in the run it was, from 1 (create_todo#1). The re-run appends after
+the first pass, so the ids a script's write names hold on both passes.
 """
 
 from __future__ import annotations
@@ -92,7 +91,7 @@ def decline(
 
 LIST_PENDING = tool("list_todos", {"completed": False})
 #: The first call of a script that opens with LIST_PENDING, named for later steps.
-LS_PICK = {"call": 1, "id": "ls"}
+LS_PICK = {"call": "list_todos#1", "id": "ls"}
 
 
 def _todo(title: str) -> str:
@@ -245,34 +244,52 @@ def refused_kept(needle: str) -> Expectation:
     return lambda observation, _ctx: any(needle in refusal for refusal in observation.refusals)
 
 
-#: Picks the write must refuse, each over a run that listed todos (call 1) and
-#: created one (call 2), and the words the refusal has to carry.
+#: Picks the write must refuse, each over a run that listed todos (list_todos#1)
+#: and created one (create_todo#1), and the words the refusal has to carry.
 REFUSALS: list[tuple[str, str, list[dict[str, Any]], str]] = [
-    ("X2", "a call the record does not have", [{"call": 9}], "is not in this run's record"),
+    (
+        "X2",
+        "a call the record does not have",
+        [{"call": "create_todo#9"}],
+        "is not in this run's record",
+    ),
     (
         "X3",
         "a marked value that never changes",
-        [{"call": 2, "vary": {"title": ""}}],
+        [{"call": "create_todo#1", "vary": {"title": ""}}],
         "holds no placeholder",
     ),
-    ("X4", "$item outside a for_each", [{"call": 2, "vary": {"title": "$item.id"}}], "$item"),
+    (
+        "X4",
+        "$item outside a for_each",
+        [{"call": "create_todo#1", "vary": {"title": "$item.id"}}],
+        "$item",
+    ),
     (
         "X5",
         "for_each over a non-list",
-        [LS_PICK, {"call": 2, "for_each": "$steps.ls.count", "vary": {"title": "$item.id"}}],
+        [
+            LS_PICK,
+            {"call": "create_todo#1", "for_each": "$steps.ls.count", "vary": {"title": "$item.id"}},
+        ],
         "needs a list",
     ),
     (
         "X7",
         "$steps into a field the result lacks",
-        [LS_PICK, {"call": 2, "vary": {"title": "$steps.ls.nope"}}],
+        [LS_PICK, {"call": "create_todo#1", "vary": {"title": "$steps.ls.nope"}}],
         "nope",
     ),
-    ("X8", "one call picked twice", [{"call": 2}, {"call": 2, "id": "again"}], "picked twice"),
+    (
+        "X8",
+        "one call picked twice",
+        [{"call": "create_todo#1"}, {"call": "create_todo#1", "id": "again"}],
+        "picked twice",
+    ),
     (
         "X21",
         "an arg the call was not sent",
-        [{"call": 2, "vary": {"due": "$today"}}],
+        [{"call": "create_todo#1", "vary": {"due": "$today"}}],
         "its arg paths are",
     ),
 ]
@@ -284,7 +301,7 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         key="S1",
         title="write then replay, then an edit discards",
-        script=script(_todo("drive one"), write([{"call": 1}])),
+        script=script(_todo("drive one"), write([{"call": "create_todo#1"}])),
         fires=[
             Fire("agent run writes the playbook", authored, "playbook stored, exec success"),
             Fire("second run replays it", replayed_ok, "mode replay, pb success"),
@@ -313,7 +330,7 @@ SCENARIOS: list[Scenario] = [
                 [
                     LS_PICK,
                     {
-                        "call": 2,
+                        "call": "update_todo#1",
                         "id": "mark",
                         "for_each": "$steps.ls.todos",
                         "max_items": 1,
@@ -331,8 +348,8 @@ SCENARIOS: list[Scenario] = [
             ),
             Fire("replay caps at max_items", for_each_ran(at_least=2, ran=1), "items >= 2, ran 1"),
             # The finishing agent's rewrite is not driven here: in that run the replay's
-            # calls are numbered first, and a scripted model cannot read the record to
-            # pick around them as a real one does.
+            # calls open the record, and a scripted model cannot read the record to pick
+            # around them as a real one does.
             Fire(
                 "empty list after a full replay is suspect",
                 both(reason("replay_suspect"), lifecycle(status="suspect", streak=1)),
@@ -381,7 +398,7 @@ SCENARIOS: list[Scenario] = [
         title="disable inside the run that wrote",
         script=script(
             _todo("drive x"),
-            write([{"call": 1}]),
+            write([{"call": "create_todo#1"}]),
             tool("disable_playbook", {"reason": "drive"}),
         ),
         fires=[
@@ -450,7 +467,9 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         key="X16",
         title="a write after a decline in the same run stores the playbook",
-        script=script(decline("unstable_discovery"), _todo("drive x16"), write([{"call": 2}])),
+        script=script(
+            decline("unstable_discovery"), _todo("drive x16"), write([{"call": "create_todo#1"}])
+        ),
         fires=[Fire("stored", authored, "playbook stored")],
     ),
     Scenario(
@@ -458,7 +477,7 @@ SCENARIOS: list[Scenario] = [
         title="placeholders rendered at replay",
         script=script(
             _todo("Run at 2026-01-01 for someone"),
-            write([{"call": 1, "vary": {"title": "Run at $today for $user.name"}}]),
+            write([{"call": "create_todo#1", "vary": {"title": "Run at $today for $user.name"}}]),
         ),
         fires=[
             Fire("accepted at the write", authored, "stored"),
@@ -478,7 +497,9 @@ SCENARIOS: list[Scenario] = [
         title="an $ask no model fills: three failed replays, then the body is given up",
         script=script(
             _todo("drive ask"),
-            write([{"call": 1, "id": "a", "vary": {"title": {"$ask": "a fresh title"}}}]),
+            write(
+                [{"call": "create_todo#1", "id": "a", "vary": {"title": {"$ask": "a fresh title"}}}]
+            ),
         ),
         fires=[
             Fire("accepted at the write", authored, "stored"),

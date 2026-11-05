@@ -29,7 +29,6 @@ from app.agents.tools.playbook_tools import (
     read_run_record,
     write_playbook,
 )
-from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
     DeclineKind,
@@ -183,7 +182,7 @@ AGENDA_CALL = RecordedCall(
     result_digest=json.dumps({"events": [{"id": "e1", "title": "standup"}]}),
 )
 
-NEW_STEPS: list[dict[str, Any]] = [{"call": 1, "id": "agenda"}]
+NEW_STEPS: list[dict[str, Any]] = [{"call": "list_events#1", "id": "agenda"}]
 #: The step NEW_STEPS builds from AGENDA_CALL, as it is stored.
 NEW_STORED_STEPS: list[dict[str, Any]] = [
     {"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}}
@@ -212,11 +211,13 @@ OLD_YAML = (
 #: Six picks of calls the run never made, so the write yields six issues in
 #: document order. Six, not five, because the log line truncates at five and
 #: the returned message does not: a single count cannot tell the two apart.
-SIX_INVALID_STEPS: list[dict[str, Any]] = [{"call": 11 + index} for index in range(6)]
+SIX_INVALID_STEPS: list[dict[str, Any]] = [
+    {"call": f"list_events#{2 + index}"} for index in range(6)
+]
 
 SIX_ISSUES = [
-    f"steps[{index}].call: call {11 + index} is not in this run's record; the calls you can "
-    "pick are 1 (read_run_record lists them)"
+    f"steps[{index}].call: 'list_events#{2 + index}' is not in this run's record. Copy an id "
+    "exactly as read_run_record shows it: list_events#1"
     for index in range(6)
 ]
 
@@ -251,7 +252,7 @@ class TestWritePlaybook:
         _existing(store)
         annotated = [
             {
-                "call": 1,
+                "call": "list_events#1",
                 "id": "agenda",
                 "goal": "read the events",
                 "task": "agenda",
@@ -282,12 +283,12 @@ class TestWritePlaybook:
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
         ):
             result = await write_playbook.ainvoke(
-                NEW_ARGS | {"steps": [{"call": 4}]},
+                NEW_ARGS | {"steps": [{"call": "list_events#4"}]},
                 config=_config(),
             )
 
         assert result["success"] is False
-        assert "call 4 is not in this run's record" in result["message"]
+        assert "'list_events#4' is not in this run's record" in result["message"]
         assert store.documents == {}
 
     async def test_valid_write_overwrites_the_existing_playbook(
@@ -345,9 +346,12 @@ class TestWritePlaybook:
             ),
         ]
         picks = [
-            {"call": 1, "id": "agenda"},
-            {"call": 2, "id": "mail", "vary": {"calendar_id": "$today"}},
-            {"call": 3, "vary": {"subject": {"$ask": "a subject for today's agenda"}}},
+            {"call": "list_events#1", "id": "agenda"},
+            {"call": "list_events#2", "id": "mail", "vary": {"calendar_id": "$today"}},
+            {
+                "call": "GMAIL_SEND_EMAIL#1",
+                "vary": {"subject": {"$ask": "a subject for today's agenda"}},
+            },
         ]
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
@@ -362,7 +366,7 @@ class TestWritePlaybook:
             {"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}},
             {"id": "mail", "tool": "list_events", "args": {"calendar_id": "$today"}},
             {
-                "id": "call3",
+                "id": "GMAIL_SEND_EMAIL_1",
                 "tool": "execute",
                 "args": {
                     "task_description": "GMAIL_SEND_EMAIL",
@@ -848,7 +852,7 @@ class TestPlaybookStorageDetails:
         self, store: _FakePlaybookStore, workflows: MagicMock
     ) -> None:
         """Reporting a single problem, or one without its node path, costs a round trip per issue and the agent often gives up first."""
-        steps = [{"call": 4}, {"call": 1, "vary": {"calendar_id": "primary"}}]
+        steps = [{"call": 4}, {"call": "list_events#1", "vary": {"calendar_id": "primary"}}]
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
@@ -860,8 +864,9 @@ class TestPlaybookStorageDetails:
             "success": False,
             "error": "invalid_playbook",
             "message": "The playbook was not written. Fix these and call write_playbook again: "
-            "steps[0].call: call 4 is not in this run's record; the calls you can pick are 1 "
-            "(read_run_record lists them); steps[1].vary.calendar_id: 'primary' holds no "
+            "steps[0].call: '4' is not in this run's record. A call is named by its id, never by "
+            "its position. Copy an id exactly as read_run_record shows it: list_events#1; "
+            "steps[1].vary.calendar_id: 'primary' holds no "
             "placeholder, so it does not change per run; leave 'calendar_id' out to replay the "
             "recorded 'primary', or write one ($today, $steps.<step_id>.<path>, $item.<path>, ...)",
         }
@@ -1010,7 +1015,9 @@ class TestPlaybookWideEvents:
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
-            await write_playbook.ainvoke(NEW_ARGS | {"steps": [{"call": 4}]}, config=_config())
+            await write_playbook.ainvoke(
+                NEW_ARGS | {"steps": [{"call": "list_events#4"}]}, config=_config()
+            )
 
         assert log.warning.call_args.kwargs["issues"] == 1
         # The record is stamped before the verdict, so a refusal still says what
@@ -1232,8 +1239,8 @@ class TestWritePlaybookAgainstTheAuthoringRun:
         """The exact production failure: the refusal must list what the result DOES carry, not just what's missing."""
         run_record[:] = [_fetch({"messages": [{"id": "m1"}]}), _reply({"sent": [{"id": "1"}]})]
         steps = [
-            {"call": 1, "id": "fetch"},
-            {"call": 2, "vary": {"thread_id": "$steps.fetch.threadId"}},
+            {"call": "GMAIL_FETCH_MESSAGES#1", "id": "fetch"},
+            {"call": "GMAIL_REPLY#1", "vary": {"thread_id": "$steps.fetch.threadId"}},
         ]
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
@@ -1261,7 +1268,7 @@ class TestWritePlaybookAgainstTheAuthoringRun:
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
         ):
             result = await write_playbook.ainvoke(
-                NEW_ARGS | {"steps": [{"call": 1}]}, config=_config()
+                NEW_ARGS | {"steps": [{"call": "GMAIL_FETCH_MESSAGES#1"}]}, config=_config()
             )
 
         assert result["success"] is False
@@ -1277,8 +1284,8 @@ class TestWritePlaybookAgainstTheAuthoringRun:
             _reply({"sent": [{"id": "1"}]}),
         ]
         steps = [
-            {"call": 1, "id": "fetch"},
-            {"call": 2, "vary": {"thread_id": "$steps.fetch.messages.0.threadId"}},
+            {"call": "GMAIL_FETCH_MESSAGES#1", "id": "fetch"},
+            {"call": "GMAIL_REPLY#1", "vary": {"thread_id": "$steps.fetch.messages.0.threadId"}},
         ]
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
@@ -1290,15 +1297,77 @@ class TestWritePlaybookAgainstTheAuthoringRun:
         assert result["success"] is True
         stored = store.documents[(WORKFLOW_ID, USER_ID)]
         assert stored.steps[1].to_document() == {
-            "id": "call2",
+            "id": "GMAIL_REPLY_1",
             "tool": "GMAIL_REPLY",
             "args": {"thread_id": "$steps.fetch.messages.0.threadId", "body": "hi"},
         }
 
-    async def test_a_stopped_replays_calls_come_first_and_can_be_picked(
+    @staticmethod
+    def _stored_reply_playbook(store: _FakePlaybookStore, recipe_hash: str) -> PlaybookDocument:
+        now = datetime.now(UTC)
+        stored = PlaybookDocument(
+            playbook_id="pb_healed",
+            workflow_id=WORKFLOW_ID,
+            user_id=USER_ID,
+            workflow_hash=recipe_hash,
+            description="Reply to unread mail",
+            steps=[
+                ToolStep(id="fetch", tool="GMAIL_FETCH_MESSAGES", args={"query": "is:unread"}),
+                ToolStep(id="answer", tool="GMAIL_REPLY", args={"thread_id": "t1", "body": "hi"}),
+            ],
+            result_brief="Say who was answered.",
+            last_run_status=PlaybookRunStatus.SUSPECT,
+            created_at=now,
+            updated_at=now,
+        )
+        store.documents[(WORKFLOW_ID, USER_ID)] = stored
+        return stored
+
+    async def _write_fetch_only(
+        self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]
+    ) -> dict[str, Any]:
+        run_record[:] = [_fetch({"messages": [{"id": "m1"}]}), _reply({"sent": [{"id": "1"}]})]
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
+        ):
+            return await write_playbook.ainvoke(
+                NEW_ARGS | {"steps": [{"call": "GMAIL_FETCH_MESSAGES#1"}]}, config=_config()
+            )
+
+    async def test_a_heal_rewrite_that_drops_the_reply_is_refused_and_the_playbook_kept(
         self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]
     ) -> None:
-        """A heal run is told not to repeat the replay's calls, so a rewrite that keeps one picks it from the replay."""
+        """Regression for pb_724d9611fc77: the heal rewrite lost send_notification and the next fire told the user nothing."""
+        current = workflow_hash(_workflow().prompt, _workflow().steps)
+        healed = self._stored_reply_playbook(store, current)
+
+        result = await self._write_fetch_only(store, workflows, run_record)
+
+        assert result["success"] is False
+        assert (
+            "the playbook this replaces calls GMAIL_REPLY (step answer), which acts for the user"
+            in result["message"]
+        )
+        assert store.documents[(WORKFLOW_ID, USER_ID)] is healed
+
+    async def test_a_playbook_left_stale_by_an_edit_does_not_bind_the_rewrite(
+        self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]
+    ) -> None:
+        """An edit to the workflow may have removed the action on purpose."""
+        self._stored_reply_playbook(store, "before-the-edit")
+
+        result = await self._write_fetch_only(store, workflows, run_record)
+
+        assert result["success"] is True
+        stored = store.documents[(WORKFLOW_ID, USER_ID)]
+        assert [step.tool for step in stored.steps] == ["GMAIL_FETCH_MESSAGES"]
+
+    async def test_a_stopped_replays_calls_on_the_record_can_be_picked(
+        self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]
+    ) -> None:
+        """A heal run is told not to repeat the replay's calls, so a rewrite that keeps one picks it from the record the worker seeded."""
         replayed = RecordedCall(
             tool_name="execute",
             args={
@@ -1309,19 +1378,17 @@ class TestWritePlaybookAgainstTheAuthoringRun:
             result_digest=json.dumps({"messages": [{"id": "m1", "threadId": "t1"}]}),
             replayed=True,
         )
-        run_record[:] = [_reply({"sent": [{"id": "1"}]})]
-        config = _config()
-        config["configurable"][PLAYBOOK_REPLAYED_CALLS_KEY] = [replayed.model_dump(mode="json")]
+        run_record[:] = [replayed, _reply({"sent": [{"id": "1"}]})]
         steps = [
-            {"call": 1, "id": "fetch"},
-            {"call": 2, "vary": {"thread_id": "$steps.fetch.messages.0.threadId"}},
+            {"call": "GMAIL_FETCH_MESSAGES#1", "id": "fetch"},
+            {"call": "GMAIL_REPLY#1", "vary": {"thread_id": "$steps.fetch.messages.0.threadId"}},
         ]
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
         ):
-            result = await write_playbook.ainvoke(NEW_ARGS | {"steps": steps}, config=config)
+            result = await write_playbook.ainvoke(NEW_ARGS | {"steps": steps}, config=_config())
 
         assert result["success"] is True
         first = store.documents[(WORKFLOW_ID, USER_ID)].steps[0].to_document()
@@ -1333,9 +1400,9 @@ class TestWritePlaybookAgainstTheAuthoringRun:
 
 @pytest.mark.unit
 class TestReadRunRecord:
-    """What the author picks from: every call, numbered, minus the run's own bookkeeping."""
+    """What the author picks from: every call, by id, minus the run's own bookkeeping."""
 
-    async def test_the_calls_are_numbered_with_their_args_and_result_shape(
+    async def test_the_calls_show_their_ids_args_and_result_shape(
         self, run_record: list[RecordedCall]
     ) -> None:
         run_record[:] = [
@@ -1349,13 +1416,13 @@ class TestReadRunRecord:
 
         assert result["data"]["calls"] == [
             {
-                "call": 1,
+                "call": "GMAIL_FETCH_MESSAGES#1",
                 "tool": "GMAIL_FETCH_MESSAGES",
                 "args": {"query": "is:unread"},
                 "returned": {"messages": {"list of 1": {"id": "str", "threadId": "str"}}},
             },
             {
-                "call": 2,
+                "call": "create_todo#1",
                 "tool": "create_todo",
                 "args": {"title": "x"},
                 "returned": "str",
@@ -1415,8 +1482,8 @@ class TestReadRunRecord:
     ) -> None:
         run_record[:] = [_fetch({"messages": [{"id": "m1"}]}), _reply({"sent": [{"id": "1"}]})]
         steps = [
-            {"call": 1, "id": "fetch"},
-            {"call": 2, "vary": {"thread_id": "$steps.fetch.threadId"}},
+            {"call": "GMAIL_FETCH_MESSAGES#1", "id": "fetch"},
+            {"call": "GMAIL_REPLY#1", "vary": {"thread_id": "$steps.fetch.threadId"}},
         ]
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
