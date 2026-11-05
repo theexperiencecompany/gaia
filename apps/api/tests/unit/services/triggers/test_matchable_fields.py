@@ -149,6 +149,16 @@ class TestCatalogFields:
             assert reason.strip(), f"{trigger_name} excludes {name} with no reason"
 
     @pytest.mark.parametrize(("trigger_name", "entry"), _CATALOG_ITEMS)
+    def test_a_title_field_is_a_catalogued_string(
+        self, trigger_name: str, entry: MatchableTrigger
+    ) -> None:
+        if entry.title_field is None:
+            return
+        field = entry.field(entry.title_field)
+        assert field is not None, f"{trigger_name} names an uncatalogued title field"
+        assert field.type is MatchableFieldType.STRING
+
+    @pytest.mark.parametrize(("trigger_name", "entry"), _CATALOG_ITEMS)
     def test_field_names_are_unique(self, trigger_name: str, entry: MatchableTrigger) -> None:
         names = list(entry.field_names)
         assert len(names) == len(set(names)), f"{trigger_name} lists a field twice"

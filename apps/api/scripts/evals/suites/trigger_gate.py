@@ -74,6 +74,8 @@ EVAL_GATES: Final[Mapping[EvalGate, TriggerGate]] = MappingProxyType(
     }
 )
 DESK_AUTOMATION: Final = _DESK.automation
+# The setup key that says whether the user sent a message in a continued email's thread.
+USER_WROTE_IN_THREAD: Final = "user_wrote_in_thread"
 
 
 class AskedRequest(TypedDict):
@@ -134,12 +136,18 @@ def gate_requests(
     }
 
 
-def day_outcome(
-    gate: TriggerGate, message: Mapping[str, object], body: JevDecisionsResponse
-) -> str:
-    """Return "skip" or "run" by day; a continuation always runs. The sweep checks decide_gate agrees."""
+def day_outcome(gate: TriggerGate, setup: Mapping[str, object], body: JevDecisionsResponse) -> str:
+    """Return "skip" or "run" by day; a conversation always runs. The sweep checks decide_gate agrees.
+
+    A continuation is a conversation when setup says the user wrote in its thread.
+    """
+    message = setup["message"]
+    if not isinstance(message, Mapping):
+        raise ValueError("corpus case has no message")
     view = gmail_gate_view(message)
-    if view is None or view.continues_thread is not False:
+    if view is None or view.continues_thread is None:
+        return "run"
+    if view.continues_thread and setup.get(USER_WROTE_IN_THREAD) is not False:
         return "run"
     answer = body.answers[TRIGGER_GATE_QUESTION_KEY]
     return "skip" if skip_probability(gate, answer) >= TRIGGER_GATE_SKIP_PROBABILITY else "run"
@@ -197,7 +205,7 @@ class GateTransport:
                 request_sha=request_sha(jev_body(state, questions)),
                 response=body.model_dump(mode="json", exclude_none=True),
             )
-        outcome = day_outcome(gate, message, answers[GateMode.DAY])
+        outcome = day_outcome(gate, case.setup, answers[GateMode.DAY])
         duration_s = time.monotonic() - start
         want = str(case.expected.get("outcome"))
         print(f"[{'ok' if outcome == want else 'MISS'}] {case.id}: want={want} got={outcome}")
