@@ -175,11 +175,16 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         patch(f"{gate}.ENFORCED_GATE_KINDS", frozenset(GateKind)),
         patch(f"{gate}.capture", MagicMock()) as capture,
         patch(f"{gate}.get_profile_timezone", AsyncMock(return_value=tz)) as profile_tz,
+        patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
     ):
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
         yield SimpleNamespace(
-            jev=router.post(HIL_JEV_URL), enforced=enforced, capture=capture, tz=profile_tz
+            jev=router.post(HIL_JEV_URL),
+            enforced=enforced,
+            capture=capture,
+            tz=profile_tz,
+            wrote=wrote,
         )
 
 
