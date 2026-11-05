@@ -596,7 +596,7 @@ export class GaiaClient {
   /**
    * Downloads an outbound attachment's bytes, choosing the transport by origin.
    *
-   * A URL on our own API (a step screenshot at `/shots/…`, served by the API
+   * A URL on our own API (a step screenshot at `/api/v1/browser/shots/…`, served by the API
    * where no object store is configured) goes through this authenticated client;
    * anything else is self-authorizing and stays behind the SSRF guard, because a
    * queued URL must not make the bot read internal services.

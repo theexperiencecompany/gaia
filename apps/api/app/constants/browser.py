@@ -100,6 +100,26 @@ class SensitiveCategory(str, Enum):
     IRREVERSIBLE = "irreversible"
 
 
+# The model reads this docstring in the action schema. It has no "none": offered one, the
+# agent filed a sign-in wall under it and the user's login was never saved.
+class TakeoverKind(StrEnum):
+    """What kind of step request_human_takeover hands to the user."""
+
+    PAYMENT = "payment"
+    SIGN_IN = "sign_in"
+    IRREVERSIBLE = "irreversible"
+    MISSING_VALUE = "missing_value"
+
+
+#: The sensitive category each takeover kind's handoff carries.
+TAKEOVER_KIND_CATEGORY: dict[TakeoverKind, SensitiveCategory] = {
+    TakeoverKind.PAYMENT: SensitiveCategory.PAYMENT,
+    TakeoverKind.SIGN_IN: SensitiveCategory.CREDENTIALS,
+    TakeoverKind.IRREVERSIBLE: SensitiveCategory.IRREVERSIBLE,
+    TakeoverKind.MISSING_VALUE: SensitiveCategory.NONE,
+}
+
+
 # Shown on a CREDENTIALS handoff where BROWSER_PERSIST_LOGINS keeps logins: the
 # session is saved (Fernet-encrypted per user+site) and reused so the next task
 # skips the login. The Browser settings page can list/remove saved sites.
@@ -168,7 +188,20 @@ BROWSER_SESSION_LEASE_SECONDS = 90.0
 # Three renewals per lease, so one slow or lost renewal never costs a live run its browser.
 BROWSER_SESSION_LEASE_RENEW_SECONDS = BROWSER_SESSION_LEASE_SECONDS / 3
 
-# A short capability code for the bot's live-view link (browser.heygaia.io/{code}):
+#: What the agent reads when it types into one box of a code split one character per box.
+BROWSER_CODE_BOXES_TO_JEV = (
+    "This box holds one character of a code split across {count} boxes, and typing box by "
+    "box loses characters as the page moves the cursor. Nothing was typed: give the whole "
+    "code to `jev` (its goal quoting the code), which types it into the boxes as one field."
+)
+#: How many one-character boxes in one form make one code field (snapshot.js MIN_SEGMENTS).
+BROWSER_CODE_MIN_BOXES = 4
+
+#: Where the browser routers sit under API_V1_PREFIX. The routers spell it as a literal, the
+#: only form tools/evlog_map resolves; links build on this one.
+BROWSER_ROUTE_PREFIX = "/browser"
+
+# A short capability code for the bot's live-view link ({FRONTEND_URL}/live/{code}):
 # the code IS the secret and maps to the session + owner in Redis, so the link
 # carries no 32-char session id and no long ?t= token. One per handoff, revoked on settle.
 BROWSER_LIVE_CODE_KEY_PREFIX = "browser:livecode:"
@@ -177,7 +210,7 @@ BROWSER_LIVE_CODE_HANDOFF_PREFIX = "browser:livecode:handoff:"
 BROWSER_LIVE_CODE_REVOKED_PREFIX = "browser:livecode:revoked:"
 
 # Replay: a short code maps to a finished session's screenshot set, so the recap
-# link (browser.heygaia.io/replays/{code}) plays every step back as a slideshow.
+# link ({HOST}/api/v1/browser/replays/{code}) plays every step back as a slideshow.
 # Longer-lived than the live code — a recap should still open days later.
 BROWSER_REPLAY_CODE_KEY_PREFIX = "browser:replay:"
 BROWSER_REPLAY_CODE_TTL_SECONDS = 7 * 24 * 3600
@@ -291,10 +324,16 @@ BROWSER_HUMAN_CHECKS = (
     "- A payment, a login whose credentials this task does not give as <secret>name</secret> "
     "placeholders, an OTP/2FA code, or an irreversible or legally-binding confirmation the "
     f"task did not ask for: call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` so the user "
-    "does that step in the live browser, then continue toward the goal. A login whose "
+    "does that step in the live browser, then continue toward the goal. Any page that asks "
+    "the user to sign in, log in or enter a code is a login, category sign_in. A login whose "
     "credentials the task gives is done by the run itself, never handed over. Before you hand "
     "off a login, fill every non-secret field yourself (username, email, the account "
     "identifier), so the user is left only the secret step.\n"
+    # Measured on GitHub's device login: stuck on a disabled Authorize, the agent pressed
+    # Cancel, and the user's gh login came back access_denied.
+    "- A consent the task asks you to grant (Authorize, Allow, Approve): never press its "
+    "Cancel, Deny or Decline. A grant button the page shows disabled becomes usable after a "
+    f"moment, so wait for it; if it never does, call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}`.\n"
     "- A CAPTCHA, reCAPTCHA, hCaptcha, an 'I'm not a robot' or image-grid challenge, or any "
     f"other bot check: call `{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` on the first one "
     "and do what its result says. Never try to solve one yourself or click challenge tiles.\n"
@@ -303,8 +342,8 @@ BROWSER_HUMAN_CHECKS = (
     "- A field you cannot leave empty that the task gives no value for: NEVER invent one (no "
     "made-up phone numbers, addresses, dates, amounts, countries or company details, and no "
     f"plausible-looking placeholder). Call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` "
-    "and say which field is missing, unless the task itself says the run is a test or that "
-    "dummy values are fine."
+    "with category missing_value and say which field is missing, unless the task itself says "
+    "the run is a test or that dummy values are fine."
 )
 # Read with the task, not the system message: there the agent reported only "Received!" for a
 # page whose heading is "Form submitted" in about a third of runs.

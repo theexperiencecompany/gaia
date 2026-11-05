@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import socket
 import subprocess
 import sys
@@ -78,6 +79,19 @@ def test_obscura_receives_its_script_deadline_in_milliseconds(
     assert env["OBSCURA_PROBE_PASSTHROUGH"] == "kept"
 
 
+@pytest.mark.regression
+def test_a_command_outlives_the_script_phase_it_waits_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Obscura's per-command budget defaulted to our 60 s script deadline, so both expired together."""
+    monkeypatch.setattr(browser_host_settings, "OBSCURA_SCRIPT_DEADLINE_SECONDS", 60)
+
+    env = obscura_serve_env()
+
+    assert (env["OBSCURA_SCRIPT_DEADLINE_MS"], env["OBSCURA_CDP_COMMAND_TIMEOUT_MS"]) == (
+        "60000",
+        "70000",
+    )
+
+
 def test_obscura_reaches_private_addresses_only_while_the_host_allows_private_origins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -146,7 +160,7 @@ async def test_obscura_is_launched_on_a_free_port_and_stopped_when_it_never_answ
     monkeypatch.setattr(obscura_launch, "free_local_port", lambda: 9444)
     proc = _Proc()
     spawn = AsyncMock(return_value=proc)
-    monkeypatch.setattr(obscura_launch.asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     monkeypatch.setattr(
         obscura_launch, "until_published", AsyncMock(side_effect=EngineLaunchError("x"))
     )
