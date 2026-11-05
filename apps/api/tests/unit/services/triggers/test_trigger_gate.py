@@ -357,7 +357,7 @@ class TestTheSkipLine:
 
         skip = await _skip(DESK, trigger_name=trigger_name, payload={"sender": "", "subject": ""})
 
-        assert skip is not None
+        assert isinstance(skip, GateSkip)
         assert skip.event == f"a {trigger_name} event"
 
     async def test_an_event_with_a_blank_title_is_named_by_its_trigger(
@@ -369,7 +369,7 @@ class TestTheSkipLine:
             trigger_name="calendar_event_created", payload={"summary": "  ", "calendar_id": "p"}
         )
 
-        assert skip is not None
+        assert isinstance(skip, GateSkip)
         assert skip.event == "a calendar_event_created event"
 
     async def test_a_long_subject_is_clipped_so_the_line_stays_one_line(
