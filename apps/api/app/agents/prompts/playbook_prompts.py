@@ -13,8 +13,8 @@ the finished result. Two reasons, both load-bearing:
   anyway: this run's is only persisted after the run returns.
 """
 
+from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.models.playbook_models import PlaybookBody, PlaybookStepInput, playbook_body_from_input
-from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.workflow.playbook.parser import dump_playbook
 
 
