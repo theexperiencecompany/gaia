@@ -382,6 +382,25 @@ class TestEditKeepsTheGate:
         request = mock_update.await_args.args[1]
         assert request.gate == GateEdit(condition="The email is from my boss", enabled=True)
 
+    async def test_a_condition_drafted_for_a_new_integration_trigger_is_not_sent(
+        self,
+    ) -> None:
+        """The editor sets the new trigger; its condition must not land on the old one's events."""
+        workflow = _gated()
+        draft = _draft(
+            trigger_type="integration",
+            trigger_slug="slack_new_message",
+            runs_only_when="The message mentions me",
+        )
+
+        with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = workflow
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+            )
+
+        mock_update.assert_not_awaited()
+
     def test_the_assistant_is_shown_the_condition_it_must_keep(self) -> None:
         task = build_edit_workflow_task(_gated(), "reply more formally")
 

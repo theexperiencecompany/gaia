@@ -340,7 +340,7 @@ def _edited_gate(draft: FinalizedOutput, workflow: Workflow) -> GateEdit | None:
     current = workflow.gate
     if (
         draft.runs_only_when is None
-        or workflow.trigger_config.type is not TriggerType.INTEGRATION
+        or _trigger_changed(draft, workflow.trigger_config)
         or (current is not None and draft.runs_only_when == current.display_condition)
     ):
         return None
@@ -377,6 +377,15 @@ async def _edited_fields(
     return update_fields
 
 
+def _trigger_changed(draft: FinalizedOutput, current: TriggerConfig) -> bool:
+    """Whether an edit draft names a different trigger from the one the workflow has."""
+    return (
+        draft.backend_trigger_type != current.type
+        or (draft.trigger_slug or None) != (current.trigger_name or None)
+        or (draft.cron_expression or None) != (current.cron_expression or None)
+    )
+
+
 def _edited_trigger(
     draft: FinalizedOutput, workflow: Workflow, user_timezone: str
 ) -> tuple[TriggerConfig | None, bool]:
@@ -387,12 +396,7 @@ def _edited_trigger(
     """
     new_type = draft.backend_trigger_type
     current = workflow.trigger_config
-    trigger_changed = (
-        new_type != current.type
-        or (draft.trigger_slug or None) != (current.trigger_name or None)
-        or (draft.cron_expression or None) != (current.cron_expression or None)
-    )
-    if not trigger_changed:
+    if not _trigger_changed(draft, current):
         return None, False
     if new_type == TriggerType.INTEGRATION:
         return None, True
