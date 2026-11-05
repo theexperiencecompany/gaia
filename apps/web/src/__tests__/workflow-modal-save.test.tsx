@@ -80,7 +80,23 @@ const SCHEDULED_FORM: WorkflowFormData = {
   notify_on_completion: true,
 };
 
-describe("creating a scheduled workflow", () => {
+const BILLING = "The email is from a customer and is about billing";
+
+const GMAIL_FORM: WorkflowFormData = {
+  ...SCHEDULED_FORM,
+  title: "Billing replies",
+  prompt: "Draft a reply to the billing email",
+  activeTab: "trigger",
+  selectedTrigger: "gmail_new_message",
+  trigger_config: {
+    type: "integration",
+    enabled: true,
+    trigger_name: "gmail_new_message",
+  },
+  runs_only_when: BILLING,
+};
+
+describe("saving a new workflow", () => {
   let queryClient: QueryClient;
 
   beforeEach(() => {
@@ -93,7 +109,7 @@ describe("creating a scheduled workflow", () => {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 
-  const setup = () =>
+  const setup = (form: WorkflowFormData) =>
     renderHook(
       () =>
         useWorkflowModalActions({
@@ -101,7 +117,7 @@ describe("creating a scheduled workflow", () => {
           existingWorkflow: undefined,
           currentWorkflow: null,
           setCurrentWorkflow: vi.fn(),
-          formData: SCHEDULED_FORM,
+          formData: form,
           triggerSchemas: [],
           hasPredefinedSteps: false,
           createAndSend: false,
@@ -114,7 +130,7 @@ describe("creating a scheduled workflow", () => {
 
   it("sends the create request once the server accepts the schedule", async () => {
     validateCron.mockResolvedValue({ valid: true });
-    const { result } = setup();
+    const { result } = setup(SCHEDULED_FORM);
 
     await act(() => result.current.handleSave(SCHEDULED_FORM));
 
@@ -127,7 +143,7 @@ describe("creating a scheduled workflow", () => {
       valid: false,
       error: "Schedules can repeat at most once an hour.",
     });
-    const { result } = setup();
+    const { result } = setup(SCHEDULED_FORM);
 
     await act(() => result.current.handleSave(SCHEDULED_FORM));
 
@@ -136,5 +152,25 @@ describe("creating a scheduled workflow", () => {
       type: "phase",
       phase: "error",
     });
+  });
+
+  it("sends a drafted runs-only-when condition with an integration workflow", async () => {
+    const { result } = setup(GMAIL_FORM);
+
+    await act(() => result.current.handleSave(GMAIL_FORM));
+
+    expect(createWorkflow.mock.calls[0]?.[0].runs_only_when).toBe(BILLING);
+  });
+
+  it("drops a drafted condition once the user moves the workflow onto a schedule", async () => {
+    validateCron.mockResolvedValue({ valid: true });
+    const form = { ...SCHEDULED_FORM, runs_only_when: BILLING };
+    const { result } = setup(form);
+
+    await act(() => result.current.handleSave(form));
+
+    const request = createWorkflow.mock.calls[0]?.[0];
+    expect(request).toBeDefined();
+    expect(request.runs_only_when).toBeUndefined();
   });
 });
