@@ -691,6 +691,14 @@ async def edit_subscription_gate_endpoint(
         },
     )
     todo = await edit_subscription_gate(todo_id, subscription_id, user.user_id, edit)
+    # The gate decides which events start a paid AI run, so every change to it is audited.
+    log.audit(
+        "todo watch gate edited",
+        actor=user.user_id,
+        resource=subscription_id,
+        todo_id=todo_id,
+        enabled=edit.enabled,
+    )
     log.set_ns("todo", outcome="success")
     return todo
 

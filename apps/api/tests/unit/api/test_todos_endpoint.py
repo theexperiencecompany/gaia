@@ -904,6 +904,7 @@ class TestEditSubscriptionGate:
 
         assert resp.status_code == 200
         stored = AuthoredGate(condition="the email is about an invoice", author=GateAuthor.USER)
+        assert write.await_args.args == ("todo-1",)
         assert write.await_args.kwargs == {
             "user_id": self.OWNER,
             "subscription_id": "watch-1",
@@ -919,6 +920,38 @@ class TestEditSubscriptionGate:
             UserId(self.OWNER),
             TriggerGateEdited(owner_type="todo", action="edited", gate_kind="authored"),
         )
+
+    async def test_the_wide_event_and_the_audit_trail_name_the_edit(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            self._stored(self._todo(self._watch(gate=self.GAIA_GATE))),
+            patch(f"{TODOS_ENDPOINT}.log") as log,
+        ):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-1"),
+                json={"condition": "the email is about an invoice", "enabled": False},
+            )
+
+        assert resp.status_code == 200
+        log.set.assert_called_once_with(
+            user={"id": self.OWNER},
+            todo={
+                "operation": "edit_subscription_gate",
+                "id": "todo-1",
+                "subscription_id": "watch-1",
+                "gate_condition_sent": True,
+                "gate_enabled": False,
+            },
+        )
+        log.audit.assert_called_once_with(
+            "todo watch gate edited",
+            actor=self.OWNER,
+            resource="watch-1",
+            todo_id="todo-1",
+            enabled=False,
+        )
+        log.set_ns.assert_called_once_with("todo", outcome="success")
 
     async def test_turning_it_off_keeps_the_condition(self, client: AsyncClient) -> None:
         with self._stored(self._todo(self._watch(gate=self.GAIA_GATE))) as (write, _):
