@@ -175,6 +175,19 @@ class TestRegisterSubscription:
         assert h.added.gate == gate
         assert subscription.gate == gate
 
+    async def test_a_watch_on_one_account_is_stored_on_that_account(self) -> None:
+        with _Harness(_todo(), []) as h:
+            await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name=ACCOUNT_TRIGGER,
+                conditions=[],
+                action=SubscriptionAction.EXECUTE,
+                account_id="acct_work",
+            )
+
+        assert h.added.account_id == "acct_work"
+
     @pytest.mark.parametrize(
         "action",
         [SubscriptionAction.NOTIFY, SubscriptionAction.COMPLETE, SubscriptionAction.UNBLOCK],
