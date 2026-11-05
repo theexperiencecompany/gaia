@@ -559,7 +559,7 @@ async def initiate_integration_connection(
             error_type=type(e).__name__,
             user_id=user_id,
         )
-        return _error(str(e))
+        return _error(f"Couldn't connect {resolved.name}. Please try again.")
 
 
 async def disconnect_integration(user_id: str, integration_id: str) -> IntegrationSuccessResponse:
