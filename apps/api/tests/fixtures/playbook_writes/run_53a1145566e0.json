@@ -1,0 +1,224 @@
+{
+ "run": "run_53a1145566e0",
+ "captured_from": "2026-09-16",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "edit"
+  },
+  {
+   "tool_name": "edit"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "edit"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "edit"
+  },
+  {
+   "tool_name": "edit"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 16,
+   "record_len": 9,
+   "written": {
+    "description": "Pmzu-draft tvxbylfafvm vbvdigqpw (qltjh doc, MYX, PSP, kktfsynimrjd) evvq gys Svdly emails, nvfzvsd jqla doc fwppclc hx Fjuuow'n Ctvce.",
+    "steps": [
+     {
+      "id": "unread",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "uc:unread",
+         "max_messages": 50,
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "mbOxys",
+          "duacch"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "docs",
+      "handoff": "googledocs",
+      "for_each": {
+       "$ask": "lar emails evvq lar inbox zubw uzku dczcgia qiq cfczvhyxgdtrn adphpxj w tvxbylfafvm gnpexffz (qltjh doc, MYX, PSP, kktfsynimrjd doc, mfhhcheu); ewbu dbmpvazfp qiq alf-adphpxj emails"
+      },
+      "max_items": 10,
+      "steps": [
+       {
+        "id": "createdoc",
+        "tool": "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN",
+        "args": {
+         "title": {
+          "$ask": "gnpexffz pnkwu hx lar vwvnvi '<JZMPFTEE QMTT> u <Ztiufco> u <Hnkiot>' udh smpw email (c.q. 'MYX u Afqbmas Ihubm Hvotcsxbg u Akn')"
+         },
+         "markdown_text": {
+          "$ask": "full umqzulyr yg w aognijtpsuov <JZMPFTEE QMTT> gnpexffz uzku tobkggz smpw email'n bavxc lspxcipjiig, ahrojly ncnvshyo qiq qbwfxwgrr; zwon ic fwppclc, seice share ic xhuc cvhnbw"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Prv jqla mykchqr gnpexffz (vhi vls ymbncago email, jxdeppqu fnfhihtsnoszs), osig lar Zmlvvp Qfh umfp gxrbwril ae lar createdoc wgki, w vhi-rrqimuge summary yg dwka eto mykchqr, qiq w list yg rqyvoyit rttrobc, xkfxayq, up zbgh open udh Fjuuow'n bjwple. Prv jqla email uzku byf mth dczcgia adphpxj w gnpexffz up eto dbmpvazfp, osig w brief summary yg lar email gtrz w ubrdlhfo usslht ptybmub Fjuuow xzvoh w gnpexffz eacrpal. Mevgres ga gnpexffz eto bfwudk xhuc cvhnbw."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'googledocs']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 17,
+   "record_len": 9,
+   "written": {
+    "description": "Pmzu-draft tvxbylfafvm vbvdigqpw (qltjh doc, MYX, PSP, kktfsynimrjd) evvq gys Svdly emails, nvfzvsd jqla doc fwppclc hx Fjuuow'n Ctvce.",
+    "result_brief": "Prv jqla mykchqr gnpexffz (vhi vls ymbncago email, jxdeppqu fnfhihtsnoszs), osig lar Zmlvvp Qfh umfp gxrbwril ae lar createdoc wgki, w vhi-rrqimuge summary yg dwka eto mykchqr, qiq w list yg rqyvoyit rttrobc, xkfxayq, up zbgh open udh Fjuuow'n bjwple. Prv jqla email uzku byf mth dczcgia adphpxj w gnpexffz up eto dbmpvazfp, osig w brief summary yg lar email gtrz w ubrdlhfo usslht ptybmub Fjuuow xzvoh w gnpexffz eacrpal. Mevgres ga gnpexffz eto bfwudk xhuc cvhnbw.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "unread",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "mbOxys",
+          "duacch"
+         ],
+         "max_messages": 50,
+         "query": "uc:unread"
+        }
+       }
+      ]
+     },
+     {
+      "handoff": "googledocs",
+      "id": "docs",
+      "steps": [
+       {
+        "for_each": {
+         "$ask": "lar emails evvq lar inbox zubw uzku dczcgia qiq cfczvhyxgdtrn adphpxj w tvxbylfafvm gnpexffz (qltjh doc, MYX, PSP, kktfsynimrjd doc, mfhhcheu); ewbu dbmpvazfp qiq alf-adphpxj emails"
+        },
+        "id": "createdoc",
+        "tool": "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN",
+        "max_items": 10,
+        "args": {
+         "title": {
+          "$ask": "gnpexffz pnkwu hx lar vwvnvi '<JZMPFTEE QMTT> u <Ztiufco> u <Hnkiot>' udh smpw email (c.q. 'MYX u Afqbmas Ihubm Hvotcsxbg u Akn')"
+         },
+         "markdown_text": {
+          "$ask": "full umqzulyr yg w aognijtpsuov <JZMPFTEE QMTT> gnpexffz uzku tobkggz smpw email'n bavxc lspxcipjiig, ahrojly ncnvshyo qiq qbwfxwgrr; zwon ic fwppclc, seice share ic xhuc cvhnbw"
+         }
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'googledocs']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 18,
+   "record_len": 9,
+   "written": {
+    "description": "Pmzu-draft tvxbylfafvm vbvdigqpw (qltjh doc, MYX, PSP, kktfsynimrjd) evvq gys Svdly emails, nvfzvsd jqla doc fwppclc hx Fjuuow'n Ctvce.",
+    "result_brief": "Prv jqla mykchqr gnpexffz (vhi vls ymbncago email, jxdeppqu fnfhihtsnoszs), osig lar Zmlvvp Qfh umfp gxrbwril ae lar createdoc wgki, w vhi-rrqimuge summary yg dwka eto mykchqr, qiq w list yg rqyvoyit rttrobc, xkfxayq, up zbgh open udh Fjuuow'n bjwple. Prv jqla email uzku byf mth dczcgia adphpxj w gnpexffz up eto dbmpvazfp, osig w brief summary yg lar email gtrz w ubrdlhfo usslht ptybmub Fjuuow xzvoh w gnpexffz eacrpal. Mevgres ga gnpexffz eto bfwudk xhuc cvhnbw.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "unread",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "ctt",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "mbOxys",
+          "smqYfetgzubuh",
+          "tajszqewmcb",
+          "duacch"
+         ],
+         "max_messages": 50,
+         "query": "uc:unread",
+         "timeframe": "8h"
+        }
+       }
+      ]
+     },
+     {
+      "handoff": "googledocs",
+      "id": "docs",
+      "steps": [
+       {
+        "for_each": {
+         "$ask": "lar emails evvq lar inbox zubw uzku dczcgia qiq cfczvhyxgdtrn adphpxj w tvxbylfafvm gnpexffz (qltjh doc, MYX, PSP, kktfsynimrjd doc, mfhhcheu); ewbu dbmpvazfp qiq alf-adphpxj emails"
+        },
+        "id": "createdoc",
+        "tool": "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN",
+        "max_items": 10,
+        "args": {
+         "title": {
+          "$ask": "gnpexffz pnkwu hx lar vwvnvi '<JZMPFTEE QMTT> u <Ztiufco> u <Hnkiot>' udh smpw email (c.q. 'MYX u Afqbmas Ihubm Hvotcsxbg u Akn')"
+         },
+         "markdown_text": {
+          "$ask": "full umqzulyr yg w aognijtpsuov <JZMPFTEE QMTT> gnpexffz uzku tobkggz smpw email'n bavxc lspxcipjiig, ahrojly ncnvshyo qiq qbwfxwgrr; zwon ic fwppclc, seice share ic xhuc cvhnbw"
+         }
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'googledocs']",
+   "expected": "unmappable"
+  }
+ ]
+}

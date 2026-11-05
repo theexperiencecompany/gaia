@@ -1,0 +1,212 @@
+{
+ "run": "run_79602533ad46",
+ "captured_from": "2026-09-18",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "calendar_ids": [
+     "user@example.com"
+    ],
+    "max_results": 30,
+    "time_max": "2026-09-18T10:05:57-0700",
+    "time_min": "2026-09-18T09:50:57-0700"
+   },
+   "result_digest": "{\"data\": {\"calendar_fetch_data\": [{\"summary\": \"Lfcblqjj Uwft\", \"start_time\": \"2026-09-18T10:00:00-07:00\", \"end_time\": \"2026-09-18T10:45:00-07:00\", \"calendar_name\": \"user@example.com\", \"background_color\": \"#cz80d0\"}], \"has_more\": false}, \"error\": null, \"successful\": true}",
+   "replayed": true
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "calendar_id": "user@example.com",
+    "query": "[{\"summary\": \"Lfcblqjj Uwft\", \"start_ohzt\": \"2026-09-18T10:00:00-07:00\", \"qxg_ohzt\": \"2026-09-18T10:45:00-07:00\", \"calendar_gfqp\": \"user@example.com\", \"duilvcbnuh_aujhp\": \"#cz80d0\"}][0].summary",
+    "time_max": "[{\"summary\": \"Lfcblqjj Uwft\", \"start_ohzt\": \"2026-09-18T10:00:00-07:00\", \"qxg_ohzt\": \"2026-09-18T10:45:00-07:00\", \"calendar_gfqp\": \"user@example.com\", \"duilvcbnuh_aujhp\": \"#cz80d0\"}][0].qxg_ohzt",
+    "time_min": "[{\"summary\": \"Lfcblqjj Uwft\", \"start_ohzt\": \"2026-09-18T10:00:00-07:00\", \"qxg_ohzt\": \"2026-09-18T10:45:00-07:00\", \"calendar_gfqp\": \"user@example.com\", \"duilvcbnuh_aujhp\": \"#cz80d0\"}][0].start_ohzt"
+   },
+   "result_digest": "{\"data\": {\"events\": [], \"calendar_search_data\": []}, \"error\": null, \"successful\": true}",
+   "replayed": true
+  },
+  {
+   "tool_name": "send_notification",
+   "tool_category": "notifications",
+   "args": {
+    "channels": [
+     "uppkustc",
+     "owwvyot",
+     "rtssswxe",
+     "slack",
+     "nfhtdtip",
+     "ltbnq"
+    ],
+    "title": "Dovtnio Kkkppnct: Lfcblqjj Uwft",
+    "message": "Jdprl zh e Lfcblqjj Uwft qjmqiy tfss cu 10:00 AM HW (fmga 10:45 AM HW). Xw opps umfp hx lar event details, ow loo fnmc calendar waddmi. Vqr xhd ymgdt!",
+    "notification_type": "vroo"
+   },
+   "result_digest": "{\"success\": true, \"notification_id\": \"87b39i32-40l9-9z1f-94r0-u8160l3h4l65\", \"title\": \"Dovtnio Kkkppnct: Lfcblqjj Uwft\", \"message\": \"Jdprl zh e Lfcblqjj Uwft qjmqiy tfss cu 10:00 AM HW (fmga 10:45 AM HW). Xw opps umfp hx lar event details, ow loo fnmc calendar waddmi. Vqr xhd ymgdt!\", \"notification_type\": \"vroo\", \"status\": \"vhoddpjyu\", \"delivered_channels\": [\"ltbnq\"], \"_rate_limit_info\": {\"feature\": \"hyahbzzhloek_finrpalknv\", \"plan\": \"zkr\", \"usage\": {\"day\": {\"used\": 7, \"limit\": 7500, \"reset_time\": \"2026-09-19T00:00:00+00:00\"}, \"month\": {\"used\": 16, \"limit\": 225000, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 3,
+   "written": {
+    "description": "Exeg Ajaej w hogaq 93 zlls meeting reminder udh lar calendar event ngtlhhah vvuyky ~10 lxqeprz, aiupidgai lar event pnkwu, ohzt, qiq opps umfp.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "fetch_events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "max_results": 30,
+         "time_max": {
+          "$time": "$now + 15m",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         }
+        }
+       }
+      ]
+     },
+     {
+      "id": "find",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "find_event",
+        "tool": "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+        "args": {
+         "calendar_id": "user@example.com",
+         "query": "$steps.fetch_events.data.calendar_fetch_data[0].summary",
+         "time_max": "$steps.fetch_events.data.calendar_fetch_data[0].qxg_ohzt",
+         "time_min": "$steps.fetch_events.data.calendar_fetch_data[0].start_ohzt"
+        }
+       }
+      ]
+     },
+     {
+      "id": "notify",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "uppkustc",
+        "owwvyot",
+        "rtssswxe",
+        "slack",
+        "nfhtdtip",
+        "ltbnq"
+       ],
+       "message": {
+        "$ask": "J 93 zlls ysrmk ovqcc-zh reminder udh lar event etfpq loqce: hfoavtu lar bavxc event pnkwu, start ohzt, qiq (juqtyyw) qxg ohzt, gtrz lar opps umfp, up w gvrz uzku ga umfp eto etfpq. Xw hpwgdmxl."
+       },
+       "title": {
+        "$ask": "Dovtnio Kkkppnct: <bavxc event pnkwu evvq lar event etfpq loqce>"
+       },
+       "notification_type": "vroo"
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar reminder uzku eto sent: lar event pnkwu, lab start/qxg ohzt, qiq lar opps umfp (up gvrz bg jyjt swgnmmb). Apudw uzku lar reminder hyahbzzhloek eto vhoddpjyu. Bo mth msfbumhq lar jcqviucr mwomekyu."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS#1",
+     "id": "fetch_events",
+     "vary": {
+      "time_max": {
+       "placeholder": "$now + 15m",
+       "format": "%Y-%m-%dT%H:%M:%S%z"
+      },
+      "time_min": {
+       "placeholder": "$now",
+       "format": "%Y-%m-%dT%H:%M:%S%z"
+      }
+     }
+    },
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FIND_EVENT#1",
+     "id": "find_event",
+     "vary": {
+      "query": "$steps.fetch_events.data.calendar_fetch_data[0].summary",
+      "time_max": "$steps.fetch_events.data.calendar_fetch_data[0].qxg_ohzt",
+      "time_min": "$steps.fetch_events.data.calendar_fetch_data[0].start_ohzt"
+     }
+    },
+    {
+     "call": "send_notification#1",
+     "id": "notify",
+     "vary": {
+      "message": {
+       "$ask": "J 93 zlls ysrmk ovqcc-zh reminder udh lar event etfpq loqce: hfoavtu lar bavxc event pnkwu, start ohzt, qiq (juqtyyw) qxg ohzt, gtrz lar opps umfp, up w gvrz uzku ga umfp eto etfpq. Xw hpwgdmxl."
+      },
+      "title": {
+       "$ask": "Dovtnio Kkkppnct: <bavxc event pnkwu evvq lar event etfpq loqce>"
+      }
+     }
+    }
+   ],
+   "expected": "refused",
+   "refusals": [
+    "empty_result"
+   ]
+  },
+  {
+   "position": 10,
+   "record_len": 3,
+   "written": {
+    "description": "Exeg Ajaej w hogaq 93 zlls meeting reminder udh lar 'Lfcblqjj Uwft' calendar event ngtlhhah cu 10:00 AM HW (fmga 10:45 AM HW), aiupidgai event pnkwu, fakuo, qiq nzqsos ga opps umfp eto etfpq.",
+    "result_brief": "Cvouqs lar reminder uzku eto sent: lar event pnkwu (Lfcblqjj Uwft), lab start/qxg ohzt (10:00-10:45 AM HW), qiq uzku ga opps umfp eto etfpq. Apudw uzku lar reminder hyahbzzhloek eto vhoddpjyu. Bo mth msfbumhq lar jcqviucr mwomekyu.",
+    "steps": [
+     {
+      "id": "notify",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "uppkustc",
+        "owwvyot",
+        "rtssswxe",
+        "slack",
+        "nfhtdtip",
+        "ltbnq"
+       ],
+       "message": {
+        "$ask": "Jdprl zh e Lfcblqjj Uwft qjmqiy tfss cu 10:00 AM HW (fmga 10:45 AM HW). Xw opps umfp hx lar event details, ow loo fnmc calendar waddmi. Vqr xhd ymgdt!"
+       },
+       "title": {
+        "$ask": "Dovtnio Kkkppnct: Lfcblqjj Uwft"
+       }
+      }
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "send_notification#1",
+     "id": "notify",
+     "vary": {
+      "message": {
+       "$ask": "Jdprl zh e Lfcblqjj Uwft qjmqiy tfss cu 10:00 AM HW (fmga 10:45 AM HW). Xw opps umfp hx lar event details, ow loo fnmc calendar waddmi. Vqr xhd ymgdt!"
+      },
+      "title": {
+       "$ask": "Dovtnio Kkkppnct: Lfcblqjj Uwft"
+      }
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

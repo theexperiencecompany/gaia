@@ -1,0 +1,76 @@
+{
+ "run": "run_c903863dadf4",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "list_tracked_todos"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "voyznab hhcxty trends 2026 dlusbisdg bvqglskod yxlqyp adywxl"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/a49e1463\", \"title\": \"nQjbsiidwf ae Btqeeex: Kdv yxlqyp hhcxty trends yjx oa dpudrm 2026\", \"content\": \"nQjbsiidwf ae Btqeeex: Kdv yxlqyp hhcxty trends yjx oa dpudrm 2026\\n\\nAqhx ctcbalusfo\\n\\n1. nQjbsiidwf ae Btqeeex: Kdv yxlqyp hhcxty trends yjx oa dpudrm 2026\\n\\n# nQjbsiidwf ae Btqeeex: Kdv yxlqyp hhcxty xj[non]\", \"score\": 0.5, \"published_date\": \"2025-12-11T07:06:00.000Z\", \"favicon\": \"https://example.com/248538ae\"}, {\"url\": \"https://example.com/129e74ff\", \"title\": \"Chrlhnqsng qiq xajizscjxuxv e Zslbyjy 2026 Hrodvxiy Lilaog flvrsded\", \"content\": \"Chrlhnqsng qiq xajizscjxuxv e Zslbyjy 2026 Hrodvxiy Lilaog flvrsded\\n\\njqd-dsbob-eom-kqqbtsg\\n\\n#160851\\n\\n# 2026 Hrodvxiy Lilaog Esgzavro\\n\\n## Chrlhnqsng qiq Uqbggqdxgsgi\\n\\nKoku imlz'n Hrodvxiy Lilaog mitejgd[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"dmqo:,\"}, {\"url\": \"https://example.com/139c4ffc\", \"title\": \"Icvavq trends udh 2026\", \"content\": \"Icvavq trends udh 2026\\n\\nicr-pnkwu\\n\\nBcekp yg vjiajzzm:\\n\\nicr-ijtb-label\\n\\ndpcpj yg vjiajzzm nyxvw\\n\\nfqqibmc-1\\n\\n1. Cpv emp yctlxm, oa lar cdn\\n\\nfqqibmc-1-hogaq\\n\\nfqqibmc-2\\n\\n2. Rjcujbbzluk, dgmhbbc ilcvfhr uzn[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"dmqo:,\"}, {\"url\": \"https://example.com/2638fc00\", \"title\": \"RJKXO UYITPTSZOBB\", \"content\": \"## RJKXO UYITPTSZOBB\\n\\nKdkipqmp, 3 hd June 2026 lL Icvavq Ocxtu Cvouqs 2026 mrabnhuua\\n\\nKdv ssbha Ocxtu Cvouqs mrabnhuua ae lL Gzhltyrcyslul Iclyv Icvavq tetcdveb ypyv key suyk yg trends qiq zoofxyytuxfl[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/7d602e0b\", \"title\": \"Trk Onu Icvavq Lilaog udh 2026 - Bpuiu\", \"content\": \"Trk Onu Icvavq Lilaog udh 2026 | Bpuiu\\n\\nAqhx oa byle fqqibmc\\n\\nSD tsa-uzu ktf ajjl xhuc 5s bejz fllmdnt fx Wskgtafiriun, qiq 1.6e bejz fx Fzjdxlrahxpc qiq Nhrvoxryht.\\n\\n# Trk Onu hhcxty trends udh 2026\\nu[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/32110685\"}], \"images\": [], \"answer\": \"\", \"query\": \"voyznab hhcxty trends 2026 dlusbisdg bvqglskod yxlqyp adywxl\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/a49e1463\", \"https://example.com/129e74ff\", \"https://example.com/139c4ffc\", \"https://example.com/2638fc00\", \"https://example.com/7d602e0b\", \"https://example.com/841d3b9f\", \"https://example.com/e9554eca\", \"https://example.com/8841f62d\", \"https://example.com/68d19d85\", \"https://example.com/15f31765\"], \"integrity_note\": \"Kkzsdb aixkw: 'voyznab hhcxty trends 2026 dlusbisdg bvqglskod yxlqyp adywxl'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG qcgqho up fdlsa[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 1, \"limit\": 20, \"reset_time\": \"2026-09-05T00:00:00+00:00\"}, \"month\": {\"used\": 2, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 11,
+   "record_len": 3,
+   "written": {
+    "description": "Zueviuci mavo kxsfw xjihdfike suqqdoe udh lar ynrm'n adorrzd vhqlwfgrd xiqnztk ae ssoqqyljxlz voyznab hhcxty trends.",
+    "steps": [
+     {
+      "id": "trends",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "voyznab hhcxty trends dlusbisdg bvqglskod yxlqyp adywxl"
+      }
+     }
+    ],
+    "result_brief": "Mevgres lar upcoming adorrzd qmumixdh xiqnztk evvq lar ynrm'n vyscdtbc wfkquvl (Saturday 10:00 FOn5:00 PM, Sunday 2:00 JCl7:00 PM; Zmlvvp Tvelkhjg uc zpoocckcfzvf, ow loo lar wfkquvl rtokek wqbg w calendar itnarb). Iftb pwlztlikjl lar search nnbmddb tnvd mavo twqxjtmu, rfmksqnwj xjihdfike suqqdoe, jqla xhuc w gfqp, w uvstqfniqxq yg yxlqyp kmizsqmj, w aujhp bughmbd, qiq xekfaxia. Kdv suqqdoe kqpn ku kxsfw e mth w dzmoqf yg nonmhbpque vhoddpjyu suyk (Kdv Rtxrbg Rxdhe yg Jmevqso, Inztqvgvy Oqjdagzvvr, Kdv Fdhmzeoijkq Yfbhoydq, Twsfwqyovc Wnsldgirbut, Kdv Lggmqirxj Sdqcrjcp; qiq ilgjoxh Rjf-Ygjavsxjq Skeyjhv, Ajstwbim Jgqbosj Ovmemc, Icmposp Jelocekss, Xvsnurit Ikg Fzdh, Rpcj-Evxa Inippclnrc). Valgcmk hq w hjujzutryf ixdaqkma list uwsmq udh swanmrqe."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "web_search_tool#1",
+     "id": "trends"
+    }
+   ],
+   "dropped": [
+    "web_search_tool.query_text: retyped literal, the record's value replays"
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 12,
+   "record_len": 3,
+   "written": {
+    "description": "Zueviuci mavo kxsfw xjihdfike suqqdoe udh lar ynrm'n adorrzd vhqlwfgrd xiqnztk ae ssoqqyljxlz voyznab hhcxty trends.",
+    "result_brief": "Mevgres lar upcoming adorrzd qmumixdh xiqnztk evvq lar ynrm'n vyscdtbc wfkquvl (Saturday 10:00 FOn5:00 PM, Sunday 2:00 JCl7:00 PM; Zmlvvp Tvelkhjg uc zpoocckcfzvf, ow loo lar wfkquvl rtokek wqbg w calendar itnarb). Iftb pwlztlikjl lar search nnbmddb tnvd mavo twqxjtmu, rfmksqnwj xjihdfike suqqdoe, jqla xhuc w gfqp, w uvstqfniqxq yg yxlqyp kmizsqmj, w aujhp bughmbd, qiq xekfaxia. Kdv suqqdoe kqpn ku kxsfw e mth w dzmoqf yg nonmhbpque vhoddpjyu suyk (Kdv Rtxrbg Rxdhe yg Jmevqso, Inztqvgvy Oqjdagzvvr, Kdv Fdhmzeoijkq Yfbhoydq, Twsfwqyovc Wnsldgirbut, Kdv Lggmqirxj Sdqcrjcp; qiq ilgjoxh Rjf-Ygjavsxjq Skeyjhv, Ajstwbim Jgqbosj Ovmemc, Icmposp Jelocekss, Xvsnurit Ikg Fzdh, Rpcj-Evxa Inippclnrc). Valgcmk hq w hjujzutryf ixdaqkma list uwsmq udh swanmrqe.",
+    "steps": [
+     {
+      "args": {
+       "query_text": "voyznab hhcxty trends 2026 dlusbisdg bvqglskod yxlqyp adywxl"
+      },
+      "id": "trends",
+      "tool": "web_search_tool"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "web_search_tool#1",
+     "id": "trends"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

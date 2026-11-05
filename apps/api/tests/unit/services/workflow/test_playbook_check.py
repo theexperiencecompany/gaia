@@ -375,8 +375,10 @@ def test_the_check_teaches_the_inline_ask_slot_and_no_ask_section():
 
 def test_the_check_shows_a_record_and_the_write_picked_from_it():
     """The example is a record as read_run_record shows it and the picks made over it, not steps to retype."""
-    assert '"call": 1, "tool": "GMAIL_FETCH_MESSAGES"' in PLAYBOOK_CHECK_BRIEF
-    assert '"call": 2,' in PLAYBOOK_CHECK_BRIEF
+    assert (
+        '"call": "GMAIL_FETCH_MESSAGES#1", "tool": "GMAIL_FETCH_MESSAGES"' in PLAYBOOK_CHECK_BRIEF
+    )
+    assert '"call": "web_search_tool#1",' in PLAYBOOK_CHECK_BRIEF
     assert '"vary"' in PLAYBOOK_CHECK_BRIEF
     assert '"result_brief"' in PLAYBOOK_CHECK_BRIEF
     assert "Call read_run_record" in PLAYBOOK_CHECK_BRIEF
@@ -433,9 +435,10 @@ def test_the_tools_own_schema_carries_the_pick_shape():
     step = schema["$defs"][PlaybookPick.__name__]
     assert set(step["properties"]) == {"call", "id", "vary", "for_each", "max_items"}
     assert step["required"] == ["call"]
+    assert step["properties"]["call"]["type"] == "string"
 
     # A key the schema never asked for is dropped, not refused.
-    pick = PlaybookPick.model_validate({"call": 3, "goal": "read the events"})
+    pick = PlaybookPick.model_validate({"call": "list_events#1", "goal": "read the events"})
     assert not hasattr(pick, "goal")
     with pytest.raises(ValidationError, match="call"):
         PlaybookPick.model_validate({"id": "agenda", "goal": "read the events"})

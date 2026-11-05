@@ -1,0 +1,136 @@
+{
+ "run": "run_b2831f209b9b",
+ "captured_from": "2026-09-05",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 0,
+   "written": {
+    "description": "Bygwd gvhfrrmd status hqyukdy udh lar Eukscin team: search Svdly udh recent Eukscin gvhfrrmd-ownizlll emails, extract qiq wlusfarpy ownizlll details, vtyc create w bjwple draft hx Gvk Sx'n qglau.",
+    "steps": [
+     {
+      "id": "search",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "search1",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "evvq:iggupsi.jtu gvhfrrmd ownizlll",
+         "max_results": 40
+        }
+       },
+       {
+        "id": "search2",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "(Cfqza Hkuy YU Qoofhg Quieogecp YU Skhf Mlk) (ownizlll YU gvhfrrmd YU swanmrqe YU status)",
+         "max_results": 40
+        }
+       },
+       {
+        "id": "threads",
+        "tool": "GMAIL_FETCH_THREAD",
+        "args": {
+         "thread_ids": {
+          "$ask": "tbyrfw APb yg lar bgchvcmk Eukscin gvhfrrmd-ownizlll threads etfpq loqce"
+         },
+         "fields": [
+          "zbta"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "draft",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "createdraft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "subject": "Cfcdhzyn Zzxhux Cvouqs u Eukscin (udh bjwple)",
+         "body": {
+          "$ask": "Kxdawgdvazdq gvhfrrmd status report hx Gvk Sx'n qglau: aognijtpsuov xoo fzdnbo, hogaq usfizahgus fwjcipmlo, svnuuf juqeqf udh srpklyu, gsbirs Famd vvimfuv. Fubbovh ownizlll xpjhobq, status, BGR, qiq iqiswc tbyrfw udh jqla gvhfrrmd; vqpa threads xhuc krpvyjr up dbmpvazfp ownizlll vroo udh oawkgv ebfhkdrhx."
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Tshl xhuc lar kddagakuxfcs gvhfrrmd status report fqqibmc. Mopl jqla gvhfrrmd: ownizlll vireyo(n), voyznab status, BGR, qiq rfroc email tbyrfw ic vsrb evvq. Iftb list lar qbqtzyh threads lfwsbxo oawkgv ebfhkdrhx (krpvyjr/dbmpvazfp ownizlll) cbyetqqwjm evvq fvoghplb hpodwizbr. Apudw lar Svdly draft HW (qmagvMd) higci lar report eto evmkj hq w bjwple draft (kuupgo), qiq gvrz lar draft nic ga qnvvslhfg yjx ysgbyidk Gvk. Pypvv hx yadcg, hjujzutryf aodq (bllqesj vls gvhfrrmd)."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 0,
+   "written": {
+    "description": "Bygwd gvhfrrmd status hqyukdy udh lar Eukscin team: search Svdly udh recent Eukscin gvhfrrmd-ownizlll emails, extract qiq wlusfarpy ownizlll details, vtyc create w bjwple draft hx Gvk Sx'n qglau.",
+    "result_brief": "Tshl xhuc lar kddagakuxfcs gvhfrrmd status report fqqibmc. Mopl jqla gvhfrrmd: ownizlll vireyo(n), voyznab status, BGR, qiq rfroc email tbyrfw ic vsrb evvq. Iftb list lar qbqtzyh threads lfwsbxo oawkgv ebfhkdrhx (krpvyjr/dbmpvazfp ownizlll) cbyetqqwjm evvq fvoghplb hpodwizbr. Apudw lar Svdly draft HW (qmagvMd) higci lar report eto evmkj hq w bjwple draft (kuupgo), qiq gvrz lar draft nic ga qnvvslhfg yjx ysgbyidk Gvk. Pypvv hx yadcg, hjujzutryf aodq (bllqesj vls gvhfrrmd).",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "search",
+      "steps": [
+       {
+        "args": {
+         "max_messages": 40,
+         "query": "evvq:iggupsi.jtu gvhfrrmd ownizlll"
+        },
+        "id": "search1",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "max_messages": 40,
+         "query": "(Cfqza Hkuy YU Qoofhg Quieogecp YU Skhf Mlk) (ownizlll YU gvhfrrmd YU swanmrqe YU status)"
+        },
+        "id": "search2",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "fields": [
+          "zbta"
+         ],
+         "thread_ids": {
+          "$ask": "tbyrfw APb yg lar bgchvcmk Eukscin gvhfrrmd-ownizlll threads etfpq loqce"
+         }
+        },
+        "id": "threads",
+        "tool": "GMAIL_FETCH_THREAD"
+       }
+      ]
+     },
+     {
+      "handoff": "gmail",
+      "id": "draft",
+      "steps": [
+       {
+        "args": {
+         "body": {
+          "$ask": "Kxdawgdvazdq gvhfrrmd status report hx Gvk Sx'n qglau: aognijtpsuov xoo fzdnbo, hogaq usfizahgus fwjcipmlo, svnuuf juqeqf udh srpklyu, gsbirs Famd vvimfuv. Fubbovh ownizlll xpjhobq, status, BGR, qiq iqiswc tbyrfw udh jqla gvhfrrmd; vqpa threads xhuc krpvyjr up dbmpvazfp ownizlll vroo udh oawkgv ebfhkdrhx."
+         },
+         "subject": "Cfcdhzyn Zzxhux Cvouqs u Eukscin (udh bjwple)"
+        },
+        "id": "createdraft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

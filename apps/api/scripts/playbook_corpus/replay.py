@@ -19,7 +19,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from app.agents.tools.execute.execute_tool import execute
 from app.agents.tools.playbook_tools import UNPICKABLE_TOOLS
 from app.constants.execute import EXECUTE_TOOL_NAME
-from app.models.playbook_models import PlaybookRefusal
+from app.models.playbook_models import ForEachStep, PlaybookRefusal, ToolStep
 from app.models.workflow_execution_models import RecordedCall
 from app.services.workflow.playbook import parser
 from app.services.workflow.playbook.parser import PlaybookIssue, validate_playbook
@@ -27,7 +27,7 @@ from app.services.workflow.playbook.record import (
     PlaybookPick,
     RecordEntry,
     build_playbook,
-    number_record,
+    record_entries,
 )
 
 
@@ -42,9 +42,9 @@ class Outcome:
         return sorted({issue.kind for issue in self.issues}, key=lambda kind: kind.value)
 
 
-def numbered(record: Sequence[RecordedCall], record_len: int) -> list[RecordEntry]:
-    """The record an attempt picked from, numbered as read_run_record numbers it."""
-    return number_record(record[:record_len], UNPICKABLE_TOOLS)
+def entries(record: Sequence[RecordedCall], record_len: int) -> list[RecordEntry]:
+    """The record an attempt picked from, with the ids read_run_record shows."""
+    return record_entries(record[:record_len], UNPICKABLE_TOOLS)
 
 
 async def replay(
@@ -52,9 +52,10 @@ async def replay(
     picks: Sequence[PlaybookPick],
     result_brief: str,
     record: Sequence[RecordEntry],
+    replaces: Sequence[ToolStep | ForEachStep] = (),
 ) -> Outcome:
     """Build and validate one attempt's picks against a registry made from its record."""
-    built = build_playbook(description, picks, result_brief, record)
+    built = build_playbook(description, picks, result_brief, record, replaces=replaces)
     if built.body is None:
         return Outcome(issues=built.issues)
     registry = _Registry(_recorded_tools(record))

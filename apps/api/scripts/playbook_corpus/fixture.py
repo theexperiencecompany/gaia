@@ -1,4 +1,4 @@
-"""The corpus fixture: one prod run, its record, and each write_playbook attempt it made."""
+"""The corpus fixture: one run, its record, and each write_playbook attempt it made."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.playbook_models import PlaybookRefusal
+from app.models.playbook_models import PlaybookRefusal, PlaybookStep
 from app.models.workflow_execution_models import RecordedCall
 from app.services.workflow.playbook.record import PlaybookPick
 
@@ -37,8 +37,17 @@ class Verdict(StrEnum):
     UNMAPPABLE = "unmappable"
 
 
+class Origin(StrEnum):
+    """Where a run came from, and so what its attempts are."""
+
+    #: A prod run: its attempts were hand-written steps, re-expressed here as picks.
+    PROD = "prod"
+    #: A real-LLM drive on a local stack: its attempts are the picks the model sent.
+    DRIVE = "drive"
+
+
 class OldOutcome(StrEnum):
-    """What the hand-written flow did with the attempt in prod."""
+    """What the flow the attempt ran under did with it."""
 
     ACCEPTED = "accepted"
     REFUSED = "refused"
@@ -62,12 +71,17 @@ class CorpusAttempt(BaseModel):
 
 
 class CorpusRun(BaseModel):
-    """One prod run that called write_playbook, anonymised."""
+    """One run that called write_playbook, anonymised."""
 
     model_config = ConfigDict(extra="forbid")
 
     run: str = Field(description="Salted hash of the execution id")
+    origin: Origin = Origin.PROD
     captured_from: date
     trigger_type: str
     record: list[RecordedCall] = Field(description="The run's pickable calls, in order")
+    replaces: list[PlaybookStep] = Field(
+        default_factory=list,
+        description="The current stored playbook's steps, which every attempt must keep acting",
+    )
     attempts: list[CorpusAttempt]
