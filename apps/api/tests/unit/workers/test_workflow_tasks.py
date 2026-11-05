@@ -96,6 +96,7 @@ def _make_workflow(
     wf.steps = steps or [WorkflowStep(id="s1", title="Step 1", description="Do it")]
     wf.is_todo_workflow = is_todo_workflow
     wf.source_todo_id = source_todo_id
+    wf.gate = None
     wf.model_dump = MagicMock(return_value={"id": wf.id, "title": wf.title})
     return wf
 
