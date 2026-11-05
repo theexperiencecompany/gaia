@@ -754,6 +754,18 @@ class TestTodosRepository(UserScopedRepositoryContract):
             "enabled": False,
         }
 
+    async def test_a_gate_write_refreshes_the_cached_copy(self, repo, make_doc):
+        watch = _subscription(gate=_DESK_GATE)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+        await repo.get(doc.id, user_id="u")  # warm the entity cache
+        off = _DESK_GATE.model_copy(update={"enabled": False})
+
+        await repo.set_subscription_gate(doc.id, user_id="u", subscription_id=watch.id, gate=off)
+
+        cached = await repo.get(doc.id, user_id="u")
+        assert cached is not None
+        assert [w.gate for w in cached.trigger_subscriptions] == [off]
+
     @pytest.mark.parametrize(
         ("owner", "action"),
         [("intruder", SubscriptionAction.EXECUTE), ("u", SubscriptionAction.NOTIFY)],

@@ -55,7 +55,12 @@ class TestApplyGateEdit:
         with pytest.raises(AppError) as refused:
             apply_gate_edit(None, GateEdit(enabled=False))
 
-        assert refused.value.status_code == 422
+        assert refused.value == AppError(
+            message="There is no gate to turn on or off",
+            why="an edit with no condition switches the gate already there",
+            fix="send a condition to add one",
+            status_code=422,
+        )
 
 
 OFF = AUTHORED.model_copy(update={"enabled": False})
@@ -100,6 +105,22 @@ class TestGateEditAction:
         capture.assert_called_once_with(
             UserId(USER_ID),
             TriggerGateEdited(owner_type="todo", action="disabled", gate_kind="system"),
+        )
+
+    @pytest.mark.parametrize(
+        ("before", "after", "action", "gate_kind"),
+        [(AUTHORED, None, "removed", "authored"), (DESK, REWORDED, "edited", "authored")],
+        ids=["removed", "rewritten_from_a_preset"],
+    )
+    def test_the_event_names_the_gate_the_write_left(
+        self, before: TriggerGate, after: TriggerGate | None, action: str, gate_kind: str
+    ) -> None:
+        with patch("app.services.triggers.gate_edits.capture") as capture:
+            report_gate_edit(USER_ID, GateOwner.TODO, before, after)
+
+        capture.assert_called_once_with(
+            UserId(USER_ID),
+            TriggerGateEdited(owner_type="todo", action=action, gate_kind=gate_kind),
         )
 
     def test_a_write_that_changed_nothing_sends_none(self) -> None:
