@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock
 from langchain_core.tools import BaseTool
 import pytest
 
+from app.agents.core.background.executor_channel import decide_drain
 from app.agents.tools.browser_chat_tools import browser_step_done, stop_browser_task
 from app.agents.tools.executor_tool import cancel_executor
 from app.constants.agents import AgentTag
@@ -247,14 +248,12 @@ async def test_a_worker_crash_still_reports_a_failure_and_frees_the_conversation
         assert await get_conversation_slot(CONVERSATION) is None
 
     # Told once, by whichever run reads the inbox: the live one if the run failed before its
-    # next model call, else the one its landing woke.
-    drained = [
-        str(m.content)
-        for prompt in run.prompts
-        for m in prompt
-        if str(m.content).startswith("<browser_result>")
-    ]
-    told = [entry.text for entry in world.told if entry.tag is AgentTag.BROWSER_RESULT]
+    # next model call, else the one its landing woke. An entry the live run already committed
+    # stays listed until the next drain retires it, so it is not still owed to a later run.
+    thread = [m for prompt in run.prompts for m in prompt]
+    drained = [str(m.content) for m in thread if str(m.content).startswith("<browser_result>")]
+    still_owed = decide_drain(world.told, thread).inject
+    told = [entry.text for entry in still_owed if entry.tag is AgentTag.BROWSER_RESULT]
     [said] = drained + told
     assert "DID NOT COMPLETE" in said
 
