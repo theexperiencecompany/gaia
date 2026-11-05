@@ -603,5 +603,6 @@ INTERACTIVE_DELIVERY_NOTE = wrap_agent_payload(
     "Call it done only where the result shows it happened; anything it does not show "
     "is not done, so say what is unconfirmed. Say what they get, never how: no tracked "
     "todos, triggers, subscriptions, runs, tasks, agents, tools or ids unless they used "
-    "that word first.",
+    "that word first, and never which app, channel or notification it reaches them "
+    "through unless they asked for one.",
 )
