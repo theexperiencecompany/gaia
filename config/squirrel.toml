@@ -26,7 +26,7 @@ incremental = false
 enable = ["*"]
 # Response time measures how loaded the machine serving the crawl is, not the
 # site: on one build it flagged 0 of 100 pages on one run and 7 on the next.
-disable = ["perf/ttfb", "a11y/aria-command-name", "a11y/aria-labels", "security/csp", "ax/token-weight", "perf/dom-size", "perf/total-byte-weight", "perf/cache-headers", "perf/unminified-js", "content/keyword-stuffing", "content/word-count", "url/slug-convention", "url/hyphens", "links/orphan-pages", "links/weak-internal-links", "core/meta-title"]
+disable = ["perf/ttfb"]
 
 # Other sites' uptime is not this site's regression.
 [external_links]
@@ -50,21 +50,3 @@ whitelist = ["les", "des", "und", "mehr", "vos", "com", "con", "avec", "airtable
 rule = "content/word-count"
 urls = ["/ja/", "/contact", "/download", "regex:^/blog/?$:i", "/use-cases/", "/marketplace"]
 reason = "Utility pages and CJK word segmentation"
-
-# The two accessibility checks above are reported only as "unconfirmed":
-# Squirrel could not find an actual unnamed element in the served DOM, and the
-# remaining references resolve correctly. Keep them visible in the source report
-# but do not let the heuristic lower the category score.
-[[ignore]]
-rule = "a11y/aria-command-name"
-reason = "Unconfirmed hidden-control heuristic; no unnamed command element exists in the served DOM."
-
-[[ignore]]
-rule = "a11y/aria-labels"
-reason = "Unconfirmed hidden-control heuristic; no unnamed button exists in the served DOM."
-
-# The inline CSS delivery requires unsafe-inline for the worker-injected style
-# block and Next's inline bootstrap. This is an explicit architecture tradeoff.
-[[ignore]]
-rule = "security/csp"
-reason = "Inline CSS delivery and Next bootstrap require unsafe-inline until nonce support is implemented."
