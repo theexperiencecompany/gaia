@@ -150,7 +150,8 @@ async def register_subscription(
             gate=gate,
         )
     except ValidationError as e:
-        raise _fail("invalid_subscription", f"Invalid subscription: {e.errors()[0]['msg']}") from e
+        refusal: ErrorDetails = e.errors()[0]
+        raise _fail("invalid_subscription", f"Invalid subscription: {refusal['msg']}") from e
 
     try:
         trigger_ids = await TriggerService.register_triggers(

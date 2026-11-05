@@ -1186,8 +1186,13 @@ class TestCreateWorkflowGate:
         assert stored.await_args.args[0].gate is None
 
     def test_a_condition_on_a_trigger_with_no_event_is_refused_at_the_request(self) -> None:
-        with pytest.raises(ValidationError, match="runs_only_when"):
+        with pytest.raises(ValidationError) as refused:
             self._request(trigger_config={"type": "manual"}, runs_only_when="always")
+
+        assert (
+            refused.value.errors()[0]["msg"]
+            == "Value error, runs_only_when needs an integration trigger"
+        )
 
 
 # ===========================================================================
