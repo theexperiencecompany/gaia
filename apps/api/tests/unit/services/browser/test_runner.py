@@ -63,7 +63,7 @@ from app.services.browser.ledger import CallComponent, ModelCall, RunLedger
 from app.services.browser.run_contract import BrowserRunConfig, RunHooks, RunOutcome, StepFrame
 from app.services.browser.runner import BrowserRunnerCallbacks, BrowserTaskRunner
 from app.services.browser.session import BrowserHostSession
-from app.services.cost_budget import BudgetCheck
+from app.services.cost_budget import DAILY_BUDGET_STOP_PRO, BudgetCheck, BudgetWall
 from app.services.llm_metering import LLMCallContext, TokenUsage
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
@@ -282,7 +282,7 @@ async def test_time_waiting_on_the_user_does_not_count_against_the_work_budget(
 async def test_a_run_past_the_users_cost_budget_stops_with_that_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stop = BudgetCheck("You've reached today's AI usage limit.", None, None)
+    stop = BudgetCheck(BudgetWall.DAILY_USAGE, None, None)
     monkeypatch.setattr(runner_mod, "get_budget_stop_reason", AsyncMock(return_value=stop))
 
     async def _checks(run: _ScriptedRun) -> RunOutcome:
@@ -292,7 +292,7 @@ async def test_a_run_past_the_users_cost_budget_stops_with_that_reason(
 
     assert (result.status, result.summary) == (
         BrowserSessionStatus.FAILED,
-        "You've reached today's AI usage limit.",
+        DAILY_BUDGET_STOP_PRO,
     )
 
 
@@ -319,7 +319,7 @@ async def test_the_handoff_past_the_limit_never_reaches_the_user() -> None:
 async def test_a_run_past_its_budget_does_not_ask_the_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stop = BudgetCheck("You've reached today's AI usage limit.", None, None)
+    stop = BudgetCheck(BudgetWall.DAILY_USAGE, None, None)
     monkeypatch.setattr(runner_mod, "get_budget_stop_reason", AsyncMock(return_value=stop))
 
     async def _asks_after_the_budget(run: _ScriptedRun) -> RunOutcome:
@@ -335,7 +335,7 @@ async def test_a_run_past_its_budget_does_not_ask_the_user(
     assert seen["handoffs"] == []
     assert (result.status, result.summary) == (
         BrowserSessionStatus.FAILED,
-        "You've reached today's AI usage limit.",
+        DAILY_BUDGET_STOP_PRO,
     )
 
 
@@ -598,7 +598,7 @@ async def test_a_run_the_user_stopped_never_moves_even_with_its_engine_wedged(
 async def test_a_run_past_its_budget_never_moves_even_with_its_engine_wedged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stop = BudgetCheck("limit", None, None)
+    stop = BudgetCheck(BudgetWall.DAILY_USAGE, None, None)
 
     async def _wedged(run: _ScriptedRun) -> RunOutcome:
         run.answers = False
@@ -611,7 +611,7 @@ async def test_a_run_past_its_budget_never_moves_even_with_its_engine_wedged(
     result = await _run(runner)
 
     seen["open_fallback"].assert_not_awaited()
-    assert result.summary == "limit"
+    assert result.summary == DAILY_BUDGET_STOP_PRO
     assert result.status == BrowserSessionStatus.FAILED
 
 
@@ -1144,7 +1144,7 @@ async def test_a_cancelled_run_that_finished_anyway_is_reported_cancelled() -> N
 async def test_a_run_past_its_cost_budget_after_it_finished_still_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stop = BudgetCheck("limit", None, None)
+    stop = BudgetCheck(BudgetWall.DAILY_USAGE, None, None)
     monkeypatch.setattr(runner_mod, "get_budget_stop_reason", AsyncMock(return_value=stop))
 
     async def _checks_then_claims(run: _ScriptedRun) -> RunOutcome:
@@ -1156,7 +1156,7 @@ async def test_a_run_past_its_cost_budget_after_it_finished_still_fails(
     assert (result.status, result.success, result.summary) == (
         BrowserSessionStatus.FAILED,
         False,
-        "limit",
+        DAILY_BUDGET_STOP_PRO,
     )
 
 
