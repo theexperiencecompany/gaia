@@ -75,12 +75,7 @@ from app.override.langgraph_bigtool.agent_config import (
     RetrieveToolsResponse,
     ToolRetrievalConfig,
 )
-from app.override.langgraph_bigtool.dynamic_tool_node import (
-    DynamicToolNode,
-    ToolNodeOptions,
-    format_tool_error,
-    hil_and_timeout_guarded_tool_call,
-)
+from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 from app.override.langgraph_bigtool.hooks import (
     HookType,
     changed_hook_keys,
@@ -853,13 +848,6 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
 def _tool_node(deps: _AgentDeps) -> DynamicToolNode:
     return DynamicToolNode(
         deps.tool_registry,
-        ToolNodeOptions(
-            # Parent-routed tools used to re-raise non-validation exceptions and
-            # crash the run; every failure now becomes an error ToolMessage,
-            # matching the middleware path (timeout wrapper exempts orchestration tools).
-            handle_tool_errors=format_tool_error,
-            awrap_tool_call=hil_and_timeout_guarded_tool_call,
-        ),
         middleware_executor=deps.middleware_executor,
         middleware_tools=deps.middleware_tools,
     )
@@ -950,8 +938,8 @@ def create_agent(
     builder.add_node("agent", _model_node(deps))
     if retrieve_tools is not None:
         # Tool retrieval is a pure read, so the default retry predicate is
-        # safe. The tools node has NO retry policy: its exceptions come from
-        # parent-routed tools, and retrying could double-execute a side effect.
+        # safe. The tools node has NO retry policy: an exception it raises comes
+        # from a tool that may have run, and retrying could double-execute a side effect.
         builder.add_node(
             "select_tools",
             _select_tools_node(deps),

@@ -1563,8 +1563,8 @@ class TestNonStringResults:
         assert result.ok is True, result.failure
         assert recorder.calls[1][1]["body"] == "/workspace/report.jsonl"
 
-    async def test_a_call_that_produced_no_result_stops_the_run_and_says_so(self) -> None:
-        """A state-only tool answers nothing; treating that as an empty success would let every later $steps reference resolve against a hole."""
+    async def test_a_command_with_no_reply_stops_the_run_and_says_so(self) -> None:
+        """A state-only Command answers nothing; an empty success would let every later $steps reference resolve against a hole."""
         recorder = _Recorder()
         registry = _FakeRegistry(_special_tools(recorder))
         playbook = _playbook([ToolStep(id="s", tool="stash", args={"note": "later"})])
@@ -1572,10 +1572,12 @@ class TestNonStringResults:
         result, _ = await _run(playbook, registry)
 
         assert result.ok is False
-        assert result.failure == (
-            "Playbook stopped at step 1 (stash): the graph produced no result for this call. "
-            "Completed: nothing. Nothing after that step ran."
+        assert result.failure is not None
+        assert result.failure.startswith(
+            "Playbook stopped at step 1 (stash): Error: ValueError: Expected to have a matching "
+            "ToolMessage in Command.update for tool 'stash'"
         )
+        assert result.failure.endswith("Completed: nothing. Nothing after that step ran.")
 
     async def test_a_content_block_result_is_recorded_as_its_text_not_as_nothing(self) -> None:
         recorder = _Recorder()
@@ -2476,13 +2478,14 @@ async def test_the_ask_fill_adds_to_the_runs_llm_count_rather_than_resetting_it(
     """The llm_calls counter is a running total; the ask fill adds its one call rather than resetting the tally."""
     run = _bare_run()
     run.llm_calls = 5
-    playbook = _playbook([ToolStep(id="mail", tool="list_events", args={})])
+    step = ToolStep(id="mail", tool="list_events", args={})
+    playbook = _playbook([step])
     fill = PlaybookAskFill(asks=[])
 
     with (
         patch(f"{MODULE}.ainvoke_structured", AsyncMock(return_value=fill)),
     ):
-        await _fill_asks(playbook, run, playbook.steps[0].arg_ask_slots("mail"), pending=[])
+        await _fill_asks(playbook, run, step.arg_ask_slots("mail"), pending=[])
 
     assert run.llm_calls == 6
     assert run.ask_fill is fill
@@ -2814,11 +2817,13 @@ class TestForEachShape:
 
     def test_the_stored_step_cannot_lack_a_ceiling(self) -> None:
         with pytest.raises(ValidationError):
-            ForEachStep(id="s", tool="send_email", args={}, for_each="$steps.x.ids")  # type: ignore[call-arg]  # proves the model refuses a loop with no ceiling
+            ForEachStep.model_validate(
+                {"id": "s", "tool": "send_email", "args": {}, "for_each": "$steps.x.ids"}
+            )
 
     def test_the_stored_step_cannot_carry_a_ceiling_without_a_loop(self) -> None:
         with pytest.raises(ValidationError):
-            ToolStep(id="s", tool="send_email", args={}, max_items=5)  # type: ignore[call-arg]  # proves the model refuses a ceiling without a loop
+            ToolStep.model_validate({"id": "s", "tool": "send_email", "args": {}, "max_items": 5})
 
     def test_the_ceiling_is_capped(self) -> None:
         with pytest.raises(ValidationError):

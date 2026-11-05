@@ -1,7 +1,6 @@
 """Structured marker + helpers for tool outputs offloaded to a workspace file.
 
-Both offload producers (the compaction middleware and a self-offloading tool
-like the gmail fetch) stamp an OffloadInfo under
+The compaction middleware stamps an OffloadInfo under
 additional_kwargs[OFFLOAD_KEY]. The compaction middleware reads it through
 read_offload to decide which file-mining tools to surface. One marker, one
 read path — no content parsing.
@@ -18,7 +17,6 @@ from app.constants.offload import (
     GREP_TOOL_NAME,
     OFFLOAD_JSON_FORMATS,
     OFFLOAD_KEY,
-    OFFLOAD_RESULT_KEY,
     QUERY_JSON_TOOL_NAME,
 )
 
@@ -31,7 +29,7 @@ class OffloadInfo(TypedDict):
     records: int | None  # line/message count when known, else None
 
 
-def mark_offload(additional_kwargs: dict, info: OffloadInfo) -> dict:
+def mark_offload(additional_kwargs: dict[str, object], info: OffloadInfo) -> dict[str, object]:
     """Return a copy of additional_kwargs with the offload marker attached."""
     return {**additional_kwargs, OFFLOAD_KEY: info}
 
@@ -41,24 +39,10 @@ def read_offload(message: ToolMessage) -> OffloadInfo | None:
     kwargs = getattr(message, "additional_kwargs", None)
     if not isinstance(kwargs, dict):
         return None
-    info = kwargs.get(OFFLOAD_KEY)
+    # Read off the wire, so the declared shape is only trusted once path checks out.
+    info: OffloadInfo | None = kwargs.get(OFFLOAD_KEY)
     if isinstance(info, dict) and isinstance(info.get("path"), str):
-        return info  # type: ignore[return-value]  # isinstance guard checks shape; mypy can't narrow dict to OffloadInfo
-    return None
-
-
-def pop_offload_descriptor(result: object) -> OffloadInfo | None:
-    """Pop a self-offloading tool's descriptor from its dict result, or None.
-
-    Mutates result (removes OFFLOAD_RESULT_KEY) so the descriptor never
-    leaks into the model-facing tool content — it carries only the structured
-    marker. The tool's own human-facing fields (preview, hint, …) are untouched.
-    """
-    if not isinstance(result, dict):
-        return None
-    info = result.pop(OFFLOAD_RESULT_KEY, None)
-    if isinstance(info, dict) and isinstance(info.get("path"), str):
-        return info  # type: ignore[return-value]  # isinstance guard checks shape; mypy can't narrow dict to OffloadInfo
+        return info
     return None
 
 
