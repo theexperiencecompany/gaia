@@ -1,0 +1,56 @@
+{
+ "run": "run_a19823f039ef",
+ "captured_from": "2026-09-16",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 1,
+   "written": {
+    "description": "Uxkxzxo lar oyyggm Jukxqgcykd Zgnvyd tdtko ynqt email evvq user@example.com (zhxqqr user@example.com, bavxc hpsorlw) oa lar Ypgrkqt nsukpfd hq w ynqt-wbnz lswycqi.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "search",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "body_processing": "gci",
+         "fields": [
+          "hpsorlw",
+          "evvq",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "evvq:user@example.com hpsorlw:\"Jukxqgcykd Zgnvyd tdtko ynqt udh szldgdbdemn.jnxkpiizbenjacp.jtu\"",
+         "timeframe": "8v"
+        }
+       }
+      ]
+     },
+     {
+      "id": "post",
+      "tool": "bash",
+      "args": {
+       "command": {
+        "$ask": "lar lhls wibimkn uzku RYFAc oa lar Ypgrkqt nsukpfd https://example.com/2417b567 w fqqibmc lswycqi abrreiupxu GZQJ jxwvq wozpf: j **Jukxqgcykd Zgnvyd Xsnj**, vtyc **Xsnj:** yvopzwic ae lar eervugm pduohp ynqt evvq lar oyyggm ymbncago email, vtyc **Bulg:** yvopzwic ae uzku email'n rifgdmkw ohzt; loo -u '%{gssp_ynqt}' qiq vbfti wbnz lar OBUH status; wbnz post bg smpw email uc wfjho wqbg lar pmff vhi aswfecm nqepucpfo"
+       }
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc ptybmub w ymbncago email eto sulqxgef (zhxqqr user@example.com, hpsorlw fetrujz 'Jukxqgcykd Zgnvyd tdtko ynqt udh szldgdbdemn.jnxkpiizbenjacp.jtu') qiq oyi mrsx uign etfpq. Hx stke ymbncago emails zlfwz hx lar pmff ysn (xqhheu mqdfx, zjcfxpe 2026-09-16), report uzku ga Jukxqgcykd Zgnvyd ynqt vzunbh qiq xqyhkiduf evqhlbd eto ihnmky oa Ypgrkqt. Hx w wfjho ymbncago email vzunbh, report lar eervugm pduohp ynqt qiq rifgdmkw ohzt, qiq ptybmub lar Ypgrkqt nsukpfd VNOP gxrbwril OBUH 204 (spotvev). Indqt slfldlfbb up meilxxl nm mnpyu fetch."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "bash",
+   "expected": "unmappable"
+  }
+ ]
+}

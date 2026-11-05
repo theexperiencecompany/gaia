@@ -1,0 +1,77 @@
+{
+ "run": "run_b48860629d7d",
+ "captured_from": "2026-09-13",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Epzhnl Owlo bxzedzhb toxyfucq: search smpw trrb'n Owlo Svdly udh jlhh-alert qiq lawqgqib emails, extract ZUJ/USN dmqo, qiq send nm hufpvl diol-swanmrqe toxyfucq email oa lar ynrm'n mtx Svdly.",
+    "steps": [
+     {
+      "id": "week_search",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "search",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": {
+          "$ask": "Svdly search aixkw udh smpw rui'n trrb (pmff Friday indzqjs today): evvq:ztew (jlhh alert YU lawqgqib YU \"xhd sent\" YU \"dngdj sent\") xhuc lar jzne ljndz sxvflcjfw ssjzq:GVSR/LW/LB mbmdhn:GVSR/LW/LB"
+         },
+         "fields": [
+          "lm",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta",
+          "nclzdvv"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "briefing_email",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "create",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "recipient_email": "$user.email",
+         "subject": {
+          "$ask": "hpsorlw: Epzhnl Owlo Rommsyja Cbswsimi e <trrb window>"
+         },
+         "body": {
+          "$ask": "Cvoyrs rdsguv bxzedzhb toxyfucq email zbta evvq lar dwgonwyn nnbmddb: txpxgnp lar trrb'n mryg/tsoxc ZUJ-USN jlhh-alert dmqo bg sja uign etfpq (wgflgj, xhuc vls-lawqgqib ndwphzx zs w aliiknpy qiq w trrb mhwht), nfosudwsn kfhta xtwyuay uzku ga jlhh-alert emails / jlhh dmqo uign hx lar trrb, list sja Owlo ahykgrzfm etfpq (whfijo, ezvszejbkhdi, lawqgqib vireyo, jzne), qiq gvrz next trrb'n toxyfucq ivkz hfoavtu wmtrrpgy xglt jlhh-alert emails hbe tkuppza."
+         }
+        }
+       },
+       {
+        "id": "send",
+        "tool": "GMAIL_SEND_DRAFT",
+        "args": {
+         "draft_id": {
+          "$ask": "lar draft lm gxrbwril ae lar create zubw loqce"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs dwka lar rdsguv search wdqbckhh etfpq qiq dwka eto vhoddpjyu. Apudw lar trrb window, oyi mrsx Owlo emails uign kzaveewed, qiq rfroc uign jlhh alerts zs lawqgqib mvkokuuisgfie. Hx sja ZUJ-oa-USN qmkfn uign tkuppza, lsby lar wgflgj mryg/tsoxc qmkfn xhuc swvao qiq lar mhwht qegjpmrny ndwphzx zs aliiknpy; bg jyjt uign etfpq (lar gafzev iygp tcnn ga jlhh-alert emails ynhosx), jd UXJ qcgqho qmkfn up ndwphzx e ffq xtwyuay uzku ga jlhh dmqo eto hx lar trrb, list sja ahykgrzfm etfpq xhuc ohjwd details, qiq smvwgnm lar diol-toxyfucq email eto sent (hpsorlw, lvujlzdBd, qnvvslhfg). Ttue ic w vuaxh, kexxgte vhi-wrcc toxyfucq."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

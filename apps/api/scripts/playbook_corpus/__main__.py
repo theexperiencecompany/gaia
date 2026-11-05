@@ -9,9 +9,10 @@ Two steps, so prod is only ever read::
     cd apps/api
     uv run --group backend python -m scripts.playbook_corpus build --source /tmp/writes.json.gz
 
-build replaces tests/fixtures/playbook_writes/ wholesale and prints the verdict
-counts. Review the diff before committing it: every fixture's expected verdict
-is what the pick flow does today, and the corpus test holds it there.
+build replaces the prod fixtures in tests/fixtures/playbook_writes/ (drive runs
+stay) and prints the verdict counts. Review the diff before committing it: every
+fixture's expected verdict is what the pick flow does today, and the corpus test
+holds it there.
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ from datetime import UTC, datetime
 import gzip
 import json
 from pathlib import Path
-import shutil
 import sys
 
 from bson import json_util
@@ -43,9 +43,10 @@ from .fixture import (
     CorpusAttempt,
     CorpusRun,
     OldOutcome,
+    Origin,
     Verdict,
 )
-from .replay import numbered, replay
+from .replay import entries, replay
 from .translate import translate
 
 WRITE_TOOL = "write_playbook"
@@ -93,9 +94,10 @@ def build(source: Path) -> Counter[str]:
     tally: Counter[str] = Counter()
     # Always the corpus directory, never a path from the command line: build deletes what is there.
     out = CORPUS_DIR
-    if out.exists():
-        shutil.rmtree(out)
-    out.mkdir(parents=True)
+    out.mkdir(parents=True, exist_ok=True)
+    for path in out.glob("*.json"):
+        if CorpusRun.model_validate_json(path.read_text()).origin is Origin.PROD:
+            path.unlink()
     for run in sorted(runs, key=lambda item: item.started_at):
         fixture = asyncio.run(_fixture(run, anonymiser))
         for attempt in fixture.attempts:
@@ -136,14 +138,14 @@ def _step_ids(runs: list[_ExportedRun]) -> set[str]:
 
 async def _fixture(run: _ExportedRun, anonymiser: Anonymiser) -> CorpusRun:
     trace = [anonymiser.call(call) for call in run.trace]
-    pickable = [entry.call for entry in numbered(trace, len(trace))]
+    pickable = [entry.call for entry in entries(trace, len(trace))]
     attempts: list[CorpusAttempt] = []
     for position, call in enumerate(trace):
         if call.tool_name != WRITE_TOOL:
             continue
         before = trace[:position]
-        record_len = len(numbered(before, len(before)))
-        record = numbered(pickable, record_len)
+        record_len = len(entries(before, len(before)))
+        record = entries(pickable, record_len)
         translation = translate(call.args, record, frozenset())
         old = OldOutcome.ACCEPTED if _accepted(call) else OldOutcome.REFUSED
         written = {key: decode_json_container(value) for key, value in call.args.items()}
@@ -192,8 +194,8 @@ def _needed(pickable: list[RecordedCall], attempts: list[CorpusAttempt]) -> list
     picked = {pick.call for attempt in attempts for pick in attempt.picks or []}
     longest = max((attempt.record_len for attempt in attempts), default=0)
     return [
-        call if number in picked else RecordedCall(tool_name=call.tool_name)
-        for number, call in enumerate(pickable[:longest], start=1)
+        entry.call if entry.call_id in picked else RecordedCall(tool_name=entry.call.tool_name)
+        for entry in entries(pickable, longest)
     ]
 
 
