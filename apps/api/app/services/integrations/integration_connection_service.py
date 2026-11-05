@@ -34,7 +34,10 @@ from app.services.composio.auth_config_resolver import auth_config_id_for
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.custom_crud import delete_custom_integration
 from app.services.integrations.integration_accounts import at_account_limit, get_account_record
-from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.integrations.integration_resolver import (
+    IntegrationResolver,
+    ResolvedIntegration,
+)
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
@@ -473,22 +476,18 @@ async def connect_self_integration(
 
 async def initiate_integration_connection(
     user_id: str,
-    integration_id: str,
+    resolved: ResolvedIntegration,
     *,
     user_email: str = "",
     redirect_path: str = "/integrations",
     bearer_token: str | None = None,
     reconnect_account_id: str | None = None,
-) -> ConnectIntegrationResponse | None:
-    """Resolve an integration and start its connect flow.
+) -> ConnectIntegrationResponse:
+    """Start a resolved integration's connect flow; shared by POST /connect and /connect-link.
 
-    Shared by POST /connect/{id} and the login-free POST /connect-link.
-    Returns None when the integration does not exist (callers map that to
-    404); otherwise redirect_url is the provider OAuth URL.
+    A raised failure is logged with the provider's text and answered with connect_failure_copy.
     """
-    resolved = await IntegrationResolver.resolve(integration_id)
-    if not resolved:
-        return None
+    integration_id = resolved.integration_id
 
     def _error(message: str) -> ConnectIntegrationResponse:
         return ConnectIntegrationResponse(
@@ -547,6 +546,7 @@ async def initiate_integration_connection(
             error_type=type(e).__name__,
             user_id=user_id,
         )
+        log.set(integration={"id": integration_id, "status": "error"})
         return _error(connect_failure_copy(resolved.name))
 
 
