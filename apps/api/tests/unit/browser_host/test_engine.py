@@ -364,7 +364,6 @@ async def test_a_chromium_launch_gets_a_fresh_profile_and_dials_its_port(
     assert root.urls == [_WS]
 
 
-@pytest.mark.regression
 @pytest.mark.parametrize(
     ("chromium", "agents"),
     [(_SHELL_BIN, [None, "Mozilla Chrome/153"]), (_FORTRESS_BIN, [None])],
@@ -376,7 +375,7 @@ async def test_a_headless_announcing_chromium_relaunches_as_plain_chrome_unless_
     chromium: ChromiumBinary,
     agents: list[str | None],
 ) -> None:
-    """Regression for #1610: the default host announced HeadlessChrome; a made-up UA desyncs Fortress's Client Hints."""
+    """The default host announced HeadlessChrome; a made-up UA desyncs Fortress's Client Hints."""
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
     spawned: list[list[str]] = []
