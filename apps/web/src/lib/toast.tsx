@@ -102,12 +102,20 @@ function ToastControls({
   );
 }
 
+// sileo reads `id` at runtime (it is how a toast is replaced in place) but leaves it out of its types.
+type IdentifiedSileoOptions = SileoOptions & { id: string };
+
 let toastCounter = 0;
 
 // sileo files every id-less toast under one shared id, so a later dismiss of
 // that id also removes whichever toast has since taken its place.
-function translate(message: string, opts?: ToastOptions): SileoOptions {
-  const out: SileoOptions = { id: opts?.id ?? `toast-${++toastCounter}` };
+function translate(
+  message: string,
+  opts?: ToastOptions,
+): IdentifiedSileoOptions {
+  const out: IdentifiedSileoOptions = {
+    id: opts?.id ?? `toast-${++toastCounter}`,
+  };
 
   if (message.length > TITLE_MAX_CHARS && opts?.description === undefined) {
     // Long title, no description: promote to description so it wraps, and opt into
