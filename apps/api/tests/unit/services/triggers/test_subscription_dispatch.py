@@ -994,8 +994,9 @@ class TestQuietHours:
         self, deps, jev: respx.Route
     ) -> None:
         jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
+        # Only thread_id equals tracks a thread: not another field holding its id, nor not_equals.
         on_subject = SubscriptionCondition(
-            field_name="subject", operator=ConditionOperator.EQUALS, value="t-9"
+            field_name="subject", operator=ConditionOperator.EQUALS, value="t-8"
         )
         not_this_thread = SubscriptionCondition(
             field_name="thread_id", operator=ConditionOperator.NOT_EQUALS, value="t-9"
@@ -1004,7 +1005,7 @@ class TestQuietHours:
         deps.repo.find_active_by_user_and_trigger.return_value = [
             _todo(trigger_subscriptions=[sub])
         ]
-        reply: dict[str, object] = {"thread_id": "t-8", "message_id": "m-2", "subject": "t-9"}
+        reply: dict[str, object] = {"thread_id": "t-8", "message_id": "m-2", "subject": "t-8"}
 
         wrote = AsyncMock(return_value=False)
         with patch("app.services.triggers.trigger_gate.user_wrote_in_thread", wrote):
