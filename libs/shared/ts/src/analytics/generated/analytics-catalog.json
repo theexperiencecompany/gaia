@@ -5355,6 +5355,53 @@
       }
     },
     {
+      "event": "payment:checkout_abandoned",
+      "class": "PaymentCheckoutAbandoned",
+      "owner": "web",
+      "domain": "payment",
+      "description": "The embedded checkout closed without a charge; only the browser sees the sheet go away.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": null,
+      "properties": {
+        "additionalProperties": false,
+        "description": "The embedded checkout closed without a charge; only the browser sees the sheet go away.",
+        "properties": {
+          "source": {
+            "enum": [
+              "paywall_modal",
+              "pricing_card",
+              "payment_retry",
+              "checkout_resume",
+              "onboarding"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "billing_cycle": {
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "type": "string"
+          },
+          "furthest_step": {
+            "enum": [
+              "not_loaded",
+              "opened",
+              "details_submitted",
+              "payment_page",
+              "pay_pressed"
+            ],
+            "title": "Furthest Step",
+            "type": "string"
+          }
+        },
+        "required": ["source", "billing_cycle", "furthest_step"],
+        "title": "PaymentCheckoutAbandoned",
+        "type": "object"
+      }
+    },
+    {
       "event": "payment:checkout_started",
       "class": "PaymentCheckoutStarted",
       "owner": "server",

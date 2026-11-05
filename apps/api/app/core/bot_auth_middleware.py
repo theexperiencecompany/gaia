@@ -14,8 +14,7 @@ from collections.abc import Awaitable, Callable
 import secrets
 
 from fastapi import Request, Response
-from jose import JWTError
-from pydantic import BaseModel, ConfigDict
+from jwt import PyJWTError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
@@ -30,19 +29,6 @@ from app.utils.log_identifiers import hash_platform_user_id
 from shared.py.wide_events import log
 
 _BEARER_PREFIX = "Bearer "
-
-
-class BotSessionClaims(BaseModel):
-    """The identity claims ``verify_bot_session_token`` decodes from a bot JWT.
-
-    Each is optional: a token missing any of them authenticates nobody.
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    user_id: str | None = None
-    platform: str | None = None
-    platform_user_id: str | None = None
 
 
 class BotAuthMiddleware(BaseHTTPMiddleware):
@@ -91,7 +77,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         token = auth_header.removeprefix(_BEARER_PREFIX)
         try:
             user_info = await self._authenticate_jwt(token)
-        except JWTError as e:
+        except PyJWTError as e:
             log.debug(
                 f"{LogTag.API} Bot JWT rejected, trying API key",
                 error=str(e),
@@ -186,7 +172,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
     async def _authenticate_jwt(self, token: str) -> AuthenticatedUser | None:
         """Authenticate via JWT session token with caching."""
         try:
-            claims = BotSessionClaims.model_validate(verify_bot_session_token(token))
+            claims = verify_bot_session_token(token)
             user_id = claims.user_id
             platform = claims.platform
             platform_user_id = claims.platform_user_id
@@ -208,5 +194,5 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
             await set_cache(cache_key, user_info, ttl=TEN_MINUTES_TTL, model=AuthenticatedUser)
             return user_info
 
-        except JWTError:
+        except PyJWTError:
             raise
