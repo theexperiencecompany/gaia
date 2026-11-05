@@ -1,3 +1,4 @@
+import "../../../styles/content.css";
 import GuideLanding from "@/components/seo/GuideLanding";
 import { generateGuideMetadata } from "@/components/seo/guideLandingMetadata";
 

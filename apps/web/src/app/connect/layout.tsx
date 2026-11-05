@@ -1,3 +1,4 @@
+import "../styles/app.css";
 import type { ReactNode } from "react";
 
 import { defaultFont, getAllFontVariables } from "@/app/fonts";

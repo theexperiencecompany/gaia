@@ -1,3 +1,4 @@
+import "../../../styles/marketing.css";
 import { Link } from "@heroui/link";
 import type { Metadata } from "next";
 

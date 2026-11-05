@@ -39,7 +39,7 @@
     "write-static-headers": "node scripts/write-static-headers.mjs",
     "verify-prerender": "node scripts/verify-prerender-cache.mjs",
     "verify-landing-bundle": "node scripts/verify-landing-bundle.mjs",
-    "cf:build": "npm run type-check && IMAGE_LOADER=cloudflare opennextjs-cloudflare build && npm run promote-static && npm run prune-desktop-assets && npm run write-static-headers",
+    "cf:build": "npm run type-check && IMAGE_LOADER=cloudflare opennextjs-cloudflare build && node scripts/inline-worker-css.mjs && npm run promote-static && npm run prune-desktop-assets && npm run write-static-headers",
     "deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",

@@ -1,4 +1,5 @@
 "use client";
+import "../../../../styles/marketing.css";
 
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";

@@ -1,3 +1,4 @@
+import "../../../../styles/marketing.css";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
