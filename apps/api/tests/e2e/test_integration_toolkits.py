@@ -14,21 +14,43 @@ Tools run in a real compiled LangGraph run, so get_config() and get_stream_write
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from datetime import UTC, datetime, timedelta
 import importlib
 import json
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from composio import Composio
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool, tool as lc_tool
 from langgraph.graph import END, START, StateGraph
+from langgraph.store.memory import InMemoryStore
 from langgraph.types import StreamMode
 import pytest
 from typing_extensions import TypedDict
 
+from app.agents.core.graph_builder.build_graph import (
+    EXECUTOR_INITIAL_TOOL_IDS,
+    build_executor_graph,
+)
+from app.agents.tools.coding.query_json_tool import query_json
+from app.agents.tools.execute.dispatch import ToolExecutionResult
+from app.agents.tools.execute.execute_tool import build_execute_tool
+from app.agents.tools.todo_tools import TODO_TOOL_NAMES
+from app.agents.workspace.offload import read_offload
 from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.models.integration_models import (
     IntegrationAccount,
@@ -38,6 +60,7 @@ from app.models.integration_models import (
 from app.models.user_models import UserDocument
 from app.services.composio.custom_tools.registry import CustomToolsRegistry
 from app.utils.errors import AppError
+from tests.helpers import BindableToolsFakeModel
 
 # Imported for its side effect: app.patches installs the custom-tool schema
 # patches at import time, and the contracts asserted below depend on them.
@@ -46,15 +69,22 @@ importlib.import_module("app.patches")
 pytestmark = pytest.mark.e2e
 
 USER = "user-1"
+# The executor's own user id: analytics only accepts a Mongo ObjectId.
+USER_OBJECT_ID = "65a1b2c3d4e5f60718293a4b"
 HOME_TZ = "Asia/Kolkata"
 PROXY_SEAM = "app.services.composio.proxy_client._get_composio"
 
 
 @pytest.fixture(scope="module")
-def tools() -> dict[str, Any]:
+def composio_client() -> Composio:
     client = Composio(api_key="test-key-not-real")  # pragma: allowlist secret
     CustomToolsRegistry().initialize(client)
-    return client.tools._custom_tools.custom_tools_registry
+    return client
+
+
+@pytest.fixture(scope="module")
+def tools(composio_client: Composio) -> dict[str, Any]:
+    return composio_client.tools._custom_tools.custom_tools_registry
 
 
 ACCOUNT_ID = "connected-account-1"
@@ -337,71 +367,178 @@ class TestGmailFetchMessages:
         assert result["fetched_count"] == 3
         assert result["truncated"] is True
 
-    def test_a_large_inbox_offloads_to_a_file_the_agent_can_actually_mine(self, tools):
-        """Past 50 messages, the offloaded file must keep the body the inline projection drops (for downstream query_json), and its read plan must cover every line exactly once."""
+    def test_a_large_inbox_comes_back_whole_for_compaction_to_file(self, tools):
+        """Past 50 messages every field comes back, body included, since a body query against the file compaction writes would otherwise silently find nothing."""
         tool = tools["GMAIL_FETCH_MESSAGES"]
-        ids = [f"m{i}" for i in range(61)]
-        written: dict[str, Any] = {}
 
-        def proxy(**kwargs: Any) -> FakeProxyResponse:
-            endpoint = kwargs["endpoint"]
-            if endpoint.endswith("/messages"):
-                return FakeProxyResponse(
-                    {"messages": [{"id": i} for i in ids], "resultSizeEstimate": len(ids)}
-                )
-            return FakeProxyResponse(gmail_message(endpoint.rsplit("/", 1)[1]))
-
-        def fake_write(
-            *, user_id: str, conversation_id: str, relative_path: str, content: str
-        ) -> tuple[str, str]:
-            written.update(
-                user_id=user_id,
-                conversation_id=conversation_id,
-                relative_path=relative_path,
-                content=content,
-            )
-            return (f"/mnt/jfs/{relative_path}", f"/workspace/{relative_path}")
-
-        with (
-            stub_auth(tool),
-            patch(PROXY_SEAM, return_value=fake_composio(proxy)),
-            patch(
-                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
-                fake_write,
-            ),
-        ):
+        with stub_auth(tool), patch(PROXY_SEAM, return_value=fake_composio(large_inbox_proxy)):
             result, streamed = run_in_graph(
-                lambda: tool.invoke_trusted(user_id=USER, request_kwargs={"query": "in:inbox"}),
-                {"vfs_session_id": "session-9"},
+                lambda: tool.invoke_trusted(user_id=USER, request_kwargs={"query": "in:inbox"})
             )
 
-        assert "messages" not in result, "the oversized payload was returned inline anyway"
-        assert result["total_messages"] == 61
-        assert result["offloaded_to"] == f"/workspace/{written['relative_path']}"
-        assert written["conversation_id"] == "session-9"
+        assert result["fetched_count"] == LARGE_INBOX_SIZE
+        assert len(result["messages"]) == LARGE_INBOX_SIZE
+        assert result["messages"][0]["body"] == "Invoice #42 is attached"
+        assert "__offload__" not in result
+        assert streamed == [], "a result headed for a file must not also render the inbox card"
 
-        lines = written["content"].splitlines()
-        assert len(lines) == 61
-        first = json.loads(lines[0])
-        assert first["body"] == "Invoice #42 is attached", (
-            "the offloaded file has no body — every query_json/grep over it "
-            "will silently find nothing"
-        )
-        assert "body" not in result["inline_preview"][0], (
-            "the in-context preview is carrying bodies it was meant to project away"
-        )
 
-        plan = result["read_plan"]
-        assert plan["total_lines"] == 61
-        covered = [
-            line
-            for chunk in plan["chunks"]
-            for line in range(
-                chunk["read"]["offset"], chunk["read"]["offset"] + chunk["read"]["limit"]
+LARGE_INBOX_SIZE = 61
+
+
+def large_inbox_proxy(**kwargs: Any) -> FakeProxyResponse:
+    """Answer the Gmail list and get calls for an inbox of LARGE_INBOX_SIZE billing emails."""
+    endpoint = kwargs["endpoint"]
+    if endpoint.endswith("/messages"):
+        ids = [f"m{i}" for i in range(LARGE_INBOX_SIZE)]
+        return FakeProxyResponse(
+            {"messages": [{"id": i} for i in ids], "resultSizeEstimate": len(ids)}
+        )
+    return FakeProxyResponse(gmail_message(endpoint.rsplit("/", 1)[1]))
+
+
+class _InboxAgent(BindableToolsFakeModel):
+    """Scripted executor: fetch the inbox through execute, then query the file it was saved to."""
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=self._reply(messages))])
+
+    def _reply(self, messages: list[BaseMessage]) -> AIMessage:
+        if isinstance(messages[0], SystemMessage) and "compress tool outputs" in messages[0].text:
+            return AIMessage(content=f"{LARGE_INBOX_SIZE} billing emails from GitHub")
+        replies = [m for m in messages if isinstance(m, ToolMessage)]
+        if not replies:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "execute",
+                        "args": {
+                            "task_description": "Reading the inbox",
+                            "tool_name": "GMAIL_FETCH_MESSAGES",
+                            "data": {"query": "in:inbox"},
+                        },
+                        "id": "fetch",
+                    }
+                ],
             )
-        ]
-        assert covered == list(range(1, 62)), "the read plan does not cover every message once"
-        assert streamed == [], "an offloaded result must not also render the inbox card"
+        offload = read_offload(replies[0])
+        if len(replies) == 1 and offload is not None:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "query_json",
+                        "args": {
+                            "path": offload["path"],
+                            "where": [{"field": "id", "op": "equals", "value": "m7"}],
+                            "fields": ["subject", "body"],
+                        },
+                        "id": "query",
+                    }
+                ],
+            )
+        return AIMessage(content="done")
+
+
+def _stub_tool(name: str) -> BaseTool:
+    async def _stub(query: str = "") -> str:
+        return f"stub:{name}"
+
+    _stub.__name__ = name
+    _stub.__doc__ = f"Stub for {name}."
+    return lc_tool(_stub)
+
+
+class TestGmailFetchThroughTheExecutor:
+    """The real executor graph and middleware stack, a scripted model, the real Gmail tool body.
+
+    Faked: the model, the tool store/checkpointer, workspace storage (a tmp dir)
+    and dispatch's resolution, which here runs the Gmail custom tool through
+    Composio's own custom-tool execution so the result keeps its real envelope.
+    """
+
+    async def test_a_large_inbox_is_filed_as_records_the_agent_can_query(
+        self, composio_client, tools, tmp_path
+    ):
+        stored: dict[str, Path] = {}
+
+        async def fake_write(
+            *, user_id: str, conversation_id: str, relative_path: str, content: str
+        ) -> tuple[Path, str]:
+            host = tmp_path / Path(relative_path).name
+            host.write_text(content)
+            stored[Path(relative_path).name] = host
+            return host, f"/workspace/sessions/{conversation_id}/{relative_path}"
+
+        async def fake_resolve(user_id: str, rel: str) -> Path:
+            return stored[Path(rel).name]
+
+        async def dispatch(**kwargs: Any) -> ToolExecutionResult:
+            envelope = await asyncio.to_thread(
+                composio_client.tools._execute_custom_tool,
+                slug=kwargs["tool_name"],
+                arguments=kwargs["data"],
+                user_id=USER,
+            )
+            return ToolExecutionResult(ok=True, resolved_name=kwargs["tool_name"], output=envelope)
+
+        injected_by_graph = {"handoff", "activate_integration"} | TODO_TOOL_NAMES
+        tool_dict: dict[str, BaseTool] = {
+            name: _stub_tool(name)
+            for name in EXECUTOR_INITIAL_TOOL_IDS
+            if name not in injected_by_graph
+        }
+        tool_dict["execute"] = build_execute_tool()
+        tool_dict["query_json"] = query_json
+        registry = MagicMock()
+        registry.get_tool_dict.return_value = tool_dict
+
+        async def no_retrieval(store, config, query=None, exact_tool_names=None):
+            """Bind nothing: what the offload binds is the subject here."""
+            return {"tools_to_bind": [], "response": []}
+
+        build = "app.agents.core.graph_builder.build_graph"
+        with (
+            stub_auth(tools["GMAIL_FETCH_MESSAGES"]),
+            patch(PROXY_SEAM, return_value=fake_composio(large_inbox_proxy)),
+            patch("app.agents.tools.execute.execute_tool.dispatch_tool", dispatch),
+            patch("app.agents.middleware.compaction.write_session_file", fake_write),
+            patch("app.agents.tools.coding.query_json_tool.resolve_user_file", fake_resolve),
+            patch(f"{build}.get_tool_registry", AsyncMock(return_value=registry)),
+            patch(f"{build}.get_tools_store", AsyncMock(return_value=InMemoryStore())),
+            patch(f"{build}.get_retrieve_tools_function", return_value=no_retrieval),
+            patch(f"{build}.get_checkpointer_manager", AsyncMock(return_value=None)),
+        ):
+            model = _InboxAgent(responses=[])
+            async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
+                result = await graph.ainvoke(
+                    {"messages": [HumanMessage(content="what is in my inbox?")]},
+                    config={"configurable": {"thread_id": str(uuid4()), "user_id": USER_OBJECT_ID}},
+                )
+
+        replies = {m.tool_call_id: m for m in result["messages"] if isinstance(m, ToolMessage)}
+        fetched = replies["fetch"]
+        offload = read_offload(fetched)
+        assert offload is not None, f"the large inbox stayed in context: {fetched.text[:300]}"
+        assert (offload["fmt"], offload["producer"]) == ("jsonl", "GMAIL_FETCH_MESSAGES")
+        assert "__offload__" not in fetched.text
+        lines = stored[Path(offload["path"]).name].read_text().splitlines()
+        assert len(lines) == LARGE_INBOX_SIZE, "the file holds the envelope, not the messages"
+        assert {"query_json", "grep"} <= set(result["selected_tool_ids"])
+
+        queried = replies["query"]
+        assert "is not bound" not in queried.text, queried.text
+        assert json.loads(queried.text) == {
+            "subject": "Subject m7",
+            "body": "Invoice #42 is attached",
+        }
 
 
 class TestGmailMutations:

@@ -136,10 +136,6 @@ apps/api/tests/unit/agents/test_browser_task_status_hook.py	arg-type
 apps/api/tests/unit/agents/test_call_record.py	arg-type
 apps/api/tests/unit/agents/test_comms_narrator.py	attr-defined
 apps/api/tests/unit/agents/test_comms_narrator.py	return-value
-apps/api/tests/unit/agents/test_compaction_middleware.py	arg-type
-apps/api/tests/unit/agents/test_compaction_middleware.py	attr-defined
-apps/api/tests/unit/agents/test_compaction_middleware.py	call-overload
-apps/api/tests/unit/agents/test_compaction_middleware.py	union-attr
 apps/api/tests/unit/agents/test_delegation.py	arg-type
 apps/api/tests/unit/agents/test_delegation.py	assignment
 apps/api/tests/unit/agents/test_delegation.py	attr-defined
@@ -182,8 +178,6 @@ apps/api/tests/unit/agents/test_llm_runtime_config.py	index
 apps/api/tests/unit/agents/test_mail_templates.py	arg-type
 apps/api/tests/unit/agents/test_messages.py	arg-type
 apps/api/tests/unit/agents/test_messages.py	list-item
-apps/api/tests/unit/agents/test_middleware_chat_llm_wiring.py	arg-type
-apps/api/tests/unit/agents/test_middleware_chat_llm_wiring.py	attr-defined
 apps/api/tests/unit/agents/test_model_lane.py	attr-defined
 apps/api/tests/unit/agents/test_model_lane.py	misc
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment
@@ -338,9 +332,6 @@ apps/api/tests/unit/memory/test_retrieval.py	attr-defined
 apps/api/tests/unit/memory/test_user_time.py	attr-defined
 apps/api/tests/unit/middleware/test_accounting.py	arg-type
 apps/api/tests/unit/middleware/test_accounting.py	attr-defined
-apps/api/tests/unit/middleware/test_compaction_offload_bind.py	arg-type
-apps/api/tests/unit/middleware/test_compaction_offload_bind.py	union-attr
-apps/api/tests/unit/middleware/test_compaction_offload_bind.py	var-annotated
 apps/api/tests/unit/middleware/test_loop_guard.py	union-attr
 apps/api/tests/unit/middleware/test_rate_limiter_middleware.py	arg-type
 apps/api/tests/unit/middleware/test_request_timeout.py	arg-type

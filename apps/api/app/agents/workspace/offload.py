@@ -9,7 +9,7 @@ read path — no content parsing.
 from __future__ import annotations
 
 import json
-from typing import Literal, TypedDict
+from typing import Literal, NamedTuple, TypedDict
 
 from langchain_core.messages import ToolMessage
 
@@ -66,6 +66,55 @@ def sniff_offload_fmt(text: str) -> Literal["json", "jsonl", "text"]:
     if sample and all(_is_json_object(ln) for ln in sample):
         return "jsonl"
     return "text"
+
+
+JSONScalar = str | int | float | bool | None
+
+
+class OffloadRecords(NamedTuple):
+    """A payload's one record list, plus the scalar fields around it that a JSONL file drops."""
+
+    records: list[dict[str, object]]
+    metadata: dict[str, JSONScalar]
+
+
+def _records_in(value: object, path: str) -> OffloadRecords | None:
+    """Descend a JSON object to its single list of objects, when every other field is a scalar."""
+    if isinstance(value, list):
+        if value and all(isinstance(item, dict) for item in value):
+            return OffloadRecords(records=value, metadata={})
+        return None
+    if not isinstance(value, dict):
+        return None
+    scalars: dict[str, JSONScalar] = {}
+    nested: list[tuple[str, object]] = []
+    for key, item in value.items():
+        if item is None or isinstance(item, (str, int, float, bool)):
+            scalars[f"{path}{key}"] = item
+        else:
+            nested.append((key, item))
+    if len(nested) != 1:
+        return None
+    key, item = nested[0]
+    found = _records_in(item, f"{path}{key}.")
+    if found is None:
+        return None
+    return OffloadRecords(records=found.records, metadata={**scalars, **found.metadata})
+
+
+def extract_offload_records(text: str) -> OffloadRecords | None:
+    """Split out the record list an enveloped object carries, e.g. {"data": {"messages": [...]}}.
+
+    None for anything else: a top-level array is already queryable as-is, and an
+    object holding two collections (or none) has no single record set to split out.
+    """
+    if text.lstrip()[:1] != "{":
+        return None
+    try:
+        payload = json.loads(text)
+    except (json.JSONDecodeError, RecursionError, ValueError):
+        return None
+    return _records_in(payload, "")
 
 
 def tools_for_offload(info: OffloadInfo) -> list[str]:

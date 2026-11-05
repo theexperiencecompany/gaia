@@ -14,6 +14,7 @@ from langchain_core.messages import ToolMessage
 import pytest
 
 from app.agents.workspace.offload import (
+    extract_offload_records,
     mark_offload,
     read_offload,
     sniff_offload_fmt,
@@ -100,3 +101,42 @@ def test_tools_for_offload_missing_fmt_defaults_to_grep() -> None:
 )
 def test_sniff_offload_fmt(text: str, fmt: str) -> None:
     assert sniff_offload_fmt(text) == fmt
+
+
+# --- extract_offload_records -------------------------------------------------- #
+
+
+def test_extract_offload_records_unwraps_a_composio_envelope() -> None:
+    text = (
+        '{"data": {"fetched_count": 2, "messages": [{"id": "a"}, {"id": "b"}]},'
+        ' "error": null, "successful": true}'
+    )
+
+    extracted = extract_offload_records(text)
+
+    assert extracted is not None
+    assert extracted.records == [{"id": "a"}, {"id": "b"}]
+    assert extracted.metadata == {"error": None, "successful": True, "data.fetched_count": 2}
+
+
+def test_extract_offload_records_ignores_leading_whitespace() -> None:
+    extracted = extract_offload_records('\n  {"data": [{"id": "a"}]}')
+
+    assert extracted is not None and extracted.records == [{"id": "a"}]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '[{"a": 1}]',  # a top-level array is already queryable as-is
+        '{"a": [{"x": 1}], "b": [{"y": 2}]}',  # two collections: no single record set
+        '{"a": 1, "b": "c"}',  # no collection at all
+        '{"a": [1, 2]}',  # a list of scalars is not records
+        '{"a": []}',  # nothing to split out
+        '{"a": {"b": [{"x": 1}], "c": {"d": 1}}}',  # a nested object beside the records
+        '{"a": 1}\n{"b": 2}',  # JSONL is already records
+        "not json",
+    ],
+)
+def test_extract_offload_records_declines_what_has_no_single_record_list(text: str) -> None:
+    assert extract_offload_records(text) is None
