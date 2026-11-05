@@ -148,13 +148,6 @@ NODE
 # cannot reach us. Re-check on every release of the package; drop the line once
 # a fixed version exists.
 PIP_AUDIT_IGNORED=(
-  # ecdsa: side-channel timing attack, out of the project's own scope upstream.
-  GHSA-wj6h-64fc-37mp
-  PYSEC-2026-1325
-  # python-jose HMAC key confusion (3.5.0 is the latest release): every
-  # jose.jwt.decode call site passes an explicit algorithms=[HS256], which is
-  # exactly the precondition the advisory requires to be absent.
-  GHSA-3qf3-8w2g-rqmx
   # chromadb (1.5.9 is the latest release): all four are in chromadb's Python
   # server (FastAPI routes, SimpleRBACAuthorizationProvider, server-side
   # trust_remote_code). GAIA imports chromadb only as an HTTP client; the server
