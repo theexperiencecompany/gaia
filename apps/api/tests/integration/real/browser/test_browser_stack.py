@@ -23,7 +23,7 @@ import pytest
 from app.agents.core.background.executor_queue import get_lock_holder
 from app.constants.browser import BROWSER_HANDOFF_REPLY_PROMPT, BrowserSessionStatus, JobEnding
 from app.db.repositories.browser_tasks import browser_task_repository
-from tests.integration.real.browser._stack.fake_models import PAGE_URL, AgentStep, JevMove
+from tests.integration.real.browser._stack.fake_models import PAGE_URL, AgentStep, JevMove, Text
 from tests.integration.real.browser._stack.fixture_site import (
     CAPTCHA_HEADING,
     DYNAMIC_TEXT,
@@ -119,6 +119,7 @@ async def test_a_form_is_filled_with_a_secret_and_the_answer_reaches_the_user_on
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     form = stack.site.url("/form")
@@ -186,6 +187,7 @@ async def test_content_that_appears_after_a_wait_is_read_once_it_is_there(
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     page = stack.site.url("/dynamic_loading")
@@ -213,8 +215,41 @@ async def test_content_that_appears_after_a_wait_is_read_once_it_is_there(
     assert len([d for d in _told(dm) if DYNAMIC_TEXT in d.text]) == 1, dm.texts
 
 
+async def test_without_jev_the_agent_alone_opens_the_start_page_and_does_the_task(
+    stack: BrowserStack,
+) -> None:
+    user = await stack.new_user()
+    dm = await stack.watch(user.telegram_id)
+    marker = _marker()
+    page = stack.site.url("/dynamic_loading")
+    stack.models.script(
+        marker,
+        agent=[
+            AgentStep([{"click": {"index": Text("Start")}}], wait_for="Start"),
+            AgentStep(
+                [{"done": {"text": f"The page now says {DYNAMIC_TEXT}", "success": True}}],
+                wait_for=DYNAMIC_TEXT,
+                require=(DYNAMIC_TEXT,),
+            ),
+        ],
+    )
+
+    conversation_id, job_id = await _start(
+        stack, user, f"Open {page}, click Start and tell me what loads. {marker}", page
+    )
+    result = await stack.finished(job_id)
+    await wait_for(dm, re.escape(DYNAMIC_TEXT), timeout=RUN_SECONDS)
+    await stack.settled(conversation_id)
+
+    assert result.success, result
+    assert stack.models.errors == []
+    assert stack.models.calls_for(marker, "jev") == 0
+    assert len([d for d in _told(dm) if DYNAMIC_TEXT in d.text]) == 1, dm.texts
+
+
 async def test_a_link_that_opens_a_new_window_is_followed_into_it(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     page = stack.site.url("/windows")
@@ -253,6 +288,7 @@ async def test_a_link_that_opens_a_new_window_is_followed_into_it(stack: Browser
 
 async def test_a_page_that_never_answers_does_not_freeze_the_run(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     hang, home = stack.site.url("/hang"), stack.site.url("/")
@@ -291,6 +327,7 @@ async def test_a_page_that_never_answers_does_not_freeze_the_run(stack: BrowserS
 
 async def test_a_secret_is_never_typed_on_a_site_it_was_not_given_for(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     page = stack.site.url("/elsewhere")
@@ -335,6 +372,7 @@ async def test_a_login_is_handed_to_the_user_and_then_reused_without_asking_agai
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     login = stack.site.url("/login")
     first = _marker()
@@ -420,6 +458,7 @@ async def test_cancelling_a_captcha_handoff_stops_the_run_and_nothing_more_is_sa
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     page = stack.site.url("/captcha")
@@ -461,6 +500,7 @@ async def test_a_captcha_on_a_site_the_user_never_named_is_skipped_not_handed_ov
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     page = stack.site.url("/partner-offers")
@@ -541,6 +581,7 @@ async def test_a_stop_from_the_dm_ends_a_run_started_in_a_group_and_nothing_more
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     group_id = f"group-{uuid.uuid4().hex[:8]}"
     group = await stack.watch(group_id)
     dm = await stack.watch(user.telegram_id)
@@ -563,6 +604,7 @@ async def test_a_stop_from_the_dm_ends_a_run_started_in_a_group_and_nothing_more
 
 async def test_a_stop_said_in_chat_stops_the_run(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     _, conversation_id, job_id = await _a_run_that_waits(stack, user)
     told_before = len(_told(dm))
@@ -582,6 +624,7 @@ async def test_a_stop_said_in_chat_stops_the_run(stack: BrowserStack) -> None:
 
 async def test_what_the_user_adds_mid_run_reaches_the_run(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     token = f"also-{uuid.uuid4().hex[:6]}"
@@ -620,6 +663,7 @@ async def test_what_the_user_adds_mid_run_reaches_the_run(stack: BrowserStack) -
 
 async def test_a_run_whose_engine_dies_finishes_in_chrome(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     await stack.set_obscura(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
@@ -660,6 +704,7 @@ async def test_a_result_survives_its_worker_dying_right_after_the_run_ends(
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     home = stack.site.url("/")
