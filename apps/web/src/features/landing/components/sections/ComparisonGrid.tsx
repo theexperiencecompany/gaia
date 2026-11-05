@@ -34,7 +34,7 @@ const COMPETITORS: CompetitorInfo[] = [
   {
     name: "Poke",
     slug: "poke",
-    logo: { type: "image", src: "/images/icons/poke.png" },
+    logo: { type: "image", src: "/images/icons/poke.webp" },
   },
   {
     name: "ChatGPT",
