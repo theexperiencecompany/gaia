@@ -26,8 +26,9 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationSourceEnum,
 )
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
+    ConditionOperator,
     SubscriptionAction,
     TriggerOrigin,
     TriggerSubscription,
@@ -130,6 +131,19 @@ async def _resolve_subscribers(
     return resolved
 
 
+def _tracked_threads(todo: TodoDocument, subscription: TriggerSubscription) -> frozenset[str]:
+    """Return the Gmail threads the todo owns or the subscription is pinned to."""
+    pinned = {
+        str(condition.value)
+        for condition in subscription.conditions
+        if condition.field_name == "thread_id" and condition.operator is ConditionOperator.EQUALS
+    }
+    ref = todo.external_ref
+    if ref is not None and ref.source is ExternalRefSource.GMAIL_THREAD:
+        pinned.add(ref.id)
+    return frozenset(pinned)
+
+
 async def _fire_if_matching(
     todo: TodoDocument,
     subscription: TriggerSubscription,
@@ -163,6 +177,7 @@ async def _fire_if_matching(
             id=subscription.id,
             user_id=todo.user_id,
             automation=automation_text(todo.title, todo.description),
+            tracked_threads=_tracked_threads(todo, subscription),
         ),
         trigger_name=trigger_name,
         payload=payload,

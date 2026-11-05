@@ -106,6 +106,11 @@ class MatchableTrigger(BaseModel):
         default_factory=dict,
         description="Payload field name -> why it is not matchable",
     )
+    title_field: str | None = Field(
+        default=None,
+        exclude=True,
+        description="The field that names one event to the user, as a skipped run does",
+    )
 
     def field(self, name: str) -> MatchableField | None:
         return next((f for f in self.fields if f.name == name), None)

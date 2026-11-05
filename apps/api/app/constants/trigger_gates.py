@@ -127,7 +127,13 @@ TRIGGER_GATE_FIELD_MAX_CHARS: Final = 300
 # An owner's title and description as JEV reads them; a long todo note costs tokens on every event.
 TRIGGER_GATE_AUTOMATION_MAX_CHARS: Final = 600
 TRIGGER_GATE_QUESTION_KEY: Final = "gate"
-TRIGGER_GATE_SKIPPED_SUMMARY: Final = "Skipped: runs only when {condition}"
+# The run history line: which event was skipped, the condition it missed and how sure JEV was.
+TRIGGER_GATE_SKIPPED_SUMMARY: Final = (
+    'Skipped: {event}. Not a match for "{condition}" ({certainty:.0%} sure).'
+)
+# How a skip names its event, clipped so one line stays one line.
+TRIGGER_GATE_EVENT_LABEL_MAX_CHARS: Final = 120
+TRIGGER_GATE_UNTITLED_EVENT: Final = "a {trigger_name} event"
 
 TRIGGER_GATE_URGENT_QUESTION_KEY: Final = "urgent"
 # P(urgent) is 1 - P(can_wait). On the eval: 2 of 3 urgent woke, 0 false, next non-urgent 0.63.
@@ -179,7 +185,7 @@ QUIET_HOURS_CONTEXT_KEY: Final = "quiet_hours"
 # Authored stays out while the eval's authored template loses needs_you mail the desk preset runs.
 ENFORCED_GATE_KINDS: Final = frozenset({GateKind.SYSTEM})
 
-# Every email on these continues a thread or starts one; a continuation always runs.
+# Every email on these continues a thread or starts one; a continued conversation runs unasked.
 GMAIL_MESSAGE_TRIGGERS: Final = frozenset(
     {GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_POLL_INBOX_TRIGGER_NAME}
 )
