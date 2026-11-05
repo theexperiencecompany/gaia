@@ -85,6 +85,10 @@ async function inlineHtml(response, request, env) {
   html = repairAria(html);
   const headers = new Headers(response.headers);
   html = await nonceCsp(html, headers);
+  const cc = headers.get("cache-control") || "";
+  if (/s-maxage/i.test(cc) && !/max-age/i.test(cc) && !/no-store|private/i.test(cc)) {
+    headers.set("cache-control", "public, max-age=60, " + cc.replace(/^public,\s*/i, ""));
+  }
   headers.delete("content-length");
   return new Response(html, { status: response.status, headers });
 }
