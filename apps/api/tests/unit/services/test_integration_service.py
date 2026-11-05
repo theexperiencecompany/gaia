@@ -2608,7 +2608,7 @@ class TestConnectMcpIntegration:
 
         assert (result.status, result.error, result.message) == (
             "error",
-            "server unreachable",
+            "Couldn't connect Test. Please try again.",
             "Connection failed",
         )
         assert event["integration"] == {
