@@ -18,6 +18,7 @@ import pytest
 from app.agents.core.background import executor_runner as er
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
+from app.constants import executor as executor_constants
 from app.constants.executor import (
     EXECUTOR_ERROR_MALFORMED_APPROVAL,
     EXECUTOR_ERROR_PREP_FAILED,
@@ -99,7 +100,7 @@ class TestExecutorCrashText:
     async def test_a_crash_tells_comms_not_to_offer_a_re_run(self) -> None:
         result = await _run_with(RuntimeError("boom"))
 
-        assert result.text == er.EXECUTOR_CRASH_MESSAGE
+        assert result.text == executor_constants.EXECUTOR_CRASH_MESSAGE
         lowered = result.text.lower()
         assert "again" not in lowered
         assert "how they" in lowered or "how the user" in lowered
@@ -110,7 +111,7 @@ class TestExecutorCrashText:
         result = await _run_with(TimeoutError())
 
         assert result.type == "error"
-        assert result.text == er.EXECUTOR_CRASH_MESSAGE
+        assert result.text == executor_constants.EXECUTOR_CRASH_MESSAGE
 
     async def test_a_user_stop_is_left_to_the_cancellation_path(self) -> None:
         # Swallowing CancelledError here would break cooperative cancellation:
@@ -146,6 +147,22 @@ class TestAFailureBeforeOrInsteadOfARunNamesItsCause:
         assert result == er._ExecutorResult(
             "Executor agent not available", "error", error_type=EXECUTOR_ERROR_PREP_FAILED
         )
+
+    @pytest.mark.regression
+    async def test_a_run_that_answered_nothing_is_a_failure_never_done(self) -> None:
+        result = await _run_with(SubagentOutcome(text="unconfirmed", answered=False))
+
+        assert (result.text, result.type, result.error_type) == (
+            executor_constants.EXECUTOR_CRASH_MESSAGE,
+            "error",
+            executor_constants.EXECUTOR_ERROR_NO_ANSWER,
+        )
+
+    async def test_a_stopped_run_with_no_answer_is_left_to_the_cancellation_path(self) -> None:
+        result = await _run_with(SubagentOutcome(text="", answered=False, stopped=True))
+
+        assert result.type == "final"
+        assert result.stopped is True
 
     async def test_a_pause_with_no_approval_id_is_a_malformed_approval(self) -> None:
         result = await _run_with(SubagentOutcome(text="", interrupt={"summary": "x"}))
@@ -207,7 +224,7 @@ class TestOrphanedBrowserJob:
 
         result = await _run_with(RuntimeError("boom"))
 
-        assert result.text == er.EXECUTOR_CRASH_MESSAGE
+        assert result.text == executor_constants.EXECUTOR_CRASH_MESSAGE
         assert await jobs_mod.job_cancel_requested("job-1") is True
 
     async def test_another_conversations_job_is_left_alone(

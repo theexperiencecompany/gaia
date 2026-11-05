@@ -296,7 +296,7 @@ def format_browser_action_entry(
 # Format: (category, display_name, show_category)
 _SPECIAL_TOOLS: dict[str, tuple[str, str, bool]] = {
     "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
-    "call_executor": ("executor", "Delegating to executor", False),
+    "call_executor": ("executor", "Working on it", False),
     "cancel_executor": ("cancel_executor", "Cancelling the task", False),
     "browser_step_done": (BROWSER_TOOL_CATEGORY, "Continuing the browser task", False),
     "stop_browser_task": (BROWSER_TOOL_CATEGORY, "Stopping the browser task", False),

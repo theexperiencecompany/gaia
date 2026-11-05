@@ -37,6 +37,7 @@ from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToo
 from app.agents.llm.client import init_llm
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
+from app.constants.agents import NO_ANSWER_NOTICE
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import AgentIdentity, AgentThread, build_agent_config
@@ -288,7 +289,7 @@ class WorkflowSubagentRunner:
             f"{LogTag.WORKFLOW} Completed. Response: chars",
             complete_message_count=len(complete_message),
         )
-        return complete_message or "Task completed"
+        return complete_message or NO_ANSWER_NOTICE.format(name="The workflow assistant")
 
     @staticmethod
     async def _forced_finalize(

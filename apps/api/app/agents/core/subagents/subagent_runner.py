@@ -37,7 +37,12 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
-from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
+from app.constants.agents import (
+    DONE_EVIDENCE_RULE,
+    NO_ANSWER_NOTICE,
+    AgentTag,
+    wrap_agent_payload,
+)
 from app.constants.general import (
     EXECUTOR_INTEGRATION_ID,
     EXECUTOR_THREAD_PREFIX,
@@ -75,9 +80,8 @@ from shared.py.wide_events import log
 def _finish_task_result(chunk: ToolMessage) -> str | None:
     """Return the finish_task chunk's textual content, or None for any other tool result.
 
-    finish_task carries the final answer in its return value; capturing it makes
-    the parent handoff return the actual content instead of the literal "Task
-    completed" fallback. Subagents with include_finish_task=False never enter this branch.
+    finish_task carries the final answer in its return value, so the parent handoff
+    returns it. Subagents with include_finish_task=False never enter this branch.
     """
     if chunk.name == FINISH_TASK_NAME and isinstance(chunk.content, str):
         return chunk.content
@@ -118,6 +122,8 @@ class SubagentOutcome:
     interrupt: HilInterruptPayload | None = None
     run_messages: tuple[AnyMessage, ...] = ()
     stopped: bool = False
+    #: False when the run ended without an answer; text then says nothing confirms the work.
+    answered: bool = True
 
     @property
     def paused(self) -> bool:
@@ -417,13 +423,20 @@ def _finalize_run(run: _StreamRun) -> SubagentOutcome:
             run_messages=tuple(run.run_messages),
         )
 
+    if not run.complete_message:
+        log.warning("subagent_ended_without_answer", subagent_name=run.ctx.agent_name)
+        return SubagentOutcome(
+            text=NO_ANSWER_NOTICE.format(name=f"The {run.ctx.agent_name} run"),
+            run_messages=tuple(run.run_messages),
+            answered=False,
+        )
+
     # A worker that only narrated did no work: say so, so its delegator re-issues it.
     # The executor is nobody's delegate; its words are its answer (collection runs report).
     if (
         run.ctx.integration_id != EXECUTOR_INTEGRATION_ID
         and not run.tool_ran
         and not run.emitted_tool_calls
-        and run.complete_message
     ):
         log.warning("subagent_returned_narration_only", subagent_name=run.ctx.agent_name)
         final_message = (
@@ -432,7 +445,7 @@ def _finalize_run(run: _StreamRun) -> SubagentOutcome:
             "explicit instruction to perform the action."
         )
     else:
-        final_message = run.complete_message or "Task completed"
+        final_message = run.complete_message
     initial_state: SubagentInitialState = run.ctx.initial_state
     log.set(
         subagent={
@@ -544,8 +557,8 @@ async def execute_subagent_stream(
                 observe_subagent_run(
                     time.perf_counter() - segment_start, subagent_id=label, status="cancelled"
                 )
-                # What the run said so far, not the finished-run text: that one reads
-                # "Task completed" or tells the executor to re-issue what it just stopped.
+                # What the run said so far, not the finished-run text: that one says
+                # nothing was confirmed or tells the executor to re-issue what it just stopped.
                 return replace(
                     outcome,
                     text=wrap_agent_payload(
@@ -648,7 +661,11 @@ async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutc
         )
     if not _snapshot_messages(snapshot):
         return None
-    return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
+    if final_text := _final_text_from_snapshot(snapshot):
+        return SubagentOutcome(text=final_text)
+    return SubagentOutcome(
+        text=NO_ANSWER_NOTICE.format(name=f"The {ctx.agent_name} run"), answered=False
+    )
 
 
 async def _address_resume(

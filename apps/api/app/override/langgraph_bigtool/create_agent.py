@@ -119,6 +119,7 @@ class _AgentDeps:
     pre_model_hooks: list[HookType] | None
     end_graph_hooks: list[HookType] | None
     require_finish_to_end: bool
+    ends_turn: Callable[[ToolMessage], bool] | None
 
 
 def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfig:
@@ -659,7 +660,8 @@ def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State: 
     for call in tool_calls:
         args = call.get("args", {}) if isinstance(call, dict) else {}
         result = args.get("result")
-        content = str(result) if result is not None else "Task completed."
+        # No result is no answer: the run reports it as unconfirmed, never as done.
+        content = str(result) if result is not None else ""
         messages.append(
             ToolMessage(
                 content=content,
@@ -845,6 +847,20 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
     return should_continue
 
 
+def _after_tool(ends_turn: Callable[[ToolMessage], bool], exit_node: str) -> Callable[[State], str]:
+    """Route one tool task: exit when its own result ends the turn, else back to the model.
+
+    Each call runs as its own task and the edge reads that task's writes, so a sibling
+    result that still needs an answer sends the turn back to the model.
+    """
+
+    def after_tool(state: State) -> str:
+        last = state["messages"][-1]
+        return exit_node if isinstance(last, ToolMessage) and ends_turn(last) else "agent"
+
+    return after_tool
+
+
 def _tool_node(deps: _AgentDeps) -> DynamicToolNode:
     return DynamicToolNode(
         deps.tool_registry,
@@ -880,8 +896,13 @@ def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
         path_map=path_map,
     )
 
-    builder.add_edge("tools", "agent")
     exit_node = "end_graph_hooks" if deps.end_graph_hooks else END
+    if deps.ends_turn:
+        builder.add_conditional_edges(
+            "tools", _after_tool(deps.ends_turn, exit_node), path_map=["agent", exit_node]
+        )
+    else:
+        builder.add_edge("tools", "agent")
     if deps.require_finish_to_end:
         builder.add_conditional_edges(
             FINISH_TASK_NAME,
@@ -930,6 +951,7 @@ def create_agent(
         pre_model_hooks=hooks.pre_model_hooks,
         end_graph_hooks=hooks.end_graph_hooks,
         require_finish_to_end=hooks.require_finish_to_end,
+        ends_turn=hooks.ends_turn,
     )
 
     builder = StateGraph(State, context_schema=agent_cfg.context_schema)

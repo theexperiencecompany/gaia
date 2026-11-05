@@ -65,6 +65,7 @@ from app.constants.executor import (
     EXECUTOR_CRASH_MESSAGE,
     EXECUTOR_ERROR_APPROVAL_LOST,
     EXECUTOR_ERROR_MALFORMED_APPROVAL,
+    EXECUTOR_ERROR_NO_ANSWER,
     EXECUTOR_ERROR_PREP_FAILED,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
@@ -441,6 +442,12 @@ async def _execute_executor(
                     error_type=EXECUTOR_ERROR_MALFORMED_APPROVAL,
                 )
             return _ExecutorResult("", EXECUTOR_PAUSED, approval_ids, ctx=ctx)
+        if not outcome.answered and not outcome.stopped:
+            # Nothing reported means nothing confirmed: the worst case, never "done".
+            log.error(f"{LogTag.AGENT} Executor ended without an answer", stream_id=stream_id)
+            return _ExecutorResult(
+                EXECUTOR_CRASH_MESSAGE, "error", ctx=ctx, error_type=EXECUTOR_ERROR_NO_ANSWER
+            )
         return _ExecutorResult(outcome.text, "final", ctx=ctx, stopped=outcome.stopped)
     except GraphRecursionError as e:
         # The executor exhausted its recursion budget. Log the real cause loudly,

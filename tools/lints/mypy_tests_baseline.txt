@@ -40,8 +40,6 @@ apps/api/tests/e2e/test_hil_spawn_e2e.py	arg-type
 apps/api/tests/e2e/test_hil_spawn_e2e.py	attr-defined
 apps/api/tests/e2e/test_hil_spawn_e2e.py	call-overload
 apps/api/tests/e2e/test_hil_spawn_e2e.py	var-annotated
-apps/api/tests/e2e/test_hil_streaming.py	arg-type
-apps/api/tests/e2e/test_hil_streaming.py	attr-defined
 apps/api/tests/e2e/test_memory_context_e2e.py	arg-type
 apps/api/tests/e2e/test_memory_context_e2e.py	attr-defined
 apps/api/tests/e2e/test_platform_delivery_recording_e2e.py	attr-defined
@@ -158,7 +156,6 @@ apps/api/tests/unit/agents/test_executor_runner_delivery.py	attr-defined
 apps/api/tests/unit/agents/test_executor_runner_delivery.py	func-returns-value
 apps/api/tests/unit/agents/test_executor_runner_delivery.py	list-item
 apps/api/tests/unit/agents/test_executor_runner_delivery.py	return-value
-apps/api/tests/unit/agents/test_executor_runner_errors.py	attr-defined
 apps/api/tests/unit/agents/test_executor_status_hook.py	arg-type
 apps/api/tests/unit/agents/test_github_discovery.py	arg-type
 apps/api/tests/unit/agents/test_held_replies.py	arg-type
@@ -530,8 +527,6 @@ apps/api/tests/unit/services/test_usage_summary.py	attr-defined
 apps/api/tests/unit/services/test_user_instructions_service.py	misc
 apps/api/tests/unit/services/test_user_todos_fs.py	arg-type
 apps/api/tests/unit/services/test_voice_service.py	arg-type
-apps/api/tests/unit/services/test_workflow_subagent.py	arg-type
-apps/api/tests/unit/services/test_workflow_subagent.py	override
 apps/api/tests/unit/services/todos/test_inbox_desk.py	attr-defined
 apps/api/tests/unit/services/todos/test_signal_context.py	arg-type
 apps/api/tests/unit/services/triggers/test_subscription_dispatch.py	arg-type
@@ -572,8 +567,6 @@ apps/api/tests/unit/tools/test_desktop_tools.py	attr-defined
 apps/api/tests/unit/tools/test_discovery_tools.py	arg-type
 apps/api/tests/unit/tools/test_discovery_tools.py	syntax
 apps/api/tests/unit/tools/test_download_tool.py	attr-defined
-apps/api/tests/unit/tools/test_executor_tool.py	attr-defined
-apps/api/tests/unit/tools/test_executor_tool.py	misc
 apps/api/tests/unit/tools/test_file_tools.py	attr-defined
 apps/api/tests/unit/tools/test_file_tools.py	union-attr
 apps/api/tests/unit/tools/test_finish_task_tool.py	attr-defined

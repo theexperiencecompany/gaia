@@ -1527,6 +1527,7 @@ def _make_deps(
         pre_model_hooks=None,
         end_graph_hooks=None,
         require_finish_to_end=False,
+        ends_turn=None,
     )
 
 
@@ -1736,12 +1737,12 @@ class TestFinishTaskNodeDirect:
         assert msg.tool_call_id == "call-1"
         assert msg.name == FINISH_TASK_NAME
 
-    def test_missing_result_falls_back_to_task_completed(self) -> None:
+    def test_missing_result_is_no_answer_never_task_completed(self) -> None:
         result = finish_task_node(
             [{"name": FINISH_TASK_NAME, "id": "call-2", "args": {}}], store=MagicMock()
         )
 
-        assert result["messages"][0].content == "Task completed."
+        assert result["messages"][0].content == ""
 
     async def test_async_twin_delegates_to_the_sync_impl(self) -> None:
         result = await afinish_task_node(
@@ -1810,6 +1811,7 @@ class TestExecutableCallsRouting:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            ends_turn=None,
         )
         ai_msg = AIMessage(
             content="",
@@ -1856,6 +1858,7 @@ class TestExecutableCallsRouting:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            ends_turn=None,
         )
         ai_msg = AIMessage(
             content="",
@@ -1912,6 +1915,7 @@ class TestGetBoundToolNamesChannels:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            ends_turn=None,
         )
 
         bound = _get_bound_tool_names(deps, cast("State", {}))
@@ -2063,6 +2067,7 @@ def _make_branch_deps(
         pre_model_hooks=None,
         end_graph_hooks=None,
         require_finish_to_end=False,
+        ends_turn=None,
     )
 
 

@@ -5,6 +5,8 @@ its handoff to the comms agent. Centralized so the executor runner, capture,
 and any future consumers reference a single source of truth.
 """
 
+from enum import StrEnum
+
 # SSE frame key carrying the executor's narrated answer for voice-mode TTS.
 # Must match VOICE_TTS_KEY in apps/voice-agent/src/constants.py — the voice
 # agent matches on this exact string to decide what to speak.
@@ -45,12 +47,13 @@ EXECUTOR_APPROVAL_LOST_MESSAGE = (
 EXECUTOR_ERROR_PREP_FAILED = "executor_prep_failed"
 EXECUTOR_ERROR_MALFORMED_APPROVAL = "malformed_approval"
 EXECUTOR_ERROR_APPROVAL_LOST = "approval_lost"
+#: The run ended with no answer at all; it is delivered as EXECUTOR_CRASH_MESSAGE.
+EXECUTOR_ERROR_NO_ANSWER = "no_answer"
 
-# User-facing text when comms narration of a finished run is unavailable. The
-# executor's own terminal text is never substituted: it is internal monologue,
-# and on the error path can be a raw exception string.
+# When comms narration fails. Never the executor's own text (internal, maybe a raw
+# exception), and never a claim of done: a "final" report can itself describe a failure.
 EXECUTOR_NARRATION_FAILED_MESSAGE = (
-    "I finished that task, but I couldn't write up the result. Please ask me again."
+    "I couldn't write up how that went, so I can't confirm it's done. Ask me and I'll check."
 )
 EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE = (
     "That task didn't finish, and I couldn't write up what went wrong. Please try again."
@@ -80,3 +83,19 @@ INTERRUPTION_NOTICE = (
 # How many of a running executor's latest tool calls comms' status note shows,
 # kept in the holder's progress record (see executor_progress).
 EXECUTOR_PROGRESS_MAX_CALLS = 20
+
+
+class HandoffOutcome(StrEnum):
+    """How a call_executor hand-off went, carried as its tool message's artifact."""
+
+    STARTED = "started"
+    JOINED = "joined"
+    ALREADY_RUNNING = "already_running"
+    REFUSED = "refused"
+    FAILED = "failed"
+
+
+#: Hand-offs whose work is underway: the turn ends silently and the result speaks for it.
+ACCEPTED_HANDOFFS = frozenset(
+    {HandoffOutcome.STARTED, HandoffOutcome.JOINED, HandoffOutcome.ALREADY_RUNNING}
+)

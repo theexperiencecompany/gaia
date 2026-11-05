@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain_core.messages import ToolMessage
 
 from app.override.langgraph_bigtool.hooks import HookType
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult
@@ -50,6 +51,8 @@ class HookConfig:
     pre_model_hooks: list[HookType] | None = None
     end_graph_hooks: list[HookType] | None = None
     require_finish_to_end: bool = False
+    #: A tool result that ends the turn: the run exits instead of calling the model again.
+    ends_turn: Callable[[ToolMessage], bool] | None = None
 
 
 @dataclass(frozen=True)
