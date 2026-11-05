@@ -32,6 +32,9 @@ vi.mock("@/features/todo/components/WorkflowSection", () => ({
 vi.mock("@/features/todo/components/SubTodosSection", () => ({
   SubTodosSection: () => null,
 }));
+vi.mock("@/features/todo/components/SubscriptionGateLine", () => ({
+  SubscriptionGateLine: () => null,
+}));
 vi.mock("@/features/todo/components/shared/SubtaskManager", () => ({
   default: () => null,
 }));

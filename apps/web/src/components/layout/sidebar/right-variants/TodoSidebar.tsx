@@ -10,6 +10,7 @@ import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import CanvasViewer from "@/features/todo/components/CanvasViewer";
 import { OpenTodoChatButton } from "@/features/todo/components/OpenTodoChatButton";
+import { SubscriptionGateLine } from "@/features/todo/components/SubscriptionGateLine";
 import { SubTodosSection } from "@/features/todo/components/SubTodosSection";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
@@ -79,6 +80,19 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                 {todo.parent_todo_id}
               </Link>
             </p>
+          )}
+
+          {todo.trigger_subscriptions.map(
+            (subscription) =>
+              subscription.gate && (
+                <SubscriptionGateLine
+                  // The stored text resets the line's draft once a save comes back.
+                  key={`${subscription.id}:${subscription.gate.display_condition}`}
+                  todoId={todo.id}
+                  subscriptionId={subscription.id}
+                  gate={subscription.gate}
+                />
+              ),
           )}
 
           {/* Canvas working memory — only for gaia-tracked todos */}
