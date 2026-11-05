@@ -68,9 +68,9 @@ async function sha256Base64(text) {
 async function nonceCsp(html, headers) {
   const nonce = randomNonce();
   html = html.replace(/<script(?![^>]*\ssrc=)([^>]*)>/g, (m, attrs) =>
-    attrs.includes("nonce=") ? m : "<script" + attrs + " nonce=\"" + nonce + "\">");
+    attrs.includes("nonce=") ? m : "<script" + attrs + " nonce=\\\"" + nonce + "\\\">");
   html = html.replace(/<style([^>]*)>/g, (m, attrs) =>
-    attrs.includes("nonce=") ? m : "<style" + attrs + " nonce=\"" + nonce + "\">");
+    attrs.includes("nonce=") ? m : "<style" + attrs + " nonce=\\\"" + nonce + "\\\">");
   const values = new Set();
   html.replace(/\sstyle="([^"]*)"/g, (m, v) => {
     values.add(v);
