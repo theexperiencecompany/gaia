@@ -147,6 +147,7 @@ class TestTheGateTheUserReads:
         assert [w["gate"] for w in wire["trigger_subscriptions"]] == [
             {
                 "kind": "system",
+                "recent_skips": [],
                 "preset": "inbox_desk",
                 "enabled": True,
                 "display_condition": "a real person or a real obligation is waiting on you",

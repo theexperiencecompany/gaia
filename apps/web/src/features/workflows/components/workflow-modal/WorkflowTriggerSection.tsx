@@ -4,9 +4,10 @@ import type { ReactElement } from "react";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
-import { RunsOnlyWhenField } from "../../triggers/components/RunsOnlyWhenField";
+import { RunsOnlyWhenPanel } from "../../triggers/components/RunsOnlyWhenPanel";
 import { createDefaultTriggerConfig } from "../../triggers/registry";
 import { isIntegrationTrigger } from "../../triggers/types";
+import { gateAuthorLine } from "../../utils/gateEdit";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
 import WorkflowSection from "./WorkflowSection";
@@ -79,6 +80,12 @@ export default function WorkflowTriggerSection({
     }
   };
 
+  // The saved rule's author, state and skips describe the draft only while it is unchanged.
+  const shownGate =
+    savedGate && gate.condition === savedGate.display_condition
+      ? savedGate
+      : null;
+
   const renderTabBody = (key: "manual" | "schedule" | "trigger") => {
     if (key === "manual") {
       return (
@@ -128,12 +135,14 @@ export default function WorkflowTriggerSection({
           onConfigChange={onTriggerConfigChange}
         />
         {isIntegrationTrigger(triggerConfig) && (
-          <RunsOnlyWhenField
+          <RunsOnlyWhenPanel
             condition={gate.condition}
             enabled={gate.enabled}
+            author={shownGate ? gateAuthorLine(shownGate) : "user"}
+            enforced={shownGate?.enforced}
+            recentSkips={shownGate?.recent_skips ?? []}
             editable={savedGate?.kind !== "system"}
-            enforced={savedGate?.enforced}
-            onConditionChange={(condition) =>
+            onConditionSave={(condition) =>
               onGateChange({ ...gate, condition })
             }
             onEnabledChange={(enabled) => onGateChange({ ...gate, enabled })}

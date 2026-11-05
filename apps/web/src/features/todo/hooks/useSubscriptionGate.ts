@@ -3,14 +3,10 @@ import type {
   GateEdit,
   SystemGateView,
 } from "@shared/api/generated";
-import { useState } from "react";
 import { editSubscriptionGate } from "@/features/todo/api/todoApi";
 import { useTodoStore } from "@/stores/todoStore";
 
-/**
- * One run watch's gate as the sidebar edits it: the condition commits when the
- * user leaves the field, and the switch saves at once with enabled alone.
- */
+/** One run watch's gate as the sidebar edits it: a saved rule and the switch each store at once. */
 export function useSubscriptionGate(
   todoId: string,
   subscriptionId: string,
@@ -19,31 +15,16 @@ export function useSubscriptionGate(
   const updateTodoOptimistic = useTodoStore(
     (state) => state.updateTodoOptimistic,
   );
-  const [condition, setCondition] = useState(gate.display_condition);
 
   const save = async (edit: GateEdit) => {
-    try {
-      const todo = await editSubscriptionGate(todoId, subscriptionId, edit);
-      updateTodoOptimistic(todoId, todo);
-    } catch {
-      // The API layer already told the user; the field goes back to what is stored.
-      setCondition(gate.display_condition);
-    }
-  };
-
-  const commitCondition = () => {
-    const edited = condition.trim();
-    if (!edited || edited === gate.display_condition) {
-      setCondition(gate.display_condition);
-      return;
-    }
-    void save({ condition: edited, enabled: gate.enabled });
+    // The API layer tells the user when a save fails; the panel keeps showing what is stored.
+    const todo = await editSubscriptionGate(todoId, subscriptionId, edit);
+    updateTodoOptimistic(todoId, todo);
   };
 
   return {
-    condition,
-    setCondition,
-    commitCondition,
+    saveCondition: (condition: string) =>
+      void save({ condition, enabled: gate.enabled }),
     setEnabled: (enabled: boolean) => void save({ enabled }),
   };
 }

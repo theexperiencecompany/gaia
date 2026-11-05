@@ -34,7 +34,7 @@ from app.models.todo_models import (
     TodoSearchParams,
     TodoUpdate,
 )
-from app.models.trigger_gate_models import SystemGate
+from app.models.trigger_gate_models import GateSkipRecord, SystemGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
@@ -750,9 +750,30 @@ class TestTodosRepository(UserScopedRepositoryContract):
         raw = await raw_collection.find_one({"_id": ObjectId(doc.id)})
         assert raw["trigger_subscriptions"][0]["gate"] == {
             "kind": "system",
+            "recent_skips": [],
             "preset": "inbox_desk",
             "enabled": False,
         }
+
+    async def test_a_skip_is_kept_on_its_watchs_gate_newest_three_only(self, repo, make_doc):
+        desk_mail, other = _subscription(gate=_DESK_GATE), _subscription(gate=_DESK_GATE)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[desk_mail, other]))
+        skips = [
+            GateSkipRecord(event=f"mail {n}", at=datetime(2026, 11, 5, n, tzinfo=UTC))
+            for n in range(4)
+        ]
+
+        for skip in skips:
+            await repo.remember_subscription_gate_skip(
+                user_id="u", subscription_id=desk_mail.id, skip=skip
+            )
+
+        stored = await repo.get(doc.id, user_id="u")
+        assert stored is not None
+        kept, untouched = (w.gate for w in stored.trigger_subscriptions)
+        assert kept is not None and untouched is not None
+        assert kept.recent_skips == skips[1:]
+        assert untouched.recent_skips == []
 
     async def test_a_gate_write_refreshes_the_cached_copy(self, repo, make_doc):
         watch = _subscription(gate=_DESK_GATE)

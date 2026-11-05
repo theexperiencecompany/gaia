@@ -82,6 +82,11 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             </p>
           )}
 
+          {/* Canvas working memory — only for gaia-tracked todos */}
+          {isTrackedTodo(todo) && (
+            <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
+          )}
+
           {todo.trigger_subscriptions.map(
             (subscription) =>
               subscription.gate && (
@@ -93,11 +98,6 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                   gate={subscription.gate}
                 />
               ),
-          )}
-
-          {/* Canvas working memory — only for gaia-tracked todos */}
-          {isTrackedTodo(todo) && (
-            <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
           )}
 
           {isTrackedTodo(todo) && !todo.parent_todo_id && (

@@ -2,7 +2,8 @@
 
 import type { AuthoredGateView, SystemGateView } from "@shared/api/generated";
 import { useSubscriptionGate } from "@/features/todo/hooks/useSubscriptionGate";
-import { RunsOnlyWhenField } from "@/features/workflows/triggers/components/RunsOnlyWhenField";
+import { RunsOnlyWhenPanel } from "@/features/workflows/triggers/components/RunsOnlyWhenPanel";
+import { gateAuthorLine } from "@/features/workflows/utils/gateEdit";
 
 interface SubscriptionGateLineProps {
   todoId: string;
@@ -10,23 +11,27 @@ interface SubscriptionGateLineProps {
   gate: AuthoredGateView | SystemGateView;
 }
 
-/** A tracked todo's "Runs only when" line for one gated run watch. */
+/** A tracked todo's "Runs only when" panel for one gated run watch. */
 export function SubscriptionGateLine({
   todoId,
   subscriptionId,
   gate,
 }: SubscriptionGateLineProps) {
-  const { condition, setCondition, commitCondition, setEnabled } =
-    useSubscriptionGate(todoId, subscriptionId, gate);
+  const { saveCondition, setEnabled } = useSubscriptionGate(
+    todoId,
+    subscriptionId,
+    gate,
+  );
 
   return (
-    <RunsOnlyWhenField
-      condition={condition}
+    <RunsOnlyWhenPanel
+      condition={gate.display_condition}
       enabled={gate.enabled}
-      editable={gate.kind === "authored"}
+      author={gateAuthorLine(gate)}
       enforced={gate.enforced}
-      onConditionChange={setCondition}
-      onConditionBlur={commitCondition}
+      recentSkips={gate.recent_skips}
+      editable={gate.kind === "authored"}
+      onConditionSave={saveCondition}
       onEnabledChange={setEnabled}
     />
   );

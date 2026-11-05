@@ -16,21 +16,19 @@ _STORED_GATE: Final[TypeAdapter[TriggerGate]] = TypeAdapter(TriggerGate)
 
 
 def apply_gate_edit(current: TriggerGate | None, edit: GateEdit) -> TriggerGate:
-    """Return the gate an edit stores: a changed condition is the user's, an unchanged one keeps its author."""
-    if edit.condition is None:
-        if current is None:
-            raise AppError(
-                message="There is no gate to turn on or off",
-                why="an edit with no condition switches the gate already there",
-                fix="send a condition to add one",
-                status_code=422,
-            )
-        return _STORED_GATE.validate_python({**current.model_dump(), "enabled": edit.enabled})
-    if isinstance(current, AuthoredGate) and current.condition == edit.condition:
-        author = current.author
-    else:
-        author = GateAuthor.USER
-    return AuthoredGate(condition=edit.condition, author=author, enabled=edit.enabled)
+    """Return the gate an edit stores: a changed condition is the user's, an unchanged one only switches."""
+    if edit.condition is not None and not (
+        isinstance(current, AuthoredGate) and current.condition == edit.condition
+    ):
+        return AuthoredGate(condition=edit.condition, author=GateAuthor.USER, enabled=edit.enabled)
+    if current is None:
+        raise AppError(
+            message="There is no gate to turn on or off",
+            why="an edit with no condition switches the gate already there",
+            fix="send a condition to add one",
+            status_code=422,
+        )
+    return _STORED_GATE.validate_python({**current.model_dump(), "enabled": edit.enabled})
 
 
 def gate_edit_action(

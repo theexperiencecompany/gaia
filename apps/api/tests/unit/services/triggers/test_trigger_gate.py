@@ -31,7 +31,7 @@ from app.constants.trigger_gates import (
     SystemGatePreset,
     UrgentChoice,
 )
-from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
+from app.models.trigger_gate_models import AuthoredGate, GateSkipRecord, SystemGate, TriggerGate
 from app.services.triggers.trigger_gate import (
     GateBypass,
     GatedJob,
@@ -261,6 +261,36 @@ class TestTheSkipLine:
             'Skipped: Acme Billing <billing@acme.com>, "Invoice 4021 is past due". '
             f'Not a match for "{BILLING}" (95% sure).'
         )
+
+    async def test_a_skip_is_kept_on_the_workflows_gate(self, seams: SimpleNamespace) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
+
+        await _skip()
+
+        seams.workflow_skips.assert_awaited_once_with(
+            OWNER_ID,
+            USER_ID,
+            GateSkipRecord(
+                event='Acme Billing <billing@acme.com>, "Invoice 4021 is past due"', at=AFTERNOON
+            ),
+        )
+        seams.watch_skips.assert_not_awaited()
+
+    async def test_a_skip_is_kept_on_the_todo_watchs_gate(self, seams: SimpleNamespace) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
+
+        await _skip(owner=GateOwner.TODO)
+
+        (call,) = seams.watch_skips.await_args_list
+        assert call.kwargs["user_id"] == USER_ID
+        assert call.kwargs["subscription_id"] == OWNER_ID
+        seams.workflow_skips.assert_not_awaited()
+
+    async def test_a_skip_that_cannot_be_kept_still_skips(self, seams: SimpleNamespace) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
+        seams.workflow_skips.side_effect = RuntimeError("mongo down")
+
+        assert isinstance(await _skip(), GateSkip)
 
     async def test_just_under_the_line_runs(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.949, run_label="needed")))
@@ -644,6 +674,7 @@ class TestShadow:
 
         decided = _decided(seams)
         assert (decided.outcome, decided.reason, decided.enforced) == ("run", "jev_skip", False)
+        seams.workflow_skips.assert_not_awaited()
 
     async def test_the_kill_switch_is_read_for_the_jobs_user(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))

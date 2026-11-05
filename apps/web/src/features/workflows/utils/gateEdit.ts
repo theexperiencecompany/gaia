@@ -3,6 +3,7 @@ import type {
   GateEdit,
   SystemGateView,
 } from "@shared/api/generated";
+import type { GateAuthorLine } from "../constants/gates";
 import type { WorkflowFormData } from "../schemas/workflowFormSchema";
 
 /**
@@ -27,4 +28,12 @@ export function gateEditFor(
   return draft.enabled === saved.enabled
     ? undefined
     : { enabled: draft.enabled };
+}
+
+/** Who wrote a saved gate's rule, as its panel says it; null for a gate not saved yet. */
+export function gateAuthorLine(
+  saved: AuthoredGateView | SystemGateView | null | undefined,
+): GateAuthorLine | null {
+  if (!saved) return null;
+  return saved.kind === "system" ? "system" : saved.author;
 }

@@ -122,6 +122,8 @@ TRIGGER_GATE_SKIP_PROBABILITY: Final = 0.95
 # p95 measured at 370 ms; a slower answer runs the job as if the gate were not there.
 TRIGGER_GATE_JEV_TIMEOUT_SECONDS: Final = 3.0
 TRIGGER_GATE_CONDITION_MAX_CHARS: Final = 300
+# How many of its latest skips a gate keeps for its panel to show.
+GATE_RECENT_SKIPS_KEPT: Final = 3
 # Each event field, the snippet included, is clipped to this before JEV reads it.
 TRIGGER_GATE_FIELD_MAX_CHARS: Final = 300
 # An owner's title and description as JEV reads them; a long todo note costs tokens on every event.

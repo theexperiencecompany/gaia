@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.cache import TODO_CACHE_PREFIX
 from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL, ONBOARDING_LABEL
+from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.scheduler_models import DeactivationReason
@@ -34,7 +35,7 @@ from app.models.todo_models import (
     TodoStats,
     TodoUpdate,
 )
-from app.models.trigger_gate_models import TriggerGate
+from app.models.trigger_gate_models import GateSkipRecord, TriggerGate
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
     TriggerSubscription,
@@ -826,6 +827,30 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             scope=user_id,
             extra_filter={"trigger_subscriptions": {"$elemMatch": watch}},
             array_filters=[{f"watch.{field}": value for field, value in watch.items()}],
+        )
+
+    async def remember_subscription_gate_skip(
+        self, *, user_id: str, subscription_id: str, skip: GateSkipRecord
+    ) -> None:
+        """Add skip to the recent skips of the gate on the user's run watch, keeping the newest few."""
+        await self._apply_raw_update(
+            {"user_id": user_id},
+            {
+                "$push": {
+                    "trigger_subscriptions.$[watch].gate.recent_skips": {
+                        "$each": [skip.model_dump()],
+                        "$slice": -GATE_RECENT_SKIPS_KEPT,
+                    }
+                }
+            },
+            scope=user_id,
+            extra_filter={
+                "trigger_subscriptions": {
+                    "$elemMatch": {"id": subscription_id, "gate": {"$ne": None}}
+                }
+            },
+            array_filters=[{"watch.id": subscription_id}],
+            return_document=False,
         )
 
     async def resume_trigger_subscriptions(

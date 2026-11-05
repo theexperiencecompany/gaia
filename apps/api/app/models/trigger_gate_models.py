@@ -4,6 +4,7 @@ None on the owner means it never had a gate; enabled=False means the user turned
 off and its text is kept, so turning it back on restores it.
 """
 
+from datetime import datetime
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -34,10 +35,23 @@ GateCondition = Annotated[
 ]
 
 
+class GateSkipRecord(BaseModel):
+    """One event a gate kept from running its job, as the gate's panel lists it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: str = Field(
+        description="The skipped event as a person reads it: an email's sender and subject"
+    )
+    at: datetime
+
+
 class _StoredGate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     kind: GateKind
+    # Newest last; a new condition starts with none, since the old skips do not describe it.
+    recent_skips: list[GateSkipRecord] = Field(default_factory=list)
 
     @property
     def enforced(self) -> bool:

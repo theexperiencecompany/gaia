@@ -32,6 +32,7 @@ const AUTHORED: AuthoredGateView = {
   enabled: true,
   display_condition: BILLING,
   enforced: false,
+  recent_skips: [],
 };
 
 const DESK: SystemGateView = {
@@ -40,6 +41,7 @@ const DESK: SystemGateView = {
   enabled: true,
   display_condition: DESK_TEXT,
   enforced: true,
+  recent_skips: [],
 };
 
 describe("a tracked todo's runs-only-when line", () => {
@@ -50,7 +52,7 @@ describe("a tracked todo's runs-only-when line", () => {
     editSubscriptionGate.mockResolvedValue(saved);
   });
 
-  it("saves a rewritten condition when the user leaves the field", async () => {
+  it("saves a rewritten rule when the user saves it", async () => {
     render(
       <SubscriptionGateLine
         todoId="todo-1"
@@ -58,10 +60,12 @@ describe("a tracked todo's runs-only-when line", () => {
         gate={AUTHORED}
       />,
     );
-    const field = screen.getByRole("textbox", { name: "Runs only when" });
 
-    fireEvent.change(field, { target: { value: `  ${INVOICES} ` } });
-    fireEvent.blur(field);
+    fireEvent.click(screen.getByRole("button", { name: "Edit rule" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Runs only when" }), {
+      target: { value: `  ${INVOICES} ` },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
 
     expect(editSubscriptionGate).toHaveBeenCalledWith("todo-1", "watch-1", {
       condition: INVOICES,
@@ -72,7 +76,7 @@ describe("a tracked todo's runs-only-when line", () => {
     );
   });
 
-  it("sends nothing when the condition is left as it was", () => {
+  it("sends nothing when the rule is left as it was", () => {
     render(
       <SubscriptionGateLine
         todoId="todo-1"
@@ -81,7 +85,8 @@ describe("a tracked todo's runs-only-when line", () => {
       />,
     );
 
-    fireEvent.blur(screen.getByRole("textbox", { name: "Runs only when" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit rule" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
 
     expect(editSubscriptionGate).not.toHaveBeenCalled();
   });
@@ -112,7 +117,7 @@ describe("a tracked todo's runs-only-when line", () => {
     );
 
     expect(screen.getByText(DESK_TEXT)).toBeTruthy();
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit rule" })).toBeNull();
     fireEvent.click(screen.getByRole("switch"));
     expect(editSubscriptionGate).toHaveBeenCalledWith("todo-1", "watch-1", {
       enabled: false,

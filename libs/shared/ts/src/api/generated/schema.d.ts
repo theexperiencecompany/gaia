@@ -6794,6 +6794,8 @@ export interface components {
              * @enum {string}
              */
             kind: "authored";
+            /** Recent Skips */
+            recent_skips: components["schemas"]["GateSkipRecord"][];
         };
         /**
          * BatchApprovalDecisionRequest
@@ -9642,6 +9644,22 @@ export interface components {
              * @default true
              */
             enabled?: boolean;
+        };
+        /**
+         * GateSkipRecord
+         * @description One event a gate kept from running its job, as the gate's panel lists it.
+         */
+        GateSkipRecord: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Event
+             * @description The skipped event as a person reads it: an email's sender and subject
+             */
+            event: string;
         };
         /**
          * GenerateWorkflowPromptRequest
@@ -15216,6 +15234,8 @@ export interface components {
              */
             kind: "system";
             preset: components["schemas"]["SystemGatePreset"];
+            /** Recent Skips */
+            recent_skips: components["schemas"]["GateSkipRecord"][];
         };
         /**
          * SystemPurpose
@@ -17425,6 +17445,7 @@ export type FirstStepsState = components['schemas']['FirstStepsState'];
 export type FoldedCards = components['schemas']['FoldedCards'];
 export type GateAuthor = components['schemas']['GateAuthor'];
 export type GateEdit = components['schemas']['GateEdit'];
+export type GateSkipRecord = components['schemas']['GateSkipRecord'];
 export type GenerateWorkflowPromptRequest = components['schemas']['GenerateWorkflowPromptRequest'];
 export type GenerateWorkflowPromptResponse = components['schemas']['GenerateWorkflowPromptResponse'];
 export type GetPlatformLinksResponse = components['schemas']['GetPlatformLinksResponse'];

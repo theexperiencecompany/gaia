@@ -1,5 +1,6 @@
 """A user's edit to a gate: what it stores, what it refuses, and the event that names it."""
 
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -8,6 +9,7 @@ from app.constants.trigger_gates import GateAuthor, GateEditAction, GateOwner, S
 from app.models.trigger_gate_models import (
     AuthoredGate,
     GateEdit,
+    GateSkipRecord,
     SystemGate,
     SystemGateView,
     TriggerGate,
@@ -22,6 +24,7 @@ pytestmark = pytest.mark.unit
 USER_ID = "507f1f77bcf86cd799439011"
 AUTHORED = AuthoredGate(condition="the email is from a customer", author=GateAuthor.GAIA)
 DESK = SystemGate(preset=SystemGatePreset.INBOX_DESK)
+SKIP = GateSkipRecord(event='Substack, "Weekly digest"', at=datetime(2026, 11, 5, 9, tzinfo=UTC))
 
 
 class TestApplyGateEdit:
@@ -45,6 +48,19 @@ class TestApplyGateEdit:
         assert apply_gate_edit(current, GateEdit(enabled=False)) == current.model_copy(
             update={"enabled": False}
         )
+
+    def test_switching_a_gate_keeps_its_recent_skips(self) -> None:
+        skipped = AUTHORED.model_copy(update={"recent_skips": [SKIP]})
+
+        for edit in (GateEdit(enabled=False), GateEdit(condition=AUTHORED.condition)):
+            assert apply_gate_edit(skipped, edit).recent_skips == [SKIP]
+
+    def test_a_new_condition_starts_with_no_skips(self) -> None:
+        skipped = AUTHORED.model_copy(update={"recent_skips": [SKIP]})
+
+        edited = apply_gate_edit(skipped, GateEdit(condition="the email is about an invoice"))
+
+        assert edited.recent_skips == []
 
     def test_a_gate_read_through_the_view_is_stored_as_its_own_type(self) -> None:
         shown = SystemGateView(preset=SystemGatePreset.INBOX_DESK)

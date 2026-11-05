@@ -12,7 +12,7 @@ A gate that crashes outside its JEV call runs the job now, day or night.
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import UTC, datetime
 import time
 from typing import Final
 
@@ -46,9 +46,12 @@ from app.constants.trigger_gates import (
     GateReason,
     UrgentChoice,
 )
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.jev_models import JevChoiceAnswer, JevDecisionsResponse
 from app.models.trigger_gate_models import (
     AuthoredGate,
+    GateSkipRecord,
     QuietHoursBypass,
     QuietHoursHold,
     SystemGate,
@@ -498,4 +501,26 @@ async def _decide(
         enforced = gate.enforced and await is_trigger_gates_enforced(job.user_id)
         verdict = decision.verdict if enforced else GateRun()
         _record(gate, job, trigger_name, decision, _OUTCOMES[type(verdict)], enforced=enforced)
+    if isinstance(verdict, GateSkip):
+        await _remember_skip(job, verdict)
     return verdict
+
+
+async def _remember_skip(job: GatedJob, skip: GateSkip) -> None:
+    """Keep the skip on the job's gate for its panel; a failed write costs the entry, not the skip."""
+    record = GateSkipRecord(event=skip.event, at=datetime.now(UTC))
+    try:
+        if job.owner is GateOwner.WORKFLOW:
+            await workflow_repository.remember_gate_skip(job.id, job.user_id, record)
+        else:
+            await todo_repository.remember_subscription_gate_skip(
+                user_id=job.user_id, subscription_id=job.id, skip=record
+            )
+    except Exception as e:
+        log.warning(
+            "trigger_gate.skip_unrecorded",
+            owner=job.owner.value,
+            job_id=job.id,
+            error_type=type(e).__name__,
+            error=str(e)[:300],
+        )

@@ -190,6 +190,10 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         patch(f"{gate}.capture", MagicMock()) as capture,
         patch(f"{gate}.get_profile_timezone", AsyncMock(return_value=tz)) as profile_tz,
         patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
+        patch(f"{gate}.workflow_repository.remember_gate_skip", AsyncMock()) as workflow_skips,
+        patch(
+            f"{gate}.todo_repository.remember_subscription_gate_skip", AsyncMock()
+        ) as watch_skips,
     ):
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
@@ -199,6 +203,8 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
             capture=capture,
             tz=profile_tz,
             wrote=wrote,
+            workflow_skips=workflow_skips,
+            watch_skips=watch_skips,
         )
 
 

@@ -1062,10 +1062,18 @@
             "default": "authored",
             "title": "Kind",
             "type": "string"
+          },
+          "recent_skips": {
+            "items": {
+              "$ref": "#/components/schemas/GateSkipRecord"
+            },
+            "title": "Recent Skips",
+            "type": "array"
           }
         },
         "required": [
           "kind",
+          "recent_skips",
           "condition",
           "author",
           "enabled",
@@ -7189,6 +7197,27 @@
           }
         },
         "title": "GateEdit",
+        "type": "object"
+      },
+      "GateSkipRecord": {
+        "description": "One event a gate kept from running its job, as the gate's panel lists it.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "event": {
+            "description": "The skipped event as a person reads it: an email's sender and subject",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "at"
+        ],
+        "title": "GateSkipRecord",
         "type": "object"
       },
       "GenerateWorkflowPromptRequest": {
@@ -18571,10 +18600,18 @@
           },
           "preset": {
             "$ref": "#/components/schemas/SystemGatePreset"
+          },
+          "recent_skips": {
+            "items": {
+              "$ref": "#/components/schemas/GateSkipRecord"
+            },
+            "title": "Recent Skips",
+            "type": "array"
           }
         },
         "required": [
           "kind",
+          "recent_skips",
           "preset",
           "enabled",
           "display_condition",
