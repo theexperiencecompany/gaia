@@ -23,6 +23,7 @@ from scripts.evals.suites.trigger_gate import (
     EVAL_GATES,
     EXTRA,
     RECORDED_DIR,
+    USER_WROTE_IN_THREAD,
     AskedRequest,
     EvalGate,
     GateJournalFields,
@@ -68,6 +69,8 @@ RECORDED_QUIET_FALSE_SKIPS = frozenset({"mail-048", "mail-245", "mail-313", "mai
 # The two service-down emails; mail-151 sits at P(urgent) 0.79 to 0.82, so one pass holds it.
 RECORDED_WAKES = frozenset({"mail-094", "mail-151"})
 NOISE_SKIP_FLOOR = 0.70
+# Continuations of threads the user never wrote in that JEV skips: an uptime and a stale-account alert.
+RECORDED_AUTOMATED_THREAD_SKIPS = frozenset({"mail-195", "mail-413"})
 
 
 class RecordedRow(GateJournalFields):
@@ -118,6 +121,8 @@ async def _regrade(cases: Mapping[str, Case]) -> list[_Pass]:
                     for case_id, row in rows.items():
                         asked = row["requests"][mode]
                         seams.jev.side_effect = _replay(asked, unanswered, f"{case_id}/{mode}")
+                        wrote = cases[case_id].setup.get(USER_WROTE_IN_THREAD, True)
+                        seams.wrote.return_value = wrote
                         verdicts[case_id, mode] = await decide_gate(
                             EVAL_GATES[gate],
                             GatedJob(GateOwner.TODO, case_id, USER_ID, DESK_AUTOMATION),
@@ -223,6 +228,17 @@ def test_by_day_the_holdout_loses_no_needs_you_email_in_any_pass(
         assert (
             _decided(cases, p, GateMode.DAY, GateSkip, label="needs_you", split="holdout") == set()
         )
+
+
+def test_by_day_a_thread_the_user_never_wrote_in_is_asked_about_and_can_skip(
+    cases: dict[str, Case], regraded: list[_Pass]
+) -> None:
+    continued = {c for c, case in cases.items() if USER_WROTE_IN_THREAD in case.setup}
+    wrote = {c for c in continued if cases[c].setup[USER_WROTE_IN_THREAD]}
+    for p in _passes(regraded, EvalGate.SYSTEM):
+        skipped = _decided(cases, p, GateMode.DAY, GateSkip) & continued
+        assert skipped == RECORDED_AUTOMATED_THREAD_SKIPS, p.run_id
+        assert not skipped & wrote
 
 
 @pytest.mark.parametrize("split", [None, "holdout"], ids=["all-420", "holdout"])
