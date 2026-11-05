@@ -218,6 +218,41 @@ class TestSubscribe:
 
         assert register.await_args.kwargs["gate"] == gate
 
+    async def test_a_condition_the_existing_twin_watch_lacks_is_reported_as_not_stored(
+        self,
+    ) -> None:
+        twin = _subscription()
+        register = AsyncMock(return_value=(twin, ValidationOutcome(), False))
+        with patch(f"{_MOD}.register_subscription", register):
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+                config=_config(),
+                todo_id=TODO_ID,
+                trigger_name=GMAIL,
+                action="execute",
+                runs_only_when="The reply says the invoice is paid",
+            )
+
+        assert out == (
+            f"Todo {TODO_ID} already watches {GMAIL} with these settings "
+            f"(subscription id: {twin.id}), so nothing new was stored and it still runs on "
+            "every event. To change its runs_only_when, unsubscribe it and subscribe again."
+        )
+
+    async def test_a_twin_watch_with_the_same_condition_reports_the_watch(self) -> None:
+        gate = AuthoredGate(condition="The reply says the invoice is paid", author=GateAuthor.GAIA)
+        twin = _subscription(gate=gate)
+        register = AsyncMock(return_value=(twin, ValidationOutcome(), False))
+        with patch(f"{_MOD}.register_subscription", register):
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+                config=_config(),
+                todo_id=TODO_ID,
+                trigger_name=GMAIL,
+                action="execute",
+                runs_only_when=gate.condition,
+            )
+
+        assert out.startswith(f"Todo {TODO_ID} is now watching {GMAIL}")
+
     async def test_a_condition_longer_than_a_gate_holds_fails_the_args_schema(self) -> None:
         register, _ = self._register()
         with (
