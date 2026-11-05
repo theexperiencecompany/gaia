@@ -38,3 +38,13 @@ async def test_connect_failure_hides_provider_exception_text() -> None:
     assert result.status == "error"
     assert "Auth config" not in (result.error or "")
     assert "Trello" in (result.error or "")
+
+
+@pytest.mark.asyncio
+async def test_mcp_connect_failure_hides_exception_text() -> None:
+    target = MagicMock(is_platform=True, integration_id="x", integration_name="Acme", user_id="u1")
+    result = await service._handle_connect_failure(target, RuntimeError(COMPOSIO_DUMP))
+
+    assert result.status == "error"
+    assert "Auth config" not in (result.error or "")
+    assert "Acme" in (result.error or "")

@@ -174,6 +174,11 @@ async def _handle_auth_required(
     )
 
 
+def connect_failure_copy(integration_name: str) -> str:
+    """User-facing copy for a failed connect; the provider's exception text stays in the logs."""
+    return f"Couldn't connect {integration_name}. Please try again."
+
+
 async def _handle_connect_failure(
     target: _McpConnectTarget, error: Exception
 ) -> ConnectIntegrationResponse:
@@ -197,7 +202,7 @@ async def _handle_connect_failure(
         status="error",
         integration_id=target.integration_id,
         name=target.integration_name,
-        error=str(error),
+        error=connect_failure_copy(target.integration_name),
         message="Connection failed",
     )
 
@@ -320,7 +325,7 @@ async def _connect_with_bearer_token(
             tools_count=tools_count,
             message="Integration connected successfully",
         )
-    except Exception as e:
+    except Exception:
         # Rollback: clean up stored credentials on connection failure
         await token_store.delete_credentials(integration_id)
         await invalidate_user_integration_caches(user_id)
@@ -336,7 +341,7 @@ async def _connect_with_bearer_token(
             status="error",
             integration_id=integration_id,
             name=integration_name,
-            error=str(e),
+            error=connect_failure_copy(integration_name),
             message="Connection failed",
         )
 
@@ -559,7 +564,7 @@ async def initiate_integration_connection(
             error_type=type(e).__name__,
             user_id=user_id,
         )
-        return _error(f"Couldn't connect {resolved.name}. Please try again.")
+        return _error(connect_failure_copy(resolved.name))
 
 
 async def disconnect_integration(user_id: str, integration_id: str) -> IntegrationSuccessResponse:
