@@ -65,9 +65,11 @@ _SLOT_HELD = (
 )
 _NOT_QUEUED = "I couldn't start the browser task right now. Try again in a moment."
 _STARTED = (
-    "Browser task started in the background (job {job_id}). It has NOT finished: do not "
-    "report an outcome, and do not wait for one. Its result arrives in your inbox as a "
-    "<browser_result> message when it ends, and wakes you if you have already finished."
+    "Browser task started in the background (job {job_id}). It has NOT finished, so do "
+    "not report an outcome. Finish any other work this task needs, then end your turn, "
+    "saying only that the browser task started. Nothing you can call reports on it, so "
+    "do not check on it: when it ends, its result starts a new run of yours as a "
+    "<browser_result> message for you to report."
 )
 _NO_ENDING = (
     "The browser task (job {job_id}) stopped reporting before it recorded how it ended. "

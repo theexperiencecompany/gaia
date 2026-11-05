@@ -36,11 +36,13 @@ from bson.errors import InvalidId
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from langchain.agents.middleware.types import ToolCallRequest
+from langchain.tools import ToolRuntime
 from langchain_core.language_models import ModelProfile
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
 from pydantic import Field
 import pytest
 import respx
@@ -670,6 +672,28 @@ async def live_through(
             else:
                 return
     raise AssertionError(f"the queue never emptied: {await queue.queued_jobs()}")
+
+
+def tool_call_request(
+    tool_call: ToolCall,
+    *,
+    configurable: dict[str, object] | None = None,
+    state: dict[str, object] | None = None,
+) -> ToolCallRequest:
+    """Build the request middleware sees for one tool call, run under configurable."""
+    return ToolCallRequest(
+        tool_call=tool_call,
+        tool=None,
+        state=state,
+        runtime=ToolRuntime(
+            state=state or {},
+            context=None,
+            config={"configurable": configurable or {}},
+            stream_writer=None,
+            tool_call_id=tool_call["id"],
+            store=None,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

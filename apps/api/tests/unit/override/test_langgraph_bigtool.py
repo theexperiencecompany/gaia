@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
 from langchain_core.runnables import RunnableBinding, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from langchain_openai import ChatOpenAI
@@ -70,11 +70,7 @@ from app.override.langgraph_bigtool.create_agent import (
     nudge_continue_node,
     reject_unbound_tools,
 )
-from app.override.langgraph_bigtool.dynamic_tool_node import (
-    format_tool_error,
-    hil_and_timeout_guarded_tool_call,
-)
-from app.override.langgraph_bigtool.utils import State
+from app.override.langgraph_bigtool.utils import RetrieveToolsResult, State
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -542,7 +538,7 @@ class TestCallModel:
         assert result["messages"][-1].content == reply
 
     def test_sync_call_model_comms_agent_leaves_non_string_content_alone(self) -> None:
-        blocks = [{"type": "text", "text": f"hi{NEW_MESSAGE_BREAKER}"}]
+        blocks: list[str | dict[Any, Any]] = [{"type": "text", "text": f"hi{NEW_MESSAGE_BREAKER}"}]
         llm = _make_llm()
         llm.with_config.return_value.bind_tools.return_value.invoke.return_value = AIMessage(
             content=blocks
@@ -918,13 +914,13 @@ class TestSelectTools:
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
-        def my_func(**kwargs: Any) -> dict:
+        def my_func(**kwargs: Any) -> RetrieveToolsResult:
             """Retrieve tools."""
             return {"tools_to_bind": ["dummy_tool_a"], "response": ["dummy_tool_a"]}
 
         builder = create_agent(
             llm, registry, tools_config=ToolRetrievalConfig(retrieve_tools_function=my_func)
-        )  # type: ignore[arg-type]  # test stub returns a bare dict, not the declared RetrieveToolsResult union
+        )
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {"query": "test"}}]
@@ -1002,13 +998,13 @@ class TestSelectTools:
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
-        async def my_coro(**kwargs: Any) -> dict:
+        async def my_coro(**kwargs: Any) -> RetrieveToolsResult:
             """Retrieve tools."""
             return {"tools_to_bind": ["dummy_tool_a"], "response": ["dummy_tool_a"]}
 
         builder = create_agent(
             llm, registry, tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=my_coro)
-        )  # type: ignore[arg-type]  # test stub returns a bare dict, not the declared RetrieveToolsResult union
+        )
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {}}]
@@ -1664,7 +1660,7 @@ class TestLogMessagePreviewDirect:
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
     def test_a_message_without_content_attr_logs_zero_length(self, mock_log: MagicMock) -> None:
-        _log_message_preview(_make_state(messages=[object()]))
+        _log_message_preview(cast("State", {"messages": [object()]}))
 
         entry = mock_log.info.call_args.kwargs["preview"][0]
         assert entry == {"role": "object", "content_length": 0}
@@ -1699,11 +1695,14 @@ class TestResolveRetrievalResultResponseText:
         response_texts: dict[str, str] = {}
 
         bind, response = _resolve_retrieval_result(
-            {
-                "tools_to_bind": ["cal", "subagent:research", 42],
-                "response": ["cal"],
-                "response_text": "Found your calendar tools.",
-            },
+            cast(
+                "RetrieveToolsResult",
+                {
+                    "tools_to_bind": ["cal", "subagent:research", 42],
+                    "response": ["cal"],
+                    "response_text": "Found your calendar tools.",
+                },
+            ),
             "call-1",
             response_texts,
         )
@@ -1726,7 +1725,10 @@ class TestSelectToolsNodeGuard:
 
 class TestFinishTaskNodeDirect:
     def test_result_value_becomes_the_tool_message_content(self) -> None:
-        result = finish_task_node([{"id": "call-1", "args": {"result": "done"}}], store=MagicMock())
+        result = finish_task_node(
+            [{"name": FINISH_TASK_NAME, "id": "call-1", "args": {"result": "done"}}],
+            store=MagicMock(),
+        )
 
         (msg,) = result["messages"]
         assert isinstance(msg, ToolMessage)
@@ -1735,13 +1737,15 @@ class TestFinishTaskNodeDirect:
         assert msg.name == FINISH_TASK_NAME
 
     def test_missing_result_falls_back_to_task_completed(self) -> None:
-        result = finish_task_node([{"id": "call-2"}], store=MagicMock())
+        result = finish_task_node(
+            [{"name": FINISH_TASK_NAME, "id": "call-2", "args": {}}], store=MagicMock()
+        )
 
         assert result["messages"][0].content == "Task completed."
 
     async def test_async_twin_delegates_to_the_sync_impl(self) -> None:
         result = await afinish_task_node(
-            [{"id": "call-3", "args": {"result": 7}}], store=MagicMock()
+            [{"name": FINISH_TASK_NAME, "id": "call-3", "args": {"result": 7}}], store=MagicMock()
         )
 
         assert result["messages"][0].content == "7"
@@ -1899,7 +1903,7 @@ class TestGetBoundToolNamesChannels:
             tool_registry={},
             agent_name="executor_agent",
             middleware_executor=None,
-            middleware_tools=[_NamedOnly(), object()],
+            middleware_tools=cast("list[BaseTool]", [_NamedOnly(), object()]),
             retrieve_tools=None,
             store_arg=None,
             retrieve_tools_function=None,
@@ -1929,7 +1933,7 @@ class TestAfterModelResultMerge:
             },
         )
 
-        result = _after_model_result([tombstone], [], response, dict(updated_state))
+        result = _after_model_result([tombstone], [], response, updated_state)
 
         # Messages carry ONLY the tombstones + response (append reducer), and
         # selected_tool_ids is base state — everything else the hooks added
@@ -1945,7 +1949,7 @@ class TestAfterModelResultMerge:
         interjection = HumanMessage("also check spam")
         response = AIMessage("on it")
 
-        result = _after_model_result([], [interjection], response, {})
+        result = _after_model_result([], [interjection], response, cast("State", {}))
 
         assert result["messages"] == [interjection, response]
 
@@ -1954,7 +1958,9 @@ class TestAfterModelResultMerge:
         summary = HumanMessage("condensed history")
         response = AIMessage("on it")
 
-        result = _after_model_result([], [], response, {}, middleware_writes=[summary])
+        result = _after_model_result(
+            [], [], response, cast("State", {}), middleware_writes=[summary]
+        )
 
         assert result["messages"] == [summary, response]
 
@@ -1965,7 +1971,7 @@ class TestAfterModelResultMerge:
         response = AIMessage("on it")
 
         result = _after_model_result(
-            [tombstone], [interjection], response, {}, middleware_writes=[summary]
+            [tombstone], [interjection], response, cast("State", {}), middleware_writes=[summary]
         )
 
         assert result["messages"] == [tombstone, interjection, summary, response]
@@ -2028,7 +2034,9 @@ class TestResolveRetrievalResultDefaults:
         """A retrieval result may omit either channel; treating a missing key as None crashes the whole turn instead of binding nothing."""
         response_texts: dict[str, str] = {}
 
-        bind, response = _resolve_retrieval_result({}, "call-1", response_texts)
+        bind, response = _resolve_retrieval_result(
+            cast("RetrieveToolsResult", {}), "call-1", response_texts
+        )
 
         assert bind == []
         assert response == []
@@ -2074,6 +2082,7 @@ class TestSelectToolsTwinWiring:
         store = MagicMock()
         mock_call_kwargs.return_value = {"query": "calendar", "store": store}
 
+        assert isinstance(node, RunnableCallable)
         node.func([tool_call], config, store=store)
 
         mock_call_kwargs.assert_called_once_with(tool_call, "store", store, config)
@@ -2094,6 +2103,7 @@ class TestSelectToolsTwinWiring:
         store = MagicMock()
         mock_call_kwargs.return_value = {"query": "calendar", "store": store}
 
+        assert isinstance(node, RunnableCallable)
         await node.afunc([tool_call], config, store=store)
 
         mock_call_kwargs.assert_called_once_with(
@@ -2172,7 +2182,9 @@ class TestEndGraphHooksNodeDirect:
 
 class TestFinishTaskNodeMissingId:
     def test_a_call_without_an_id_gets_an_empty_tool_call_id(self) -> None:
-        result = finish_task_node([{"args": {"result": "done"}}], store=MagicMock())
+        result = finish_task_node(
+            [cast("ToolCall", {"args": {"result": "done"}})], store=MagicMock()
+        )
 
         (msg,) = result["messages"]
         assert msg.tool_call_id == ""
@@ -2180,7 +2192,7 @@ class TestFinishTaskNodeMissingId:
 
     async def test_async_finish_delegates_with_the_store_it_was_given(self) -> None:
         store = MagicMock()
-        calls = [{"id": "c1", "args": {"result": 7}}]
+        calls: list[ToolCall] = [{"name": FINISH_TASK_NAME, "id": "c1", "args": {"result": 7}}]
 
         with patch(f"{_CREATE_AGENT_MODULE}.finish_task_node") as sync_finish:
             await afinish_task_node(calls, store=store)
@@ -2216,10 +2228,7 @@ class TestToolNodeWiring:
 
         dynamic_node.assert_called_once()
         args, kwargs = dynamic_node.call_args
-        assert args[0] is deps.tool_registry
-        opts = args[1]
-        assert opts.handle_tool_errors is format_tool_error
-        assert opts.awrap_tool_call is hil_and_timeout_guarded_tool_call
+        assert args == (deps.tool_registry,)
         assert kwargs == {"middleware_executor": executor, "middleware_tools": [dummy_tool_b]}
         assert node is dynamic_node.return_value
 
@@ -2359,6 +2368,7 @@ class TestCreateAgentWiring:
         assert FINISH_TASK_NAME in builder.nodes
 
         finish = builder.nodes[FINISH_TASK_NAME].runnable
+        assert isinstance(finish, RunnableCallable)
         assert finish.func is finish_task_node
         assert finish.afunc is afinish_task_node
 
