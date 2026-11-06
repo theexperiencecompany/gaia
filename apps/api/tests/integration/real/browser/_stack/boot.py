@@ -22,11 +22,10 @@ import uvicorn
 
 from app.config.settings import settings
 from app.core.app_factory import create_app
-from app.core.provider_registration import register_lazy_providers
+from app.core.provider_registration import boot_process
 from app.db.rabbitmq import declare_outbound_topology_on_startup
 from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import init_mongodb_async
-from app.utils.concurrency import capture_running_loop
 from app.workers.browser_worker import browser_reaper_cron, build_browser_worker
 from app.workers.config.worker_settings import WorkerSettings
 from tests.integration.real.browser._stack.processes import REAPER_HEALTH_KEY
@@ -35,8 +34,7 @@ from tests.integration.real.browser._stack.processes import REAPER_HEALTH_KEY
 async def start_app_services(context: Literal["main_app", "arq_worker"]) -> None:
     """Register the providers and bring up the stores a browser task runs on."""
     settings.WORKER_TYPE = context
-    capture_running_loop()
-    register_lazy_providers(context)
+    boot_process(context)
     await init_mongodb_async()
     await redis_cache.verify_connection()
     await declare_outbound_topology_on_startup()

@@ -616,7 +616,7 @@ def _patch_agent_callbacks() -> None:
 
 async def _bootstrap_app() -> None:
     """Register lazy providers and eager services the app startup would run."""
-    from app.core.provider_registration import register_lazy_providers
+    from app.core.provider_registration import boot_process
     from app.db.rabbitmq import declare_outbound_topology_on_startup
     from app.db.redis import redis_cache
     from app.helpers.lifespan_helpers import (
@@ -625,7 +625,7 @@ async def _bootstrap_app() -> None:
         init_workflow_service,
     )
 
-    register_lazy_providers("arq_worker")
+    boot_process("arq_worker")
     await asyncio.gather(
         init_mongodb_async(),
         redis_cache.verify_connection(),

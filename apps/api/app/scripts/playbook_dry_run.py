@@ -25,6 +25,7 @@ import asyncio
 from datetime import UTC, datetime
 import json
 
+from app.core.provider_registration import boot_process
 from app.db.repositories.workflows import workflow_repository
 from app.models.playbook_models import PlaybookDocument
 from app.services.calendar_service import get_calendar_events
@@ -36,6 +37,8 @@ from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.runner import run_playbook
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.utils.timezone import Timezone
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.context import analytics_context, worker_context
 
 #: Recipes whose trigger is a calendar event about to start.
 _CALENDAR_KEYS = frozenset({"calendar:meeting_prep", "calendar:meeting_reminder"})
@@ -63,6 +66,7 @@ async def _next_event_trigger(user_id: str) -> dict[str, object]:
 
 
 async def _run(args: argparse.Namespace) -> int:
+    boot_process("arq_worker")
     user = await get_user_by_id(args.user_id)
     if user is None:
         raise SystemExit(f"no user {args.user_id}")
@@ -116,7 +120,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--user-id", required=True)
     parser.add_argument("--key", choices=sorted(SYSTEM_RECIPES), help="one recipe only")
-    return asyncio.run(_run(parser.parse_args()))
+    args = parser.parse_args()
+    # An operator's dry run: the model calls it makes are system work.
+    with analytics_context(worker_context(Trigger.SYSTEM)):
+        return asyncio.run(_run(args))
 
 
 if __name__ == "__main__":

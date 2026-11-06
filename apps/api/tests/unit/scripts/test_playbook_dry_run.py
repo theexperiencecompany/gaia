@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+from collections.abc import Iterator
 from datetime import UTC
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +18,13 @@ from app.services.workflow.playbook.dry_run import DryRun
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.runner import PlaybookRunResult
 from app.services.workflow.playbook.workflow_hash import workflow_hash
+from app.utils.concurrency import reset_captured_loop, run_on_captured_loop
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    current_analytics_context,
+    worker_context,
+)
 
 MODULE = "app.scripts.playbook_dry_run"
 REMINDER = "calendar:meeting_reminder"
@@ -33,8 +43,54 @@ def _patches(workflow: MagicMock | None, events: list[GoogleCalendarEventResourc
     )
 
 
+@pytest.fixture(autouse=True)
+def registered() -> Iterator[MagicMock]:
+    """Stand in for the provider registration and forget the loop the script captures."""
+    with patch("app.core.provider_registration.register_lazy_providers") as register:
+        yield register
+    reset_captured_loop()
+
+
 @pytest.mark.unit
 class TestPlaybookDryRun:
+    async def test_a_sync_integration_lookup_runs_on_the_scripts_own_loop(
+        self, registered: MagicMock
+    ) -> None:
+        """Regression: the first calendar read crashed, its Mongo lookup bound to another loop."""
+        script_loop = asyncio.get_running_loop()
+        seen: list[asyncio.AbstractEventLoop] = []
+
+        async def on_loop() -> None:
+            seen.append(asyncio.get_running_loop())
+
+        async def calendar(**_: object) -> MagicMock:
+            await asyncio.to_thread(run_on_captured_loop, on_loop())
+            return MagicMock(events=[GoogleCalendarEventResource(id="evt_9")])
+
+        workflow = MagicMock(id="wf_1", prompt="p", steps=[])
+        run = AsyncMock(return_value=PlaybookRunResult(ok=True, text="t"))
+        first, second, _, fourth = _patches(workflow, [], run)
+
+        with first, second, fourth, patch(f"{MODULE}.get_calendar_events", calendar):
+            await script._run(argparse.Namespace(user_id="u1", key=REMINDER))
+
+        assert seen == [script_loop]
+        registered.assert_called_once_with("arq_worker")
+
+    def test_the_replay_runs_as_system_work(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression: the first replayed tool call raised MissingAnalyticsContextError."""
+        seen: list[AnalyticsContext] = []
+
+        async def run(_args: argparse.Namespace) -> int:
+            seen.append(current_analytics_context())
+            return 0
+
+        monkeypatch.setattr(script, "_run", run)
+        monkeypatch.setattr(sys, "argv", ["playbook_dry_run", "--user-id", "u1"])
+
+        assert script.main() == 0
+        assert seen == [worker_context(Trigger.SYSTEM)]
+
     async def test_the_recipe_replays_as_a_dry_run_on_the_users_next_event(self) -> None:
         workflow = MagicMock(id="wf_1", prompt="p", steps=[])
         event = GoogleCalendarEventResource(id="evt_9", calendarId="dana@acme.com", summary="1:1")
