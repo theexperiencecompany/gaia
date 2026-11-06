@@ -236,6 +236,17 @@ class TestOrphanedBrowserJob:
         assert result.text == executor_constants.EXECUTOR_CRASH_MESSAGE
         assert await jobs_mod.job_cancel_requested("job-1") is True
 
+    @pytest.mark.regression
+    async def test_a_run_that_answered_nothing_cancels_the_job_left_in_flight(
+        self, fake_cache: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await _running_job("conv-1", "job-1")
+
+        result = await _run_with(SubagentOutcome(text="", answered=False))
+
+        assert result.error_type == executor_constants.EXECUTOR_ERROR_NO_ANSWER
+        assert await jobs_mod.job_cancel_requested("job-1") is True
+
     async def test_another_conversations_job_is_left_alone(
         self, fake_cache: fakeredis.aioredis.FakeRedis
     ) -> None:

@@ -445,6 +445,7 @@ async def _execute_executor(
         if not outcome.answered and not outcome.stopped:
             # Nothing reported means nothing confirmed: the worst case, never "done".
             log.error(f"{LogTag.AGENT} Executor ended without an answer", stream_id=stream_id)
+            await _cancel_orphaned_browser_job(run.conversation_id, stream_id)
             return _ExecutorResult(
                 EXECUTOR_CRASH_MESSAGE, "error", ctx=ctx, error_type=EXECUTOR_ERROR_NO_ANSWER
             )

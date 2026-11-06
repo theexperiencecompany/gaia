@@ -30,6 +30,7 @@ from app.agents.tools.tracked_todo_formatting import (
     render_catalog,
 )
 from app.config.oauth_config import get_integration_by_id
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     LIST_TRACKED_TODOS_LIMIT,
@@ -149,6 +150,26 @@ async def _unconnected_refusal(user_id: str, needs_integrations: list[str]) -> s
         "Nothing was saved. Activate it first (activation brings the user its connect card) "
         "and create the todo once it is connected."
     )
+
+
+async def _creation_refusal(
+    user_id: str,
+    references: list[str] | None,
+    needs_integrations: list[str] | None,
+    gmail_thread_id: str | None,
+) -> str | None:
+    """Refuse a new todo whose references or needed services cannot hold; None when both do.
+
+    A thread watch needs Gmail whether or not the caller listed it.
+    """
+    if references and (refusal := await _references_refusal(user_id, references)):
+        return refusal
+    needed = list(needs_integrations or [])
+    if gmail_thread_id and GMAIL_INTEGRATION_ID not in needed:
+        needed.append(GMAIL_INTEGRATION_ID)
+    if needed:
+        return await _unconnected_refusal(user_id, needed)
+    return None
 
 
 async def _link_refusal(
@@ -315,9 +336,7 @@ async def create_tracked_todo(
     if error:
         return error
 
-    if references and (refusal := await _references_refusal(user_id, references)):
-        return refusal
-    if needs_integrations and (refusal := await _unconnected_refusal(user_id, needs_integrations)):
+    if refusal := await _creation_refusal(user_id, references, needs_integrations, gmail_thread_id):
         return refusal
     if gives_sub_todo_rules(config, parent_todo_id, initial_canvas):
         return SUB_TODO_STANDING_RULES_REFUSAL
