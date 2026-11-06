@@ -9,6 +9,7 @@ from typing import Annotated, Any, Literal, NotRequired, Self, TypedDict, get_ar
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints
 
+from app.constants.desk_buckets import DeskBucket
 from app.constants.email import (
     DEFAULT_SUMMARY_FIELDS,
     MESSAGE_FIELD_SYNONYMS,
@@ -330,8 +331,10 @@ class GmailMessageView(BaseModel):
     content: GmailMessageContent | None = Field(
         default=None, exclude_if=lambda content: content is None
     )
-    # Read by the trigger gate's signals (List-Unsubscribe, Precedence); never on the wire.
+    # Read by the desk bucket's signals (List-Unsubscribe, Precedence); never on the wire.
     headers: list[GmailHeader] = Field(default_factory=list, exclude=True)
+    # Set only on an Inbox desk run's own fetch, and kept whatever fields the fetch asked for.
+    bucket: DeskBucket | None = Field(default=None, exclude_if=lambda bucket: bucket is None)
 
 
 class GmailMessageRef(BaseModel):

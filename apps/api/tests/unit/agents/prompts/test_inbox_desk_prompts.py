@@ -14,6 +14,7 @@ from app.agents.prompts.todo_prompts import (
 from app.agents.templates.mail_templates import message_view_needs_body
 from app.agents.tools.coding.query_json_tool import query_json
 from app.constants import agents as agent_constants, todos as todo_constants
+from app.constants.desk_buckets import DeskBucket
 from app.constants.email import DEFAULT_SUMMARY_FIELDS
 from app.constants.quiet_hours import QUIET_HOURS_END, QUIET_HOURS_START
 from app.constants.todos import (
@@ -331,6 +332,39 @@ def test_a_security_problem_is_fetched_even_when_its_subject_reads_like_a_sign_i
     assert "-subject:" not in problems
     for term in ("blocked", "locked", "suspicious", "(password changed)", "(two-factor enabled)"):
         assert f"subject:{term}" in problems
+
+
+def test_the_fetch_names_every_bucket_a_message_may_carry() -> None:
+    step = "\n".join(_step(FETCH_STEP))
+
+    assert 'may carry a "bucket"' in step
+    for bucket in DeskBucket:
+        assert bucket.value in step.split('may carry a "bucket"', 1)[1]
+
+
+def test_a_junk_bucket_is_skipped_and_counted_and_only_unbucketed_mail_is_judged_automated() -> (
+    None
+):
+    step = "\n".join(_step(SKIP_STEP))
+
+    assert f"skip and count every {DeskBucket.JUNK} message" in step
+    assert "Of the messages with no bucket, skip and count automated mail" in step
+
+
+def test_a_bucket_is_its_messages_class_so_the_desk_never_classifies_it() -> None:
+    head = _step(CLASSIFY_STEP)[0]
+
+    assert head.startswith(
+        f"A bucketed message's class is its bucket: {DeskBucket.REPLY} is TO_REPLY, "
+        f"{DeskBucket.WAITING} AWAITING_REPLY, {DeskBucket.ACT} ACTION_NEEDED, "
+        f"and {DeskBucket.FYI} is FYI"
+    )
+    assert "each message with no bucket is classified" in head
+    assert set(THREAD_CLASSES) >= {"TO_REPLY", "AWAITING_REPLY", "ACTION_NEEDED", "FYI"}
+
+
+def test_an_fyi_message_is_briefed_without_reading_its_thread() -> None:
+    assert f"{DeskBucket.FYI} is FYI, its thread never read" in _step(CLASSIFY_STEP)[0]
 
 
 def test_a_past_dated_event_is_never_added_or_proposed() -> None:

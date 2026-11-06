@@ -56,14 +56,14 @@ from app.helpers.lifespan_helpers import (
 )
 from app.services.blob_store import ensure_blob_store_ready
 from app.services.composio.composio_service import init_composio_service
-from app.services.composio.custom_tools.fetched_mail_gate import install_fetched_mail_gate
+from app.services.composio.custom_tools.fetched_mail_buckets import install_fetched_mail_bucketer
 from app.services.composio.instance_toolkits import load_instance_toolkits
 from app.services.delivery_alerts.slack import init_delivery_alerts_slack
 from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.sandbox.pool import init_sandbox_pool
 from app.services.startup_validation import validate_startup_requirements
 from app.services.storage.bootstrap import init_juicefs_mount
-from app.services.todos.desk_mail_gate import desk_gated_views
+from app.services.todos.desk_mail_buckets import desk_bucketed_views
 from app.services.tools.tools_warmup import warmup_tools_cache
 from app.services.workspace_sync import init_system_subtree, resync_stale_user_workspaces
 from app.utils.concurrency import capture_running_loop
@@ -188,14 +188,14 @@ def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
 
 
 def boot_process(context: Literal["main_app", "arq_worker"]) -> None:
-    """Capture the running loop, install the todo mail gate, register the lazy providers: any process's boot.
+    """Capture the running loop, install the desk mail bucketer, register the lazy providers: any process's boot.
 
     The loop is captured first, on the loop the async clients are built on, so a
     worker thread (a sync Composio custom tool) dispatches back onto it instead of
     stranding a Motor or Redis client on a fresh loop.
     """
     capture_running_loop()
-    install_fetched_mail_gate(desk_gated_views)
+    install_fetched_mail_bucketer(desk_bucketed_views)
     register_lazy_providers(context)
 
 

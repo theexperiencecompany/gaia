@@ -19,6 +19,7 @@ import time_machine
 from app.agents.prompts import todo_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
 from app.agents.tools.execute.dispatch import dispatch_config_for
+from app.constants.desk_buckets import DeskBucket
 from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.models.agent_config import ComposioAccountSelection
@@ -27,6 +28,7 @@ from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
     FetchMessagesInput,
     FetchThreadInput,
+    GmailMessageView,
 )
 from app.services.composio import account_scope as account_scope_module
 from app.services.composio.custom_tools import gmail_tools as gmail_tools_module
@@ -931,16 +933,18 @@ class TestTheDesksSweep:
 # ---------------------------------------------------------------------------
 
 
-class TestATodoRunsFetchPassesItsGate:
-    """A tracked todo's mail fetch is handed to the desk gate; a body-less count never is."""
+class TestATodoRunsFetchIsBucketed:
+    """A tracked todo's mail fetch is handed to the desk bucketer; a body-less count never is."""
 
     DESK_RUN: ClassVar[dict[str, Any]] = {"configurable": {"active_todo_id": "desk-1"}}
 
-    def _fetch(self, mock_proxy: MagicMock, gate: AsyncMock, **request: Any) -> dict[str, Any]:
+    def _fetch(
+        self, mock_proxy: MagicMock, bucketer: AsyncMock | None, **request: Any
+    ) -> dict[str, Any]:
         mock_proxy.side_effect = _one_message_mailbox()
         with (
             patch(f"{GMAIL_TOOLS}.current_run_config", return_value=self.DESK_RUN),
-            patch(f"{GMAIL_TOOLS}.installed_fetched_mail_gate", return_value=gate),
+            patch(f"{GMAIL_TOOLS}.installed_fetched_mail_bucketer", return_value=bucketer),
         ):
             return _register_and_get_tools()["FETCH_MESSAGES"](
                 request=FetchMessagesInput(query="after:1790000000", **request),
@@ -948,63 +952,74 @@ class TestATodoRunsFetchPassesItsGate:
                 auth_credentials=AUTH_CREDS,
             )
 
-    def test_the_messages_are_what_the_gate_kept(self, mock_proxy: MagicMock) -> None:
-        gate = AsyncMock(return_value=[])
+    @staticmethod
+    def _bucketing(bucket: DeskBucket) -> AsyncMock:
+        async def bucketed(
+            user_id: str, todo_id: str, views: list[GmailMessageView]
+        ) -> list[GmailMessageView]:
+            return [view.model_copy(update={"bucket": bucket}) for view in views]
 
-        result = self._fetch(mock_proxy, gate)
+        return AsyncMock(side_effect=bucketed)
 
-        (user_id, todo_id, views), _ = gate.await_args
+    def test_each_message_carries_the_bucket_the_desk_judge_gave_it(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        bucketer = self._bucketing(DeskBucket.ACT)
+
+        result = self._fetch(mock_proxy, bucketer)
+
+        (user_id, todo_id, views), _ = bucketer.await_args
         assert (user_id, todo_id) == (AUTH_CREDS["user_id"], "desk-1")
         assert [v.id for v in views] == ["msg-1"]
-        assert result["messages"] == []
+        assert [m["bucket"] for m in result["messages"]] == ["act"]
 
-    def test_a_count_only_sweep_is_never_gated(self, mock_proxy: MagicMock) -> None:
-        gate = AsyncMock(return_value=[])
+    def test_the_bucket_rides_on_a_fetch_that_projects_its_fields(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        result = self._fetch(mock_proxy, self._bucketing(DeskBucket.FYI), fields=["id", "subject"])
+
+        (message,) = result["messages"]
+        assert set(message) == {"id", "subject", "bucket"}
+        assert message["bucket"] == "fyi"
+
+    def test_a_count_only_sweep_is_never_bucketed(self, mock_proxy: MagicMock) -> None:
+        bucketer = self._bucketing(DeskBucket.JUNK)
 
         result = self._fetch(
             mock_proxy,
-            gate,
+            bucketer,
             fields=list(todo_prompts.INBOX_DESK_SWEEP_FIELDS),
             body_processing="none",
         )
 
-        gate.assert_not_awaited()
-        assert len(result["messages"]) == 1
+        bucketer.assert_not_awaited()
+        assert "bucket" not in result["messages"][0]
 
-    def test_a_process_with_no_gate_installed_keeps_the_mail_and_says_so(
+    def test_a_process_with_no_bucketer_installed_keeps_the_mail_and_says_so(
         self, mock_proxy: MagicMock
     ) -> None:
-        mock_proxy.side_effect = _one_message_mailbox()
-
-        with (
-            patch(f"{GMAIL_TOOLS}.current_run_config", return_value=self.DESK_RUN),
-            patch(f"{GMAIL_TOOLS}.installed_fetched_mail_gate", return_value=None),
-            patch(f"{GMAIL_TOOLS}.log") as log,
-        ):
-            result = _register_and_get_tools()["FETCH_MESSAGES"](
-                request=FetchMessagesInput(query="after:1790000000"),
-                execute_request=MagicMock(),
-                auth_credentials=AUTH_CREDS,
-            )
+        with patch(f"{GMAIL_TOOLS}.log") as log:
+            result = self._fetch(mock_proxy, None)
 
         assert len(result["messages"]) == 1
+        assert "bucket" not in result["messages"][0]
         log.error.assert_called_once_with(
-            "[TOOL] GMAIL_FETCH_MESSAGES: no mail gate installed", todo_id="desk-1"
+            "[TOOL] GMAIL_FETCH_MESSAGES: no mail bucketer installed", todo_id="desk-1"
         )
 
-    def test_a_fetch_outside_any_todo_run_is_never_gated(self, mock_proxy: MagicMock) -> None:
-        gate = AsyncMock(return_value=[])
+    def test_a_fetch_outside_any_todo_run_is_never_bucketed(self, mock_proxy: MagicMock) -> None:
+        bucketer = self._bucketing(DeskBucket.JUNK)
         mock_proxy.side_effect = _one_message_mailbox()
 
-        with patch(f"{GMAIL_TOOLS}.installed_fetched_mail_gate", return_value=gate):
+        with patch(f"{GMAIL_TOOLS}.installed_fetched_mail_bucketer", return_value=bucketer):
             result = _register_and_get_tools()["FETCH_MESSAGES"](
                 request=FetchMessagesInput(query="after:1790000000"),
                 execute_request=MagicMock(),
                 auth_credentials=AUTH_CREDS,
             )
 
-        gate.assert_not_awaited()
-        assert len(result["messages"]) == 1
+        bucketer.assert_not_awaited()
+        assert "bucket" not in result["messages"][0]
 
 
 def _one_message_mailbox(

@@ -5,6 +5,7 @@ The proxy attaches the user's OAuth token server-side; tools only need
 user_id from auth_credentials.
 """
 
+from collections import Counter
 from collections.abc import Sequence
 import datetime
 import re
@@ -50,7 +51,7 @@ from app.models.composio_schemas.gmail import (
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.integrations.gmail import GmailThreadData
 from app.models.integrations.gmail_messages import GmailApiMessage, RelayedGmailMessage
-from app.services.composio.custom_tools.fetched_mail_gate import installed_fetched_mail_gate
+from app.services.composio.custom_tools.fetched_mail_buckets import installed_fetched_mail_bucketer
 from app.services.composio.custom_tools.gmail_constants import (
     _DAYS_PER_UNIT,
     FETCH_CONCURRENCY,
@@ -463,7 +464,7 @@ def _fetch_and_shape(
             reason=exc.reason,
         )
 
-    full_views = _through_todo_gate(user_id, request, full_views)
+    full_views = _bucketed_for_todo(user_id, request, full_views)
     if len(full_views) > OFFLOAD_MIN_MESSAGES:
         return _format_inline_result(_file_bound_views(full_views), truncated=truncated)
     _emit_email_card(full_views)
@@ -472,28 +473,30 @@ def _fetch_and_shape(
     )
 
 
-def _through_todo_gate(
+def _bucketed_for_todo(
     user_id: str, request: FetchMessagesInput, views: list[GmailMessageView]
 ) -> list[GmailMessageView]:
-    """Return the views a tracked todo run's gate lets through; all of them outside one.
+    """Return the views a tracked todo run fetched, bucketed where its todo buckets mail; as-is otherwise.
 
-    body_processing "none" is the desk's count sweep, so only mail it triages meets the gate.
+    body_processing "none" is the desk's count sweep, so only mail it triages is bucketed.
     """
     todo_id = read_agent_configurable(current_run_config()).active_todo_id
     if not todo_id or not views or request.body_processing == "none":
         return views
-    gate = installed_fetched_mail_gate()
-    if gate is None:
-        log.error(f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: no mail gate installed", todo_id=todo_id)
+    bucketer = installed_fetched_mail_bucketer()
+    if bucketer is None:
+        log.error(
+            f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: no mail bucketer installed", todo_id=todo_id
+        )
         return views
-    kept = run_on_captured_loop(gate(user_id, todo_id, views))
+    bucketed = run_on_captured_loop(bucketer(user_id, todo_id, views))
     log.info(
-        f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: mail passed its todo's gate",
+        f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: mail bucketed for its todo",
         todo_id=todo_id,
         fetched=len(views),
-        gate_skipped=len(views) - len(kept),
+        buckets=dict(Counter(view.bucket or "unbucketed" for view in bucketed)),
     )
-    return kept
+    return bucketed
 
 
 def _file_bound_views(views: list[GmailMessageView]) -> list[dict[str, object]]:

@@ -39,7 +39,6 @@ from app.services.triggers.trigger_gate import (
     GateRun,
     GateSkip,
     GateVerdict,
-    decide_fetched_mail,
     decide_gate,
     quiet_hours_hold,
 )
@@ -1260,79 +1259,3 @@ class TestQuietHoursHold:
     ) -> None:
         with patch(f"{_MOD}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
             assert await quiet_hours_hold(AUTHORED, USER_ID) is None
-
-
-SIGN_IN = "Successful login from new device"
-DECLINED = "Card transaction declined"
-DESK_JOB = GatedJob(owner=GateOwner.TODO, id=OWNER_ID, user_id=USER_ID, automation="Inbox desk")
-
-
-def _jev_by_subject(answers: Mapping[str, httpx.Response]) -> object:
-    """Answer each Decisions request by the subject of the email it carries."""
-
-    def answer(request: httpx.Request) -> httpx.Response:
-        return answers[json.loads(request.content)["state"]["event"]["subject"]]
-
-    return answer
-
-
-def _fetched(*subjects: str) -> list[dict[str, object]]:
-    return [
-        _new_thread(thread_id=f"m{n}", message_id=f"m{n}", subject=subject)
-        for n, subject in enumerate(subjects)
-    ]
-
-
-class TestMailARunFetchedItself:
-    async def test_each_email_gets_the_gates_own_verdict_in_order(
-        self, seams: SimpleNamespace
-    ) -> None:
-        seams.jev.mock(
-            side_effect=_jev_by_subject(
-                {
-                    SIGN_IN: httpx.Response(200, json=_answer(0.99)),
-                    DECLINED: httpx.Response(200, json=_answer(0.10)),
-                }
-            )
-        )
-
-        verdicts = await decide_fetched_mail(DESK, DESK_JOB, _fetched(SIGN_IN, DECLINED))
-
-        assert [type(v) for v in verdicts] == [GateSkip, GateRun]
-        assert seams.jev.call_count == 2
-        seams.todo_skip.assert_awaited_once()
-        assert seams.todo_skip.await_args.kwargs["skip"].at == AFTERNOON
-
-    async def test_an_email_jev_fails_on_is_kept(self, seams: SimpleNamespace) -> None:
-        seams.jev.mock(
-            side_effect=_jev_by_subject(
-                {SIGN_IN: httpx.Response(500), DECLINED: httpx.Response(200, json=_answer(0.99))}
-            )
-        )
-
-        verdicts = await decide_fetched_mail(DESK, DESK_JOB, _fetched(SIGN_IN, DECLINED))
-
-        assert [type(v) for v in verdicts] == [GateRun, GateSkip]
-
-    async def test_quiet_hours_never_hold_mail_a_run_already_fetched(
-        self, night: SimpleNamespace
-    ) -> None:
-        night.jev.mock(return_value=httpx.Response(200, json=_answer(0.10)))
-
-        (verdict,) = await decide_fetched_mail(DESK, DESK_JOB, _fetched(DECLINED))
-
-        assert verdict == GateRun()
-        assert set(_sent(night)["questions"]) == {"gate"}
-
-    @pytest.mark.parametrize(
-        "gate",
-        [None, DESK.model_copy(update={"enabled": False})],
-        ids=["no-gate", "turned-off"],
-    )
-    async def test_a_gate_that_is_not_on_keeps_every_email_unasked(
-        self, seams: SimpleNamespace, gate: TriggerGate | None
-    ) -> None:
-        verdicts = await decide_fetched_mail(gate, DESK_JOB, _fetched(SIGN_IN, DECLINED))
-
-        assert verdicts == [GateRun(), GateRun()]
-        assert seams.jev.call_count == 0

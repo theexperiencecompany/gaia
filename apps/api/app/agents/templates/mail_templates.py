@@ -478,12 +478,15 @@ def project_message_view(
 ) -> dict[str, object]:
     """Project a message view to the requested fields, keyed as the agent reads them.
 
-    None or an empty fields list means "all fields".
+    None or an empty fields list means "all fields"; a desk bucket rides on every projection.
     """
     wire = view.model_dump(by_alias=True)
     if not fields:
         return wire
-    return {key: wire[key] for key in fields if key in wire}
+    projected: dict[str, object] = {key: wire[key] for key in fields if key in wire}
+    if view.bucket is not None:
+        projected["bucket"] = view.bucket
+    return projected
 
 
 def build_message_view(

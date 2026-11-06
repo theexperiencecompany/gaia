@@ -7,11 +7,10 @@ failure runs. Inside the user's quiet hours the same call also asks whether the
 event is worth waking them for: P(urgent) >= 0.80 runs now, then a confident
 skip skips, and everything else, every JEV failure included, waits for 08:00.
 A gate that crashes outside its JEV call runs the job now, day or night.
-Mail a run fetches itself (the Inbox desk's own sweep) gets the same day-time decision.
 """
 
 import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 import time
@@ -30,8 +29,6 @@ from app.constants.trigger_gates import (
     SYSTEM_GATE_PRESETS,
     TRIGGER_GATE_AUTOMATION_MAX_CHARS,
     TRIGGER_GATE_EVENT_LABEL_MAX_CHARS,
-    TRIGGER_GATE_FETCHED_MAIL_LIMIT,
-    TRIGGER_GATE_FETCHED_MAIL_LIMIT_KEY,
     TRIGGER_GATE_FIELD_MAX_CHARS,
     TRIGGER_GATE_INSTRUCTIONS,
     TRIGGER_GATE_JEV_TIMEOUT_SECONDS,
@@ -50,7 +47,6 @@ from app.constants.trigger_gates import (
     GateReason,
     UrgentChoice,
 )
-from app.constants.triggers import GMAIL_POLL_INBOX_TRIGGER_NAME
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.jev_models import JevChoiceAnswer, JevDecisionsResponse
@@ -71,7 +67,6 @@ from app.services.triggers.condition_matching import resolve_payload_value
 from app.services.triggers.gmail_signals import GmailGateView, gmail_gate_view
 from app.services.triggers.matchable_fields import get_matchable_trigger
 from app.services.user_service import get_profile_timezone
-from app.utils.concurrency import loop_bound_semaphore
 from app.utils.general_utils import clip_text
 from app.utils.quiet_hours import after_quiet_hours, in_quiet_hours
 from shared.py.analytics import UserId
@@ -87,6 +82,14 @@ _FAILURE_REASONS: tuple[tuple[type[Exception] | tuple[type[Exception], ...], Gat
     # A body that is not JSON, fails validation, or names a label or probability the gate never offered.
     (ValueError, GateReason.JEV_MALFORMED),
 )
+
+
+def jev_failure_reason(error: Exception) -> GateReason:
+    """Name why a JEV call gave no usable answer; anything unforeseen is JEV_ERROR."""
+    return next(
+        (reason for kinds, reason in _FAILURE_REASONS if isinstance(error, kinds)),
+        GateReason.JEV_ERROR,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -381,10 +384,7 @@ async def _ask_jev(
         decision = _settle(gate, body, event, hold=hold)
     except Exception as e:
         # The one degradation a gate has: run as if it were not there, or wait for the morning.
-        reason = next(
-            (reason for kinds, reason in _FAILURE_REASONS if isinstance(e, kinds)),
-            GateReason.JEV_ERROR,
-        )
+        reason = jev_failure_reason(e)
         if reason is not GateReason.JEV_UNCONFIGURED:
             log.warning(
                 "trigger_gate.jev_failed",
@@ -475,45 +475,8 @@ async def decide_gate(
     """
     if gate is None or not gate.enabled:
         return GateRun()
-    return await _decide_or_run(gate, job, trigger_name, payload, on_users_clock=True)
-
-
-async def decide_fetched_mail(
-    gate: TriggerGate | None, job: GatedJob, payloads: Sequence[Mapping[str, object]]
-) -> list[GateVerdict]:
-    """Decide each email a started run fetched itself, as decide_gate does an event, in order.
-
-    The run is already going, so quiet hours hold nothing: only a skip leaves an email out.
-    """
-    if gate is None or not gate.enabled:
-        return [GateRun() for _ in payloads]
-    # pragma: no mutate start — any key names one process-wide semaphore, and None reads as False.
-    limit = loop_bound_semaphore(
-        TRIGGER_GATE_FETCHED_MAIL_LIMIT_KEY, TRIGGER_GATE_FETCHED_MAIL_LIMIT
-    )
-
-    async def decide(payload: Mapping[str, object]) -> GateVerdict:
-        async with limit:
-            return await _decide_or_run(
-                gate, job, GMAIL_POLL_INBOX_TRIGGER_NAME, payload, on_users_clock=False
-            )
-
-    # pragma: no mutate end
-
-    return list(await asyncio.gather(*(decide(payload) for payload in payloads)))
-
-
-async def _decide_or_run(
-    gate: TriggerGate,
-    job: GatedJob,
-    trigger_name: str,
-    payload: Mapping[str, object],
-    *,
-    on_users_clock: bool,
-) -> GateVerdict:
     try:
-        hold = await _hold_on_users_clock(job.user_id) if on_users_clock else None
-        return await _decide(gate, job, trigger_name, payload, hold)
+        return await _decide(gate, job, trigger_name, payload)
     except Exception:
         # A gate that cannot decide runs its job, and never costs a fan-out its other jobs.
         log.error("trigger_gate.failed", owner=job.owner.value, job_id=job.id, exc_info=True)
@@ -521,12 +484,9 @@ async def _decide_or_run(
 
 
 async def _decide(
-    gate: TriggerGate,
-    job: GatedJob,
-    trigger_name: str,
-    payload: Mapping[str, object],
-    hold: GateHold | None,
+    gate: TriggerGate, job: GatedJob, trigger_name: str, payload: Mapping[str, object]
 ) -> GateVerdict:
+    hold = await _hold_on_users_clock(job.user_id)
     event = _event(trigger_name, payload)
     if (
         event is not None

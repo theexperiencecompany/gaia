@@ -54,6 +54,7 @@ mise tasks: `eval:opik:up|down|reset`, `eval:smoke`, `eval:gate`, `eval:all`
 | `safety` | 34 cases — chat injection, exfiltration via tool args, jailbreaks, moderation, refusal consistency + over-refusal | live API `chat-stream` | flash-class |
 | `hil` | 20 cases — real approval gate (pause / approve / deny / auto) end-to-end + comprehension of underspecified/contradictory/multi-step | live API `chat-stream` + `/approvals` | flash-class |
 | `trigger-gate` | 420 anonymised founder emails and 10 synthetic sign-in and security notices — the Inbox desk gate's JEV skip and quiet-hours wake verdicts, regraded in CI by `tests/unit/evals/test_trigger_gate_sweep.py` | production JEV client (Decisions API) | 860 JEV calls a pass |
+| `desk-bucket` | the same 430 emails, each labelled with its Inbox desk bucket — the desk bucket question's JEV choice (reply, waiting, act, fyi, junk), regraded in CI by `tests/unit/evals/test_desk_bucket_sweep.py` | production JEV client (Decisions API) | 430 JEV calls a pass |
 | `gaia_bench` | official GAIA benchmark (validation 165, gated — needs `HF_TOKEN`) | live API executor | flash-class |
 
 ## Providers & rotation

@@ -111,9 +111,6 @@ class SystemGateSpec:
 TRIGGER_GATE_SKIP_PROBABILITY: Final = 0.95
 # p95 measured at 370 ms; a slower answer runs the job as if the gate were not there.
 TRIGGER_GATE_JEV_TIMEOUT_SECONDS: Final = 3.0
-# JEV calls in flight at once for the mail one run fetched itself, process-wide.
-TRIGGER_GATE_FETCHED_MAIL_LIMIT: Final = 8
-TRIGGER_GATE_FETCHED_MAIL_LIMIT_KEY: Final = "trigger_gate_fetched_mail"
 TRIGGER_GATE_CONDITION_MAX_CHARS: Final = 300
 # Each event field, the snippet included, is clipped to this before JEV reads it.
 TRIGGER_GATE_FIELD_MAX_CHARS: Final = 300
