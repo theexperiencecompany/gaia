@@ -80,12 +80,6 @@ from app.services.workflow.playbook.evaluator import (
     resolve_args,
     resolve_value,
 )
-from app.services.workflow.playbook.nothing_new import (
-    is_opening_read,
-    item_fingerprint,
-    item_ids,
-    nothing_new,
-)
 from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
 from app.services.workflow.playbook.tool_space import ToolSpace, tool_space_denial
 from app.utils.timezone import Timezone
@@ -173,9 +167,6 @@ class PlaybookRunResult(BaseModel):
     #: step ran anyway (``ok=True``, ``text`` the fallback record of what ran) —
     #: a delivered run, not a playbook to heal.
     narration_failed: str | None = None
-    #: Why the run stopped after its opening read: it found nothing new since
-    #: the last run, so no other step ran and no model was called.
-    nothing_new: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,11 +201,6 @@ class _Run:
     suspect: str | None = None
     #: Set on a dry run: only its allowlisted reads reach a tool.
     dry_run: DryRun | None = None
-    #: The newest run that delivered its result: the only baseline for nothing new.
-    last_delivered: Sequence[RecordedCall] = ()
-    #: Set once the first call has been recorded: only that one may end the run as nothing new.
-    opened: bool = False
-    nothing_new: str | None = None
     position: int = 0
 
 
@@ -254,9 +240,6 @@ async def run_playbook(
         configurable=configurable,
         recent_traces=[execution.trace for execution in recent],
         dry_run=dry_run,
-        last_delivered=next(
-            (execution.trace for execution in recent if execution.status == "success"), ()
-        ),
     )
     space = ToolSpace(tools=registry.get_tool_dict())
 
@@ -268,13 +251,6 @@ async def run_playbook(
             completed=run.completed,
             failure=_failure_text(failure, run.completed),
             llm_calls=run.llm_calls,
-        )
-    if run.nothing_new is not None:
-        return PlaybookRunResult(
-            ok=True,
-            trace=run.trace,
-            completed=run.completed,
-            nothing_new=run.nothing_new,
         )
     if run.suspect is not None:
         # Stopped on the record's word: no narration, nothing to deliver. The
@@ -322,7 +298,7 @@ async def _run_steps(
         failure = await _run_tool_step(playbook, step, run, space)
         if failure is not None:
             return failure
-        if run.suspect is not None or run.nothing_new is not None:
+        if run.suspect is not None:
             return None
     return None
 
@@ -585,10 +561,6 @@ def _record_step(
     if step.id:
         info: OffloadInfo | None = read_offload(message)
         run.steps[step.id] = StepResult(value=value, file=info["path"] if info else None)
-    opening = not run.opened
-    run.opened = True
-    if opening and _may_end_the_run(step, call):
-        run.nothing_new = nothing_new(tool_name, call.args, value, run.last_delivered)
     if run.suspect is None:
         run.suspect = _empty_where_previous_had_items(tool_name, value, run.recent_traces)
     # This line is the model's only view of what the tool returned, and it has
@@ -596,15 +568,6 @@ def _record_step(
     shown = build_result_digest(text, max_chars=_NARRATION_RESULT_MAX_CHARS)
     run.completed.append(f"{step.label} ({tool_name} {_shown_args(call.args)}) -> {shown}")
     return None
-
-
-def _may_end_the_run(step: ToolStep | ForEachStep, call: _StepCall) -> bool:
-    """Whether this opening call is a read that ran with no model call before it."""
-    return (
-        isinstance(step, ToolStep)
-        and not has_ask_slots(step.args)
-        and is_opening_read(call.tool_name, call.args)
-    )
 
 
 def _shown_args(args: Mapping[str, object]) -> str:
@@ -735,14 +698,8 @@ def _record(run: _Run, tool_name: str, args: Mapping[str, object], text: str) ->
             args=dict(args),
             result_digest=build_result_digest(text),
             replayed=True,
-            item_fingerprint=_fingerprint(text),
         )
     )
-
-
-def _fingerprint(text: str) -> str | None:
-    ids = item_ids(parse_result(text))
-    return None if ids is None else item_fingerprint(ids)
 
 
 def _context(run: _Run, *, item: object = NO_ITEM) -> RunContext:

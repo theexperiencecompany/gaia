@@ -13571,8 +13571,6 @@ export interface components {
              * @default false
              */
             failed?: boolean;
-            /** Item Fingerprint */
-            item_fingerprint?: string | null;
             /**
              * Proxied
              * @default false

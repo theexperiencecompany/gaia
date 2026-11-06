@@ -1702,7 +1702,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "workflow_id"?: string;
     "trigger_type"?: string;
-    "outcome"?: "ran" | "nothing_new";
   };
   "workflow:published": {
     "actor": "user" | "agent";

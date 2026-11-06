@@ -15447,18 +15447,6 @@
             "title": "Failed",
             "type": "boolean"
           },
-          "item_fingerprint": {
-            "anyOf": [
-              {
-                "maxLength": 77,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Item Fingerprint"
-          },
           "proxied": {
             "default": false,
             "title": "Proxied",

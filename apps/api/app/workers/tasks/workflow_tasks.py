@@ -116,7 +116,7 @@ from app.services.workflow.playbook.lifecycle import (
     discard_reason,
     needs_heal,
 )
-from app.services.workflow.playbook.metrics import PLAYBOOK_NOTHING_NEW_TOTAL, record_replay
+from app.services.workflow.playbook.metrics import record_replay
 from app.services.workflow.playbook.runner import (
     PlaybookRunResult,
     completed_block,
@@ -673,8 +673,6 @@ def _fallback_note(result: PlaybookRunResult) -> str:
 AGENT_RUN_SUMMARY = "Ran the full workflow"
 HEAL_RUN_SUMMARY = "Ran the full workflow and repaired its saved shortcut"
 REPLAY_SUMMARY = "Ran from the saved shortcut"
-#: A fire whose shortcut's first read found nothing since the last run: recorded skipped.
-NOTHING_NEW_SUMMARY = "Skipped: nothing new since the last run"
 #: Same run, minus the sentence describing it: the steps all ran, so the record
 #: must not read like a failure, and it must not read like a normal replay either.
 REPLAY_NARRATION_FAILED_SUMMARY = "Ran from the saved shortcut; the summary could not be written"
@@ -980,15 +978,6 @@ async def _deliver_replay(
     return conversation_id, result.trace, summary
 
 
-def _replay_verdict(result: PlaybookRunResult) -> tuple[PlaybookRunStatus, str | None]:
-    """Return how a finished replay went for its playbook, and why when it did not succeed."""
-    if not result.ok:
-        return PlaybookRunStatus.FAILED, result.failure
-    if result.suspect:
-        return PlaybookRunStatus.SUSPECT, result.suspect
-    return PlaybookRunStatus.SUCCESS, None
-
-
 async def _finish_after_replay(
     fire: _Fire,
     playbook: PlaybookDocument,
@@ -1003,20 +992,15 @@ async def _finish_after_replay(
     PLAYBOOK_SUSPECT_STREAK_LIMIT it is dropped so the agent authors afresh.
     """
     workflow, workflow_id, context, user = fire.workflow, fire.workflow_id, fire.context, fire.user
-    if result.nothing_new is not None:
-        # Not a verdict on the playbook: it ran its first step and stopped on
-        # purpose. Nothing is written, delivered or notified.
-        PLAYBOOK_NOTHING_NEW_TOTAL.inc()
-        log.set_ns(
-            "playbook",
-            mode="skipped",
-            reason="nothing_new",
-            playbook_id=playbook.playbook_id,
-            nothing_new=result.nothing_new,
-            llm_calls=result.llm_calls,
-        )
-        return conversation_id, result.trace, NOTHING_NEW_SUMMARY
-    status, reason = _replay_verdict(result)
+    if not result.ok:
+        status = PlaybookRunStatus.FAILED
+        reason = result.failure
+    elif result.suspect:
+        status = PlaybookRunStatus.SUSPECT
+        reason = result.suspect
+    else:
+        status = PlaybookRunStatus.SUCCESS
+        reason = None
     record_replay(status)
     updated = await playbook_repository.record_run_outcome(
         workflow_id,
@@ -1314,11 +1298,7 @@ async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: 
     if trigger_type != TriggerType.MANUAL.value:
         capture(
             UserId(workflow.user_id),
-            WorkflowExecuted(
-                workflow_id=workflow_id,
-                trigger_type=trigger_type,
-                outcome="nothing_new" if summary == NOTHING_NEW_SUMMARY else "ran",
-            ),
+            WorkflowExecuted(workflow_id=workflow_id, trigger_type=trigger_type),
         )
 
     # Arm the next occurrence (scheduled recurring workflows only). A re-arm

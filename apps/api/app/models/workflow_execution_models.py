@@ -13,8 +13,6 @@ from app.schemas.common import ResponseModel
 #: what came back (ids, a count, a cursor) without storing message bodies — the
 #: whole point is that a run's history stops growing with the number of runs.
 RESULT_DIGEST_MAX_CHARS = 4000
-#: An item fingerprint: a count of at most 12 digits, a colon, 64 hex digits.
-ITEM_FINGERPRINT_MAX_CHARS = 77
 
 
 def build_result_digest(output: object, max_chars: int = RESULT_DIGEST_MAX_CHARS) -> str:
@@ -218,35 +216,29 @@ def carries_no_data(value: object) -> bool:
     return False
 
 
-def largest_list(value: object) -> list[object] | None:
-    """The largest list anywhere inside ``value``, the first on a tie; ``None`` when it has none.
+def largest_list_len(value: object) -> int | None:
+    """Length of the largest list anywhere inside ``value``; ``None`` when it has none.
 
-    Tool results are envelopes (``{"data": {"messages": [...]}}``), so "what did
-    this call return" has to look past the top level.
+    Tool results are envelopes (``{"data": {"messages": [...]}}``), so "did this
+    call return any items" has to look past the top level. Shared by the replay's
+    empty-result check and the handoff call record, so both agree on what empty
+    means.
     """
-    best: list[object] | None = None
+    best: int | None = None
     if isinstance(value, list):
-        best = value
+        best = len(value)
         children: list[object] = value
     elif isinstance(value, dict):
         children = list(value.values())
     else:
         return None
     for child in children:
-        nested = largest_list(child)
-        if nested is not None and (best is None or len(nested) > len(best)):
+        nested = largest_list_len(child)
+        # On a tie, re-assigning an equal int is a no-op, so > and >= are
+        # equivalent here; the strict form documents first-wins.
+        if nested is not None and (best is None or nested > best):  # pragma: no mutate
             best = nested
     return best
-
-
-def largest_list_len(value: object) -> int | None:
-    """Length of the largest list anywhere inside ``value``; ``None`` when it has none.
-
-    Shared by the replay's empty-result check and the handoff call record, so
-    both agree on what empty means.
-    """
-    items = largest_list(value)
-    return None if items is None else len(items)
 
 
 # Run-states an execution record may hold (Type Safety items 3, 5): created as
@@ -282,10 +274,6 @@ class RecordedCall(BaseModel):
     proxied: bool = False
     #: The connected account a proxied call named; None is the primary.
     account: str | None = None
-    #: A replayed read's elements as "<count>:<sha256 of the sorted ids>", taken
-    #: from the whole result before it was bounded into result_digest: what the
-    #: next fire's nothing-new check compares, at a fixed size however many there are.
-    item_fingerprint: str | None = Field(default=None, max_length=ITEM_FINGERPRINT_MAX_CHARS)
 
 
 class WorkflowExecution(ResponseModel):
