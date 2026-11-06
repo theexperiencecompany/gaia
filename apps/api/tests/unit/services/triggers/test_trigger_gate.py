@@ -282,16 +282,34 @@ class TestTheSkipLine:
 
         await _skip(owner=GateOwner.TODO)
 
-        (call,) = seams.watch_skips.await_args_list
-        assert call.kwargs["user_id"] == USER_ID
-        assert call.kwargs["subscription_id"] == OWNER_ID
+        seams.watch_skips.assert_awaited_once_with(
+            user_id=USER_ID,
+            subscription_id=OWNER_ID,
+            skip=GateSkipRecord(
+                event="Acme Billing · Invoice 4021 is past due", at=AFTERNOON, certainty=0.95
+            ),
+        )
         seams.workflow_skips.assert_not_awaited()
 
-    async def test_a_skip_that_cannot_be_kept_still_skips(self, seams: SimpleNamespace) -> None:
+    async def test_a_skip_that_cannot_be_kept_still_skips_and_warns(
+        self, seams: SimpleNamespace
+    ) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
-        seams.workflow_skips.side_effect = RuntimeError("mongo down")
+        seams.workflow_skips.side_effect = RuntimeError("mongo down " + "x" * 400)
 
-        assert isinstance(await _skip(), GateSkip)
+        async with captured_wide_event() as event:
+            assert isinstance(await _skip(), GateSkip)
+
+        warnings = event.get("warnings", [])
+        assert isinstance(warnings, list)
+        (warning,) = [w for w in warnings if w["msg"] == "trigger_gate.skip_unrecorded"]
+        assert warning == {
+            "msg": "trigger_gate.skip_unrecorded",
+            "owner": "workflow",
+            "job_id": OWNER_ID,
+            "error_type": "RuntimeError",
+            "error": ("mongo down " + "x" * 400)[:300],
+        }
 
     async def test_just_under_the_line_runs(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.949, run_label="needed")))
