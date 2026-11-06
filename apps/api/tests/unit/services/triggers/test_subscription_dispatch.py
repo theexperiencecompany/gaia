@@ -7,6 +7,7 @@ flow, failing silently.
 """
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,6 +16,7 @@ import httpx
 import pytest
 from redis.exceptions import RedisError
 import respx
+import time_machine
 
 from app.constants.hil import HIL_JEV_URL
 from app.constants.todos import TodoActivityEvent
@@ -41,6 +43,7 @@ from app.services.triggers.subscription_dispatch import (
     fire_subscription,
 )
 from app.services.triggers.todo_trigger_window import TODO_TRIGGER_WINDOW_CLAIMED
+from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.todos import TodosTriggerFired
@@ -98,13 +101,16 @@ def deps():
         patch(f"{_MOD}.capture") as capture,
         patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as activity,
         patch(f"{_MOD}.buffer_todo_trigger_event", new_callable=AsyncMock) as hold,
+        patch(f"{_MOD}.buffer_todo_trigger_event_until", new_callable=AsyncMock) as hold_until,
     ):
         repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
         repo.find_active_by_user_and_trigger = AsyncMock(return_value=[])
         repo.update = AsyncMock(return_value=None)
         redis.redis = MagicMock(set=AsyncMock(return_value=True))
         hold.return_value = True
+        hold_until.return_value = True
         yield SimpleNamespace(
+            hold_until=hold_until,
             repo=repo,
             redis=redis,
             enqueue=enqueue,
@@ -742,23 +748,27 @@ class TestDispatchAttribution:
 
 
 CONDITION = "the reply is from Acme about the pilot"
+KOLKATA = Timezone.parse("Asia/Kolkata")
+# 02:30 on the user's clock in Kolkata; their quiet hours end at 08:00.
+NIGHT = datetime(2026, 10, 1, 21, 0, tzinfo=UTC)
+MORNING = datetime(2026, 10, 2, 8, 0, tzinfo=KOLKATA.tzinfo)
+MEETING = "someone is waiting on you for a meeting happening soon"
 _GATE = AuthoredGate(condition=CONDITION, author=GateAuthor.GAIA)
 # A first message on its own thread: the only Gmail mail a gate asks JEV about.
 _NEW_THREAD: dict[str, object] = {"thread_id": "m-1", "message_id": "m-1", "subject": "Sale!"}
 
 
-def _jev_body(not_needed: float) -> dict[str, object]:
-    choice = "not_needed" if not_needed >= 0.5 else "needed"
+def _gate_answer(not_needed: float) -> dict[str, object]:
     return {
-        "answers": {
-            "gate": {
-                "type": "choice",
-                "choice": choice,
-                "confidence": max(not_needed, 1 - not_needed),
-                "probabilities": {"not_needed": not_needed, "needed": 1 - not_needed},
-            }
-        }
+        "type": "choice",
+        "choice": "not_needed" if not_needed >= 0.5 else "needed",
+        "confidence": max(not_needed, 1 - not_needed),
+        "probabilities": {"not_needed": not_needed, "needed": 1 - not_needed},
     }
+
+
+def _jev_body(not_needed: float) -> dict[str, object]:
+    return {"answers": {"gate": _gate_answer(not_needed)}}
 
 
 @pytest.fixture
@@ -773,6 +783,11 @@ def jev() -> Iterator[respx.Route]:
             "app.services.triggers.trigger_gate.is_trigger_gates_enforced",
             AsyncMock(return_value=True),
         ),
+        patch(
+            "app.services.triggers.trigger_gate.get_profile_timezone",
+            AsyncMock(return_value=KOLKATA),
+        ),
+        time_machine.travel(datetime(2026, 10, 2, 9, 0, tzinfo=UTC), tick=False),
     ):
         yield router.post(HIL_JEV_URL)
 
@@ -848,6 +863,95 @@ class TestTriggerGate:
 
         assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD)) == 0
         assert not jev.called
+
+
+def _night_body(*, can_wait: float, not_needed: float = 0.1) -> dict[str, object]:
+    """Answer both questions; what is not can_wait leans to a meeting."""
+    urgent = {"incident": 0.0, "service_down": 0.0, "meeting": 1 - can_wait, "can_wait": can_wait}
+    return {
+        "answers": {
+            "gate": _gate_answer(not_needed),
+            "urgent": {"type": "choice", "choice": "can_wait", "probabilities": urgent},
+        }
+    }
+
+
+@pytest.fixture
+def night(jev: respx.Route) -> Iterator[respx.Route]:
+    with time_machine.travel(NIGHT, tick=False):
+        yield jev
+
+
+class TestQuietHours:
+    async def test_a_held_event_waits_for_the_morning_and_claims_no_window(
+        self, deps, night: respx.Route
+    ) -> None:
+        night.mock(return_value=httpx.Response(200, json=_night_body(can_wait=1.0)))
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(gate=_GATE)])
+        ]
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD)) == 1
+
+        deps.enqueue.assert_not_awaited()
+        deps.redis.redis.set.assert_not_awaited()
+        todo_id, origin, until = deps.hold_until.await_args.args
+        assert (todo_id, until) == (TODO_ID, MORNING)
+        assert origin.payload == _NEW_THREAD
+        event, detail = deps.activity.await_args.args[2:]
+        assert event is TodoActivityEvent.TRIGGER_FIRED
+        assert detail.endswith("; held until your quiet hours end")
+
+    async def test_a_held_event_that_cannot_be_kept_runs_rather_than_drop(
+        self, deps, night: respx.Route
+    ) -> None:
+        night.mock(return_value=httpx.Response(200, json=_night_body(can_wait=1.0)))
+        deps.hold_until.return_value = False
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(gate=_GATE)])
+        ]
+
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD))
+
+        deps.enqueue.assert_awaited_once()
+
+    async def test_an_urgent_event_runs_now_carrying_why(self, deps, night: respx.Route) -> None:
+        night.mock(return_value=httpx.Response(200, json=_night_body(can_wait=0.0)))
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(gate=_GATE)])
+        ]
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD)) == 1
+
+        # Not held behind the todo's window: an urgent email runs at once.
+        deps.redis.redis.set.assert_not_awaited()
+        deps.hold.assert_not_awaited()
+        origin = deps.enqueue.await_args.args[3]
+        assert isinstance(origin, TriggerOrigin)
+        assert origin.quiet_hours_bypass is not None
+        assert origin.quiet_hours_bypass.reason == MEETING
+        _, detail = deps.activity.await_args.args[2:]
+        assert detail.endswith(f". Ran during quiet hours: {MEETING}")
+
+    async def test_a_confident_skip_at_night_still_skips(self, deps, night: respx.Route) -> None:
+        body = _night_body(can_wait=1.0, not_needed=0.99)
+        night.mock(return_value=httpx.Response(200, json=body))
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(gate=_GATE)])
+        ]
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD)) == 0
+        deps.enqueue.assert_not_awaited()
+        deps.hold_until.assert_not_awaited()
+
+    async def test_an_ungated_watch_runs_at_night_as_by_day(self, deps, night: respx.Route) -> None:
+        deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD)) == 1
+
+        assert not night.called
+        deps.enqueue.assert_awaited_once()
+        deps.hold_until.assert_not_awaited()
 
     @pytest.mark.parametrize(
         ("conditions", "external_ref"),

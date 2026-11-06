@@ -1578,8 +1578,9 @@ export interface EventProperties {
     "trigger_name": string;
     "gate_kind": "authored" | "system";
     "author"?: "gaia" | "user";
-    "outcome": "run" | "skip";
-    "reason": "jev_run" | "jev_skip" | "free_run" | "jev_error" | "jev_timeout" | "jev_malformed" | "jev_unconfigured";
+    "outcome": "run" | "skip" | "hold" | "bypass";
+    "reason": "jev_run" | "jev_skip" | "jev_urgent" | "jev_can_wait" | "free_run" | "jev_error" | "jev_timeout" | "jev_malformed" | "jev_unconfigured";
+    "urgent_choice"?: "incident" | "service_down" | "meeting";
     "enforced": boolean;
     "latency_ms"?: number;
   };

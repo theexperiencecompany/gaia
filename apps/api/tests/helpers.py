@@ -2,7 +2,15 @@
 
 import asyncio
 import base64
-from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Mapping, Sequence
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 import hashlib
@@ -20,6 +28,8 @@ from types import ModuleType, SimpleNamespace
 from typing import Any, ClassVar
 import zoneinfo
 
+from arq.connections import ArqRedis
+from arq.jobs import JobDef
 from bson import ObjectId
 from bson.errors import InvalidId
 from cryptography.fernet import Fernet
@@ -37,6 +47,7 @@ import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.types import ASGIApp
+import time_machine
 import uvicorn
 from workos.session import SessionModule
 
@@ -598,6 +609,32 @@ class InMemoryCredentialStore:
 
     async def delete(self, provider: str) -> bool:
         return self.configs.pop(provider, None) is not None
+
+
+async def live_through(
+    queue: ArqRedis,
+    arrivals: Sequence[datetime],
+    arrive: Callable[[datetime], Awaitable[object]],
+    fire: Callable[[JobDef], Awaitable[object]],
+) -> None:
+    """Play arrivals and the queue on one clock: each arrival at its moment, each job when due.
+
+    An arrival due with a job goes first. Raises when the queue never empties.
+    """
+    pending = sorted(arrivals)
+    with time_machine.travel(pending[0], tick=False) as clock:
+        for _ in range(4 * len(pending) + 8):
+            jobs = sorted(await queue.queued_jobs(), key=lambda job: job.score)
+            due = datetime.fromtimestamp(jobs[0].score / 1000, UTC) if jobs else None
+            if pending and (due is None or pending[0] <= due):
+                clock.move_to(pending[0])
+                await arrive(pending.pop(0))
+            elif due is not None:
+                clock.move_to(due)
+                await fire(jobs[0])
+            else:
+                return
+    raise AssertionError(f"the queue never emptied: {await queue.queued_jobs()}")
 
 
 def tool_call_request(

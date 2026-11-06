@@ -2686,3 +2686,43 @@ class TestAnAgentFireOverlapsToo:
         # conversation held by this very fire and drop the run that is finishing it.
         assert harness.chat.await_args.kwargs["reservation"] == harness.reservation()
         assert harness.complete_execution.await_args.kwargs["status"] == "success"
+
+
+_MEETING = "someone is waiting on you for a meeting happening soon"
+
+
+@pytest.mark.asyncio
+class TestQuietHoursOnTheRecord:
+    """A fire held for, or let through, the user's quiet hours says so in its history and message."""
+
+    async def test_a_let_through_replay_opens_its_message_with_why_it_interrupts(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(return_value=_finished_replay())
+
+        await _fire_with_context(harness, {"quiet_hours": {"kind": "bypass", "reason": _MEETING}})
+
+        delivered = harness.platform_delivery.await_args.kwargs["notification_text"]
+        assert delivered == (
+            f"I'm interrupting your quiet hours because {_MEETING}.\n\nAgenda sent."
+        )
+        assert harness.add_messages.await_args.kwargs["response"] == delivered
+        assert harness.summary() == f"Ran during quiet hours: {_MEETING}. {REPLAY_SUMMARY}"
+
+    async def test_a_held_agent_run_says_it_waited(self) -> None:
+        harness = _Harness(_workflow())
+
+        await _fire_with_context(harness, {"quiet_hours": {"kind": "hold"}})
+
+        assert harness.summary() == f"Held until your quiet hours ended. {AGENT_RUN_SUMMARY}"
+
+    async def test_a_held_replay_delivers_its_text_unchanged(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(return_value=_finished_replay())
+
+        await _fire_with_context(harness, {"quiet_hours": {"kind": "hold"}})
+
+        assert harness.platform_delivery.await_args.kwargs["notification_text"] == "Agenda sent."

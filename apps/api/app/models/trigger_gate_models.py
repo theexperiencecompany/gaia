@@ -9,10 +9,13 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.trigger_gates import (
+    QUIET_HOURS_BYPASS_SUMMARY,
+    QUIET_HOURS_HELD_SUMMARY,
     SYSTEM_GATE_PRESETS,
     TRIGGER_GATE_CONDITION_MAX_CHARS,
     GateAuthor,
     GateKind,
+    GateOutcome,
     SystemGatePreset,
 )
 
@@ -71,3 +74,32 @@ class AuthoredGateEdit(BaseModel):
         else:
             author = GateAuthor.USER
         return AuthoredGate(condition=self.condition, author=author, enabled=self.enabled)
+
+
+class QuietHoursBypass(BaseModel):
+    """A run let through the user's quiet hours, with the reason it says it interrupts them."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal[GateOutcome.BYPASS] = GateOutcome.BYPASS
+    reason: str = Field(min_length=1)
+
+    @property
+    def summary(self) -> str:
+        return QUIET_HOURS_BYPASS_SUMMARY.format(reason=self.reason)
+
+
+class QuietHoursHold(BaseModel):
+    """A run held until the user's quiet hours ended."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal[GateOutcome.HOLD] = GateOutcome.HOLD
+
+    @property
+    def summary(self) -> str:
+        return QUIET_HOURS_HELD_SUMMARY
+
+
+# What a workflow run's context says quiet hours did to it.
+QuietHoursStamp = Annotated[QuietHoursBypass | QuietHoursHold, Field(discriminator="kind")]

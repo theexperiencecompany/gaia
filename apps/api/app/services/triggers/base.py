@@ -17,7 +17,7 @@ from redis.exceptions import RedisError
 
 from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.log_tags import LogTag
-from app.constants.trigger_gates import GateOwner
+from app.constants.trigger_gates import QUIET_HOURS_CONTEXT_KEY, GateOwner
 from app.constants.triggers import TRIGGER_OCCURRENCE_KEY, TRIGGER_OCCURRENCE_TTL_SECONDS
 from app.db.redis import redis_cache
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup, TriggerOptionsQuery
@@ -25,8 +25,21 @@ from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_accounts import primary_connected_account_id
 from app.services.todos.signal_context import get_signal_matching_context
-from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
-from app.services.triggers.trigger_gate import GatedJob, GateSkip, automation_text, gate_skip
+from app.services.triggers.batching import (
+    buffer_trigger_event,
+    coalesce_window_seconds,
+    hold_trigger_event,
+)
+from app.services.triggers.trigger_gate import (
+    GateBypass,
+    GatedJob,
+    GateHold,
+    GateRun,
+    GateSkip,
+    GateVerdict,
+    automation_text,
+    decide_gate,
+)
 from app.services.workflow.execution_service import record_skipped_execution
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
@@ -440,13 +453,13 @@ class TriggerHandler(ABC):
         queued_count = 0
         signal_context_by_user: dict[str, str] = {}
         # Concurrently, so one email waits for the slowest JEV call rather than the sum.
-        skips = await asyncio.gather(
+        verdicts = await asyncio.gather(
             *(self._gate_workflow(workflow, data, event_type) for workflow in workflows)
         )
         # Unmutated: gather returns one result per workflow, so strict can never trip.
-        for workflow, skip in zip(workflows, skips, strict=True):  # pragma: no mutate
-            if skip is None and await self._queue_one_workflow(
-                workflow, data, signal_context_by_user, event_type, trigger_id
+        for workflow, verdict in zip(workflows, verdicts, strict=True):  # pragma: no mutate
+            if not isinstance(verdict, GateSkip) and await self._queue_one_workflow(
+                workflow, data, signal_context_by_user, event_type, trigger_id, verdict
             ):
                 queued_count += 1
 
@@ -487,7 +500,7 @@ class TriggerHandler(ABC):
 
     async def _gate_workflow(
         self, workflow: Workflow, data: dict[str, object], event_type: str
-    ) -> GateSkip | None:
+    ) -> GateVerdict:
         """Ask the workflow's gate about this event; a skip is recorded as a skipped run.
 
         Before the occurrence claim and the batch, so a skipped event leaves
@@ -495,8 +508,8 @@ class TriggerHandler(ABC):
         """
         if workflow.id is None:
             # Not queueable either; _queue_one_workflow reports it.
-            return None
-        skip = await gate_skip(
+            return GateRun()
+        verdict = await decide_gate(
             workflow.gate,
             GatedJob(
                 owner=GateOwner.WORKFLOW,
@@ -507,10 +520,10 @@ class TriggerHandler(ABC):
             trigger_name=workflow.trigger_config.trigger_name or event_type,
             payload=data,
         )
-        if skip is not None:
+        if isinstance(verdict, GateSkip):
             try:
                 await record_skipped_execution(
-                    workflow.id, workflow.user_id, TriggerType.INTEGRATION.value, skip.summary
+                    workflow.id, workflow.user_id, TriggerType.INTEGRATION.value, verdict.summary
                 )
             except Exception as e:
                 # One workflow's history write must not cost the others their dispatch.
@@ -522,7 +535,7 @@ class TriggerHandler(ABC):
                     error=str(e),
                     exc_info=True,
                 )
-        return skip
+        return verdict
 
     async def _queue_one_workflow(
         self,
@@ -531,8 +544,9 @@ class TriggerHandler(ABC):
         signal_context_by_user: dict[str, str],
         event_type: str,
         trigger_id: str | None,
+        verdict: GateRun | GateHold | GateBypass,
     ) -> bool:
-        """Queue a single matched workflow. Returns True if it was queued."""
+        """Queue a single matched workflow, now or when the user's quiet hours end. Returns True if it was queued."""
         try:
             if workflow.id is None:
                 log.error(
@@ -554,6 +568,10 @@ class TriggerHandler(ABC):
             # The trigger_type stamp lets the worker tell this run apart from a user's
             # manual "run now" (unstamped, it defaulted to "manual" and was mislabeled).
             context: dict[str, Any] = {"trigger_type": TriggerType.INTEGRATION.value}
+            if not isinstance(verdict, GateRun):
+                # Unmutated: the stamp's kind is a StrEnum, equal to its value in either mode.
+                stamp = verdict.stamp.model_dump(mode="json")  # pragma: no mutate
+                context[QUIET_HOURS_CONTEXT_KEY] = stamp
             if workflow.user_id not in signal_context_by_user:
                 try:
                     signal_context_by_user[workflow.user_id] = await get_signal_matching_context(
@@ -574,15 +592,26 @@ class TriggerHandler(ABC):
             # are batched into one run. Triggers with no declared interval stay
             # immediate — a meeting reminder held back for its window is a missed meeting.
             window_seconds = coalesce_window_seconds(workflow.trigger_config)
-            if window_seconds > 0 and await buffer_trigger_event(
-                workflow.id, workflow.user_id, data, window_seconds, context
-            ):
+            # Urgent runs now, never at the end of its batch. Every held event, batching
+            # trigger or not, joins the one drain at the end of the quiet hours: a run per
+            # event would collide on the conversation lock at 08:00 and lose all but one.
+            buffered = False
+            if isinstance(verdict, GateHold):
+                buffered = await hold_trigger_event(
+                    workflow.id, workflow.user_id, data, verdict.until, context
+                )
+            elif window_seconds > 0 and isinstance(verdict, GateRun):
+                buffered = await buffer_trigger_event(
+                    workflow.id, workflow.user_id, data, window_seconds, context
+                )
+            if buffered:
                 return True
 
             await WorkflowQueueService.queue_workflow_execution(
                 workflow.id,
                 workflow.user_id,
                 context={**context, "trigger_data": data},
+                defer_until=verdict.until if isinstance(verdict, GateHold) else None,
             )
             log.info(
                 "trigger_workflow_queued",

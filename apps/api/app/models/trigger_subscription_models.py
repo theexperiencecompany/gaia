@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.trigger_gate_models import TriggerGate
+from app.models.trigger_gate_models import QuietHoursBypass, TriggerGate
 
 
 class MatchableFieldType(StrEnum):
@@ -251,6 +251,10 @@ class TriggerOrigin(BaseModel):
     payload: dict[str, Any] = Field(
         default_factory=dict,
         description="The webhook payload that matched, for the agent's context",
+    )
+    quiet_hours_bypass: QuietHoursBypass | None = Field(
+        default=None,
+        description="Why this run interrupts the user's quiet hours, when its gate let it through",
     )
 
 

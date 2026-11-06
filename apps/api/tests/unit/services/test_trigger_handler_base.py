@@ -9,9 +9,10 @@ from composio_client import APIStatusError, InternalServerError, PermissionDenie
 import httpx
 import pytest
 
-from app.models.trigger_configs import GmailPollInboxConfig
+from app.models.trigger_configs import GmailPollInboxConfig, TriggerConfigData
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.services.triggers.base import TriggerHandler, _log_event_timing
+from app.services.triggers.trigger_gate import GateRun
 from tests.helpers import captured_wide_event
 
 
@@ -119,7 +120,7 @@ class TestQueueOneWorkflowDispatch:
     """The coalescing decision in _queue_one_workflow — the seam every integration webhook passes through."""
 
     @staticmethod
-    def _workflow(trigger_name: str, trigger_data: object) -> Workflow:
+    def _workflow(trigger_name: str, trigger_data: TriggerConfigData | None) -> Workflow:
         return Workflow(
             id="wf_disp",
             user_id="user_disp",
@@ -154,7 +155,7 @@ class TestQueueOneWorkflowDispatch:
             ),
         ):
             queued = await self._handler()._queue_one_workflow(
-                workflow, {"payload": 1}, {}, "GMAIL_NEW_GMAIL_MESSAGE", "tid-1"
+                workflow, {"payload": 1}, {}, "GMAIL_NEW_GMAIL_MESSAGE", "tid-1", GateRun()
             )
 
         assert queued is True
@@ -185,7 +186,7 @@ class TestQueueOneWorkflowDispatch:
             ),
         ):
             queued = await self._handler()._queue_one_workflow(
-                workflow, {"payload": 1}, {}, "GMAIL_NEW_GMAIL_MESSAGE", "tid-1"
+                workflow, {"payload": 1}, {}, "GMAIL_NEW_GMAIL_MESSAGE", "tid-1", GateRun()
             )
 
         assert queued is True
@@ -193,6 +194,7 @@ class TestQueueOneWorkflowDispatch:
             "wf_disp",
             "user_disp",
             context={"trigger_type": "integration", "trigger_data": {"payload": 1}},
+            defer_until=None,
         )
 
     async def test_a_windowless_trigger_still_dispatches_immediately(self) -> None:
@@ -211,7 +213,7 @@ class TestQueueOneWorkflowDispatch:
             ),
         ):
             queued = await self._handler()._queue_one_workflow(
-                workflow, {"payload": 2}, {}, "CAL_EVT", None
+                workflow, {"payload": 2}, {}, "CAL_EVT", None, GateRun()
             )
 
         assert queued is True
@@ -220,6 +222,7 @@ class TestQueueOneWorkflowDispatch:
             "wf_disp",
             "user_disp",
             context={"trigger_type": "integration", "trigger_data": {"payload": 2}},
+            defer_until=None,
         )
 
     async def test_any_positive_window_batches_even_one_second(self) -> None:
@@ -239,7 +242,7 @@ class TestQueueOneWorkflowDispatch:
             ),
         ):
             queued = await self._handler()._queue_one_workflow(
-                workflow, {"payload": 3}, {}, "EVT", None
+                workflow, {"payload": 3}, {}, "EVT", None, GateRun()
             )
 
         assert queued is True

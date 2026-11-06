@@ -64,7 +64,7 @@ class _Signals:
 class GmailGateView(BaseModel):
     """A new message as a trigger gate's JEV request reads it: the eval's V4 event, field for field.
 
-    continues_thread drives the free run rule and is never sent.
+    continues_thread drives the free run rule by day and is never sent.
     """
 
     model_config = ConfigDict(frozen=True)

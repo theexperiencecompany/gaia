@@ -1652,8 +1652,9 @@ groups:
           severity: critical
           service: redis
 
-      # 26. Trigger gates cannot get an answer from JEV. Gates fail open, so no run is
-      # lost; every unanswered gate costs a full agent run it might have skipped.
+      # 26. Trigger gates cannot get an answer from JEV. Gates fail open by day and
+      # hold for the morning in quiet hours, so no run is lost; every unanswered gate
+      # costs a run it might have skipped, and urgent mail at night waits until 08:00.
       # The denominator is every decision that asked JEV: free runs never call it, and
       # jev_unconfigured (a self-host with no OpenRouter key) is not an outage. Both
       # the API (workflows) and the worker (tracked todos) export the counter. No
@@ -1671,7 +1672,7 @@ groups:
                 100 * (
                   sum(rate(trigger_gate_decision_total{job=~"gaia-api|arq_worker", reason=~"jev_error|jev_timeout|jev_malformed"}[5m]))
                   /
-                  clamp_min(sum(rate(trigger_gate_decision_total{job=~"gaia-api|arq_worker", reason=~"jev_run|jev_skip|jev_error|jev_timeout|jev_malformed"}[5m])), 0.0001)
+                  clamp_min(sum(rate(trigger_gate_decision_total{job=~"gaia-api|arq_worker", reason=~"jev_run|jev_skip|jev_urgent|jev_can_wait|jev_error|jev_timeout|jev_malformed"}[5m])), 0.0001)
                 )
               instant: true
           - refId: B
@@ -1696,9 +1697,11 @@ groups:
             not be evaluated, which almost always means Prometheus is down or
             unreachable.{{ end }}
           description: >-
-            Gated workflows and tracked todos still run when JEV fails, so users
-            lose nothing, but every gate that cannot be answered pays for a full
-            agent run it might have skipped. Check OpenRouter's status and the
+            Gated workflows and tracked todos still run when JEV fails, or wait
+            for 08:00 inside the user's quiet hours, so users lose nothing, but
+            every gate that cannot be answered pays for a full agent run it might
+            have skipped and an urgent email at night waits for the morning
+            instead of waking the user. Check OpenRouter's status and the
             OpenRouter key's credits, then the trigger_gate.jev_failed warnings
             in the API and worker logs, whose reason says whether JEV errored,
             timed out or sent an answer the gate could not read.
