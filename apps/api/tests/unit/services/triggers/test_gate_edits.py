@@ -43,6 +43,13 @@ class TestApplyGateEdit:
             condition="the email is about an invoice", author=GateAuthor.USER
         )
 
+    def test_a_new_condition_sent_turned_off_is_stored_off(self) -> None:
+        edit = GateEdit(condition="the email is about an invoice", enabled=False)
+
+        assert apply_gate_edit(AUTHORED, edit) == AuthoredGate(
+            condition="the email is about an invoice", author=GateAuthor.USER, enabled=False
+        )
+
     @pytest.mark.parametrize("current", [AUTHORED, DESK], ids=["authored", "system"])
     def test_turning_a_gate_off_keeps_its_text_and_author(self, current: TriggerGate) -> None:
         assert apply_gate_edit(current, GateEdit(enabled=False)) == current.model_copy(

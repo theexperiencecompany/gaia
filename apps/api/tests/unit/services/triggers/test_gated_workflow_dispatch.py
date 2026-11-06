@@ -141,7 +141,7 @@ async def test_a_skip_records_a_skipped_run_and_claims_nothing(seams: SimpleName
         WORKFLOW_ID,
         USER_ID,
         TriggerType.INTEGRATION.value,
-        f'Skipped: "Sale!". Not a match for "{CONDITION}" (99% sure).',
+        f'Skipped: Sale!. Not a match for "{CONDITION}" (99% sure).',
     )
 
 
@@ -182,7 +182,7 @@ async def test_a_reply_on_a_thread_the_user_never_wrote_in_is_asked_about(
 
     seams.queue.assert_not_awaited()
     (call,) = seams.skipped.await_args_list
-    assert call.args[3].startswith('Skipped: GitGuardian <security@gitguardian.com>, "Sale!".')
+    assert call.args[3].startswith("Skipped: GitGuardian · Sale!.")
 
 
 async def test_an_ungated_workflow_never_asks_jev(seams: SimpleNamespace) -> None:
