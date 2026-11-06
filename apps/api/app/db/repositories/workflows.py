@@ -460,19 +460,19 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         self, workflow_id: str, user_id: str, skip: GateSkipRecord
     ) -> None:
         """Add skip to the user's workflow gate's recent skips, keeping the newest few, and count it."""
-        await self._apply_raw_update(
-            {"_id": workflow_id, "user_id": user_id, "gate": {"$ne": None}},
-            {
-                "$push": {
-                    "gate.recent_skips": {
-                        "$each": [skip.model_dump()],
-                        "$slice": -GATE_RECENT_SKIPS_KEPT,
-                    }
-                },
-                "$inc": {"gate.skipped_count": 1},
+        gated = {"_id": workflow_id, "user_id": user_id, "gate": {"$ne": None}}
+        record: dict[str, dict[str, object]] = {
+            "$push": {
+                "gate.recent_skips": {
+                    "$each": [skip.model_dump()],
+                    "$slice": -GATE_RECENT_SKIPS_KEPT,
+                }
             },
-            scope=REPO_GLOBAL_SCOPE,  # pragma: no mutate — this repository caches nothing
-        )
+            "$inc": {"gate.skipped_count": 1},
+        }
+        # pragma: no mutate start — this repository caches nothing, so no read sees the scope.
+        await self._apply_raw_update(gated, record, scope=REPO_GLOBAL_SCOPE)
+        # pragma: no mutate end
 
     async def set_error_message(
         self, workflow_id: str, user_id: str, message: str

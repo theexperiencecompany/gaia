@@ -329,7 +329,7 @@ def test_a_security_problem_is_fetched_even_when_its_subject_reads_like_a_sign_i
 
     assert routine.startswith("(") and "-subject:(new sign-in)" in routine
     assert "-subject:" not in problems
-    for term in ("blocked", "locked", "suspicious", "(password changed)", "compromised"):
+    for term in ("blocked", "locked", "suspicious", "(password changed)", "(two-factor enabled)"):
         assert f"subject:{term}" in problems
 
 

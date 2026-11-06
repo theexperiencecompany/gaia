@@ -268,6 +268,13 @@ INBOX_DESK_SECURITY_PROBLEM_TERMS: Final[tuple[str, ...]] = (
     "(password changed)",
     "(password was changed)",
     "(recovery changed)",
+    "(recovery email)",
+    "(recovery phone)",
+    "(two-factor enabled)",
+    "(two-factor removed)",
+    "(2-step verification)",
+    "(security settings)",
+    "(password updated)",
     "(turned off)",
     "disabled",
 )
