@@ -20,6 +20,7 @@ from app.db.repositories.base import MongoDocument
 from app.models.first_steps_models import FirstStepsState
 from app.schemas.common import ResponseModel
 from app.utils.timezone import is_valid_timezone
+from shared.py.analytics.catalog.onboarding import OnboardingStep, ReportedOnboardingStep
 
 # Shared field doc for the `message` field on the success/message response models.
 _RESPONSE_MESSAGE_DESC = "Response message"
@@ -272,8 +273,8 @@ class OnboardingPreferences(BaseModel):
         return None if v == "" else v
 
 
-class OnboardingRequest(BaseModel):
-    """The onboarding submission — Q1 (profession) and Q2 (needs).
+class OnboardingAnswers(BaseModel):
+    """The wizard's answers — Q1 (profession) and Q2 (needs).
 
     The name is derived from the email server-side, so it is not submitted;
     nothing else is generated at onboarding, so nothing else is collected.
@@ -288,13 +289,19 @@ class OnboardingRequest(BaseModel):
         description="The jobs the user handed GAIA (onboarding Q2, up to three)",
     )
     other_need: str | None = Field(
-        None,
+        default=None,
         max_length=OTHER_NEED_MAX_LENGTH,
         description="What the user typed under 'Something else' in Q2, verbatim",
     )
-    timezone: str | None = Field(
-        None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
+    language: str | None = Field(
+        default=None,
+        description='The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")',
     )
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def validate_language(cls, v: object) -> object:
+        return clean_language(v) if isinstance(v, str) else v
 
     @field_validator("needs", mode="before")
     @classmethod
@@ -317,7 +324,7 @@ class OnboardingRequest(BaseModel):
         return clean_other_need(v)
 
     @model_validator(mode="after")
-    def require_an_answer_to_q2(self) -> "OnboardingRequest":
+    def require_an_answer_to_q2(self) -> "OnboardingAnswers":
         # Q2 is answered by a pick or by typed words; an empty Q2 leaves the
         # first message with nothing to ask about.
         if not self.needs and not self.other_need:
@@ -325,7 +332,7 @@ class OnboardingRequest(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def role_needs_match_the_profession(self) -> "OnboardingRequest":
+    def role_needs_match_the_profession(self) -> "OnboardingAnswers":
         # A role pair is only ever shown to its role, so a mismatch is a client
         # bug or a replayed request, and the playbooks would coach the wrong job.
         for need in self.needs:
@@ -333,6 +340,14 @@ class OnboardingRequest(BaseModel):
             if role is not None and role != self.profession.lower():
                 raise ValueError(f"{need.value} is only offered to {role}")
         return self
+
+
+class OnboardingRequest(OnboardingAnswers):
+    """The onboarding submission: the answers again, plus the browser's timezone."""
+
+    timezone: str | None = Field(
+        default=None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
+    )
 
     @field_validator("timezone")
     @classmethod
@@ -361,15 +376,9 @@ class OnboardingResponse(ResponseModel):
 
 
 class OnboardingPhaseUpdateRequest(BaseModel):
-    phase: OnboardingPhase = Field(..., description="The onboarding phase to transition to")
+    """A wizard step the browser reached; the server stamps and reports it once per onboarding run."""
 
-    @field_validator("phase")
-    @classmethod
-    def validate_phase_progression(cls, v: OnboardingPhase) -> OnboardingPhase:
-        """Ensure phase values are valid"""
-        # Phase validation is handled by the enum type
-        # Additional business logic validation should be in the service layer
-        return v
+    phase: ReportedOnboardingStep = Field(..., description="The wizard step the user reached")
 
 
 class PlatformLinkRecord(TypedDict, total=False):
@@ -435,6 +444,8 @@ class OnboardingSubdocument(BaseModel):
     preferences: OnboardingPreferences | None = None
     focus: str = ""
     clarify_answers: list[dict[str, Any]] = Field(default_factory=list)
+    #: When each wizard step was first reached this run; the stamp is what makes its event fire once.
+    steps_reached: dict[OnboardingStep, datetime] = Field(default_factory=dict)
 
     # Seeded conversations, kept so a reset can tear them down again.
     first_message_conversation_id: str | None = None

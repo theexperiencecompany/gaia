@@ -59,6 +59,7 @@ from app.models.user_models import (
     UserDocument,
     UserUpdate,
 )
+from shared.py.analytics.catalog.onboarding import OnboardingStep
 from shared.py.wide_events import log
 
 _SOCIAL_PROFILES_FIELD = "onboarding.social_profiles"
@@ -339,12 +340,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
 
     # ---------------------------------------------------- intelligence writes
 
-    async def set_onboarding_phase(self, user_id: str, phase: OnboardingPhase) -> bool:
-        """Set onboarding.phase; returns whether the user existed (for a 404)."""
+    async def record_onboarding_step(
+        self, user_id: str, step: OnboardingStep, reached_at: datetime
+    ) -> bool:
+        """Stamp the first time this onboarding run reached step; False when it was already stamped."""
+        field = f"onboarding.steps_reached.{step.value}"
         updated = await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.phase": phase}},
+            {"$set": {field: reached_at}},
             scope=REPO_GLOBAL_SCOPE,
+            extra_filter={field: {"$exists": False}},
             return_document=False,
         )
         return updated is not None

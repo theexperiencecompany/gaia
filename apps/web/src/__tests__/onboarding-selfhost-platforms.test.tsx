@@ -36,6 +36,8 @@ vi.mock("@/features/onboarding/hooks/useConnectPlatform", () => ({
   useConnectPlatform: () => ({
     connect: vi.fn(),
     skip,
+    awaitingPlatform: null,
+    chooseAnother: vi.fn(),
     phoneModalOpen: false,
     phoneTarget: null,
     isSubmittingPhone: false,

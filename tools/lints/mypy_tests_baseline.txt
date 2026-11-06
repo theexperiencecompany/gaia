@@ -176,8 +176,6 @@ apps/api/tests/unit/agents/test_llm_runtime_config.py	arg-type
 apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
 apps/api/tests/unit/agents/test_mail_templates.py	arg-type
-apps/api/tests/unit/agents/test_messages.py	arg-type
-apps/api/tests/unit/agents/test_messages.py	list-item
 apps/api/tests/unit/agents/test_model_lane.py	attr-defined
 apps/api/tests/unit/agents/test_model_lane.py	misc
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment
@@ -218,15 +216,12 @@ apps/api/tests/unit/agents/tools/test_mutations_factory.py	var-annotated
 apps/api/tests/unit/api/test_bot_endpoint.py	attr-defined
 apps/api/tests/unit/api/test_bot_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_endpoint.py	union-attr
-apps/api/tests/unit/api/test_bot_links_endpoint.py	arg-type
-apps/api/tests/unit/api/test_bot_links_endpoint.py	call-arg
 apps/api/tests/unit/api/test_device_self_pair.py	attr-defined
 apps/api/tests/unit/api/test_integrations_user.py	call-arg
 apps/api/tests/unit/api/test_lab_events.py	arg-type
 apps/api/tests/unit/api/test_lab_events.py	attr-defined
 apps/api/tests/unit/api/test_mail_endpoint.py	list-item
 apps/api/tests/unit/api/test_oauth_dependencies.py	attr-defined
-apps/api/tests/unit/api/test_onboarding_endpoint.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	call-arg
 apps/api/tests/unit/api/test_platform_auth_endpoint.py	override
@@ -343,9 +338,7 @@ apps/api/tests/unit/models/test_payment_models.py	call-arg
 apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	arg-type
 apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	attr-defined
 apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	call-arg
-apps/api/tests/unit/models/test_schema_validation.py	call-arg
 apps/api/tests/unit/models/test_schema_validation.py	list-item
-apps/api/tests/unit/models/test_user_document_legacy_profession.py	call-arg
 apps/api/tests/unit/models/test_workflow_models.py	arg-type
 apps/api/tests/unit/patches/test_browser_use_run_lock_patch.py	attr-defined
 apps/api/tests/unit/patches/test_composio_input_patch.py	attr-defined
@@ -478,8 +471,6 @@ apps/api/tests/unit/services/test_marketplace_service.py	call-arg
 apps/api/tests/unit/services/test_mcp_tool_result.py	arg-type
 apps/api/tests/unit/services/test_mcp_tool_result.py	index
 apps/api/tests/unit/services/test_nurture_service.py	arg-type
-apps/api/tests/unit/services/test_onboarding_service.py	call-arg
-apps/api/tests/unit/services/test_onboarding_service.py	list-item
 apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
@@ -610,7 +601,6 @@ apps/api/tests/unit/utils/test_schema_fixes.py	operator
 apps/api/tests/unit/utils/test_search_utils.py	arg-type
 apps/api/tests/unit/utils/test_stream_utils.py	arg-type
 apps/api/tests/unit/utils/test_webpage_fetch.py	arg-type
-apps/api/tests/unit/workers/tasks/test_onboarding_tasks.py	misc
 apps/api/tests/unit/workers/test_browser_tasks.py	attr-defined
 apps/api/tests/unit/workers/test_browser_tasks.py	misc
 apps/api/tests/unit/workers/test_browser_worker.py	arg-type
