@@ -136,3 +136,20 @@ export const PAYWALL_STATUS_POLL_MS = 15_000;
  * way, short enough that changing your mind is not a five-minute sentence.
  */
 export const CHECKOUT_DISMISS_CONFIRM_BUDGET_MS = 15_000;
+
+/**
+ * How long an opened overlay may go without Dodo saying it rendered. The
+ * overlay is a transparent full-screen iframe until its page loads, so one
+ * that never loads swallows every click with nothing on screen.
+ */
+export const CHECKOUT_OVERLAY_LOAD_TIMEOUT_MS = 20_000;
+
+/** The overlay never rendered: closed for the user so the page is theirs again. */
+export const CHECKOUT_NOT_LOADED_COPY =
+  "Checkout didn't load. Check your connection and try again.";
+
+/** A declined charge, in the overlay and on the return page alike. */
+export const CHECKOUT_DECLINED_COPY = {
+  heading: "That payment didn't go through.",
+  body: "Nothing was charged. Try another card, or the same one again.",
+} as const;

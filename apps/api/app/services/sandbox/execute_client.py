@@ -147,6 +147,7 @@ def mint_execute_env(
             user_id=user_id,
             run_id=run_id,
             stream_id=configurable.get("stream_id"),
+            workflow_id=configurable.get("workflow_id"),
             sandbox_id=sandbox_id,
             scoped_tool_names=scoped_tool_names,
         ),

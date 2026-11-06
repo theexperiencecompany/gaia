@@ -18,9 +18,9 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FOR_EACH_WRITE,
 )
 from app.agents.tools.core.registry import ToolRegistry
+from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.models.playbook_models import ForEachStep, ToolStep
 from app.models.workflow_execution_models import RecordedCall
-from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.workflow.playbook.parser import validate_playbook
 from app.services.workflow.playbook.record import PlaybookPick, build_playbook, record_entries
 

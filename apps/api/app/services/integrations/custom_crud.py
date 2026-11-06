@@ -371,7 +371,7 @@ async def create_and_connect_custom_integration(
     # Probe for auth requirements
     probe_result: McpProbeResult = await _probe_connection_safely(mcp_client, request.server_url)
     if probe_result.get("error"):
-        return integration, {"status": "failed", "error": probe_result["error"]}
+        return integration, _connect_failed(integration_id, probe_result["error"])
 
     if probe_result.get("requires_auth"):
         await mcp_client.update_integration_auth_status(
@@ -416,10 +416,9 @@ async def _connect_with_bearer_token(
             "tools_count": len(tools) if tools else 0,
         }
     except Exception as e:
-        return await _get_integration(integration_id), {
-            "status": "failed",
-            "error": str(e),
-        }
+        return await _get_integration(integration_id), _connect_failed(
+            integration_id, str(e), type(e).__name__
+        )
 
 
 async def _connect_without_auth(
@@ -438,7 +437,21 @@ async def _connect_without_auth(
         )
         return integration, await _build_oauth_result(mcp_client, integration.integration_id)
     except Exception as e:
-        return integration, {"status": "failed", "error": str(e)}
+        return integration, _connect_failed(integration.integration_id, str(e), type(e).__name__)
+
+
+def _connect_failed(
+    integration_id: str, error: str, error_type: str | None = None
+) -> CustomConnectionResult:
+    """Warn a custom server's connect failure and answer it to its owner, who added that server."""
+    log.warning(
+        f"{LogTag.INTEGRATION} Custom integration connect failed",
+        error=error,
+        error_type=error_type,
+        integration_id=integration_id,
+    )
+    log.set(integration={"id": integration_id, "status": "error"})
+    return {"status": "failed", "error": error}
 
 
 async def _get_integration(integration_id: str) -> Integration | None:
