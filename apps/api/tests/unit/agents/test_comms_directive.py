@@ -145,6 +145,18 @@ class TestAReactTagIsAReaction:
         assert visible_comms_text("<REACT>🔎</REACT>") == ""
         assert visible_comms_text_so_far("<REACT>🔎</REA") == ""
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize("tag", ["REACTION", "Reaction", "reaction"])
+    def test_a_reaction_tag_is_a_reaction_too(self, tag: str) -> None:
+        """Seen live on Telegram, three turns in a row: <REACTION>👍</REACTION> sent as text."""
+        text = f"<{tag}>👍</{tag}>"
+
+        d = interpret_comms_output(text)
+
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REACT, "👍")
+        assert visible_comms_text(text) == ""
+        assert visible_comms_text_so_far(f"<{tag}>👍</REAC") == ""
+
     def test_a_react_tag_around_a_word_stays_text(self) -> None:
         assert interpret_comms_output("<REACT>done</REACT>").kind is CommsDirectiveKind.REPLY
 
