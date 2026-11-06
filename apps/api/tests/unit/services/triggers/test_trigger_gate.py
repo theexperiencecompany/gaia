@@ -713,7 +713,7 @@ class TestShadow:
         seams.wrote.return_value = False
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label=run_label)))
 
-        with patch(f"{_MOD}.ENFORCED_GATE_KINDS", ENFORCED_GATE_KINDS):
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", ENFORCED_GATE_KINDS):
             assert isinstance(await _skip(gate, payload={"message_id": "m7"}), GateSkip)
 
         assert _decided(seams).enforced is True
