@@ -6,12 +6,14 @@ A turn not worth a full message is a single control tag instead of prose:
     <EMOJI>👍</EMOJI>          → deliver a one-emoji acknowledgment
 
 Only a turn made of directives alone becomes one, so prose never triggers a
-directive. A directive tag is never shown to a user as text: written beside a
+directive. A whole reply that is one bare emoji is the reaction it was meant to
+be: the protocol never sends an emoji as a message. A directive tag is never shown to a user as text: written beside a
 reply, as its own bubble or inside one, it is dropped and the reply goes out,
 and visible_comms_text_so_far applies the same rule to a message still streaming.
 """
 
 import re
+import unicodedata
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -67,6 +69,10 @@ _DIRECTIVE_OPENINGS = (
 # A streamed tail that may still turn into a bubble break, down to a lone "<".
 _BREAK_TAIL_RE = re.compile(rf"{PARTIAL_MESSAGE_BREAK_RE.pattern}|[<\[]\s*/?\s*$", re.IGNORECASE)
 _EMOJI = TypeAdapter(Emoji)
+# The code points that join symbols into one emoji: ZWJ, the presentation selector, the keycap mark.
+_EMOJI_GLUE = frozenset({"\u200d", "\ufe0f", "\u20e3"})
+# Symbols, plus the modifier symbols that carry skin tones.
+_EMOJI_CATEGORIES = frozenset({"So", "Sk"})
 
 
 def _is_emoji(payload: str) -> bool:
@@ -75,6 +81,21 @@ def _is_emoji(payload: str) -> bool:
     except ValidationError:
         return False
     return True
+
+
+def _is_emoji_material(text: str) -> bool:
+    """Whether every code point is an emoji symbol, a modifier, or the glue between them."""
+    return bool(text) and all(
+        char in _EMOJI_GLUE or unicodedata.category(char) in _EMOJI_CATEGORIES for char in text
+    )
+
+
+def _bare_reaction(reply: str) -> CommsDirective | None:
+    """Return the reaction a reply of one bare emoji stands for, or None for any other reply."""
+    lone = reply.strip()
+    if not (_is_emoji_material(lone) and _is_emoji(lone)):
+        return None
+    return CommsDirective(CommsDirectiveKind.REACT, lone)
 
 
 def _compact_name(name: str) -> str:
@@ -187,6 +208,9 @@ def visible_comms_text_so_far(text: str) -> str:
     so do a directive tag being written inside it and a half-written break.
     Each result extends the one before, so a client can append the difference.
     """
+    # Still nothing but emoji: it may end as a bare reaction, which is never shown as text.
+    if _is_emoji_material(text.strip()):
+        return ""
     *bubbles, last = MESSAGE_BREAK_SENTINEL_RE.split(text)
     tail = _BREAK_TAIL_RE.search(last)
     shown = last[: tail.start()] if tail else last
@@ -214,7 +238,8 @@ def interpret_comms_output(text: str) -> CommsDirective:
         directives.extend(found)
         has_text = has_text or bool(bubble_text.strip())
     if not directives:
-        return CommsDirective(CommsDirectiveKind.REPLY, visible_comms_text(text))
+        reply = visible_comms_text(text)
+        return _bare_reaction(reply) or CommsDirective(CommsDirectiveKind.REPLY, reply)
     if not has_text:
         return directives[0]
     log.warning(

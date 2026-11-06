@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from zoneinfo import ZoneInfo
 
 from bson.errors import InvalidId
+from langchain_core.runnables import RunnableConfig
 from pydantic import ValidationError
 import pytest
 import time_machine
@@ -91,7 +92,7 @@ def recorded_changes() -> Iterator[AsyncMock]:
         yield recorded
 
 
-def _config(user_id: str | None = "user-1") -> dict:
+def _config(user_id: str | None = "user-1") -> RunnableConfig:
     return {"metadata": {"user_id": user_id}} if user_id else {"metadata": {}}
 
 
@@ -400,10 +401,8 @@ class TestBuildRecurrenceUpdate:
 
 
 class TestBuildListDetailParts:
-    def _doc(self, **overrides) -> TodoDocument:
-        base = {"user_id": "u1", "title": "t"}
-        base.update(overrides)
-        return TodoDocument(**base)
+    def _doc(self, **overrides: object) -> TodoDocument:
+        return TodoDocument.model_validate({"user_id": "u1", "title": "t", **overrides})
 
     def test_overdue_due_date_is_flagged(self):
         now = datetime.now(UTC)
@@ -613,6 +612,47 @@ class TestCreateTrackedTodoValidation:
             )
 
         repo.create.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_watch_on_an_unconnected_service_is_never_created(self):
+        """Regression: "I'll monitor the replies" made a check that could never read the mail."""
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
+                AsyncMock(return_value={"notion"}),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+            ) as create,
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="Watch for replies", needs_integrations=["gmail"]
+            )
+
+        create.assert_not_awaited()
+        assert "Gmail" in result
+        assert "Nothing was saved" in result
+
+    async def test_a_watch_on_a_connected_service_is_created(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
+                AsyncMock(return_value={"gmail"}),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+            ) as create,
+        ):
+            create.return_value = TodoResponse(
+                id="t1", user_id="u1", title="t", created_at=_FUTURE, updated_at=_FUTURE
+            )
+            await create_tracked_todo.coroutine(
+                config=_config(), title="Watch for replies", needs_integrations=["gmail"]
+            )
+
+        create.assert_awaited_once()
 
     async def test_a_new_tracked_todo_delivers_its_run_results_by_default(self):
         """The agent usually omits this argument, so the default is what almost every todo gets."""
@@ -1150,10 +1190,8 @@ class TestApplyCronFirstFire:
 
 
 class TestBuildListDetailPartsScheduling:
-    def _doc(self, **overrides) -> TodoDocument:
-        base = {"user_id": "u1", "title": "t"}
-        base.update(overrides)
-        return TodoDocument(**base)
+    def _doc(self, **overrides: object) -> TodoDocument:
+        return TodoDocument.model_validate({"user_id": "u1", "title": "t", **overrides})
 
     def test_scheduled_at_is_shown(self):
         now = datetime.now(UTC)
@@ -1374,10 +1412,10 @@ class TestSearchTodoContext:
 
 
 class TestUpdateTrackedTodoSuccess:
-    def _existing_doc(self, **overrides) -> TodoDocument:
-        base = {"id": "t1", "user_id": "user-1", "title": "t"}
-        base.update(overrides)
-        return TodoDocument(**base)
+    def _existing_doc(self, **overrides: object) -> TodoDocument:
+        return TodoDocument.model_validate(
+            {"id": "t1", "user_id": "user-1", "title": "t", **overrides}
+        )
 
     async def test_clearing_recurrence_on_an_unscheduled_todo_persists_the_clear(self):
         existing = self._existing_doc(recurrence="daily")
@@ -1620,17 +1658,18 @@ class TestUpdateTrackedTodoSuccess:
 
 
 class TestCreateTrackedTodoSuccess:
-    def _response(self, **overrides) -> TodoResponse:
+    def _response(self, **overrides: object) -> TodoResponse:
         now = datetime.now(UTC)
-        base = {
-            "id": "t1",
-            "user_id": "user-1",
-            "title": "t",
-            "created_at": now,
-            "updated_at": now,
-        }
-        base.update(overrides)
-        return TodoResponse(**base)
+        return TodoResponse.model_validate(
+            {
+                "id": "t1",
+                "user_id": "user-1",
+                "title": "t",
+                "created_at": now,
+                "updated_at": now,
+                **overrides,
+            }
+        )
 
     async def test_create_without_scheduling_returns_confirmation(self):
         with patch(
@@ -1829,13 +1868,17 @@ class TestCreateThreadTrackedTodo:
     @classmethod
     async def _refused_for(cls, holder: TodoDocument) -> str:
         with patch(cls._CREATE, new_callable=AsyncMock, side_effect=ExternalRefTakenError(holder)):
-            return await create_tracked_todo.coroutine(
-                config=_config(), title="t", gmail_thread_id="abc"
+            return str(
+                await create_tracked_todo.ainvoke(
+                    {"title": "t", "gmail_thread_id": "abc"}, config=_config()
+                )
             )
 
     async def test_the_thread_id_becomes_the_todo_ref(self):
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(config=_config(), title="t", gmail_thread_id="abc")
+            await create_tracked_todo.ainvoke(
+                {"title": "t", "gmail_thread_id": "abc"}, config=_config()
+            )
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
             source=ExternalRefSource.GMAIL_THREAD, id="abc"
         )
@@ -1848,7 +1891,9 @@ class TestCreateThreadTrackedTodo:
             make_integration_account("ca_work"), user_id="user-1"
         )
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(config=_config(), title="t", gmail_thread_id="abc")
+            await create_tracked_todo.ainvoke(
+                {"title": "t", "gmail_thread_id": "abc"}, config=_config()
+            )
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
             source=ExternalRefSource.GMAIL_THREAD, id="abc", account="ca_work"
         )
@@ -1863,8 +1908,9 @@ class TestCreateThreadTrackedTodo:
             user_id="user-1",
         )
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(
-                config=_config(), title="t", gmail_thread_id="abc", gmail_account="personal"
+            await create_tracked_todo.ainvoke(
+                {"title": "t", "gmail_thread_id": "abc", "gmail_account": "personal"},
+                config=_config(),
             )
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
             source=ExternalRefSource.GMAIL_THREAD, id="abc", account="ca_home"
@@ -1895,8 +1941,9 @@ class TestCreateThreadTrackedTodo:
             user_id="user-1",
         )
         with patch(self._CREATE, new_callable=AsyncMock) as create:
-            result = await create_tracked_todo.coroutine(
-                config=_config(), title="t", gmail_thread_id="abc", gmail_account=gmail_account
+            result = await create_tracked_todo.ainvoke(
+                {"title": "t", "gmail_thread_id": "abc", "gmail_account": gmail_account},
+                config=_config(),
             )
         assert result == refusal
         create.assert_not_awaited()
