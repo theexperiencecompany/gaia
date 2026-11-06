@@ -1301,6 +1301,7 @@ class TestMailARunFetchedItself:
         assert [type(v) for v in verdicts] == [GateSkip, GateRun]
         assert seams.jev.call_count == 2
         seams.todo_skip.assert_awaited_once()
+        assert seams.todo_skip.await_args.kwargs["skip"].at == AFTERNOON
 
     async def test_an_email_jev_fails_on_is_kept(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(

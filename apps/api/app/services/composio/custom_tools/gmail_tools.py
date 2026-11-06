@@ -23,7 +23,8 @@ from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
-from app.models.agent_models import agent_configurable, current_run_config, current_stream_writer
+from app.models.agent_config import read_agent_configurable
+from app.models.agent_models import current_run_config, current_stream_writer
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
@@ -478,7 +479,7 @@ def _through_todo_gate(
 
     body_processing "none" is the desk's count sweep, so only mail it triages meets the gate.
     """
-    todo_id = agent_configurable(current_run_config()).get("active_todo_id")
+    todo_id = read_agent_configurable(current_run_config()).active_todo_id
     if not todo_id or not views or request.body_processing == "none":
         return views
     gate = installed_fetched_mail_gate()

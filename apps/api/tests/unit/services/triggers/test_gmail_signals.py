@@ -7,6 +7,7 @@ a fact the event never carried.
 
 import base64
 import json
+from typing import ClassVar
 
 import pytest
 
@@ -230,7 +231,7 @@ class TestGateView:
 class TestAFetchedMessage:
     """A message a run fetched itself reads to the gate as the same mail's webhook would."""
 
-    RAW: dict[str, object] = {  # noqa: RUF012 -- read-only fixture
+    RAW: ClassVar[dict[str, object]] = {
         "id": "m2",
         "threadId": "t1",
         "labelIds": ["INBOX", "CATEGORY_UPDATES"],

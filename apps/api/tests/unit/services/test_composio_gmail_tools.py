@@ -8,7 +8,7 @@ import base64
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 import re
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableLambda
@@ -934,7 +934,7 @@ class TestTheDesksSweep:
 class TestATodoRunsFetchPassesItsGate:
     """A tracked todo's mail fetch is handed to the desk gate; a body-less count never is."""
 
-    DESK_RUN: dict[str, Any] = {"configurable": {"active_todo_id": "desk-1"}}  # noqa: RUF012
+    DESK_RUN: ClassVar[dict[str, Any]] = {"configurable": {"active_todo_id": "desk-1"}}
 
     def _fetch(self, mock_proxy: MagicMock, gate: AsyncMock, **request: Any) -> dict[str, Any]:
         mock_proxy.side_effect = _one_message_mailbox()

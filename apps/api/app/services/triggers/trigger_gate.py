@@ -487,6 +487,7 @@ async def decide_fetched_mail(
     """
     if gate is None or not gate.enabled:
         return [GateRun() for _ in payloads]
+    # pragma: no mutate start — any key names one process-wide semaphore, and None reads as False.
     limit = loop_bound_semaphore(
         TRIGGER_GATE_FETCHED_MAIL_LIMIT_KEY, TRIGGER_GATE_FETCHED_MAIL_LIMIT
     )
@@ -496,6 +497,8 @@ async def decide_fetched_mail(
             return await _decide_or_run(
                 gate, job, GMAIL_POLL_INBOX_TRIGGER_NAME, payload, on_users_clock=False
             )
+
+    # pragma: no mutate end
 
     return list(await asyncio.gather(*(decide(payload) for payload in payloads)))
 

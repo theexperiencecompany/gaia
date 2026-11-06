@@ -147,6 +147,17 @@ class TestGateSkipRecord:
         stored = await repo.get(doc.id, user_id="u")
         assert stored.trigger_subscriptions[0].gate.skipped_count == 0
 
+    async def test_a_watch_without_a_gate_is_left_without_one(self, repo, make_doc):
+        watch = _subscription(gate=None)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+
+        await repo.remember_subscription_gate_skip(
+            user_id="u", subscription_id=watch.id, skip=_skips(1)[0]
+        )
+
+        stored = await repo.get(doc.id, user_id="u")
+        assert stored.trigger_subscriptions[0].gate is None
+
 
 class TestTodosRepository(UserScopedRepositoryContract):
     """Runs the full user-scoped contract against the real todos repository."""
