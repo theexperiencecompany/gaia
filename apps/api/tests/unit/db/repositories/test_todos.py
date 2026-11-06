@@ -1,11 +1,14 @@
-"""Note writes on the todos repository: stamped unless told not to, cached under their owner."""
+"""Todos repository writes: notes stamped unless told not to and cached under their owner, gate skips kept."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
 
+from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoUpdate
+from app.models.trigger_gate_models import GateSkipRecord
 
 TODO_ID = "66f838cc8829054e5f10e401"
 
@@ -45,3 +48,29 @@ async def test_a_note_write_refreshes_its_owners_cache() -> None:
 
     assert store.await_args.args[0] == "u1"
     invalidate.assert_awaited_once_with("u1")
+
+
+async def test_a_skip_is_kept_only_on_the_users_gated_watch_without_reading_it_back() -> None:
+    skip = GateSkipRecord(event="Substack · Weekly digest", at=datetime(2026, 11, 5, 9, tzinfo=UTC))
+    with patch.object(todo_repository, "_apply_raw_update", AsyncMock(return_value=None)) as raw:
+        await todo_repository.remember_subscription_gate_skip(
+            user_id="u1", subscription_id="watch-1", skip=skip
+        )
+
+    raw.assert_awaited_once_with(
+        {"user_id": "u1"},
+        {
+            "$push": {
+                "trigger_subscriptions.$[watch].gate.recent_skips": {
+                    "$each": [skip.model_dump()],
+                    "$slice": -GATE_RECENT_SKIPS_KEPT,
+                }
+            }
+        },
+        scope="u1",
+        extra_filter={
+            "trigger_subscriptions": {"$elemMatch": {"id": "watch-1", "gate": {"$ne": None}}}
+        },
+        array_filters=[{"watch.id": "watch-1"}],
+        return_document=False,
+    )
