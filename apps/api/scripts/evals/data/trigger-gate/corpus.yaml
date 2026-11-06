@@ -5644,9 +5644,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-182
-  ticket: Inbox desk gate on a needs_you email
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you, an automated category-updated notice; nothing waits on the user)
   tags:
-  - needs_you
+  - noise
   - holdout
   - new_thread
   setup:
@@ -5668,10 +5668,10 @@
         - name: Chaitail-Unsubscribe
           value: <mailto:gruraikrar@email.daitunu.example>
   expected:
-    label: needs_you
+    label: noise
     urgent: false
     split: holdout
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -11711,9 +11711,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-377
-  ticket: Inbox desk gate on a needs_you email
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a promotions-tab cold pitch; nothing waits on the user)
   tags:
-  - needs_you
+  - noise
   - holdout
   - new_thread
   setup:
@@ -11733,10 +11733,10 @@
         - name: Chaitail-Unsubscribe
           value: <mailto:gruraikrar@keasheafu.example>
   expected:
-    label: needs_you
+    label: noise
     urgent: false
     split: holdout
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome

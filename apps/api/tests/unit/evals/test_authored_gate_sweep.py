@@ -1,8 +1,8 @@
 """The recorded authored-gate eval, regraded through decide_gate: what GAIA-authored conditions cost.
 
 rules.jsonl is what the real authoring prompts wrote for 30 creation requests; recorded.jsonl is
-JEV's sampled answers about each request's labelled emails under its condition. JEV is served at
-its HTTP boundary, so a prompt, builder or aggregation change that is not re-recorded fails here.
+JEV's answers about each request's labelled emails under its condition. JEV is served at
+its HTTP boundary, so a prompt or builder change that is not re-recorded fails here.
 """
 
 import asyncio
@@ -29,7 +29,7 @@ from scripts.evals.suites.authored_gate import (
 )
 from scripts.evals.suites.trigger_gate import jev_body, request_sha
 
-from app.constants.trigger_gates import TRIGGER_GATE_JEV_SAMPLES, GateOwner
+from app.constants.trigger_gates import GateOwner
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.services.triggers.gmail_signals import gmail_gate_view
 from app.services.triggers.trigger_gate import GatedJob, GateSkip, decide_gate, gate_request
@@ -41,7 +41,7 @@ KOLKATA = Timezone.parse("Asia/Kolkata")
 AFTERNOON = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 # Unwanted emails run anyway, of 63 holdout and 123 tune; a thread the user wrote in runs unasked.
-RECORDED_WASTED_RUNS = {Split.HOLDOUT: 18, Split.TUNE: 47}
+RECORDED_WASTED_RUNS = {Split.HOLDOUT: 17, Split.TUNE: 46}
 
 
 @dataclass(frozen=True)
@@ -51,14 +51,11 @@ class _Regraded:
 
 
 def _replay(row: RecordedGate, unanswered: list[str]) -> Callable[..., httpx.Response]:
-    samples = iter(row["responses"])
-
     def answer(request: httpx.Request) -> httpx.Response:
-        sample = next(samples, None)
-        if request_sha(json.loads(request.content)) != row["request_sha"] or sample is None:
+        if request_sha(json.loads(request.content)) != row["request_sha"]:
             unanswered.append(f"{row['request_id']}/{row['mail_id']}")
             return httpx.Response(500, text="no recorded answer to this request")
-        return httpx.Response(200, json=sample)
+        return httpx.Response(200, json=row["response"])
 
     return answer
 
@@ -139,7 +136,6 @@ def test_every_labelled_email_under_every_condition_was_asked_as_production_asks
         assert gate is not None and view is not None
         state, questions = gate_request(gate, view.as_event(), job_of(rule), quiet=False)
         assert row["request_sha"] == request_sha(jev_body(state, questions)), (request_id, mail_id)
-        assert len(row["responses"]) == TRIGGER_GATE_JEV_SAMPLES
 
 
 def test_the_regrade_answers_every_request_it_sends(regraded: _Regraded) -> None:
