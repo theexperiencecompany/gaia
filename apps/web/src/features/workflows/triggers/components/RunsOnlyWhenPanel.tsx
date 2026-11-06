@@ -11,7 +11,7 @@ import type {
 } from "@shared/api/generated";
 import { formatDistanceToNowStrict } from "date-fns";
 import { type KeyboardEvent, useState } from "react";
-import { cn } from "@/lib/utils";
+import { PanelRow } from "@/components/shared/PanelRow";
 import {
   GATE_AUTHOR_LINES,
   GATE_CONDITION_MAX_CHARS,
@@ -41,7 +41,7 @@ interface RunsOnlyWhenPanelProps {
   isDisabled?: boolean;
 }
 
-/** A job's "Runs only when" rule: what GAIA filters, why, what it skipped, and the edit and off controls. */
+/** A job's "Runs only when" rule as one row; who wrote it, what it skipped and the edit open on demand. */
 export function RunsOnlyWhenPanel({
   condition,
   enabled,
@@ -51,6 +51,7 @@ export function RunsOnlyWhenPanel({
   onEnabledChange,
   isDisabled = false,
 }: RunsOnlyWhenPanelProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const hasRule = condition.trim() !== "";
   const shown = saved && saved.display_condition === condition ? saved : null;
@@ -73,25 +74,15 @@ export function RunsOnlyWhenPanel({
   else if (enforced === false) status = GATE_SHADOW_NOTE;
 
   return (
-    <section
-      aria-label={RUNS_ONLY_WHEN_LABEL}
-      className="flex flex-col gap-3 rounded-2xl bg-zinc-800 p-3.5"
-    >
-      <header className="flex items-center gap-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/15">
-          <FilterHorizontalIcon className="size-4 text-primary" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-zinc-200">
-            {hasRule || draft !== null
-              ? RUNS_ONLY_WHEN_LABEL
-              : GATE_EMPTY_TITLE}
-          </p>
-          <p className="truncate text-xs text-zinc-500">
-            {hasRule ? GATE_AUTHOR_LINES[author] : GATE_EMPTY_NOTE}
-          </p>
-        </div>
-        {hasRule && (
+    <PanelRow
+      icon={FilterHorizontalIcon}
+      label={hasRule ? RUNS_ONLY_WHEN_LABEL : GATE_EMPTY_TITLE}
+      summary={hasRule ? condition : GATE_EMPTY_NOTE}
+      isExpanded={isExpanded}
+      onPress={() => setIsExpanded((open) => !open)}
+      isDimmed={hasRule && !enabled}
+      trailing={
+        hasRule && (
           <Switch
             size="sm"
             isSelected={enabled}
@@ -99,9 +90,9 @@ export function RunsOnlyWhenPanel({
             isDisabled={isDisabled}
             aria-label={GATE_SWITCH_LABEL}
           />
-        )}
-      </header>
-
+        )
+      }
+    >
       {draft !== null ? (
         <div className="flex flex-col gap-2">
           <Textarea
@@ -135,15 +126,8 @@ export function RunsOnlyWhenPanel({
         </div>
       ) : (
         hasRule && (
-          <div
-            className={cn(
-              "flex flex-col gap-1.5 transition-opacity duration-200",
-              !enabled && "opacity-60",
-            )}
-          >
-            <p className="text-pretty text-sm leading-relaxed text-zinc-100">
-              {condition}
-            </p>
+          <div className="flex flex-col gap-1">
+            <p className="text-xs text-zinc-400">{GATE_AUTHOR_LINES[author]}</p>
             <p className="text-pretty text-xs leading-relaxed text-zinc-500">
               {status}
             </p>
@@ -170,7 +154,7 @@ export function RunsOnlyWhenPanel({
           </Button>
         </div>
       )}
-    </section>
+    </PanelRow>
   );
 }
 
@@ -180,11 +164,11 @@ function RecentSkips({ skips }: { skips: GateSkipRecord[] }) {
     return <p className="text-xs text-zinc-500">{GATE_NO_SKIPS_NOTE}</p>;
   }
   return (
-    <div className="rounded-xl bg-zinc-900 px-3 py-2.5">
-      <p className="mb-1.5 text-xs font-medium text-zinc-400">
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs font-medium text-zinc-400">
         {GATE_RECENT_SKIPS_LABEL}
       </p>
-      <ul className="flex flex-col gap-1.5">
+      <ul className="flex flex-col gap-1">
         {[...skips].reverse().map((skip) => (
           <li
             key={`${skip.at}:${skip.event}`}

@@ -6,6 +6,7 @@ import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import type React from "react";
+import { PanelRowGroup } from "@/components/shared/PanelRow";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import CanvasViewer from "@/features/todo/components/CanvasViewer";
@@ -82,22 +83,26 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             </p>
           )}
 
-          {/* Canvas working memory — only for gaia-tracked todos */}
-          {isTrackedTodo(todo) && (
-            <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
-          )}
-
-          {todo.trigger_subscriptions.map(
-            (subscription) =>
-              subscription.gate && (
-                <SubscriptionGateLine
-                  // The stored text resets the line's draft once a save comes back.
-                  key={`${subscription.id}:${subscription.gate.display_condition}`}
-                  todoId={todo.id}
-                  subscriptionId={subscription.id}
-                  gate={subscription.gate}
-                />
-              ),
+          {(isTrackedTodo(todo) ||
+            todo.trigger_subscriptions.some(({ gate }) => gate)) && (
+            <PanelRowGroup>
+              {todo.trigger_subscriptions.map(
+                (subscription) =>
+                  subscription.gate && (
+                    <SubscriptionGateLine
+                      // The stored text resets the line's draft once a save comes back.
+                      key={`${subscription.id}:${subscription.gate.display_condition}`}
+                      todoId={todo.id}
+                      subscriptionId={subscription.id}
+                      gate={subscription.gate}
+                    />
+                  ),
+              )}
+              {/* Canvas working memory — only for gaia-tracked todos */}
+              {isTrackedTodo(todo) && (
+                <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
+              )}
+            </PanelRowGroup>
           )}
 
           {isTrackedTodo(todo) && !todo.parent_todo_id && (

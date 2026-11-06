@@ -1,6 +1,7 @@
 import { Tab, Tabs } from "@heroui/tabs";
 import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
 import type { ReactElement } from "react";
+import { PanelRowGroup } from "@/components/shared/PanelRow";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
@@ -128,17 +129,19 @@ export default function WorkflowTriggerSection({
           onConfigChange={onTriggerConfigChange}
         />
         {isIntegrationTrigger(triggerConfig) && (
-          <RunsOnlyWhenPanel
-            condition={gate.condition}
-            enabled={gate.enabled}
-            saved={savedGate ?? null}
-            editable={savedGate?.kind !== "system"}
-            onConditionSave={(condition) =>
-              onGateChange({ ...gate, condition })
-            }
-            onEnabledChange={(enabled) => onGateChange({ ...gate, enabled })}
-            isDisabled={isPreview}
-          />
+          <PanelRowGroup>
+            <RunsOnlyWhenPanel
+              condition={gate.condition}
+              enabled={gate.enabled}
+              saved={savedGate ?? null}
+              editable={savedGate?.kind !== "system"}
+              onConditionSave={(condition) =>
+                onGateChange({ ...gate, condition })
+              }
+              onEnabledChange={(enabled) => onGateChange({ ...gate, enabled })}
+              isDisabled={isPreview}
+            />
+          </PanelRowGroup>
         )}
       </div>
     );

@@ -61,6 +61,7 @@ describe("a tracked todo's runs-only-when line", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
     fireEvent.click(screen.getByRole("button", { name: "Edit rule" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Runs only when" }), {
       target: { value: `  ${INVOICES} ` },
@@ -85,6 +86,7 @@ describe("a tracked todo's runs-only-when line", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
     fireEvent.click(screen.getByRole("button", { name: "Edit rule" }));
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
 
@@ -117,6 +119,8 @@ describe("a tracked todo's runs-only-when line", () => {
     );
 
     expect(screen.getByText(DESK_TEXT)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByText("Built into this task")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Edit rule" })).toBeNull();
     fireEvent.click(screen.getByRole("switch"));
     expect(editSubscriptionGate).toHaveBeenCalledWith("todo-1", "watch-1", {

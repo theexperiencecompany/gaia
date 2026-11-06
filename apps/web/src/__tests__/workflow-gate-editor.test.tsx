@@ -41,6 +41,7 @@ const DESK: SystemGateView = {
 describe("the runs-only-when panel", () => {
   const renderPanel = (
     overrides: Partial<React.ComponentProps<typeof RunsOnlyWhenPanel>> = {},
+    { expanded = true } = {},
   ) => {
     const props = {
       condition: BILLING,
@@ -52,8 +53,32 @@ describe("the runs-only-when panel", () => {
       ...overrides,
     };
     render(<RunsOnlyWhenPanel {...props} />);
+    if (expanded) {
+      fireEvent.click(screen.getByRole("button", { expanded: false }));
+    }
     return props;
   };
+
+  it("stays one row until expanded: the rule and its switch, nothing else", () => {
+    renderPanel(
+      { saved: saved({ recent_skips: [NEWER] }) },
+      { expanded: false },
+    );
+
+    expect(screen.getByText(BILLING)).toBeTruthy();
+    expect(screen.getByRole("switch")).toBeTruthy();
+    expect(
+      screen.queryByText("GAIA wrote this rule from your task"),
+    ).toBeNull();
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit rule" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+
+    expect(screen.getByRole("button", { expanded: true })).toBeTruthy();
+    expect(screen.getByRole("list")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit rule" })).toBeTruthy();
+  });
 
   it("says who wrote the rule and what it does", () => {
     renderPanel();
