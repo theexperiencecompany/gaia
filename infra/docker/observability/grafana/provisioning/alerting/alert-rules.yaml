@@ -1709,3 +1709,101 @@ groups:
         labels:
           severity: warning
           service: api
+
+      # 27. A write_playbook call was refused or raised. The pick flow is built
+      # so a write cannot misstate the run (the prod corpus in CI holds it), so
+      # one refusal is already a regression worth a look: the threshold is the
+      # first one. Every write refusal series is created at 0 when the worker
+      # imports the counter, so increase() sees the first one after a restart.
+      # noDataState OK: no workflow traffic is not an incident. No dashboard
+      # link: no panel charts playbook decisions yet.
+      - uid: gaia-playbook-write-refused
+        title: A workflow playbook write was refused
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_playbook_decision_total{tool="write",outcome!="accepted"}[1h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} write_playbook
+            calls were refused or failed in the last hour (threshold: the first
+            one){{ else }}Unable to read the playbook decision count — this rule
+            could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            A workflow run asked to freeze its calls as a playbook was told no, so
+            that workflow keeps reasoning every fire from scratch at full model
+            cost instead of replaying. Users see nothing: the run's own result is
+            delivered either way. The reason label says why (not_in_record,
+            empty_result, time_layout, malformed, ... or outcome="error" for a
+            crash); the runbook has the query and how to pull the attempt.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-playbook-write-refused
+        labels:
+          severity: critical
+          service: arq_worker
+
+      # 28. A playbook replay stopped partway. The agent finishes that fire, so
+      # the user still gets one result, but the frozen sequence no longer holds
+      # for that workflow and its runs cost a full agent run until it heals.
+      # Same first-event threshold and zero-created series as rule 26.
+      - uid: gaia-playbook-replay-failed
+        title: A workflow playbook replay failed
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_playbook_replay_total{status="failed"}[1h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} playbook replays
+            stopped partway in the last hour (threshold: the first one){{ else }}Unable
+            to read the playbook replay count — this rule could not be evaluated,
+            which almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            A stored playbook stopped at a step during replay (a tool error, a
+            missing $steps field, a disconnected integration). The agent took over
+            and delivered that fire, so the user got a result, but the workflow is
+            now healing and costs a full agent run per fire. Find the workflow in
+            the worker's wide events (playbook.reason=replay_stopped) and read the
+            failure it logged.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-playbook-replay-failed
+        labels:
+          severity: critical
+          service: arq_worker

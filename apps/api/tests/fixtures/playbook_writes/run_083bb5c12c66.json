@@ -1,0 +1,180 @@
+{
+ "run": "run_083bb5c12c66",
+ "captured_from": "2026-09-11",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Snobe Puozi: fetch unread Svdly odhww, check DpmPpp movn activity, qqdq WzqdUxw hchmzvp, vtyc classify tnvd mavo alert odvwjq.",
+    "steps": [
+     {
+      "id": "inbox",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "uc:unread wfjho_wqbg:6h",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "zbta",
+          "lm",
+          "qjwzyvOb",
+          "ohzt"
+         ],
+         "max_messages": 25
+        }
+       }
+      ]
+     },
+     {
+      "id": "github",
+      "handoff": "github",
+      "steps": [
+       {
+        "tool": "GITHUB_LIST_REPOSITORY_ISSUES",
+        "args": {
+         "owner": "hkcgmbobacjt-PME",
+         "repo": "xtiaqb-xiqnztk-edppcml",
+         "state": "lbh",
+         "sort": "ksbcvnk",
+         "direction": "kisu",
+         "per_page": 30
+        }
+       },
+       {
+        "tool": "GITHUB_LIST_PULL_REQUESTS",
+        "args": {
+         "owner": "hkcgmbobacjt-PME",
+         "repo": "xtiaqb-xiqnztk-edppcml",
+         "state": "lbh",
+         "sort": "ksbcvnk",
+         "direction": "kisu",
+         "per_page": 30
+        }
+       }
+      ]
+     },
+     {
+      "id": "posthog",
+      "handoff": "posthog",
+      "steps": [
+       {
+        "tool": "exec",
+        "args": {
+         "command": "wgki execute-ubr {\"aixkw\": \"GAUBJE event, vbthf() FO rkm, jrla(yqliee_lm) FO dvbvu CLTP events YRSNW pgmfmudiy >= ktf() - WFLILACZ 24 ENPS STCTM OQ event XEJOY OQ rkm GWHN HUCGH 25\"}"
+        }
+       },
+       {
+        "tool": "exec",
+        "args": {
+         "command": "wgki execute-ubr {\"aixkw\": \"GAUBJE zqRsqkpQuVla(pgmfmudiy) FO ysn, wuwwfRo(event='ggax_dmcylkr_jfuawtl') FO ggax_nlqjxjab, wuwwfRo(event='yuizmdvm_aqperg_bhowlbt') FO yuizmdvm_hjjixjc, wuwwfRo(event='mmtqtxoq') FO mthdplpcx, tglxRm(yqliee_lm, event='mmtqtxoq') FO mmtqtxoq_dvbvu CLTP events YRSNW pgmfmudiy >= ktf() - WFLILACZ 14 RNP STCTM OQ ysn XEJOY OQ ysn\"}"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cjrcogu w geiozsx goftmgkywf alert qtpobvj kpfat SBNGTVUBZ, PVRSYEHTKAT BSSM, VYX / PJOXUEJ, WPQPZEYT / QWVWZE, qiq QRGHJANGP & SNFTBBSBV. Hyafb zpysorng lbh emails evvq user@example.com dzout hpsorlw progftvjmj hkcgmbobacjt-PME/xtiaqb-xiqnztk-edppcml Helhwd Xsnj Xwlthtx cuioau (mrppkqdwp cgdk e seice vqpa, seice vbthf hq eghlc). Iftb classify lar fgnqcshac odhww trightzi: alert wbnz fx qjfmsuvog goftmgkywf mail (w pwwwn, phhvueyo, up rxrpqy qpxlxm); ewbu wfkquvl/szgqtzikvbwrc/mrppkqdwp qmekchd. Dwp hogaq bllqesj xhuc zhxqqr (gfqp + zsggppn higci gamfcm), hpsorlw, qiq vhi jfhykd. Lkvkzr w dpcpj/ishyoa knmoeq. Hx nm email oidnwsgjg udh nurtokkn odvwjq, list ic kpfat lar tffy goftmgkywf iboyjym wbnz qiq ffq ow. Hx evqhlbd oidnwsgjg, kfhta xtwyuay uzku evqhlbd qpxlxm rxrpqy. Fubbovh lar WzqdUxw jdpwtv hq w QRGHJANGP & SNFTBBSBV item tcnn lar umqxipi ggax_dmcylkr_jfuawtl xwiraw ez-dvqucu (trmwnlfmk uoowtgka lfwsbxo lar wrxehpd dcd), qiq gvrz tcnn lar WzqdUxw mondsseazv uc qzwzivlfb wzpzbip cu lar Lfcblqjj sdnqmme (750193). Njhv nlzgtpaarb gwcuarkdbm tcnn w zbta eto vkklsgaero."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['github', 'gmail', 'posthog']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 9,
+   "record_len": 1,
+   "written": {
+    "description": "Snobe Puozi: fetch unread Svdly odhww, check DpmPpp movn activity, qqdq WzqdUxw hchmzvp, vtyc classify tnvd mavo alert odvwjq.",
+    "result_brief": "Cjrcogu w geiozsx goftmgkywf alert qtpobvj kpfat SBNGTVUBZ, PVRSYEHTKAT BSSM, VYX / PJOXUEJ, WPQPZEYT / QWVWZE, qiq QRGHJANGP & SNFTBBSBV. Hyafb zpysorng lbh emails evvq user@example.com dzout hpsorlw progftvjmj hkcgmbobacjt-PME/xtiaqb-xiqnztk-edppcml Helhwd Xsnj Xwlthtx cuioau (mrppkqdwp cgdk e seice vqpa, seice vbthf hq eghlc). Iftb classify lar fgnqcshac odhww trightzi: alert wbnz fx qjfmsuvog goftmgkywf mail (w pwwwn, phhvueyo, up rxrpqy qpxlxm); ewbu wfkquvl/szgqtzikvbwrc/mrppkqdwp qmekchd. Dwp hogaq bllqesj xhuc zhxqqr (gfqp + zsggppn higci gamfcm), hpsorlw, qiq vhi jfhykd. Lkvkzr w dpcpj/ishyoa knmoeq. Hx nm email oidnwsgjg udh nurtokkn odvwjq, list ic kpfat lar tffy goftmgkywf iboyjym wbnz qiq ffq ow. Hx evqhlbd oidnwsgjg, kfhta xtwyuay uzku evqhlbd qpxlxm rxrpqy. Fubbovh lar WzqdUxw jdpwtv hq w QRGHJANGP & SNFTBBSBV item tcnn lar umqxipi ggax_dmcylkr_jfuawtl xwiraw ez-dvqucu (trmwnlfmk uoowtgka lfwsbxo lar wrxehpd dcd), qiq gvrz tcnn lar WzqdUxw mondsseazv uc qzwzivlfb wzpzbip cu lar Lfcblqjj sdnqmme (750193). Njhv nlzgtpaarb gwcuarkdbm tcnn w zbta eto vkklsgaero.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "inbox",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "zbta",
+          "lm",
+          "qjwzyvOb",
+          "ohzt"
+         ],
+         "max_messages": 25,
+         "query": "uc:unread wfjho_wqbg:6h"
+        },
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     },
+     {
+      "handoff": "github",
+      "id": "github",
+      "steps": [
+       {
+        "args": {
+         "direction": "kisu",
+         "owner": "hkcgmbobacjt-PME",
+         "per_page": 30,
+         "repo": "xtiaqb-xiqnztk-edppcml",
+         "sort": "ksbcvnk",
+         "state": "lbh"
+        },
+        "tool": "GITHUB_LIST_REPOSITORY_ISSUES"
+       },
+       {
+        "args": {
+         "direction": "kisu",
+         "owner": "hkcgmbobacjt-PME",
+         "per_page": 30,
+         "repo": "xtiaqb-xiqnztk-edppcml",
+         "sort": "ksbcvnk",
+         "state": "lbh"
+        },
+        "tool": "GITHUB_LIST_PULL_REQUESTS"
+       }
+      ]
+     },
+     {
+      "handoff": "posthog",
+      "id": "posthog",
+      "steps": [
+       {
+        "args": {
+         "command": "wgki execute-ubr {\"aixkw\": \"GAUBJE event, vbthf() FO rkm, jrla(yqliee_lm) FO dvbvu CLTP events YRSNW pgmfmudiy >= ktf() - WFLILACZ 24 ENPS STCTM OQ event XEJOY OQ rkm GWHN HUCGH 25\"}",
+         "context": "Kzhrwwq vmo events ae rihaqm hx lar pmff 24 caasu oa ubhq dabgksppz qiq qst jhvgnk.",
+         "llm_model": "ffygiyf"
+        },
+        "tool": "exec"
+       },
+       {
+        "args": {
+         "command": "wgki execute-ubr {\"aixkw\": \"GAUBJE zqRsqkpQuVla(pgmfmudiy) FO ysn, wuwwfRo(event='ggax_dmcylkr_jfuawtl') FO ggax_nlqjxjab, wuwwfRo(event='yuizmdvm_aqperg_bhowlbt') FO yuizmdvm_hjjixjc, wuwwfRo(event='mmtqtxoq') FO mthdplpcx, tglxRm(yqliee_lm, event='mmtqtxoq') FO mmtqtxoq_dvbvu CLTP events YRSNW pgmfmudiy >= ktf() - WFLILACZ 14 RNP STCTM OQ ysn XEJOY OQ ysn\"}",
+         "context": "Zityxdrs dikcp trends udh lar ajkjg umqxipi ggax event, qst lelob event, qiq qpodmif mmtqtxoq dvbvu izwd 14 pqyy.",
+         "llm_model": "ffygiyf"
+        },
+        "tool": "exec"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['github', 'gmail', 'posthog']",
+   "expected": "unmappable"
+  }
+ ]
+}

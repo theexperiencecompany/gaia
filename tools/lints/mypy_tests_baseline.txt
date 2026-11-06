@@ -34,8 +34,6 @@ apps/api/tests/e2e/test_executor_channel_matrix.py	return-value
 apps/api/tests/e2e/test_executor_interaction_scale.py	return-value
 apps/api/tests/e2e/test_executor_interjection.py	return-value
 apps/api/tests/e2e/test_executor_progress_e2e.py	arg-type
-apps/api/tests/e2e/test_file_share_sandbox_e2e.py	attr-defined
-apps/api/tests/e2e/test_file_share_sandbox_e2e.py	misc
 apps/api/tests/e2e/test_hil_spawn_e2e.py	arg-type
 apps/api/tests/e2e/test_hil_spawn_e2e.py	attr-defined
 apps/api/tests/e2e/test_hil_spawn_e2e.py	call-overload
@@ -128,10 +126,6 @@ apps/api/tests/unit/agents/nodes/test_manage_system_prompts.py	typeddict-item
 apps/api/tests/unit/agents/nodes/test_memory_node.py	arg-type
 apps/api/tests/unit/agents/nodes/test_pre_model_hooks.py	arg-type
 apps/api/tests/unit/agents/test_active_integrations.py	misc
-apps/api/tests/unit/agents/test_agent_core.py	arg-type
-apps/api/tests/unit/agents/test_agent_routing.py	attr-defined
-apps/api/tests/unit/agents/test_agent_routing.py	misc
-apps/api/tests/unit/agents/test_agent_routing.py	return-value
 apps/api/tests/unit/agents/test_browser_task_status_hook.py	arg-type
 apps/api/tests/unit/agents/test_call_record.py	arg-type
 apps/api/tests/unit/agents/test_comms_narrator.py	attr-defined
@@ -176,8 +170,6 @@ apps/api/tests/unit/agents/test_llm_runtime_config.py	arg-type
 apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
 apps/api/tests/unit/agents/test_mail_templates.py	arg-type
-apps/api/tests/unit/agents/test_messages.py	arg-type
-apps/api/tests/unit/agents/test_messages.py	list-item
 apps/api/tests/unit/agents/test_model_lane.py	attr-defined
 apps/api/tests/unit/agents/test_model_lane.py	misc
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment
@@ -218,15 +210,10 @@ apps/api/tests/unit/agents/tools/test_mutations_factory.py	var-annotated
 apps/api/tests/unit/api/test_bot_endpoint.py	attr-defined
 apps/api/tests/unit/api/test_bot_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_endpoint.py	union-attr
-apps/api/tests/unit/api/test_bot_links_endpoint.py	arg-type
-apps/api/tests/unit/api/test_bot_links_endpoint.py	call-arg
 apps/api/tests/unit/api/test_device_self_pair.py	attr-defined
 apps/api/tests/unit/api/test_integrations_user.py	call-arg
-apps/api/tests/unit/api/test_lab_events.py	arg-type
-apps/api/tests/unit/api/test_lab_events.py	attr-defined
 apps/api/tests/unit/api/test_mail_endpoint.py	list-item
 apps/api/tests/unit/api/test_oauth_dependencies.py	attr-defined
-apps/api/tests/unit/api/test_onboarding_endpoint.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	call-arg
 apps/api/tests/unit/api/test_platform_auth_endpoint.py	override
@@ -262,7 +249,6 @@ apps/api/tests/unit/config/test_workos.py	attr-defined
 apps/api/tests/unit/core/test_lazy_loader.py	var-annotated
 apps/api/tests/unit/core/test_middleware.py	arg-type
 apps/api/tests/unit/core/test_middleware.py	attr-defined
-apps/api/tests/unit/core/test_provider_registration.py	attr-defined
 apps/api/tests/unit/db/repositories/test_base_repository.py	unused-ignore
 apps/api/tests/unit/db/repositories/test_playbooks.py	call-overload
 apps/api/tests/unit/db/test_chroma_store.py	arg-type
@@ -333,7 +319,6 @@ apps/api/tests/unit/middleware/test_unhandled_exception_middleware.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	call-arg
 apps/api/tests/unit/models/test_agent_config.py	typeddict-item
-apps/api/tests/unit/models/test_agent_config_reads.py	call-overload
 apps/api/tests/unit/models/test_auth_models.py	call-arg
 apps/api/tests/unit/models/test_authenticated_user_shape.py	arg-type
 apps/api/tests/unit/models/test_authenticated_user_shape.py	call-arg
@@ -343,11 +328,7 @@ apps/api/tests/unit/models/test_payment_models.py	call-arg
 apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	arg-type
 apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	attr-defined
 apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	call-arg
-apps/api/tests/unit/models/test_schema_validation.py	call-arg
 apps/api/tests/unit/models/test_schema_validation.py	list-item
-apps/api/tests/unit/models/test_user_document_legacy_profession.py	call-arg
-apps/api/tests/unit/models/test_user_models.py	call-arg
-apps/api/tests/unit/models/test_user_models.py	list-item
 apps/api/tests/unit/models/test_workflow_models.py	arg-type
 apps/api/tests/unit/patches/test_browser_use_run_lock_patch.py	attr-defined
 apps/api/tests/unit/patches/test_composio_input_patch.py	attr-defined
@@ -385,10 +366,8 @@ apps/api/tests/unit/scripts/test_archive_system_owned_runs.py	attr-defined
 apps/api/tests/unit/scripts/test_backfill_true_cost.py	attr-defined
 apps/api/tests/unit/scripts/test_loki.py	no-redef
 apps/api/tests/unit/scripts/test_migrate_hooked_tool_envelope.py	arg-type
-apps/api/tests/unit/scripts/test_migrate_integration_accounts.py	arg-type
 apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	arg-type
 apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	list-item
-apps/api/tests/unit/scripts/test_repair_memory_store.py	attr-defined
 apps/api/tests/unit/scripts/test_reset_admin_password.py	arg-type
 apps/api/tests/unit/scripts/test_save_provider.py	arg-type
 apps/api/tests/unit/scripts/test_sync_user_workspaces.py	attr-defined
@@ -444,7 +423,6 @@ apps/api/tests/unit/services/photon/test_photon_client.py	attr-defined
 apps/api/tests/unit/services/photon/test_photon_client.py	index
 apps/api/tests/unit/services/sandbox/test_execute_client.py	arg-type
 apps/api/tests/unit/services/sandbox/test_execute_client.py	attr-defined
-apps/api/tests/unit/services/sandbox/test_execute_token.py	attr-defined
 apps/api/tests/unit/services/test_artifact_events.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined
@@ -480,13 +458,9 @@ apps/api/tests/unit/services/test_marketplace_service.py	call-arg
 apps/api/tests/unit/services/test_mcp_tool_result.py	arg-type
 apps/api/tests/unit/services/test_mcp_tool_result.py	index
 apps/api/tests/unit/services/test_nurture_service.py	arg-type
-apps/api/tests/unit/services/test_onboarding_service.py	call-arg
-apps/api/tests/unit/services/test_onboarding_service.py	list-item
 apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
-apps/api/tests/unit/services/test_platform_link_code_service.py	attr-defined
-apps/api/tests/unit/services/test_platform_link_code_service.py	index
 apps/api/tests/unit/services/test_platform_message_service.py	attr-defined
 apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
 apps/api/tests/unit/services/test_provider_credentials_service.py	assignment
@@ -514,6 +488,8 @@ apps/api/tests/unit/services/test_voice_service.py	arg-type
 apps/api/tests/unit/services/test_workflow_subagent.py	arg-type
 apps/api/tests/unit/services/test_workflow_subagent.py	override
 apps/api/tests/unit/services/todos/test_signal_context.py	arg-type
+apps/api/tests/unit/services/triggers/test_subscription_service.py	union-attr
+apps/api/tests/unit/services/triggers/test_subscription_validation.py	var-annotated
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	arg-type
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	operator
 apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	attr-defined
@@ -612,9 +588,7 @@ apps/api/tests/unit/utils/test_schema_fixes.py	index
 apps/api/tests/unit/utils/test_schema_fixes.py	operator
 apps/api/tests/unit/utils/test_search_utils.py	arg-type
 apps/api/tests/unit/utils/test_stream_utils.py	arg-type
-apps/api/tests/unit/utils/test_user_preferences_utils.py	arg-type
 apps/api/tests/unit/utils/test_webpage_fetch.py	arg-type
-apps/api/tests/unit/workers/tasks/test_onboarding_tasks.py	misc
 apps/api/tests/unit/workers/test_browser_tasks.py	attr-defined
 apps/api/tests/unit/workers/test_browser_tasks.py	misc
 apps/api/tests/unit/workers/test_browser_worker.py	arg-type

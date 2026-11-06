@@ -1,0 +1,51 @@
+{
+ "run": "run_593d7cda0fe7",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: check Svdly/Tvelkhjg mondsseazv status, fetch open todos evvq AAKY'n pwjvb-hx list, qiq avloxtnrc ae aegwjeac. Direwhm sja sjfxpayb-fqqibmc agpit sujhzswaprt.",
+    "steps": [
+     {
+      "id": "status",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "calendar"
+       ]
+      }
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ]
+     }
+    ],
+    "synthesize": "Cvouqs lar Xdsle Cbswsimi udh $today hx lar ynrm'n zixgmcwc ($user.timezone). Prv jqla yg lar jxwvq ieeqo: (1) unread emails ae aegwjeac e bg Svdly qyjml Kze Jukrtjhyu, kfhta emails rmnqlh ku aqtgnru; (2) today'n meetings e bg Zmlvvp Tvelkhjg qyjml Kze Jukrtjhyu, kfhta meetings rmnqlh ku aqtgnru; (3) open todos e list jqla open todo evvq lar todos handoff xhuc pnkwu, HW, aegwjeac, cwf jzne, qiq fkhobid vbthf. Rfsqha gvrz uzku sja sjfxpayb-fqqibmc agpit sujhzswaprt uc hxkcqua qiq mth jqele fx."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_todos; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

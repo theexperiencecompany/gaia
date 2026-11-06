@@ -1,7 +1,7 @@
 """Workflow-related ARQ background tasks and execution logic."""
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -27,6 +27,7 @@ from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,
 )
+from app.agents.tools.run_record import read_run_record, seed_run_record
 from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
     RateLimitExceededException,
@@ -34,7 +35,6 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.config.settings import settings
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
-    PLAYBOOK_REPLAYED_CALLS_KEY,
     WORKFLOW_LOCK_CONTEXT_KEY,
     AgentTag,
     wrap_agent_payload,
@@ -116,13 +116,13 @@ from app.services.workflow.playbook.lifecycle import (
     discard_reason,
     needs_heal,
 )
+from app.services.workflow.playbook.metrics import record_replay
 from app.services.workflow.playbook.runner import (
     PlaybookRunResult,
     completed_block,
     run_playbook,
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
-from app.services.workflow.run_trace import build_trace
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.thread_reset import reset_workflow_threads
@@ -1001,6 +1001,7 @@ async def _finish_after_replay(
     else:
         status = PlaybookRunStatus.SUCCESS
         reason = None
+    record_replay(status)
     updated = await playbook_repository.record_run_outcome(
         workflow_id,
         workflow.user_id,
@@ -1091,12 +1092,9 @@ async def _finish_after_replay(
     conversation_id, agent_trace = await execute_workflow_as_chat(
         workflow,
         user,
-        {
-            **context,
-            PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result),
-            PLAYBOOK_REPLAYED_CALLS_KEY: [call.model_dump(mode="json") for call in result.trace],
-        },
+        {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)},
         reservation=fire.reservation,
+        replayed=result.trace,
     )
     # This was a heal run too: it carried the heal brief and ended with a
     # decision, so it spends an attempt on the body it healed (a rewrite moved
@@ -1108,9 +1106,9 @@ async def _finish_after_replay(
             playbook_id=playbook.playbook_id,
             revision=playbook.revision,
         )
-    # The replay's own calls stay on the record: they are what the agent was
-    # told not to repeat, and the next run reads this trace as its history.
-    return conversation_id, [*result.trace, *agent_trace], summary
+    # The trace opens with the replay's own calls (execute_workflow_as_chat seeds
+    # them): what the agent was told not to repeat, and the next run's history.
+    return conversation_id, agent_trace, summary
 
 
 def _derive_trigger_type(stamp: _FireStamp) -> str:
@@ -1720,15 +1718,35 @@ async def execute_workflow_as_playbook(
 # The plan-quota charge moved to _run_workflow, the single place a fire is
 # billed — a replay that stops partway calls this to finish, and one result
 # must never cost two executions. The seam still reads trigger_type's origin.
+async def _run_trace(stream_id: str, workflow_id: str) -> list[RecordedCall]:
+    """Return the finished run's record; one that cannot be read is logged, the run still done."""
+    try:
+        return await read_run_record(stream_id)
+    except Exception as exc:
+        # The work already happened: failing the execution would misreport it.
+        log.error(
+            f"{LogTag.WORKER} workflow run record could not be read",
+            workflow_id=workflow_id,
+            error_type=type(exc).__name__,
+            exc_info=True,
+        )
+        return []
+
+
 async def execute_workflow_as_chat(
-    workflow: Workflow, user: AuthenticatedUser, context: dict[str, object], *, reservation: str
+    workflow: Workflow,
+    user: AuthenticatedUser,
+    context: dict[str, object],
+    *,
+    reservation: str,
+    replayed: Sequence[RecordedCall] = (),
 ) -> tuple[str, list[RecordedCall]]:
     """Run a workflow as a silent chat turn; return its conversation id and trace.
 
-    Fed to the agent like an interactive turn; the executor runs every step and
-    the background path delivers the result, so this only kicks off the run and
-    persists the trigger message. Tool calls come back as the trace. Runs under
-    the fire's reservation (see _reserve_conversation), which the executor adopts.
+    The trace is the run's record, which opens with replayed (a stopped replay's
+    calls this fire) so the agent can freeze them. Runs under the fire's
+    reservation (see _reserve_conversation), which the executor adopts; the
+    background path delivers the result.
     """
 
     # Avoid circular import
@@ -1786,12 +1804,16 @@ async def execute_workflow_as_chat(
             selectedWorkflow=selected_workflow_data,
         )
 
+        stream_id = str(uuid4())
+        await seed_run_record(stream_id, replayed)
+
         # Same entry as chat, silent. workflow_id/title in the trigger context
         # routes the executor's final result to the completion notification.
         result = await call_agent_silent(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
+            stream_id=stream_id,
             options=AgentRunOptions(
                 trigger_context={
                     # Default; a caller firing this for something quieter (a
@@ -1807,10 +1829,8 @@ async def execute_workflow_as_chat(
             ),
         )
 
-        # The ordered entries (executor's and its subagents') this run emitted.
-        trace = build_trace(result.tool_data)
-
-        return conversation_id, trace
+        # Every tool call the run made, by any path, in the order each finished.
+        return conversation_id, await _run_trace(result.stream_id, workflow.id)
 
     except Exception as e:
         # Re-raise so caller marks execution as failed instead of fake-success.

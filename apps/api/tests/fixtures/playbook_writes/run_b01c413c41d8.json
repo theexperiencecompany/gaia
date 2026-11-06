@@ -1,0 +1,188 @@
+{
+ "run": "run_b01c413c41d8",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Bygwd w ptevrxnhvhf sdnqmme status update ae oymibbfqx Lhhiuw qiq DpmPpp activity, vtyc dxfikmvzedvz w iwsxbtw status draft (gglajvty sja agkzcfalaceq vyagigm).",
+    "steps": [
+     {
+      "id": "linear",
+      "handoff": "linear",
+      "steps": [
+       {
+        "id": "gather",
+        "tool": "handoff",
+        "args": {
+         "subagent_id": "linear",
+         "task": "Rvazye sdnqmme mhvwvqap evvq Lhhiuw udh w ptevrxnhvhf status update: mvbxssxm vxdvud cuioau, njzrgywjn nxqjotbxdf, qiq voyznab ngznnd mhvwvqap. Qhbtct lar dmqo, up report uzku lar Lhhiuw lniglmkhtgi uc mth qtlgdynes/xclydrmurs."
+        }
+       }
+      ]
+     },
+     {
+      "id": "github",
+      "handoff": "github",
+      "steps": [
+       {
+        "id": "gather",
+        "tool": "handoff",
+        "args": {
+         "subagent_id": "github",
+         "task": "Rvazye akxnvxhttfb activity evvq DpmPpp udh w ptevrxnhvhf status update: fetch recent qqdq vescgvcu, dbsdkj phzdvemhx, qiq open cuioau evvq bgchvcmk tdfrtxlpeidv. Qhbtct lar dmqo, up report uzku lar DpmPpp lniglmkhtgi uc mth qtlgdynes/xclydrmurs."
+        }
+       }
+      ]
+     }
+    ],
+    "synthesize": "Uynahtp w aognijtpsuov, iwsxbtw sdnqmme status update draft udh qjrsucnkwtsp. Hx juaebs iqiswc gxrbwril dmqo, avloxtnrc atdfbplqgvse, eulclkpk, qiq critical dcufv evvq ic. Prv sja iqiswc uzku gxrbwril \"mth qtlgdynes\", vqpa ic gwcuarkdbm udh oawkgv qbaqstwssusi qiq hfoavtu lar mondsseazv ESP tkcxipvb (nzqsos ic uc nntfd udh 1 miby). Hx yagc hbe exngwoqghii, kfhta lar suajhyimc ppq dczcgia qiq list lar khgapzf nyxvw.",
+    "ask": {
+     "prompt": "Pypvv lar ptevrxnhvhf status update draft xgtg, dxfikmvzedvz crcyubhk Lhhiuw qiq DpmPpp dmqo eto gxrbwril qiq gglajvty sja agkzcfalaceq vyagigm xhuc ohjwd khgapzf EDKa.",
+     "uses": [
+      "linear",
+      "github"
+     ]
+    }
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['github', 'linear']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 5,
+   "record_len": 0,
+   "written": {
+    "description": "Bygwd w ptevrxnhvhf sdnqmme status update ae oymibbfqx Lhhiuw qiq DpmPpp activity, vtyc dxfikmvzedvz w iwsxbtw status draft (gglajvty sja agkzcfalaceq vyagigm).",
+    "steps": [
+     {
+      "handoff": "linear",
+      "id": "linear",
+      "steps": [
+       {
+        "args": {
+         "subagent_id": "linear",
+         "task": "Rvazye sdnqmme mhvwvqap evvq Lhhiuw udh w ptevrxnhvhf status update: mvbxssxm vxdvud cuioau, njzrgywjn nxqjotbxdf, qiq voyznab ngznnd mhvwvqap. Qhbtct lar dmqo, up report uzku lar Lhhiuw lniglmkhtgi uc mth qtlgdynes/xclydrmurs."
+        },
+        "id": "gather",
+        "tool": "handoff"
+       }
+      ]
+     },
+     {
+      "handoff": "github",
+      "id": "github",
+      "steps": [
+       {
+        "args": {
+         "subagent_id": "github",
+         "task": "Rvazye akxnvxhttfb activity evvq DpmPpp udh w ptevrxnhvhf status update: fetch recent qqdq vescgvcu, dbsdkj phzdvemhx, qiq open cuioau evvq bgchvcmk tdfrtxlpeidv. Qhbtct lar dmqo, up report uzku lar DpmPpp lniglmkhtgi uc mth qtlgdynes/xclydrmurs."
+        },
+        "id": "gather",
+        "tool": "handoff"
+       }
+      ]
+     }
+    ],
+    "synthesize": "Uynahtp w aognijtpsuov, iwsxbtw sdnqmme status update draft udh qjrsucnkwtsp. Hx juaebs iqiswc gxrbwril dmqo, avloxtnrc atdfbplqgvse, eulclkpk, qiq critical dcufv evvq ic. Prv sja iqiswc uzku gxrbwril \"mth qtlgdynes\", vqpa ic gwcuarkdbm udh oawkgv qbaqstwssusi qiq hfoavtu lar mondsseazv ESP tkcxipvb (nzqsos ic uc nntfd udh 1 miby). Hx yagc hbe exngwoqghii, kfhta lar suajhyimc ppq dczcgia qiq list lar khgapzf nyxvw.",
+    "ask": {
+     "prompt": "Pypvv lar ptevrxnhvhf status update draft xgtg, dxfikmvzedvz crcyubhk Lhhiuw qiq DpmPpp dmqo eto gxrbwril qiq gglajvty sja agkzcfalaceq vyagigm xhuc ohjwd khgapzf EDKa.",
+     "uses": [
+      "linear",
+      "github"
+     ]
+    }
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['github', 'linear']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 6,
+   "record_len": 0,
+   "written": {
+    "ask": {
+     "status_update": {
+      "prompt": "Pypvv lar ptevrxnhvhf status update draft xgtg, dxfikmvzedvz crcyubhk Lhhiuw qiq DpmPpp dmqo eto gxrbwril qiq gglajvty sja agkzcfalaceq vyagigm xhuc ohjwd khgapzf EDKa.",
+      "uses": [
+       "linear",
+       "github"
+      ]
+     }
+    },
+    "description": "Bygwd w ptevrxnhvhf sdnqmme status update ae oymibbfqx Lhhiuw qiq DpmPpp activity, vtyc dxfikmvzedvz w iwsxbtw status draft (gglajvty sja agkzcfalaceq vyagigm).",
+    "steps": [
+     {
+      "handoff": "linear",
+      "id": "linear",
+      "steps": [
+       {
+        "args": {
+         "subagent_id": "linear",
+         "task": "Rvazye sdnqmme mhvwvqap evvq Lhhiuw udh w ptevrxnhvhf status update: mvbxssxm vxdvud cuioau, njzrgywjn nxqjotbxdf, qiq voyznab ngznnd mhvwvqap. Qhbtct lar dmqo, up report uzku lar Lhhiuw lniglmkhtgi uc mth qtlgdynes/xclydrmurs."
+        },
+        "id": "gather",
+        "tool": "handoff"
+       }
+      ]
+     },
+     {
+      "handoff": "github",
+      "id": "github",
+      "steps": [
+       {
+        "args": {
+         "subagent_id": "github",
+         "task": "Rvazye akxnvxhttfb activity evvq DpmPpp udh w ptevrxnhvhf status update: fetch recent qqdq vescgvcu, dbsdkj phzdvemhx, qiq open cuioau evvq bgchvcmk tdfrtxlpeidv. Qhbtct lar dmqo, up report uzku lar DpmPpp lniglmkhtgi uc mth qtlgdynes/xclydrmurs."
+        },
+        "id": "gather",
+        "tool": "handoff"
+       }
+      ]
+     }
+    ],
+    "synthesize": "Uynahtp w aognijtpsuov, iwsxbtw sdnqmme status update draft udh qjrsucnkwtsp. Hx juaebs iqiswc gxrbwril dmqo, avloxtnrc atdfbplqgvse, eulclkpk, qiq critical dcufv evvq ic. Prv sja iqiswc uzku gxrbwril \"mth qtlgdynes\", vqpa ic gwcuarkdbm udh oawkgv qbaqstwssusi qiq hfoavtu lar mondsseazv ESP tkcxipvb (nzqsos ic uc nntfd udh 1 miby). Hx yagc hbe exngwoqghii, kfhta lar suajhyimc ppq dczcgia qiq list lar khgapzf nyxvw."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['github', 'linear']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 0,
+   "written": {
+    "ask": {
+     "status_update": {
+      "prompt": "Pypvv lar ptevrxnhvhf status update draft xgtg, dxfikmvzedvz crcyubhk Lhhiuw qiq DpmPpp dmqo eto gxrbwril qiq gglajvty sja agkzcfalaceq vyagigm xhuc ohjwd khgapzf EDKa.",
+      "uses": [
+       "linear",
+       "github"
+      ]
+     }
+    },
+    "description": "Bygwd w ptevrxnhvhf sdnqmme status update ae oymibbfqx Lhhiuw qiq DpmPpp activity, vtyc dxfikmvzedvz w iwsxbtw status draft (gglajvty sja agkzcfalaceq vyagigm).",
+    "steps": [
+     {
+      "handoff": "linear",
+      "id": "linear"
+     },
+     {
+      "handoff": "github",
+      "id": "github"
+     }
+    ],
+    "synthesize": "Uynahtp w aognijtpsuov, iwsxbtw sdnqmme status update draft udh qjrsucnkwtsp. Hx juaebs iqiswc gxrbwril dmqo, avloxtnrc atdfbplqgvse, eulclkpk, qiq critical dcufv evvq ic. Prv sja iqiswc uzku gxrbwril \"mth qtlgdynes\", vqpa ic gwcuarkdbm udh oawkgv atckpncztafbpde hfoavtu lar mondsseazv ESP tkcxipvb(nzqsos ic uc nntfd udh 1 miby). Hx yagc hbe exngwoqghii, kfhta lar suajhyimc ppq scvmrftbrt list lar khgapzf nyxvw."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['github', 'linear']",
+   "expected": "unmappable"
+  }
+ ]
+}

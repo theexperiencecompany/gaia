@@ -13,6 +13,7 @@ from app.api.v1.endpoints.lab_events import LabEventResponse, report_lab_event
 from app.api.v1.middleware.auth import WorkOSAuthMiddleware
 from app.api.v1.middleware.entitlement_allowlist import is_free_path
 from app.api.v1.routes import router as v1_router
+from app.config.settings import settings
 from app.constants import execute
 from app.constants.execute import SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS
 from app.constants.todos import TodoActivityEvent
@@ -24,8 +25,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
 )
 from app.services.agent_lab import lab_events, lab_runs, sandbox_setup
-from app.services.sandbox import execute_token
-from app.services.sandbox.execute_token import mint_execute_token
+from app.services.sandbox.execute_token import ExecuteGrant, mint_execute_token
 from app.services.sandbox.local_sandbox import LocalDockerSandbox
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
@@ -44,12 +44,14 @@ SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
 
 @pytest.fixture(autouse=True)
 def _secret() -> Iterator[None]:
-    with patch.object(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET):
+    with patch.object(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET):
         yield
 
 
 def _bearer(user_id: str = USER_ID, run_id: str = "run-1") -> str:
-    token = mint_execute_token(user_id, run_id, scoped_tool_names=[], ttl_seconds=60)
+    token = mint_execute_token(
+        ExecuteGrant(user_id=user_id, run_id=run_id, scoped_tool_names=[]), ttl_seconds=60
+    )
     return f"Bearer {token}"
 
 
@@ -355,7 +357,7 @@ class TestRecordLabEventGates:
 @pytest.mark.unit
 class TestRecordLabEventWakesTheTodo:
     async def test_event_queues_the_watching_todo_with_the_raw_body(self) -> None:
-        body = {"session_id": "claude-uuid", "hook_event_name": "Stop"}
+        body: dict[str, object] = {"session_id": "claude-uuid", "hook_event_name": "Stop"}
         todos = [_todo("t1", "run-other"), _todo("t2", "run-1")]
         with _service_seams(todos) as seams:
             receipt = await lab_events.record_lab_event("run-1", user_id=USER_ID, body=body)
@@ -384,7 +386,10 @@ class TestRecordLabEventWakesTheTodo:
 
     async def test_oversize_body_still_wakes_the_todo_cut_down_with_a_marker(self) -> None:
         """A long final answer must not cost the completion wake; the cut is explicit."""
-        body = {"hook_event_name": "Stop", "last_assistant_message": "é" * (200 * 1024)}
+        body: dict[str, object] = {
+            "hook_event_name": "Stop",
+            "last_assistant_message": "é" * (200 * 1024),
+        }
         encoded = json.dumps(body)
         with _service_seams([_todo()]) as seams:
             await lab_events.record_lab_event("run-1", user_id=USER_ID, body=body)
@@ -394,7 +399,7 @@ class TestRecordLabEventWakesTheTodo:
             "kind": "Stop",
             "event": {
                 "truncated_from_bytes": len(encoded),
-                "head": encoded[: lab_events.LAB_EVENT_MAX_RAW_BYTES],
+                "head": encoded[: execute.LAB_EVENT_MAX_RAW_BYTES],
             },
         }
         seams.log.warning.assert_called_once_with(
@@ -402,12 +407,12 @@ class TestRecordLabEventWakesTheTodo:
         )
 
     async def test_body_exactly_at_the_cap_rides_along_whole(self) -> None:
-        padding = lab_events.LAB_EVENT_MAX_RAW_BYTES - len(json.dumps({"k": ""}))
-        body = {"k": "x" * padding}
+        padding = execute.LAB_EVENT_MAX_RAW_BYTES - len(json.dumps({"k": ""}))
+        body: dict[str, object] = {"k": "x" * padding}
         with _service_seams([_todo()]) as seams:
             await lab_events.record_lab_event("run-1", user_id=USER_ID, body=body)
 
-        assert len(json.dumps(body).encode()) == lab_events.LAB_EVENT_MAX_RAW_BYTES
+        assert len(json.dumps(body).encode()) == execute.LAB_EVENT_MAX_RAW_BYTES
         assert seams.enqueue.await_args.args[3].payload == {"kind": "event", "event": body}
         seams.log.warning.assert_not_called()
 
@@ -431,13 +436,14 @@ class TestLabTokenTtl:
         with patch.object(sandbox_setup, "mint_execute_token", return_value="tok") as mint:
             sandbox_setup.mint_lab_hooks_token(USER_ID, "lab-1")
         assert mint.call_args.kwargs["ttl_seconds"] == SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS
-        assert mint.call_args.kwargs["scoped_tool_names"] == []
+        (grant,) = mint.call_args.args
+        assert grant == ExecuteGrant(user_id=USER_ID, run_id="lab-1", scoped_tool_names=[])
 
 
 @pytest.mark.unit
 class TestLabSeedingFailsLoud:
     def test_unconfigured_callback_url_is_503(self) -> None:
-        with patch.object(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", ""):
+        with patch.object(settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", ""):
             with pytest.raises(AppError) as err:
                 sandbox_setup.lab_events_url(object())
         assert err.value == AppError(
@@ -451,8 +457,8 @@ class TestLabSeedingFailsLoud:
     def test_a_local_sandbox_never_falls_back_to_the_public_url(self) -> None:
         # The public URL is unreachable from a local container, so its own setting must be set.
         with (
-            patch.object(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", "https://x"),
-            patch.object(sandbox_setup.settings, "LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL", None),
+            patch.object(settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", "https://x"),
+            patch.object(settings, "LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL", None),
             pytest.raises(AppError) as err,
         ):
             sandbox_setup.lab_events_url(LocalDockerSandbox("u1"))

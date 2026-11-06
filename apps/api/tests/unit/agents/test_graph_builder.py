@@ -682,6 +682,7 @@ class TestBuildExecutorGraph:
                 "get_user_instructions",
                 "update_user_instructions",
                 "browser_task",
+                "read_run_record",
                 "write_playbook",
                 "decline_playbook",
                 "read_playbook",

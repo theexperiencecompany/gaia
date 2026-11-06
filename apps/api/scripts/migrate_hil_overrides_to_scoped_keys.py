@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.config.oauth_config import get_integration_by_id
-from app.core.provider_registration import register_lazy_providers
+from app.core.provider_registration import boot_process
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.users import user_repository
 from app.models.hil_models import HILPreferences
@@ -138,7 +138,7 @@ def _registry_keys(registry: ToolRegistry, keys: Iterable[str]) -> dict[str, str
 
 
 async def main(apply: bool) -> None:
-    register_lazy_providers("main_app")
+    boot_process("main_app")
     registry = await get_tool_registry()
 
     planned: list[tuple[dict[str, object], HILPreferences, KeyPlan]] = []
