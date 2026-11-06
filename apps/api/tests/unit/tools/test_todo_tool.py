@@ -2,9 +2,10 @@
 
 from datetime import UTC, datetime
 import inspect
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.tools import StructuredTool
 from pydantic import ValidationError
 import pytest
 
@@ -24,8 +25,8 @@ from app.models.todo_models import (
     TodoStats,
     TodoUpdateRequest,
 )
+from app.services.todos.errors import TodoNotFoundError
 from app.services.todos.todo_bulk_service import BulkCompletion
-from app.services.todos.todo_service import TodoNotFoundError
 from tests.helpers import captured_wide_event
 
 # Module-level patch: check_and_increment must return a plain dict, not an AsyncMock, so
@@ -1382,7 +1383,7 @@ class TestAnIdThatMatchesNoTodoNamesTheOneMeant:
             _make_todo_response(id=_REAL, title="renew car insurance"),
         ]
 
-        result = await todo_tool_module.delete_todo.coroutine(
+        result = await cast(StructuredTool, todo_tool_module.delete_todo).coroutine(
             config=_make_config(), todo_id=_MISCOPIED
         )
 
@@ -1408,7 +1409,7 @@ class TestAnIdThatMatchesNoTodoNamesTheOneMeant:
         )
         mock_list.return_value = [_make_todo_response(id=_REAL, title="renew car insurance")]
 
-        result = await todo_tool_module.bulk_delete_todos.coroutine(
+        result = await cast(StructuredTool, todo_tool_module.bulk_delete_todos).coroutine(
             config=_make_config(), todo_ids=[_SIBLING, _MISCOPIED]
         )
 

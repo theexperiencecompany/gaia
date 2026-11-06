@@ -17,10 +17,12 @@ from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
 from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECISION_NUDGE_MESSAGE
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import COMPLETION_NUDGE_MESSAGE, MAX_COMPLETION_NUDGES
-from app.override.langgraph_bigtool.create_agent import (
+from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
     ToolRetrievalConfig,
+)
+from app.override.langgraph_bigtool.create_agent import (
     create_agent,
 )
 from tests.helpers import BindableToolsFakeModel
@@ -359,7 +361,9 @@ class TestCompletionNudgeWiring:
         return [
             m.content
             for m in result["messages"]
-            if isinstance(m, HumanMessage) and m.content == COMPLETION_NUDGE_MESSAGE
+            if isinstance(m, HumanMessage)
+            and isinstance(m.content, str)
+            and m.content == COMPLETION_NUDGE_MESSAGE
         ]
 
     @pytest.mark.asyncio
@@ -701,7 +705,9 @@ class TestRetrievedToolDiscoveryRendering:
             if isinstance(m, ToolMessage) and m.tool_call_id == "call_retrieve_1"
         ]
         assert len(replies) == 1
-        return replies[0].content
+        content = replies[0].content
+        assert isinstance(content, str)
+        return content
 
     @pytest.mark.asyncio
     async def test_a_prerendered_discovery_block_reaches_the_model_verbatim(self):

@@ -8,6 +8,7 @@ string instead of crashing the caller. Also the cancellation record appended
 to the comms checkpoint.
 """
 
+from contextlib import AbstractContextManager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -26,6 +27,7 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from tests.helpers import captured_wide_event
+from tests.tool_helpers import tool_coroutine
 
 MODULE = "app.agents.core.background.comms_narrator"
 
@@ -41,7 +43,7 @@ def _fake_comms_graph() -> MagicMock:
     return graph
 
 
-def _patch_graph(graph: MagicMock) -> MagicMock:
+def _patch_graph(graph: MagicMock) -> AbstractContextManager[AsyncMock]:
     return patch(f"{MODULE}.GraphManager.get_graph", AsyncMock(return_value=graph))
 
 
@@ -164,7 +166,7 @@ class TestNarrateExecutorResult:
         narration_config = silent.await_args.args[2]
 
         with patch("app.agents.tools.executor_tool._dispatch_executor", AsyncMock()) as dispatch:
-            await call_executor.coroutine(
+            await tool_coroutine(call_executor)(
                 config=narration_config,
                 task="do it again",
                 acceptance_criteria=["done"],

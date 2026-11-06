@@ -41,7 +41,7 @@ from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     COMPLETION_PROMISE_MARKERS,
 )
-from tests.factories import make_state
+from app.override.langgraph_bigtool.utils import State
 
 pytestmark = pytest.mark.unit
 
@@ -107,7 +107,7 @@ def _worked(count: int) -> list[AnyMessage]:
 class TestCurrentDelegation:
     def test_scopes_to_the_newest_task_turn(self) -> None:
         second_task = _task("second task")
-        state = make_state(
+        state = State(
             messages=[_task("first task"), *_worked(2), second_task, AIMessage(content="on it")]
         )
 
@@ -119,7 +119,7 @@ class TestCurrentDelegation:
     def test_the_clock_turn_is_not_a_delegation_boundary(self) -> None:
         """Treating the clock's HumanMessage as the boundary would cut the delegation's own work out of the count."""
         task = _task()
-        state = make_state(messages=[task, *_worked(2), _clock(), AIMessage(content="done")])
+        state = State(messages=[task, *_worked(2), _clock(), AIMessage(content="done")])
 
         delegation = current_delegation(state)
 
@@ -128,7 +128,7 @@ class TestCurrentDelegation:
     def test_the_nudge_is_not_a_delegation_boundary(self) -> None:
         """If the nudge were the boundary, it would fall outside its own window and the guard could never stop."""
         task = _task()
-        state = make_state(messages=[task, *_worked(1), _nudge(), AIMessage(content="done")])
+        state = State(messages=[task, *_worked(1), _nudge(), AIMessage(content="done")])
 
         delegation = current_delegation(state)
 
@@ -137,7 +137,7 @@ class TestCurrentDelegation:
     def test_a_result_narration_is_not_a_delegation_boundary(self) -> None:
         """The narration frames a result, not a request; as the boundary it hides what the turn was asked to do."""
         task = _task("create the todo")
-        state = make_state(messages=[task, *_worked(1), _result_narration()])
+        state = State(messages=[task, *_worked(1), _result_narration()])
 
         assert current_delegation(state)[0] is task
 
@@ -145,20 +145,20 @@ class TestCurrentDelegation:
         """An interjection is the user speaking into the run, so the new task starts there."""
         task = _task("create the todo")
         interjection = _user_interjection()
-        state = make_state(messages=[task, *_worked(1), interjection])
+        state = State(messages=[task, *_worked(1), interjection])
 
         assert current_delegation(state)[0] is interjection
 
     def test_falls_back_to_the_whole_thread_when_no_task_turn_exists(self) -> None:
         messages = [AIMessage(content="orphan"), _tool_result()]
-        state = make_state(messages=messages)
+        state = State(messages=messages)
 
         assert current_delegation(state) == messages
 
     def test_finds_a_task_turn_that_is_the_last_message(self) -> None:
         """A delegation just handed over has the task turn as the newest message."""
         task = _task("newest task")
-        state = make_state(messages=[AIMessage(content="earlier"), _tool_result(), task])
+        state = State(messages=[AIMessage(content="earlier"), _tool_result(), task])
 
         assert current_delegation(state) == [task]
 
@@ -169,7 +169,7 @@ class TestCurrentDelegation:
             content="Here is a summary of the conversation to date:\n\nearlier",
             additional_kwargs={"lc_source": "summarization"},
         )
-        state = make_state(messages=[task, _nudge(), summary, *_worked(1)])
+        state = State(messages=[task, _nudge(), summary, *_worked(1)])
 
         assert current_delegation(state)[0] is task
         assert completion_nudges_spent(state) == 1
@@ -181,14 +181,14 @@ class TestCurrentDelegation:
             content="[Surface change: now on Telegram.]",
             additional_kwargs={PRESENCE_NOTE_MARKER: True},
         )
-        state = make_state(messages=[task, *_worked(1), note, AIMessage(content="done")])
+        state = State(messages=[task, *_worked(1), note, AIMessage(content="done")])
 
         assert current_delegation(state)[0] is task
 
     def test_finds_a_task_turn_at_the_very_start_of_the_thread(self) -> None:
         """A thread can open with a non-task message (a restored summary, a system-style AI turn)."""
         task = _task()
-        state = make_state(messages=[AIMessage(content="preamble"), task, AIMessage(content="ok")])
+        state = State(messages=[AIMessage(content="preamble"), task, AIMessage(content="ok")])
 
         delegation = current_delegation(state)
 
@@ -198,7 +198,7 @@ class TestCurrentDelegation:
     def test_a_skipped_turn_does_not_end_the_scan(self) -> None:
         """If the scan stopped at a skipped turn, the whole thread would return and the previous delegation's work would be recounted."""
         second_task = _task("second task")
-        state = make_state(
+        state = State(
             messages=[
                 _task("first task"),
                 AIMessage(content="finished one"),
@@ -214,15 +214,15 @@ class TestCurrentDelegation:
         assert len(delegation) == 3
 
     def test_empty_thread_yields_nothing(self) -> None:
-        assert current_delegation(make_state(messages=[])) == []
+        assert current_delegation(State(messages=[])) == []
 
     def test_a_state_without_a_messages_channel_yields_nothing(self) -> None:
         """An absent messages channel must read as empty, not raise, since predicates run against partially-built states."""
-        assert current_delegation({}) == []
+        assert current_delegation(State()) == []
 
     def test_returns_a_copy_rather_than_a_live_view(self) -> None:
         messages = [_task(), AIMessage(content="hi")]
-        state = make_state(messages=messages)
+        state = State(messages=messages)
 
         current_delegation(state).append(AIMessage(content="mutated"))
 
@@ -231,18 +231,18 @@ class TestCurrentDelegation:
 
 class TestCompletionNudgesSpent:
     def test_counts_nudges_in_the_current_delegation(self) -> None:
-        state = make_state(messages=[_task(), _nudge(), AIMessage(content="a"), _nudge()])
+        state = State(messages=[_task(), _nudge(), AIMessage(content="a"), _nudge()])
 
         assert completion_nudges_spent(state) == 2
 
     def test_zero_when_none_were_spent(self) -> None:
-        state = make_state(messages=[_task(), *_worked(1)])
+        state = State(messages=[_task(), *_worked(1)])
 
         assert completion_nudges_spent(state) == 0
 
     def test_a_new_delegation_does_not_inherit_the_previous_one_s_nudges(self) -> None:
         """Counting the whole thread made every delegation after the first look like it had already spent its nudge budget."""
-        state = make_state(
+        state = State(
             messages=[
                 _task("first task"),
                 _nudge(),
@@ -255,7 +255,7 @@ class TestCompletionNudgesSpent:
         assert completion_nudges_spent(state) == 0
 
     def test_a_lookalike_human_turn_is_not_counted_as_a_nudge(self) -> None:
-        state = make_state(
+        state = State(
             messages=[_task(), HumanMessage(content=COMPLETION_NUDGE_MESSAGE + " and more")]
         )
 
@@ -265,23 +265,23 @@ class TestCompletionNudgesSpent:
 class TestReplyPromisesFutureWork:
     @pytest.mark.parametrize("marker", COMPLETION_PROMISE_MARKERS)
     def test_every_declared_marker_is_detected(self, marker: str) -> None:
-        state = make_state(messages=[_task(), AIMessage(content=f"Sure — {marker}!")])
+        state = State(messages=[_task(), AIMessage(content=f"Sure — {marker}!")])
 
         assert reply_promises_future_work(state) is True
 
     def test_matching_ignores_case(self) -> None:
-        state = make_state(messages=[_task(), AIMessage(content="Hang Tight while I work")])
+        state = State(messages=[_task(), AIMessage(content="Hang Tight while I work")])
 
         assert reply_promises_future_work(state) is True
 
     def test_a_clean_final_answer_is_not_a_promise(self) -> None:
-        state = make_state(messages=[_task(), AIMessage(content="Here is the answer: 42.")])
+        state = State(messages=[_task(), AIMessage(content="Here is the answer: 42.")])
 
         assert reply_promises_future_work(state) is False
 
     def test_text_blocks_are_searched_too(self) -> None:
         """Multimodal replies arrive as a block list; reading only str content would miss a promise."""
-        state = make_state(
+        state = State(
             messages=[_task(), AIMessage(content=[{"type": "text", "text": "hang tight"}])]
         )
 
@@ -289,7 +289,7 @@ class TestReplyPromisesFutureWork:
 
     def test_only_the_final_message_counts(self) -> None:
         """A promise mid-run is fine; only the final message the user is left with matters."""
-        state = make_state(
+        state = State(
             messages=[
                 _task(),
                 AIMessage(content="hang tight"),
@@ -309,18 +309,18 @@ class TestReplyPromisesFutureWork:
     )
     def test_a_promise_from_anyone_but_the_assistant_is_ignored(self, last: AnyMessage) -> None:
         """A tool result quoting "hang tight", or a user typing it, must not be treated as the assistant's own promise."""
-        state = make_state(messages=[_task(), *_worked(2), last])
+        state = State(messages=[_task(), *_worked(2), last])
 
         assert reply_promises_future_work(state) is False
 
     def test_empty_thread_is_not_a_promise(self) -> None:
-        assert reply_promises_future_work(make_state(messages=[])) is False
+        assert reply_promises_future_work(State(messages=[])) is False
 
 
 class TestWorkLooksUnfinished:
     @pytest.mark.parametrize("status", ["pending", "in_progress"])
     def test_an_open_todo_blocks_the_stop(self, status: str) -> None:
-        state = make_state(
+        state = State(
             messages=[_task(), *_worked(2), AIMessage(content="all done")],
             todos=[{"status": status}],
         )
@@ -328,7 +328,7 @@ class TestWorkLooksUnfinished:
         assert work_looks_unfinished(state) is True
 
     def test_completed_todos_do_not_block(self) -> None:
-        state = make_state(
+        state = State(
             messages=[_task(), *_worked(2), AIMessage(content="all done")],
             todos=[{"status": "completed"}],
         )
@@ -336,7 +336,7 @@ class TestWorkLooksUnfinished:
         assert work_looks_unfinished(state) is False
 
     def test_a_promise_blocks_even_when_the_work_looks_done(self) -> None:
-        state = make_state(
+        state = State(
             messages=[
                 _task(),
                 *_worked(2),
@@ -349,7 +349,7 @@ class TestWorkLooksUnfinished:
 
     def test_one_successful_real_call_is_finished_work(self) -> None:
         """A raw call-count floor risked telling the model a one-call send hadn't happened, goading a duplicate send."""
-        state = make_state(
+        state = State(
             messages=[_task(), *_worked(1), AIMessage(content="sent")],
             todos=[],
         )
@@ -357,7 +357,7 @@ class TestWorkLooksUnfinished:
         assert work_looks_unfinished(state) is False
 
     def test_discovery_alone_is_not_work(self) -> None:
-        state = make_state(
+        state = State(
             messages=[
                 _task(),
                 AIMessage(content=""),
@@ -370,7 +370,7 @@ class TestWorkLooksUnfinished:
         assert work_looks_unfinished(state) is True
 
     def test_an_errored_call_is_not_work(self) -> None:
-        state = make_state(
+        state = State(
             messages=[
                 _task(),
                 AIMessage(content=""),
@@ -383,7 +383,7 @@ class TestWorkLooksUnfinished:
         assert work_looks_unfinished(state) is True
 
     def test_no_tool_calls_at_all_is_unfinished(self) -> None:
-        state = make_state(
+        state = State(
             messages=[_task(), AIMessage(content="here is the answer")],
             todos=[],
         )
@@ -391,13 +391,13 @@ class TestWorkLooksUnfinished:
         assert work_looks_unfinished(state) is True
 
     def test_a_thread_with_no_work_at_all_is_unfinished(self) -> None:
-        state = make_state(messages=[_task(), AIMessage(content="I think it is 42.")], todos=[])
+        state = State(messages=[_task(), AIMessage(content="I think it is 42.")], todos=[])
 
         assert work_looks_unfinished(state) is True
 
     def test_a_new_delegation_does_not_inherit_the_previous_one_s_tool_calls(self) -> None:
         """The bug this scoping fixes: a thread-wide count let delegation two stop after answering from thin air."""
-        state = make_state(
+        state = State(
             messages=[
                 _task("first task"),
                 *_worked(5),
@@ -411,14 +411,14 @@ class TestWorkLooksUnfinished:
         assert work_looks_unfinished(state) is True
 
     def test_missing_todos_channel_is_treated_as_no_todos(self) -> None:
-        state = make_state(messages=[_task(), *_worked(2), AIMessage(content="done")])
+        state = State(messages=[_task(), *_worked(2), AIMessage(content="done")])
         state.pop("todos", None)
 
         assert work_looks_unfinished(state) is False
 
     def test_non_dict_todo_entries_are_ignored(self) -> None:
         """The todos channel is not schema-enforced; a stray string must not crash the guard or read as open."""
-        state = make_state(
+        state = State(
             messages=[_task(), *_worked(2), AIMessage(content="done")],
             todos=["pending", None],
         )
@@ -452,29 +452,29 @@ class TestPlaybookDecisionPending:
     """Seen live: 2 of 6 heal runs ended in plain text without calling a playbook decision tool, a lapse the graph must not let stand."""
 
     def test_a_run_that_was_not_asked_owes_nothing(self) -> None:
-        state = make_state(messages=[_task(), *_worked(2), AIMessage(content="done")])
+        state = State(messages=[_task(), *_worked(2), AIMessage(content="done")])
 
         assert playbook_decision_pending(state) is False
 
     def test_an_asked_run_that_decided_nothing_is_pending(self) -> None:
-        state = make_state(messages=[_asked_task(), *_worked(2), AIMessage(content="done")])
+        state = State(messages=[_asked_task(), *_worked(2), AIMessage(content="done")])
 
         assert playbook_decision_pending(state) is True
 
     @pytest.mark.parametrize("name", sorted(PLAYBOOK_DECISION_TOOL_NAMES))
     def test_each_decision_tool_settles_it(self, name: str) -> None:
-        state = make_state(
+        state = State(
             messages=[_asked_task(), *_worked(1), *_decision(name), AIMessage(content="done")]
         )
 
         assert playbook_decision_pending(state) is False
 
     def test_an_empty_delegation_owes_nothing(self) -> None:
-        assert playbook_decision_pending(make_state(messages=[])) is False
+        assert playbook_decision_pending(State(messages=[])) is False
 
     def test_a_mid_run_tool_result_is_not_a_stop(self) -> None:
         """An ordinary tool result as the last message means the run is still going; only finish_task or plain text is a stop."""
-        state = make_state(
+        state = State(
             messages=[
                 _asked_task(),
                 *_worked(1),
@@ -487,7 +487,7 @@ class TestPlaybookDecisionPending:
 
     def test_an_errored_decision_call_does_not_settle_it(self) -> None:
         """A decision call marked status="error" leaves the run exactly where it was."""
-        state = make_state(
+        state = State(
             messages=[
                 _asked_task(),
                 *_worked(1),
@@ -509,12 +509,12 @@ class TestPlaybookDecisionPending:
 
     def test_a_finish_task_stop_without_a_decision_is_pending(self) -> None:
         """Seen live: a briefed run ended via finish_task instead of plain text and the gate let it go."""
-        state = make_state(messages=[_asked_task(), *_worked(2), *_finished()])
+        state = State(messages=[_asked_task(), *_worked(2), *_finished()])
 
         assert playbook_decision_pending(state) is True
 
     def test_a_finish_task_stop_after_a_decision_owes_nothing(self) -> None:
-        state = make_state(
+        state = State(
             messages=[_asked_task(), *_worked(1), *_decision("decline_playbook"), *_finished()]
         )
 
@@ -522,7 +522,7 @@ class TestPlaybookDecisionPending:
 
     def test_a_tool_calling_turn_is_not_a_stop(self) -> None:
         """Mid-run, with a tool call outstanding, nothing is owed yet."""
-        state = make_state(
+        state = State(
             messages=[
                 _asked_task(),
                 *_worked(1),
@@ -533,7 +533,7 @@ class TestPlaybookDecisionPending:
         assert playbook_decision_pending(state) is False
 
     def test_a_refused_write_is_not_a_decision(self) -> None:
-        state = make_state(
+        state = State(
             messages=[
                 _asked_task(),
                 *_worked(1),
@@ -545,14 +545,14 @@ class TestPlaybookDecisionPending:
         assert playbook_decision_pending(state) is True
 
     def test_reading_the_playbook_is_not_a_decision(self) -> None:
-        state = make_state(
+        state = State(
             messages=[_asked_task(), *_decision("read_playbook"), AIMessage(content="done")]
         )
 
         assert playbook_decision_pending(state) is True
 
     def test_a_previous_delegations_decision_does_not_carry_over(self) -> None:
-        state = make_state(
+        state = State(
             messages=[
                 _asked_task(),
                 *_decision("decline_playbook"),
@@ -566,14 +566,14 @@ class TestPlaybookDecisionPending:
 
     def test_a_tool_call_still_in_flight_is_not_a_plain_text_stop(self) -> None:
         """Only a plain-text stop is gated; the graph routes tool calls first."""
-        state = make_state(messages=[_asked_task(), _decision("write_playbook")[0]])
+        state = State(messages=[_asked_task(), _decision("write_playbook")[0]])
 
         assert playbook_decision_pending(state) is False
 
 
 class TestPlaybookNudgesSpent:
     def test_counts_only_the_current_delegations_decision_nudges(self) -> None:
-        state = make_state(
+        state = State(
             messages=[
                 _asked_task(),
                 HumanMessage(content=PLAYBOOK_DECISION_NUDGE_MESSAGE),
@@ -586,7 +586,7 @@ class TestPlaybookNudgesSpent:
         assert playbook_nudges_spent(state) == 1
 
     def test_the_decision_nudge_is_not_a_delegation_boundary(self) -> None:
-        state = make_state(
+        state = State(
             messages=[
                 _asked_task(),
                 *_worked(1),
@@ -600,7 +600,7 @@ class TestPlaybookNudgesSpent:
         assert completion_nudges_spent(state) == 0
 
     def test_the_tag_quoted_inside_a_users_own_request_is_not_a_brief(self) -> None:
-        state = make_state(
+        state = State(
             messages=[
                 HumanMessage(content=f"what does {PLAYBOOK_CHECK_TAG} mean in the code?"),
                 *_worked(1),

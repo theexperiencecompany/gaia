@@ -57,7 +57,7 @@ def _doc(**overrides: object) -> TodoDocument:
         "updated_at": datetime(2026, 9, 2, tzinfo=UTC),
     }
     data.update(overrides)
-    return TodoDocument(**data)
+    return TodoDocument.model_validate(data)
 
 
 @pytest.fixture
