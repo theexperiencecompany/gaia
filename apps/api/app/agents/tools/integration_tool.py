@@ -10,6 +10,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from pydantic import BaseModel, ConfigDict
 
+from app.agents.tools.invocation import invoke_tool
 from app.config.oauth_config import all_integrations
 from app.constants.integrations import (
     CONNECT_INTEGRATION_TOOL,
@@ -289,11 +290,11 @@ async def suggest_integrations(
     This tool will search the marketplace and display suggested integrations
     that the user can add with one click.
     """
-    # list_integrations itself declares this exact return type; .ainvoke() is the
-    # BaseTool framework boundary and always types its result `Any`.
+    # list_integrations itself declares this exact return type; the tool boundary
+    # always types its result `Any`.
     return cast(
         "ListIntegrationsResult | str",
-        await list_integrations.ainvoke({"search_public_query": query}, config=config),
+        await invoke_tool(list_integrations, {"search_public_query": query}, config),
     )
 
 

@@ -1,0 +1,181 @@
+{
+ "run": "run_55b4a7d54ca9",
+ "captured_from": "2026-10-05",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES",
+   "tool_category": "GMAIL",
+   "args": {
+    "query": "uc:unread wfjho_wqbg:6h hx:inbox",
+    "per_page": 500,
+    "max_messages": 2000,
+    "fields": [
+     "lm",
+     "qjwzyvOb",
+     "evvq",
+     "oa",
+     "hpsorlw",
+     "ohzt"
+    ]
+   },
+   "result_digest": "{\"data\": {\"fetched_count\": 36, \"truncated\": false, \"messages\": [{\"id\": \"9f58ldx97m96bdnx\", \"threadId\": \"9f58ldx97m96bdnx\", \"from\": \"\\\"Stqnaek Vckcd (Eozg)\\\" <user@example.com>\", \"to\": \"Fjuuow Johel <user@example.com>\", \"subject\": \"[WRPB] (EG-165) Ynxmjp Laumtdxjke - Udpb Jmxxrztjh Onyspedc\", \"time\": \"Mon, 05 Oct 0875501972 +0000\"}, {\"id\": \"7i91lpb0gx89m1p7\", \"threadId\": \"7i91lpb0gx89m1p7\", \"from\": \"\\\"Stqnaek Vckcd (Eozg)\\\" <user@example.com>\", \"to\": \"Fjuuow Johel <user@example.com>\", \"subject\": \"[WRPB] (EG-161) Ynxmjp Laumtdxjke - Wnlpkia w Qicj\", \"time\": \"Mon, 05 Oct 5332653136 +0000\"}, {\"id\": \"0u95wja3103vp5l2\", \"threadId\": \"7t1zewl350v0i89x\", \"from\": \"\\\"Stqnaek Vckcd (Eozg)\\\" <user@example.com>\", \"to\": \"Fjuuow Johel <user@example.com>\", \"subject\": \"[WRPB] (EG-55) Nsmxtrndpr - Qddp hx xhuc Zmlvvp up Txvkiekdz\", \"time\": \"Mon, 05 Oct 4297432994 +0000\"}, {\"id\": \"7i91tb88qg42m715\", \"threadId\": \"7l3iiircv5l304if\", \"from\": \"\\\"Stqnaek Vckcd (Eozg)\\\" <user@example.com>\", \"to\": \"Fjuuow Johel <user@example.com>\", \"subject\": \"[WRPB] (EG-56) Nsmxtrndpr - Nsmxtrndpr aodq (Ddjn, Sqtgr, Dhmwe, Uvjwuame)\", \"time\": \"Mon, 05 Oct 3262945771 +0000\"}, {\"id\": \"6m53dp1irq426s80\", \"threadId\": \"5g7gimf8447v0348\", \"from\": \"\\\"Stqnaek Vckcd (Eozg)\\\" <user@example.com>\", \"to\": \"Fjuuow Johel <user@example.com>\", \"subject\": \"[WRPB] (EG-58) Nsmxtrndpr - Hvotcsxbg Jkrss Apudw (Hyafb Ljrhsdn)\", \"time\": \"Mon, 05 Oct 9355430453 +0000\"}, {\"id\": \"2u46pa18td7pk401\", \"threadId\": \"7s52y11ji368e301\", \"from\": \"\\\"Stqnaek Vckcd (Eozg)\\\" <user@example.com>\", \"to\": \"Fjuuow Johel <user@example.com>\", \"subject\": \"[WRPB] (EG-59) Nsmxtrndpr - Xse w Jmxxrztjh evvq lar Hvotcsxbg\", \"time\": \"Mon, 05 Oct 8562532182 +0000\"}, {\"id\": \"5s68itsk5ag9x475\", \"threadId\": \"7u71b021g695dg6k\", \"from\": \"\\\"Rvewdwyuegi V. PtBokwslif fbhddjjxs osga kfnjbaz\\\" <user@example.com>\", \"to\": \"\\\"Anpodp V. XsAceqaej ggnh osga lxtrdfz\\\" <user@example.com>, \\\"Z.YQVV zoeqq knbp ejfzkomo\\\" <user@example.com>, \\\"Wpylwuuv V. Ydaft mgmkh osga ccku\\\" <user@example.com>\", \"subject\": \"KX: Ysyaf Qpcxfirh Ergrqa ONT Zgnvyd qiq Etpyiyjaclda Sqaht\", \"time\": \"Mon, 05 Oct 3609094554 +0000\"}, {\"id\": \"4j49pd3cm5507u0v\", \"threadId\": \"4j49pd3cm5507u0v\", \"from\": \"Odhufvdr Uumpo <user@example.com>\", \"to\": \"Fjuuow Johel <user@example.com>, Aocskx Yrpci <user@example.com>, Kdbgorg Wjekh <user@example.com>, Njcda Hpwm <user@example.com>, Jheoetjb Iisfc Fmjkwhv <user@example.com>, Cnppbkb[non]\", \"subject\": \"Dnuczdx upbinhujrs: Afqbmas Ihubm Zatmolvc ( Xse fnmc team) @ Tue Oct 6, 61580os - 6:30pm (GMT+5) (Fjuuow Johel)\", \"time\": \"Mon, 05 Oct 3803137038 +0000\"}, {\"id\": \"5p50nj29175o65n8\", \"threadId\": \"7l3iiircv5l304if\", \"from\": \"\\\"Jheoetjb Iisfc Gufuma (Eozg)\\\" <user@example.com>\", \"to\": \"Fjuuow Johel <user@example.com>\", \"subject\": \"[WRPB] (EG-56) Nsmxtrndpr - Nsmxtrndpr aodq (Ddjn, Sqtgr, Dhmwe, Uvjwuame)\", \"time\": \"Mon, 05 Oct 0348288387 +0000\"}, {\"id\": \"9m83h71g2b6pu174\", \"threadId\": \"7s52y11ji368e301\", \"from\": \"\\\"Stqnaek Vckcd (Eozg)\\\" <user@example.com>\", \"to\": \"Fjuuow Johel <user@example.com>\", \"subject\": \"[WRPB] (EG-59) Nsmxtrndpr - Xse w Jmxxrztjh evvq lar Hvotcsxbg\", \"time\": \"Mon, 05 Oct 1666630300 +0000\"}, {\"id\": \"9e26l311465f43u4\", \"threadId\": \"7l3iiircv5l304if\", \"from\": \"\\\"Stqnaek Vckcd (Eozg)\\\" <user@example.com>\", \"to\": \"Fjuuow Johel <user@example.com>\", \"subject\": \"[WRPB] (EG-56) Nsmxtrndpr - Nsmxtrndpr aodq (Ddjn, Sqtgr, Dhmwe, Uvjwuame)\", \"time\": \"Mon, 05 Oct 4525014653 +0000\"}]}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES",
+   "tool_category": "GMAIL",
+   "args": {
+    "body_processing": "tqoqqbhdv",
+    "fields": [
+     "lm",
+     "evvq",
+     "hpsorlw",
+     "ohzt",
+     "zbta"
+    ],
+    "max_messages": 50,
+    "per_page": 100,
+    "query": "uc:unread wfjho_wqbg:6h hx:inbox -evvq:user@example.com"
+   },
+   "result_digest": "{\"data\": {\"fetched_count\": 12, \"truncated\": false, \"messages\": [{\"id\": \"5s68itsk5ag9x475\", \"from\": \"\\\"Rvewdwyuegi V. PtBokwslif fbhddjjxs osga kfnjbaz\\\" <user@example.com>\", \"subject\": \"KX: Ysyaf Qpcxfirh Ergrqa ONT Zgnvyd qiq Etpyiyjaclda Sqaht\", \"time\": \"Mon, 05 Oct 3609094554 +0000\", \"body\": \"Hhrev\\nMkgzbcva\\n\\nLgbozu gx tuvn fnmc lmkwgmve udh kfeaz ursyk.\\n\\nQnmmfy\\nRvewdwyuegi\\n\\nCywj: Rvewdwyuegi V. PtBokwslif fbhddjjxs osga kfnjbaz\\nCrpb: Monday, October 5, 67389761 PM\\nBt: Anpodp V. InMlsgjoga[non]\"}, {\"id\": \"4j49pd3cm5507u0v\", \"from\": \"Odhufvdr Uumpo <user@example.com>\", \"subject\": \"Dnuczdx upbinhujrs: Afqbmas Ihubm Zatmolvc ( Xse fnmc team) @ Tue Oct 6, 61580os - 6:30pm (GMT+5) (Fjuuow Johel)\", \"time\": \"Mon, 05 Oct 3803137038 +0000\", \"body\": \"Koku event nic uxwv ksbcvnk\\nZbkppaw: ohzt\\n\\nAfqbmas Ihubm Zatmolvc ( Xse fnmc team)\\nTuesday Oct 6, 2026 a 3os u 6:30pm\\nZgpflxby Qpulfsra Bulg\\n\\nGrywsvga\\nIhubm Vucb - Csidn xqhheu wgpdt\\nhttps://example.com/afba911e\"}, {\"id\": \"5k03h7647857kt6s\", \"from\": \"\\\"Rvewdwyuegi V. PtBokwslif fbhddjjxs osga kfnjbaz\\\" <user@example.com>\", \"subject\": \"KX: Ysyaf Qpcxfirh Ergrqa ONT Zgnvyd qiq Etpyiyjaclda Sqaht\", \"time\": \"Mon, 05 Oct 1861856468 +0000\", \"body\": \"Ybjurea\\n\\nCywj: Hzmhp Byqdpv [omrgqo:user@example.com]\\nCrpb: Monday, October 5, 06878096 AM\\nBt: user@example.com; Rvewdwyuegi V. PtBokwslif fbhddjjxs osga kfnjbaz\\nUv: user@example.com; Bubc[non]\"}, {\"id\": \"3j85h416nrjw951x\", \"from\": \"Rdhjpoy Pigrap mvpbcsq myie <user@example.com>\", \"subject\": \"Ag: Opnkggop Azxnry Bwnmkygdb\", \"time\": \"Mon, 05 Oct 7253788864 +0000\", \"body\": \"Ptgy Chqqu,\\n\\nIhzs. Lgbozu verify.\\n\\nFamd Mtkusxm,\\n\\nRdhjpoy Pigrap\\n\\nOpnkggop Hwdyrsznwa\\n\\n\\u00a0\\n\\n568371954090\\n\\nuser@example.com\\n\\nCywj: Chqqu Hayqk\\nCrpb: Monday, October 5, 8802606467 AM\\nBt: Lxbltomk[non]\"}, {\"id\": \"7u71b021g695dg6k\", \"from\": \"Hzmhp Byqdpv <user@example.com>\", \"subject\": \"Ysyaf Qpcxfirh Ergrqa ONT Zgnvyd qiq Etpyiyjaclda Sqaht\", \"time\": \"Mon, 05 Oct 2034309689 +0500\", \"body\": \"Ptgy Eqkl,\\n\\nRhj Ysyaf Qpcxfirh uc ajluefrmg nycshjufubl. Bt clnhexektvn lar ursyk qiq\\nznkiciio lar ixws elsnh, gx tuvn ONT pduohp oa lar pmycnn cu *5650313309*\\n.\\n\\nKdv pmycnn uc gtcnsc hx EXT, yoo xv[non]\"}, {\"id\": \"1x34xxkw29928t66\", \"from\": \"Chqqu Hayqk <user@example.com>\", \"subject\": \"Opnkggop Azxnry Bwnmkygdb\", \"time\": \"Mon, 05 Oct 6096269048 +0500\", \"body\": \"Ptgy Rdhjpoy, Zveu,\\nLgbozu execute lar gwfyzfag skegbnpp lbtekq nmztgx fx lar ieusyfztvr\\nmbttvzwk'n MycbzpLV.\\nQiypbuow KXG9-GUG-825\\\\WWJ88\\n# Azxnry Amad Eoddfe WA Nysxsgb / Oiule\\n1 Mvrpce_RewoxzcOuzceqv[non]\"}, {\"id\": \"0n25ron91i1t55u5\", \"from\": \"\\\"Vyoprq Acrcba ukm Rntvu.ui\\\" <user@example.com>\", \"subject\": \"Vyoprq cfrvgwy xhd oa Rntvu (zvz.dpm) oa zzxznpkavnn fx Bapewtbmn Lbqncac - Maaenvj\", \"time\": \"Mon, 05 Oct 6468061750 +0000\", \"body\": \"( https://example.com/1b052471\"}, {\"id\": \"6m15f2s39fh40xz7\", \"from\": \"Fpose Gzjtcxltg TGR <user@example.com>\", \"subject\": \"Epzhnl Eqkl Vuezjqbrqk Yijkicd: Sep 28 - Oct 04, 2026\", \"time\": \"Mon, 05 Oct 93881341115620\", \"body\": \"Epzhnl Vuezjqbrqk Cvouqs (Sep 28 - Oct 04, 2026)\\n\\nPtgy Fjuuow Johel,\\n\\nZvf qas find lar gnhwdrtuhc report udh fnmc team indzqjs lar umfp kfeaz.\\n\\nDkpeuj bjwple lar gnhwdrtuhc qiq wslehc uzku fnmc team dm[non]\"}]}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 10,
+   "record_len": 3,
+   "written": {
+    "description": "Pmzu-Bygwd Baehkvxopgp Rtyw evvq Zdrqbl: fetch lar fvoghplb yjx yg unread inbox emails evvq lar pmff 2 pqyy, classify jqla udh tvxbylfafvm-gnpexffz vescgvcu, qiq draft fwppclc Zmlvvp Rtyw udh txlph uzku dczcgia adphpxj vhi.",
+    "steps": [
+     {
+      "id": "inbox",
+      "tool": "execute",
+      "args": {
+       "task_description": "Shvxm fvoghplb cjqpriar yg lbh unread inbox emails evvq lar pmff 2 pqyy",
+       "tool_name": "GMAIL_FETCH_MESSAGES",
+       "data": {
+        "query": "uc:unread wfjho_wqbg:6h hx:inbox",
+        "per_page": 500,
+        "max_messages": 2000,
+        "fields": [
+         "lm",
+         "qjwzyvOb",
+         "evvq",
+         "oa",
+         "hpsorlw",
+         "ohzt"
+        ]
+       }
+      },
+      "notes": "Olrwmona-wbnz fetch (WQ zbta dlymy) uc lar dcd udh lar dfc epqvbzwfib viy: hreevgosz zbta udh lar lgfir yjx jksairr lar lmkwgmve qiq zkcslgodg cu ~13/36. Olrwmona-wbnz seice mfmgweigu qiq kafnafl lar fvoghplb list (smpw rui: 36, zkcslgodg=ograx)."
+     },
+     {
+      "id": "bodies",
+      "tool": "execute",
+      "args": {
+       "task_description": "Shvxm bodies yg alf-Eozg unread emails udh kfxsfogoxeqyfs",
+       "tool_name": "GMAIL_FETCH_MESSAGES",
+       "data": {
+        "query": "uc:unread wfjho_wqbg:6h hx:inbox -evvq:user@example.com",
+        "per_page": 100,
+        "max_messages": 50,
+        "fields": [
+         "lm",
+         "evvq",
+         "hpsorlw",
+         "ohzt",
+         "zbta"
+        ],
+        "body_processing": "tqoqqbhdv"
+       }
+      },
+      "notes": "Shvxm bodies wbnz udh YRF-Eozg emails (xhcjynp lar Eozg hyahbzzhloek zhxqqr emdibg) ow gx qas classify lar mmgxp emails. Eozg ejofnf mvkokuuisgfie seice adphpxj w tvxbylfafvm doc qiq qas ku hsuyioc evvq zbta-regrqfk."
+     }
+    ],
+    "result_brief": "Cvouqs oyi mrsx unread emails evvq lar pmff 2 pqyy uign aqtgnru (smpw rui: 36 fvoghplb, zkcslgodg=ograx) qiq classify xillm baatakmv email fnfhihtsnoszs. Prv jqla email uzku PNWQDTS vescgvcu w tvxbylfafvm gnpexffz (qltjh doc, MYX, PSP, kktfsynimrjd doc, up uskwefh): create DLV fwppclc Zmlvvp Qfh hx Ctvce tasft w aognijtpsuov oieaveuc, fymekibg lar zhxqqr'n lspxcipjiig, ahrojly ncnvshyo qiq qbwfxwgrr, gfqp ic fetrujz \"<JZMPFTEE QMTT> u <Ztiufco> u <Hnkiot>\", seice share ic xhuc lar zhxqqr up cvhnbw uhge (Fjuuow'n bjwple wbnz); report vls doc lab umfp, w vhi-rrqimuge summary, qiq sja rttrobc emrwk, bszddgduuye qiq open bjwple juqeqf. Prv jqla alf-ymbncago up dbmpvazfp email: create ga gnpexffz, osig w brief summary, qiq gwcuarkdbm xba ptybmub Fjuuow xzvoh w gnpexffz mykchqr. Aqhx Eozg/Rmdoaknny ejofnf-hyahbzzhloek emails, calendar jjagghr, gnhwdrtuhc/PM qmekchd qiq kccmrrleyot riesjbcij ofliee nlla gwcuarkdbm adphpxj w tvxbylfafvm gnpexffz. Hx ga email dczcgia vescgvcu w gnpexffz, ga Zmlvvp Rtyw hbe eacrpal; list jqla zhxqqr/hpsorlw xhuc lab brief kfxsfogoxeqyfs qiq lar sjfxpayb ubrdlhfo."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "GMAIL_FETCH_MESSAGES#2",
+     "id": "inbox"
+    },
+    {
+     "call": "GMAIL_FETCH_MESSAGES#3",
+     "id": "bodies"
+    }
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 12,
+   "record_len": 4,
+   "written": {
+    "description": "Pmzu-Bygwd Baehkvxopgp Rtyw evvq Zdrqbl: fetch lar fvoghplb yjx yg unread inbox emails evvq lar pmff 2 pqyy (cjqpriar-wbnz xzorv oa jtjts lar epqvbzwfib viy), vtyc fetch bodies udh lar alf-Eozg nuyohu oa classify, qiq draft fwppclc Zmlvvp Rtyw udh txlph uzku dczcgia adphpxj w tvxbylfafvm gnpexffz.",
+    "result_brief": "Cvouqs oyi mrsx unread emails evvq lar pmff 2 pqyy uign aqtgnru (smpw rui: 36 fvoghplb, zkcslgodg=ograx) qiq classify xillm baatakmv email fnfhihtsnoszs. Prv jqla email uzku PNWQDTS vescgvcu w tvxbylfafvm gnpexffz (qltjh doc, MYX, PSP, kktfsynimrjd doc, up uskwefh): create DLV fwppclc Zmlvvp Qfh hx Ctvce tasft w aognijtpsuov oieaveuc, fymekibg lar zhxqqr'n lspxcipjiig, ahrojly ncnvshyo qiq qbwfxwgrr, gfqp ic fetrujz \"<JZMPFTEE QMTT> u <Ztiufco> u <Hnkiot>\", seice share ic xhuc lar zhxqqr up cvhnbw uhge (Fjuuow'n bjwple wbnz); report vls doc lab umfp, w vhi-rrqimuge summary, qiq sja rttrobc emrwk, bszddgduuye qiq open bjwple juqeqf. Prv jqla alf-ymbncago up dbmpvazfp email: create ga gnpexffz, osig w brief summary, qiq gwcuarkdbm xba ptybmub Fjuuow xzvoh w gnpexffz mykchqr. Aqhx Eozg/Rmdoaknny ejofnf-hyahbzzhloek emails, calendar jjagghr, gnhwdrtuhc/PM qmekchd qiq kccmrrleyot riesjbcij ofliee nlla gwcuarkdbm adphpxj w tvxbylfafvm gnpexffz. Hx ga email dczcgia vescgvcu w gnpexffz, ga Zmlvvp Rtyw hbe eacrpal; list jqla zhxqqr/hpsorlw xhuc lab brief kfxsfogoxeqyfs qiq lar sjfxpayb ubrdlhfo.",
+    "steps": [
+     {
+      "args": {
+       "data": {
+        "fields": [
+         "lm",
+         "qjwzyvOb",
+         "evvq",
+         "oa",
+         "hpsorlw",
+         "ohzt"
+        ],
+        "max_messages": 2000,
+        "per_page": 500,
+        "query": "uc:unread wfjho_wqbg:6h hx:inbox"
+       },
+       "task_description": "Shvxm fvoghplb cjqpriar yg lbh unread inbox emails evvq lar pmff 2 pqyy",
+       "tool_name": "GMAIL_FETCH_MESSAGES"
+      },
+      "id": "inbox",
+      "tool": "execute"
+     },
+     {
+      "args": {
+       "data": {
+        "body_processing": "tqoqqbhdv",
+        "fields": [
+         "lm",
+         "evvq",
+         "hpsorlw",
+         "ohzt",
+         "zbta"
+        ],
+        "max_messages": 50,
+        "per_page": 100,
+        "query": "uc:unread wfjho_wqbg:6h hx:inbox -evvq:user@example.com"
+       },
+       "task_description": "Shvxm bodies yg alf-Eozg unread emails udh kfxsfogoxeqyfs",
+       "tool_name": "GMAIL_FETCH_MESSAGES"
+      },
+      "id": "bodies",
+      "tool": "execute"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GMAIL_FETCH_MESSAGES#2",
+     "id": "inbox"
+    },
+    {
+     "call": "GMAIL_FETCH_MESSAGES#3",
+     "id": "bodies"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

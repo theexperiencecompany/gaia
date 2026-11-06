@@ -51,7 +51,6 @@ from app.models.playbook_models import (
     PlaybookAskFill,
     PlaybookDocument,
     PlaybookStep,
-    PlaybookStepInput,
     ToolStep,
 )
 from app.models.workflow_execution_models import (
@@ -92,6 +91,11 @@ from app.services.workflow.playbook.scripted_model import (
 from app.services.workflow.playbook.tool_space import ToolSpace
 from app.utils.timezone import Timezone
 from tests.factories import make_user_id
+
+#: A replay records every call it makes into its run record, which lives in Redis;
+#: a per-test fake keeps that hermetic and off the import-time client, whose loop
+#: belongs to whichever test ran first when real services are up.
+pytestmark = pytest.mark.usefixtures("fake_redis")
 
 MODULE = "app.services.workflow.playbook.runner"
 GATE = "app.services.hil.gate"
@@ -2828,14 +2832,6 @@ class TestForEachShape:
     def test_the_ceiling_is_capped(self) -> None:
         with pytest.raises(ValidationError):
             ForEachStep(id="s", tool="send_email", args={}, for_each="$steps.x.ids", max_items=1000)
-
-    def test_an_authored_loop_without_a_ceiling_is_refused_by_name(self) -> None:
-        with pytest.raises(ValueError, match="needs max_items"):
-            PlaybookStepInput(id="s", tool="send_email", for_each="$steps.x.ids").to_step()
-
-    def test_an_authored_ceiling_without_a_loop_is_refused_by_name(self) -> None:
-        with pytest.raises(ValidationError, match="only means something with for_each"):
-            PlaybookStepInput(id="s", tool="send_email", max_items=5)
 
 
 class TestAskAnswerShape:

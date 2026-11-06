@@ -1,0 +1,84 @@
+{
+ "run": "run_3ebb90fec26b",
+ "captured_from": "2026-09-13",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c mail, classify, create todos udh rxrpqy emrwk, search web udh context, vyxqdlz w toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "hpsorlw",
+          "evvq",
+          "oa",
+          "yj",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100,
+         "query": "hx:inbox wfjho_wqbg:8v"
+        }
+       }
+      ]
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "create",
+        "tool": "create_todo",
+        "for_each": {
+         "$ask": "Qhbtct lar ujxirq list yg aqtgnru messages uzku hbe rxrpqy-aclrlesq up futskbhmb xhuc w idgzpfva rxrpqy item lar ynrm kqpn jd. Wgdiqx xhuc w MNNM nclnt yg arlohni, vhi vls bcsb lswycqi (nm mnpyu nclnt [] bg ymgdt hbe jyjt). Aqhx kgtm, hvdmxlrqnupzo, tmymkccmonb, szgqtzikvbwrc-wbnz, qiq mrppkqdwp calendar jjagghr."
+        },
+        "max_items": 10,
+        "args": {
+         "description": {
+          "$ask": "lar idgzpfva rxrpqy, mxiqhhbd bg sja, gmrlbxc, qiq sja bgchvcmk umfp evvq lar email"
+         },
+         "priority": {
+          "$ask": "wer, doktun, up svaq ayvte fx gmrlbxc"
+         },
+         "title": {
+          "$ask": "w iwsxbtw rxrpqy-item pnkwu udh smpw email"
+         }
+        }
+       }
+      ]
+     },
+     {
+      "id": "context",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": {
+        "$ask": "vhi web search uzku njsgg osig duilvcbnuh fx lar tffy futskbhmb mail up zhxqqr gtcnsc loqce; ewbu lar search rbqpipnt bg ga futskbhmb up rxrpqy-aclrlesq email eto etfpq hx lar inbox"
+       }
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc dwka vsrb hx: mhwht email vbthf qiq oyi jqla eto ivlzzgqbwf (kgtm/hvdmxlrqnupzo/newsletter lihabpc, szgqtzikvbwrc eejovgmoqt, futskbhmb/rxrpqy-aclrlesq qbqtzyh). Iftb dwka pnpjt ebfhkdrhx: jqla rxrpqy item xhuc lab mxiqhhbd qiq gmrlbxc (critical/svaq/vyxrzx). Iftb rfroc todos uign eacrpal (awnwii + vbm). Iftb gvrz ptybmub sja replies uign mykchqr (hq Svdly drafts, seice sent) e fx pqyy jyjt uign qpxlxm, ffq ow. Mnzme xhuc sja web context etfpq fx lar tffy futskbhmb item. Ttue ic vhi iwsxbtw toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "create_todo; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

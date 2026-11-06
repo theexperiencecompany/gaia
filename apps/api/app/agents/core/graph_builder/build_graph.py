@@ -94,6 +94,7 @@ EXECUTOR_INITIAL_TOOL_IDS = [
     # Bound statically, not left to retrieve_tools: prompts name these
     # directly, so a run whose semantic retrieval misses them could read
     # the instruction and silently never act on it.
+    "read_run_record",
     "write_playbook",
     "decline_playbook",
     "read_playbook",

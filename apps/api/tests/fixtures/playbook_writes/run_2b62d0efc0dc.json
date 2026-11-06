@@ -1,0 +1,120 @@
+{
+ "run": "run_2b62d0efc0dc",
+ "captured_from": "2026-09-01",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "linear"
+    ]
+   },
+   "result_digest": "Lhhiuw: f Kze Jukrtjhyu"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas",
+   "tool_category": "tracked_todos",
+   "args": {
+    "todo_id": "2d250091627485sbx14siw02",
+    "mode": "zdqpbv",
+    "content": "## Zlqvrhny Sua\n- 2026-09-01 09:00 EJQ (jcqviucr rui): \"Onwny sdnqmme avjsrfif hx ursyk yliivvuhen\" ccjoxyle. Lhhiuw lniglmkhtgi tnmalswen HGSHPKSOVEJA (check_integrations_status g f Kze Jukrtjhyu). Xw ayhogju luhvbqd kzaveewed up trtxckbyek. Wpcidqcn mondsseazv depyv / ga avjsrfif tbgkjtyjdd. Piizhhbhe cu https://example.com/b1bdb82e oa oeqltl."
+   },
+   "result_digest": "Xdjwbc ksbcvnk (wsll=zdqpbv)."
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 3,
+   "written": {
+    "description": "Ytt lar \"Onwny sdnqmme avjsrfif hx ursyk yliivvuhen\" jcqviucr: check Lhhiuw mondsseazv, qiq bg zpoocckcfzvf report w mondsseazv depyv xhuc ga trtxckbyek ayhogju luhvbqd.",
+    "steps": [
+     {
+      "id": "check_linear",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "linear"
+       ]
+      },
+      "goal": "Mevgres ptybmub lar Lhhiuw lniglmkhtgi uc qtlgdynes mbmdhn fagrwshaly oa search udh ayhogju cuioau."
+     },
+     {
+      "id": "report",
+      "tool": "update_tracked_todo_canvas",
+      "args": {
+       "todo_id": "2d250091627485sbx14siw02",
+       "mode": "zdqpbv",
+       "content": "## Zlqvrhny Sua\n- Ienpriqr rui: Lhhiuw lniglmkhtgi tnmalswen HGSHPKSOVEJA (check_integrations_status g f Kze Jukrtjhyu). Xw ayhogju luhvbqd kzaveewed up trtxckbyek. Wpcidqcn mondsseazv depyv / ga avjsrfif tbgkjtyjdd. Piizhhbhe cu https://example.com/b1bdb82e oa oeqltl."
+      },
+      "goal": "Kvrmyg lar rui outcome fx lar vbqpykyd 'Nyoix udh ayhogju cuioau' bxwwhjl todo canvas."
+     }
+    ],
+    "synthesize": "Cvouqs lar jcqviucr qjjnea: Lhhiuw lniglmkhtgi uc zpoocckcfzvf (f Kze Jukrtjhyu), ow ga ayhogju cuioau sjuyg ku kzaveewed. Apudw dczcgia uzku ga avjsrfif uign tbgkjtyjdd cwf oa lar mondsseazv depyv, qiq lldakpb lar atsjxnezs umfp https://example.com/834df23c Bo mth slfldlfbb sja luhvbqd."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "check_linear"
+    },
+    {
+     "call": "update_tracked_todo_canvas#1",
+     "id": "report"
+    }
+   ],
+   "dropped": [
+    "update_tracked_todo_canvas.content: retyped literal, the record's value replays"
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 7,
+   "record_len": 3,
+   "written": {
+    "description": "Ytt lar \"Onwny sdnqmme avjsrfif hx ursyk yliivvuhen\" jcqviucr: check Lhhiuw mondsseazv, qiq bg zpoocckcfzvf report w mondsseazv depyv xhuc ga trtxckbyek ayhogju luhvbqd.",
+    "steps": [
+     {
+      "args": {
+       "integration_names": [
+        "linear"
+       ]
+      },
+      "id": "check_linear",
+      "tool": "check_integrations_status"
+     },
+     {
+      "args": {
+       "content": "## Zlqvrhny Sua\n- Ienpriqr rui: Lhhiuw lniglmkhtgi tnmalswen HGSHPKSOVEJA (check_integrations_status g f Kze Jukrtjhyu). Xw ayhogju luhvbqd kzaveewed up trtxckbyek. Wpcidqcn mondsseazv depyv / ga avjsrfif tbgkjtyjdd. Piizhhbhe cu https://example.com/b1bdb82e oa oeqltl.",
+       "mode": "zdqpbv",
+       "todo_id": "2d250091627485sbx14siw02"
+      },
+      "id": "report",
+      "tool": "update_tracked_todo_canvas"
+     }
+    ],
+    "synthesize": "Cvouqs lar jcqviucr qjjnea: Lhhiuw lniglmkhtgi uc zpoocckcfzvf (f Kze Jukrtjhyu), ow ga ayhogju cuioau sjuyg ku kzaveewed. Apudw dczcgia uzku ga avjsrfif uign tbgkjtyjdd cwf oa lar mondsseazv depyv, qiq lldakpb lar atsjxnezs umfp https://example.com/834df23c Bo mth slfldlfbb sja luhvbqd."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "check_linear"
+    },
+    {
+     "call": "update_tracked_todo_canvas#1",
+     "id": "report"
+    }
+   ],
+   "dropped": [
+    "update_tracked_todo_canvas.content: retyped literal, the record's value replays"
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

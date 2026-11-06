@@ -133,7 +133,7 @@ class TestInvokeGmailTool:
         result = await invoke_gmail_tool(USER_ID, "GMAIL_SEND_EMAIL", {"subject": "Hi"})
 
         assert result.as_payload() == {"successful": True, "id": "msg1"}
-        fake_tool.ainvoke.assert_awaited_once_with({"subject": "Hi"})
+        fake_tool.ainvoke.assert_awaited_once_with({"subject": "Hi"}, config=None)
         # The tool is fetched for this user, by name, with the agent-facing
         # schema — a wrong value here silently sends the call to another
         # mailbox or strips arguments off it.

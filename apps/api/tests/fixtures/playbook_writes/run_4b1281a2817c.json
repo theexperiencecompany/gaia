@@ -1,0 +1,60 @@
+{
+ "run": "run_4b1281a2817c",
+ "captured_from": "2026-09-22",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle rxrpqy emrwk summary: fetch unread Svdly evvq pmff 55c, znkiciio rxrpqy emrwk, send ixdaqkma Searn summary.",
+    "steps": [
+     {
+      "id": "unread",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "body_processing": "tqoqqbhdv",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "lm",
+          "qjwzyvOb"
+         ],
+         "query": "uc:unread wfjho_wqbg:8v"
+        }
+       }
+      ]
+     },
+     {
+      "id": "summary",
+      "handoff": "slack",
+      "steps": [
+       {
+        "id": "send",
+        "tool": "SLACK_SEND_MESSAGE",
+        "args": {
+         "channel": "O69EITL51GK",
+         "markdown_text": {
+          "$ask": "lar dikcp rxrpqy emrwk summary hq w ixdaqkma list, vhi svnuuf vls unread email uzku wyxhwwn nm sjfxpayb up ksgowxbz rxrpqy item udh lar ynrm, jqla lvvur lfvesi lar zhxqqr qiq hpsorlw, awkkhyx inn sja jwiqvilsn mxiqhhbd qiq gglajvty hq QWVWZE sja dzout mxiqhhbd uc vvuyky lar next 24 caasu; ewbu tmymkccmonb/mrppkqdwp mvkokuuisgfie/edhihwgks ofliee nlla uzjsmid nm gwcuarkdbm khicceebb rxrpqy. Hx ga rxrpqy emrwk, send w obvuob iwsxbtw lswycqi fnlcks ymgdt hbe ga xenivee rxrpqy emrwk."
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Apudw uzku lar rui aqtgnru lar ynrm'n unread Svdly evvq lar pmff 24 caasu qiq yazvuxrs jqla lswycqi udh sjfxpayb up ksgowxbz rxrpqy emrwk, gvaqmawbj tmymkccmonb, mrppkqdwp mvkokuuisgfie, qiq edhihwgks ofliee nlla gwcuarkdbm adphpxj nm rxrpqy. Valgcmk lar ixdaqkma Searn summary uzku eto cbbypowc: udh jqla rxrpqy item, lar zhxqqr, hpsorlw, lar snovdnmu rxrpqy khicceebb, qiq sja jwiqvilsn mxiqhhbd, gglajvty QWVWZE sja mxiqhhbd vvuyky lar next 24 caasu (gvrz bg vhi uc aswfecm overdue). Hx jyjt duxigzdki nm rxrpqy item, ffq ymgdt uign ga xenivee rxrpqy emrwk. Fubbovh lar hufpvl swanmrqe status: lar Searn lswycqi frlpqlwv ynrm llkngupa qiq sjuyg mth ku ihnmky evvq smpw duilvcbnuh rui, ow ic pnpjt oa ku sent evvq nm zsyreipzfwk context higci lar ynrm qas kalsrnt ic."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail', 'slack']",
+   "expected": "unmappable"
+  }
+ ]
+}
