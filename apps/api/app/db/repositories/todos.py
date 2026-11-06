@@ -805,8 +805,9 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 }
             },
             array_filters=[{"watch.id": subscription_id}],
-            # Either image leaves a cached read fresh (evicted or stored); nothing reads the result.
-            return_document=False,  # pragma: no mutate
+            # pragma: no mutate start — either image leaves a cached read fresh; nothing reads it.
+            return_document=False,
+            # pragma: no mutate end
         )
 
     async def resume_trigger_subscriptions(
