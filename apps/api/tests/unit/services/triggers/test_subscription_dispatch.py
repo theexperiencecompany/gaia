@@ -797,7 +797,7 @@ class TestTriggerGate:
             TODO_ID,
             USER_ID,
             TodoActivityEvent.RUN_SKIPPED,
-            f'Skipped: "Sale!". Not a match for "{CONDITION}" (99% sure).',
+            f'Skipped: Sale!. Not a match for "{CONDITION}" (99% sure).',
         )
         assert list(event["trigger_gate"]) == [subscription.id]
 
