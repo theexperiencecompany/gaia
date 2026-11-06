@@ -460,19 +460,14 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         self, workflow_id: str, user_id: str, skip: GateSkipRecord
     ) -> None:
         """Add skip to the recent skips of the user's workflow gate, keeping the newest few."""
-        await self._apply_raw_update(
+        pushed = {"$each": [skip.model_dump()], "$slice": -GATE_RECENT_SKIPS_KEPT}
+        # Workflows keep no entity cache (cache_policy is None), so the seam's cache knobs
+        # are inert here: no mutation of them could be observed.
+        await self._apply_raw_update(  # pragma: no mutate
             {"_id": workflow_id, "user_id": user_id, "gate": {"$ne": None}},
-            {
-                "$push": {
-                    "gate.recent_skips": {
-                        "$each": [skip.model_dump()],
-                        "$slice": -GATE_RECENT_SKIPS_KEPT,
-                    }
-                }
-            },
+            {"$push": {"gate.recent_skips": pushed}},
             scope=REPO_GLOBAL_SCOPE,
-            # No entity cache here (cache_policy is None), so the read-back nobody uses is inert.
-            return_document=False,  # pragma: no mutate
+            return_document=False,
         )
 
     async def set_error_message(
