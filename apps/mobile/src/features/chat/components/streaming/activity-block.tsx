@@ -896,13 +896,14 @@ export function ActivityBlock({
     });
   }, [expanded, totalCount, seconds]);
 
-  const liveTitle = useMemo(() => {
-    const last = timeline.at(-1);
-    if (!last) return `${thinkingLabel ?? "Thinking"}…`;
-    if (last.kind === "tool") return `${humanToolTitle(last.call)}…`;
-    if (last.kind === "subagent") return `${last.group.subagent_name}…`;
-    return "Thinking…";
-  }, [timeline, thinkingLabel]);
+  const lastItem = timeline.at(-1);
+  const liveTitle = !lastItem
+    ? `${thinkingLabel ?? "Thinking"}…`
+    : lastItem.kind === "tool"
+      ? `${humanToolTitle(lastItem.call)}…`
+      : lastItem.kind === "subagent"
+        ? `${lastItem.group.subagent_name}…`
+        : "Thinking…";
 
   const summaryIcons = useMemo(() => {
     const seen = new Set<string>();
