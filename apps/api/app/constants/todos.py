@@ -231,6 +231,27 @@ INBOX_DESK_AUTOMATED_SENDERS: Final[tuple[str, ...]] = (
 INBOX_DESK_MAIL_FILTER: Final[str] = "in:inbox category:personal " + " ".join(
     f"-from:{sender}" for sender in INBOX_DESK_AUTOMATED_SENDERS
 )
+# The desk's second fetch: mail the user may have to act on, which banks and billing send
+# from the automated senders the Primary filter leaves out. Step 5 still classifies each one.
+INBOX_DESK_ACTION_MAIL_TERMS: Final[tuple[str, ...]] = (
+    "declined",
+    "(insufficient funds)",
+    "(payment failed)",
+    "(payment unsuccessful)",
+    "(security alert)",
+    "(unusual activity)",
+    "expiring",
+    "expires",
+    "suspended",
+    "overdue",
+    "(past due)",
+    "(action required)",
+)
+# Gmail's (a b) is every word, so no quote reaches the prompt's quoted query, and no brace
+# reaches the run prompt's str.format.
+INBOX_DESK_ACTION_MAIL_FILTER: Final[str] = (
+    "in:inbox (" + " OR ".join(f"subject:{term}" for term in INBOX_DESK_ACTION_MAIL_TERMS) + ")"
+)
 # Gmail labels new mail needs to wake the desk: in the inbox, in Primary.
 INBOX_DESK_WATCH_LABELS: Final[tuple[str, ...]] = ("INBOX", "CATEGORY_PERSONAL")
 # New mail wakes the desk at once; more mail within the hour rides one run at its end.

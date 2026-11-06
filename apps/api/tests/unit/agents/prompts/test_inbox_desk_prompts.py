@@ -105,6 +105,21 @@ def test_the_query_filters_automated_senders_and_rules_may_change_the_filter() -
     assert "Standing rules may widen or narrow" in step
 
 
+def test_action_mail_from_automated_senders_is_fetched_too() -> None:
+    """Regression: Cloudflare's payment-failed notices come from noreply@ and were never read."""
+    action_filter = todo_constants.INBOX_DESK_ACTION_MAIL_FILTER
+    step = "\n".join(_step(FETCH_STEP))
+
+    assert f'"<window> {action_filter}"' in step
+    assert action_filter.startswith("in:inbox ")
+    assert "-from:" not in action_filter and "category:" not in action_filter
+    assert '"' not in action_filter
+    # The run prompt formats the guidance with ref_id, so a brace in the filter breaks every run.
+    assert action_filter in INBOX_DESK_RUN_GUIDANCE.format(ref_id="desk")
+    for term in ("declined", "(payment failed)", "(security alert)", "expiring"):
+        assert f"subject:{term}" in action_filter
+
+
 def test_the_fetch_filter_is_the_primary_inbox_without_automated_senders() -> None:
     """Regression: category:primary is not a Gmail term, and a live desk fetched nothing."""
     mail_filter = todo_constants.INBOX_DESK_MAIL_FILTER
