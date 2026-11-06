@@ -966,6 +966,7 @@ class TestGenerateWorkflowSteps:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestExecuteWorkflowAsChat:
     """Dedicated tests for execute_workflow_as_chat.
 

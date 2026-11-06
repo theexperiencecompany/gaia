@@ -148,6 +148,7 @@ def mint_execute_env(
             run_id=run_id,
             stream_id=configurable.get("stream_id"),
             workflow_id=configurable.get("workflow_id"),
+            subagent_id=configurable.get("subagent_id"),
             sandbox_id=sandbox_id,
             scoped_tool_names=scoped_tool_names,
         ),

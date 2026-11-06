@@ -26,6 +26,8 @@ class ExecuteGrant(BaseModel):
     run_id: str
     stream_id: str | None = None
     workflow_id: str | None = None
+    # The agent scope the call belongs to; None is the executor.
+    subagent_id: str | None = None
     # Which sandbox instance the token was minted for — audit correlation; the
     # route cannot verify network origin, so this is a record, not a check.
     sandbox_id: str | None = None
