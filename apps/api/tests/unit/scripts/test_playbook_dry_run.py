@@ -91,6 +91,52 @@ class TestPlaybookDryRun:
         assert script.main() == 0
         assert seen == [worker_context(Trigger.SYSTEM)]
 
+    def test_the_command_line_names_the_user_and_at_most_one_recipe(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        received: list[argparse.Namespace] = []
+
+        async def run(args: argparse.Namespace) -> int:
+            received.append(args)
+            return 0
+
+        monkeypatch.setattr(script, "_run", run)
+        monkeypatch.setattr(sys, "argv", ["playbook_dry_run", "--user-id", "u1", "--key", REMINDER])
+
+        script.main()
+
+        assert received == [argparse.Namespace(user_id="u1", key=REMINDER)]
+
+    @pytest.mark.parametrize(
+        "argv",
+        [["--key", REMINDER], ["--user-id", "u1", "--key", "calendar:unknown"]],
+        ids=["no-user", "unknown-recipe"],
+    )
+    def test_a_bad_command_line_is_refused_before_any_run(
+        self, monkeypatch: pytest.MonkeyPatch, argv: list[str]
+    ) -> None:
+        run = AsyncMock()
+        monkeypatch.setattr(script, "_run", run)
+        monkeypatch.setattr(sys, "argv", ["playbook_dry_run", *argv])
+
+        with pytest.raises(SystemExit) as refused:
+            script.main()
+
+        assert refused.value.code == 2
+        run.assert_not_called()
+
+    def test_help_shows_the_module_doc_and_the_recipe_option(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(sys, "argv", ["playbook_dry_run", "--help"])
+
+        with pytest.raises(SystemExit):
+            script.main()
+
+        out = " ".join(capsys.readouterr().out.split())
+        assert " ".join((script.__doc__ or "").split()) in out
+        assert f"--key {{{','.join(sorted(SYSTEM_RECIPES))}}} one recipe only" in out
+
     async def test_the_recipe_replays_as_a_dry_run_on_the_users_next_event(self) -> None:
         workflow = MagicMock(id="wf_1", prompt="p", steps=[])
         event = GoogleCalendarEventResource(id="evt_9", calendarId="dana@acme.com", summary="1:1")

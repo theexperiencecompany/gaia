@@ -434,13 +434,14 @@ async def test_the_run_migrates_only_resolvable_integrations_through_their_resol
     database.users.count_documents = AsyncMock(return_value=0)
     resolved = {"gmail": ResolvedAuthConfig("ac_stored", ComposioAuthConfigSource.STORED)}
     with (
-        patch.object(migration, "boot_process"),
+        patch.object(migration, "boot_process") as boot,
         patch.object(migration, "MongoDB", return_value=MagicMock(database=database)),
         patch.object(migration, "resolve_auth_configs", AsyncMock(return_value=resolved)),
         patch.object(migration, "_migrate_document", AsyncMock()) as migrate_document,
     ):
         await migration._run(argparse.Namespace(apply=False))
 
+    boot.assert_called_once_with("arq_worker")
     query = database.user_integrations.find.call_args.args[0]
     assert query["integration_id"] == {"$in": ["gmail"]}
     doc, integration, auth_config_id, _totals, apply = migrate_document.await_args.args
