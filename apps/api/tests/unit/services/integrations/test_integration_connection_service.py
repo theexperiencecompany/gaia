@@ -99,7 +99,6 @@ async def test_bearer_connect_failure_is_logged() -> None:
     invalidate.assert_awaited_once_with("u1")
 
 
-@pytest.mark.regression
 @pytest.mark.parametrize(("tools", "tools_count"), [(["tool-a", "tool-b"], 2), ([], 0)])
 async def test_bearer_connect_stores_the_token_and_reports_what_it_connected(
     tools: list[str], tools_count: int
