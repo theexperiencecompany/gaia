@@ -580,12 +580,6 @@ def _aggregate_threads(user_id: str, request: FetchThreadInput) -> _ThreadBatch:
         )
         raise _PartialResultError(reason=str(exc), partial_messages=flat_views) from exc
 
-    if missing_thread_ids:
-        log.warning(
-            "GMAIL_FETCH_THREAD: threads not found",
-            missing_threads=len(missing_thread_ids),
-            user_id=user_id,
-        )
     return _ThreadBatch(threads, flat_views, truncated, missing_thread_ids)
 
 
