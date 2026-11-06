@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { track } from "@/lib/analytics";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 import { toast } from "@/lib/toast";
 import { integrationsApi } from "../api/integrationsApi";
 import { integrationQueries } from "../api/queries";
@@ -25,6 +26,16 @@ function integrationFailure(
 ): EventProperties["integration:error"] {
   if (!(error instanceof ApiError)) return { integration };
   return { integration, status: error.status, error_code: error.code };
+}
+
+/** The connect error's own copy (the API's words), or plain copy when the API never answered. */
+function connectFailureMessage(
+  error: unknown,
+  integrationName: string,
+): string {
+  const fallback = `Couldn't connect ${integrationName}. Please try again.`;
+  if (error instanceof ApiError) return apiErrorMessage(error) ?? fallback;
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export interface UseIntegrationsReturn {
@@ -166,10 +177,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
         return result;
       } catch (error) {
-        toast.error(
-          `Failed to connect: ${error instanceof Error ? error.message : "Unknown error"}`,
-          { id: toastId },
-        );
+        toast.error(connectFailureMessage(error, integrationName), {
+          id: toastId,
+        });
         track("integration:error", integrationFailure(integrationId, error));
         throw error;
       }
