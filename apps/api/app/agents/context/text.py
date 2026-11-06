@@ -40,6 +40,13 @@ BACKGROUND_EXECUTION_BANNER = (
 
 #: Comms: pure capability awareness — it delegates via call_executor rather
 #: than acting.
+#: Comms knows what it could reach, so it can say what connecting one would unlock.
+CONNECTABLE_INTEGRATIONS_HEADER = (
+    "Not connected yet. Each can be connected the moment they want it: hand the connect to "
+    "call_executor and the connect card comes back. Built-ins (todos, reminders, workflows, "
+    "web search, memory) always work and are not listed:"
+)
+
 CONNECTED_INTEGRATIONS_HEADER = (
     "Connected integrations (the executor can act on these when you delegate via "
     "call_executor). Each can hold several accounts. If they ask to connect one already "

@@ -23,6 +23,7 @@ from app.agents.context.text import (
     BACKGROUND_EXECUTION_BANNER,
     BUILTIN_CAPABILITY_OVERLAPS,
     BUILTIN_OVERLAP_LINE,
+    CONNECTABLE_INTEGRATIONS_HEADER,
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
     MEMORY_IS_PAST_NOTE,
@@ -31,7 +32,7 @@ from app.agents.context.text import (
 )
 from app.agents.prompts.new_user_prompts import NewUserFacts, build_new_user_guidance
 from app.agents.workspace.paths import session_dir
-from app.config.oauth_config import get_integration_by_id
+from app.config.oauth_config import all_integrations, get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.memory import MEMORY_RECALL_BLOCK_LIMIT
 from app.constants.tool_labels import humanize_tool_name
@@ -54,7 +55,10 @@ from app.services.integrations.integration_accounts import (
     get_account_record,
     list_account_records,
 )
-from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.integrations.user_integrations import (
+    get_connected_integration_ids,
+    get_connected_integrations_named,
+)
 from app.services.onboarding.first_question import seeded_chips
 from app.services.storage._vfs_common import folder_name
 from app.services.tools.tools_service import get_integration_tool_list
@@ -487,6 +491,30 @@ async def build_connected_integrations_manifest(
     if accounts:
         lines.append(account_guidance)
     return "\n".join(lines)
+
+
+async def build_connectable_integrations_block(ctx: SectionContext) -> str:
+    """List the services this user could connect but has not, one line each with what it does."""
+    if not ctx.user_id:
+        return ""
+    try:
+        connected = await get_connected_integration_ids(ctx.user_id)
+    except Exception as e:
+        log.warning(
+            "Error building connectable-integrations block",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=ctx.user_id,
+        )
+        return ""
+    rows = [
+        f"- {integration.name}: {integration.description.rstrip('.')}"
+        for integration in all_integrations()
+        if integration.available
+        and integration.managed_by != "internal"
+        and integration.id not in connected
+    ]
+    return "\n".join([CONNECTABLE_INTEGRATIONS_HEADER, *rows]) if rows else ""
 
 
 async def _account_rows(user_id: str) -> dict[str, str]:

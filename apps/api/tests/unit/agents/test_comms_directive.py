@@ -131,6 +131,24 @@ class TestInterpretCommsOutput:
 PASSPORT = "Your passport expires in 13 days, on October 10, 2026. Please book your renewal."
 
 
+class TestAReactTagIsAReaction:
+    """Seen live: the reaction tag written under its old name reached the user as literal text."""
+
+    @pytest.mark.regression
+    def test_a_react_tag_is_read_as_the_reaction_it_means(self) -> None:
+        d = interpret_comms_output("<REACT>🔎</REACT>")
+
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REACT, "🔎")
+
+    @pytest.mark.regression
+    def test_a_react_tag_never_reaches_the_user_as_text(self) -> None:
+        assert visible_comms_text("<REACT>🔎</REACT>") == ""
+        assert visible_comms_text_so_far("<REACT>🔎</REA") == ""
+
+    def test_a_react_tag_around_a_word_stays_text(self) -> None:
+        assert interpret_comms_output("<REACT>done</REACT>").kind is CommsDirectiveKind.REPLY
+
+
 class TestADirectiveBesideAReplyIsNeverDelivered:
     """A model that writes a message AND a directive bubble: the message goes out, the tag never does."""
 

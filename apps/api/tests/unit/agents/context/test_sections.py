@@ -102,6 +102,8 @@ class TestTheTableIsWellFormed:
             "global_instructions",
             "new_user_guidance",
             "integrations_manifest",
+            # Comms only: what it could still connect, so it can say what that would unlock.
+            "connectable_integrations",
             "connected_devices",
         ]
         # core_memory sits in the volatile TAIL: consolidation runs DURING a conversation,

@@ -50,7 +50,8 @@ _UNCLOSED_SILENCE_RE = re.compile(rf"<[ \t]*{_SPACED_SILENCE}[ \t]*>([^\n]*)(\n?
 # a payload whose closing has not arrived. Only a directive name is held back.
 _OPENING_TAIL_RE = re.compile(r"<[ \t]*([A-Za-z \t]*)\Z")
 _UNCLOSED_TAG_TAIL_RE = re.compile(rf"<[ \t]*({_TAG_NAME})[ \t]*>[^\n]*\Z")
-_DIRECTIVE_TAGS = frozenset({SILENCE_TAG, EMOJI_TAG})
+# The reaction tag also arrives under its legacy name (seen live), and is still a reaction.
+_DIRECTIVE_TAGS = frozenset({SILENCE_TAG, EMOJI_TAG, LEGACY_REACT_KEYWORD})
 _SPACES_RE = re.compile(r"[ \t]")
 # The opening of a tag still being written, its spaces dropped.
 _SPACED_OPENING_RE = re.compile(r"^<[ \t]*([A-Za-z \t]*)")
@@ -59,6 +60,7 @@ _LEGACY_LINE_RE = re.compile(rf"^({SILENCE_TAG}|{LEGACY_REACT_KEYWORD}):([^\n]*)
 _DIRECTIVE_OPENINGS = (
     f"<{SILENCE_TAG}>",
     f"<{EMOJI_TAG}>",
+    f"<{LEGACY_REACT_KEYWORD}>",
     f"{SILENCE_TAG}:",
     f"{LEGACY_REACT_KEYWORD}:",
 )

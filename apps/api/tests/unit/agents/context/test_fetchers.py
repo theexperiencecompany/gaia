@@ -29,6 +29,7 @@ from app.agents.context.fetchers import (
     build_active_todo_banner,
     build_agenda_and_activity_block,
     build_background_banner,
+    build_connectable_integrations_block,
     build_connected_integrations_manifest,
     build_core_memory_block,
     build_gaia_knowledge_block,
@@ -42,6 +43,7 @@ from app.agents.context.fetchers import (
 )
 from app.agents.context.section_context import ExecutionMode, SectionContext
 from app.agents.context.text import (
+    CONNECTABLE_INTEGRATIONS_HEADER,
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
     MEMORY_IS_PAST_NOTE,
@@ -333,6 +335,44 @@ def _tool(name: str) -> MagicMock:
 
 
 @pytest.mark.unit
+class TestConnectableIntegrations:
+    """Comms names what connecting would unlock, so the list must be exactly what is still possible."""
+
+    async def _block(self, connected: set[str]) -> str:
+        with patch(
+            "app.agents.context.fetchers.get_connected_integration_ids",
+            AsyncMock(return_value=connected),
+        ):
+            return await build_connectable_integrations_block(ctx())
+
+    async def test_a_service_they_have_not_connected_is_offered_with_what_it_does(self) -> None:
+        block = await self._block(set())
+
+        assert block.startswith(CONNECTABLE_INTEGRATIONS_HEADER)
+        assert "- Notion: Manage pages, databases, and workspace content" in block.splitlines()
+
+    async def test_a_connected_service_is_never_offered_again(self) -> None:
+        block = await self._block({"notion"})
+
+        assert not any(line.startswith("- Notion:") for line in block.splitlines())
+        assert any(line.startswith("- Gmail:") for line in block.splitlines())
+
+    async def test_built_ins_are_never_listed_as_something_to_connect(self) -> None:
+        block = await self._block(set())
+
+        assert not any(line.startswith(("- Todos:", "- Reminders:")) for line in block.splitlines())
+
+    async def test_a_failed_lookup_degrades_to_no_block(self) -> None:
+        with patch(
+            "app.agents.context.fetchers.get_connected_integration_ids",
+            AsyncMock(side_effect=RuntimeError("mongo down")),
+        ):
+            assert await build_connectable_integrations_block(ctx()) == ""
+
+    async def test_no_user_no_block(self) -> None:
+        assert await build_connectable_integrations_block(ctx(user_id=None)) == ""
+
+
 class TestConnectedIntegrationsManifest:
     @pytest.fixture(autouse=True)
     def no_tools_by_default(self) -> Iterator[AsyncMock]:

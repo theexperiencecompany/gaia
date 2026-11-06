@@ -18,6 +18,7 @@ from app.agents.context.fetchers import (
     build_active_todo_banner,
     build_agenda_and_activity_block,
     build_background_banner,
+    build_connectable_integrations_block,
     build_connected_devices_manifest,
     build_connected_integrations_manifest,
     build_core_memory_block,
@@ -251,6 +252,14 @@ SECTIONS: tuple[Section, ...] = (
         frozenset({AgentTier.COMMS, AgentTier.EXECUTOR}),
         40,
         _integrations_manifest,
+    ),
+    # Comms only: the executor discovers the catalog itself through retrieve_tools.
+    Section(
+        "connectable_integrations",
+        PromptSlot.DYNAMIC_STABLE,
+        frozenset({AgentTier.COMMS}),
+        42,
+        build_connectable_integrations_block,
     ),
     Section(
         "connected_devices",
