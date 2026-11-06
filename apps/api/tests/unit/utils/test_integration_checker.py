@@ -406,7 +406,9 @@ class TestExactCopyPerBranch:
             "to refresh access. A reconnect button has been shown to the user, and a "
             f"standalone authorization URL is available: {_MCP_AUTH_URL}. Relay that URL "
             "verbatim as a clickable link so the user can reconnect even if the card is not "
-            "visible, then try again."
+            "visible. "
+            "Nothing more can be done with PostHog until they do, so do not call any PostHog tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_ui_token_only(self) -> None:
@@ -424,7 +426,9 @@ class TestExactCopyPerBranch:
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. This integration authenticates with an API key, so no "
             "standalone authorization URL exists. A reconnect button has been shown to the "
-            "user; ask them to enter the API key there."
+            "user; ask them to enter the API key there. "
+            "Nothing more can be done with PostHog until they do, so do not call any PostHog tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_ui_unavailable(self) -> None:
@@ -438,8 +442,9 @@ class TestExactCopyPerBranch:
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. A reconnect button has been shown to the user, but no "
-            "standalone authorization URL is available right now. Ask the user to click it, "
-            "then try again."
+            "standalone authorization URL is available right now. Ask the user to click it. "
+            "Nothing more can be done with PostHog until they do, so do not call any PostHog tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_bot_oauth(self) -> None:
@@ -509,8 +514,9 @@ class TestExactCopyPerBranch:
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. A reconnect button has been shown to the user, so do NOT "
-            "include any URL in your reply, the UI card handles it. Ask the user to click it, "
-            "then try again."
+            "include any URL in your reply, the UI card handles it. Ask the user to click it. "
+            "Nothing more can be done with PostHog until they do, so do not call any PostHog tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
 
@@ -642,8 +648,9 @@ class TestAddAccountPrompt:
         assert msg == (
             "The user wants to add another Gmail account; their current accounts stay "
             "connected. A button to add the account has been shown to the user, so do NOT "
-            "include any URL in your reply, the UI card handles it. Ask the user to click it, "
-            "then try again."
+            "include any URL in your reply, the UI card handles it. Ask the user to click it. "
+            "Nothing more can be done with Gmail until they do, so do not call any Gmail tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_a_bot_gets_the_single_use_link(self) -> None:
@@ -704,7 +711,9 @@ class TestAccountReconnectPrompt:
             "The user's Gmail account work@acme.com lost its connection and must be signed in "
             f"again. {ACCOUNT_NEEDS_RECONNECT_HINT} A reconnect button has been shown to the "
             "user, so do NOT include any URL in your reply, the UI card handles it. Ask the "
-            "user to click it, then try again."
+            "user to click it. "
+            "Nothing more can be done with Gmail until they do, so do not call any Gmail tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_a_background_run_records_which_account_lost_its_connection(self) -> None:
@@ -745,7 +754,9 @@ class TestExactCopyPerMode:
         assert msg == (
             "Gmail needs to be connected. A connect button has been shown to the user, so do "
             "NOT include any URL in your reply, the UI card handles it. Ask the user to click "
-            "it, then try again."
+            "it. "
+            "Nothing more can be done with Gmail until they do, so do not call any Gmail tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_an_expired_connection_on_ui(self) -> None:
@@ -754,7 +765,9 @@ class TestExactCopyPerMode:
         assert msg.endswith(
             "Do NOT tell them to connect Gmail for the first time. A reconnect button has been "
             "shown to the user, so do NOT include any URL in your reply, the UI card handles "
-            "it. Ask the user to click it, then try again."
+            "it. Ask the user to click it. "
+            "Nothing more can be done with Gmail until they do, so do not call any Gmail tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_a_requested_reconnect_in_the_background(self) -> None:

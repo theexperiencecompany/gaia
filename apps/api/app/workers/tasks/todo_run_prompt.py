@@ -16,7 +16,6 @@ from app.agents.prompts.todo_prompts import (
     GMAIL_THREAD_ACCOUNT_GONE,
     GMAIL_THREAD_ACCOUNT_LINE,
     GMAIL_THREAD_RUN_GUIDANCE,
-    INBOX_DESK_MAIL_WAKE_OPENING,
     INBOX_DESK_QUIET_HOURS_NOTE,
     INBOX_DESK_RUN_GUIDANCE,
     SANDBOX_RUN_EVENT_GUIDANCE,
@@ -25,13 +24,13 @@ from app.agents.prompts.todo_prompts import (
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
 from app.constants.todos import ACTIVITY_PROMPT_TAIL_CHARS, TRIGGER_EVENTS_PROMPT_MAX_CHARS
+from app.models.quiet_hours_models import QuietHours
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoRunContext
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER
 from app.services.canvas_markdown import bounded_canvas
 from app.services.hil.utils import untrusted_fence
 from app.services.todo_observations import bounded_observations
-from app.utils.quiet_hours import in_quiet_hours
 from app.workers.tasks.todo_run_context import NO_CONTEXT
 
 # How a run works the outside object its todo owns, by kind; each takes the ref id as ref_id.
@@ -40,11 +39,6 @@ EXTERNAL_REF_RUN_GUIDANCE: Mapping[ExternalRefSource, str] = MappingProxyType(
         ExternalRefSource.GMAIL_THREAD: GMAIL_THREAD_RUN_GUIDANCE,
         ExternalRefSource.INBOX_DESK: INBOX_DESK_RUN_GUIDANCE,
     }
-)
-
-# Kinds whose watch only says when to run: the run's own steps read what changed.
-WAKE_OPENINGS: Mapping[ExternalRefSource, str] = MappingProxyType(
-    {ExternalRefSource.INBOX_DESK: INBOX_DESK_MAIL_WAKE_OPENING}
 )
 
 
@@ -77,14 +71,14 @@ def delivery_guidance(doc: TodoDocument) -> str:
 
 
 def _quiet_hours_note(
-    origin: TriggerOrigin, coalesced: Sequence[TriggerOrigin], local_now: datetime
+    origin: TriggerOrigin, coalesced: Sequence[TriggerOrigin], quiet_now: bool
 ) -> str | None:
     """Say why a run its gate let through quiet hours interrupts them; None for any other run."""
     bypass = next(
         (event.quiet_hours_bypass for event in [origin, *coalesced] if event.quiet_hours_bypass),
         None,
     )
-    if bypass is None or not in_quiet_hours(local_now):
+    if bypass is None or not quiet_now:
         return None
     return QUIET_HOURS_BYPASS_NOTE.format(reason=bypass.reason)
 
@@ -94,20 +88,14 @@ def opening_parts(
     origin: TriggerOrigin | None,
     coalesced: Sequence[TriggerOrigin],
     local_now: datetime,
+    quiet_hours: QuietHours,
 ) -> list[str]:
     """Open the run prompt with what woke it; trigger payloads share one untrusted fence."""
     title = doc.title
     if origin is None:
         return [f"Execute the following scheduled task: {title}"]
-    bypass_note = _quiet_hours_note(origin, coalesced, local_now)
-    wake = WAKE_OPENINGS.get(doc.external_ref.source) if doc.external_ref else None
-    if wake is not None:
-        woken = [wake.format(title=title)]
-        if bypass_note is not None:
-            woken.append(bypass_note)
-        elif in_quiet_hours(local_now):
-            woken.append(INBOX_DESK_QUIET_HOURS_NOTE.format(local_time=f"{local_now:%H:%M}"))
-        return woken
+    quiet_now = quiet_hours.contains(local_now)
+    bypass_note = _quiet_hours_note(origin, coalesced, quiet_now)
     fence = untrusted_fence()
     if coalesced:
         opening = f"Events you were watching fired. Execute this task: {title}"
@@ -123,6 +111,14 @@ def opening_parts(
         events_json = json.dumps(origin.payload, indent=2, default=str)
     if bypass_note is not None:
         opening = f"{opening}\n\n{bypass_note}"
+    elif (
+        quiet_now
+        and doc.external_ref is not None
+        and doc.external_ref.source is ExternalRefSource.INBOX_DESK
+    ):
+        opening = f"{opening}\n\n" + INBOX_DESK_QUIET_HOURS_NOTE.format(
+            local_time=f"{local_now:%H:%M}"
+        )
     return [
         opening,
         f"{label}. Everything between the "
@@ -154,6 +150,7 @@ def build_execution_prompt(
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
     local_now: datetime,
+    quiet_hours: QuietHours,
 ) -> str:
     """Assemble the run prompt from the todo's fields and context, local_now on the user's clock.
 
@@ -161,7 +158,7 @@ def build_execution_prompt(
     model. They are attacker-influenceable, so all of them share one fence
     labelled untrusted. doc.notify_on_run decides which delivery contract is stated.
     """
-    prompt_parts = opening_parts(doc, origin, coalesced, local_now)
+    prompt_parts = opening_parts(doc, origin, coalesced, local_now, quiet_hours)
     prompt_parts.append(TODO_ID_LINE.format(todo_id=doc.id))
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")
@@ -173,7 +170,9 @@ def build_execution_prompt(
         observations = bounded_observations(doc.observations_content)
         prompt_parts.append(f"Observations (observations.md):\n{observations}")
     # Next to the canvas: rules the run obeys and the sub-todos it answers for.
-    prompt_parts.extend(part for part in (context.parent_rules, context.sub_todos) if part)
+    prompt_parts.extend(
+        part for part in (context.parent_rules, context.parent_next_run, context.sub_todos) if part
+    )
     if activity_content := doc.activity_content:
         tail = activity_content[-ACTIVITY_PROMPT_TAIL_CHARS:]
         truncated = " (older entries omitted; read activity.md for the full log)"

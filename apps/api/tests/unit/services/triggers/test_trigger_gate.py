@@ -23,6 +23,7 @@ from sentry_sdk.types import Event
 import time_machine
 
 from app.constants.trigger_gates import (
+    ENFORCED_GATE_KINDS,
     GateAuthor,
     GateKind,
     GateOutcome,
@@ -31,7 +32,8 @@ from app.constants.trigger_gates import (
     SystemGatePreset,
     UrgentChoice,
 )
-from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
+from app.models.trigger_gate_models import AuthoredGate, GateSkipRecord, SystemGate, TriggerGate
 from app.services.triggers.trigger_gate import (
     GateBypass,
     GatedJob,
@@ -56,6 +58,8 @@ from tests.helpers import captured_wide_event, trigger_gate_seams
 pytestmark = pytest.mark.unit
 
 _MOD = "app.services.triggers.trigger_gate"
+# Where a gate reads whether its kind may skip a run.
+_GATES = "app.models.trigger_gate_models"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 OWNER_ID = "wf_gate_owner01"
 GMAIL = "gmail_new_message"
@@ -249,17 +253,57 @@ class TestTheSkipLine:
 
         skip = await _skip()
 
-        assert skip == GateSkip(
-            event='Acme Billing <billing@acme.com>, "Invoice 4021 is past due"',
-            condition=BILLING,
-            certainty=0.95,
+        assert skip == GateSkip(event="Acme Billing · Invoice 4021 is past due", certainty=0.95)
+
+    async def test_a_skip_is_kept_on_the_workflows_gate(self, seams: SimpleNamespace) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
+
+        await _skip()
+
+        seams.workflow_skips.assert_awaited_once_with(
+            OWNER_ID,
+            USER_ID,
+            GateSkipRecord(
+                event="Acme Billing · Invoice 4021 is past due", at=AFTERNOON, certainty=0.95
+            ),
         )
-        assert isinstance(skip, GateSkip)
-        assert skip.reason == f'Not a match for "{BILLING}" (95% sure).'
-        workflow_id, user_id, record = seams.workflow_skip.await_args.args
-        assert (workflow_id, user_id) == (OWNER_ID, USER_ID)
-        assert (record.event, record.reason, record.at) == (skip.event, skip.reason, AFTERNOON)
-        seams.todo_skip.assert_not_awaited()
+        seams.watch_skips.assert_not_awaited()
+
+    async def test_a_skip_is_kept_on_the_todo_watchs_gate(self, seams: SimpleNamespace) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
+
+        await _skip(owner=GateOwner.TODO)
+
+        seams.watch_skips.assert_awaited_once_with(
+            user_id=USER_ID,
+            subscription_id=OWNER_ID,
+            skip=GateSkipRecord(
+                event="Acme Billing · Invoice 4021 is past due", at=AFTERNOON, certainty=0.95
+            ),
+        )
+        seams.workflow_skips.assert_not_awaited()
+
+    async def test_a_skip_that_cannot_be_kept_still_skips_and_reports_the_error(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
+        seams.workflow_skips.side_effect = RuntimeError("mongo down")
+
+        async with captured_wide_event() as event:
+            assert isinstance(await _skip(), GateSkip)
+
+        errors = event.get("errors", [])
+        assert isinstance(errors, list)
+        assert [e for e in errors if e["msg"] == "trigger_gate.skip_unrecorded"] == [
+            {
+                "msg": "trigger_gate.skip_unrecorded",
+                "owner": "workflow",
+                "job_id": OWNER_ID,
+                "user_id": USER_ID,
+                "error_type": "RuntimeError",
+                "error": "mongo down",
+            }
+        ]
 
     async def test_just_under_the_line_runs(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.949, run_label="needed")))
@@ -290,17 +334,12 @@ class TestTheSkipLine:
 
         assert await _skip() == GateRun()
 
-    async def test_a_system_gate_skips_with_its_preset_condition(
-        self, seams: SimpleNamespace
-    ) -> None:
+    async def test_a_system_gate_skips_on_its_preset_question(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
 
         skip = await _skip(DESK)
 
-        assert isinstance(skip, GateSkip)
-        assert skip.reason == (
-            'Not a match for "a real person or a real obligation is waiting on you" (99% sure).'
-        )
+        assert skip == GateSkip(event="Acme Billing · Invoice 4021 is past due", certainty=0.99)
 
     async def test_an_email_with_no_subject_is_named_by_its_sender(
         self, seams: SimpleNamespace
@@ -310,7 +349,17 @@ class TestTheSkipLine:
         skip = await _skip(DESK, payload={"subject": ""})
 
         assert isinstance(skip, GateSkip)
-        assert skip.event == "Acme Billing <billing@acme.com>"
+        assert skip.event == "Acme Billing"
+
+    async def test_a_sender_with_no_name_is_named_by_its_address(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
+
+        skip = await _skip(DESK, payload={"sender": "<billing@acme.com>", "subject": "Hi"})
+
+        assert isinstance(skip, GateSkip)
+        assert skip.event == "billing@acme.com · Hi"
 
     async def test_a_calendar_event_is_named_by_its_title(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
@@ -364,7 +413,7 @@ class TestTheSkipLine:
         skip = await _skip(DESK, payload={"subject": "s" * 200})
 
         assert isinstance(skip, GateSkip)
-        assert skip.event == f'Acme Billing <billing@acme.com>, "{"s" * 120}{ELLIPSIS}"'
+        assert skip.event == f"Acme Billing · {'s' * 120}{ELLIPSIS}"
 
 
 class TestEveryFailureRuns:
@@ -588,7 +637,7 @@ class TestAnAutomatedThreadIsAskedAbout:
         skip = await _skip(DESK, payload=report)
 
         assert isinstance(skip, GateSkip)
-        assert skip.event == 'GitGuardian <security@gitguardian.com>, "Scan report for acme/api"'
+        assert skip.event == "GitGuardian · Scan report for acme/api"
         assert _decided(seams).reason == GateReason.JEV_SKIP
 
     async def test_it_still_runs_when_jev_is_not_sure(self, seams: SimpleNamespace) -> None:
@@ -642,6 +691,7 @@ class TestShadow:
 
         decided = _decided(seams)
         assert (decided.outcome, decided.reason, decided.enforced) == ("run", "jev_skip", False)
+        seams.workflow_skips.assert_not_awaited()
 
     async def test_the_kill_switch_is_read_for_the_jobs_user(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
@@ -655,10 +705,24 @@ class TestShadow:
     ) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
 
-        with patch(f"{_MOD}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
             assert await _skip() == GateRun()
 
         assert _decided(seams).enforced is False
+
+    @pytest.mark.parametrize(
+        ("gate", "run_label"), [(AUTHORED, "needed"), (DESK, "needs_you")], ids=["authored", "desk"]
+    )
+    async def test_a_confident_skip_stops_the_run_for_every_kind_shipped_enforced(
+        self, seams: SimpleNamespace, gate: TriggerGate, run_label: str
+    ) -> None:
+        seams.wrote.return_value = False
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label=run_label)))
+
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", ENFORCED_GATE_KINDS):
+            assert isinstance(await _skip(gate, payload={"message_id": "m7"}), GateSkip)
+
+        assert _decided(seams).enforced is True
 
 
 class TestTheRequestJevReads:
@@ -1239,6 +1303,28 @@ class TestQuietHoursHold:
     async def test_by_day_nothing_holds(self, seams: SimpleNamespace) -> None:
         assert await quiet_hours_hold(DESK, USER_ID) is None
 
+    async def test_the_hours_the_user_set_decide_when_the_hold_ends(
+        self, night: SimpleNamespace
+    ) -> None:
+        night.quiet_hours.return_value = QuietHours(enabled=True, start_hour=1, end_hour=6)
+
+        assert await quiet_hours_hold(DESK, USER_ID) == GateHold(until=MORNING.replace(hour=6))
+        night.quiet_hours.assert_awaited_once_with(USER_ID)
+
+    async def test_quiet_hours_the_user_set_by_day_hold_by_day(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.quiet_hours.return_value = QuietHours(enabled=True, start_hour=13, end_hour=15)
+
+        assert await quiet_hours_hold(DESK, USER_ID) == GateHold(
+            until=datetime(2026, 10, 2, 15, 0, tzinfo=KOLKATA.tzinfo)
+        )
+
+    async def test_quiet_hours_the_user_turned_off_never_hold(self, night: SimpleNamespace) -> None:
+        night.quiet_hours.return_value = DEFAULT_QUIET_HOURS.model_copy(update={"enabled": False})
+
+        assert await quiet_hours_hold(DESK, USER_ID) is None
+
     async def test_with_the_kill_switch_off_nothing_holds(self, night: SimpleNamespace) -> None:
         night.enforced.return_value = False
 
@@ -1257,5 +1343,5 @@ class TestQuietHoursHold:
     async def test_a_kind_outside_the_enforced_set_never_holds(
         self, night: SimpleNamespace
     ) -> None:
-        with patch(f"{_MOD}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
             assert await quiet_hours_hold(AUTHORED, USER_ID) is None

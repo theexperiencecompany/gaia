@@ -459,20 +459,16 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def remember_gate_skip(
         self, workflow_id: str, user_id: str, skip: GateSkipRecord
     ) -> None:
-        """Add skip to the user's workflow gate's recent skips, keeping the newest few, and count it."""
-        gated = {"_id": workflow_id, "user_id": user_id, "gate": {"$ne": None}}
-        record: dict[str, dict[str, object]] = {
-            "$push": {
-                "gate.recent_skips": {
-                    "$each": [skip.model_dump()],
-                    "$slice": -GATE_RECENT_SKIPS_KEPT,
-                }
-            },
-            "$inc": {"gate.skipped_count": 1},
-        }
-        # pragma: no mutate start — this repository caches nothing, so no read sees the scope.
-        await self._apply_raw_update(gated, record, scope=REPO_GLOBAL_SCOPE)
-        # pragma: no mutate end
+        """Count skip on the user's workflow gate and keep it among the newest few."""
+        pushed = {"$each": [skip.model_dump()], "$slice": -GATE_RECENT_SKIPS_KEPT}
+        # Workflows keep no entity cache (cache_policy is None), so the seam's cache knobs
+        # are inert here: no mutation of them could be observed.
+        await self._apply_raw_update(  # pragma: no mutate
+            {"_id": workflow_id, "user_id": user_id, "gate": {"$ne": None}},
+            {"$push": {"gate.recent_skips": pushed}, "$inc": {"gate.skipped_count": 1}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
 
     async def set_error_message(
         self, workflow_id: str, user_id: str, message: str

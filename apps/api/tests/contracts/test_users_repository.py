@@ -20,6 +20,7 @@ from app.constants.auth import InstanceRole
 from app.constants.email import SignupDelivery
 from app.db.repositories.users import UserRepository
 from app.models.onboarding_models import SocialProfile
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -411,6 +412,17 @@ class TestSettingsWrites:
         assert onboarding.overlay_color == "rgba(1,2,3,1)"
         assert onboarding.overlay_opacity == 55
         assert await repo.set_holo_card_colors("0" * 24, "x", 1) is False
+
+    async def test_set_quiet_hours_stores_them_and_misses_an_unknown_user(self, repo, make_user):
+        created = await repo.create(make_user())
+        hours = QuietHours(enabled=False, start_hour=23, end_hour=6)
+
+        updated = await repo.set_quiet_hours(created.id, hours)
+
+        assert updated is not None
+        assert updated.quiet_hours == hours
+        assert (await repo.get(created.id)).quiet_hours == hours
+        assert await repo.set_quiet_hours("0" * 24, hours) is None
 
     async def test_set_feature_flag_merges_overwrites_and_busts_the_cache(self, repo, make_user):
         created = await repo.create(make_user())

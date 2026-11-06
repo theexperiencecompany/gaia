@@ -2698,276 +2698,6 @@
       }
     },
     {
-      "event": "email:archived",
-      "class": "EmailArchived",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user archived messages.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user archived messages.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailArchived",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:draft_composed",
-      "class": "EmailDraftComposed",
-      "owner": "server",
-      "domain": "email",
-      "description": "The assistant finished composing a draft.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "The assistant finished composing a draft.",
-        "properties": {},
-        "title": "EmailDraftComposed",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:draft_created",
-      "class": "EmailDraftCreated",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user saved a new draft.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user saved a new draft.",
-        "properties": {},
-        "title": "EmailDraftCreated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:draft_deleted",
-      "class": "EmailDraftDeleted",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user deleted a draft.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user deleted a draft.",
-        "properties": {},
-        "title": "EmailDraftDeleted",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:draft_updated",
-      "class": "EmailDraftUpdated",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user updated a draft.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user updated a draft.",
-        "properties": {},
-        "title": "EmailDraftUpdated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:label_applied",
-      "class": "EmailLabelApplied",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user applied a label to messages.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user applied a label to messages.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailLabelApplied",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:label_created",
-      "class": "EmailLabelCreated",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user created a mail label.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user created a mail label.",
-        "properties": {},
-        "title": "EmailLabelCreated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:label_deleted",
-      "class": "EmailLabelDeleted",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user deleted a mail label.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user deleted a mail label.",
-        "properties": {},
-        "title": "EmailLabelDeleted",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:label_removed",
-      "class": "EmailLabelRemoved",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user removed a label from messages.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user removed a label from messages.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailLabelRemoved",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:label_updated",
-      "class": "EmailLabelUpdated",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user updated a mail label.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user updated a mail label.",
-        "properties": {},
-        "title": "EmailLabelUpdated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:marked_read",
-      "class": "EmailMarkedRead",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user marked messages as read.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user marked messages as read.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailMarkedRead",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:marked_unread",
-      "class": "EmailMarkedUnread",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user marked messages as unread.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user marked messages as unread.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailMarkedUnread",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:moved_to_inbox",
-      "class": "EmailMovedToInbox",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user moved messages back to the inbox.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user moved messages back to the inbox.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailMovedToInbox",
-        "type": "object"
-      }
-    },
-    {
       "event": "email:replied",
       "class": "EmailReplied",
       "owner": "server",
@@ -3032,117 +2762,9 @@
             ],
             "default": null,
             "title": "Attachment Count"
-          },
-          "recipient_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Recipient Count"
           }
         },
         "title": "EmailSent",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:starred",
-      "class": "EmailStarred",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user starred messages.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user starred messages.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailStarred",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:trashed",
-      "class": "EmailTrashed",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user moved messages to the trash.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user moved messages to the trash.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailTrashed",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:unstarred",
-      "class": "EmailUnstarred",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user unstarred messages.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user unstarred messages.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailUnstarred",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:untrashed",
-      "class": "EmailUntrashed",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user restored messages from the trash.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user restored messages from the trash.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailUntrashed",
         "type": "object"
       }
     },
@@ -6508,6 +6130,38 @@
       }
     },
     {
+      "event": "settings:quiet_hours_updated",
+      "class": "SettingsQuietHoursUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user changed their quiet hours: whether they are on and the local hours they span.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user changed their quiet hours: whether they are on and the local hours they span.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "start_hour": {
+            "title": "Start Hour",
+            "type": "integer"
+          },
+          "end_hour": {
+            "title": "End Hour",
+            "type": "integer"
+          }
+        },
+        "required": ["enabled", "start_hour", "end_hour"],
+        "title": "SettingsQuietHoursUpdated",
+        "type": "object"
+      }
+    },
+    {
       "event": "skill:disabled",
       "class": "SkillDisabled",
       "owner": "server",
@@ -7402,6 +7056,7 @@
               "todo_not_found",
               "invalid_conditions",
               "invalid_config",
+              "invalid_subscription",
               "registration_failed",
               "no_trigger_instance"
             ],
@@ -7984,6 +7639,41 @@
           "enforced"
         ],
         "title": "TriggerGateDecided",
+        "type": "object"
+      }
+    },
+    {
+      "event": "trigger:gate_edited",
+      "class": "TriggerGateEdited",
+      "owner": "server",
+      "domain": "trigger",
+      "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo.",
+        "properties": {
+          "owner_type": {
+            "enum": ["workflow", "todo"],
+            "title": "Owner Type",
+            "type": "string"
+          },
+          "action": {
+            "enum": ["added", "edited", "disabled", "enabled", "removed"],
+            "title": "Action",
+            "type": "string"
+          },
+          "gate_kind": {
+            "enum": ["authored", "system"],
+            "title": "Gate Kind",
+            "type": "string"
+          }
+        },
+        "required": ["owner_type", "action", "gate_kind"],
+        "title": "TriggerGateEdited",
         "type": "object"
       }
     },

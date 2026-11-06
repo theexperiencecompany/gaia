@@ -24,8 +24,6 @@ from app.db.repositories.todos import TodosRepository
 from app.models import todo_models
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
-    ExternalRef,
-    ExternalRefSource,
     Priority,
     SearchMode,
     SubTask,
@@ -108,7 +106,7 @@ def _skips(count: int) -> list[GateSkipRecord]:
     return [
         GateSkipRecord(
             event=f'Bank <alerts@bank.example>, "Statement {n}"',
-            reason='Not a match for "the email needs me" (99% sure)',
+            certainty=0.99,
             at=start + timedelta(minutes=n),
         )
         for n in range(count)
@@ -491,6 +489,30 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert (latest.title, latest.completed) == ("stopped", True)
         assert nothing is None
 
+    async def test_list_open_by_external_ref_source_is_every_users_open_todo_of_that_kind(
+        self, repo, make_doc
+    ):
+        desk = todo_models.ExternalRef(source=todo_models.ExternalRefSource.INBOX_DESK, id="gmail")
+        thread = todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611"
+        )
+        for title, owner, ref, completed in (
+            ("open desk", "u", desk, False),
+            ("their desk", "u2", desk, False),
+            ("stopped desk", "u3", desk, True),
+            ("thread", "u", thread, False),
+            ("no ref", "u", None, False),
+        ):
+            await repo.create(
+                make_doc(user_id=owner, title=title, external_ref=ref, completed=completed)
+            )
+
+        found = await repo.list_open_by_external_ref_source(
+            todo_models.ExternalRefSource.INBOX_DESK
+        )
+
+        assert sorted(t.title for t in found) == ["open desk", "their desk"]
+
     # ---- sub-todos ----------------------------------------------------------
 
     async def test_top_level_listing_leaves_out_every_sub_todo(self, repo, make_doc):
@@ -731,83 +753,61 @@ class TestTodosRepository(UserScopedRepositoryContract):
         found = await repo.find_active_by_composio_trigger("ti_upd")
         assert [t.id for t in found] == [doc.id]
 
-    async def test_a_watch_stored_before_gates_existed_is_gated_alone(
+    async def test_a_gate_is_set_on_the_one_run_watch_it_names(
         self, repo, make_doc, raw_collection
     ):
-        desk_mail, other = _subscription(), _subscription(trigger_name="gmail_email_sent")
+        desk_mail, other = (
+            _subscription(gate=_DESK_GATE),
+            _subscription(trigger_name="gmail_email_sent"),
+        )
         doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[desk_mail, other]))
+        off = _DESK_GATE.model_copy(update={"enabled": False})
+
+        written = await repo.set_subscription_gate(
+            doc.id, user_id="u", subscription_id=desk_mail.id, gate=off
+        )
+
+        assert written is not None
+        assert [w.gate for w in written.trigger_subscriptions] == [off, None]
         raw = await raw_collection.find_one({"_id": ObjectId(doc.id)})
-        assert all("gate" not in watch for watch in raw["trigger_subscriptions"])
+        assert raw["trigger_subscriptions"][0]["gate"] == {
+            "kind": "system",
+            "recent_skips": [],
+            "skipped_count": 0,
+            "preset": "inbox_desk",
+            "enabled": False,
+        }
 
-        gated = await repo.gate_ungated_subscriptions(
-            doc.id, user_id="u", subscription_ids=[desk_mail.id], gate=_DESK_GATE
-        )
+    async def test_a_gate_write_refreshes_the_cached_copy(self, repo, make_doc):
+        watch = _subscription(gate=_DESK_GATE)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+        await repo.get(doc.id, user_id="u")  # warm the entity cache
+        off = _DESK_GATE.model_copy(update={"enabled": False})
 
-        assert gated is not None
-        assert [w.gate for w in gated.trigger_subscriptions] == [_DESK_GATE, None]
-        stored = await repo.get(doc.id, user_id="u")
-        assert [w.gate for w in stored.trigger_subscriptions] == [_DESK_GATE, None]
+        await repo.set_subscription_gate(doc.id, user_id="u", subscription_id=watch.id, gate=off)
 
-    async def test_an_appended_watch_with_no_gate_is_gated(self, repo, make_doc):
-        doc = await repo.create(make_doc(user_id="u"))
-        watch = _subscription()
-        await repo.add_trigger_subscription(doc.id, user_id="u", subscription=watch)
-
-        await repo.gate_ungated_subscriptions(
-            doc.id, user_id="u", subscription_ids=[watch.id], gate=_DESK_GATE
-        )
-
-        stored = await repo.get(doc.id, user_id="u")
-        assert [w.gate for w in stored.trigger_subscriptions] == [_DESK_GATE]
+        cached = await repo.get(doc.id, user_id="u")
+        assert cached is not None
+        assert [w.gate for w in cached.trigger_subscriptions] == [off]
 
     @pytest.mark.parametrize(
-        "gate",
-        [SystemGate(preset=SystemGatePreset.INBOX_DESK, enabled=False), _DESK_GATE],
-        ids=["turned_off_by_the_user", "already_on"],
+        ("owner", "action"),
+        [("intruder", SubscriptionAction.EXECUTE), ("u", SubscriptionAction.NOTIFY)],
+        ids=["another_users_todo", "a_watch_that_starts_no_run"],
     )
-    async def test_a_watch_that_has_a_gate_is_not_written(
-        self, repo, make_doc, raw_collection, gate
+    async def test_a_gate_write_it_may_not_make_writes_nothing(
+        self, repo, make_doc, raw_collection, owner, action
     ):
-        watch = _subscription(gate=gate)
+        watch = _subscription(action=action)
         doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
         before = await raw_collection.find_one({"_id": ObjectId(doc.id)})
 
-        gated = await repo.gate_ungated_subscriptions(
-            doc.id, user_id="u", subscription_ids=[watch.id], gate=_DESK_GATE
+        written = await repo.set_subscription_gate(
+            doc.id, user_id=owner, subscription_id=watch.id, gate=_DESK_GATE
         )
 
-        assert gated is None
+        assert written is None
         assert await raw_collection.find_one({"_id": ObjectId(doc.id)}) == before
-
-    async def test_gating_another_users_todo_writes_nothing(self, repo, make_doc):
-        watch = _subscription()
-        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
-
-        gated = await repo.gate_ungated_subscriptions(
-            doc.id, user_id="intruder", subscription_ids=[watch.id], gate=_DESK_GATE
-        )
-
-        assert gated is None
-        stored = await repo.get(doc.id, user_id="u")
-        assert [w.gate for w in stored.trigger_subscriptions] == [None]
-
-    async def test_every_users_open_todo_about_a_ref_is_listed(self, repo, make_doc):
-        desk = {"source": ExternalRefSource.INBOX_DESK, "id": "gmail"}
-        mine = await repo.create(make_doc(user_id="u1", external_ref=desk))
-        theirs = await repo.create(make_doc(user_id="u2", external_ref=desk))
-        await repo.create(make_doc(user_id="u3", external_ref=desk, completed=True))
-        await repo.create(
-            make_doc(
-                user_id="u1", external_ref={"source": ExternalRefSource.GMAIL_THREAD, "id": "t"}
-            )
-        )
-        await repo.create(make_doc(user_id="u1"))
-
-        found = await repo.list_open_by_external_ref_all_users(
-            ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
-        )
-
-        assert sorted(t.id for t in found) == sorted([mine.id, theirs.id])
 
     async def test_count_trigger_references_counts_across_users(self, repo, make_doc):
         sub = _subscription(

@@ -13,6 +13,7 @@ import {
   hasValidTriggerName,
   isIntegrationTrigger,
 } from "../../triggers/types";
+import { gateEditFor } from "../../utils/gateEdit";
 
 interface UseWorkflowSaveGateParams {
   mode: "create" | "edit" | "preview";
@@ -62,6 +63,7 @@ export function useWorkflowSaveGate({
       formData.selectedTrigger !== currentFormData.selectedTrigger ||
       JSON.stringify(formData.trigger_config) !==
         JSON.stringify(currentFormData.trigger_config) ||
+      gateEditFor(existingWorkflow.gate, formData.gate) !== undefined ||
       persistedSlugs !== currentSlugs
     );
   }, [mode, existingWorkflow, formData, selectedIntegrationSlugs]);

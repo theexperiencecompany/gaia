@@ -7,9 +7,17 @@ off and its text is kept, so turning it back on restores it.
 from datetime import datetime
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    computed_field,
+    model_validator,
+)
 
 from app.constants.trigger_gates import (
+    ENFORCED_GATE_KINDS,
     QUIET_HOURS_BYPASS_SUMMARY,
     QUIET_HOURS_HELD_SUMMARY,
     SYSTEM_GATE_PRESETS,
@@ -19,26 +27,51 @@ from app.constants.trigger_gates import (
     GateOutcome,
     SystemGatePreset,
 )
+from app.schemas.common import ResponseModel
+
+# The one shape of a condition: what GAIA drafts, what the user edits, what a gate stores.
+GateCondition = Annotated[
+    str, StringConstraints(min_length=1, max_length=TRIGGER_GATE_CONDITION_MAX_CHARS)
+]
 
 
 class GateSkipRecord(BaseModel):
-    """One event a gate kept from running its job."""
+    """One event a gate kept from running its job, as the gate's panel lists it."""
 
     model_config = ConfigDict(frozen=True)
 
     event: str = Field(
         description="The skipped event as a person reads it: an email's sender and subject"
     )
-    reason: str = Field(description="The condition the event missed and how sure the gate was")
     at: datetime
+    certainty: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="How sure GAIA was the event did not match; None on skips kept before it was",
+    )
 
 
 class _StoredGate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    # Newest last, at most GATE_RECENT_SKIPS_KEPT; skipped_count counts every skip ever.
+    kind: GateKind
+    # Newest last, at most GATE_RECENT_SKIPS_KEPT; skipped_count counts every skip since.
+    # A new condition starts with none, since the old skips do not describe it.
     recent_skips: list[GateSkipRecord] = Field(default_factory=list)
     skipped_count: int = Field(default=0, ge=0)
+
+    @property
+    def enforced(self) -> bool:
+        """Whether this kind of gate may skip a run yet; any other kind is decided and still runs."""
+        return self.kind in ENFORCED_GATE_KINDS
+
+    @model_validator(mode="after")
+    def _count_kept_skips(self) -> Self:
+        # A gate stored before the count existed holds its skips and no count: they are its count.
+        if "skipped_count" in self.model_fields_set:
+            return self
+        return self.model_copy(update={"skipped_count": len(self.recent_skips)})
 
     @model_validator(mode="after")
     def _persist_defaults(self) -> Self:
@@ -52,7 +85,7 @@ class AuthoredGate(_StoredGate):
     """A plain-text condition, shown to the user as "Runs only when: <condition>"."""
 
     kind: Literal[GateKind.AUTHORED] = GateKind.AUTHORED
-    condition: str = Field(min_length=1, max_length=TRIGGER_GATE_CONDITION_MAX_CHARS)
+    condition: GateCondition
     author: GateAuthor
     enabled: bool = True
 
@@ -76,21 +109,50 @@ class SystemGate(_StoredGate):
 TriggerGate = Annotated[AuthoredGate | SystemGate, Field(discriminator="kind")]
 
 
-class AuthoredGateEdit(BaseModel):
-    """A condition as a client sends it; the server decides who wrote it."""
+# The display text and enforced flag are read from code at the API edge, never stored:
+# a stored gate serialised through a TriggerGate field drops both.
+class AuthoredGateView(AuthoredGate, ResponseModel):
+    """An authored gate as the API returns it, with what the user reads about it."""
+
+    @computed_field  # type: ignore[prop-decorator]  # pydantic's computed_field over @property trips mypy's prop-decorator check
+    @property
+    def display_condition(self) -> str:
+        return super().display_condition
+
+    @computed_field  # type: ignore[prop-decorator]  # pydantic's computed_field over @property trips mypy's prop-decorator check
+    @property
+    def enforced(self) -> bool:
+        return super().enforced
+
+
+class SystemGateView(SystemGate, ResponseModel):
+    """A system gate as the API returns it: its preset's wording, which the user cannot rewrite."""
+
+    @computed_field  # type: ignore[prop-decorator]  # pydantic's computed_field over @property trips mypy's prop-decorator check
+    @property
+    def display_condition(self) -> str:
+        return super().display_condition
+
+    @computed_field  # type: ignore[prop-decorator]  # pydantic's computed_field over @property trips mypy's prop-decorator check
+    @property
+    def enforced(self) -> bool:
+        return super().enforced
+
+
+TriggerGateView = Annotated[AuthoredGateView | SystemGateView, Field(discriminator="kind")]
+
+
+class GateEdit(BaseModel):
+    """A gate as a client edits it: a new condition, or the current gate turned on or off.
+
+    The server decides who wrote a condition. No condition keeps the current one,
+    a system preset included, so turning a gate off never loses its text.
+    """
 
     model_config = ConfigDict(frozen=True)
 
-    condition: str = Field(min_length=1, max_length=TRIGGER_GATE_CONDITION_MAX_CHARS)
+    condition: GateCondition | None = None
     enabled: bool = True
-
-    def applied_to(self, current: AuthoredGate | SystemGate | None) -> AuthoredGate:
-        """Return the stored gate: an unchanged condition keeps its author, a new one is the user's."""
-        if isinstance(current, AuthoredGate) and current.condition == self.condition:
-            author = current.author
-        else:
-            author = GateAuthor.USER
-        return AuthoredGate(condition=self.condition, author=author, enabled=self.enabled)
 
 
 class QuietHoursBypass(BaseModel):

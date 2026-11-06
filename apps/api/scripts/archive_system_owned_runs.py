@@ -64,7 +64,6 @@ USER_OWNED_COLLECTIONS = (
     "files",
     "hil_approvals",
     "llm_calls",
-    "mail",
     "notes",
     "notifications",
     "pending_platform_registrations",

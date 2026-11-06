@@ -42,6 +42,7 @@ def _workflow() -> MagicMock:
     wf.steps = []
     wf.repeat = None
     wf.activated = True
+    wf.gate = None
     return wf
 
 

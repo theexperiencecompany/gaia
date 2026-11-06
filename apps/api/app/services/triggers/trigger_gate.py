@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from email.utils import parseaddr
 import time
 from typing import Final
 
@@ -23,19 +24,18 @@ from app.constants.trigger_gates import (
     AUTHORED_GATE_QUESTION,
     AUTHORED_GATE_RUN_LABEL,
     AUTHORED_GATE_SKIP_MEANING,
-    ENFORCED_GATE_KINDS,
     GMAIL_MESSAGE_TRIGGERS,
     QUIET_HOURS_BYPASS_REASONS,
     SYSTEM_GATE_PRESETS,
     TRIGGER_GATE_AUTOMATION_MAX_CHARS,
     TRIGGER_GATE_EVENT_LABEL_MAX_CHARS,
+    TRIGGER_GATE_EVENT_LABEL_SEPARATOR,
     TRIGGER_GATE_FIELD_MAX_CHARS,
     TRIGGER_GATE_INSTRUCTIONS,
     TRIGGER_GATE_JEV_TIMEOUT_SECONDS,
     TRIGGER_GATE_QUESTION_KEY,
     TRIGGER_GATE_SKIP_LABEL,
     TRIGGER_GATE_SKIP_PROBABILITY,
-    TRIGGER_GATE_SKIP_REASON,
     TRIGGER_GATE_UNTITLED_EVENT,
     TRIGGER_GATE_URGENT_CRITERIA,
     TRIGGER_GATE_URGENT_INSTRUCTIONS,
@@ -66,9 +66,8 @@ from app.services.mail.thread_participation import user_wrote_in_thread
 from app.services.triggers.condition_matching import resolve_payload_value
 from app.services.triggers.gmail_signals import GmailGateView, gmail_gate_view
 from app.services.triggers.matchable_fields import get_matchable_trigger
-from app.services.user_service import get_profile_timezone
+from app.services.user_service import get_profile_timezone, get_quiet_hours
 from app.utils.general_utils import clip_text
-from app.utils.quiet_hours import after_quiet_hours, in_quiet_hours
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.triggers import TriggerGateDecided
@@ -102,12 +101,7 @@ class GateSkip:
     """Do not run the job; event names what was skipped, certainty is JEV's P(skip label)."""
 
     event: str
-    condition: str
     certainty: float
-
-    @property
-    def reason(self) -> str:
-        return TRIGGER_GATE_SKIP_REASON.format(condition=self.condition, certainty=self.certainty)
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,11 +272,12 @@ def _label(text: str) -> str:
 
 
 def _gmail_label(view: GmailGateView, trigger_name: str) -> str:
-    """Name an email by its sender and subject, as many of them as it has."""
-    parts = [_label(view.sender)] if view.sender else []
-    if view.subject:
-        parts.append(f'"{_label(view.subject)}"')
-    return ", ".join(parts) or TRIGGER_GATE_UNTITLED_EVENT.format(trigger_name=trigger_name)
+    """Name an email by its sender's name and its subject, as many of them as it has."""
+    name, address = parseaddr(view.sender) if view.sender else ("", "")
+    parts = [_label(part) for part in (name or address or view.sender, view.subject) if part]
+    return TRIGGER_GATE_EVENT_LABEL_SEPARATOR.join(parts) or TRIGGER_GATE_UNTITLED_EVENT.format(
+        trigger_name=trigger_name
+    )
 
 
 def _event(trigger_name: str, payload: Mapping[str, object]) -> _GateEvent | None:
@@ -366,7 +361,7 @@ def _settle(
     answer = body.choice(TRIGGER_GATE_QUESTION_KEY, _question(gate).labels, label="gate ")
     p_skip = skip_probability(gate, answer)
     if p_skip >= TRIGGER_GATE_SKIP_PROBABILITY:
-        skip = GateSkip(event.label, gate.display_condition, p_skip)
+        skip = GateSkip(event.label, p_skip)
         return _Decision(GateReason.JEV_SKIP, skip, answer, p_skip, urgent)
     if hold is not None:
         return _Decision(GateReason.JEV_CAN_WAIT, hold, answer, p_skip, urgent)
@@ -448,7 +443,8 @@ def _record(
 async def _hold_on_users_clock(user_id: str) -> GateHold | None:
     """Return a hold until the user's quiet hours end when their own clock is inside them now."""
     local_now = datetime.now((await get_profile_timezone(user_id)).tzinfo)
-    return GateHold(after_quiet_hours(local_now)) if in_quiet_hours(local_now) else None
+    hours = await get_quiet_hours(user_id)
+    return GateHold(hours.end_after(local_now)) if hours.contains(local_now) else None
 
 
 async def quiet_hours_hold(gate: TriggerGate | None, user_id: str) -> GateHold | None:
@@ -457,7 +453,7 @@ async def quiet_hours_hold(gate: TriggerGate | None, user_id: str) -> GateHold |
     An enforced gate starts no run inside the user's quiet hours; an urgent run is
     decided per event, so the caller says when one is carried.
     """
-    if gate is None or not gate.enabled or gate.kind not in ENFORCED_GATE_KINDS:
+    if gate is None or not gate.enabled or not gate.enforced:
         return None
     if (hold := await _hold_on_users_clock(user_id)) is None:
         return None
@@ -499,7 +495,7 @@ async def _decide(
     else:
         decision = await _ask_jev(gate, event, job.automation, hold=hold)
     with analytics_context(worker_context(Trigger.INTEGRATION_TRIGGER)):
-        enforced = gate.kind in ENFORCED_GATE_KINDS and await is_trigger_gates_enforced(job.user_id)
+        enforced = gate.enforced and await is_trigger_gates_enforced(job.user_id)
         verdict = decision.verdict if enforced else GateRun()
         _record(gate, job, trigger_name, decision, _OUTCOMES[type(verdict)], enforced=enforced)
     if isinstance(verdict, GateSkip):
@@ -508,8 +504,8 @@ async def _decide(
 
 
 async def _remember_skip(job: GatedJob, skip: GateSkip) -> None:
-    """Keep the skip on the job's gate, bounded; a failed write loses the entry, never the skip."""
-    record = GateSkipRecord(event=skip.event, reason=skip.reason, at=datetime.now(UTC))
+    """Keep the skip on the job's gate for its panel; a failed write costs the entry, not the skip."""
+    record = GateSkipRecord(event=skip.event, at=datetime.now(UTC), certainty=skip.certainty)
     try:
         if job.owner is GateOwner.WORKFLOW:
             await workflow_repository.remember_gate_skip(job.id, job.user_id, record)

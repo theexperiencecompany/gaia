@@ -16,14 +16,14 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT, GateAuthor
+from app.constants.trigger_gates import SystemGatePreset
 from app.db.repositories.workflows import WorkflowsRepository
 from app.models.scheduler_models import (
     DeactivationReason,
     ScheduledTaskStatus,
     TaskRearm,
 )
-from app.models.trigger_gate_models import AuthoredGate, GateSkipRecord
+from app.models.trigger_gate_models import GateSkipRecord, SystemGate
 from app.models.workflow_models import (
     SystemWorkflowDefinition,
     TriggerConfig,
@@ -78,6 +78,36 @@ class TestWorkflowsCore:
 
     async def test_get_missing_returns_none(self, repo):
         assert await repo.get(_uid("missing")) is None
+
+    async def test_a_skip_is_kept_on_the_gates_recent_five_only_and_counted(self, repo):
+        integration = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message")
+        gated, ungated = (
+            await repo.create(
+                _workflow(
+                    trigger_config=integration,
+                    gate=SystemGate(preset=SystemGatePreset.INBOX_DESK),
+                )
+            ),
+            await repo.create(_workflow(trigger_config=integration)),
+        )
+        skips = [
+            GateSkipRecord(event=f"mail {n}", at=datetime(2026, 11, 5, n, tzinfo=UTC))
+            for n in range(6)
+        ]
+        warmed = await repo.get(gated.id)
+        assert warmed is not None and warmed.gate is not None
+        assert warmed.gate.recent_skips == []
+
+        for skip in skips:
+            await repo.remember_gate_skip(gated.id, gated.user_id, skip)
+        await repo.remember_gate_skip(gated.id, _uid("intruder"), skips[0])
+        await repo.remember_gate_skip(ungated.id, ungated.user_id, skips[0])
+
+        stored, untouched = await repo.get(gated.id), await repo.get(ungated.id)
+        assert stored is not None and stored.gate is not None
+        assert stored.gate.recent_skips == skips[1:]
+        assert stored.gate.skipped_count == len(skips)
+        assert untouched is not None and untouched.gate is None
 
     async def test_reads_legacy_iso_string_datetimes_as_tz_aware(self, repo, raw_collection):
         # A handful of legacy rows persist created_at/scheduled_at as ISO strings.
@@ -933,34 +963,3 @@ class TestWorkflowsPublicMarketplaceReads:
 
         rows = await repo.find_public_matching([token], limit=10)
         assert [r.id for r in rows] == [explore_fresh, explore_stale, explore_cold, community_hot]
-
-
-class TestWorkflowGateSkips:
-    async def test_a_hundred_skips_keep_the_newest_few_and_count_all(self, repo):
-        gate = AuthoredGate(condition="the email needs me", author=GateAuthor.GAIA)
-        integration = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message")
-        created = await repo.create(_workflow(gate=gate, trigger_config=integration))
-        start = datetime(2026, 11, 1, tzinfo=UTC)
-        skips = [
-            GateSkipRecord(
-                event=f'"Sale {n}"', reason="Not a match", at=start + timedelta(minutes=n)
-            )
-            for n in range(100)
-        ]
-
-        for skip in skips:
-            await repo.remember_gate_skip(created.id, created.user_id, skip)
-
-        stored = await repo.get(created.id)
-        assert stored.gate.recent_skips == skips[-GATE_RECENT_SKIPS_KEPT:]
-        assert stored.gate.skipped_count == 100
-
-    async def test_a_workflow_without_a_gate_is_not_given_one(self, repo, raw_collection):
-        created = await repo.create(_workflow())
-
-        await repo.remember_gate_skip(
-            created.id, created.user_id, GateSkipRecord(event="x", reason="y", at=datetime.now(UTC))
-        )
-
-        raw = await raw_collection.find_one({"_id": created.id})
-        assert raw.get("gate") is None

@@ -374,7 +374,6 @@ _INDEX_CREATORS = [
     "create_project_indexes",
     "create_note_indexes",
     "create_file_indexes",
-    "create_mail_indexes",
     "create_calendar_indexes",
     "create_blog_indexes",
     "create_notification_indexes",

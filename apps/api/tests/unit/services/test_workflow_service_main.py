@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.exceptions import OutputParserException
+from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
@@ -53,6 +54,8 @@ from app.services.workflow.validators import WorkflowValidator
 from app.utils import auth_utils
 from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.triggers import TriggerGateEdited
 from tests.helpers import UNKNOWN_USER_ID, users_get
 
 # ---------------------------------------------------------------------------
@@ -977,10 +980,40 @@ class TestUpdateWorkflowGate:
         ):
             yield update
 
+    @pytest.fixture(autouse=True)
+    def gate_capture(self):
+        with patch("app.services.triggers.gate_edits.capture") as capture:
+            yield capture
+
     @staticmethod
     def _written(update: AsyncMock) -> dict[str, object]:
         """Return the $set the repository was handed, as it serialises it."""
         return update.await_args.args[2].model_dump(exclude_unset=True)
+
+    async def test_turning_the_gate_off_keeps_its_condition_and_author(
+        self, repo: AsyncMock, gate_capture: MagicMock
+    ) -> None:
+        request = UpdateWorkflowRequest.model_validate({"gate": {"enabled": False}})
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        assert (
+            self._written(repo)["gate"]
+            == _GAIA_GATE.model_copy(update={"enabled": False}).model_dump()
+        )
+        gate_capture.assert_called_once_with(
+            UserId(USER_ID),
+            TriggerGateEdited(owner_type="workflow", action="disabled", gate_kind="authored"),
+        )
+
+    async def test_an_edit_that_leaves_the_gate_alone_reports_nothing(
+        self, repo: AsyncMock, gate_capture: MagicMock
+    ) -> None:
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
+        )
+
+        gate_capture.assert_not_called()
 
     async def test_an_edit_that_names_no_gate_keeps_it(self, repo: AsyncMock) -> None:
         await WorkflowService.update_workflow(
@@ -1088,6 +1121,78 @@ class TestUpdateWorkflowGate:
             {"workflow_id": WORKFLOW_ID},
         )
         repo.assert_not_awaited()
+
+
+class TestCreateWorkflowGate:
+    """A create's runs_only_when is GAIA's drafted condition, whatever author the client claims."""
+
+    @pytest.fixture
+    def stored(self):
+        with (
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
+            patch(
+                "app.services.oauth.oauth_service.check_integration_status",
+                AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.services.workflow.service.TriggerService.register_triggers",
+                AsyncMock(return_value=["trigger_1"]),
+            ),
+            patch("app.services.workflow.service.workflow_scheduler"),
+            patch("app.services.workflow.service.ChromaClient") as chroma,
+            patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock),
+            patch(f"{_REPO}.create", new_callable=AsyncMock) as create,
+        ):
+            chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+            yield create
+
+    @staticmethod
+    def _request(**fields: object) -> CreateWorkflowRequest:
+        return CreateWorkflowRequest.model_validate(
+            {
+                "title": "Billing replies",
+                "prompt": "Draft a reply to the billing email",
+                "trigger_config": {"type": "integration", "trigger_name": "gmail_new_message"},
+                "steps": [{"id": "s1", "title": "Draft", "description": "Draft the reply"}],
+                **fields,
+            }
+        )
+
+    async def test_a_drafted_condition_is_stored_as_gaias_gate(self, stored: AsyncMock) -> None:
+        await WorkflowService.create_workflow(
+            self._request(runs_only_when="the email is about billing"), USER_ID
+        )
+
+        assert stored.await_args.args[0].gate == AuthoredGate(
+            condition="the email is about billing", author=GateAuthor.GAIA
+        )
+
+    async def test_a_client_sent_author_is_ignored(self, stored: AsyncMock) -> None:
+        request = self._request(
+            runs_only_when="the email is about billing",
+            author="user",
+            gate={"kind": "authored", "condition": "anything", "author": "user"},
+        )
+
+        await WorkflowService.create_workflow(request, USER_ID)
+
+        assert stored.await_args.args[0].gate == AuthoredGate(
+            condition="the email is about billing", author=GateAuthor.GAIA
+        )
+
+    async def test_a_create_with_no_condition_has_no_gate(self, stored: AsyncMock) -> None:
+        await WorkflowService.create_workflow(self._request(), USER_ID)
+
+        assert stored.await_args.args[0].gate is None
+
+    def test_a_condition_on_a_trigger_with_no_event_is_refused_at_the_request(self) -> None:
+        with pytest.raises(ValidationError) as refused:
+            self._request(trigger_config={"type": "manual"}, runs_only_when="always")
+
+        assert (
+            refused.value.errors()[0]["msg"]
+            == "Value error, runs_only_when needs an integration trigger"
+        )
 
 
 # ===========================================================================

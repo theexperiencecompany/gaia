@@ -64,16 +64,21 @@ NAMED_FALSE_SKIPS = frozenset({"mail-313", "mail-353"})
 # only when its real sender and recipient are both restored.
 ANONYMISED_ONLY_FALSE_SKIPS = frozenset({"mail-048", "mail-245"})
 # What the recorded desk passes skip and wake: tightening the gate changes these on purpose.
-RECORDED_DAY_FALSE_SKIPS = frozenset({"mail-048", "mail-313", "mail-353"})
-RECORDED_QUIET_FALSE_SKIPS = frozenset({"mail-048", "mail-245", "mail-313", "mail-353"})
+RECORDED_DAY_FALSE_SKIPS = frozenset({"mail-245", "mail-353"})
+RECORDED_QUIET_FALSE_SKIPS = frozenset({"mail-245", "mail-313", "mail-353"})
 # The two service-down emails; mail-151 sits at P(urgent) 0.79 to 0.82, so one pass holds it.
 RECORDED_WAKES = frozenset({"mail-094", "mail-151"})
 NOISE_SKIP_FLOOR = 0.70
-# Continuations of threads the user never wrote in that JEV skips: an uptime and a stale-account alert.
+# Continuations of threads the user never wrote in that JEV skips: an uptime and a stale-account
+# alert in every pass, and the noise mail-298, at P(skip) 0.94 to 0.96, in some.
 RECORDED_AUTOMATED_THREAD_SKIPS = frozenset({"mail-195", "mail-413"})
 SIGN_IN_NOTICE_TAG = "sign_in_notice"
 # The one routine sign-in notice the desk gate runs by day in every pass: a verification code.
 RECORDED_SIGN_IN_NOTICE_RUNS = frozenset({"mail-423"})
+NEAR_LINE_THREAD_SKIPS = frozenset({"mail-298"})
+# needs_you emails the authored template skips by day and the desk preset runs; enforced anyway by
+# founder decision, so a change to this set is a change to what authored gates cost the user.
+RECORDED_AUTHORED_ONLY_FALSE_SKIPS: frozenset[str] = frozenset()
 
 
 class RecordedRow(GateJournalFields):
@@ -240,7 +245,11 @@ def test_by_day_a_thread_the_user_never_wrote_in_is_asked_about_and_can_skip(
     wrote = {c for c in continued if cases[c].setup[USER_WROTE_IN_THREAD]}
     for p in _passes(regraded, EvalGate.SYSTEM):
         skipped = _decided(cases, p, GateMode.DAY, GateSkip) & continued
-        assert skipped == RECORDED_AUTOMATED_THREAD_SKIPS, p.run_id
+        assert (
+            RECORDED_AUTOMATED_THREAD_SKIPS
+            <= skipped
+            <= RECORDED_AUTOMATED_THREAD_SKIPS | NEAR_LINE_THREAD_SKIPS
+        ), p.run_id
         assert not skipped & wrote
 
 
@@ -287,13 +296,13 @@ def test_in_quiet_hours_no_needs_you_email_is_skipped_but_the_named_and_anonymis
     assert skipped <= NAMED_FALSE_SKIPS | ANONYMISED_ONLY_FALSE_SKIPS
 
 
-def test_authored_gates_skip_only_while_they_lose_no_needs_you_email_the_desk_preset_runs(
+def test_authored_gates_skip_and_lose_only_the_recorded_needs_you_emails_the_desk_preset_runs(
     cases: dict[str, Case], regraded: list[_Pass]
 ) -> None:
     desk = _needs_you_skipped(cases, _passes(regraded, EvalGate.SYSTEM), GateMode.DAY)
     authored = _needs_you_skipped(cases, _passes(regraded, EvalGate.AUTHORED), GateMode.DAY)
-    lost = sorted(authored - desk)
-    assert (GateKind.AUTHORED in ENFORCED_GATE_KINDS) == (not lost), lost
+    assert GateKind.AUTHORED in ENFORCED_GATE_KINDS
+    assert authored - desk == RECORDED_AUTHORED_ONLY_FALSE_SKIPS
 
 
 async def test_the_live_suite_journals_the_hash_of_the_request_it_sent_and_the_answer(

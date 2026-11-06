@@ -165,17 +165,25 @@ async def test_an_email_jev_fails_on_reaches_the_desk_unbucketed_and_the_rest_ke
     assert [v.bucket for v in bucketed] == [None, DeskBucket.ACT]
 
 
+@pytest.mark.regression
+async def test_a_desk_whose_mail_watch_was_retired_still_buckets_its_fetch(
+    seams: SimpleNamespace,
+) -> None:
+    """Regression: the desk's mail watch was retired, and its fetch stopped being bucketed."""
+    seams.get.return_value = _todo(trigger_subscriptions=[])
+    seams.jev.mock(return_value=_bucket(DeskBucket.ACT))
+
+    bucketed = await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, DECLINED)])
+
+    assert [v.bucket for v in bucketed] == [DeskBucket.ACT]
+
+
 @pytest.mark.parametrize(
     "todo",
-    [
-        None,
-        _todo(ExternalRefSource.GMAIL_THREAD),
-        _todo(trigger_subscriptions=[_watch(gate=None)]),
-        _todo(trigger_subscriptions=[_watch(DESK_GATE.model_copy(update={"enabled": False}))]),
-    ],
-    ids=["missing-todo", "not-the-desk", "no-gate", "gate-turned-off"],
+    [None, _todo(ExternalRefSource.GMAIL_THREAD)],
+    ids=["missing-todo", "not-the-desk"],
 )
-async def test_mail_outside_a_desk_with_its_gate_on_is_returned_unasked(
+async def test_mail_outside_a_desk_is_returned_unasked(
     seams: SimpleNamespace, todo: TodoDocument | None
 ) -> None:
     seams.get.return_value = todo

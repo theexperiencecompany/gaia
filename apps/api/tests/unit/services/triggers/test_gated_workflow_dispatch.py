@@ -116,7 +116,7 @@ def seams() -> Iterator[SimpleNamespace]:
             claim=claim,
             buffer=buffer,
             queue=queue,
-            skipped=gate.workflow_skip,
+            skipped=gate.workflow_skips,
             capture=gate.capture,
             wrote=gate.wrote,
         )
@@ -138,7 +138,7 @@ async def test_a_skip_lands_on_the_gate_and_claims_nothing(seams: SimpleNamespac
     seams.claim.assert_not_awaited()
     workflow_id, user_id, skip = seams.skipped.await_args.args
     assert (workflow_id, user_id) == (WORKFLOW_ID, USER_ID)
-    assert (skip.event, skip.reason) == ('"Sale!"', f'Not a match for "{CONDITION}" (99% sure).')
+    assert (skip.event, skip.certainty) == ("Sale!", 0.99)
 
 
 @pytest.mark.parametrize(
@@ -178,7 +178,7 @@ async def test_a_reply_on_a_thread_the_user_never_wrote_in_is_asked_about(
 
     seams.queue.assert_not_awaited()
     (call,) = seams.skipped.await_args_list
-    assert call.args[2].event == 'GitGuardian <security@gitguardian.com>, "Sale!"'
+    assert call.args[2].event == "GitGuardian · Sale!"
 
 
 async def test_an_ungated_workflow_never_asks_jev(seams: SimpleNamespace) -> None:
@@ -259,7 +259,7 @@ def night(fake_redis: fakeredis.aioredis.FakeRedis, arq: ArqRedis) -> Iterator[S
         patch(f"{_BASE}._claim_occurrence", AsyncMock(return_value=True)) as claim,
     ):
         yield SimpleNamespace(
-            jev=gate.jev, claim=claim, skipped=gate.workflow_skip, arq=arq, redis=fake_redis
+            jev=gate.jev, claim=claim, skipped=gate.workflow_skips, arq=arq, redis=fake_redis
         )
 
 

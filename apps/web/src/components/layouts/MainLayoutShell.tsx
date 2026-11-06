@@ -147,7 +147,7 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
   useDrag(
     ({ movement: [mx, my], last, tap }) => {
       // If this is just a tap, do nothing—allow click events to proceed.
-      if (tap || !isMobile) return;
+      if (tap) return;
 
       if (last && Math.abs(mx) > Math.abs(my)) {
         if (mx > 0)
@@ -159,6 +159,8 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
       }
     },
     {
+      // Swipes only open the mobile sidebar; on desktop the listener only swallows clicks.
+      enabled: isMobile,
       filterTaps: true, // Taps are ignored for swipe detection.
       threshold: 10, // Minimal movement before detecting a swipe.
       axis: "x", // Only track horizontal swipes.

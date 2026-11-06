@@ -115,9 +115,11 @@ _GMAIL_EMAIL_SENT = MatchableTrigger(
         ),
         _f("to", _STRING, "To recipients", "alice@acme.com"),
         _f("subject", _STRING, "Email subject line", "Re: Invoice 4021"),
+        _f("message_text", _STRING, "Plain-text body of the sent message", "Approved, thanks."),
     ),
     excluded={
         "sender": "Always the user themselves; it distinguishes nothing.",
+        "attachment_list": _OBJECT_LIST,
         "cc": "Covered by recipients, which lists To, Cc and Bcc together.",
         "bcc": "Covered by recipients, which lists To, Cc and Bcc together.",
         "message_timestamp": "Provider-formatted string; use the event's arrival time instead.",

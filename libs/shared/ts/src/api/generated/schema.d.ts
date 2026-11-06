@@ -1459,112 +1459,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/gmail/archive": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Archive emails
-         * @description Archive Gmail messages by removing the INBOX label.
-         *
-         *     - **message_ids**: List of Gmail message IDs to archive
-         *
-         *     Returns a list of IDs that were successfully archived.
-         */
-        post: operations["mail_archive_emails"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/drafts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all draft emails
-         * @description List all Gmail draft emails.
-         *
-         *     - **max_results**: Maximum number of drafts to return
-         *     - **page_token**: Token for pagination
-         *
-         *     Returns a list of drafts and a next page token if more results are available.
-         */
-        get: operations["mail_list_drafts_route"];
-        put?: never;
-        /**
-         * Create a new draft email
-         * @description Create a new Gmail draft email.
-         *
-         *     - **to**: List of recipient email addresses
-         *     - **subject**: Email subject
-         *     - **body**: Email body
-         *     - **cc**: Optional list of CC recipients
-         *     - **bcc**: Optional list of BCC recipients
-         *
-         *     Returns the created draft data.
-         */
-        post: operations["mail_create_draft_route"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/drafts/{draft_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get a specific draft email
-         * @description Get a specific Gmail draft email.
-         *
-         *     - **draft_id**: ID of the draft to retrieve
-         *
-         *     Returns the draft data with message details — the Gmail payload verbatim.
-         */
-        get: operations["mail_get_draft_route"];
-        /**
-         * Update a draft email
-         * @description Update an existing Gmail draft email.
-         *
-         *     - **draft_id**: ID of the draft to update
-         *     - **to**: List of recipient email addresses
-         *     - **subject**: Email subject
-         *     - **body**: Email body
-         *     - **cc**: Optional list of CC recipients
-         *     - **bcc**: Optional list of BCC recipients
-         *
-         *     Returns the updated draft data.
-         */
-        put: operations["mail_update_draft_route"];
-        post?: never;
-        /**
-         * Delete a draft email
-         * @description Delete a Gmail draft email.
-         *
-         *     - **draft_id**: ID of the draft to delete
-         *
-         *     Returns a success message.
-         */
-        delete: operations["mail_delete_draft_route"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/gmail/drafts/{draft_id}/send": {
         parameters: {
             query?: never;
@@ -1583,306 +1477,6 @@ export interface paths {
          *     Returns the sent message data.
          */
         post: operations["mail_send_draft_route"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/importance-summaries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get email importance summaries
-         * @description Get email importance summaries for the current user.
-         *
-         *     - **limit**: Maximum number of emails to return (default: 50)
-         *     - **important_only**: If True, only return important emails (default: False)
-         *
-         *     Returns list of email summaries with importance analysis.
-         */
-        get: operations["mail_get_email_importance_summaries"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/importance-summaries/bulk": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Get bulk email importance summaries
-         * @description Get importance summaries for multiple emails in bulk.
-         *
-         *     - **message_ids**: List of Gmail message IDs
-         *
-         *     Returns summaries for all available emails. Does not throw error for missing summaries.
-         */
-        post: operations["mail_get_bulk_email_importance_summaries"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/importance-summary/{message_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get single email importance summary
-         * @description Get importance summary for a specific email.
-         *
-         *     - **message_id**: Gmail message ID
-         *
-         *     Returns the importance analysis for the specified email.
-         */
-        get: operations["mail_get_single_email_importance_summary"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/labels": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Gmail Labels */
-        get: operations["mail_list_labels"];
-        put?: never;
-        /**
-         * Create a new Gmail label
-         * @description Create a new Gmail label.
-         *
-         *     - **name**: Name of the label
-         *     - **label_list_visibility**: Whether the label appears in the label list
-         *     - **message_list_visibility**: Whether the label appears in the message list
-         *     - **background_color**: Background color of the label (hex code)
-         *     - **text_color**: Text color of the label (hex code)
-         *
-         *     Returns the created label data — the Gmail payload verbatim.
-         */
-        post: operations["mail_create_label_route"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/labels/{label_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Update an existing Gmail label
-         * @description Update an existing Gmail label.
-         *
-         *     - **label_id**: ID of the label to update
-         *     - **name**: New name for the label
-         *     - **label_list_visibility**: Whether the label appears in the label list
-         *     - **message_list_visibility**: Whether the label appears in the message list
-         *     - **background_color**: Background color of the label (hex code)
-         *     - **text_color**: Text color of the label (hex code)
-         *
-         *     Returns the updated label data — the Gmail payload verbatim.
-         */
-        put: operations["mail_update_label_route"];
-        post?: never;
-        /**
-         * Delete a Gmail label
-         * @description Delete a Gmail label.
-         *
-         *     - **label_id**: ID of the label to delete
-         *
-         *     Returns a success message.
-         */
-        delete: operations["mail_delete_label_route"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/mark-as-read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Mark emails as read
-         * @description Mark Gmail messages as read by removing the UNREAD label.
-         *
-         *     - **message_ids**: List of Gmail message IDs to mark as read
-         *
-         *     Returns a list of IDs that were successfully marked as read.
-         */
-        post: operations["mail_mark_as_read"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/mark-as-unread": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Mark emails as unread
-         * @description Mark Gmail messages as unread by adding the UNREAD label.
-         *
-         *     - **message_ids**: List of Gmail message IDs to mark as unread
-         *
-         *     Returns a list of IDs that were successfully marked as unread.
-         */
-        post: operations["mail_mark_as_unread"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/message/{message_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Gmail Message by ID
-         * @description Get a Gmail message by its ID.
-         *
-         *     - **message_id**: The ID of the Gmail message to retrieve
-         */
-        get: operations["mail_get_email_by_id"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Messages */
-        get: operations["mail_list_messages"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/messages/apply-label": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Apply labels to messages
-         * @description Apply one or more labels to specified messages.
-         *
-         *     - **message_ids**: List of message IDs
-         *     - **label_ids**: List of label IDs to apply
-         *
-         *     Returns a list of modified messages.
-         */
-        post: operations["mail_apply_labels_route"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/messages/remove-label": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Remove labels from messages
-         * @description Remove one or more labels from specified messages.
-         *
-         *     - **message_ids**: List of message IDs
-         *     - **label_ids**: List of label IDs to remove
-         *
-         *     Returns a list of modified messages.
-         */
-        post: operations["mail_remove_labels_route"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/move-to-inbox": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Move emails to inbox
-         * @description Move Gmail messages to inbox by adding the INBOX label.
-         *
-         *     - **message_ids**: List of Gmail message IDs to move to inbox
-         *
-         *     Returns a list of IDs that were successfully moved to inbox.
-         */
-        post: operations["mail_move_emails_to_inbox"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1933,152 +1527,6 @@ export interface paths {
          *     - **attachments**: Optional files to attach to the email
          */
         post: operations["mail_send_email_route"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/send-json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Send an email using JSON payload
-         * @description Send an email using the Gmail API with JSON payload (no attachments).
-         *
-         *     - **to**: List of recipient email addresses
-         *     - **subject**: Email subject
-         *     - **body**: Email body
-         *     - **cc**: Optional list of CC recipients
-         *     - **bcc**: Optional list of BCC recipients
-         */
-        post: operations["mail_send_email_json"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/star": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Star emails
-         * @description Star Gmail messages by adding the STARRED label.
-         *
-         *     - **message_ids**: List of Gmail message IDs to star
-         *
-         *     Returns a list of IDs that were successfully starred.
-         */
-        post: operations["mail_star_emails"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/thread/{thread_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get complete email thread
-         * @description Fetch a complete email thread with all messages.
-         *
-         *     - **thread_id**: The Gmail thread ID to fetch
-         *
-         *     Returns the thread with all its messages in chronological order.
-         */
-        get: operations["mail_get_thread"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/trash": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Move emails to trash
-         * @description Move Gmail messages to trash.
-         *
-         *     - **message_ids**: List of Gmail message IDs to move to trash
-         *
-         *     Returns a list of IDs that were successfully moved to trash.
-         */
-        post: operations["mail_trash_emails"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/unstar": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Unstar emails
-         * @description Unstar Gmail messages by removing the STARRED label.
-         *
-         *     - **message_ids**: List of Gmail message IDs to unstar
-         *
-         *     Returns a list of IDs that were successfully unstarred.
-         */
-        post: operations["mail_unstar_emails"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gmail/untrash": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Restore emails from trash
-         * @description Restore Gmail messages from trash.
-         *
-         *     - **message_ids**: List of Gmail message IDs to restore from trash
-         *
-         *     Returns a list of IDs that were successfully restored from trash.
-         */
-        post: operations["mail_untrash_emails"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2626,23 +2074,6 @@ export interface paths {
         put?: never;
         /** Report Lab Event */
         post: operations["lab_report_lab_event"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/ai/compose": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Process Email */
-        post: operations["mail_process_email"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5270,6 +4701,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/todos/{todo_id}/subscriptions/{subscription_id}/gate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Subscription Gate Endpoint
+         * @description Rewrite, or turn on or off, the gate on one of a tracked todo's run watches.
+         */
+        patch: operations["todos_edit_subscription_gate_endpoint"];
+        trace?: never;
+    };
     "/api/v1/todos/{todo_id}/subtasks": {
         parameters: {
             query?: never;
@@ -5851,8 +5302,7 @@ export interface paths {
         };
         /**
          * Get Me
-         * @description Returns the current authenticated user's details.
-         *     Uses the dependency injection to fetch user data.
+         * @description Return the signed-in user; the app's session load also stores the browser's zone when none is saved.
          */
         get: operations["user_get_me"];
         put?: never;
@@ -5886,6 +5336,30 @@ export interface paths {
          * @description Update the user's name. This is the consolidated endpoint for name updates.
          */
         patch: operations["user_update_user_name"];
+        trace?: never;
+    };
+    "/api/v1/user/quiet-hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Quiet Hours
+         * @description The local hours in which GAIA holds what can wait for the morning.
+         */
+        get: operations["user_read_quiet_hours"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Quiet Hours
+         * @description Store the user's quiet hours and echo what was saved.
+         */
+        patch: operations["user_update_quiet_hours"];
         trace?: never;
     };
     "/api/v1/user/timezone": {
@@ -6536,16 +6010,6 @@ export interface components {
             success_message?: string | null;
         };
         /**
-         * ApplyLabelRequest
-         * @description Request model for applying or removing labels from messages.
-         */
-        ApplyLabelRequest: {
-            /** Label Ids */
-            label_ids: string[];
-            /** Message Ids */
-            message_ids: string[];
-        };
-        /**
          * ApprovalDecisionRequest
          * @description Body for a button approval decision (approve/deny, with scope and feedback).
          */
@@ -6585,17 +6049,6 @@ export interface components {
         ApprovePairingRequest: {
             /** User Code */
             user_code: string;
-        };
-        /** ArchiveEmailsResponse */
-        ArchiveEmailsResponse: {
-            /** Archived */
-            archived: string[];
-            /** Count */
-            count: number;
-            /** Status */
-            status: string;
-            /** Success */
-            success: boolean;
         };
         /** ArtifactInfo */
         ArtifactInfo: {
@@ -6771,43 +6224,34 @@ export interface components {
             twitter?: string | null;
         };
         /**
-         * AuthoredGate
-         * @description A plain-text condition, shown to the user as "Runs only when: <condition>".
+         * AuthoredGateView
+         * @description An authored gate as the API returns it, with what the user reads about it.
          */
-        AuthoredGate: {
+        AuthoredGateView: {
             author: components["schemas"]["GateAuthor"];
             /** Condition */
             condition: string;
+            /** Display Condition */
+            readonly display_condition: string;
             /**
              * Enabled
              * @default true
              */
-            enabled?: boolean;
+            enabled: boolean;
+            /** Enforced */
+            readonly enforced: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             kind: "authored";
             /** Recent Skips */
-            recent_skips?: components["schemas"]["GateSkipRecord"][];
+            recent_skips: components["schemas"]["GateSkipRecord"][];
             /**
              * Skipped Count
              * @default 0
              */
-            skipped_count?: number;
-        };
-        /**
-         * AuthoredGateEdit
-         * @description A condition as a client sends it; the server decides who wrote it.
-         */
-        AuthoredGateEdit: {
-            /** Condition */
-            condition: string;
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled?: boolean;
+            skipped_count: number;
         };
         /**
          * BatchApprovalDecisionRequest
@@ -7389,34 +6833,6 @@ export interface components {
             /** Total */
             total: number;
         };
-        /**
-         * BulkEmailImportanceSummariesResponse
-         * @description Response for ``POST /gmail/importance-summaries/bulk``.
-         *
-         *     ``emails`` values stay ``dict[str, Any]`` for the same reason as
-         *     ``EmailImportanceSummariesResponse.emails``.
-         */
-        BulkEmailImportanceSummariesResponse: {
-            /** Emails */
-            emails: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
-            };
-            /** Found Count */
-            found_count: number;
-            /** Found Message Ids */
-            found_message_ids: string[];
-            /** Missing Count */
-            missing_count: number;
-            /** Missing Message Ids */
-            missing_message_ids: string[];
-            /**
-             * Status
-             * @constant
-             */
-            status: "success";
-        };
         /** BulkMoveRequest */
         BulkMoveRequest: {
             /** Project Id */
@@ -7781,22 +7197,6 @@ export interface components {
              * @default 0
              */
             total: number;
-        };
-        /**
-         * ComposedEmailOutput
-         * @description Structured output of the AI email composer.
-         */
-        ComposedEmailOutput: {
-            /**
-             * Body
-             * @description Generated email body
-             */
-            body: string;
-            /**
-             * Subject
-             * @description Generated email subject line
-             */
-            subject: string;
         };
         /**
          * ComposioAuthConfigCandidate
@@ -8577,6 +7977,11 @@ export interface components {
              */
             prompt: string;
             /**
+             * Runs Only When
+             * @description GAIA's drafted condition for an integration trigger, stored as GAIA's gate
+             */
+            runs_only_when?: string | null;
+            /**
              * Source Integration
              * @description Which integration provisioned this workflow.
              */
@@ -9136,105 +8541,6 @@ export interface components {
             status?: "success";
         };
         /**
-         * DraftMutationResponse
-         * @description Response for the draft create and update endpoints.
-         */
-        DraftMutationResponse: {
-            /** Draft Id */
-            draft_id: string | null;
-            /** Message Id */
-            message_id: string | null;
-            /** Status */
-            status: string;
-        };
-        /**
-         * DraftRequest
-         * @description Request model for creating or updating a draft email.
-         *
-         *     ``body`` may be Markdown or HTML — the Composio Gmail hook converts
-         *     Markdown to HTML before sending, so callers never need to choose.
-         */
-        DraftRequest: {
-            /** Bcc */
-            bcc?: string[] | null;
-            /** Body */
-            body: string;
-            /** Cc */
-            cc?: string[] | null;
-            /** Subject */
-            subject: string;
-            /** To */
-            to: string[];
-        };
-        /**
-         * EmailActionRequest
-         * @description Request model for performing actions on emails like star, trash, archive.
-         */
-        EmailActionRequest: {
-            /** Message Ids */
-            message_ids: string[];
-        };
-        /**
-         * EmailImportanceSummariesResponse
-         * @description Response for ``GET /gmail/importance-summaries``.
-         *
-         *     ``emails`` entries stay ``dict[str, Any]`` because they are JSON dumps of
-         *     ``MailDocument``, which allows analyzer-supplied extra fields that vary per email.
-         */
-        EmailImportanceSummariesResponse: {
-            /** Count */
-            count: number;
-            /** Emails */
-            emails: {
-                [key: string]: unknown;
-            }[];
-            /** Filtered By Importance */
-            filtered_by_importance: boolean;
-            /**
-             * Status
-             * @constant
-             */
-            status: "success";
-        };
-        /**
-         * EmailImportanceSummaryResponse
-         * @description Response for ``GET /gmail/importance-summary/{message_id}``.
-         *
-         *     ``email`` stays ``dict[str, Any]`` for the same reason as
-         *     ``EmailImportanceSummariesResponse.emails``.
-         */
-        EmailImportanceSummaryResponse: {
-            /** Email */
-            email: {
-                [key: string]: unknown;
-            };
-            /**
-             * Status
-             * @constant
-             */
-            status: "success";
-        };
-        /** EmailReadStatusRequest */
-        EmailReadStatusRequest: {
-            /** Message Ids */
-            message_ids: string[];
-        };
-        /** EmailRequest */
-        EmailRequest: {
-            /** Body */
-            body?: string | null;
-            /** Clarityoption */
-            clarityOption?: string | null;
-            /** Contentlength */
-            contentLength?: string | null;
-            /** Prompt */
-            prompt: string;
-            /** Subject */
-            subject?: string | null;
-            /** Writingstyle */
-            writingStyle?: string | null;
-        };
-        /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.
          */
@@ -9293,10 +8599,20 @@ export interface components {
             /** Fix */
             fix?: string | null;
             /**
+             * Integration Id
+             * @description Integration an INTEGRATION_NOT_CONNECTED error asks to connect.
+             */
+            integration_id?: string | null;
+            /**
              * Message
              * @description Human-readable description of the failure.
              */
             message: string;
+            /**
+             * Toolkit
+             * @description Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.
+             */
+            toolkit?: string | null;
             /** Why */
             why?: string | null;
         } & {
@@ -9637,8 +8953,24 @@ export interface components {
          */
         GateAuthor: "gaia" | "user";
         /**
+         * GateEdit
+         * @description A gate as a client edits it: a new condition, or the current gate turned on or off.
+         *
+         *     The server decides who wrote a condition. No condition keeps the current one,
+         *     a system preset included, so turning a gate off never loses its text.
+         */
+        GateEdit: {
+            /** Condition */
+            condition?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+        };
+        /**
          * GateSkipRecord
-         * @description One event a gate kept from running its job.
+         * @description One event a gate kept from running its job, as the gate's panel lists it.
          */
         GateSkipRecord: {
             /**
@@ -9647,15 +8979,15 @@ export interface components {
              */
             at: string;
             /**
+             * Certainty
+             * @description How sure GAIA was the event did not match; None on skips kept before it was
+             */
+            certainty?: number | null;
+            /**
              * Event
              * @description The skipped event as a person reads it: an email's sender and subject
              */
             event: string;
-            /**
-             * Reason
-             * @description The condition the event missed and how sure the gate was
-             */
-            reason: string;
         };
         /**
          * GenerateWorkflowPromptRequest
@@ -9762,38 +9094,6 @@ export interface components {
             trigger_name: "github_star_added";
         };
         /**
-         * GmailDeletionResponse
-         * @description Response for the label and draft delete endpoints.
-         */
-        GmailDeletionResponse: {
-            /** Message */
-            message: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "success" | "error";
-        };
-        /**
-         * GmailDraftResource
-         * @description A Gmail ``drafts`` resource, forwarded verbatim — see ``GmailLabelResource``.
-         */
-        GmailDraftResource: {
-            [key: string]: unknown;
-        };
-        /**
-         * GmailDraftsResponse
-         * @description Return shape of ``list_drafts``, forwarded verbatim by ``GET /gmail/drafts``.
-         */
-        GmailDraftsResponse: {
-            /** Drafts */
-            drafts: {
-                [key: string]: unknown;
-            }[];
-            /** Nextpagetoken */
-            nextPageToken?: string | null;
-        };
-        /**
          * GmailEmailSentConfig
          * @description Config for the gmail sent-mail trigger; account-level, so nothing to scope.
          */
@@ -9805,44 +9105,8 @@ export interface components {
             trigger_name: "gmail_email_sent";
         };
         /**
-         * GmailLabelResource
-         * @description A Gmail ``labels`` resource, forwarded to the client verbatim.
-         *
-         *     No field is declared on purpose: Gmail owns this schema, so ``extra="allow"``
-         *     passes the payload through untouched instead of guessing at a structure that
-         *     would silently drop provider fields. Mirrors ``GoogleCalendarEventResource``.
-         */
-        GmailLabelResource: {
-            [key: string]: unknown;
-        };
-        /**
-         * GmailLabelsResponse
-         * @description Response for ``GET /gmail/labels``.
-         */
-        GmailLabelsResponse: {
-            /** Count */
-            count: number;
-            /** Labels */
-            labels: {
-                [key: string]: unknown;
-            }[];
-        };
-        /**
-         * GmailMessageResponse
-         * @description Response for ``GET /gmail/message/{message_id}``.
-         */
-        GmailMessageResponse: {
-            /** Message */
-            message: {
-                [key: string]: unknown;
-            } | null;
-            /** Status */
-            status: string;
-        };
-        /**
          * GmailMessagesResponse
-         * @description Response for ``GET /gmail/messages`` and ``GET /gmail/search``, and the return
-         *     shape of ``search_messages``, which the routes forward unchanged.
+         * @description Response for ``GET /gmail/search``: the ``search_messages`` result, forwarded unchanged.
          */
         GmailMessagesResponse: {
             /** Messages */
@@ -9951,23 +9215,6 @@ export interface components {
              * @enum {string}
              */
             trigger_name: "gmail_poll_inbox";
-        };
-        /**
-         * GmailThreadResponse
-         * @description Response for ``GET /gmail/thread/{thread_id}``.
-         *
-         *     ``thread`` is the Composio thread payload with its messages transformed, so it
-         *     keeps the provider's own envelope keys alongside ``messages``.
-         */
-        GmailThreadResponse: {
-            /** Messages Count */
-            messages_count: number;
-            /** Thread */
-            thread: {
-                [key: string]: unknown;
-            };
-            /** Thread Id */
-            thread_id: string;
         };
         /**
          * GoogleCalendarEventDateTime
@@ -10721,30 +9968,6 @@ export interface components {
             id: string;
         };
         /**
-         * LabelRequest
-         * @description Request model for creating or updating Gmail labels.
-         */
-        LabelRequest: {
-            /** Background Color */
-            background_color?: string | null;
-            /**
-             * Label List Visibility
-             * @description Whether the label appears in the label list: 'labelShow', 'labelHide', 'labelShowIfUnread'
-             * @default labelShow
-             */
-            label_list_visibility?: string | null;
-            /**
-             * Message List Visibility
-             * @description Whether the label appears in the message list: 'show', 'hide'
-             * @default show
-             */
-            message_list_visibility?: string | null;
-            /** Name */
-            name: string;
-            /** Text Color */
-            text_color?: string | null;
-        };
-        /**
          * LabEventResponse
          * @description Accepted; the payload itself is never echoed back.
          */
@@ -10928,28 +10151,6 @@ export interface components {
         MarkAllReadSummary: {
             /** Updated Count */
             updated_count: number;
-        };
-        /** MarkAsReadResponse */
-        MarkAsReadResponse: {
-            /** Count */
-            count: number;
-            /** Marked As Read */
-            marked_as_read: string[];
-            /** Status */
-            status: string;
-            /** Success */
-            success: boolean;
-        };
-        /** MarkAsUnreadResponse */
-        MarkAsUnreadResponse: {
-            /** Count */
-            count: number;
-            /** Marked As Unread */
-            marked_as_unread: string[];
-            /** Status */
-            status: string;
-            /** Success */
-            success: boolean;
         };
         /**
          * MarketplaceResponse
@@ -11964,31 +11165,6 @@ export interface components {
             props?: {
                 [key: string]: unknown;
             };
-        };
-        /**
-         * ModifyLabelsResponse
-         * @description Response for both the apply-label and remove-label endpoints.
-         */
-        ModifyLabelsResponse: {
-            /** Count */
-            count: number;
-            /** Modified Messages */
-            modified_messages: string[];
-            /** Status */
-            status: string;
-            /** Success */
-            success: boolean;
-        };
-        /** MoveToInboxResponse */
-        MoveToInboxResponse: {
-            /** Count */
-            count: number;
-            /** Moved To Inbox */
-            moved_to_inbox: string[];
-            /** Status */
-            status: string;
-            /** Success */
-            success: boolean;
         };
         /** MultiURLResponse */
         MultiURLResponse: {
@@ -13627,6 +12803,18 @@ export interface components {
             success: boolean;
         };
         /**
+         * QuietHours
+         * @description When the user's quiet hours start and end on their own clock; the span may cross midnight.
+         */
+        QuietHours: {
+            /** Enabled */
+            enabled: boolean;
+            /** End Hour */
+            end_hour: number;
+            /** Start Hour */
+            start_hour: number;
+        };
+        /**
          * ReadinessResponse
          * @description ``GET /health/ready``: whether every backing service answered a real request.
          */
@@ -14318,29 +13506,6 @@ export interface components {
             /** To */
             to: string;
         };
-        /** SendEmailRequest */
-        SendEmailRequest: {
-            /** Bcc */
-            bcc?: string[] | null;
-            /** Body */
-            body: string;
-            /** Cc */
-            cc?: string[] | null;
-            /** Subject */
-            subject: string;
-            /** To */
-            to: string[];
-        };
-        /**
-         * SendEmailResponse
-         * @description Response for ``POST /gmail/send-json``.
-         */
-        SendEmailResponse: {
-            /** Message Id */
-            message_id: string | null;
-            /** Status */
-            status: string;
-        };
         /**
          * SendEmailWithAttachmentsResponse
          * @description Response for ``POST /gmail/send``, which also reports the attachment count.
@@ -14734,17 +13899,6 @@ export interface components {
             message: string;
             /** Starred */
             starred: boolean;
-        };
-        /** StarEmailsResponse */
-        StarEmailsResponse: {
-            /** Count */
-            count: number;
-            /** Starred */
-            starred: string[];
-            /** Status */
-            status: string;
-            /** Success */
-            success: boolean;
         };
         /**
          * StarredUpdate
@@ -15254,15 +14408,25 @@ export interface components {
          */
         SupportRequestType: "support" | "feature";
         /**
-         * SystemGate
-         * @description A preset owned by code; its question and wording are read from the preset table.
+         * SystemGatePreset
+         * @description A gate whose question, criteria and wording live in code, not on the job.
+         * @enum {string}
          */
-        SystemGate: {
+        SystemGatePreset: "inbox_desk";
+        /**
+         * SystemGateView
+         * @description A system gate as the API returns it: its preset's wording, which the user cannot rewrite.
+         */
+        SystemGateView: {
+            /** Display Condition */
+            readonly display_condition: string;
             /**
              * Enabled
              * @default true
              */
-            enabled?: boolean;
+            enabled: boolean;
+            /** Enforced */
+            readonly enforced: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -15270,19 +14434,13 @@ export interface components {
             kind: "system";
             preset: components["schemas"]["SystemGatePreset"];
             /** Recent Skips */
-            recent_skips?: components["schemas"]["GateSkipRecord"][];
+            recent_skips: components["schemas"]["GateSkipRecord"][];
             /**
              * Skipped Count
              * @default 0
              */
-            skipped_count?: number;
+            skipped_count: number;
         };
-        /**
-         * SystemGatePreset
-         * @description A gate whose question, criteria and wording live in code, not on the job.
-         * @enum {string}
-         */
-        SystemGatePreset: "inbox_desk";
         /**
          * SystemPurpose
          * @description Why a system-generated conversation was created.
@@ -15586,7 +14744,7 @@ export interface components {
              * Trigger Subscriptions
              * @description Read-only; subscriptions are written by trigger registration, not by clients
              */
-            trigger_subscriptions: components["schemas"]["TriggerSubscription"][];
+            trigger_subscriptions: components["schemas"]["TriggerSubscriptionView"][];
             /**
              * Updated At
              * Format: date-time
@@ -15869,17 +15027,6 @@ export interface components {
              */
             text: string;
         };
-        /** TrashEmailsResponse */
-        TrashEmailsResponse: {
-            /** Count */
-            count: number;
-            /** Status */
-            status: string;
-            /** Success */
-            success: boolean;
-            /** Trashed */
-            trashed: string[];
-        };
         /**
          * TriageEmailSummary
          * @description The fields of an important email that actually reach the client.
@@ -16008,64 +15155,64 @@ export interface components {
             options: (components["schemas"]["TriggerOption"] | components["schemas"]["TriggerOptionGroup"])[];
         };
         /**
-         * TriggerSubscription
-         * @description A tracked todo's standing interest in one trigger.
+         * TriggerSubscriptionStatus
+         * @enum {string}
          */
-        TriggerSubscription: {
+        TriggerSubscriptionStatus: "active" | "paused";
+        /**
+         * TriggerSubscriptionView
+         * @description A subscription as the API returns it, its gate with what the user reads about it.
+         */
+        TriggerSubscriptionView: {
             /**
              * Account Id
              * @description GAIA id of the one connected account whose events fire it; None for every account
              */
-            account_id?: string | null;
+            account_id: string | null;
             action: components["schemas"]["SubscriptionAction"];
             /**
              * Composio Trigger Ids
              * @description Empty for account-level triggers, which register no instance
              */
-            composio_trigger_ids?: string[];
+            composio_trigger_ids: string[];
             /** Conditions */
-            conditions?: components["schemas"]["SubscriptionCondition"][];
+            conditions: components["schemas"]["SubscriptionCondition"][];
             /**
              * Cooldown Seconds
              * @description Minimum gap between two fires of this subscription
              * @default 900
              */
-            cooldown_seconds?: number;
+            cooldown_seconds: number;
             /**
              * Created At
              * Format: date-time
              */
-            created_at?: string;
+            created_at: string;
             /**
              * Gate
              * @description The check a fired event must pass before an EXECUTE subscription runs
              */
-            gate?: (components["schemas"]["AuthoredGate"] | components["schemas"]["SystemGate"]) | null;
+            gate: (components["schemas"]["AuthoredGateView"] | components["schemas"]["SystemGateView"]) | null;
             /** Id */
-            id?: string;
+            id: string;
             /**
              * @description Whether all conditions must hold (AND) or any one (OR)
              * @default all
              */
-            match?: components["schemas"]["ConditionMatch"];
+            match: components["schemas"]["ConditionMatch"];
             resolution: components["schemas"]["SubscriptionResolution"];
             /** @default active */
-            status?: components["schemas"]["TriggerSubscriptionStatus"];
+            status: components["schemas"]["TriggerSubscriptionStatus"];
             /**
              * Trigger Data
              * @description Registration-time knobs the payload cannot express (a calendar's minutes_before_start). Persisted so a resync rebuilds the trigger with the user's original config instead of resetting to defaults.
              */
-            trigger_data?: {
+            trigger_data: {
                 [key: string]: unknown;
             };
             /** Trigger Name */
             trigger_name: string;
         };
-        /**
-         * TriggerSubscriptionStatus
-         * @enum {string}
-         */
-        TriggerSubscriptionStatus: "active" | "paused";
         /**
          * TriggerType
          * @description What caused a run.
@@ -16104,28 +15251,6 @@ export interface components {
              * @constant
              */
             status?: "success";
-        };
-        /** UnstarEmailsResponse */
-        UnstarEmailsResponse: {
-            /** Count */
-            count: number;
-            /** Status */
-            status: string;
-            /** Success */
-            success: boolean;
-            /** Unstarred */
-            unstarred: string[];
-        };
-        /** UntrashEmailsResponse */
-        UntrashEmailsResponse: {
-            /** Count */
-            count: number;
-            /** Restored */
-            restored: string[];
-            /** Status */
-            status: string;
-            /** Success */
-            success: boolean;
         };
         /**
          * UpdateCustomIntegrationRequest
@@ -16385,7 +15510,7 @@ export interface components {
             /** Description */
             description?: string | null;
             /** @description Absent keeps the gate, null removes it, a value replaces it */
-            gate?: components["schemas"]["AuthoredGateEdit"] | null;
+            gate?: components["schemas"]["GateEdit"] | null;
             /** Icon */
             icon?: string | null;
             /** Icon Color */
@@ -17092,7 +16217,7 @@ export interface components {
              * Gate
              * @description The check a fired integration event must pass before this workflow runs
              */
-            gate: (components["schemas"]["AuthoredGate"] | components["schemas"]["SystemGate"]) | null;
+            gate: (components["schemas"]["AuthoredGateView"] | components["schemas"]["SystemGateView"]) | null;
             /**
              * Icon
              * @description User-chosen icon slug (gaia-icons component name) shown when the workflow has no integration icons.
@@ -17308,18 +16433,15 @@ export type AddUserIntegrationRequest = components['schemas']['AddUserIntegratio
 export type AddUserIntegrationResponse = components['schemas']['AddUserIntegrationResponse'];
 export type AgentType = components['schemas']['AgentType'];
 export type ApiCallConfig = components['schemas']['ApiCallConfig'];
-export type ApplyLabelRequest = components['schemas']['ApplyLabelRequest'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
-export type ArchiveEmailsResponse = components['schemas']['ArchiveEmailsResponse'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
-export type AuthoredGate = components['schemas']['AuthoredGate'];
-export type AuthoredGateEdit = components['schemas']['AuthoredGateEdit'];
+export type AuthoredGateView = components['schemas']['AuthoredGateView'];
 export type BatchApprovalDecisionRequest = components['schemas']['BatchApprovalDecisionRequest'];
 export type BatchApprovalDecisionResponse = components['schemas']['BatchApprovalDecisionResponse'];
 export type BatchDecisionItem = components['schemas']['BatchDecisionItem'];
@@ -17365,7 +16487,6 @@ export type BuiltinSkillsResponse = components['schemas']['BuiltinSkillsResponse
 export type BulkActionRequest = components['schemas']['BulkActionRequest'];
 export type BulkActions = components['schemas']['BulkActions'];
 export type BulkActionSummary = components['schemas']['BulkActionSummary'];
-export type BulkEmailImportanceSummariesResponse = components['schemas']['BulkEmailImportanceSummariesResponse'];
 export type BulkMoveRequest = components['schemas']['BulkMoveRequest'];
 export type BulkOperationResponse = components['schemas']['BulkOperationResponse'];
 export type BulkUpdateRequest = components['schemas']['BulkUpdateRequest'];
@@ -17389,7 +16510,6 @@ export type CheckoutSource = components['schemas']['CheckoutSource'];
 export type CommunityIntegrationCreator = components['schemas']['CommunityIntegrationCreator'];
 export type CommunityIntegrationItem = components['schemas']['CommunityIntegrationItem'];
 export type CommunityListResponse = components['schemas']['CommunityListResponse'];
-export type ComposedEmailOutput = components['schemas']['ComposedEmailOutput'];
 export type ComposioAuthConfigCandidate = components['schemas']['ComposioAuthConfigCandidate'];
 export type ComposioAuthConfigSource = components['schemas']['ComposioAuthConfigSource'];
 export type ComposioAuthField = components['schemas']['ComposioAuthField'];
@@ -17460,13 +16580,6 @@ export type DiscoverSkillsResponse = components['schemas']['DiscoverSkillsRespon
 export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
-export type DraftMutationResponse = components['schemas']['DraftMutationResponse'];
-export type DraftRequest = components['schemas']['DraftRequest'];
-export type EmailActionRequest = components['schemas']['EmailActionRequest'];
-export type EmailImportanceSummariesResponse = components['schemas']['EmailImportanceSummariesResponse'];
-export type EmailImportanceSummaryResponse = components['schemas']['EmailImportanceSummaryResponse'];
-export type EmailReadStatusRequest = components['schemas']['EmailReadStatusRequest'];
-export type EmailRequest = components['schemas']['EmailRequest'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
@@ -17491,6 +16604,7 @@ export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
 export type FoldedCards = components['schemas']['FoldedCards'];
 export type GateAuthor = components['schemas']['GateAuthor'];
+export type GateEdit = components['schemas']['GateEdit'];
 export type GateSkipRecord = components['schemas']['GateSkipRecord'];
 export type GenerateWorkflowPromptRequest = components['schemas']['GenerateWorkflowPromptRequest'];
 export type GenerateWorkflowPromptResponse = components['schemas']['GenerateWorkflowPromptResponse'];
@@ -17499,18 +16613,11 @@ export type GitHubCommitEventConfig = components['schemas']['GitHubCommitEventCo
 export type GitHubIssueAddedConfig = components['schemas']['GitHubIssueAddedConfig'];
 export type GitHubPrEventConfig = components['schemas']['GitHubPrEventConfig'];
 export type GitHubStarAddedConfig = components['schemas']['GitHubStarAddedConfig'];
-export type GmailDeletionResponse = components['schemas']['GmailDeletionResponse'];
-export type GmailDraftResource = components['schemas']['GmailDraftResource'];
-export type GmailDraftsResponse = components['schemas']['GmailDraftsResponse'];
 export type GmailEmailSentConfig = components['schemas']['GmailEmailSentConfig'];
-export type GmailLabelResource = components['schemas']['GmailLabelResource'];
-export type GmailLabelsResponse = components['schemas']['GmailLabelsResponse'];
-export type GmailMessageResponse = components['schemas']['GmailMessageResponse'];
 export type GmailMessagesResponse = components['schemas']['GmailMessagesResponse'];
 export type GmailMessageSummary = components['schemas']['GmailMessageSummary'];
 export type GmailNewMessageConfig = components['schemas']['GmailNewMessageConfig'];
 export type GmailPollInboxConfig = components['schemas']['GmailPollInboxConfig'];
-export type GmailThreadResponse = components['schemas']['GmailThreadResponse'];
 export type GoogleCalendarEventDateTime = components['schemas']['GoogleCalendarEventDateTime'];
 export type GoogleCalendarEventResource = components['schemas']['GoogleCalendarEventResource'];
 export type GoogleCalendarListEntry = components['schemas']['GoogleCalendarListEntry'];
@@ -17556,7 +16663,6 @@ export type IntegrationToolApproval = components['schemas']['IntegrationToolAppr
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
-export type LabelRequest = components['schemas']['LabelRequest'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
@@ -17570,8 +16676,6 @@ export type LoginRequest = components['schemas']['LoginRequest'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
 export type ManagedAt = components['schemas']['ManagedAt'];
 export type MarkAllReadSummary = components['schemas']['MarkAllReadSummary'];
-export type MarkAsReadResponse = components['schemas']['MarkAsReadResponse'];
-export type MarkAsUnreadResponse = components['schemas']['MarkAsUnreadResponse'];
 export type MarketplaceResponse = components['schemas']['MarketplaceResponse'];
 export type MaskedProvider = components['schemas']['MaskedProvider'];
 export type MCPConfigDetail = components['schemas']['MCPConfigDetail'];
@@ -17621,8 +16725,6 @@ export type MessageSearchResult = components['schemas']['MessageSearchResult'];
 export type MintPlatformLinkCodeResponse = components['schemas']['MintPlatformLinkCodeResponse'];
 export type MobileLoginUrlResponse = components['schemas']['MobileLoginUrlResponse'];
 export type ModalConfig = components['schemas']['ModalConfig'];
-export type ModifyLabelsResponse = components['schemas']['ModifyLabelsResponse'];
-export type MoveToInboxResponse = components['schemas']['MoveToInboxResponse'];
 export type MultiURLResponse = components['schemas']['MultiURLResponse'];
 export type MyIntegrationItem = components['schemas']['MyIntegrationItem'];
 export type MyIntegrationsResponse = components['schemas']['MyIntegrationsResponse'];
@@ -17704,6 +16806,7 @@ export type PublishIntegrationResponse = components['schemas']['PublishIntegrati
 export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResponse'];
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
+export type QuietHours = components['schemas']['QuietHours'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
@@ -17744,8 +16847,6 @@ export type SelfPairRequest = components['schemas']['SelfPairRequest'];
 export type SelfPairResponse = components['schemas']['SelfPairResponse'];
 export type SendDraftResponse = components['schemas']['SendDraftResponse'];
 export type SendEmailForm = components['schemas']['SendEmailForm'];
-export type SendEmailRequest = components['schemas']['SendEmailRequest'];
-export type SendEmailResponse = components['schemas']['SendEmailResponse'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
@@ -17764,7 +16865,6 @@ export type SlackNewMessageConfig = components['schemas']['SlackNewMessageConfig
 export type SocialProfile = components['schemas']['SocialProfile'];
 export type SocialProfilesConfirmRequest = components['schemas']['SocialProfilesConfirmRequest'];
 export type StarConversationResponse = components['schemas']['StarConversationResponse'];
-export type StarEmailsResponse = components['schemas']['StarEmailsResponse'];
 export type StarredUpdate = components['schemas']['StarredUpdate'];
 export type StarredVoicesResponse = components['schemas']['StarredVoicesResponse'];
 export type StartPairingRequest = components['schemas']['StartPairingRequest'];
@@ -17794,8 +16894,8 @@ export type SupportRequestResponse = components['schemas']['SupportRequestRespon
 export type SupportRequestStatus = components['schemas']['SupportRequestStatus'];
 export type SupportRequestSubmissionResponse = components['schemas']['SupportRequestSubmissionResponse'];
 export type SupportRequestType = components['schemas']['SupportRequestType'];
-export type SystemGate = components['schemas']['SystemGate'];
 export type SystemGatePreset = components['schemas']['SystemGatePreset'];
+export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
@@ -17819,20 +16919,17 @@ export type ToolInfo = components['schemas']['ToolInfo'];
 export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse'];
 export type ToolsListResponse = components['schemas']['ToolsListResponse'];
 export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResponse'];
-export type TrashEmailsResponse = components['schemas']['TrashEmailsResponse'];
 export type TriageEmailSummary = components['schemas']['TriageEmailSummary'];
 export type TriggerConfig = components['schemas']['TriggerConfig'];
 export type TriggerConfigFieldSchema = components['schemas']['TriggerConfigFieldSchema'];
 export type TriggerOption = components['schemas']['TriggerOption'];
 export type TriggerOptionGroup = components['schemas']['TriggerOptionGroup'];
 export type TriggerOptionsResponse = components['schemas']['TriggerOptionsResponse'];
-export type TriggerSubscription = components['schemas']['TriggerSubscription'];
 export type TriggerSubscriptionStatus = components['schemas']['TriggerSubscriptionStatus'];
+export type TriggerSubscriptionView = components['schemas']['TriggerSubscriptionView'];
 export type TriggerType = components['schemas']['TriggerType'];
 export type UnlinkAccountResponse = components['schemas']['UnlinkAccountResponse'];
 export type UnpublishIntegrationResponse = components['schemas']['UnpublishIntegrationResponse'];
-export type UnstarEmailsResponse = components['schemas']['UnstarEmailsResponse'];
-export type UntrashEmailsResponse = components['schemas']['UntrashEmailsResponse'];
 export type UpdateCustomIntegrationRequest = components['schemas']['UpdateCustomIntegrationRequest'];
 export type UpdateDescriptionRequest = components['schemas']['UpdateDescriptionRequest'];
 export type UpdateDescriptionResponse = components['schemas']['UpdateDescriptionResponse'];
@@ -21826,309 +20923,6 @@ export interface operations {
             };
         };
     };
-    mail_archive_emails: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailActionRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArchiveEmailsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_list_drafts_route: {
-        parameters: {
-            query?: {
-                max_results?: number;
-                page_token?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GmailDraftsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_create_draft_route: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DraftRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DraftMutationResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_get_draft_route: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                draft_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GmailDraftResource"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_update_draft_route: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                draft_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DraftRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DraftMutationResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_delete_draft_route: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                draft_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GmailDeletionResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     mail_send_draft_route: {
         parameters: {
             query?: never;
@@ -22165,710 +20959,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SendDraftResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_get_email_importance_summaries: {
-        parameters: {
-            query?: {
-                important_only?: boolean;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailImportanceSummariesResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_get_bulk_email_importance_summaries: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailActionRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BulkEmailImportanceSummariesResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_get_single_email_importance_summary: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                message_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailImportanceSummaryResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_list_labels: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GmailLabelsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_create_label_route: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LabelRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GmailLabelResource"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_update_label_route: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                label_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LabelRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GmailLabelResource"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_delete_label_route: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                label_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GmailDeletionResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_mark_as_read: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailReadStatusRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarkAsReadResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_mark_as_unread: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailReadStatusRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarkAsUnreadResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_get_email_by_id: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                message_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GmailMessageResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_list_messages: {
-        parameters: {
-            query?: {
-                max_results?: number;
-                pageToken?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GmailMessagesResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_apply_labels_route: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApplyLabelRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModifyLabelsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_remove_labels_route: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApplyLabelRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModifyLabelsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_move_emails_to_inbox: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailActionRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MoveToInboxResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -22980,319 +21070,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SendEmailWithAttachmentsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_send_email_json: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SendEmailRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SendEmailResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Gmail rejected the send, or the send failed upstream */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_star_emails: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailActionRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StarEmailsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_get_thread: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                thread_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GmailThreadResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_trash_emails: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailActionRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TrashEmailsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_unstar_emails: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailActionRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UnstarEmailsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_untrash_emails: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailActionRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UntrashEmailsResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24901,57 +22678,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LabEventResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    mail_process_email: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ComposedEmailOutput"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -31970,6 +29696,60 @@ export interface operations {
             };
         };
     };
+    todos_edit_subscription_gate_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GateEdit"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     todos_create_subtask: {
         parameters: {
             query?: never;
@@ -33454,7 +31234,10 @@ export interface operations {
     user_get_me: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Browser timezone fallback */
+                "x-timezone"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -33587,6 +31370,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserUpdateResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    user_read_quiet_hours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuietHours"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    user_update_quiet_hours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuietHours"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuietHours"];
                 };
             };
             /** @description Unprocessable Entity */

@@ -800,16 +800,13 @@ class TestTriggerGate:
         deps.redis.redis.set.assert_not_awaited()
         # A skip lands on the gate, never as one more line of activity.md.
         deps.activity.assert_not_awaited()
-        (call,) = jev_seams.todo_skip.await_args_list
+        (call,) = jev_seams.watch_skips.await_args_list
         assert (call.kwargs["user_id"], call.kwargs["subscription_id"]) == (
             USER_ID,
             subscription.id,
         )
         skip = call.kwargs["skip"]
-        assert (skip.event, skip.reason) == (
-            '"Sale!"',
-            f'Not a match for "{CONDITION}" (99% sure).',
-        )
+        assert (skip.event, skip.certainty) == ("Sale!", 0.99)
         assert list(event["trigger_gate"]) == [subscription.id]
 
     @pytest.mark.parametrize(

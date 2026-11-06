@@ -4,10 +4,12 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.log_tags import LogTag
+from app.constants.trigger_gates import GateAuthor, GateOwner
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
 from app.models.scheduler_models import DeactivationReason
+from app.models.trigger_gate_models import AuthoredGate
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     PublicWorkflowCard,
@@ -26,6 +28,7 @@ from app.models.workflow_models import (
     public_workflow_steps,
 )
 from app.services.integrations.integration_status import get_all_integrations_status
+from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
 from app.services.workflow.integration_requirements import (
     build_integration_refs,
     compute_integration_refs,
@@ -252,6 +255,11 @@ class WorkflowService:
                 icon_color=request.icon_color,
                 steps=workflow_steps,
                 trigger_config=trigger_config,
+                gate=(
+                    None
+                    if request.runs_only_when is None
+                    else AuthoredGate(condition=request.runs_only_when, author=GateAuthor.GAIA)
+                ),
                 activated=False,  # Start in pending state
                 notify_on_completion=request.notify_on_completion,
                 user_id=user_id,
@@ -618,7 +626,9 @@ class WorkflowService:
                     update.gate = None
             elif "gate" in provided:
                 update.gate = (
-                    None if request.gate is None else request.gate.applied_to(current_workflow.gate)
+                    None
+                    if request.gate is None
+                    else apply_gate_edit(current_workflow.gate, request.gate)
                 )
 
             # enabled mirrors activated (the single liveness field). Resolve the
@@ -751,6 +761,8 @@ class WorkflowService:
 
             if updated is None:
                 return None
+            if "gate" in update.model_fields_set:
+                report_gate_edit(user_id, GateOwner.WORKFLOW, current_workflow.gate, update.gate)
 
             log.info(
                 f"{LogTag.WORKFLOW} Updated workflow for user",

@@ -26,7 +26,6 @@ from app.constants.log_tags import LogTag
 from app.models.agent_config import RunMetadata
 from app.services.composio.account_scope import account_scope
 from app.services.composio.dead_account import (
-    ConnectedAccountGoneError,
     is_dead_account_error,
     message_mentions_dead_account,
 )
@@ -35,6 +34,7 @@ from app.services.integrations.integration_accounts import (
     primary_account,
 )
 from app.services.integrations.integration_expiry import expire_account
+from app.utils.errors import IntegrationNotConnectedError
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log, log_context
 
@@ -107,6 +107,55 @@ async def _expire_and_request_reconnect(
         mode=ConnectMode.RECONNECT,
         account=dead if dead is not None and dead.status == INTEGRATION_STATUS_EXPIRED else None,
     )
+
+
+def _log_invocation_outcome(
+    tool: str, toolkit: str | None, user_id: str | None, result: object
+) -> None:
+    """Record a Composio call's outcome on the wide event; never fails the call."""
+    try:
+        succeeded: bool | None = None
+        err_preview: str | None = None
+        if isinstance(result, dict):
+            response: ToolExecutionResponse = t.cast(ToolExecutionResponse, result)
+            succeeded = response.get("successful")
+            if succeeded is False:
+                err_preview = str(response.get("error"))[:200]
+        log.set(
+            composio_tool_invocation={
+                "tool": tool,
+                "toolkit": toolkit,
+                "user_id": user_id,
+                "successful": succeeded,
+            }
+        )
+        # Composio also reports a dead account without raising. That
+        # string match is too loose to drive a state mutation, so this
+        # stays a log line — but it shares the raising path's markers.
+        if err_preview is not None:
+            if message_mentions_dead_account(err_preview):
+                log.warning(
+                    f"{LogTag.COMPOSIO} composio tool failed — likely a dead connected account",
+                    tool=tool,
+                    toolkit=toolkit,
+                    user_id=user_id,
+                    err_preview=err_preview,
+                )
+            else:
+                log.info(
+                    f"{LogTag.COMPOSIO} composio tool returned successful=False",
+                    tool=tool,
+                    toolkit=toolkit,
+                    user_id=user_id,
+                    err_preview=err_preview,
+                )
+    except Exception as obs_err:  # observability must not break tool
+        log.debug(
+            f"{LogTag.COMPOSIO} composio invocation log skipped for",
+            tool=tool,
+            error=str(obs_err),
+            error_type=type(obs_err).__name__,
+        )
 
 
 def _clean_reserved_keyword(keyword: str) -> str:
@@ -342,56 +391,14 @@ class LangchainProvider(
                 if not is_dead_account_error(e):
                     raise
                 return self._handle_dead_connected_account(tool, toolkit, run_metadata, str(e))
-            except ConnectedAccountGoneError as e:
-                # Custom tools reach the provider through the proxy, which reports
-                # the same dead account as this error instead of a raised 404.
+            except IntegrationNotConnectedError as e:
+                # Nothing usable was connected: invoke_tool shows the connect card and
+                # blocks the integration for the run. A grant that died here is expired first.
+                if not e.grant_died:
+                    raise
                 return self._handle_dead_connected_account(tool, toolkit, run_metadata, str(e))
 
-            # Surface tool invocation outcome for observability.
-            try:
-                succeeded: bool | None = None
-                err_preview: str | None = None
-                if isinstance(result, dict):
-                    response: ToolExecutionResponse = t.cast(ToolExecutionResponse, result)
-                    succeeded = response.get("successful")
-                    if succeeded is False:
-                        err_preview = str(response.get("error"))[:200]
-                log.set(
-                    composio_tool_invocation={
-                        "tool": tool,
-                        "toolkit": toolkit,
-                        "user_id": user_id,
-                        "successful": succeeded,
-                    }
-                )
-                # Composio also reports a dead account without raising. That
-                # string match is too loose to drive a state mutation, so this
-                # stays a log line — but it shares the raising path's markers.
-                if err_preview is not None:
-                    if message_mentions_dead_account(err_preview):
-                        log.warning(
-                            f"{LogTag.COMPOSIO} composio tool failed — likely a dead connected account",
-                            tool=tool,
-                            toolkit=toolkit,
-                            user_id=user_id,
-                            err_preview=err_preview,
-                        )
-                    else:
-                        log.info(
-                            f"{LogTag.COMPOSIO} composio tool returned successful=False",
-                            tool=tool,
-                            toolkit=toolkit,
-                            user_id=user_id,
-                            err_preview=err_preview,
-                        )
-            except Exception as obs_err:  # observability must not break tool
-                log.debug(
-                    f"{LogTag.COMPOSIO} composio invocation log skipped for",
-                    tool=tool,
-                    error=str(obs_err),
-                    error_type=type(obs_err).__name__,
-                )
-
+            _log_invocation_outcome(tool, toolkit, user_id, result)
             return result
 
         parameters = get_signature_format_from_schema_params(

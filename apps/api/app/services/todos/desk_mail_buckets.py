@@ -1,8 +1,8 @@
 """The Inbox desk's own mail fetches, bucketed by one JEV choice per email: what the desk does with each.
 
-The webhook gate decides whether new mail wakes the desk; the bucket decides what a
-started run does with every email it fetched. An email JEV gives no usable bucket for
-reaches the desk unbucketed, and the desk's prompt classifies it alone.
+The bucket decides what a desk run, or the mail subagent it spawns, does with every
+email it fetched. An email JEV gives no usable bucket for reaches the desk unbucketed,
+and the desk's prompt classifies it alone.
 """
 
 import asyncio
@@ -19,7 +19,6 @@ from app.constants.desk_buckets import (
     DeskBucket,
 )
 from app.constants.trigger_gates import (
-    GMAIL_MESSAGE_TRIGGERS,
     SYSTEM_GATE_PRESETS,
     GateReason,
     SystemGatePreset,
@@ -27,7 +26,7 @@ from app.constants.trigger_gates import (
 from app.db.repositories.todos import todo_repository
 from app.models.composio_schemas.gmail import GmailMessageView
 from app.models.jev_models import JevDecisionsResponse
-from app.models.todo_models import ExternalRefSource, TodoDocument
+from app.models.todo_models import ExternalRefSource
 from app.services.hil.jev_client import post_decisions
 from app.services.triggers.gmail_signals import fetched_message_payload, gmail_gate_view
 from app.services.triggers.trigger_gate import jev_failure_reason
@@ -88,24 +87,14 @@ async def _ask_bucket(view: GmailMessageView) -> DeskBucket | None:
         return None
 
 
-def _buckets_on(todo: TodoDocument | None) -> bool:
-    """Whether todo is an Inbox desk whose Gmail watch gate is on: the desk's one switch for JEV."""
-    if todo is None or todo.external_ref is None:
-        return False
-    if todo.external_ref.source is not ExternalRefSource.INBOX_DESK:
-        return False
-    return any(
-        subscription.gate is not None and subscription.gate.enabled
-        for subscription in todo.trigger_subscriptions
-        if subscription.trigger_name in GMAIL_MESSAGE_TRIGGERS
-    )
-
-
 async def desk_bucketed_views(
     user_id: str, todo_id: str, views: list[GmailMessageView]
 ) -> list[GmailMessageView]:
-    """Return views in order, each carrying its bucket; unchanged when todo_id is no desk with its gate on."""
-    if not _buckets_on(await todo_repository.get(todo_id, user_id=user_id)):
+    """Return views in order, each carrying its bucket; unchanged when todo_id is not an Inbox desk."""
+    todo = await todo_repository.get(todo_id, user_id=user_id)
+    if todo is None or todo.external_ref is None:
+        return views
+    if todo.external_ref.source is not ExternalRefSource.INBOX_DESK:
         return views
     return list(await asyncio.gather(*(_bucketed(view) for view in views)))
 

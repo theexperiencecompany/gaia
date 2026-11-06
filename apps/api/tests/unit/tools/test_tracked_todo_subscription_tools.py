@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.runnables import RunnableConfig
 from pydantic import ValidationError
 import pytest
 
@@ -28,8 +29,10 @@ from app.agents.tools.tracked_todo_tools import (
     subscribe_todo_to_trigger,
     unsubscribe_todo_from_trigger,
 )
+from app.constants.trigger_gates import TRIGGER_GATE_CONDITION_MAX_CHARS, GateAuthor
 from app.models.agent_models import RunUserMissingError
 from app.models.todo_models import TodoDocument
+from app.models.trigger_gate_models import AuthoredGate
 from app.models.trigger_subscription_models import (
     OPERATORS_BY_FIELD_TYPE,
     ConditionMatch,
@@ -60,7 +63,7 @@ TODO_ID = "todo-1"
 GMAIL = "gmail_new_message"
 
 
-def _config(user_id: str | None = USER_ID) -> dict:
+def _config(user_id: str | None = USER_ID) -> RunnableConfig:
     return {"metadata": {"user_id": user_id}} if user_id else {"metadata": {}}
 
 
@@ -83,7 +86,7 @@ def _todo(**overrides: object) -> TodoDocument:
 
 class TestListTriggerFields:
     async def test_it_lists_fields_with_types_and_examples(self) -> None:
-        out = await list_trigger_fields.coroutine(trigger_name=GMAIL)
+        out = await list_trigger_fields.coroutine(trigger_name=GMAIL)  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert "thread_id (string)" in out
         assert "Example:" in out
@@ -91,7 +94,7 @@ class TestListTriggerFields:
     async def test_it_says_what_is_not_matchable_and_why(self) -> None:
         # Without the reason an excluded field looks like an oversight, and the
         # model writes a condition against it anyway.
-        out = await list_trigger_fields.coroutine(trigger_name=GMAIL)
+        out = await list_trigger_fields.coroutine(trigger_name=GMAIL)  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         # A standalone header line — not folded into a neighbouring token.
         assert "Not matchable:" in out.splitlines()
@@ -100,12 +103,12 @@ class TestListTriggerFields:
     async def test_the_field_block_is_newline_separated(self) -> None:
         # The catalog is one field per line; join them with anything but "\n" and
         # the whole block collapses into a single unreadable line.
-        out = await list_trigger_fields.coroutine(trigger_name=GMAIL)
+        out = await list_trigger_fields.coroutine(trigger_name=GMAIL)  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert f"Matchable fields for {GMAIL}:\n  thread_id (string)" in out
 
     async def test_it_lists_the_operators_each_type_accepts(self) -> None:
-        out = await list_trigger_fields.coroutine(trigger_name="google_sheets_new_row")
+        out = await list_trigger_fields.coroutine(trigger_name="google_sheets_new_row")  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert "greater_than" in out
         expected = "Operators by type: " + "; ".join(
@@ -118,7 +121,7 @@ class TestListTriggerFields:
         # Without the scope section the model cannot know a github trigger needs a
         # repo, so it subscribes with none and the registration is rejected. Both
         # lines are asserted verbatim: a garbled header or field line is useless.
-        out = await list_trigger_fields.coroutine(trigger_name="github_pr_event")
+        out = await list_trigger_fields.coroutine(trigger_name="github_pr_event")  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
         lines = out.splitlines()
 
         assert (
@@ -131,14 +134,14 @@ class TestListTriggerFields:
     async def test_an_account_level_trigger_shows_no_scope_section(self) -> None:
         # Gmail fires on the account itself; a scope section there would invite the
         # model to pass config the trigger has no field for.
-        out = await list_trigger_fields.coroutine(trigger_name=GMAIL)
+        out = await list_trigger_fields.coroutine(trigger_name=GMAIL)  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert "Scope this watch with" not in out
 
     async def test_an_optional_scope_field_renders_without_the_required_marker(self) -> None:
         # calendar_ids is optional, so its line must NOT carry ', required' — the
         # exact line guards the required/optional branch of the render.
-        out = await list_trigger_fields.coroutine(trigger_name="calendar_event_starting_soon")
+        out = await list_trigger_fields.coroutine(trigger_name="calendar_event_starting_soon")  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
         lines = out.splitlines()
 
         assert (
@@ -147,7 +150,7 @@ class TestListTriggerFields:
         )
 
     async def test_an_unknown_trigger_returns_the_available_ones(self) -> None:
-        out = await list_trigger_fields.coroutine(trigger_name="nope")
+        out = await list_trigger_fields.coroutine(trigger_name="nope")  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert "not a subscribable trigger" in out
         # The available triggers are listed comma-separated, not run together.
@@ -163,7 +166,7 @@ class TestSubscribe:
     async def test_it_registers_and_reports_the_subscription_id(self) -> None:
         register, subscription = self._register()
         with patch(f"{_MOD}.register_subscription", register):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name=GMAIL,
@@ -187,6 +190,87 @@ class TestSubscribe:
         # The two output lines are newline-joined, not run together.
         assert f"\nSubscription id: {subscription.id}" in out
 
+    @pytest.mark.parametrize(
+        ("runs_only_when", "gate"),
+        [
+            (
+                "The reply says the invoice is paid",
+                AuthoredGate(
+                    condition="The reply says the invoice is paid", author=GateAuthor.GAIA
+                ),
+            ),
+            (None, None),
+        ],
+        ids=["with-a-condition", "without"],
+    )
+    async def test_a_condition_is_registered_as_gaias_gate(
+        self, runs_only_when: str | None, gate: AuthoredGate | None
+    ) -> None:
+        register, _ = self._register()
+        with patch(f"{_MOD}.register_subscription", register):
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+                config=_config(),
+                todo_id=TODO_ID,
+                trigger_name=GMAIL,
+                action="execute",
+                runs_only_when=runs_only_when,
+            )
+
+        assert register.await_args.kwargs["gate"] == gate
+
+    async def test_a_condition_the_existing_twin_watch_lacks_is_reported_as_not_stored(
+        self,
+    ) -> None:
+        twin = _subscription()
+        register = AsyncMock(return_value=(twin, ValidationOutcome(), False))
+        with patch(f"{_MOD}.register_subscription", register):
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+                config=_config(),
+                todo_id=TODO_ID,
+                trigger_name=GMAIL,
+                action="execute",
+                runs_only_when="The reply says the invoice is paid",
+            )
+
+        assert out == (
+            f"Todo {TODO_ID} already watches {GMAIL} with these settings "
+            f"(subscription id: {twin.id}), so nothing new was stored and it still runs on "
+            "every event. To change its runs_only_when, unsubscribe it and subscribe again."
+        )
+
+    async def test_a_twin_watch_with_the_same_condition_reports_the_watch(self) -> None:
+        gate = AuthoredGate(condition="The reply says the invoice is paid", author=GateAuthor.GAIA)
+        twin = _subscription(gate=gate)
+        register = AsyncMock(return_value=(twin, ValidationOutcome(), False))
+        with patch(f"{_MOD}.register_subscription", register):
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+                config=_config(),
+                todo_id=TODO_ID,
+                trigger_name=GMAIL,
+                action="execute",
+                runs_only_when=gate.condition,
+            )
+
+        assert out.startswith(f"Todo {TODO_ID} is now watching {GMAIL}")
+
+    async def test_a_condition_longer_than_a_gate_holds_fails_the_args_schema(self) -> None:
+        register, _ = self._register()
+        with (
+            patch(f"{_MOD}.register_subscription", register),
+            pytest.raises(ValidationError, match="runs_only_when"),
+        ):
+            await subscribe_todo_to_trigger.ainvoke(
+                {
+                    "todo_id": TODO_ID,
+                    "trigger_name": GMAIL,
+                    "action": "execute",
+                    "runs_only_when": "x" * (TRIGGER_GATE_CONDITION_MAX_CHARS + 1),
+                },
+                config=_config(),
+            )
+
+        register.assert_not_awaited()
+
     async def test_a_watch_on_one_account_is_registered_with_gaias_id_for_it(self) -> None:
         register, _ = self._register()
         record = make_integration_record(
@@ -200,7 +284,7 @@ class TestSubscribe:
                 "app.services.todos.account_refs.get_account_record", AsyncMock(return_value=record)
             ) as lookup,
         ):
-            await subscribe_todo_to_trigger.coroutine(
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name=GMAIL,
@@ -220,7 +304,7 @@ class TestSubscribe:
                 "app.services.todos.account_refs.get_account_record", AsyncMock(return_value=record)
             ),
         ):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name=GMAIL,
@@ -234,7 +318,7 @@ class TestSubscribe:
     async def test_without_an_account_every_account_is_watched(self) -> None:
         register, _ = self._register()
         with patch(f"{_MOD}.register_subscription", register):
-            await subscribe_todo_to_trigger.coroutine(
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="notify"
             )
 
@@ -243,7 +327,7 @@ class TestSubscribe:
     async def test_no_conditions_is_allowed(self) -> None:
         register, _ = self._register()
         with patch(f"{_MOD}.register_subscription", register):
-            await subscribe_todo_to_trigger.coroutine(
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name="slack_new_message",
@@ -257,7 +341,7 @@ class TestSubscribe:
         # trigger is registered, so it cannot travel as a condition.
         register, _ = self._register()
         with patch(f"{_MOD}.register_subscription", register):
-            await subscribe_todo_to_trigger.coroutine(
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name="calendar_event_starting_soon",
@@ -273,7 +357,7 @@ class TestSubscribe:
         # missing from the scope union).
         register, _ = self._register()
         with patch(f"{_MOD}.register_subscription", register):
-            await subscribe_todo_to_trigger.coroutine(
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name="calendar_event_starting_soon",
@@ -291,7 +375,7 @@ class TestSubscribe:
         # whole subscription is rejected (regression: scope had no way in).
         register, _ = self._register()
         with patch(f"{_MOD}.register_subscription", register):
-            await subscribe_todo_to_trigger.coroutine(
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name="github_pr_event",
@@ -309,7 +393,7 @@ class TestSubscribe:
         # the account-level path stays "no trigger_data" rather than "empty config".
         register, _ = self._register()
         with patch(f"{_MOD}.register_subscription", register):
-            await subscribe_todo_to_trigger.coroutine(
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name=GMAIL,
@@ -324,7 +408,7 @@ class TestSubscribe:
         # instead of registering a watch against no resource.
         register = AsyncMock()
         with patch(f"{_MOD}.register_subscription", register):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(), todo_id=TODO_ID, trigger_name="github_pr_event", action="notify"
             )
 
@@ -335,7 +419,7 @@ class TestSubscribe:
     async def test_an_unknown_scope_key_is_rejected_before_registration(self) -> None:
         register = AsyncMock()
         with patch(f"{_MOD}.register_subscription", register):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name="github_pr_event",
@@ -351,7 +435,7 @@ class TestSubscribe:
         # model, space-separated (not run together or padded).
         register = AsyncMock()
         with patch(f"{_MOD}.register_subscription", register):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name="github_pr_event",
@@ -370,7 +454,7 @@ class TestSubscribe:
     async def test_no_calendar_window_sends_no_registration_config(self) -> None:
         register, _ = self._register()
         with patch(f"{_MOD}.register_subscription", register):
-            await subscribe_todo_to_trigger.coroutine(
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="execute"
             )
 
@@ -393,7 +477,7 @@ class TestSubscribe:
             f"{_MOD}.register_subscription",
             AsyncMock(return_value=(_subscription(), repaired, True)),
         ):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="execute"
             )
 
@@ -417,7 +501,7 @@ class TestSubscribe:
             f"{_MOD}.register_subscription",
             AsyncMock(return_value=(_subscription(), outcome, True)),
         ):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="execute"
             )
 
@@ -427,7 +511,7 @@ class TestSubscribe:
     async def test_a_rejection_carries_the_catalog_so_the_retry_can_be_right(self) -> None:
         failure = SubscriptionError("'recipient_domain' is not a matchable field.")
         with patch(f"{_MOD}.register_subscription", AsyncMock(side_effect=failure)):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name=GMAIL,
@@ -442,7 +526,7 @@ class TestSubscribe:
     async def test_an_invalid_action_is_rejected_with_the_valid_ones(self) -> None:
         register = AsyncMock()
         with patch(f"{_MOD}.register_subscription", register):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="explode"
             )
 
@@ -453,7 +537,7 @@ class TestSubscribe:
     async def test_an_invalid_match_mode_is_rejected_with_the_valid_ones(self) -> None:
         register = AsyncMock()
         with patch(f"{_MOD}.register_subscription", register):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name=GMAIL,
@@ -468,7 +552,7 @@ class TestSubscribe:
     async def test_an_invalid_operator_is_rejected_with_the_catalog(self) -> None:
         register = AsyncMock()
         with patch(f"{_MOD}.register_subscription", register):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name=GMAIL,
@@ -486,7 +570,7 @@ class TestSubscribe:
         # 'or value is None' arm of the guard is the only thing that catches it.
         register = AsyncMock()
         with patch(f"{_MOD}.register_subscription", register):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name=GMAIL,
@@ -502,7 +586,7 @@ class TestSubscribe:
         # it reaches typed-condition construction.
         register = AsyncMock()
         with patch(f"{_MOD}.register_subscription", register):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name=GMAIL,
@@ -516,7 +600,7 @@ class TestSubscribe:
     async def test_a_malformed_condition_is_rejected_not_raised(self) -> None:
         register = AsyncMock()
         with patch(f"{_MOD}.register_subscription", register):
-            out = await subscribe_todo_to_trigger.coroutine(
+            out = await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(),
                 todo_id=TODO_ID,
                 trigger_name=GMAIL,
@@ -542,13 +626,13 @@ class TestSubscribe:
 
     async def test_no_user_id_is_refused(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await subscribe_todo_to_trigger.coroutine(
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(None), todo_id=TODO_ID, trigger_name=GMAIL, action="execute"
             )
 
     async def test_a_config_with_no_metadata_is_refused(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await subscribe_todo_to_trigger.coroutine(
+            await subscribe_todo_to_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config={}, todo_id=TODO_ID, trigger_name=GMAIL, action="execute"
             )
 
@@ -557,7 +641,7 @@ class TestUnsubscribe:
     async def test_it_reports_what_stopped_being_watched(self) -> None:
         unregister = AsyncMock(return_value=_subscription())
         with patch(f"{_MOD}.unregister_subscription", unregister):
-            out = await unsubscribe_todo_from_trigger.coroutine(
+            out = await unsubscribe_todo_from_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(), todo_id=TODO_ID, subscription_id="sub-1"
             )
 
@@ -568,7 +652,7 @@ class TestUnsubscribe:
 
     async def test_an_unknown_subscription_says_so(self) -> None:
         with patch(f"{_MOD}.unregister_subscription", AsyncMock(return_value=None)):
-            out = await unsubscribe_todo_from_trigger.coroutine(
+            out = await unsubscribe_todo_from_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(), todo_id=TODO_ID, subscription_id="nope"
             )
 
@@ -576,13 +660,13 @@ class TestUnsubscribe:
 
     async def test_no_user_id_is_refused(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await unsubscribe_todo_from_trigger.coroutine(
+            await unsubscribe_todo_from_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_config(None), todo_id=TODO_ID, subscription_id="sub-1"
             )
 
     async def test_a_config_with_no_metadata_is_refused(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await unsubscribe_todo_from_trigger.coroutine(
+            await unsubscribe_todo_from_trigger.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config={}, todo_id=TODO_ID, subscription_id="sub-1"
             )
 

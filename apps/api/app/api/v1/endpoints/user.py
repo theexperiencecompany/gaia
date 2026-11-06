@@ -12,13 +12,18 @@ from fastapi import (
     UploadFile,
 )
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
+from app.api.v1.dependencies.oauth_dependencies import (
+    get_current_user,
+    get_user_id,
+    get_user_timezone_from_preferences,
+)
 from app.config.settings import settings
 from app.config.workos import get_workos_client
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.chat_channel_models import ChannelPriorityList
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     AuthenticatedUser,
     AuthenticatedUserResponse,
@@ -38,7 +43,7 @@ from app.services.delivery.chat_channel import (
     set_chat_channel_priority,
 )
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
-from app.services.user_service import update_user_profile
+from app.services.user_service import get_quiet_hours, set_quiet_hours, update_user_profile
 from app.utils.auth_utils import clear_session_cookie
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
 from app.utils.timezone import is_valid_timezone
@@ -60,11 +65,9 @@ _AUTH_PATH_FLAGS = ("impersonated", "bot_authenticated", "dev_bypass")
 @router.get("/me", response_model_exclude_none=True)
 async def get_me(
     user: AuthenticatedUser = Depends(get_current_user),
+    home_timezone: str = Depends(get_user_timezone_from_preferences),
 ) -> AuthenticatedUserResponse:
-    """
-    Returns the current authenticated user's details.
-    Uses the dependency injection to fetch user data.
-    """
+    """Return the signed-in user; the app's session load also stores the browser's zone when none is saved."""
     onboarding_status = await get_user_onboarding_status(user.user_id)
 
     log.set(
@@ -87,6 +90,7 @@ async def get_me(
     response = AuthenticatedUserResponse.model_validate(
         {
             **user.model_dump(exclude=set(_AUTH_PATH_FLAGS)),
+            "timezone": home_timezone,
             **flags,
             "message": "User retrieved successfully",
             "onboarding": onboarding_status,
@@ -459,3 +463,20 @@ async def update_chat_channel_priority(
     await set_chat_channel_priority(user_id, body.priority)
     log.audit("chat channel priority updated", actor=user_id, priority=body.priority)
     return body
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/quiet-hours")
+async def read_quiet_hours(user_id: str = Depends(get_user_id)) -> QuietHours:
+    """The local hours in which GAIA holds what can wait for the morning."""
+    log.set(user={"id": user_id}, operation="read_quiet_hours")
+    return await get_quiet_hours(user_id)
+
+
+@router.patch("/quiet-hours")
+async def update_quiet_hours(body: QuietHours, user_id: str = Depends(get_user_id)) -> QuietHours:
+    """Store the user's quiet hours and echo what was saved."""
+    log.set(user={"id": user_id}, operation="update_quiet_hours")
+    saved = await set_quiet_hours(user_id, body)
+    log.audit("quiet hours updated", actor=user_id, quiet_hours=saved.model_dump())
+    return saved

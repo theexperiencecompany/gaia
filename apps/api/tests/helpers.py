@@ -58,6 +58,7 @@ from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
@@ -188,12 +189,17 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
             AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
         ),
         patch(f"{gate}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
-        patch(f"{gate}.ENFORCED_GATE_KINDS", frozenset(GateKind)),
+        patch("app.models.trigger_gate_models.ENFORCED_GATE_KINDS", frozenset(GateKind)),
         patch(f"{gate}.capture", MagicMock()) as capture,
         patch(f"{gate}.get_profile_timezone", AsyncMock(return_value=tz)) as profile_tz,
+        patch(
+            f"{gate}.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)
+        ) as quiet_hours,
         patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
-        patch(f"{gate}.todo_repository.remember_subscription_gate_skip", AsyncMock()) as todo_skip,
-        patch(f"{gate}.workflow_repository.remember_gate_skip", AsyncMock()) as workflow_skip,
+        patch(f"{gate}.workflow_repository.remember_gate_skip", AsyncMock()) as workflow_skips,
+        patch(
+            f"{gate}.todo_repository.remember_subscription_gate_skip", AsyncMock()
+        ) as watch_skips,
     ):
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
@@ -202,9 +208,10 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
             enforced=enforced,
             capture=capture,
             tz=profile_tz,
+            quiet_hours=quiet_hours,
             wrote=wrote,
-            todo_skip=todo_skip,
-            workflow_skip=workflow_skip,
+            workflow_skips=workflow_skips,
+            watch_skips=watch_skips,
         )
 
 
