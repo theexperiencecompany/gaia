@@ -34,6 +34,7 @@ TODO_CONTEXT_MARKER = "todo_context"
 EXECUTOR_STATUS_MARKER = "executor_status"
 BROWSER_TASK_MARKER = "browser_task"
 TIME_CONTEXT_MARKER = "time_context"
+#: Written only by the retired onboarding prompt; replayed checkpoints still carry it.
 ONBOARDING_MARKER = "onboarding_context"
 
 #: Stamped on the surface-change note GAIA writes into the thread. The note

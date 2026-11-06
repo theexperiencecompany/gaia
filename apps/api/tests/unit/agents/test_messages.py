@@ -21,13 +21,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.context.assemble import AssembledContext
-from app.agents.context.slots import ONBOARDING_MARKER
 from app.agents.context.tiers import AgentTier
 from app.agents.core.messages import (
     MessageAttachments,
     MessageScope,
     construct_langchain_messages,
 )
+from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -35,6 +35,7 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
+from app.models.workflow_models import WorkflowStep
 
 SYSTEM_MSG = SystemMessage(content="System prompt here")
 DYNAMIC_MSG = SystemMessage(
@@ -265,7 +266,7 @@ class TestContentPriority:
             id="wf-1",
             title="Test WF",
             description="desc",
-            steps=[{"title": "s1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="s1", category="c1", description="d1")],
         )
         p = _patches(_Returns(workflow_msg="WORKFLOW OUTPUT"))
         with (
@@ -292,8 +293,8 @@ class TestContentPriority:
             id="e-1",
             summary="Meeting",
             description="Team sync",
-            start={"dateTime": "2025-01-01T10:00:00Z"},
-            end={"dateTime": "2025-01-01T11:00:00Z"},
+            start=GoogleCalendarEventDateTime(dateTime="2025-01-01T10:00:00Z"),
+            end=GoogleCalendarEventDateTime(dateTime="2025-01-01T11:00:00Z"),
         )
         p = _patches(_Returns(calendar_msg="CALENDAR OUTPUT"))
         with (
@@ -565,7 +566,7 @@ class TestTriggerContext:
             id="wf-1",
             title="Email WF",
             description="desc",
-            steps=[{"title": "s1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="s1", category="c1", description="d1")],
         )
         trigger = {"type": "gmail", "email_data": {"sender": "a@b.com"}}
         p = _patches()
@@ -585,45 +586,25 @@ class TestTriggerContext:
         assert call_args[0][2] == trigger
 
 
-class TestTheOnboardingProbeSeesTheUsersActualMessage:
-    """The probe must receive the user's LATEST message, trimmed — not the first, not the assistant's reply."""
-
-    @staticmethod
-    def _probe() -> Any:
-        return patch(
-            "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-            new_callable=AsyncMock,
-            return_value=None,
-        )
+class TestTheCommsContextKnowsWhereTheTurnIs:
+    """The new-user guidance reads the seeded thread and the mail facts off these two fields."""
 
     @pytest.mark.asyncio
-    async def test_it_receives_the_latest_user_message_trimmed(self) -> None:
+    async def test_the_conversation_and_the_onboarding_record_reach_the_sections(self) -> None:
+        onboarding = OnboardingSubdocument(completed=True, user_bio="Runs ops at a bakery.")
         p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
+        with p["create_system"], p["build_dynamic"] as assemble, p["format_files"]:
             await construct_langchain_messages(
-                query="  what can you do?  ",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
+                query="hi",
+                scope=MessageScope(
+                    user_id="uid-1",
+                    conversation_id="conv-1",
+                    user_dict=AuthenticatedUser(user_id="uid-1", onboarding=onboarding),
+                ),
             )
 
-        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="what can you do?")
-
-    @pytest.mark.asyncio
-    async def test_a_tool_only_turn_carries_no_user_message(self) -> None:
-        p = _patches()
-        with (
-            p["create_system"],
-            p["build_dynamic"],
-            p["format_files"],
-            p["format_tool"],
-            self._probe() as probe,
-        ):
-            await construct_langchain_messages(
-                query="",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-                attachments=MessageAttachments(selected_tool="gmail"),
-            )
-
-        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="")
+        ctx = assemble.await_args.args[0]
+        assert (ctx.conversation_id, ctx.onboarding) == ("conv-1", onboarding)
 
     @pytest.mark.asyncio
     async def test_a_turn_with_neither_a_message_nor_a_tool_is_refused(self) -> None:
@@ -637,94 +618,6 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
                     query="",
                     scope=MessageScope(user_id="uid-1"),
                 )
-
-    @pytest.mark.asyncio
-    async def test_a_turn_outside_a_conversation_is_never_probed(self) -> None:
-        """Without a conversation there is no onboarding state to read, so the Mongo probe would query nothing."""
-        p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
-            await construct_langchain_messages(
-                query="hi",
-                scope=MessageScope(user_id="uid-1"),
-            )
-
-        probe.assert_not_awaited()
-
-
-class TestAnOnboardingTurnKeepsBothItsPromptAndTheUsersIdentity:
-    """The onboarding prompt now has its own slot, arriving beside identity rather than instead of it.
-
-    It used to be stamped memory_message — the stable block's own marker — and
-    emitted after it, so the single-occupant slot kept the prompt and dropped
-    the identity block, losing name, timezone, preferences and integrations.
-    """
-
-    PROMPT = "Welcome! Ask about their inbox."
-
-    def _probe(self) -> Any:
-        return patch(
-            "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-            new_callable=AsyncMock,
-            return_value=self.PROMPT,
-        )
-
-    async def _run(self) -> list[Any]:
-        p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe():
-            return await construct_langchain_messages(
-                query="hi",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-            )
-
-    @pytest.mark.asyncio
-    async def test_the_prompt_reaches_the_model_verbatim(self) -> None:
-        onboarding = [
-            m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
-        ]
-
-        assert len(onboarding) == 1
-        assert onboarding[0].content == self.PROMPT
-
-    @pytest.mark.asyncio
-    async def test_the_identity_block_is_still_there(self) -> None:
-        assert DYNAMIC_MSG in await self._run()
-
-    @pytest.mark.asyncio
-    async def test_the_prompt_does_not_claim_the_stable_blocks_slot(self) -> None:
-        """Carrying memory_message is what made it evict identity; the pruning node keeps only the latest holder."""
-        (onboarding,) = [
-            m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
-        ]
-
-        assert onboarding.additional_kwargs.get("memory_message") is not True
-        assert onboarding.additional_kwargs.get("dynamic_context") is not True
-
-    @pytest.mark.asyncio
-    async def test_it_follows_the_stable_block_rather_than_replacing_it(self) -> None:
-        result = await self._run()
-        onboarding = next(m for m in result if m.additional_kwargs.get(ONBOARDING_MARKER) is True)
-
-        assert result.index(onboarding) > result.index(DYNAMIC_MSG)
-
-    @pytest.mark.asyncio
-    async def test_an_ordinary_turn_carries_no_onboarding_message(self) -> None:
-        p = _patches()
-        with (
-            p["create_system"],
-            p["build_dynamic"],
-            p["format_files"],
-            patch(
-                "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-        ):
-            result = await construct_langchain_messages(
-                query="hi",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-            )
-
-        assert not [m for m in result if m.additional_kwargs.get(ONBOARDING_MARKER)]
 
 
 class TestTheClockIsRenderedInTheUsersTimezone:
