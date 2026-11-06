@@ -22,7 +22,9 @@ from app.constants.cache import RUN_RECORD_PREFIX, RUN_RECORD_TTL
 from app.models.workflow_execution_models import RecordedCall
 
 STREAM_ID = "stream-invocation"
-CONFIG: RunnableConfig = {"configurable": {"stream_id": STREAM_ID, "subagent_id": "todos_agent"}}
+CONFIG: RunnableConfig = {
+    "configurable": {"stream_id": STREAM_ID, "subagent_id": "todos_agent", "workflow_id": "wf_1"}
+}
 
 
 @tool
@@ -112,6 +114,13 @@ async def test_the_execute_proxy_itself_is_not_recorded(fake_redis: Any) -> None
 async def test_a_call_outside_any_run_records_nothing(fake_redis: Any) -> None:
     await invoke_tool(answers, {"query": "q"}, {"configurable": {}})
     await invoke_tool(answers, {"query": "q"})
+
+    assert await fake_redis.keys(f"{RUN_RECORD_PREFIX}*") == []
+
+
+async def test_a_chat_run_records_nothing(fake_redis: Any) -> None:
+    """Only a workflow run reads its record back, so a chat's calls never reach Redis."""
+    await invoke_tool(answers, {"query": "q"}, {"configurable": {"stream_id": STREAM_ID}})
 
     assert await fake_redis.keys(f"{RUN_RECORD_PREFIX}*") == []
 
@@ -325,3 +334,9 @@ def test_a_sync_call_that_raises_is_recorded_as_failed_and_still_raises(
         True,
         "Error: RuntimeError: no q",
     )
+
+
+def test_a_sync_chat_run_records_nothing(sync_redis: fakeredis.FakeRedis) -> None:
+    invoke_tool_sync(answers_sync, {"query": "q"}, {"configurable": {"stream_id": STREAM_ID}})
+
+    assert sync_redis.keys(f"{RUN_RECORD_PREFIX}*") == []

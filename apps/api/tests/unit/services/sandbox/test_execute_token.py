@@ -31,13 +31,20 @@ def _secret():
 class TestExecuteToken:
     def test_round_trip_preserves_claims(self) -> None:
         token = mint_execute_token(
-            ExecuteGrant(user_id="u1", run_id="run-9", stream_id="s7", scoped_tool_names=None),
+            ExecuteGrant(
+                user_id="u1",
+                run_id="run-9",
+                stream_id="s7",
+                workflow_id="wf7",
+                scoped_tool_names=None,
+            ),
             ttl_seconds=60,
         )
         claims = verify_execute_token(token)
         assert claims.user_id == "u1"
         assert claims.run_id == "run-9"
         assert claims.stream_id == "s7"
+        assert claims.workflow_id == "wf7"
 
     def test_tampered_signature_is_rejected(self) -> None:
         token = mint_execute_token(

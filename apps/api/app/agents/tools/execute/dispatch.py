@@ -79,16 +79,22 @@ def dispatch_config_for(
     run_config: RunnableConfig | None = None,
     *,
     stream_id: str | None = None,
+    workflow_id: str | None = None,
 ) -> RunnableConfig:
     """Run config carrying the caller's identity in configurable AND metadata, which wrappers split.
 
     Layered onto run_config when the call happens inside a graph run, so the tool
     keeps that run's stream writer, stream and surface; a ledger redeem without it
-    crashed on get_stream_writer. stream_id names the run a call outside any graph
-    (a sandbox script's callback) belongs to, so it lands in that run's record.
+    crashed on get_stream_writer. stream_id and workflow_id name the run a call
+    outside any graph (a sandbox script's callback) belongs to, so a workflow
+    run's call lands in its record.
     """
     config: RunnableConfig = run_config.copy() if run_config is not None else {}
-    run = {"stream_id": stream_id} if stream_id else {}
+    run = {
+        key: value
+        for key, value in (("stream_id", stream_id), ("workflow_id", workflow_id))
+        if value
+    }
     config["configurable"] = {**config.get("configurable", {}), "user_id": user_id, **run}
     config["metadata"] = {**config.get("metadata", {}), "user_id": user_id}
     return config

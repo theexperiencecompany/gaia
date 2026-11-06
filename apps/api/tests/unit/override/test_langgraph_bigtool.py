@@ -1018,7 +1018,7 @@ class TestSelectTools:
             tools_config=ToolRetrievalConfig(retrieve_tools_function=my_func),
         )
         select_node = _sync_tool_calls_node(builder, "select_tools")
-        config = _make_config(user_id="u1", stream_id="stream-select")
+        config = _make_config(user_id="u1", stream_id="stream-select", workflow_id="wf-1")
 
         select_node.func([{"id": "tc1", "args": {"query": "mail"}}], config, store=MagicMock())
 
@@ -1042,7 +1042,7 @@ class TestSelectTools:
             tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=my_coro),
         )
         select_node = _async_tool_calls_node(builder, "select_tools")
-        config = _make_config(user_id="u1", stream_id="stream-select")
+        config = _make_config(user_id="u1", stream_id="stream-select", workflow_id="wf-1")
 
         await select_node.afunc(
             [{"id": "tc1", "args": {"query": "mail"}}], config, store=MagicMock()

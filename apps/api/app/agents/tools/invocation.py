@@ -132,12 +132,13 @@ def _recorded(
     *,
     failed: bool,
 ) -> tuple[str, RecordedCall] | None:
-    """Return (stream id, call) for a call that belongs to a run, else None."""
+    """Return (stream id, call) for a call that belongs to a workflow run, else None."""
     if tool.name == EXECUTE_TOOL_NAME or config is None:
         return None
     configurable: AgentConfigurable = agent_configurable(config)
     stream_id = configurable.get("stream_id")
-    if not stream_id:
+    # Only a workflow run reads its record back; a chat's calls are never kept.
+    if not stream_id or not configurable.get("workflow_id"):
         return None
     digest = build_result_digest(_as_text(_result_payload(output)))
     call = RecordedCall(
