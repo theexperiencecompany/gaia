@@ -460,48 +460,8 @@ def _rest_result(
         return {
             "data": {"messages": [state.project(m, True) for m in matches], "next_page_token": None}
         }
-    if tool_name == "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID":
-        message = state.message(str(params.get("message_id") or ""))
-        if message is None:
-            return {"successful": False, "error": f"message not found: {params.get('message_id')}"}
-        return {"message": state.project(message, True)}
-    if tool_name == "GMAIL_FETCH_MESSAGE_BY_THREAD_ID":
-        thread_id = str(params.get("thread_id") or "")
-        return {"messages": [state.project(m, True) for m in state.messages_in_thread(thread_id)]}
-    if tool_name in ("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL_REMOVE_LABEL"):
-        add = tool_name == "GMAIL_ADD_LABEL_TO_EMAIL"
-        return {"messages": _apply_labels(state, params, add=add)}
     if tool_name in ("GMAIL_SEND_EMAIL", "GMAIL_REPLY_TO_THREAD", "GMAIL_SEND_DRAFT"):
         return _rest_send(state, tool_name, params)
-    return _rest_metadata_result(state, tool_name, params)
-
-
-def _rest_metadata_result(
-    state: _MailboxState, tool_name: str, params: dict[str, object]
-) -> dict[str, object]:
-    """Dispatch the draft/label/profile half of the REST seam's tools."""
-    if tool_name == "GMAIL_CREATE_EMAIL_DRAFT":
-        draft_id = f"draft_{uuid.uuid4().hex[:8]}"
-        state.drafts.append(
-            {
-                "id": draft_id,
-                "to": _recipients(params),
-                "subject": str(params.get("subject") or ""),
-                "body": str(params.get("body") or ""),
-            }
-        )
-        return {"id": draft_id}
-    if tool_name == "GMAIL_LIST_LABELS":
-        known = sorted(_BASE_LABELS | state.applied_labels)
-        return {"labels": [{"id": label, "name": label} for label in known]}
-    if tool_name == "GMAIL_CREATE_LABEL":
-        name = str(params.get("name") or "")
-        state.applied_labels.add(name)
-        return {"id": name}
-    if tool_name == "GMAIL_GET_PROFILE":
-        return {"data": {"emailAddress": "user@gaia.local"}}
-    if tool_name in ("GMAIL_TRASH_MESSAGE", "GMAIL_UNTRASH_MESSAGE"):
-        return {"data": {"success": True}}
     raise RuntimeError(f"capability gmail fake: no REST handler for {tool_name!r}")
 
 

@@ -511,7 +511,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_svLPDmjcTVMX",
             toolkit="GMAIL",
-            toolkit_version="20260107_00",
+            toolkit_version="20261105_00",
         ),
         destructive_tools=GMAIL_DESTRUCTIVE_TOOLS,
         associated_triggers=[
@@ -585,7 +585,15 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "GMAIL_GET_CONTACT_LIST",
             ],
             extra_initial_tools=["query_json", "grep"],
-            exclude_tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
+            exclude_tools=[
+                "GMAIL_FETCH_EMAILS",
+                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+                # Filters need gmail.settings.basic, which the Gmail connection does not grant: 403.
+                "GMAIL_CREATE_FILTER",
+                "GMAIL_DELETE_FILTER",
+                "GMAIL_GET_FILTER",
+                "GMAIL_LIST_FILTERS",
+            ],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
         metadata_config=ProviderMetadataConfig(

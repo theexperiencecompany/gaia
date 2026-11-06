@@ -897,6 +897,11 @@ class TestProcessUpdatesPayload:
 # ---------------------------------------------------------------------------
 
 
+# The thread _make_ctx gives a run, as build_agent_config stamps it on that run's chunks.
+_OWN: dict[str, object] = {"agent_thread_id": "t1"}
+_SPAWN_THREAD = "spawn_conv_call_1"
+
+
 class TestConsumeStreamEvent:
     """The "messages" branch hands the run and the payload to the handler, which decides where the chunk's output is routed."""
 
@@ -937,6 +942,58 @@ class TestConsumeStreamEvent:
         assert writer.call_args == call(
             {"tool_output": {"tool_call_id": "tc-1", "output": "3 unread", "subagent_id": "sub-1"}}
         )
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_a_spawned_subagents_finish_is_never_the_runs_answer(self):
+        """Regression: a desk's briefing was dropped and its subagent's finish_task result delivered instead."""
+        run = _make_run()
+
+        await _consume_stream_event(
+            run,
+            "messages",
+            (
+                ToolMessage(content="thread: 1a2b | ...", tool_call_id="tc-9", name="finish_task"),
+                {"agent_thread_id": _SPAWN_THREAD},
+            ),
+        )
+        await _consume_stream_event(
+            run, "messages", (AIMessageChunk(content="2 need you", id="m-1"), _OWN)
+        )
+
+        assert run.complete_message == "2 need you"
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_a_spawned_subagents_reply_is_never_part_of_the_runs_answer(self):
+        """Regression: a desk's subagents' replies were delivered glued in front of its briefing."""
+        run = _make_run()
+
+        await _consume_stream_event(
+            run,
+            "messages",
+            (
+                AIMessageChunk(content="fetched_at: 1793963246", id="m-9"),
+                {"agent_thread_id": _SPAWN_THREAD},
+            ),
+        )
+        await _consume_stream_event(
+            run, "messages", (AIMessageChunk(content="2 need you", id="m-1"), _OWN)
+        )
+
+        assert run.complete_message == "2 need you"
+
+    @pytest.mark.asyncio
+    async def test_the_runs_own_finish_is_its_answer(self):
+        run = _make_run()
+
+        await _consume_stream_event(
+            run,
+            "messages",
+            (ToolMessage(content="the answer", tool_call_id="tc-1", name="finish_task"), _OWN),
+        )
+
+        assert run.complete_message == "the answer"
 
 
 # ---------------------------------------------------------------------------

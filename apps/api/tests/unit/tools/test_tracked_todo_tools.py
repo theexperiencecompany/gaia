@@ -10,10 +10,12 @@ tracked_todo_tools.py; the tests here pin the fix down.
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from zoneinfo import ZoneInfo
 
 from bson.errors import InvalidId
+from langchain_core.tools import StructuredTool
 from pydantic import ValidationError
 import pytest
 import time_machine
@@ -98,6 +100,13 @@ def _config(user_id: str | None = "user-1") -> dict:
 # ---------------------------------------------------------------------------
 # parse_iso_future_datetime / build_scheduled_at_update — tz-naive crash bug
 # ---------------------------------------------------------------------------
+
+
+async def _create_tracked(**kwargs: object) -> str:
+    """Call create_tracked_todo's coroutine directly, as the tool it is."""
+    created = cast(StructuredTool, create_tracked_todo)
+    assert created.coroutine is not None
+    return cast(str, await created.coroutine(**kwargs))
 
 
 class TestParseIsoFutureDatetime:
@@ -401,9 +410,9 @@ class TestBuildRecurrenceUpdate:
 
 class TestBuildListDetailParts:
     def _doc(self, **overrides) -> TodoDocument:
-        base = {"user_id": "u1", "title": "t"}
+        base: dict[str, object] = {"user_id": "u1", "title": "t"}
         base.update(overrides)
-        return TodoDocument(**base)
+        return TodoDocument.model_validate(base)
 
     def test_overdue_due_date_is_flagged(self):
         now = datetime.now(UTC)
@@ -1151,9 +1160,9 @@ class TestApplyCronFirstFire:
 
 class TestBuildListDetailPartsScheduling:
     def _doc(self, **overrides) -> TodoDocument:
-        base = {"user_id": "u1", "title": "t"}
+        base: dict[str, object] = {"user_id": "u1", "title": "t"}
         base.update(overrides)
-        return TodoDocument(**base)
+        return TodoDocument.model_validate(base)
 
     def test_scheduled_at_is_shown(self):
         now = datetime.now(UTC)
@@ -1375,9 +1384,9 @@ class TestSearchTodoContext:
 
 class TestUpdateTrackedTodoSuccess:
     def _existing_doc(self, **overrides) -> TodoDocument:
-        base = {"id": "t1", "user_id": "user-1", "title": "t"}
+        base: dict[str, object] = {"id": "t1", "user_id": "user-1", "title": "t"}
         base.update(overrides)
-        return TodoDocument(**base)
+        return TodoDocument.model_validate(base)
 
     async def test_clearing_recurrence_on_an_unscheduled_todo_persists_the_clear(self):
         existing = self._existing_doc(recurrence="daily")
@@ -1630,7 +1639,7 @@ class TestCreateTrackedTodoSuccess:
             "updated_at": now,
         }
         base.update(overrides)
-        return TodoResponse(**base)
+        return TodoResponse.model_validate(base)
 
     async def test_create_without_scheduling_returns_confirmation(self):
         with patch(
@@ -1829,9 +1838,7 @@ class TestCreateThreadTrackedTodo:
     @classmethod
     async def _refused_for(cls, holder: TodoDocument) -> str:
         with patch(cls._CREATE, new_callable=AsyncMock, side_effect=ExternalRefTakenError(holder)):
-            return await create_tracked_todo.coroutine(
-                config=_config(), title="t", gmail_thread_id="abc"
-            )
+            return await _create_tracked(config=_config(), title="t", gmail_thread_id="abc")
 
     async def test_the_thread_id_becomes_the_todo_ref(self):
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
@@ -1848,7 +1855,7 @@ class TestCreateThreadTrackedTodo:
             make_integration_account("ca_work"), user_id="user-1"
         )
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(config=_config(), title="t", gmail_thread_id="abc")
+            await _create_tracked(config=_config(), title="t", gmail_thread_id="abc")
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
             source=ExternalRefSource.GMAIL_THREAD, id="abc", account="ca_work"
         )
@@ -1863,7 +1870,7 @@ class TestCreateThreadTrackedTodo:
             user_id="user-1",
         )
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(
+            await _create_tracked(
                 config=_config(), title="t", gmail_thread_id="abc", gmail_account="personal"
             )
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
@@ -1895,7 +1902,7 @@ class TestCreateThreadTrackedTodo:
             user_id="user-1",
         )
         with patch(self._CREATE, new_callable=AsyncMock) as create:
-            result = await create_tracked_todo.coroutine(
+            result = await _create_tracked(
                 config=_config(), title="t", gmail_thread_id="abc", gmail_account=gmail_account
             )
         assert result == refusal
@@ -2229,7 +2236,26 @@ class TestSubTodoTools:
             "parent_todo_id": self.DESK,
             "notify_on_run": False,
         }
-        assert result == "Updated tracked todo t1: notify_on_run, parent_todo_id"
+        assert result == "Updated tracked todo t1: parent_todo_id, notify_on_run"
+
+    async def test_a_thread_todo_moved_under_a_parent_still_tells_the_user(self):
+        """A thread's news cannot wait for its parent's next run, so moving it keeps it speaking."""
+        existing = TodoDocument(
+            id="t1",
+            user_id="user-1",
+            title="Reply to Sam",
+            external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611"),
+        )
+        with (
+            patch(self._GET, AsyncMock(return_value=existing)),
+            patch(self._REQUIRE, AsyncMock()),
+            patch(self._UPDATE, AsyncMock(return_value=existing)) as update,
+        ):
+            await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", parent_todo_id=self.DESK
+            )
+
+        assert update.await_args.kwargs["update"].notify_on_run is True
 
     async def test_a_parent_completed_mid_move_rolls_the_move_back(self, recorded_changes):
         moving = TodoDocument(

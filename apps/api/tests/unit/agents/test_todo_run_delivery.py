@@ -30,6 +30,7 @@ from app.models.trigger_subscription_models import (
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
@@ -91,14 +92,14 @@ def _seams(
         patch.object(trd, "todo_repository", repo),
         patch.object(trd, "record_run_finished", seams.activity),
         patch.object(trd, "capture", seams.capture),
-        patch.object(trd.notification_service, "create_notification", seams.in_app),
+        patch.object(notification_service, "create_notification", seams.in_app),
     ):
         yield seams
 
 
 def _todo(**fields: object) -> TodoDocument:
-    return TodoDocument(
-        **{"id": "todo-1", "user_id": USER_ID, "title": "Watch the deploy", **fields}
+    return TodoDocument.model_validate(
+        {"id": "todo-1", "user_id": USER_ID, "title": "Watch the deploy", **fields}
     )
 
 
@@ -225,7 +226,9 @@ class TestABriefingThatOwnsItsForm:
         seams.in_app.assert_not_awaited()
         assert seams.event().outcome == "silenced"
 
-    async def test_a_thread_todos_result_is_still_written_up_by_comms(self) -> None:
+    @pytest.mark.regression
+    async def test_a_thread_todos_alert_reaches_the_user_as_written(self) -> None:
+        """Regression: comms retold a thread's one-email alert, dropping its who, what and where."""
         thread = _todo(
             external_ref=todo_models.ExternalRef(
                 source=todo_models.ExternalRefSource.GMAIL_THREAD, id="t1"
@@ -234,7 +237,7 @@ class TestABriefingThatOwnsItsForm:
         with _seams(todo=thread) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
-        assert seams.in_app.await_args.args[0].content.body == "Deploy failed."
+        assert seams.in_app.await_args.args[0].content.body == "report"
 
 
 class TestAOneTimeTodoAlwaysAnswers:

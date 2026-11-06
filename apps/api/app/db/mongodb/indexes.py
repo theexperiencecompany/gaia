@@ -92,7 +92,6 @@ async def create_all_indexes() -> None:
             create_project_indexes(),
             create_note_indexes(),
             create_file_indexes(),
-            create_mail_indexes(),
             create_calendar_indexes(),
             create_blog_indexes(),
             create_notification_indexes(),
@@ -136,7 +135,6 @@ async def create_all_indexes() -> None:
             "projects",
             "notes",
             "files",
-            "mail",
             "calendar",
             "blog",
             "notifications",
@@ -470,25 +468,6 @@ async def create_file_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating file indexes", error=str(e), error_type=type(e).__name__
-        )
-        raise
-
-
-async def create_mail_indexes() -> None:
-    """Create indexes for mail collection."""
-    mail_collection = get_async_collection("mail")
-    try:
-        # Create all mail indexes concurrently
-        await asyncio.gather(
-            # Unique index for email IDs
-            mail_collection.create_index([("user_id", 1)]),
-            # For thread-based queries
-            mail_collection.create_index([("message_id", 1)]),
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.MONGO} Error creating mail indexes", error=str(e), error_type=type(e).__name__
         )
         raise
 

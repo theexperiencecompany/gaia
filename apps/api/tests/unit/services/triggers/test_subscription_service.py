@@ -13,10 +13,8 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
-from app.constants.trigger_gates import SystemGatePreset
 from app.models.todo_models import TodoDocument
 from app.models.trigger_configs import CalendarEventStartingSoonConfig
-from app.models.trigger_gate_models import SystemGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
@@ -155,25 +153,6 @@ class TestRegisterSubscription:
         assert subscription.resolution is SubscriptionResolution.ACCOUNT
         assert subscription.composio_trigger_ids == []
         assert h.added == subscription
-
-    @pytest.mark.parametrize(
-        "gate", [SystemGate(preset=SystemGatePreset.INBOX_DESK), None], ids=["gated", "ungated"]
-    )
-    async def test_the_watch_is_stored_with_the_gate_it_was_given(
-        self, gate: SystemGate | None
-    ) -> None:
-        with _Harness(_todo(), []) as h:
-            subscription, _, _ = await register_subscription(
-                todo_id=TODO_ID,
-                user_id=USER_ID,
-                trigger_name=ACCOUNT_TRIGGER,
-                conditions=[],
-                action=SubscriptionAction.EXECUTE,
-                gate=gate,
-            )
-
-        assert h.added.gate == gate
-        assert subscription.gate == gate
 
     async def test_a_new_watch_is_on_the_todos_timeline(self, activity: AsyncMock) -> None:
         with _Harness(_todo(), []):
