@@ -1,10 +1,11 @@
-"""Trigger gates: the one JEV call made about a fired event before it costs a run.
+"""Trigger gates: the one JEV question asked about a fired event before it costs a run.
 
 The desk preset is the trigger-gate eval's V4 request, byte for byte (420
-founder-labelled emails, 0 needs_you false skips on the holdout). Skip only at
-P(not_needed) >= 0.95; every other answer, and every failure, runs. Inside the
+founder-labelled emails; 0 needs_you false skips on the raw holdout, 2 on its
+anonymised text). Each event is asked three times and skips only at P(not_needed)
+>= 0.95 on all three; every other answer, and every failure, runs. Inside the
 user's quiet hours the same call also asks the eval's urgent question: wake the
-user only at P(urgent) >= 0.80, and hold the rest, every failure included.
+user only at a median P(urgent) >= 0.80, and hold the rest, every failure included.
 """
 
 from collections.abc import Mapping
@@ -119,6 +120,9 @@ class SystemGateSpec:
 
 
 TRIGGER_GATE_SKIP_PROBABILITY: Final = 0.95
+# Each event is asked this many times at once: it skips only when every answer is past the line,
+# and wakes the user only when most answers are; one failed answer fails the decision open.
+TRIGGER_GATE_JEV_SAMPLES: Final = 3
 # p95 measured at 370 ms; a slower answer runs the job as if the gate were not there.
 TRIGGER_GATE_JEV_TIMEOUT_SECONDS: Final = 3.0
 TRIGGER_GATE_CONDITION_MAX_CHARS: Final = 300
