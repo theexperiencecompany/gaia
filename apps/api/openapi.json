@@ -7207,6 +7207,20 @@
             "title": "At",
             "type": "string"
           },
+          "certainty": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How sure GAIA was the event did not match; None on skips kept before it was",
+            "title": "Certainty"
+          },
           "event": {
             "description": "The skipped event as a person reads it: an email's sender and subject",
             "title": "Event",

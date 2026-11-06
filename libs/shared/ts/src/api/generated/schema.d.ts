@@ -9656,6 +9656,11 @@ export interface components {
              */
             at: string;
             /**
+             * Certainty
+             * @description How sure GAIA was the event did not match; None on skips kept before it was
+             */
+            certainty?: number | null;
+            /**
              * Event
              * @description The skipped event as a person reads it: an email's sender and subject
              */

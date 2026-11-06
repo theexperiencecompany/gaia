@@ -6,7 +6,7 @@ import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import type React from "react";
-import { PanelRowGroup } from "@/components/shared/PanelRow";
+import { PanelRowGroup } from "@/components/shared/PanelRowGroup";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import CanvasViewer from "@/features/todo/components/CanvasViewer";
@@ -94,6 +94,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                       key={`${subscription.id}:${subscription.gate.display_condition}`}
                       todoId={todo.id}
                       subscriptionId={subscription.id}
+                      triggerName={subscription.trigger_name}
                       gate={subscription.gate}
                     />
                   ),

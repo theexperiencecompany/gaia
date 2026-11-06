@@ -21,6 +21,9 @@ vi.mock("@/stores/todoStore", () => ({
 import { SubscriptionGateLine } from "@/features/todo/components/SubscriptionGateLine";
 import { makeTodo } from "./fixtures/todo";
 
+const openDetail = () =>
+  fireEvent.click(screen.getByRole("button", { name: /only when/i }));
+
 const BILLING = "the email is from a customer about billing";
 const INVOICES = "the email is about an invoice";
 const DESK_TEXT = "a real person or a real obligation is waiting on you";
@@ -57,16 +60,17 @@ describe("a tracked todo's runs-only-when line", () => {
       <SubscriptionGateLine
         todoId="todo-1"
         subscriptionId="watch-1"
+        triggerName="gmail_new_message"
         gate={AUTHORED}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    openDetail();
     fireEvent.click(screen.getByRole("button", { name: "Edit rule" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Runs only when" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit rule" }), {
       target: { value: `  ${INVOICES} ` },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(editSubscriptionGate).toHaveBeenCalledWith("todo-1", "watch-1", {
       condition: INVOICES,
@@ -82,13 +86,14 @@ describe("a tracked todo's runs-only-when line", () => {
       <SubscriptionGateLine
         todoId="todo-1"
         subscriptionId="watch-1"
+        triggerName="gmail_new_message"
         gate={AUTHORED}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    openDetail();
     fireEvent.click(screen.getByRole("button", { name: "Edit rule" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(editSubscriptionGate).not.toHaveBeenCalled();
   });
@@ -98,11 +103,13 @@ describe("a tracked todo's runs-only-when line", () => {
       <SubscriptionGateLine
         todoId="todo-1"
         subscriptionId="watch-1"
+        triggerName="gmail_new_message"
         gate={AUTHORED}
       />,
     );
 
-    fireEvent.click(screen.getByRole("switch"));
+    openDetail();
+    fireEvent.click(screen.getByRole("switch", { name: "Filter new mail" }));
 
     expect(editSubscriptionGate).toHaveBeenCalledWith("todo-1", "watch-1", {
       enabled: false,
@@ -114,13 +121,13 @@ describe("a tracked todo's runs-only-when line", () => {
       <SubscriptionGateLine
         todoId="todo-1"
         subscriptionId="watch-1"
+        triggerName="gmail_new_message"
         gate={DESK}
       />,
     );
 
-    expect(screen.getByText(DESK_TEXT)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.getByText("Built into this task")).toBeTruthy();
+    expect(screen.getByText(`Only when ${DESK_TEXT}`)).toBeTruthy();
+    openDetail();
     expect(screen.queryByRole("button", { name: "Edit rule" })).toBeNull();
     fireEvent.click(screen.getByRole("switch"));
     expect(editSubscriptionGate).toHaveBeenCalledWith("todo-1", "watch-1", {

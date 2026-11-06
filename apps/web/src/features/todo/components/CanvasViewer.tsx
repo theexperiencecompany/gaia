@@ -89,7 +89,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ todoId, todoTitle }) => {
           label={name}
           summary={hint}
           onPress={() => handleOpen(name)}
-          trailing={
+          end={
             isLoading &&
             openFile === name && <Spinner size="sm" color="default" />
           }

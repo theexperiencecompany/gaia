@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from email.utils import parseaddr
 import time
 from typing import Final
 
@@ -28,6 +29,7 @@ from app.constants.trigger_gates import (
     SYSTEM_GATE_PRESETS,
     TRIGGER_GATE_AUTOMATION_MAX_CHARS,
     TRIGGER_GATE_EVENT_LABEL_MAX_CHARS,
+    TRIGGER_GATE_EVENT_LABEL_SEPARATOR,
     TRIGGER_GATE_FIELD_MAX_CHARS,
     TRIGGER_GATE_INSTRUCTIONS,
     TRIGGER_GATE_JEV_TIMEOUT_SECONDS,
@@ -274,11 +276,12 @@ def _label(text: str) -> str:
 
 
 def _gmail_label(view: GmailGateView, trigger_name: str) -> str:
-    """Name an email by its sender and subject, as many of them as it has."""
-    parts = [_label(view.sender)] if view.sender else []
-    if view.subject:
-        parts.append(f'"{_label(view.subject)}"')
-    return ", ".join(parts) or TRIGGER_GATE_UNTITLED_EVENT.format(trigger_name=trigger_name)
+    """Name an email by its sender's name and its subject, as many of them as it has."""
+    name, address = parseaddr(view.sender) if view.sender else ("", "")
+    parts = [_label(part) for part in (name or address or view.sender, view.subject) if part]
+    return TRIGGER_GATE_EVENT_LABEL_SEPARATOR.join(parts) or TRIGGER_GATE_UNTITLED_EVENT.format(
+        trigger_name=trigger_name
+    )
 
 
 def _event(trigger_name: str, payload: Mapping[str, object]) -> _GateEvent | None:
@@ -508,7 +511,7 @@ async def _decide(
 
 async def _remember_skip(job: GatedJob, skip: GateSkip) -> None:
     """Keep the skip on the job's gate for its panel; a failed write costs the entry, not the skip."""
-    record = GateSkipRecord(event=skip.event, at=datetime.now(UTC))
+    record = GateSkipRecord(event=skip.event, at=datetime.now(UTC), certainty=skip.certainty)
     try:
         if job.owner is GateOwner.WORKFLOW:
             await workflow_repository.remember_gate_skip(job.id, job.user_id, record)

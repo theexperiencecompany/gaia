@@ -24,7 +24,7 @@ pytestmark = pytest.mark.unit
 USER_ID = "507f1f77bcf86cd799439011"
 AUTHORED = AuthoredGate(condition="the email is from a customer", author=GateAuthor.GAIA)
 DESK = SystemGate(preset=SystemGatePreset.INBOX_DESK)
-SKIP = GateSkipRecord(event='Substack, "Weekly digest"', at=datetime(2026, 11, 5, 9, tzinfo=UTC))
+SKIP = GateSkipRecord(event="Substack · Weekly digest", at=datetime(2026, 11, 5, 9, tzinfo=UTC))
 
 
 class TestApplyGateEdit:

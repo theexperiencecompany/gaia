@@ -3,36 +3,36 @@ import type {
   GateEdit,
   SystemGateView,
 } from "@shared/api/generated";
-import type { GateAuthorLine } from "../constants/gates";
+import { GATE_SENTENCE_PREFIX } from "../constants/gates";
 import type { WorkflowFormData } from "../schemas/workflowFormSchema";
 
 /**
- * The gate field of a workflow update: undefined keeps the saved gate, null
- * removes it, a value replaces or switches it. A system gate is only ever
- * switched, and an unchanged condition is not resent, so turning a gate off
- * sends enabled alone.
+ * The gate field of a workflow update: undefined keeps the saved gate, a value
+ * rewrites or switches it. Users never add or remove a rule, GAIA writes it; a
+ * system gate is only switched, so turning a gate off sends enabled alone.
  */
 export function gateEditFor(
   saved: AuthoredGateView | SystemGateView | null | undefined,
   draft: WorkflowFormData["gate"],
-): GateEdit | null | undefined {
+): GateEdit | undefined {
+  if (!saved) return undefined;
   const condition = draft.condition.trim();
-  if (!saved)
-    return condition ? { condition, enabled: draft.enabled } : undefined;
-  if (saved.kind === "authored") {
-    if (!condition) return null;
-    if (condition !== saved.condition) {
-      return { condition, enabled: draft.enabled };
-    }
+  if (saved.kind === "authored" && condition !== saved.condition) {
+    return { condition, enabled: draft.enabled };
   }
   return draft.enabled === saved.enabled
     ? undefined
     : { enabled: draft.enabled };
 }
 
-/** Who wrote a saved gate's rule, as its panel says it. */
-export function gateAuthorLine(
-  saved: AuthoredGateView | SystemGateView,
-): GateAuthorLine {
-  return saved.kind === "system" ? "system" : saved.author;
+/** A stored condition as the sentence its row reads, e.g. "Only when a customer writes about billing". */
+export function gateSentence(condition: string): string {
+  const clause = condition.trim();
+  if (/^(only )?when\b/i.test(clause)) {
+    return clause.charAt(0).toUpperCase() + clause.slice(1);
+  }
+  const lowered = /^[A-Z][a-z]/.test(clause)
+    ? clause.charAt(0).toLowerCase() + clause.slice(1)
+    : clause;
+  return `${GATE_SENTENCE_PREFIX} ${lowered}`;
 }
