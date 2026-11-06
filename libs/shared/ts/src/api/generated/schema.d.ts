@@ -3681,6 +3681,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Answers
+         * @description Store the wizard's Q1 and Q2 as soon as they are confirmed.
+         */
+        put: operations["onboarding_save_answers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/personalization": {
         parameters: {
             query?: never;
@@ -3713,11 +3733,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Update Onboarding Phase
-         * @description Update the user's onboarding phase.
-         *     Used to track progress through onboarding stages.
+         * Report Onboarding Step
+         * @description Stamp a wizard step the browser reached; a repeat report is a no-op.
          */
-        post: operations["onboarding_update_onboarding_phase"];
+        post: operations["onboarding_report_onboarding_step"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3739,8 +3758,7 @@ export interface paths {
         head?: never;
         /**
          * Update User Preferences
-         * @description Update user's onboarding preferences.
-         *     This can be used from the settings page to update preferences after onboarding.
+         * @description Update the user's preferences from settings; the wizard's answers go to PUT /answers.
          */
         patch: operations["onboarding_update_user_preferences"];
         trace?: never;
@@ -12447,6 +12465,35 @@ export interface components {
             token_endpoint_auth_method?: "none";
         };
         /**
+         * OnboardingAnswers
+         * @description The wizard's answers — Q1 (profession) and Q2 (needs).
+         *
+         *     The name is derived from the email server-side, so it is not submitted;
+         *     nothing else is generated at onboarding, so nothing else is collected.
+         */
+        OnboardingAnswers: {
+            /**
+             * Language
+             * @description The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")
+             */
+            language?: string | null;
+            /**
+             * Needs
+             * @description The jobs the user handed GAIA (onboarding Q2, up to three)
+             */
+            needs?: components["schemas"]["OnboardingNeed"][];
+            /**
+             * Other Need
+             * @description What the user typed under 'Something else' in Q2, verbatim
+             */
+            other_need?: string | null;
+            /**
+             * Profession
+             * @description User's profession
+             */
+            profession: string;
+        };
+        /**
          * OnboardingNeed
          * @description The pains the user handed GAIA during onboarding (Q2, up to three picks).
          *
@@ -12458,29 +12505,33 @@ export interface components {
          */
         OnboardingNeed: "inbox" | "calendar" | "mornings" | "reminders" | "grunt_work" | "tools" | "founder_team_updates" | "founder_competitors" | "executive_reports" | "executive_decisions" | "sales_leads" | "sales_call_research" | "product_feedback" | "product_specs" | "marketing_content" | "marketing_reports" | "engineering_prs" | "engineering_notifications" | "finance_numbers" | "finance_reports" | "creative_revisions" | "creative_deadlines" | "student_assignments" | "student_exams";
         /**
-         * OnboardingPhase
-         * @description Tracks the current phase of user onboarding
-         * @enum {string}
+         * OnboardingPhaseUpdateRequest
+         * @description A wizard step the browser reached; the server stamps and reports it once per onboarding run.
          */
-        OnboardingPhase: "initial" | "personalization_pending" | "personalization_complete" | "getting_started" | "completed";
-        /** OnboardingPhaseUpdateRequest */
         OnboardingPhaseUpdateRequest: {
-            /** @description The onboarding phase to transition to */
-            phase: components["schemas"]["OnboardingPhase"];
+            /**
+             * Phase
+             * @description The wizard step the user reached
+             * @enum {string}
+             */
+            phase: "started" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
         };
         /**
          * OnboardingPhaseUpdateResponse
-         * @description Response body for an onboarding phase update.
+         * @description Response body for a reported wizard step; first_time is False when the step was already stamped.
          */
         OnboardingPhaseUpdateResponse: {
-            /** Message */
-            message: string;
-            phase: components["schemas"]["OnboardingPhase"];
-            /** Success */
-            success: boolean;
+            /** First Time */
+            first_time: boolean;
+            phase: components["schemas"]["OnboardingStep"];
         };
         /** OnboardingPreferences */
         OnboardingPreferences: {
+            /**
+             * Language
+             * @description The user's browser language as a primary subtag ("de", "pt"), set at onboarding
+             */
+            language?: string | null;
             /**
              * Needs
              * @description The jobs the user handed GAIA (onboarding Q2, up to three)
@@ -12504,12 +12555,14 @@ export interface components {
         };
         /**
          * OnboardingRequest
-         * @description The onboarding submission — Q1 (profession) and Q2 (needs).
-         *
-         *     The name is derived from the email server-side, so it is not submitted;
-         *     nothing else is generated at onboarding, so nothing else is collected.
+         * @description The onboarding submission: the answers again, plus the browser's timezone.
          */
         OnboardingRequest: {
+            /**
+             * Language
+             * @description The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")
+             */
+            language?: string | null;
             /**
              * Needs
              * @description The jobs the user handed GAIA (onboarding Q2, up to three)
@@ -12593,6 +12646,12 @@ export interface components {
             phase: string | null;
             preferences: components["schemas"]["OnboardingPreferences"];
         };
+        /**
+         * OnboardingStep
+         * @description A wizard milestone, stamped once per onboarding run on users.onboarding.steps_reached.
+         * @enum {string}
+         */
+        OnboardingStep: "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
         /**
          * PaginatedNotificationsResponse
          * @description Response model for paginated notifications
@@ -17554,8 +17613,8 @@ export type NotionNewPageInDbConfig = components['schemas']['NotionNewPageInDbCo
 export type NotionPageContentUpdatedConfig = components['schemas']['NotionPageContentUpdatedConfig'];
 export type NotionPageUpdatedConfig = components['schemas']['NotionPageUpdatedConfig'];
 export type OAuthClientMetadataResponse = components['schemas']['OAuthClientMetadataResponse'];
+export type OnboardingAnswers = components['schemas']['OnboardingAnswers'];
 export type OnboardingNeed = components['schemas']['OnboardingNeed'];
-export type OnboardingPhase = components['schemas']['OnboardingPhase'];
 export type OnboardingPhaseUpdateRequest = components['schemas']['OnboardingPhaseUpdateRequest'];
 export type OnboardingPhaseUpdateResponse = components['schemas']['OnboardingPhaseUpdateResponse'];
 export type OnboardingPreferences = components['schemas']['OnboardingPreferences'];
@@ -17563,6 +17622,7 @@ export type OnboardingRequest = components['schemas']['OnboardingRequest'];
 export type OnboardingResetResponse = components['schemas']['OnboardingResetResponse'];
 export type OnboardingResponse = components['schemas']['OnboardingResponse'];
 export type OnboardingStatusResponse = components['schemas']['OnboardingStatusResponse'];
+export type OnboardingStep = components['schemas']['OnboardingStep'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
@@ -27592,6 +27652,57 @@ export interface operations {
             };
         };
     };
+    onboarding_save_answers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingAnswers"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     onboarding_get_onboarding_personalization: {
         parameters: {
             query?: never;
@@ -27639,7 +27750,7 @@ export interface operations {
             };
         };
     };
-    onboarding_update_onboarding_phase: {
+    onboarding_report_onboarding_step: {
         parameters: {
             query?: never;
             header?: never;

@@ -251,7 +251,10 @@ async def dispatch_tool(
     try:
         async with asyncio.timeout(bound):
             output = await invoke_tool(
-                tool, validated, with_account(config, choice), via=ViaExecute(account)
+                tool,
+                validated,
+                with_account(config, choice),
+                via=ViaExecute(choice.account_id if choice is not None else None),
             )
     except TimeoutError:
         # The only failure whose effect is unknown — the provider may have

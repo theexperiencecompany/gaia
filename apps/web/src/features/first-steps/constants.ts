@@ -23,7 +23,9 @@ export const FIRST_STEPS_WIDGET_HIDDEN_ROUTES: readonly string[] = [
   "/settings",
 ];
 
-export const SAY_HI_PROMPT = "What can you do for me?";
+/** Asks for one job done now, not a tour: "what can you do" drew feature lists. */
+export const SAY_HI_PROMPT =
+  "What's one thing you can take care of for me today? Start on it.";
 
 /** Under 300ms and ease-out, per the house animation rules. Shared by the
  * chevron, the collapse and the rows so all three move as one gesture. */
@@ -51,7 +53,7 @@ export const FIRST_STEP_DEFINITIONS: Record<FirstStepKey, FirstStepDefinition> =
   {
     say_hi: {
       label: "Say hi",
-      description: "See what GAIA can do for you",
+      description: "Hand GAIA its first job",
       icon: BubbleChatIcon,
       action: { kind: "chat", prompt: SAY_HI_PROMPT },
     },

@@ -35,6 +35,8 @@ from app.agents.tools.execute.resolver import ResolvedTool
 from app.agents.tools.run_record import read_run_record
 from app.api.v1.endpoints.sandbox_execute import SandboxExecuteRequest, sandbox_execute
 from app.config.settings import settings
+from app.models.agent_config import ComposioAccountSelection
+from app.models.execute_models import AccountChoice
 from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 from app.services.sandbox.execute_client import mint_execute_env
 
@@ -261,9 +263,45 @@ async def test_the_execute_proxy_records_the_real_tool_and_not_itself(fake_redis
         )
 
     assert await _recorded() == [("probe", {"query": "q"}, "answered q")]
-    # A playbook replays it the way it ran: through execute, as the account it named.
+    # A playbook replays it through execute; with no account resolved it pins none.
     (call,) = await read_run_record(STREAM_ID)
-    assert (call.proxied, call.account) == (True, "work@acme.com")
+    assert (call.proxied, call.account) == (True, None)
+
+
+@pytest.mark.parametrize(
+    ("account_arg", "account_id", "expected"),
+    [("work", "ca_work", "ca_work"), (None, None, None)],
+    ids=["named", "primary"],
+)
+async def test_the_execute_proxy_records_the_chosen_account_id(
+    fake_redis: Any, account_arg: str | None, account_id: str | None, expected: str | None
+) -> None:
+    """A replay must target the same account after a rename, so the GAIA id is what is kept."""
+    resolved = ResolvedTool(name="probe", tool=probe, is_integration=True)
+    choice = AccountChoice(
+        selection=ComposioAccountSelection(toolkit="gmail", connected_account_id="provider-1"),
+        display_name="Work",
+        is_primary=account_id is None,
+        account_count=1,
+        account_id=account_id,
+    )
+    with (
+        patch("app.agents.tools.execute.dispatch.resolve_tool", AsyncMock(return_value=resolved)),
+        patch("app.agents.tools.execute.dispatch.choose_account", AsyncMock(return_value=choice)),
+        patch("app.agents.tools.execute.dispatch.capture"),
+    ):
+        await execute.ainvoke(
+            {
+                "task_description": "probing",
+                "tool_name": "probe",
+                "data": {"query": "q"},
+                "account": account_arg,
+            },
+            config=_run_config(),
+        )
+
+    (call,) = await read_run_record(STREAM_ID)
+    assert call.account == expected
 
 
 async def test_a_directly_bound_call_is_not_recorded_as_proxied(fake_redis: Any) -> None:

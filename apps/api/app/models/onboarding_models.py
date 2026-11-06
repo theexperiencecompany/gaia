@@ -2,8 +2,8 @@ from typing import ClassVar, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
-from app.models.user_models import OnboardingPhase
 from app.models.workflow_models import WorkflowStep
+from shared.py.analytics.catalog.onboarding import OnboardingStep
 from shared.py.analytics.catalog.properties import Identifier
 
 # The four holo-card houses. The frontend types the same closed set.
@@ -300,11 +300,10 @@ class OnboardingResetResponse(OnboardingResetCounts):
 
 
 class OnboardingPhaseUpdateResponse(BaseModel):
-    """Response body for an onboarding phase update."""
+    """Response body for a reported wizard step; first_time is False when the step was already stamped."""
 
-    success: bool
-    phase: OnboardingPhase
-    message: str
+    phase: OnboardingStep
+    first_time: bool
 
 
 class SaveWritingStyleResponse(BaseModel):
