@@ -1,4 +1,9 @@
-"""invoke_tool: an integration only the user can fix gets one connect card, then its calls are refused."""
+"""invoke_tool: an integration only the user can fix gets one connect card, then its calls are refused.
+
+Symbols the fix adds are reached through their modules: the regression lane replays the
+marked tests on the base revision, where a from-import would break collection instead of
+failing the test.
+"""
 
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -13,14 +18,14 @@ import pytest
 
 from app.agents.core.subagents.integration_activation import activate_integration
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.tools import run_record
-from app.agents.tools.invocation import IntegrationBlockedError, invoke_tool, invoke_tool_sync
+from app.agents.tools import invocation, run_record
+from app.agents.tools.invocation import invoke_tool, invoke_tool_sync
 from app.agents.tools.run_record import read_run_record
-from app.constants.cache import RUN_BLOCKED_INTEGRATIONS_PREFIX
+from app.constants import cache
 from app.constants.integrations import ConnectMode
 from app.db.repositories.user_integrations import user_integration_repository
-from app.services.integrations.integration_accounts import toolkit_not_connected
-from app.utils.errors import IntegrationNotConnectedError
+from app.services.integrations import integration_accounts
+from app.utils import errors
 from app.utils.integration_checker import request_integration_connection
 
 STREAM_ID = "stream-block"
@@ -64,7 +69,9 @@ def _gmail_tool(calls: list[str]) -> BaseTool:
     async def fetch(query: str) -> str:
         """Fetch messages."""
         calls.append(query)
-        raise toolkit_not_connected("GMAIL", "This integration has no connected account")
+        raise integration_accounts.toolkit_not_connected(
+            "GMAIL", "This integration has no connected account"
+        )
 
     return fetch
 
@@ -93,7 +100,7 @@ async def test_a_second_call_to_a_blocked_integration_is_refused_without_reachin
         patch(f"{INVOCATION}.IntegrationResolver.resolve", AsyncMock(return_value=elsewhere)),
     ):
         first = await invoke_tool(gmail, {"query": "one"}, CONFIG)
-        with pytest.raises(IntegrationBlockedError) as refused:
+        with pytest.raises(invocation.IntegrationBlockedError) as refused:
             await invoke_tool(gmail, {"query": "two"}, CONFIG)
 
     assert str(refused.value) == BLOCKED_GMAIL
@@ -142,7 +149,7 @@ async def test_an_mcp_server_rejecting_its_token_asks_for_a_reconnect(fake_redis
     @tool("list_meetings")
     async def list_meetings(limit: int) -> str:
         """List meetings."""
-        raise IntegrationNotConnectedError(
+        raise errors.IntegrationNotConnectedError(
             integration_id="readai",
             integration_name=None,
             why="401",
@@ -164,7 +171,7 @@ async def test_an_mcp_server_rejecting_its_token_asks_for_a_reconnect(fake_redis
         ),
     ):
         await invoke_tool(list_meetings, {"limit": 5}, CONFIG)
-        with pytest.raises(IntegrationBlockedError):
+        with pytest.raises(invocation.IntegrationBlockedError):
             await invoke_tool(list_meetings, {"limit": 5}, CONFIG)
 
     lookup.assert_awaited_once_with("readai")
@@ -205,7 +212,7 @@ async def test_activating_an_unconnected_integration_blocks_its_calls(fake_redis
         patch(f"{RESOLUTION}.check_integration_status", AsyncMock(return_value=False)),
     ):
         await activate_integration.ainvoke(activation_call, CONFIG)
-        with pytest.raises(IntegrationBlockedError):
+        with pytest.raises(invocation.IntegrationBlockedError):
             await invoke_tool(_gmail_tool(calls), {"query": "q"}, CONFIG)
 
     assert calls == []
@@ -263,7 +270,7 @@ async def test_bot_and_workflow_runs_stop_calling_the_integration_too(
         patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)),
     ):
         await invoke_tool(gmail, {"query": "one"}, config)
-        with pytest.raises(IntegrationBlockedError):
+        with pytest.raises(invocation.IntegrationBlockedError):
             await invoke_tool(gmail, {"query": "two"}, config)
 
     assert calls == ["one"]
@@ -281,7 +288,7 @@ async def test_a_workflow_run_records_both_blocked_calls_as_failed(fake_redis: A
         patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)),
     ):
         first = await invoke_tool(_gmail_tool([]), {"query": "one"}, config)
-        with pytest.raises(IntegrationBlockedError) as refused:
+        with pytest.raises(invocation.IntegrationBlockedError) as refused:
             await invoke_tool(_gmail_tool([]), {"query": "two"}, config)
 
     recorded = await read_run_record(STREAM_ID)
@@ -320,7 +327,7 @@ async def test_a_graph_tool_call_without_an_id_is_answered_with_an_empty_one(
 def test_the_sync_twin_refuses_a_blocked_integration_too(monkeypatch: pytest.MonkeyPatch) -> None:
     client = fakeredis.FakeRedis(decode_responses=True)
     monkeypatch.setattr(run_record, "_sync_client", lambda: client)
-    client.sadd(f"{RUN_BLOCKED_INTEGRATIONS_PREFIX}{STREAM_ID}", "gmail")
+    client.sadd(f"{cache.RUN_BLOCKED_INTEGRATIONS_PREFIX}{STREAM_ID}", "gmail")
     calls: list[str] = []
 
     @tool("GMAIL_SEND_EMAIL")
@@ -329,7 +336,7 @@ def test_the_sync_twin_refuses_a_blocked_integration_too(monkeypatch: pytest.Mon
         calls.append(to)
         return "sent"
 
-    with pytest.raises(IntegrationBlockedError) as refused:
+    with pytest.raises(invocation.IntegrationBlockedError) as refused:
         invoke_tool_sync(send, {"to": "a@b.c"}, CONFIG)
 
     assert str(refused.value) == BLOCKED_GMAIL

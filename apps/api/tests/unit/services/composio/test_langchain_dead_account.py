@@ -30,8 +30,9 @@ from app.models.integration_models import IntegrationAccount, UserIntegrationDoc
 from app.services.composio import langchain_composio_service as wrapper
 from app.services.composio.account_scope import current_selection, scoped_connected_account_id
 from app.services.composio.langchain_composio_service import LangchainProvider
-from app.services.integrations.integration_accounts import toolkit_not_connected
-from app.utils.errors import AppError, IntegrationNotConnectedError
+from app.services.integrations import integration_accounts
+from app.utils import errors
+from app.utils.errors import AppError
 from tests.factories import make_composio_not_found, make_composio_tool
 
 MODULE = "app.services.composio.langchain_composio_service"
@@ -257,7 +258,7 @@ class TestDeadAccountReconciles:
         """Custom tools reach the provider through the proxy; its dead account is not a raised 404."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
-        gone = toolkit_not_connected(
+        gone = integration_accounts.toolkit_not_connected(
             "GMAIL", 'Connected account "ca_gone" not found', grant_died=True
         )
         action_func = _action_func(provider, _raises(gone))
@@ -644,7 +645,7 @@ class TestAnIntegrationWithNoUsableAccount:
         with (
             patch(f"{ACCOUNTS}.get_account_record", AsyncMock(return_value=None)),
             patch(f"{MODULE}.expire_account", AsyncMock()) as expire,
-            pytest.raises(IntegrationNotConnectedError) as raised,
+            pytest.raises(errors.IntegrationNotConnectedError) as raised,
         ):
             action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
 
@@ -659,7 +660,9 @@ class TestAProviderRejectingTheGrantShowsTheReconnectCard:
         """Composio's token was rejected and its refresh failed: the grant is dead, like a 1810."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
-        rejected = toolkit_not_connected("GMAIL", "token rejected", grant_died=True)
+        rejected = integration_accounts.toolkit_not_connected(
+            "GMAIL", "token rejected", grant_died=True
+        )
         action_func = _action_func(provider, _raises(rejected))
         writer = MagicMock()
 

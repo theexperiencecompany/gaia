@@ -4,6 +4,10 @@ Tests cover:
 - wrap_tool_with_null_filter: null filtering, auth re-raise, connection error callback,
   user-friendly error messages
 - wrap_tools_with_null_filter: batch wrapping
+
+Symbols the fix adds are reached through their modules: the regression lane replays the
+marked tests on the base revision, where a from-import would break collection instead of
+failing the test.
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -13,7 +17,7 @@ import pytest
 
 from app.constants.mcp import MCP_TOOL_NAME_MAX_CHARS
 from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError
-from app.utils.errors import IntegrationNotConnectedError
+from app.utils import errors
 from app.utils.mcp_utils import (
     _CONNECTION_ERROR_PATTERNS,
     gaia_tool_names,
@@ -99,7 +103,7 @@ class TestWrapToolWithNullFilter:
         tool.metadata = {"integration_id": "readai"}
 
         wrapped = wrap_tool_with_null_filter(tool)
-        with pytest.raises(IntegrationNotConnectedError) as raised:
+        with pytest.raises(errors.IntegrationNotConnectedError) as raised:
             await wrapped._arun()
 
         assert (raised.value.integration_id, raised.value.integration_name) == ("readai", None)
@@ -118,7 +122,7 @@ class TestWrapToolWithNullFilter:
         reconnect = AsyncMock(side_effect=MCPAuthorizationRequiredError("readai"))
 
         wrapped = wrap_tool_with_null_filter(tool, reconnect_and_retry=reconnect)
-        with pytest.raises(IntegrationNotConnectedError) as raised:
+        with pytest.raises(errors.IntegrationNotConnectedError) as raised:
             await wrapped._arun()
 
         reconnect.assert_awaited_once()
@@ -139,7 +143,7 @@ class TestWrapToolWithNullFilter:
         reconnect = AsyncMock(side_effect=retry_error)
 
         wrapped = wrap_tool_with_null_filter(tool, reconnect_and_retry=reconnect)
-        with pytest.raises(IntegrationNotConnectedError) as raised:
+        with pytest.raises(errors.IntegrationNotConnectedError) as raised:
             await wrapped._arun()
 
         assert raised.value.__cause__ is retry_error
