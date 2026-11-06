@@ -662,7 +662,8 @@ def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State: 
     messages = []
     for call in tool_calls:
         result = call["args"].get("result")
-        content = str(result) if result is not None else "Task completed."
+        # No result is no answer: the run reports it as unconfirmed, never as done.
+        content = str(result) if result is not None else ""
         messages.append(
             ToolMessage(
                 content=content,

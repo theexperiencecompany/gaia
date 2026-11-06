@@ -45,12 +45,13 @@ EXECUTOR_APPROVAL_LOST_MESSAGE = (
 EXECUTOR_ERROR_PREP_FAILED = "executor_prep_failed"
 EXECUTOR_ERROR_MALFORMED_APPROVAL = "malformed_approval"
 EXECUTOR_ERROR_APPROVAL_LOST = "approval_lost"
+#: The run ended with no answer at all; it is delivered as EXECUTOR_CRASH_MESSAGE.
+EXECUTOR_ERROR_NO_ANSWER = "no_answer"
 
-# User-facing text when comms narration of a finished run is unavailable. The
-# executor's own terminal text is never substituted: it is internal monologue,
-# and on the error path can be a raw exception string.
+# When comms narration fails. Never the executor's own text (internal, maybe a raw
+# exception), and never a claim of done: a "final" report can itself describe a failure.
 EXECUTOR_NARRATION_FAILED_MESSAGE = (
-    "I finished that task, but I couldn't write up the result. Please ask me again."
+    "I couldn't write up how that went, so I can't confirm it's done. Ask me and I'll check."
 )
 EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE = (
     "That task didn't finish, and I couldn't write up what went wrong. Please try again."

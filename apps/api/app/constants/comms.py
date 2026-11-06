@@ -13,6 +13,8 @@ EMOJI_TAG = "EMOJI"
 #: comms checkpoints written before the tags carry such turns, and a model
 #: imitating its own history still emits them.
 LEGACY_REACT_KEYWORD = "REACT"
+#: Names a model has written the reaction tag under (seen live); each is still a reaction.
+REACTION_TAG_ALIASES = frozenset({LEGACY_REACT_KEYWORD, "REACTION"})
 
 #: The directives as the prompts show them to comms.
 SILENCE_DIRECTIVE = f"<{SILENCE_TAG}>brief reason</{SILENCE_TAG}>"

@@ -1994,7 +1994,10 @@ class TestRunChatStreamBackground:
         }
 
     async def _run_turn(
-        self, user: AuthenticatedUser, *reply_pieces: str
+        self,
+        user: AuthenticatedUser,
+        *reply_pieces: str,
+        stream_manager: MagicMock | None = None,
     ) -> tuple[list[tuple[str, dict[str, Any]]], AsyncMock, MagicMock]:
         """Run one turn whose comms reply streams as reply_pieces; return the JSON frames published, the save and the capture.
 
@@ -2012,7 +2015,7 @@ class TestRunChatStreamBackground:
                 agent_update_event(AIMessage(id="m1", content="".join(reply_pieces))),
             ]
         )
-        sm = _make_stream_manager_mock()
+        sm = stream_manager or _make_stream_manager_mock()
         save = AsyncMock()
         with (
             _patch_stream_manager(sm),
@@ -2053,6 +2056,25 @@ class TestRunChatStreamBackground:
         # Sent before the completion frame, so the client never closes the turn as an empty bubble.
         order = [next(iter(frame)) for _, frame in frames]
         assert order.index("emoji_ack") < order.index("main_response_complete")
+
+    @pytest.mark.regression
+    async def test_a_reaction_acknowledging_a_hand_off_lands_before_the_work_finishes(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """The ack once waited out the executor, so the reaction arrived with the result, not the ask."""
+        published_before_the_wait: list[bool] = []
+        sm = _make_stream_manager_mock()
+
+        async def the_executor_wait(stream_id: str, timeout: float) -> bool:
+            published_before_the_wait.append(
+                any("emoji_ack" in call.args[1] for call in sm.publish_chunk.call_args_list)
+            )
+            return True
+
+        with patch("app.services.chat.stream.await_executor_done", new=the_executor_wait):
+            await self._run_turn(test_user, "REACT: 😎", stream_manager=sm)
+
+        assert published_before_the_wait == [True]
 
     async def test_a_react_turn_is_saved_and_counted_as_a_reaction_to_the_users_message(
         self, test_user: AuthenticatedUser

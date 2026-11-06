@@ -273,10 +273,11 @@ class TestReturnValue:
         assert outcome.text == "I sent the email."
         assert "Re-issue the handoff" not in outcome.text
 
-    async def test_a_silent_run_reports_task_completed(self):
+    async def test_a_silent_run_is_never_reported_as_done(self):
         _, outcome, _ = await run_subagent([])
 
-        assert outcome.text == "Task completed"
+        assert outcome.answered is False
+        assert "nothing confirms" in outcome.text
 
     async def test_finish_task_content_becomes_the_result(self):
         """finish_task carries the answer in the tool's return value, not in an AIMessage."""
@@ -305,7 +306,7 @@ class TestMalformedEvents:
         )
 
         assert transcript.frames() == []
-        assert outcome.text == "Task completed"
+        assert outcome.answered is False
 
     async def test_a_state_update_with_no_messages_key_is_skipped(self):
         transcript, _, _ = await run_subagent([("updates", {"agent": {"todos": []}})])
@@ -376,7 +377,7 @@ class TestMalformedEvents:
         )
 
         assert transcript.frames() == []
-        assert outcome.text == "Task completed"
+        assert outcome.answered is False
 
     async def test_silent_payloads_emit_nothing_and_do_not_accumulate(self):
         transcript, outcome, _ = await run_subagent(
@@ -390,7 +391,7 @@ class TestMalformedEvents:
         )
 
         assert transcript.frames() == []
-        assert outcome.text == "Task completed"
+        assert outcome.answered is False
 
     async def test_inline_media_is_stripped_from_a_subagent_result(self):
         transcript, _, _ = await run_subagent(

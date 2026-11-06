@@ -92,7 +92,7 @@ from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
 from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.todo_run_context import collect_run_context
-from app.workers.tasks.todo_run_prompt import WAKE_OPENINGS, build_execution_prompt
+from app.workers.tasks.todo_run_prompt import build_execution_prompt
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.context import analytics_context, worker_context
 from shared.py.wide_events import log
@@ -199,7 +199,7 @@ async def _defer_drain(todo_id: str, trigger_window: int) -> str | None:
 
 def _answers_held_events(doc: TodoDocument) -> bool:
     """Whether the todo's scheduled run answers its held events, as a desk reads what changed."""
-    return doc.external_ref is not None and doc.external_ref.source in WAKE_OPENINGS
+    return doc.external_ref is not None and doc.external_ref.source is ExternalRefSource.INBOX_DESK
 
 
 async def _quiet_hours_hold(doc: TodoDocument) -> GateHold | None:
@@ -697,7 +697,7 @@ async def _execute_on_executor(
     user_id = doc.user_id
     prompt = build_execution_prompt(
         doc,
-        context=await collect_run_context(doc),
+        context=await collect_run_context(doc, user_tz),
         origin=origin,
         coalesced=coalesced,
         local_now=datetime.now(user_tz.tzinfo),

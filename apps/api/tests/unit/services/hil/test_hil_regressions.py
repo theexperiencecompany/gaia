@@ -67,6 +67,7 @@ def snapshot(next_nodes: tuple[str, ...] = (), messages: list[Any] | None = None
 
 def ctx_with(snap: Any) -> Any:
     return SimpleNamespace(
+        agent_name="gmail",
         subagent_graph=SimpleNamespace(aget_state=AsyncMock(return_value=snap)),
         config={"configurable": {"thread_id": "gmail_executor_conv-1"}},
         configurable={"thread_id": "gmail_executor_conv-1", "conversation_id": "conv-1"},
@@ -131,7 +132,7 @@ class TestFinishedSubagentIsNotDrivenTwice:
 
         assert outcome is not None
         assert outcome.paused is False
-        assert outcome.text == "Task completed."
+        assert outcome.answered is False
 
 
 class TestExemptToolsAreNeverGated:

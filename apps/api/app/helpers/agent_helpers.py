@@ -718,6 +718,8 @@ async def build_agent_config(
         "user_id": acting_user.user_id,
         "source_category": source_category,
         "source_channel": source_channel,
+        # Read back as StreamChunkMetadata, telling a nested run's chunks from this run's own.
+        "agent_thread_id": configurable["thread_id"],
         # Lane identity for the TTFT callback, which reads it back as LlmCallMetadata.
         # llm_label defaults to this run's agent tier so the graph's own streaming
         # calls never land on "unknown"; ainvoke_llm overrides it per side call.
