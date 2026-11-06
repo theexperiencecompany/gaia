@@ -9,7 +9,8 @@ from langgraph.errors import GraphInterrupt
 import pytest
 
 from app.agents.core.subagents.subagent_runner import subagent_row_id
-from app.models.agent_models import SubagentKind
+from app.constants.llm import INBOX_MAIL_SUBAGENT_RECURSION_LIMIT
+from app.models.agent_models import SpawnJob, SubagentKind
 
 MODULE = "app.agents.middleware.subagent"
 DELEGATION = "app.agents.core.subagents.delegation"
@@ -555,6 +556,20 @@ class TestBuildContextWiring:
             subagent_id=SPAWN_AGENT_NAME,
             recursion_limit=7,
         )
+
+    @pytest.mark.parametrize(
+        ("spawn_job", "limit"),
+        [(SpawnJob.INBOX_MAIL, INBOX_MAIL_SUBAGENT_RECURSION_LIMIT), (SpawnJob.FOCUSED, 7)],
+    )
+    async def test_a_run_stamped_with_a_spawn_job_gives_its_spawns_that_jobs_budget(
+        self, spawn_job: SpawnJob, limit: int
+    ):
+        mw = _ready_middleware(max_turns=7)
+        config = _make_spawn_config(conversation_id="conv-9", spawn_job=spawn_job)
+        with _context_harness() as h:
+            await mw._build_context(self.TASK, "", config["configurable"], "call_abc", [])
+
+        assert h.thread.recursion_limit == limit
 
     async def test_the_thread_seed_retrieves_against_the_spawns_own_run(self):
         """The seed must read the SPAWN's own configurable, not the parent's, and retrieve against the task."""

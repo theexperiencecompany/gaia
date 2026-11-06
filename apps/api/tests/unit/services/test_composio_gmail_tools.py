@@ -45,6 +45,7 @@ from app.services.composio.custom_tools.gmail_tools import (
 )
 from app.services.composio.proxy_client import ProxyRequest
 from app.utils.concurrency import ContextThreadPoolExecutor
+from app.utils.errors import AppError
 from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
@@ -925,6 +926,30 @@ class TestTheDesksSweep:
         assert {m["threadId"] for m in result["messages"]} == {"thread-1"}
         assert result["messages"][0]["body"] == "y"
 
+    def test_a_flat_thread_read_still_names_the_threads_gmail_no_longer_has(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        size = OFFLOAD_MIN_MESSAGES + 1
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            if request.endpoint.endswith("/threads/gone"):
+                raise AppError(message="gmail API error (404)", status_code=404)
+            return {
+                "id": "thread-1",
+                "messages": [{"id": f"m{i}", "threadId": "thread-1"} for i in range(size)],
+            }
+
+        mock_proxy.side_effect = _serve
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(thread_ids=["thread-1", "gone"], fields=["id"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result["fetched_count"] == size
+        assert result["missing_thread_ids"] == ["gone"]
+
 
 # ---------------------------------------------------------------------------
 # Whose mailbox, and what was asked of it
@@ -1585,6 +1610,62 @@ class TestAPartialThreadRead:
         assert result["partial"] is True
         assert [message["id"] for message in result["messages"]] == ["m1"]
         assert set(result["messages"][0]) == {"id"}
+
+    @pytest.mark.parametrize("gone", ["thread-1", "thread-2", "thread-3"])
+    def test_a_thread_gmail_no_longer_has_is_skipped_and_the_rest_come_back(
+        self, mock_proxy: MagicMock, gone: str
+    ) -> None:
+        """Gmail's 404 on one thread of a batch drops that thread, never the batch."""
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            thread_id = re.search(r"/users/me/threads/([^/]+)$", request.endpoint).group(1)
+            if thread_id == gone:
+                raise AppError(message="gmail API error (404)", status_code=404)
+            return {"id": thread_id, "messages": [{"id": f"m-{thread_id}", "threadId": thread_id}]}
+
+        mock_proxy.side_effect = _serve
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(
+                thread_ids=["thread-1", "thread-2", "thread-3"], fields=["id"]
+            ),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert "partial" not in result
+        assert {request.method for (request,), _ in mock_proxy.call_args_list} == {"GET"}
+        kept = [
+            thread_id for thread_id in ["thread-1", "thread-2", "thread-3"] if thread_id != gone
+        ]
+        assert [thread["id"] for thread in result["threads"]] == kept
+        assert result["missing_thread_ids"] == [gone]
+
+    def test_a_batch_whose_every_thread_is_gone_returns_empty_not_an_error(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = AppError(message="gmail API error (404)", status_code=404)
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(thread_ids=["thread-1", "thread-2"], fields=["id"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result["threads"] == []
+        assert result["missing_thread_ids"] == ["thread-1", "thread-2"]
+
+    def test_any_other_gmail_error_on_a_thread_still_fails_the_read(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = AppError(message="gmail API error (500)", status_code=500)
+
+        with pytest.raises(AppError):
+            _register_and_get_tools()["FETCH_THREAD"](
+                request=FetchThreadInput(thread_ids=["thread-1"], fields=["id"]),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
 
 
 class TestAPartialFetchStaysProjected:
