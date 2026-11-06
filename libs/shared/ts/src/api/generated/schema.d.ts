@@ -6788,6 +6788,13 @@ export interface components {
              * @enum {string}
              */
             kind: "authored";
+            /** Recent Skips */
+            recent_skips?: components["schemas"]["GateSkipRecord"][];
+            /**
+             * Skipped Count
+             * @default 0
+             */
+            skipped_count?: number;
         };
         /**
          * AuthoredGateEdit
@@ -9629,6 +9636,27 @@ export interface components {
          * @enum {string}
          */
         GateAuthor: "gaia" | "user";
+        /**
+         * GateSkipRecord
+         * @description One event a gate kept from running its job.
+         */
+        GateSkipRecord: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Event
+             * @description The skipped event as a person reads it: an email's sender and subject
+             */
+            event: string;
+            /**
+             * Reason
+             * @description The condition the event missed and how sure the gate was
+             */
+            reason: string;
+        };
         /**
          * GenerateWorkflowPromptRequest
          * @description Request model for AI-generated workflow instructions.
@@ -15241,6 +15269,13 @@ export interface components {
              */
             kind: "system";
             preset: components["schemas"]["SystemGatePreset"];
+            /** Recent Skips */
+            recent_skips?: components["schemas"]["GateSkipRecord"][];
+            /**
+             * Skipped Count
+             * @default 0
+             */
+            skipped_count?: number;
         };
         /**
          * SystemGatePreset
@@ -17456,6 +17491,7 @@ export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
 export type FoldedCards = components['schemas']['FoldedCards'];
 export type GateAuthor = components['schemas']['GateAuthor'];
+export type GateSkipRecord = components['schemas']['GateSkipRecord'];
 export type GenerateWorkflowPromptRequest = components['schemas']['GenerateWorkflowPromptRequest'];
 export type GenerateWorkflowPromptResponse = components['schemas']['GenerateWorkflowPromptResponse'];
 export type GetPlatformLinksResponse = components['schemas']['GetPlatformLinksResponse'];

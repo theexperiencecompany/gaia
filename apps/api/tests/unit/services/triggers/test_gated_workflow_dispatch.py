@@ -1,4 +1,4 @@
-"""A gated workflow at dispatch: a skip records a visible skipped run and claims, batches and queues nothing.
+"""A gated workflow at dispatch: a skip lands on its gate and claims, batches and queues nothing.
 
 Inside the user's quiet hours a held workflow is queued for the end of them and
 an urgent one is queued now, carrying why it could not wait.
@@ -110,14 +110,13 @@ def seams() -> Iterator[SimpleNamespace]:
         patch(f"{_BASE}._claim_occurrence", AsyncMock(return_value=True)) as claim,
         patch(f"{_BASE}.buffer_trigger_event", AsyncMock(return_value=False)) as buffer,
         patch(f"{_BASE}.WorkflowQueueService.queue_workflow_execution", AsyncMock()) as queue,
-        patch(f"{_BASE}.record_skipped_execution", AsyncMock()) as skipped,
     ):
         yield SimpleNamespace(
             jev=gate.jev,
             claim=claim,
             buffer=buffer,
             queue=queue,
-            skipped=skipped,
+            skipped=gate.workflow_skip,
             capture=gate.capture,
             wrote=gate.wrote,
         )
@@ -128,7 +127,7 @@ async def _fire(workflows: list[Workflow], **payload: object) -> None:
     await _Handler(workflows).process_event("GMAIL_NEW_GMAIL_MESSAGE", None, USER_ID, data)
 
 
-async def test_a_skip_records_a_skipped_run_and_claims_nothing(seams: SimpleNamespace) -> None:
+async def test_a_skip_lands_on_the_gate_and_claims_nothing(seams: SimpleNamespace) -> None:
     seams.jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
 
     await _fire([_workflow()])
@@ -137,12 +136,9 @@ async def test_a_skip_records_a_skipped_run_and_claims_nothing(seams: SimpleName
     seams.buffer.assert_not_awaited()
     # The occurrence stays unclaimed, so a later trigger for the same one still runs.
     seams.claim.assert_not_awaited()
-    seams.skipped.assert_awaited_once_with(
-        WORKFLOW_ID,
-        USER_ID,
-        TriggerType.INTEGRATION.value,
-        f'Skipped: "Sale!". Not a match for "{CONDITION}" (99% sure).',
-    )
+    workflow_id, user_id, skip = seams.skipped.await_args.args
+    assert (workflow_id, user_id) == (WORKFLOW_ID, USER_ID)
+    assert (skip.event, skip.reason) == ('"Sale!"', f'Not a match for "{CONDITION}" (99% sure).')
 
 
 @pytest.mark.parametrize(
@@ -182,7 +178,7 @@ async def test_a_reply_on_a_thread_the_user_never_wrote_in_is_asked_about(
 
     seams.queue.assert_not_awaited()
     (call,) = seams.skipped.await_args_list
-    assert call.args[3].startswith('Skipped: GitGuardian <security@gitguardian.com>, "Sale!".')
+    assert call.args[2].event == 'GitGuardian <security@gitguardian.com>, "Sale!"'
 
 
 async def test_an_ungated_workflow_never_asks_jev(seams: SimpleNamespace) -> None:
@@ -261,9 +257,10 @@ def night(fake_redis: fakeredis.aioredis.FakeRedis, arq: ArqRedis) -> Iterator[S
         patch(f"{_BASE}.TriggerHandler._queue_todo_dispatch", AsyncMock(return_value=True)),
         patch(f"{_BASE}.get_signal_matching_context", AsyncMock(return_value="")),
         patch(f"{_BASE}._claim_occurrence", AsyncMock(return_value=True)) as claim,
-        patch(f"{_BASE}.record_skipped_execution", AsyncMock()) as skipped,
     ):
-        yield SimpleNamespace(jev=gate.jev, claim=claim, skipped=skipped, arq=arq, redis=fake_redis)
+        yield SimpleNamespace(
+            jev=gate.jev, claim=claim, skipped=gate.workflow_skip, arq=arq, redis=fake_redis
+        )
 
 
 async def _fire_at(
@@ -424,7 +421,7 @@ class TestQuietHours:
             "reason": "someone is waiting on you for a meeting happening soon",
         }
 
-    async def test_a_confident_skip_at_night_records_a_skipped_run(
+    async def test_a_confident_skip_at_night_lands_on_the_gate(
         self, night: SimpleNamespace
     ) -> None:
         body = _night_body(can_wait=1.0, not_needed=0.99)
@@ -498,7 +495,7 @@ async def test_a_gate_that_crashes_runs_its_workflow_and_spares_the_others(
     seams.skipped.assert_not_awaited()
 
 
-async def test_a_skip_whose_history_write_fails_is_reported_and_spares_the_others(
+async def test_a_skip_whose_gate_write_fails_is_reported_and_still_skips(
     seams: SimpleNamespace, sentry_events: list[Event]
 ) -> None:
     seams.jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
@@ -510,8 +507,9 @@ async def test_a_skip_whose_history_write_fails_is_reported_and_spares_the_other
     assert [c.args[0] for c in seams.queue.await_args_list] == ["wf_ungated0001"]
     assert event["errors"] == [
         {
-            "msg": "trigger_workflow_skip_record_failed",
-            "workflow_id": WORKFLOW_ID,
+            "msg": "trigger_gate.skip_unrecorded",
+            "owner": "workflow",
+            "job_id": WORKFLOW_ID,
             "user_id": USER_ID,
             "error_type": "PyMongoError",
             "error": "history down",

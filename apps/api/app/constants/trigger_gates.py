@@ -117,10 +117,10 @@ TRIGGER_GATE_FIELD_MAX_CHARS: Final = 300
 # An owner's title and description as JEV reads them; a long todo note costs tokens on every event.
 TRIGGER_GATE_AUTOMATION_MAX_CHARS: Final = 600
 TRIGGER_GATE_QUESTION_KEY: Final = "gate"
-# The run history line: which event was skipped, the condition it missed and how sure JEV was.
-TRIGGER_GATE_SKIPPED_SUMMARY: Final = (
-    'Skipped: {event}. Not a match for "{condition}" ({certainty:.0%} sure).'
-)
+# Why a skip happened: the condition the event missed and how sure JEV was.
+TRIGGER_GATE_SKIP_REASON: Final = 'Not a match for "{condition}" ({certainty:.0%} sure).'
+# How many of its latest skips a gate keeps; older ones live on only in its skipped count.
+GATE_RECENT_SKIPS_KEPT: Final = 5
 # How a skip names its event, clipped so one line stays one line.
 TRIGGER_GATE_EVENT_LABEL_MAX_CHARS: Final = 120
 TRIGGER_GATE_UNTITLED_EVENT: Final = "a {trigger_name} event"

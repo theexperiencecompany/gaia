@@ -770,14 +770,19 @@ def _jev_body(not_needed: float) -> dict[str, object]:
 
 
 @pytest.fixture
-def jev() -> Iterator[respx.Route]:
+def jev_seams() -> Iterator[SimpleNamespace]:
     with trigger_gate_seams(KOLKATA, now=datetime(2026, 10, 2, 9, 0, tzinfo=UTC)) as gate:
-        yield gate.jev
+        yield gate
+
+
+@pytest.fixture
+def jev(jev_seams: SimpleNamespace) -> respx.Route:
+    return jev_seams.jev
 
 
 class TestTriggerGate:
     async def test_a_skip_runs_nothing_claims_no_window_and_says_why(
-        self, deps, jev: respx.Route
+        self, deps, jev: respx.Route, jev_seams: SimpleNamespace
     ) -> None:
         jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
         subscription = _subscription(gate=_GATE)
@@ -793,11 +798,17 @@ class TestTriggerGate:
         deps.hold.assert_not_awaited()
         # No window slot taken: the next real event must still wake the todo at once.
         deps.redis.redis.set.assert_not_awaited()
-        deps.activity.assert_awaited_once_with(
-            TODO_ID,
+        # A skip lands on the gate, never as one more line of activity.md.
+        deps.activity.assert_not_awaited()
+        (call,) = jev_seams.todo_skip.await_args_list
+        assert (call.kwargs["user_id"], call.kwargs["subscription_id"]) == (
             USER_ID,
-            TodoActivityEvent.RUN_SKIPPED,
-            f'Skipped: "Sale!". Not a match for "{CONDITION}" (99% sure).',
+            subscription.id,
+        )
+        skip = call.kwargs["skip"]
+        assert (skip.event, skip.reason) == (
+            '"Sale!"',
+            f'Not a match for "{CONDITION}" (99% sure).',
         )
         assert list(event["trigger_gate"]) == [subscription.id]
 

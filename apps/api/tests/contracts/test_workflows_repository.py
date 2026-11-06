@@ -16,12 +16,14 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT, GateAuthor
 from app.db.repositories.workflows import WorkflowsRepository
 from app.models.scheduler_models import (
     DeactivationReason,
     ScheduledTaskStatus,
     TaskRearm,
 )
+from app.models.trigger_gate_models import AuthoredGate, GateSkipRecord
 from app.models.workflow_models import (
     SystemWorkflowDefinition,
     TriggerConfig,
@@ -931,3 +933,34 @@ class TestWorkflowsPublicMarketplaceReads:
 
         rows = await repo.find_public_matching([token], limit=10)
         assert [r.id for r in rows] == [explore_fresh, explore_stale, explore_cold, community_hot]
+
+
+class TestWorkflowGateSkips:
+    async def test_a_hundred_skips_keep_the_newest_few_and_count_all(self, repo):
+        gate = AuthoredGate(condition="the email needs me", author=GateAuthor.GAIA)
+        integration = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message")
+        created = await repo.create(_workflow(gate=gate, trigger_config=integration))
+        start = datetime(2026, 11, 1, tzinfo=UTC)
+        skips = [
+            GateSkipRecord(
+                event=f'"Sale {n}"', reason="Not a match", at=start + timedelta(minutes=n)
+            )
+            for n in range(100)
+        ]
+
+        for skip in skips:
+            await repo.remember_gate_skip(created.id, created.user_id, skip)
+
+        stored = await repo.get(created.id)
+        assert stored.gate.recent_skips == skips[-GATE_RECENT_SKIPS_KEPT:]
+        assert stored.gate.skipped_count == 100
+
+    async def test_a_workflow_without_a_gate_is_not_given_one(self, repo, raw_collection):
+        created = await repo.create(_workflow())
+
+        await repo.remember_gate_skip(
+            created.id, created.user_id, GateSkipRecord(event="x", reason="y", at=datetime.now(UTC))
+        )
+
+        raw = await raw_collection.find_one({"_id": created.id})
+        assert raw.get("gate") is None

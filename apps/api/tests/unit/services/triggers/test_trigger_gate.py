@@ -255,10 +255,11 @@ class TestTheSkipLine:
             certainty=0.95,
         )
         assert isinstance(skip, GateSkip)
-        assert skip.summary == (
-            'Skipped: Acme Billing <billing@acme.com>, "Invoice 4021 is past due". '
-            f'Not a match for "{BILLING}" (95% sure).'
-        )
+        assert skip.reason == f'Not a match for "{BILLING}" (95% sure).'
+        workflow_id, user_id, record = seams.workflow_skip.await_args.args
+        assert (workflow_id, user_id) == (OWNER_ID, USER_ID)
+        assert (record.event, record.reason) == (skip.event, skip.reason)
+        seams.todo_skip.assert_not_awaited()
 
     async def test_just_under_the_line_runs(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.949, run_label="needed")))
@@ -297,9 +298,8 @@ class TestTheSkipLine:
         skip = await _skip(DESK)
 
         assert isinstance(skip, GateSkip)
-        assert skip.summary == (
-            'Skipped: Acme Billing <billing@acme.com>, "Invoice 4021 is past due". Not a match '
-            'for "a real person or a real obligation is waiting on you" (99% sure).'
+        assert skip.reason == (
+            'Not a match for "a real person or a real obligation is waiting on you" (99% sure).'
         )
 
     async def test_an_email_with_no_subject_is_named_by_its_sender(

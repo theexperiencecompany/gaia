@@ -16,12 +16,18 @@ from app.agents.tools.coding.query_json_tool import query_json
 from app.constants import agents as agent_constants, todos as todo_constants
 from app.constants.email import DEFAULT_SUMMARY_FIELDS
 from app.constants.quiet_hours import QUIET_HOURS_END, QUIET_HOURS_START
-from app.constants.todos import INBOX_DESK_TITLE, NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL
+from app.constants.todos import (
+    ACTION_NEEDED_LABEL,
+    BLOCKING_LABELS,
+    INBOX_DESK_TITLE,
+    NEEDS_REPLY_LABEL,
+    WAITING_FOR_REPLY_LABEL,
+)
 from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.models.todo_models import TodoModel
 
 BRIEFING_SECTIONS = ["Needs you", "Waiting on others", "Today", "FYI", "Noticed", "Filtered"]
-THREAD_CLASSES = ["TO_REPLY", "AWAITING_REPLY", "FYI", "ACTIONED"]
+THREAD_CLASSES = ["TO_REPLY", "AWAITING_REPLY", "ACTION_NEEDED", "FYI", "ACTIONED"]
 
 
 def _step(number: int) -> list[str]:
@@ -53,7 +59,7 @@ def test_each_thread_class_is_defined_where_threads_are_classified() -> None:
     assert _heads(_step(CLASSIFY_STEP)[1:]) == THREAD_CLASSES
 
 
-@pytest.mark.parametrize("label", [NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL])
+@pytest.mark.parametrize("label", [ACTION_NEEDED_LABEL, NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL])
 def test_thread_todos_are_filed_and_briefed_under_the_label_constants(label: str) -> None:
     assert f'["{label}"]' in "\n".join(_step(THREAD_TODO_STEP))
     assert f"your {label} sub-todos" in "\n".join(_step(BRIEFING_STEP))
@@ -262,7 +268,58 @@ def test_a_thread_with_a_todo_is_left_to_it_and_the_desk_drafts_only_for_new_one
         "If the thread already has a todo, that todo comes back: it watches the thread and owns "
         "it, so leave the thread to it."
     ) in "\n".join(_step(THREAD_TODO_STEP))
-    assert _step(DRAFT_STEP)[0].startswith("For each todo you created this run, ")
+    assert _step(DRAFT_STEP)[0].startswith(
+        f"For each todo you created this run but an {ACTION_NEEDED_LABEL} one, "
+    )
+
+
+def test_mail_the_user_must_act_on_is_kept_from_the_automated_skip() -> None:
+    """Regression: a "card declined, insufficient funds" bank alert was skipped as automated."""
+    assert "Never skip ACTION_NEEDED mail (step 5), automated or not." in "\n".join(
+        _step(SKIP_STEP)
+    )
+
+
+def test_action_needed_names_its_cases_and_leaves_routine_documents_fyi() -> None:
+    action = _line(_step(CLASSIFY_STEP), "ACTION_NEEDED")
+
+    for case in ("declined card", "failed payment", "security alert", "expiring", "deadline"):
+        assert case in action
+    assert "receipts and statements stay FYI" in action
+    assert "statements" in _line(_step(CLASSIFY_STEP), "FYI")
+
+
+def test_an_action_todo_is_due_on_its_deadline_or_today_and_gets_no_draft() -> None:
+    step = "\n".join(_step(THREAD_TODO_STEP))
+
+    assert (
+        f'labels=["{ACTION_NEEDED_LABEL}"], due_date=the deadline the email names, otherwise today'
+        in step
+    )
+    assert f"an {ACTION_NEEDED_LABEL} one, which gets no draft" in _step(DRAFT_STEP)[0]
+
+
+def test_action_todos_open_needs_you_before_owed_replies() -> None:
+    needs_you = _briefing_line("Needs you")
+
+    assert needs_you.index(f"your {ACTION_NEEDED_LABEL} sub-todos") < needs_you.index(
+        f"your {NEEDS_REPLY_LABEL} sub-todos"
+    )
+    assert '"Kotak · card declined · today"' in needs_you
+
+
+def test_action_needed_is_the_users_move_not_a_block() -> None:
+    assert ACTION_NEEDED_LABEL not in BLOCKING_LABELS
+    assert len({ACTION_NEEDED_LABEL, NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL}) == 3
+
+
+def test_the_thread_contract_keeps_an_action_todo_undrafted_until_the_thread_shows_it_done() -> (
+    None
+):
+    guidance = _thread_guidance()
+
+    assert f"{ACTION_NEEDED_LABEL} (the user must act themselves" in guidance
+    assert f"An {ACTION_NEEDED_LABEL} todo gets no draft and no follow-up" in guidance
 
 
 def _preamble() -> str:

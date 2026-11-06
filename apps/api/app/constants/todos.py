@@ -34,6 +34,8 @@ NEEDS_FOLLOW_UP_LABEL: Final[str] = "needs-follow-up"
 WAITING_FOR_REPLY_LABEL: Final[str] = "waiting-for-reply"
 # A thread todo's other state: the user owes the reply. Not blocking, the next move is theirs.
 NEEDS_REPLY_LABEL: Final[str] = "needs-reply"
+# A thread todo the user must act on outside the thread (pay, secure, renew); nobody awaits a reply.
+ACTION_NEEDED_LABEL: Final[str] = "action-needed"
 WAITING_FOR_APPROVAL_LABEL: Final[str] = "waiting-for-approval"
 BLOCKING_LABEL: Final[str] = "blocked"
 

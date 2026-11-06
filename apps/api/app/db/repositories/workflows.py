@@ -25,6 +25,7 @@ from app.constants.cache import (
     WORKFLOW_LIMIT_NOTICE_PREFIX,
     WORKFLOW_LIMIT_NOTICE_TTL,
 )
+from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import (
@@ -33,6 +34,7 @@ from app.models.scheduler_models import (
     TaskRearm,
     _Unset,
 )
+from app.models.trigger_gate_models import GateSkipRecord
 from app.models.workflow_models import (
     PublicWorkflowRow,
     SystemWorkflowDefinition,
@@ -452,6 +454,25 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             ops["$set"] = {"activated": False}
         return await self._apply_raw_update(
             {"_id": workflow_id, "user_id": user_id}, ops, scope=REPO_GLOBAL_SCOPE
+        )
+
+    async def remember_gate_skip(
+        self, workflow_id: str, user_id: str, skip: GateSkipRecord
+    ) -> None:
+        """Add skip to the user's workflow gate's recent skips, keeping the newest few, and count it."""
+        await self._apply_raw_update(
+            {"_id": workflow_id, "user_id": user_id, "gate": {"$ne": None}},
+            {
+                "$push": {
+                    "gate.recent_skips": {
+                        "$each": [skip.model_dump()],
+                        "$slice": -GATE_RECENT_SKIPS_KEPT,
+                    }
+                },
+                "$inc": {"gate.skipped_count": 1},
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
         )
 
     async def set_error_message(

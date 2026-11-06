@@ -4,6 +4,7 @@ None on the owner means it never had a gate; enabled=False means the user turned
 off and its text is kept, so turning it back on restores it.
 """
 
+from datetime import datetime
 from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -20,8 +21,24 @@ from app.constants.trigger_gates import (
 )
 
 
+class GateSkipRecord(BaseModel):
+    """One event a gate kept from running its job."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: str = Field(
+        description="The skipped event as a person reads it: an email's sender and subject"
+    )
+    reason: str = Field(description="The condition the event missed and how sure the gate was")
+    at: datetime
+
+
 class _StoredGate(BaseModel):
     model_config = ConfigDict(frozen=True)
+
+    # Newest last, at most GATE_RECENT_SKIPS_KEPT; skipped_count counts every skip ever.
+    recent_skips: list[GateSkipRecord] = Field(default_factory=list)
+    skipped_count: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _persist_defaults(self) -> Self:
