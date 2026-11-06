@@ -856,7 +856,9 @@ def test_an_action_todo_is_due_on_its_deadline_or_today_and_gets_no_draft() -> N
 
     assert f'labels=["{ACTION_NEEDED_LABEL}"], due_date=the deadline the line names' in step
     assert "otherwise today, no scheduled_at" in step
-    assert _mail_step("e").startswith("For each TO_REPLY thread:")
+    assert _mail_step("e").startswith(
+        "Save every draft in one turn, as parallel calls. For each TO_REPLY thread:"
+    )
 
 
 def test_action_todos_open_needs_you_before_owed_replies() -> None:
