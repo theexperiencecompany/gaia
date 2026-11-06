@@ -4,10 +4,8 @@ import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { FilterHorizontalIcon } from "@icons";
 import type { AuthoredGateView, SystemGateView } from "@shared/api/generated";
-import {
-  PANEL_ROW_BUTTON_PROPS,
-  PanelRowContent,
-} from "@/components/shared/PanelRow";
+import { PanelRowContent } from "@/components/shared/PanelRow";
+import { PANEL_ROW_BUTTON_PROPS } from "@/components/shared/panelRowButtonProps";
 import { GATE_COPY, gateSkipCount } from "../../constants/gates";
 import { gateSentence } from "../../utils/gateEdit";
 import { GateDetail, type GateRuleProps } from "./GateDetail";
