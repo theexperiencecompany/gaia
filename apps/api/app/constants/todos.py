@@ -247,10 +247,23 @@ INBOX_DESK_ACTION_MAIL_TERMS: Final[tuple[str, ...]] = (
     "(past due)",
     "(action required)",
 )
+# Routine sign-in notices and codes ask nothing of the user, so the action fetch leaves them out.
+INBOX_DESK_ROUTINE_SIGN_IN_TERMS: Final[tuple[str, ...]] = (
+    "(new sign-in)",
+    "(new login)",
+    "(new device)",
+    "(verification code)",
+    "(security code)",
+    "(login code)",
+    "(sign-in code)",
+)
 # Gmail's (a b) is every word, so no quote reaches the prompt's quoted query, and no brace
 # reaches the run prompt's str.format.
 INBOX_DESK_ACTION_MAIL_FILTER: Final[str] = (
-    "in:inbox (" + " OR ".join(f"subject:{term}" for term in INBOX_DESK_ACTION_MAIL_TERMS) + ")"
+    "in:inbox ("
+    + " OR ".join(f"subject:{term}" for term in INBOX_DESK_ACTION_MAIL_TERMS)
+    + ") "
+    + " ".join(f"-subject:{term}" for term in INBOX_DESK_ROUTINE_SIGN_IN_TERMS)
 )
 # Gmail labels new mail needs to wake the desk: in the inbox, in Primary.
 INBOX_DESK_WATCH_LABELS: Final[tuple[str, ...]] = ("INBOX", "CATEGORY_PERSONAL")

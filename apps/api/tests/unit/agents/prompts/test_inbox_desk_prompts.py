@@ -298,10 +298,33 @@ def test_mail_the_user_must_act_on_is_kept_from_the_automated_skip() -> None:
 def test_action_needed_names_its_cases_and_leaves_routine_documents_fyi() -> None:
     action = _line(_step(CLASSIFY_STEP), "ACTION_NEEDED")
 
-    for case in ("declined card", "failed payment", "security alert", "expiring", "deadline"):
+    for case in ("declined card", "failed payment", "suspicious sign-in", "expiring", "deadline"):
         assert case in action
     assert "receipts and statements stay FYI" in action
     assert "statements" in _line(_step(CLASSIFY_STEP), "FYI")
+
+
+def test_a_routine_sign_in_notice_is_never_action_needed() -> None:
+    """Regression: an Infisical new-device login notice became a Needs you item."""
+    action = _line(_step(CLASSIFY_STEP), "ACTION_NEEDED")
+
+    assert "A routine sign-in notice" in action
+    assert "is never ACTION_NEEDED" in action
+    for problem in ("blocked", "recognise", "recovery", "locked or suspended"):
+        assert problem in action
+
+
+def test_the_action_fetch_leaves_out_routine_sign_in_subjects() -> None:
+    action_filter = todo_constants.INBOX_DESK_ACTION_MAIL_FILTER
+
+    for term in todo_constants.INBOX_DESK_ROUTINE_SIGN_IN_TERMS:
+        assert f"-subject:{term}" in action_filter
+    assert '"' not in action_filter and "{" not in action_filter
+
+
+def test_a_past_dated_event_is_never_added_or_proposed() -> None:
+    """Regression: the briefing proposed a Cloudflare deadline that had already passed."""
+    assert "Never add or propose an event whose date has already passed" in "\n".join(_step(8))
 
 
 def test_an_action_todo_is_due_on_its_deadline_or_today_and_gets_no_draft() -> None:
