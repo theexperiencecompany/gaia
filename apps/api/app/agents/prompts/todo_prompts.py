@@ -321,6 +321,13 @@ REPLY_DRAFT_RULE = (
     "only the user has is missing, and name it as the item's status."
 )
 
+# Follows a desk run that happens inside the user's quiet hours; a Standing rule still beats it.
+INBOX_DESK_QUIET_HOURS_NOTE = (
+    "It is {local_time} for the user, inside their quiet hours: do this run's steps, then "
+    "report only that nothing is new, unless a Standing rule asks to hear at any hour; the "
+    "next briefing carries the rest."
+)
+
 # Where an email is, said only when it tells the user something.
 INBOX_MAIL_WHERE = (
     "the account by a short name that tells it from the others (its nickname, or the part of "

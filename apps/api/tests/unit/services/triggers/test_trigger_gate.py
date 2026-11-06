@@ -32,6 +32,7 @@ from app.constants.trigger_gates import (
     SystemGatePreset,
     UrgentChoice,
 )
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.trigger_gate_models import AuthoredGate, GateSkipRecord, SystemGate, TriggerGate
 from app.services.triggers.trigger_gate import (
     GateBypass,
@@ -1313,6 +1314,28 @@ class TestQuietHoursHold:
         assert seen == [worker_context(Trigger.INTEGRATION_TRIGGER)]
 
     async def test_by_day_nothing_holds(self, seams: SimpleNamespace) -> None:
+        assert await quiet_hours_hold(DESK, USER_ID) is None
+
+    async def test_the_hours_the_user_set_decide_when_the_hold_ends(
+        self, night: SimpleNamespace
+    ) -> None:
+        night.quiet_hours.return_value = QuietHours(enabled=True, start_hour=1, end_hour=6)
+
+        assert await quiet_hours_hold(DESK, USER_ID) == GateHold(until=MORNING.replace(hour=6))
+        night.quiet_hours.assert_awaited_once_with(USER_ID)
+
+    async def test_quiet_hours_the_user_set_by_day_hold_by_day(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.quiet_hours.return_value = QuietHours(enabled=True, start_hour=13, end_hour=15)
+
+        assert await quiet_hours_hold(DESK, USER_ID) == GateHold(
+            until=datetime(2026, 10, 2, 15, 0, tzinfo=KOLKATA.tzinfo)
+        )
+
+    async def test_quiet_hours_the_user_turned_off_never_hold(self, night: SimpleNamespace) -> None:
+        night.quiet_hours.return_value = DEFAULT_QUIET_HOURS.model_copy(update={"enabled": False})
+
         assert await quiet_hours_hold(DESK, USER_ID) is None
 
     async def test_with_the_kill_switch_off_nothing_holds(self, night: SimpleNamespace) -> None:

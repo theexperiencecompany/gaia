@@ -207,7 +207,6 @@ apps/api/tests/unit/api/test_platform_auth_endpoint.py	override
 apps/api/tests/unit/api/test_support_endpoint.py	call-arg
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	index
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	method-assign
-apps/api/tests/unit/api/test_user_endpoint.py	arg-type
 apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_instructions.py	misc
 apps/api/tests/unit/app/test_main_smoke.py	arg-type
@@ -307,8 +306,6 @@ apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	call-arg
 apps/api/tests/unit/models/test_agent_config.py	typeddict-item
 apps/api/tests/unit/models/test_auth_models.py	call-arg
-apps/api/tests/unit/models/test_authenticated_user_shape.py	arg-type
-apps/api/tests/unit/models/test_authenticated_user_shape.py	call-arg
 apps/api/tests/unit/models/test_integration_request_ssrf.py	call-arg
 apps/api/tests/unit/models/test_payment_models.py	arg-type
 apps/api/tests/unit/models/test_payment_models.py	call-arg
@@ -540,7 +537,6 @@ apps/api/tests/unit/utils/search/test_engine.py	arg-type
 apps/api/tests/unit/utils/search/test_providers.py	arg-type
 apps/api/tests/unit/utils/search/test_providers.py	attr-defined
 apps/api/tests/unit/utils/search/test_providers.py	misc
-apps/api/tests/unit/utils/test_auth_utils.py	arg-type
 apps/api/tests/unit/utils/test_context_utils.py	index
 apps/api/tests/unit/utils/test_context_utils.py	return-value
 apps/api/tests/unit/utils/test_crawl_obscura.py	attr-defined

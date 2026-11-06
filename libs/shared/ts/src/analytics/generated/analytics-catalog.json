@@ -6130,6 +6130,38 @@
       }
     },
     {
+      "event": "settings:quiet_hours_updated",
+      "class": "SettingsQuietHoursUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user changed their quiet hours: whether they are on and the local hours they span.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user changed their quiet hours: whether they are on and the local hours they span.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "start_hour": {
+            "title": "Start Hour",
+            "type": "integer"
+          },
+          "end_hour": {
+            "title": "End Hour",
+            "type": "integer"
+          }
+        },
+        "required": ["enabled", "start_hour", "end_hour"],
+        "title": "SettingsQuietHoursUpdated",
+        "type": "object"
+      }
+    },
+    {
       "event": "skill:disabled",
       "class": "SkillDisabled",
       "owner": "server",

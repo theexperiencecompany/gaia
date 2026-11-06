@@ -85,6 +85,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     ExternalRef,
@@ -177,6 +178,7 @@ def _prompt(
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
     local_now: datetime = _DAYTIME,
+    quiet_hours: QuietHours | None = None,
 ) -> str:
     return build_execution_prompt(
         doc,
@@ -184,6 +186,7 @@ def _prompt(
         origin=origin,
         coalesced=coalesced,
         local_now=local_now,
+        quiet_hours=quiet_hours or DEFAULT_QUIET_HOURS,
     )
 
 
@@ -228,6 +231,13 @@ def todo_chat() -> Iterator[AsyncMock]:
         f"{MODULE}.get_or_create_todo_conversation", AsyncMock(return_value=TODO_CHAT_ID)
     ) as chat:
         yield chat
+
+
+@pytest.fixture(autouse=True)
+def quiet_hours() -> Iterator[AsyncMock]:
+    """Give every run the default quiet hours without Mongo; a test that needs others sets them."""
+    with patch(f"{MODULE}.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)) as hours:
+        yield hours
 
 
 @pytest.fixture(autouse=True)
@@ -791,6 +801,48 @@ class TestDeliveryContractInThePrompt:
         assert prompt.startswith("An event you were watching just fired.")
         assert TRIGGERED_RELEVANCE_GUIDANCE in prompt
         assert "UNTRUSTED external data" in prompt
+
+    def test_a_desk_woken_in_quiet_hours_is_told_to_report_nothing(self) -> None:
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
+        )
+        quiet = _prompt(_doc(external_ref=desk), origin=origin, local_now=_LATE)
+        daytime = _prompt(_doc(external_ref=desk), origin=origin)
+
+        note = todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE
+        assert note.format(local_time="23:08") in quiet
+        assert note.split("{")[0] not in daytime
+
+    def test_a_desk_follows_the_quiet_hours_the_user_set(self) -> None:
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
+        )
+        lunch = QuietHours(enabled=True, start_hour=10, end_hour=12)
+        note = todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE
+
+        at_eleven = _prompt(_doc(external_ref=desk), origin=origin, quiet_hours=lunch)
+        late = _prompt(_doc(external_ref=desk), origin=origin, local_now=_LATE, quiet_hours=lunch)
+        off = _prompt(
+            _doc(external_ref=desk),
+            origin=origin,
+            local_now=_LATE,
+            quiet_hours=DEFAULT_QUIET_HOURS.model_copy(update={"enabled": False}),
+        )
+
+        assert note.format(local_time="11:00") in at_eleven
+        assert note.split("{")[0] not in late
+        assert note.split("{")[0] not in off
+
+    def test_quiet_hours_leave_a_thread_todo_alone(self) -> None:
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
+        )
+        prompt = _prompt(_doc(external_ref=thread), origin=origin, local_now=_LATE)
+
+        assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.split("{")[0] not in prompt
 
     def test_a_desk_let_through_quiet_hours_reports_and_says_why(self) -> None:
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
@@ -2413,6 +2465,7 @@ class TestOneRunPerOccurrence:
             ),
             patch(f"{_GATE}.is_trigger_gates_enforced", AsyncMock(return_value=True)),
             patch(f"{_GATE}.get_profile_timezone", AsyncMock(return_value=kolkata)),
+            patch(f"{_GATE}.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)),
             patch(f"{_GATE}.capture"),
             patch(f"{_DISPATCH}.todo_repository", row),
             patch(f"{_DISPATCH}.record_activity", AsyncMock()),
@@ -3244,6 +3297,38 @@ class TestExecuteOnExecutor:
             == f"[run_started] scheduled run (conversation {self._request().conversation_id[:8]})"
         )
         assert {c.args[:2] for c in self.timeline.call_args_list} == {("todo-1", OWNER_ID)}
+
+    async def test_the_run_prompt_uses_the_users_clock_not_utc(self) -> None:
+        """local_now comes from the user's timezone: 17:30 UTC is 23:00 in Kolkata."""
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
+        )
+        frozen = datetime(2026, 10, 3, 17, 30, tzinfo=UTC)
+        run = AsyncMock()
+        with (
+            patch(f"{MODULE}.run_todo_on_executor", run),
+            patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)),
+            patch(f"{MODULE}.collect_run_context", AsyncMock(return_value=TodoRunContext())),
+            patch(f"{MODULE}.with_desk_notes", AsyncMock(side_effect=lambda doc: doc)),
+            time_machine.travel(frozen, tick=False),
+        ):
+            await _execute_on_executor(
+                _doc(external_ref=desk),
+                user_data=AuthenticatedUser(user_id=OWNER_ID),
+                user_tz=Timezone.parse("Asia/Kolkata"),
+                origin=origin,
+            )
+
+        task = run.await_args.args[0].task
+        assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.format(local_time="23:00") in task
+
+    async def test_the_run_reads_the_quiet_hours_of_the_todos_owner(
+        self, quiet_hours: AsyncMock
+    ) -> None:
+        await self._execute()
+
+        quiet_hours.assert_awaited_once_with(OWNER_ID)
 
     async def test_every_run_executes_in_the_todos_own_chat_on_a_fresh_thread(
         self, todo_chat: AsyncMock

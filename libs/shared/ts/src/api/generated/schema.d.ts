@@ -5302,8 +5302,7 @@ export interface paths {
         };
         /**
          * Get Me
-         * @description Returns the current authenticated user's details.
-         *     Uses the dependency injection to fetch user data.
+         * @description Return the signed-in user; the app's session load also stores the browser's zone when none is saved.
          */
         get: operations["user_get_me"];
         put?: never;
@@ -5337,6 +5336,30 @@ export interface paths {
          * @description Update the user's name. This is the consolidated endpoint for name updates.
          */
         patch: operations["user_update_user_name"];
+        trace?: never;
+    };
+    "/api/v1/user/quiet-hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Quiet Hours
+         * @description The local hours in which GAIA holds what can wait for the morning.
+         */
+        get: operations["user_read_quiet_hours"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Quiet Hours
+         * @description Store the user's quiet hours and echo what was saved.
+         */
+        patch: operations["user_update_quiet_hours"];
         trace?: never;
     };
     "/api/v1/user/timezone": {
@@ -12775,6 +12798,18 @@ export interface components {
             success: boolean;
         };
         /**
+         * QuietHours
+         * @description When the user's quiet hours start and end on their own clock; the span may cross midnight.
+         */
+        QuietHours: {
+            /** Enabled */
+            enabled: boolean;
+            /** End Hour */
+            end_hour: number;
+            /** Start Hour */
+            start_hour: number;
+        };
+        /**
          * ReadinessResponse
          * @description ``GET /health/ready``: whether every backing service answered a real request.
          */
@@ -16761,6 +16796,7 @@ export type PublishIntegrationResponse = components['schemas']['PublishIntegrati
 export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResponse'];
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
+export type QuietHours = components['schemas']['QuietHours'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
@@ -31188,7 +31224,10 @@ export interface operations {
     user_get_me: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Browser timezone fallback */
+                "x-timezone"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -31321,6 +31360,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserUpdateResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    user_read_quiet_hours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuietHours"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    user_update_quiet_hours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuietHours"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuietHours"];
                 };
             };
             /** @description Unprocessable Entity */

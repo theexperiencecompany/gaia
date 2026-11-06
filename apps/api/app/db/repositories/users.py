@@ -49,6 +49,7 @@ from app.models.onboarding_models import (
     SocialProfile,
     WritingStyleExampleBlocks,
 )
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -471,6 +472,14 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             {"$set": set_fields},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
+        )
+
+    async def set_quiet_hours(self, user_id: str, hours: QuietHours) -> UserDocument | None:
+        """Store the user's quiet hours; None when there is no such user."""
+        return await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"quiet_hours": hours.model_dump()}},
+            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_chat_channel_priority(self, user_id: str, priority: list[str]) -> None:
