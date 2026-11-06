@@ -1,16 +1,17 @@
-"""Trigger gates: one JEV call about a fired event, made before it costs a run.
+"""Trigger gates: one JEV question about a fired event, asked three times before it costs a run.
 
 Both fan-outs of TriggerHandler.process_event call decide_gate before anything is
 claimed, buffered or queued, so a skipped event leaves nothing behind that marks
-it handled. By day only P(skip label) >= 0.95 skips, and every other answer or
-failure runs. Inside the user's quiet hours the same call also asks whether the
-event is worth waking them for: P(urgent) >= 0.80 runs now, then a confident
-skip skips, and everything else, every JEV failure included, waits for 08:00.
-A gate that crashes outside its JEV call runs the job now, day or night.
+it handled. By day only P(skip label) >= 0.95 on every sample skips, and every
+other answer or failure runs. Inside the user's quiet hours the same call also
+asks whether the event is worth waking them for: a median P(urgent) >= 0.80 runs
+now, then a confident skip skips, and everything else, every JEV failure
+included, waits for 08:00. A gate that crashes outside its JEV call runs the job
+now, day or night.
 """
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from email.utils import parseaddr
@@ -32,6 +33,7 @@ from app.constants.trigger_gates import (
     TRIGGER_GATE_EVENT_LABEL_SEPARATOR,
     TRIGGER_GATE_FIELD_MAX_CHARS,
     TRIGGER_GATE_INSTRUCTIONS,
+    TRIGGER_GATE_JEV_SAMPLES,
     TRIGGER_GATE_JEV_TIMEOUT_SECONDS,
     TRIGGER_GATE_QUESTION_KEY,
     TRIGGER_GATE_SKIP_LABEL,
@@ -260,6 +262,19 @@ def urgency(answer: JevChoiceAnswer) -> Urgency:
     return Urgency(1 - probabilities[UrgentChoice.CAN_WAIT], leaning)
 
 
+def consensus_skip(
+    gate: TriggerGate, answers: Sequence[JevChoiceAnswer]
+) -> tuple[JevChoiceAnswer, float]:
+    """Return the least sure answer and its P(skip label): a skip needs every sample past the line."""
+    return min(((a, skip_probability(gate, a)) for a in answers), key=lambda pair: pair[1])
+
+
+def consensus_urgency(answers: Sequence[JevChoiceAnswer]) -> Urgency:
+    """Return the median sample's urgency, so the user is woken only when most samples would."""
+    ranked = sorted((urgency(a) for a in answers), key=lambda u: u.probability)
+    return ranked[len(ranked) // 2]
+
+
 def _clip(value: object) -> object | None:
     if isinstance(value, str):
         return clip_text(" ".join(value.split()), TRIGGER_GATE_FIELD_MAX_CHARS)
@@ -349,20 +364,30 @@ async def _in_conversation(job: GatedJob, thread_id: str, payload: Mapping[str, 
 
 
 def _settle(
-    gate: TriggerGate, body: JevDecisionsResponse, event: _GateEvent, *, hold: GateHold | None
+    gate: TriggerGate,
+    bodies: Sequence[JevDecisionsResponse],
+    event: _GateEvent,
+    *,
+    hold: GateHold | None,
 ) -> _Decision:
-    """Read JEV's answers in the settle order; hold is what quiet hours do, None by day."""
+    """Read JEV's sampled answers in the settle order; hold is what quiet hours do, None by day."""
     urgent: Urgency | None = None  # pragma: no mutate — only read as truthy; "" equals None
     if hold is not None:
-        labels = _URGENT_LABELS
-        urgent = urgency(body.choice(TRIGGER_GATE_URGENT_QUESTION_KEY, labels, label="urgent "))
+        urgent = consensus_urgency(
+            [
+                b.choice(TRIGGER_GATE_URGENT_QUESTION_KEY, _URGENT_LABELS, label="urgent ")
+                for b in bodies
+            ]
+        )
         if urgent.probability >= TRIGGER_GATE_URGENT_PROBABILITY:
             bypass = GateBypass(QUIET_HOURS_BYPASS_REASONS[urgent.choice])
             return _Decision(GateReason.JEV_URGENT, bypass, urgency=urgent)
         if event.conversation:
             return _Decision(GateReason.JEV_CAN_WAIT, hold, urgency=urgent)
-    answer = body.choice(TRIGGER_GATE_QUESTION_KEY, _question(gate).labels, label="gate ")
-    p_skip = skip_probability(gate, answer)
+    labels = _question(gate).labels
+    answer, p_skip = consensus_skip(
+        gate, [b.choice(TRIGGER_GATE_QUESTION_KEY, labels, label="gate ") for b in bodies]
+    )
     if p_skip >= TRIGGER_GATE_SKIP_PROBABILITY:
         skip = GateSkip(event.label, gate.display_condition, p_skip)
         return _Decision(GateReason.JEV_SKIP, skip, answer, p_skip, urgent)
@@ -378,8 +403,10 @@ async def _ask_jev(
     started = time.perf_counter()
     try:
         async with asyncio.timeout(TRIGGER_GATE_JEV_TIMEOUT_SECONDS):
-            body = await post_decisions(state, questions)
-        decision = _settle(gate, body, event, hold=hold)
+            bodies = await asyncio.gather(
+                *(post_decisions(state, questions) for _ in range(TRIGGER_GATE_JEV_SAMPLES))
+            )
+        decision = _settle(gate, bodies, event, hold=hold)
     except Exception as e:
         # The one degradation a gate has: run as if it were not there, or wait for the morning.
         reason = next(
