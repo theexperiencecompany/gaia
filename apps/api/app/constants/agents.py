@@ -165,6 +165,9 @@ OUTCOME_COMPLETE_TOOL = "complete_tracked_todo"
 #: it and must close the todo or set a new one. outcome_review reads it off the
 #: task turn, so the brief and the check cannot drift apart on a string.
 TODO_REARM_TAG = "<todo_rearm>"
+#: Opens the brief of a run whose todo wakes GAIA again on its own (its recurrence,
+#: or the watch that fired it): that wake backs a schedule outcome without a new check.
+TODO_WAKES_AGAIN_TAG = "<todo_wakes_again>"
 
 
 #: What the executor brief tells the run each horizon demands before it may finish.

@@ -22,6 +22,7 @@ from app.agents.prompts.todo_prompts import (
     SILENT_RUN_GUIDANCE,
     TODO_ID_LINE,
     TODO_REARM_BRIEF,
+    TODO_WAKES_AGAIN_BRIEF,
     TRIGGERED_RELEVANCE_GUIDANCE,
     WAKE_REASON_TEXT,
 )
@@ -172,6 +173,8 @@ def build_execution_prompt(
         prompt_parts.append(context.learnings)
     if origin is None and not doc.recurrence:
         prompt_parts.append(TODO_REARM_BRIEF.format(why=wake_text(doc)))
+    else:
+        prompt_parts.append(TODO_WAKES_AGAIN_BRIEF)
     prompt_parts.append(delivery_guidance(doc))
     return "\n\n".join(prompt_parts)
 

@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 import pytest
 
 from app.agents.core.outcome_review import review_outcome, review_run, todo_left_asleep
+from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
 from app.constants.agents import OutcomeState
 from app.constants.general import FINISH_TASK_NAME
@@ -220,4 +221,43 @@ class TestATodoIsNeverLeftAsleep:
         review = review_outcome([self.BRIEFED, *_call("read", {"path": "canvas.md"}, "c1")])
 
         assert review.declared is None
+        assert review.problem is not None
+
+
+def _wakes_again_task() -> HumanMessage:
+    return HumanMessage(
+        content=f"Execute the scheduled task: call mom\n\n{todo_prompts.TODO_WAKES_AGAIN_BRIEF}"
+    )
+
+
+class TestARunOfATodoThatWakesAgain:
+    """Seen live: an hourly 'keep after me' todo's own run sent the same reminder twice.
+
+    Its recurrence already wakes GAIA, so schedule was rejected as unbacked, the
+    completion nudge sent the run back, and it reminded the user again.
+    """
+
+    def test_schedule_is_backed_by_the_wake_the_todo_already_has(self) -> None:
+        review = review_outcome(
+            [
+                _wakes_again_task(),
+                *_call("send_notification", {"title": "Call mom"}, "c1"),
+                *_finish("schedule"),
+            ]
+        )
+
+        assert review.verified
+
+    def test_done_still_needs_a_work_call(self) -> None:
+        assert not review_outcome([_wakes_again_task(), *_finish("done")]).verified
+
+    def test_an_unbriefed_run_still_needs_a_tracked_todo_for_schedule(self) -> None:
+        review = review_outcome(
+            [
+                _task(),
+                *_call("send_notification", {"title": "Call mom"}, "c1"),
+                *_finish("schedule"),
+            ]
+        )
+
         assert review.problem is not None

@@ -2,7 +2,7 @@
 
 import json
 
-from app.constants.agents import TODO_REARM_TAG, TOOL_RESULT_FETCHED_AT_KEY
+from app.constants.agents import TODO_REARM_TAG, TODO_WAKES_AGAIN_TAG, TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.todos import (
     INBOX_DESK_BRIEFING_ITEM_MAX_WORDS,
@@ -215,6 +215,13 @@ TODO_REARM_BRIEF = (
     "tomorrow and records that it had to."
 )
 
+TODO_WAKES_AGAIN_BRIEF = (
+    f"{TODO_WAKES_AGAIN_TAG}\n"
+    "This todo wakes you again on its own (its recurrence, or the watch that woke this run), "
+    "so it needs no new check. Do this run's part once, then end it: complete_tracked_todo "
+    "when Done when is met, otherwise finish_task with outcome schedule."
+)
+
 # What woke a scheduled run, by WakeReason; filled with the todo's own fields.
 WAKE_REASON_TEXT: dict[WakeReason, str] = {
     WakeReason.SCHEDULED_CHECK: "your scheduled check came up.",
@@ -299,24 +306,17 @@ SANDBOX_RUN_EVENT_GUIDANCE = (
 # reads the run's final report and messages the user only when it matters, so
 # the run must neither notify on its own nor decide delivery for the user.
 DELIVERED_RESULT_RULES = (
-    "REPORTING: GAIA reads your final report and messages the user only if it matters. Do "
-    "NOT call send_notification to announce this run's outcome, because that sends it "
-    "a second time. Notify only for something separate and urgent that cannot wait. "
-    "Leave this todo's delivery settings alone: whether its runs reach the user is "
-    "the user's choice. "
-    "If this run proved the todo's goal is fully achieved (the fix is live and "
-    "verified, the watched event arrived and is handled), update canvas.md Learnings "
-    "and call complete_tracked_todo in the same run instead of leaving it open. "
-    "Do not wait for the user to report it."
+    "REPORTING: never call send_notification for this run or change this todo's delivery "
+    "settings. When this run proves the goal is fully achieved, write Learnings in "
+    "canvas.md and call complete_tracked_todo in this run; never wait for the user to "
+    "report it."
 )
 
 # The report's form for a todo whose own guidance sets none. Placed last, it beat the
 # Inbox desk's briefing form, so the desk gets the rules alone.
 DELIVERED_REPORT_FORM = (
-    "End with a factual report of this run: what you checked or did, what "
-    "is new since the last run (or that nothing is), and anything the user must decide. "
-    "Say when the todo's notes show the user already knows about an open question, and "
-    "when they asked to hear every result. Write it for GAIA, not as a message to them."
+    "In your result, say when the user already knows an open question or asked to hear "
+    "every result."
 )
 
 DELIVERED_RESULT_GUIDANCE = f"{DELIVERED_RESULT_RULES} {DELIVERED_REPORT_FORM}"

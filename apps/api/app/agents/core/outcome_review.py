@@ -19,6 +19,7 @@ from app.constants.agents import (
     OUTCOME_SUBSCRIBE_TOOL,
     OUTCOME_TRACKED_TODO_TOOLS,
     TODO_REARM_TAG,
+    TODO_WAKES_AGAIN_TAG,
     OutcomeState,
 )
 from app.constants.execute import EXECUTE_TOOL_NAME
@@ -83,13 +84,11 @@ def _keeps_a_todo_awake(call: ToolCall) -> bool:
     return _effective_call(call)[0] == OUTCOME_COMPLETE_TOOL or _wakes_later(call)
 
 
-def _briefed_to_rearm(delegation: Sequence[AnyMessage]) -> bool:
+def _briefed_with(delegation: Sequence[AnyMessage], tag: str) -> bool:
     task = delegation[0] if delegation else None
     if not isinstance(task, HumanMessage):
         return False
-    return any(
-        line.strip() == TODO_REARM_TAG for line in extract_text_content(task.content).splitlines()
-    )
+    return any(line.strip() == tag for line in extract_text_content(task.content).splitlines())
 
 
 def todo_left_asleep(delegation: Sequence[AnyMessage]) -> str | None:
@@ -98,7 +97,7 @@ def todo_left_asleep(delegation: Sequence[AnyMessage]) -> str | None:
     A run briefed with the re-arm tag spent the check that woke it, so it must
     close the todo or set a new one. Creating a todo without one is refused in code.
     """
-    if _briefed_to_rearm(delegation) and not any(
+    if _briefed_with(delegation, TODO_REARM_TAG) and not any(
         _keeps_a_todo_awake(c) for c in _successful_calls(delegation)
     ):
         return "the todo was left open with no next check, so nothing will look at it again"
@@ -156,7 +155,11 @@ def review_outcome(delegation: Sequence[AnyMessage]) -> OutcomeReview:
     calls = _successful_calls(delegation)
     if declared is OutcomeState.DONE and not calls:
         return OutcomeReview(declared, "done was declared but no work call succeeded")
-    if declared is OutcomeState.SCHEDULE and not any(_wakes_later(c) for c in calls):
+    if (
+        declared is OutcomeState.SCHEDULE
+        and not _briefed_with(delegation, TODO_WAKES_AGAIN_TAG)
+        and not any(_wakes_later(c) for c in calls)
+    ):
         return OutcomeReview(
             declared, "schedule was declared but no tracked todo was scheduled to wake GAIA"
         )

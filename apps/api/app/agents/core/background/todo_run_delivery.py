@@ -28,6 +28,7 @@ from app.constants.todos import (
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
     DELIVERY_KEY_DETAILS_MAX_CHARS,
+    DELIVERY_RUN_HISTORY_LINES,
     RUN_SUMMARY_ACTIVITY_CHARS,
     STANDING_RULES_MAX_CHARS,
     TODO_RUN_FINISH_JOB_PREFIX,
@@ -55,7 +56,11 @@ from app.services.delivery.chat_channel import (
     resolve_proactive_target,
 )
 from app.services.notification_service import notification_service
-from app.services.todo_activity import record_run_finished, run_finished_marker
+from app.services.todo_activity import (
+    recent_run_outcomes,
+    record_run_finished,
+    run_finished_marker,
+)
 from app.utils.message_breaks import split_message_bubbles
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
@@ -297,6 +302,7 @@ async def _narrate_and_send(
                 _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
                 _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
                 runs_once=not (todo.recurrence or todo.trigger_subscriptions),
+                run_history=recent_run_outcomes(todo.activity_content, DELIVERY_RUN_HISTORY_LINES),
             ),
         ),
         _lookup_target(todo),

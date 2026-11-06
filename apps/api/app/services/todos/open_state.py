@@ -27,7 +27,9 @@ _LIMIT_SLACK = timedelta(minutes=5)
 WAITING_ON_CHOICES = (
     "'time' (nothing outside to wait for, just look again then), "
     "'event' (a watch or thread will wake it; scheduled_at is the backup check), "
-    "'user' (you asked them something; scheduled_at is when the question expires), "
+    "'user' (you asked them something; scheduled_at is when the question expires; a "
+    "task of theirs you keep after until they confirm is not a question: it gets a "
+    "recurrence or a next check, never a plan that ends it unanswered), "
     "'sub_todos' (its sub-todos are doing the work; scheduled_at is the backup check), "
     "'unplanned' (captured with no plan yet; scheduled_at is when to plan it)"
 )

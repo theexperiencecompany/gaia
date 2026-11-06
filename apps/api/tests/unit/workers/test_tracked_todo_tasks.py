@@ -1795,6 +1795,19 @@ class TestBuildExecutionPrompt:
     def test_a_todo_that_wakes_on_its_own_gets_no_rearm_brief(self):
         assert TODO_REARM_TAG not in _prompt(_doc(title="Brief me", recurrence="daily"))
 
+    def test_a_recurring_run_is_told_its_todo_wakes_again(self):
+        """Seen live: an hourly todo's run, never told this, re-sent its reminder to back schedule."""
+        prompt = _prompt(_doc(title="Call mom", recurrence="every_1h"))
+        assert todo_prompts.TODO_WAKES_AGAIN_BRIEF in prompt
+
+    def test_a_trigger_run_is_told_its_todo_wakes_again(self):
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        prompt = _prompt(_doc(waiting_on=WaitingOn.EVENT), origin=origin)
+        assert todo_prompts.TODO_WAKES_AGAIN_BRIEF in prompt
+
+    def test_a_run_that_spent_its_check_is_not_told_it_wakes_again(self):
+        assert todo_prompts.TODO_WAKES_AGAIN_BRIEF not in _prompt(_doc(title="Ship it"))
+
     def test_a_scheduled_run_is_told_it_spent_the_check_that_woke_it(self):
         """Seen in real use: one-shot todos ran once, set no next check, and stayed open forever."""
         prompt = _prompt(_doc(title="Ship it"))

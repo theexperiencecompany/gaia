@@ -29,7 +29,7 @@ which is the shipped default; the hil suite owns the armed gate).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 import os
 from pathlib import Path
 import re
@@ -70,6 +70,7 @@ API = f"{DEV_API_BASE}/api/v1"
 TRACKED_LABEL = "gaia-tracked"
 #: The id prefix of a todo follow-up, and the followup_kind value that demands a tracked todo.
 TRACKED_TODO_KIND = "todo"
+REMINDER_KIND = "reminder"
 ACTIVE_REMINDER_STATUSES = frozenset({"scheduled", "executing"})
 DELIVERED_KIND = "delivered"
 # Executor work (research, planning) outlives the comms default of 75s.
@@ -78,6 +79,13 @@ DELIVERY_POLL_S = 4.0
 _QUESTION = re.compile(r"[^?.!\n]*\?")
 
 Followup = dict[str, Any]
+#: end_state keys that count the case's new follow-ups matching a predicate.
+_FOLLOWUP_COUNTS: dict[str, Callable[[Followup], bool]] = {
+    "tracked_open": lambda f: bool(
+        f["id"].startswith(f"{TRACKED_TODO_KIND}:") and not f["completed"]
+    ),
+    "reminders_set": lambda f: bool(f["id"].startswith(f"{REMINDER_KIND}:")),
+}
 
 
 def _spec(case: Case) -> dict[str, Any]:
@@ -373,7 +381,7 @@ class OwnershipTransport(ChatStreamTransport):
         ]
         found.extend(
             {
-                "id": f"reminder:{row['id']}",
+                "id": f"{REMINDER_KIND}:{row['id']}",
                 "title": (row.get("payload") or {}).get("title") or "",
                 "wake": row.get("status") in ACTIVE_REMINDER_STATUSES,
                 "recurring": bool(row.get("repeat")),
@@ -423,12 +431,8 @@ class OwnershipTransport(ChatStreamTransport):
             if key == "seeded_intact":
                 open_ids = {str(row["id"]) for row in open_todos}
                 state[key] = all(todo_id in open_ids for todo_id in seeded)
-            elif key == "tracked_open":
-                state[key] = sum(
-                    1
-                    for f in state["followups"]
-                    if f["id"].startswith(f"{TRACKED_TODO_KIND}:") and not f["completed"]
-                )
+            elif key in _FOLLOWUP_COUNTS:
+                state[key] = sum(1 for f in state["followups"] if _FOLLOWUP_COUNTS[key](f))
             elif key == "tracked_ownership":
                 state[key] = await self._tracked_ownership(client, state["followups"])
             elif key == "followups_matching":

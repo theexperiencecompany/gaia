@@ -261,6 +261,8 @@ OBSERVATIONS_MAX_CHARS: Final[int] = 12_000
 OBSERVATIONS_PROMPT_MAX_CHARS: Final[int] = 6_000
 # Most of a todo's Key Details its delivery decision reads.
 DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
+# Earlier runs' delivery outcomes shown to comms when it decides whether to message.
+DELIVERY_RUN_HISTORY_LINES: Final[int] = 3
 
 # How many referenced todos a run reads Learnings from.
 REFERENCED_TODOS_PROMPT_LIMIT: Final[int] = 5
@@ -279,6 +281,11 @@ EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
 LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
 
 # The one tracked todo per user that triages mail, owns its threads, briefs each morning and alerts on new mail.
+# Where a ping meets follow-through: one rule, read by comms, the executor and the manual.
+PING_WITH_FOLLOW_THROUGH_RULE: Final[str] = (
+    "A ping that GAIA must also see through is ONE tracked todo whose first run gives the "
+    "ping: never a reminder beside it, and never the reminder alone."
+)
 INBOX_DESK_TITLE: Final[str] = "Inbox desk"
 INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
 PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"
