@@ -813,7 +813,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def remember_subscription_gate_skip(
         self, *, user_id: str, subscription_id: str, skip: GateSkipRecord
     ) -> None:
-        """Add skip to the recent skips of the gate on the user's run watch, keeping the newest few."""
+        """Count skip on the gate of the user's run watch and keep it among the newest few."""
         await self._apply_raw_update(
             {"user_id": user_id},
             {
@@ -822,7 +822,8 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                         "$each": [skip.model_dump()],
                         "$slice": -GATE_RECENT_SKIPS_KEPT,
                     }
-                }
+                },
+                "$inc": {"trigger_subscriptions.$[watch].gate.skipped_count": 1},
             },
             scope=user_id,
             extra_filter={

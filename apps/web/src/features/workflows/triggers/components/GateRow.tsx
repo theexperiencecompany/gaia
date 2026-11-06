@@ -23,6 +23,7 @@ export function GateRow({ saved, watchesMail, ...rule }: GateRowProps) {
 
   const shown = saved?.display_condition === rule.condition ? saved : null;
   const skips = shown?.recent_skips ?? [];
+  const skippedCount = shown?.skipped_count ?? 0;
   const copy = GATE_COPY[watchesMail ? "mail" : "event"];
 
   return (
@@ -34,7 +35,7 @@ export function GateRow({ saved, watchesMail, ...rule }: GateRowProps) {
             label={rule.enabled ? gateSentence(rule.condition) : copy.off}
             isMuted={!rule.enabled}
             end={
-              rule.enabled && skips.length > 0 && gateSkipCount(skips.length)
+              rule.enabled && skippedCount > 0 && gateSkipCount(skippedCount)
             }
           />
         </Button>

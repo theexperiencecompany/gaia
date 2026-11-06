@@ -79,7 +79,7 @@ class TestWorkflowsCore:
     async def test_get_missing_returns_none(self, repo):
         assert await repo.get(_uid("missing")) is None
 
-    async def test_a_skip_is_kept_on_the_gates_recent_five_only(self, repo):
+    async def test_a_skip_is_kept_on_the_gates_recent_five_only_and_counted(self, repo):
         integration = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message")
         gated, ungated = (
             await repo.create(
@@ -106,6 +106,7 @@ class TestWorkflowsCore:
         stored, untouched = await repo.get(gated.id), await repo.get(ungated.id)
         assert stored is not None and stored.gate is not None
         assert stored.gate.recent_skips == skips[1:]
+        assert stored.gate.skipped_count == len(skips)
         assert untouched is not None and untouched.gate is None
 
     async def test_reads_legacy_iso_string_datetimes_as_tz_aware(self, repo, raw_collection):

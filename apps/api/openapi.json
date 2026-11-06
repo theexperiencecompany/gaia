@@ -1013,11 +1013,18 @@
             },
             "title": "Recent Skips",
             "type": "array"
+          },
+          "skipped_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Skipped Count",
+            "type": "integer"
           }
         },
         "required": [
           "kind",
           "recent_skips",
+          "skipped_count",
           "condition",
           "author",
           "enabled",
@@ -17947,11 +17954,18 @@
             },
             "title": "Recent Skips",
             "type": "array"
+          },
+          "skipped_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Skipped Count",
+            "type": "integer"
           }
         },
         "required": [
           "kind",
           "recent_skips",
+          "skipped_count",
           "preset",
           "enabled",
           "display_condition",

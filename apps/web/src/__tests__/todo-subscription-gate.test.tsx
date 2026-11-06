@@ -36,6 +36,7 @@ const AUTHORED: AuthoredGateView = {
   display_condition: BILLING,
   enforced: false,
   recent_skips: [],
+  skipped_count: 0,
 };
 
 const DESK: SystemGateView = {
@@ -45,6 +46,7 @@ const DESK: SystemGateView = {
   display_condition: DESK_TEXT,
   enforced: true,
   recent_skips: [],
+  skipped_count: 0,
 };
 
 describe("a tracked todo's runs-only-when line", () => {

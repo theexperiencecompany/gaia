@@ -253,16 +253,7 @@ class TestTheSkipLine:
 
         skip = await _skip()
 
-        assert skip == GateSkip(
-            event="Acme Billing · Invoice 4021 is past due",
-            condition=BILLING,
-            certainty=0.95,
-        )
-        assert isinstance(skip, GateSkip)
-        assert skip.summary == (
-            "Skipped: Acme Billing · Invoice 4021 is past due. "
-            f'Not a match for "{BILLING}" (95% sure).'
-        )
+        assert skip == GateSkip(event="Acme Billing · Invoice 4021 is past due", certainty=0.95)
 
     async def test_a_skip_is_kept_on_the_workflows_gate(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
@@ -292,25 +283,27 @@ class TestTheSkipLine:
         )
         seams.workflow_skips.assert_not_awaited()
 
-    async def test_a_skip_that_cannot_be_kept_still_skips_and_warns(
+    async def test_a_skip_that_cannot_be_kept_still_skips_and_reports_the_error(
         self, seams: SimpleNamespace
     ) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
-        seams.workflow_skips.side_effect = RuntimeError("mongo down " + "x" * 400)
+        seams.workflow_skips.side_effect = RuntimeError("mongo down")
 
         async with captured_wide_event() as event:
             assert isinstance(await _skip(), GateSkip)
 
-        warnings = event.get("warnings", [])
-        assert isinstance(warnings, list)
-        (warning,) = [w for w in warnings if w["msg"] == "trigger_gate.skip_unrecorded"]
-        assert warning == {
-            "msg": "trigger_gate.skip_unrecorded",
-            "owner": "workflow",
-            "job_id": OWNER_ID,
-            "error_type": "RuntimeError",
-            "error": ("mongo down " + "x" * 400)[:300],
-        }
+        errors = event.get("errors", [])
+        assert isinstance(errors, list)
+        assert [e for e in errors if e["msg"] == "trigger_gate.skip_unrecorded"] == [
+            {
+                "msg": "trigger_gate.skip_unrecorded",
+                "owner": "workflow",
+                "job_id": OWNER_ID,
+                "user_id": USER_ID,
+                "error_type": "RuntimeError",
+                "error": "mongo down",
+            }
+        ]
 
     async def test_just_under_the_line_runs(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.949, run_label="needed")))
@@ -341,18 +334,12 @@ class TestTheSkipLine:
 
         assert await _skip() == GateRun()
 
-    async def test_a_system_gate_skips_with_its_preset_condition(
-        self, seams: SimpleNamespace
-    ) -> None:
+    async def test_a_system_gate_skips_on_its_preset_question(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
 
         skip = await _skip(DESK)
 
-        assert isinstance(skip, GateSkip)
-        assert skip.summary == (
-            "Skipped: Acme Billing · Invoice 4021 is past due. Not a match "
-            'for "a real person or a real obligation is waiting on you" (99% sure).'
-        )
+        assert skip == GateSkip(event="Acme Billing · Invoice 4021 is past due", certainty=0.99)
 
     async def test_an_email_with_no_subject_is_named_by_its_sender(
         self, seams: SimpleNamespace

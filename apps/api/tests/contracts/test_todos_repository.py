@@ -17,7 +17,7 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL
-from app.constants.trigger_gates import SystemGatePreset
+from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT, GateAuthor, SystemGatePreset
 from app.db.mongodb import indexes
 from app.db.repositories import todos as todos_repository_module
 from app.db.repositories.todos import TodosRepository
@@ -32,7 +32,7 @@ from app.models.todo_models import (
     TodoSearchParams,
     TodoUpdate,
 )
-from app.models.trigger_gate_models import GateSkipRecord, SystemGate
+from app.models.trigger_gate_models import AuthoredGate, GateSkipRecord, SystemGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
@@ -99,6 +99,66 @@ def _host_zone_ahead_of_utc(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     finally:
         monkeypatch.undo()
         time.tzset()
+
+
+def _skips(count: int) -> list[GateSkipRecord]:
+    start = datetime(2026, 11, 1, tzinfo=UTC)
+    return [
+        GateSkipRecord(
+            event=f'Bank <alerts@bank.example>, "Statement {n}"',
+            certainty=0.99,
+            at=start + timedelta(minutes=n),
+        )
+        for n in range(count)
+    ]
+
+
+class TestGateSkipRecord:
+    async def test_a_hundred_skips_keep_the_newest_few_and_count_all_and_leave_activity_alone(
+        self, repo, make_doc
+    ):
+        gate = AuthoredGate(condition="the email needs me", author=GateAuthor.GAIA)
+        watch, other = _subscription(gate=gate), _subscription(gate=gate)
+        doc = await repo.create(
+            make_doc(user_id="u", activity_content="- ran", trigger_subscriptions=[watch, other])
+        )
+        skips = _skips(100)
+
+        for skip in skips:
+            await repo.remember_subscription_gate_skip(
+                user_id="u", subscription_id=watch.id, skip=skip
+            )
+
+        stored = await repo.get(doc.id, user_id="u")
+        kept, untouched = (w.gate for w in stored.trigger_subscriptions)
+        assert kept.recent_skips == skips[-GATE_RECENT_SKIPS_KEPT:]
+        assert GATE_RECENT_SKIPS_KEPT == 5
+        assert kept.skipped_count == 100
+        assert (untouched.recent_skips, untouched.skipped_count) == ([], 0)
+        assert stored.activity_content == "- ran"
+
+    async def test_a_skip_is_never_written_to_another_users_watch(self, repo, make_doc):
+        gate = AuthoredGate(condition="the email needs me", author=GateAuthor.GAIA)
+        watch = _subscription(gate=gate)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+
+        await repo.remember_subscription_gate_skip(
+            user_id="intruder", subscription_id=watch.id, skip=_skips(1)[0]
+        )
+
+        stored = await repo.get(doc.id, user_id="u")
+        assert stored.trigger_subscriptions[0].gate.skipped_count == 0
+
+    async def test_a_watch_without_a_gate_is_left_without_one(self, repo, make_doc):
+        watch = _subscription(gate=None)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+
+        await repo.remember_subscription_gate_skip(
+            user_id="u", subscription_id=watch.id, skip=_skips(1)[0]
+        )
+
+        stored = await repo.get(doc.id, user_id="u")
+        assert stored.trigger_subscriptions[0].gate is None
 
 
 class TestTodosRepository(UserScopedRepositoryContract):
@@ -713,29 +773,10 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert raw["trigger_subscriptions"][0]["gate"] == {
             "kind": "system",
             "recent_skips": [],
+            "skipped_count": 0,
             "preset": "inbox_desk",
             "enabled": False,
         }
-
-    async def test_a_skip_is_kept_on_its_watchs_gate_newest_five_only(self, repo, make_doc):
-        desk_mail, other = _subscription(gate=_DESK_GATE), _subscription(gate=_DESK_GATE)
-        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[desk_mail, other]))
-        skips = [
-            GateSkipRecord(event=f"mail {n}", at=datetime(2026, 11, 5, n, tzinfo=UTC))
-            for n in range(6)
-        ]
-
-        for skip in skips:
-            await repo.remember_subscription_gate_skip(
-                user_id="u", subscription_id=desk_mail.id, skip=skip
-            )
-
-        stored = await repo.get(doc.id, user_id="u")
-        assert stored is not None
-        kept, untouched = (w.gate for w in stored.trigger_subscriptions)
-        assert kept is not None and untouched is not None
-        assert kept.recent_skips == skips[1:]
-        assert untouched.recent_skips == []
 
     async def test_a_gate_write_refreshes_the_cached_copy(self, repo, make_doc):
         watch = _subscription(gate=_DESK_GATE)

@@ -56,8 +56,10 @@ class _StoredGate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     kind: GateKind
-    # Newest last; a new condition starts with none, since the old skips do not describe it.
+    # Newest last, at most GATE_RECENT_SKIPS_KEPT; skipped_count counts every skip since.
+    # A new condition starts with none, since the old skips do not describe it.
     recent_skips: list[GateSkipRecord] = Field(default_factory=list)
+    skipped_count: int = Field(default=0, ge=0)
 
     @property
     def enforced(self) -> bool:
@@ -66,6 +68,10 @@ class _StoredGate(BaseModel):
 
     @model_validator(mode="after")
     def _persist_defaults(self) -> Self:
+        # A gate stored before the count existed holds its skips and no count: they are its
+        # count. Frozen, so set in place; a copy returned here would drop the fields set below.
+        if "skipped_count" not in self.model_fields_set:
+            self.__dict__["skipped_count"] = len(self.recent_skips)
         # Owners are written with exclude_unset, which recurses: a defaulted kind
         # left unset is dropped, and the stored gate no longer loads.
         self.__pydantic_fields_set__.update(type(self).model_fields.keys())

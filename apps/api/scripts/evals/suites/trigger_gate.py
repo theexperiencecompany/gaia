@@ -1,4 +1,4 @@
-"""trigger-gate suite: the Inbox desk gate's JEV answers on 420 founder-labelled emails, anonymised.
+"""trigger-gate suite: the Inbox desk gate's JEV answers on 420 founder emails, anonymised, and 10 synthetic.
 
 Each email's request is built by the production builder (gmail_gate_view, gate_request) and
 sent through the production client (post_decisions), once by day and once inside quiet
@@ -6,16 +6,22 @@ hours. The journal keeps every request's hash and JEV's answers, so the CI sweep
 (tests/unit/evals/test_trigger_gate_sweep.py) regrades it through decide_gate itself, and a
 prompt edit that is not re-recorded fails there. Every address and link is on a reserved
 .example domain; the recorded answers were given on an earlier pseudonymisation of the same
-emails and re-keyed to this one, so a re-record is what refreshes them.
+emails and re-keyed to this one, so a re-record is what refreshes them. mail-421 to mail-430
+(sign-in and security notices) were asked later, one --only run per pass, joined to it.
+
+The desk-bucket suite asks the same emails the Inbox desk's bucket question, built by
+desk_mail_buckets.bucket_request; tests/unit/evals/test_desk_bucket_sweep.py regrades it.
 
 Run:  uv run --group backend python -m scripts.evals run --suite trigger-gate --concurrency 6
   TRIGGER_GATE_EVAL_GATE=system|authored (default system)
+      uv run --group backend python -m scripts.evals run --suite desk-bucket --concurrency 6
 Record: uv run --group backend python -m scripts.evals.record_trigger_gate <run-id> [...]
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from enum import StrEnum
 import hashlib
 import json
@@ -40,6 +46,7 @@ from app.constants.trigger_gates import (
 from app.models.jev_models import JevDecisionsResponse
 from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
 from app.services.hil.jev_client import JevUnconfiguredError, post_decisions
+from app.services.todos.desk_mail_buckets import bucket_request, read_bucket
 from app.services.triggers.gmail_signals import gmail_gate_view
 from app.services.triggers.trigger_gate import gate_request, skip_probability, urgency
 from scripts.evals.core.cost import EvalCostTracker
@@ -51,6 +58,9 @@ from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "trigger-gate"
 RECORDED_DIR = DATA_DIR / "recorded"
+BUCKETS_RECORDED_DIR = DATA_DIR / "recorded-buckets"
+# Journaled where production leaves an email unbucketed: no bucket named, or junk under the line.
+UNBUCKETED: Final = "unbucketed"
 
 
 class EvalGate(StrEnum):
@@ -95,6 +105,13 @@ class GateJournalFields(TypedDict):
     requests: dict[str, AskedRequest]
 
 
+class BucketJournalFields(TypedDict):
+    """What a bucket row is regraded from: the request JEV answered and the bucket it read as."""
+
+    bucket: str
+    request: AskedRequest
+
+
 def record(run_dir: Path, out_dir: Path = RECORDED_DIR) -> Path:
     """Write a finished run's regrade inputs to <out_dir>/<run-id>.jsonl, one email per line.
 
@@ -136,6 +153,25 @@ def gate_requests(
         mode: gate_request(gate, view.as_event(), DESK_AUTOMATION, quiet=mode is GateMode.QUIET)
         for mode in GateMode
     }
+
+
+def bucket_requests(
+    message: Mapping[str, object],
+) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
+    """Build an email's bucket request with the production gate view and bucket builder."""
+    view = gmail_gate_view(message)
+    if view is None:
+        raise ValueError("corpus message is not a readable Gmail payload")
+    return bucket_request(view.as_event())
+
+
+def graded_bucket(body: JevDecisionsResponse) -> str:
+    """Return the bucket production reads from an answer, or UNBUCKETED where it reads none."""
+    try:
+        bucket = read_bucket(body)
+    except ValueError:
+        return UNBUCKETED
+    return bucket.value if bucket else UNBUCKETED
 
 
 def day_outcome(gate: TriggerGate, setup: Mapping[str, object], body: JevDecisionsResponse) -> str:
@@ -237,3 +273,77 @@ class TriggerGateSuite(TransportSuite):
     data_dir = DATA_DIR
     extra = EXTRA
     transport_type = GateTransport
+
+
+class BucketTransport:
+    """One email: the desk's bucket request through the production client, journaled whole."""
+
+    async def run(
+        self,
+        case: Case,
+        cfg: EvalConfig,
+        tracker: EvalCostTracker,
+        provider: ProviderConfig,
+    ) -> CaseRun:
+        del cfg, tracker
+        start = time.monotonic()
+        message = case.setup["message"]
+        state, questions = bucket_requests(message)
+        try:
+            body = await post_decisions(state, questions)
+        except (JevUnconfiguredError, httpx.HTTPError, ValueError) as e:
+            raise ProviderError(provider.name, f"decisions API failed (bucket): {e}") from e
+        bucket = graded_bucket(body)
+        want = str(case.expected.get("bucket"))
+        print(f"[{'ok' if bucket == want else 'MISS'}] {case.id}: want={want} got={bucket}")
+        fields = BucketJournalFields(
+            bucket=bucket,
+            request=AskedRequest(
+                request_sha=request_sha(jev_body(state, questions)),
+                response=body.model_dump(mode="json", exclude_none=True),
+            ),
+        )
+        tokens_in, tokens_out = body.tokens()
+        return CaseRun(
+            case_id=case.id,
+            provider=provider.name,
+            model=HIL_JEV_MODEL_NAME,
+            messages=[
+                {"role": "user", "content": str(message.get("subject") or "")},
+                {"role": "assistant", "content": bucket},
+            ],
+            end_state=dict(fields),
+            text=bucket,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            duration_s=time.monotonic() - start,
+        )
+
+
+BUCKET_GATE: Final = "desk_bucket"
+# The corpus declares the gate's scorers, so the bucket suite still implements them.
+BUCKET_EXTRA = {
+    **EXTRA,
+    BUCKET_GATE: lambda case, run: (
+        1.0 if (run.end_state or {}).get("bucket") == case.expected["bucket"] else 0.0
+    ),
+}
+
+
+@register_suite("desk-bucket")
+class DeskBucketSuite(TransportSuite):
+    """The trigger-gate corpus asked the desk's bucket question, graded by the bucket alone."""
+
+    name = "desk-bucket"
+    project = "gaia-desk-bucket"
+    label = "Inbox desk mail buckets"
+    data_dir = DATA_DIR
+    extra = BUCKET_EXTRA
+    transport_type = BucketTransport
+
+    def load_cases(self, cfg: EvalConfig) -> list[Case]:
+        """Return the corpus with each case gated on its bucket instead of the gate's outcome."""
+        return [
+            replace(case, expected={**case.expected, "score": {"gates": [BUCKET_GATE]}})
+            for case in super().load_cases(cfg)
+        ]

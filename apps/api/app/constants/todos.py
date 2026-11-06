@@ -34,6 +34,8 @@ NEEDS_FOLLOW_UP_LABEL: Final[str] = "needs-follow-up"
 WAITING_FOR_REPLY_LABEL: Final[str] = "waiting-for-reply"
 # A thread todo's other state: the user owes the reply. Not blocking, the next move is theirs.
 NEEDS_REPLY_LABEL: Final[str] = "needs-reply"
+# A thread todo the user must act on outside the thread (pay, secure, renew); nobody awaits a reply.
+ACTION_NEEDED_LABEL: Final[str] = "action-needed"
 WAITING_FOR_APPROVAL_LABEL: Final[str] = "waiting-for-approval"
 BLOCKING_LABEL: Final[str] = "blocked"
 
@@ -229,6 +231,64 @@ INBOX_DESK_AUTOMATED_SENDERS: Final[tuple[str, ...]] = (
 # work threads land in Forums, which a Primary-only fetch never read.
 INBOX_DESK_MAIL_FILTER: Final[str] = "in:inbox -category:promotions -category:social " + " ".join(
     f"-from:{sender}" for sender in INBOX_DESK_AUTOMATED_SENDERS
+)
+# The desk's second fetch: mail the user may have to act on, which banks and billing send
+# from the automated senders the Primary filter leaves out. Step 5 still classifies each one.
+INBOX_DESK_ACTION_MAIL_TERMS: Final[tuple[str, ...]] = (
+    "declined",
+    "(insufficient funds)",
+    "(payment failed)",
+    "(payment unsuccessful)",
+    "(security alert)",
+    "(unusual activity)",
+    "expiring",
+    "expires",
+    "suspended",
+    "overdue",
+    "(past due)",
+    "(action required)",
+)
+# Routine sign-in notices and codes ask nothing of the user, so the action fetch leaves them out.
+INBOX_DESK_ROUTINE_SIGN_IN_TERMS: Final[tuple[str, ...]] = (
+    "(new sign-in)",
+    "(new login)",
+    "(new device)",
+    "(verification code)",
+    "(security code)",
+    "(login code)",
+    "(sign-in code)",
+)
+# A security problem is fetched whatever else its subject says, sign-in words included.
+INBOX_DESK_SECURITY_PROBLEM_TERMS: Final[tuple[str, ...]] = (
+    "blocked",
+    "locked",
+    "suspicious",
+    "unrecognised",
+    "unrecognized",
+    "compromised",
+    "(password changed)",
+    "(password was changed)",
+    "(recovery changed)",
+    "(recovery email)",
+    "(recovery phone)",
+    "(two-factor enabled)",
+    "(two-factor removed)",
+    "(2-step verification)",
+    "(security settings)",
+    "(password updated)",
+    "(turned off)",
+    "disabled",
+)
+# Gmail's (a b) is every word, so no quote reaches the prompt's quoted query, and no brace
+# reaches the run prompt's str.format.
+INBOX_DESK_ACTION_MAIL_FILTER: Final[str] = (
+    "in:inbox ((("
+    + " OR ".join(f"subject:{term}" for term in INBOX_DESK_ACTION_MAIL_TERMS)
+    + ") "
+    + " ".join(f"-subject:{term}" for term in INBOX_DESK_ROUTINE_SIGN_IN_TERMS)
+    + ") OR ("
+    + " OR ".join(f"subject:{term}" for term in INBOX_DESK_SECURITY_PROBLEM_TERMS)
+    + "))"
 )
 # The desk's briefing is read in seconds: words per item, per summary under an item,
 # and lines per capped section.

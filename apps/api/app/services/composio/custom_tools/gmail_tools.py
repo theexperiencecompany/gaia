@@ -5,6 +5,7 @@ The proxy attaches the user's OAuth token server-side; tools only need
 user_id from auth_credentials.
 """
 
+from collections import Counter
 from collections.abc import Sequence
 import datetime
 from http import HTTPStatus
@@ -25,6 +26,7 @@ from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
+from app.models.agent_config import read_agent_configurable
 from app.models.agent_models import current_run_config, current_stream_writer
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
@@ -52,6 +54,7 @@ from app.models.composio_schemas.gmail import (
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.integrations.gmail import GmailThreadData
 from app.models.integrations.gmail_messages import GmailApiMessage, RelayedGmailMessage
+from app.services.composio.custom_tools.fetched_mail_buckets import installed_fetched_mail_bucketer
 from app.services.composio.custom_tools.gmail_constants import (
     _DAYS_PER_UNIT,
     FETCH_CONCURRENCY,
@@ -68,7 +71,7 @@ from app.services.composio.custom_tools.gmail_constants import (
 )
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request_sync
 from app.services.contact_service import build_contact_index
-from app.utils.concurrency import ContextThreadPoolExecutor
+from app.utils.concurrency import ContextThreadPoolExecutor, run_on_captured_loop
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
@@ -464,12 +467,39 @@ def _fetch_and_shape(
             reason=exc.reason,
         )
 
+    full_views = _bucketed_for_todo(user_id, request, full_views)
     if len(full_views) > OFFLOAD_MIN_MESSAGES:
         return _format_inline_result(_file_bound_views(full_views), truncated=truncated)
     _emit_email_card(full_views)
     return _format_inline_result(
         [project_message_view(view, request.fields) for view in full_views], truncated=truncated
     )
+
+
+def _bucketed_for_todo(
+    user_id: str, request: FetchMessagesInput, views: list[GmailMessageView]
+) -> list[GmailMessageView]:
+    """Return the views a tracked todo run fetched, bucketed where its todo buckets mail; as-is otherwise.
+
+    body_processing "none" is the desk's count sweep, so only mail it triages is bucketed.
+    """
+    todo_id = read_agent_configurable(current_run_config()).active_todo_id
+    if not todo_id or not views or request.body_processing == "none":
+        return views
+    bucketer = installed_fetched_mail_bucketer()
+    if bucketer is None:
+        log.error(
+            f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: no mail bucketer installed", todo_id=todo_id
+        )
+        return views
+    bucketed = run_on_captured_loop(bucketer(user_id, todo_id, views))
+    log.info(
+        f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: mail bucketed for its todo",
+        todo_id=todo_id,
+        fetched=len(views),
+        buckets=dict(Counter(view.bucket or "unbucketed" for view in bucketed)),
+    )
+    return bucketed
 
 
 def _file_bound_views(views: list[GmailMessageView]) -> list[dict[str, object]]:

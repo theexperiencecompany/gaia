@@ -72,6 +72,9 @@ NOISE_SKIP_FLOOR = 0.70
 # Continuations of threads the user never wrote in that JEV skips: an uptime and a stale-account
 # alert in every pass, and the noise mail-298, at P(skip) 0.94 to 0.96, in some.
 RECORDED_AUTOMATED_THREAD_SKIPS = frozenset({"mail-195", "mail-413"})
+SIGN_IN_NOTICE_TAG = "sign_in_notice"
+# The one routine sign-in notice the desk gate runs by day in every pass: a verification code.
+RECORDED_SIGN_IN_NOTICE_RUNS = frozenset({"mail-423"})
 NEAR_LINE_THREAD_SKIPS = frozenset({"mail-298"})
 # needs_you emails the authored template skips by day and the desk preset runs; enforced anyway by
 # founder decision, so a change to this set is a change to what authored gates cost the user.
@@ -250,7 +253,7 @@ def test_by_day_a_thread_the_user_never_wrote_in_is_asked_about_and_can_skip(
         assert not skipped & wrote
 
 
-@pytest.mark.parametrize("split", [None, "holdout"], ids=["all-420", "holdout"])
+@pytest.mark.parametrize("split", [None, "holdout"], ids=["all", "holdout"])
 def test_by_day_the_desk_gate_skips_at_least_70_percent_of_noise_in_every_pass(
     cases: dict[str, Case], regraded: list[_Pass], split: str | None
 ) -> None:
@@ -271,6 +274,18 @@ def test_in_quiet_hours_only_the_service_down_emails_wake_the_user(
     ]
     assert all(pass_woken <= RECORDED_WAKES for pass_woken in woken), woken
     assert set().union(*woken) == RECORDED_WAKES
+
+
+def test_a_routine_sign_in_notice_never_escalates(
+    cases: dict[str, Case], regraded: list[_Pass]
+) -> None:
+    """Regression: an Infisical new-device login became an action todo on the Inbox desk."""
+    notices = {c for c, case in cases.items() if SIGN_IN_NOTICE_TAG in case.tags}
+    assert notices > RECORDED_SIGN_IN_NOTICE_RUNS
+    for p in _passes(regraded, EvalGate.SYSTEM):
+        ran = notices - _decided(cases, p, GateMode.DAY, GateSkip)
+        assert ran == RECORDED_SIGN_IN_NOTICE_RUNS, p.run_id
+        assert notices & _decided(cases, p, GateMode.QUIET, GateBypass) == set(), p.run_id
 
 
 def test_in_quiet_hours_no_needs_you_email_is_skipped_but_the_named_and_anonymised(

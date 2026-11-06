@@ -40,7 +40,6 @@ from app.services.triggers.trigger_gate import (
     automation_text,
     decide_gate,
 )
-from app.services.workflow.execution_service import record_skipped_execution
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.redis_utils import RedisPoolManager
@@ -520,21 +519,6 @@ class TriggerHandler(ABC):
             trigger_name=workflow.trigger_config.trigger_name or event_type,
             payload=data,
         )
-        if isinstance(verdict, GateSkip):
-            try:
-                await record_skipped_execution(
-                    workflow.id, workflow.user_id, TriggerType.INTEGRATION.value, verdict.summary
-                )
-            except Exception as e:
-                # One workflow's history write must not cost the others their dispatch.
-                log.error(
-                    "trigger_workflow_skip_record_failed",
-                    workflow_id=workflow.id,
-                    user_id=workflow.user_id,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                    exc_info=True,
-                )
         return verdict
 
     async def _queue_one_workflow(

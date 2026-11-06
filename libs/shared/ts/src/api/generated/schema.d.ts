@@ -6247,6 +6247,11 @@ export interface components {
             kind: "authored";
             /** Recent Skips */
             recent_skips: components["schemas"]["GateSkipRecord"][];
+            /**
+             * Skipped Count
+             * @default 0
+             */
+            skipped_count: number;
         };
         /**
          * BatchApprovalDecisionRequest
@@ -14430,6 +14435,11 @@ export interface components {
             preset: components["schemas"]["SystemGatePreset"];
             /** Recent Skips */
             recent_skips: components["schemas"]["GateSkipRecord"][];
+            /**
+             * Skipped Count
+             * @default 0
+             */
+            skipped_count: number;
         };
         /**
          * SystemPurpose

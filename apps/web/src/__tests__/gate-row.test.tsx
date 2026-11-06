@@ -27,6 +27,7 @@ const saved = (
   enabled: true,
   enforced: true,
   recent_skips: [],
+  skipped_count: 0,
   ...overrides,
 });
 
@@ -37,6 +38,7 @@ const DESK: SystemGateView = {
   enabled: true,
   enforced: true,
   recent_skips: [],
+  skipped_count: 0,
 };
 
 const renderRow = (
@@ -73,8 +75,17 @@ describe("a job's rule row", () => {
   });
 
   it("counts what the rule skipped, and says nothing when it skipped nothing", () => {
-    renderRow({ saved: saved({ recent_skips: [OLDER, NEWER] }) });
+    renderRow({
+      saved: saved({ recent_skips: [OLDER, NEWER], skipped_count: 2 }),
+    });
     expect(row().textContent).toContain("2 skipped");
+  });
+
+  it("counts every skip, not only the few it keeps to show", () => {
+    renderRow({
+      saved: saved({ recent_skips: [OLDER, NEWER], skipped_count: 40 }),
+    });
+    expect(row().textContent).toContain("40 skipped");
   });
 
   it("hides the count while there are no skips", () => {

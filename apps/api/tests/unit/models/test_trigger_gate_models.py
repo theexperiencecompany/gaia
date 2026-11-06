@@ -90,6 +90,30 @@ class TestStoredGates:
     def test_a_system_gate_reads_its_condition_from_the_preset(self) -> None:
         assert DESK.display_condition == "a real person or a real obligation is waiting on you"
 
+    @pytest.mark.regression
+    def test_a_gate_stored_with_its_skips_and_no_count_loads_counting_them(self) -> None:
+        """Regression: a gate written before skipped_count failed to load, and so did its todo."""
+        skips = [
+            {"event": f"Shop · Sale {n}", "at": datetime(2026, 11, 6, n, tzinfo=UTC)}
+            for n in range(3)
+        ]
+        stored = {**AUTHORED.model_dump(exclude={"skipped_count"}), "recent_skips": skips}
+        stored["recent_skips"][0]["certainty"] = 0.97
+
+        gate = _subscription(gate=stored).gate
+
+        assert gate is not None
+        assert [skip.event for skip in gate.recent_skips] == [s["event"] for s in skips]
+        assert [skip.certainty for skip in gate.recent_skips] == [0.97, None, None]
+        assert gate.skipped_count == 3
+
+    def test_a_stored_count_beyond_the_kept_skips_stays_as_stored(self) -> None:
+        stored = {**AUTHORED.model_dump(), "skipped_count": 40}
+
+        gate = _subscription(gate=stored).gate
+
+        assert gate is not None and gate.skipped_count == 40
+
 
 class TestWhereAGateMayLive:
     @pytest.mark.parametrize(
@@ -158,6 +182,7 @@ class TestTheGateTheUserReads:
             {
                 "kind": "system",
                 "recent_skips": [],
+                "skipped_count": 0,
                 "preset": "inbox_desk",
                 "enabled": True,
                 "display_condition": "a real person or a real obligation is waiting on you",

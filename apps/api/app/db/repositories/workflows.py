@@ -459,13 +459,13 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def remember_gate_skip(
         self, workflow_id: str, user_id: str, skip: GateSkipRecord
     ) -> None:
-        """Add skip to the recent skips of the user's workflow gate, keeping the newest few."""
+        """Count skip on the user's workflow gate and keep it among the newest few."""
         pushed = {"$each": [skip.model_dump()], "$slice": -GATE_RECENT_SKIPS_KEPT}
         # Workflows keep no entity cache (cache_policy is None), so the seam's cache knobs
         # are inert here: no mutation of them could be observed.
         await self._apply_raw_update(  # pragma: no mutate
             {"_id": workflow_id, "user_id": user_id, "gate": {"$ne": None}},
-            {"$push": {"gate.recent_skips": pushed}},
+            {"$push": {"gate.recent_skips": pushed}, "$inc": {"gate.skipped_count": 1}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

@@ -14,8 +14,15 @@ from app.agents.prompts.todo_prompts import (
 from app.agents.templates.mail_templates import message_view_needs_body
 from app.agents.tools.coding.query_json_tool import query_json
 from app.constants import agents as agent_constants, todos as todo_constants
+from app.constants.desk_buckets import DeskBucket
 from app.constants.email import DEFAULT_SUMMARY_FIELDS
-from app.constants.todos import INBOX_DESK_TITLE, NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL
+from app.constants.todos import (
+    ACTION_NEEDED_LABEL,
+    BLOCKING_LABELS,
+    INBOX_DESK_TITLE,
+    NEEDS_REPLY_LABEL,
+    WAITING_FOR_REPLY_LABEL,
+)
 from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.models.todo_models import TodoModel
 
@@ -28,7 +35,7 @@ BRIEFING_SECTIONS = [
     "Suggested",
     "Filtered",
 ]
-THREAD_CLASSES = ["TO_REPLY", "AWAITING_REPLY", "FYI", "ACTIONED"]
+THREAD_CLASSES = ["TO_REPLY", "AWAITING_REPLY", "ACTION_NEEDED", "FYI", "ACTIONED"]
 
 
 def _step(number: int) -> list[str]:
@@ -736,3 +743,128 @@ def test_feedback_not_to_reply_is_an_outcome_applied_to_each_thread_it_covers() 
     assert "They decide not to answer a thread or a person: an outcome, not a rule." in feedback
     assert "delete the draft its Current State names (GMAIL_DELETE_DRAFT" in feedback
     assert "list_tracked_todos(gmail_thread_id=...)" in feedback
+
+
+def test_action_mail_from_automated_senders_is_fetched_too() -> None:
+    """Regression: Cloudflare's payment-failed notices come from noreply@ and were never read."""
+    action_filter = todo_constants.INBOX_DESK_ACTION_MAIL_FILTER
+
+    assert f'"<window> {action_filter}"' in _mail_step("a")
+    assert action_filter.startswith("in:inbox ")
+    assert "-from:" not in action_filter and "category:" not in action_filter
+    assert '"' not in action_filter
+    # The run prompt formats the guidance with ref_id, so a brace in the filter breaks every run.
+    assert action_filter in INBOX_DESK_RUN_GUIDANCE.format(ref_id="desk")
+    for term in ("declined", "(payment failed)", "(security alert)", "expiring"):
+        assert f"subject:{term}" in action_filter
+
+
+def test_mail_the_user_must_act_on_is_kept_from_the_automated_skip() -> None:
+    """Regression: a "card declined, insufficient funds" bank alert was skipped as automated."""
+    assert "Never skip ACTION_NEEDED mail (d), automated or not." in _mail_step("c")
+
+
+def test_action_needed_names_its_cases_and_leaves_routine_documents_fyi() -> None:
+    action = _class_rule("ACTION_NEEDED")
+
+    for case in ("declined card", "failed payment", "bounced", "suspicious sign-in", "expiring"):
+        assert case in action
+    assert "routine receipts and statements" in action
+    assert "statements" in _class_rule("FYI")
+
+
+def test_a_routine_sign_in_notice_is_never_action_needed() -> None:
+    """Regression: an Infisical new-device login notice became a Needs you item."""
+    action = _class_rule("ACTION_NEEDED")
+
+    assert "a routine sign-in notice" in action
+    assert "is never ACTION_NEEDED but FYI" in action
+    for problem in ("blocked", "recognise", "recovery", "locked or suspended"):
+        assert problem in action
+
+
+def test_the_action_fetch_leaves_out_routine_sign_in_subjects() -> None:
+    action_filter = todo_constants.INBOX_DESK_ACTION_MAIL_FILTER
+
+    for term in todo_constants.INBOX_DESK_ROUTINE_SIGN_IN_TERMS:
+        assert f"-subject:{term}" in action_filter
+    assert '"' not in action_filter and "{" not in action_filter
+
+
+def test_a_security_problem_is_fetched_even_when_its_subject_reads_like_a_sign_in() -> None:
+    """Review: "new sign-in blocked" or "your account is locked" never reached the desk."""
+    action_filter = todo_constants.INBOX_DESK_ACTION_MAIL_FILTER
+    routine, problems = action_filter.removeprefix("in:inbox (").split(" OR (", 1)
+
+    assert routine.startswith("(") and "-subject:(new sign-in)" in routine
+    assert "-subject:" not in problems
+    for term in ("blocked", "locked", "suspicious", "(password changed)", "(two-factor enabled)"):
+        assert f"subject:{term}" in problems
+
+
+def test_the_fetch_names_every_bucket_a_message_may_carry() -> None:
+    fetch = _mail_step("a")
+
+    assert 'may carry a "bucket"' in fetch
+    for bucket in DeskBucket:
+        assert bucket.value in fetch.split('may carry a "bucket"', 1)[1]
+
+
+def test_a_junk_bucket_is_skipped_and_counted_and_only_unbucketed_mail_is_judged_automated() -> (
+    None
+):
+    skip = _mail_step("c")
+
+    assert f"skip and count every {DeskBucket.JUNK} message" in skip
+    assert "Of the messages with no bucket, skip and count the automated mail" in skip
+
+
+def test_a_bucket_is_its_messages_class_so_the_desk_never_classifies_it() -> None:
+    read = _mail_step("d")
+
+    assert read.startswith(
+        f"A bucketed message's class is its bucket: {DeskBucket.REPLY} is TO_REPLY, "
+        f"{DeskBucket.WAITING} AWAITING_REPLY, {DeskBucket.ACT} ACTION_NEEDED, "
+        f"and {DeskBucket.FYI} is FYI, its thread never read."
+    )
+    assert "a thread with no bucket is classified" in read
+
+
+def test_a_past_dated_event_is_never_added_or_proposed() -> None:
+    """Regression: the briefing proposed a Cloudflare deadline that had already passed."""
+    assert "Never add or propose an event whose date has already passed" in "\n".join(
+        _step(EVENTS_STEP)
+    )
+
+
+def test_an_action_todo_is_due_on_its_deadline_or_today_and_gets_no_draft() -> None:
+    step = "\n".join(_step(THREAD_TODO_STEP))
+
+    assert f'labels=["{ACTION_NEEDED_LABEL}"], due_date=the deadline the line names' in step
+    assert "otherwise today, no scheduled_at" in step
+    assert _mail_step("e").startswith(
+        "Save every draft in one turn, as parallel calls. For each TO_REPLY thread:"
+    )
+
+
+def test_action_todos_open_needs_you_before_owed_replies() -> None:
+    needs_you = _briefing_line("Needs you")
+
+    assert needs_you.index(f"your {ACTION_NEEDED_LABEL} sub-todos") < needs_you.index(
+        f"your {NEEDS_REPLY_LABEL} sub-todos"
+    )
+    assert '"Kotak · card declined · today"' in needs_you
+
+
+def test_action_needed_is_the_users_move_not_a_block() -> None:
+    assert ACTION_NEEDED_LABEL not in BLOCKING_LABELS
+    assert len({ACTION_NEEDED_LABEL, NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL}) == 3
+
+
+def test_the_thread_contract_keeps_an_action_todo_undrafted_until_the_thread_shows_it_done() -> (
+    None
+):
+    guidance = _thread_guidance()
+
+    assert f"{ACTION_NEEDED_LABEL} (the user must act themselves" in guidance
+    assert f"An {ACTION_NEEDED_LABEL} todo gets no draft and no follow-up" in guidance

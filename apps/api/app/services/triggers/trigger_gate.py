@@ -36,7 +36,6 @@ from app.constants.trigger_gates import (
     TRIGGER_GATE_QUESTION_KEY,
     TRIGGER_GATE_SKIP_LABEL,
     TRIGGER_GATE_SKIP_PROBABILITY,
-    TRIGGER_GATE_SKIPPED_SUMMARY,
     TRIGGER_GATE_UNTITLED_EVENT,
     TRIGGER_GATE_URGENT_CRITERIA,
     TRIGGER_GATE_URGENT_INSTRUCTIONS,
@@ -84,6 +83,14 @@ _FAILURE_REASONS: tuple[tuple[type[Exception] | tuple[type[Exception], ...], Gat
 )
 
 
+def jev_failure_reason(error: Exception) -> GateReason:
+    """Name why a JEV call gave no usable answer; anything unforeseen is JEV_ERROR."""
+    return next(
+        (reason for kinds, reason in _FAILURE_REASONS if isinstance(error, kinds)),
+        GateReason.JEV_ERROR,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class GateRun:
     """Run the job now, as if the gate were not there."""
@@ -91,20 +98,10 @@ class GateRun:
 
 @dataclass(frozen=True, slots=True)
 class GateSkip:
-    """Do not run the job; summary is the line its run history shows.
-
-    event names what was skipped; certainty is JEV's P(skip label).
-    """
+    """Do not run the job; event names what was skipped, certainty is JEV's P(skip label)."""
 
     event: str
-    condition: str
     certainty: float
-
-    @property
-    def summary(self) -> str:
-        return TRIGGER_GATE_SKIPPED_SUMMARY.format(
-            event=self.event, condition=self.condition, certainty=self.certainty
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,7 +361,7 @@ def _settle(
     answer = body.choice(TRIGGER_GATE_QUESTION_KEY, _question(gate).labels, label="gate ")
     p_skip = skip_probability(gate, answer)
     if p_skip >= TRIGGER_GATE_SKIP_PROBABILITY:
-        skip = GateSkip(event.label, gate.display_condition, p_skip)
+        skip = GateSkip(event.label, p_skip)
         return _Decision(GateReason.JEV_SKIP, skip, answer, p_skip, urgent)
     if hold is not None:
         return _Decision(GateReason.JEV_CAN_WAIT, hold, answer, p_skip, urgent)
@@ -382,10 +379,7 @@ async def _ask_jev(
         decision = _settle(gate, body, event, hold=hold)
     except Exception as e:
         # The one degradation a gate has: run as if it were not there, or wait for the morning.
-        reason = next(
-            (reason for kinds, reason in _FAILURE_REASONS if isinstance(e, kinds)),
-            GateReason.JEV_ERROR,
-        )
+        reason = jev_failure_reason(e)
         if reason is not GateReason.JEV_UNCONFIGURED:
             log.warning(
                 "trigger_gate.jev_failed",
@@ -520,10 +514,13 @@ async def _remember_skip(job: GatedJob, skip: GateSkip) -> None:
                 user_id=job.user_id, subscription_id=job.id, skip=record
             )
     except Exception as e:
-        log.warning(
+        # Re-raising would reach decide_gate's crash path and run the job the gate just skipped.
+        log.error(
             "trigger_gate.skip_unrecorded",
             owner=job.owner.value,
             job_id=job.id,
+            user_id=job.user_id,
             error_type=type(e).__name__,
-            error=str(e)[:300],
+            error=str(e),
+            exc_info=True,
         )

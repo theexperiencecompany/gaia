@@ -65,7 +65,8 @@ async def test_a_skip_is_kept_only_on_the_users_gated_watch_without_reading_it_b
                     "$each": [skip.model_dump()],
                     "$slice": -GATE_RECENT_SKIPS_KEPT,
                 }
-            }
+            },
+            "$inc": {"trigger_subscriptions.$[watch].gate.skipped_count": 1},
         },
         scope="u1",
         extra_filter={

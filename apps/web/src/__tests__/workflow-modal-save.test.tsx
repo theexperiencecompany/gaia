@@ -120,6 +120,7 @@ const GAIA_GATE: AuthoredGateView = {
   display_condition: BILLING,
   enforced: false,
   recent_skips: [],
+  skipped_count: 0,
 };
 
 const DESK_GATE: SystemGateView = {
@@ -129,6 +130,7 @@ const DESK_GATE: SystemGateView = {
   display_condition: DESK_TEXT,
   enforced: true,
   recent_skips: [],
+  skipped_count: 0,
 };
 
 const gatedWorkflow = (gate: Workflow["gate"]): Workflow =>

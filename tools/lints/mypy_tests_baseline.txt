@@ -159,7 +159,6 @@ apps/api/tests/unit/agents/test_llm_client.py	union-attr
 apps/api/tests/unit/agents/test_llm_runtime_config.py	arg-type
 apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
-apps/api/tests/unit/agents/test_mail_templates.py	arg-type
 apps/api/tests/unit/agents/test_model_lane.py	attr-defined
 apps/api/tests/unit/agents/test_model_lane.py	misc
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment

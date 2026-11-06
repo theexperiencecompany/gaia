@@ -8,8 +8,8 @@ import base64
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 import re
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import Any, ClassVar
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, ValidationError
@@ -19,6 +19,7 @@ import time_machine
 from app.agents.prompts import todo_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
 from app.agents.tools.execute.dispatch import dispatch_config_for
+from app.constants.desk_buckets import DeskBucket
 from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.models.agent_config import ComposioAccountSelection
@@ -27,6 +28,7 @@ from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
     FetchMessagesInput,
     FetchThreadInput,
+    GmailMessageView,
 )
 from app.services.composio import account_scope as account_scope_module
 from app.services.composio.custom_tools import gmail_tools as gmail_tools_module
@@ -954,6 +956,95 @@ class TestTheDesksSweep:
 # ---------------------------------------------------------------------------
 # Whose mailbox, and what was asked of it
 # ---------------------------------------------------------------------------
+
+
+class TestATodoRunsFetchIsBucketed:
+    """A tracked todo's mail fetch is handed to the desk bucketer; a body-less count never is."""
+
+    DESK_RUN: ClassVar[dict[str, Any]] = {"configurable": {"active_todo_id": "desk-1"}}
+
+    def _fetch(
+        self, mock_proxy: MagicMock, bucketer: AsyncMock | None, **request: Any
+    ) -> dict[str, Any]:
+        mock_proxy.side_effect = _one_message_mailbox()
+        with (
+            patch(f"{GMAIL_TOOLS}.current_run_config", return_value=self.DESK_RUN),
+            patch(f"{GMAIL_TOOLS}.installed_fetched_mail_bucketer", return_value=bucketer),
+        ):
+            return _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", **request),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+    @staticmethod
+    def _bucketing(bucket: DeskBucket) -> AsyncMock:
+        async def bucketed(
+            user_id: str, todo_id: str, views: list[GmailMessageView]
+        ) -> list[GmailMessageView]:
+            return [view.model_copy(update={"bucket": bucket}) for view in views]
+
+        return AsyncMock(side_effect=bucketed)
+
+    def test_each_message_carries_the_bucket_the_desk_judge_gave_it(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        bucketer = self._bucketing(DeskBucket.ACT)
+
+        result = self._fetch(mock_proxy, bucketer)
+
+        (user_id, todo_id, views), _ = bucketer.await_args
+        assert (user_id, todo_id) == (AUTH_CREDS["user_id"], "desk-1")
+        assert [v.id for v in views] == ["msg-1"]
+        assert [m["bucket"] for m in result["messages"]] == ["act"]
+
+    def test_the_bucket_rides_on_a_fetch_that_projects_its_fields(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        result = self._fetch(mock_proxy, self._bucketing(DeskBucket.FYI), fields=["id", "subject"])
+
+        (message,) = result["messages"]
+        assert set(message) == {"id", "subject", "bucket"}
+        assert message["bucket"] == "fyi"
+
+    def test_a_count_only_sweep_is_never_bucketed(self, mock_proxy: MagicMock) -> None:
+        bucketer = self._bucketing(DeskBucket.JUNK)
+
+        result = self._fetch(
+            mock_proxy,
+            bucketer,
+            fields=list(todo_prompts.INBOX_DESK_SWEEP_FIELDS),
+            body_processing="none",
+        )
+
+        bucketer.assert_not_awaited()
+        assert "bucket" not in result["messages"][0]
+
+    def test_a_process_with_no_bucketer_installed_keeps_the_mail_and_says_so(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        with patch(f"{GMAIL_TOOLS}.log") as log:
+            result = self._fetch(mock_proxy, None)
+
+        assert len(result["messages"]) == 1
+        assert "bucket" not in result["messages"][0]
+        log.error.assert_called_once_with(
+            "[TOOL] GMAIL_FETCH_MESSAGES: no mail bucketer installed", todo_id="desk-1"
+        )
+
+    def test_a_fetch_outside_any_todo_run_is_never_bucketed(self, mock_proxy: MagicMock) -> None:
+        bucketer = self._bucketing(DeskBucket.JUNK)
+        mock_proxy.side_effect = _one_message_mailbox()
+
+        with patch(f"{GMAIL_TOOLS}.installed_fetched_mail_bucketer", return_value=bucketer):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000"),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        bucketer.assert_not_awaited()
+        assert "bucket" not in result["messages"][0]
 
 
 def _one_message_mailbox(
