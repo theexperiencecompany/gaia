@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import ExitStack
 from typing import Any, Literal
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -77,6 +77,17 @@ async def test_startup_installs_the_desk_gate_for_a_todo_runs_own_fetch(
         await unified_startup(context)
 
     install.assert_called_once_with(desk_gated_views)
+
+
+class TestBootRegistersTheProvidersForItsContext:
+    async def test_the_startup_context_reaches_the_registration(
+        self, auto_init_spy: AsyncMock
+    ) -> None:
+        await unified_startup("arq_worker")
+
+        registered = provider_registration.register_lazy_providers
+        assert isinstance(registered, MagicMock)
+        registered.assert_called_once_with("arq_worker")
 
 
 class TestBlockingStartupHonorsStrategy:

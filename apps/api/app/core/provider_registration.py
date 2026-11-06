@@ -187,6 +187,18 @@ def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
     log.info(f"{LogTag.STARTUP} All lazy providers registered successfully for", context=context)
 
 
+def boot_process(context: Literal["main_app", "arq_worker"]) -> None:
+    """Capture the running loop, install the todo mail gate, register the lazy providers: any process's boot.
+
+    The loop is captured first, on the loop the async clients are built on, so a
+    worker thread (a sync Composio custom tool) dispatches back onto it instead of
+    stranding a Motor or Redis client on a fresh loop.
+    """
+    capture_running_loop()
+    install_fetched_mail_gate(desk_gated_views)
+    register_lazy_providers(context)
+
+
 async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     """Run the unified startup flow for FastAPI and the ARQ worker.
 
@@ -198,18 +210,12 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # docker sets it via env, but native dev does not — leaving it "unknown".
     settings.WORKER_TYPE = context
 
-    # Record this loop before any async client is built on it, so worker threads
-    # (sync Composio custom tools) can dispatch coroutines back onto the loop the
-    # Motor/Redis clients are bound to instead of spinning a fresh one.
-    capture_running_loop()
-    install_fetched_mail_gate(desk_gated_views)
+    log.info(f"{LogTag.STARTUP} Starting with unified provider system...", context=context)
+
+    boot_process(context)
 
     # Before anything serves: a blob volume or bucket that cannot take writes stops the boot.
     await ensure_blob_store_ready()
-
-    log.info(f"{LogTag.STARTUP} Starting with unified provider system...", context=context)
-
-    register_lazy_providers(context)
 
     # In development and in the ARQ worker these initialize during startup;
     # in production FastAPI they're scheduled to initialize in the background.

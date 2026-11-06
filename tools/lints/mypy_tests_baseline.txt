@@ -366,10 +366,8 @@ apps/api/tests/unit/scripts/test_archive_system_owned_runs.py	attr-defined
 apps/api/tests/unit/scripts/test_backfill_true_cost.py	attr-defined
 apps/api/tests/unit/scripts/test_loki.py	no-redef
 apps/api/tests/unit/scripts/test_migrate_hooked_tool_envelope.py	arg-type
-apps/api/tests/unit/scripts/test_migrate_integration_accounts.py	arg-type
 apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	arg-type
 apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	list-item
-apps/api/tests/unit/scripts/test_repair_memory_store.py	attr-defined
 apps/api/tests/unit/scripts/test_reset_admin_password.py	arg-type
 apps/api/tests/unit/scripts/test_save_provider.py	arg-type
 apps/api/tests/unit/scripts/test_sync_user_workspaces.py	attr-defined
