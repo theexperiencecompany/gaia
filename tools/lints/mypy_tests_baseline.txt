@@ -346,8 +346,6 @@ apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	call-arg
 apps/api/tests/unit/models/test_schema_validation.py	call-arg
 apps/api/tests/unit/models/test_schema_validation.py	list-item
 apps/api/tests/unit/models/test_user_document_legacy_profession.py	call-arg
-apps/api/tests/unit/models/test_user_models.py	call-arg
-apps/api/tests/unit/models/test_user_models.py	list-item
 apps/api/tests/unit/models/test_workflow_models.py	arg-type
 apps/api/tests/unit/patches/test_browser_use_run_lock_patch.py	attr-defined
 apps/api/tests/unit/patches/test_composio_input_patch.py	attr-defined
@@ -485,8 +483,6 @@ apps/api/tests/unit/services/test_onboarding_service.py	list-item
 apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
-apps/api/tests/unit/services/test_platform_link_code_service.py	attr-defined
-apps/api/tests/unit/services/test_platform_link_code_service.py	index
 apps/api/tests/unit/services/test_platform_message_service.py	attr-defined
 apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
 apps/api/tests/unit/services/test_provider_credentials_service.py	assignment
@@ -613,7 +609,6 @@ apps/api/tests/unit/utils/test_schema_fixes.py	index
 apps/api/tests/unit/utils/test_schema_fixes.py	operator
 apps/api/tests/unit/utils/test_search_utils.py	arg-type
 apps/api/tests/unit/utils/test_stream_utils.py	arg-type
-apps/api/tests/unit/utils/test_user_preferences_utils.py	arg-type
 apps/api/tests/unit/utils/test_webpage_fetch.py	arg-type
 apps/api/tests/unit/workers/tasks/test_onboarding_tasks.py	misc
 apps/api/tests/unit/workers/test_browser_tasks.py	attr-defined
