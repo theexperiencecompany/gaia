@@ -669,6 +669,7 @@ class AuthenticatedUser(BaseModel):
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
     role: InstanceRole | None = None
+    quiet_hours: QuietHours | None = None
 
     def with_timezone(self, timezone: str) -> "AuthenticatedUser":
         """A copy carrying the resolved home timezone (the model is frozen)."""

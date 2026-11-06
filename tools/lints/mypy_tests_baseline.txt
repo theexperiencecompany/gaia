@@ -319,8 +319,6 @@ apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	call-arg
 apps/api/tests/unit/models/test_agent_config.py	typeddict-item
 apps/api/tests/unit/models/test_auth_models.py	call-arg
-apps/api/tests/unit/models/test_authenticated_user_shape.py	arg-type
-apps/api/tests/unit/models/test_authenticated_user_shape.py	call-arg
 apps/api/tests/unit/models/test_integration_request_ssrf.py	call-arg
 apps/api/tests/unit/models/test_payment_models.py	arg-type
 apps/api/tests/unit/models/test_payment_models.py	call-arg
@@ -562,7 +560,6 @@ apps/api/tests/unit/utils/search/test_engine.py	arg-type
 apps/api/tests/unit/utils/search/test_providers.py	arg-type
 apps/api/tests/unit/utils/search/test_providers.py	attr-defined
 apps/api/tests/unit/utils/search/test_providers.py	misc
-apps/api/tests/unit/utils/test_auth_utils.py	arg-type
 apps/api/tests/unit/utils/test_composio_hooks.py	arg-type
 apps/api/tests/unit/utils/test_composio_hooks.py	func-returns-value
 apps/api/tests/unit/utils/test_composio_hooks.py	index
