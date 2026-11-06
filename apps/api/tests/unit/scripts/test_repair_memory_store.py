@@ -23,6 +23,7 @@ from app.constants.memory import (
     MemoryShelfLife,
     MemorySourceType,
 )
+from app.memory import pg_store
 from app.models.memory_db_models import MemoryRecord
 from app.scripts import repair_memory_store
 from app.scripts.repair_memory_store import (
@@ -254,9 +255,7 @@ def store() -> Iterator[SimpleNamespace]:
         consolidate=AsyncMock(return_value=[]),
     )
     with (
-        patch.object(
-            repair_memory_store.pg_store, "get_all_live_memories", mocks.get_all_live_memories
-        ),
+        patch.object(pg_store, "get_all_live_memories", mocks.get_all_live_memories),
         patch.object(repair_memory_store, "forget_memory", mocks.forget_memory),
         patch.object(repair_memory_store, "render_agenda_document", mocks.render_agenda_document),
         patch.object(repair_memory_store, "consolidate", mocks.consolidate),
@@ -524,7 +523,7 @@ class TestRunBootstrapsWhatAScriptHasNoLifespanFor:
         with (
             patch.object(
                 repair_memory_store,
-                "register_lazy_providers",
+                "boot_process",
                 lambda context: order.append(f"register:{context}"),
             ),
             patch.object(repair_memory_store, "_repair_user", repair),
@@ -540,7 +539,7 @@ class TestRunBootstrapsWhatAScriptHasNoLifespanFor:
         closed = AsyncMock(return_value=None)
 
         with (
-            patch.object(repair_memory_store, "register_lazy_providers", lambda context: None),
+            patch.object(repair_memory_store, "boot_process", lambda context: None),
             patch.object(
                 repair_memory_store, "_repair_user", AsyncMock(side_effect=RuntimeError("pg down"))
             ),
