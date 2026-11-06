@@ -35,7 +35,7 @@ from app.models.todo_models import (
     TodoStats,
     TodoUpdate,
 )
-from app.models.trigger_gate_models import GateSkipRecord
+from app.models.trigger_gate_models import GateSkipRecord, TriggerGate
 from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionStatus
 
 # Top-N labels surfaced in the stats aggregation (mirrors the legacy pipeline).
@@ -435,6 +435,10 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             {"user_id": user_id, **_external_ref_filter(ref)}, sort=[("created_at", -1)]
         )
 
+    async def list_open_by_external_ref_all_users(self, ref: ExternalRef) -> list[TodoDocument]:
+        """Every user's open todo about ref, like each user's Inbox desk; uncached."""
+        return await self._find({**_external_ref_filter(ref), "completed": False})
+
     async def list_active_tracked_all_users(self, *, limit: int) -> list[TodoDocument]:
         """Every user's active tracked todos — the maintenance sweep's scan set."""
         return await self._find({"completed": False, "labels": GAIA_TRACKED_LABEL}, limit=limit)
@@ -805,6 +809,28 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 }
             },
             array_filters=[{"watch.id": subscription_id}],
+        )
+
+    async def gate_ungated_subscriptions(
+        self,
+        todo_id: str,
+        *,
+        user_id: str,
+        subscription_ids: Collection[str],
+        gate: TriggerGate,
+    ) -> TodoDocument | None:
+        """Put gate on these watches where none was ever set, in one atomic update.
+
+        A gate already there, one the user turned off included, is left as it is. Returns
+        the todo after the write, or None when none of them was without a gate.
+        """
+        ungated = {"id": {"$in": list(subscription_ids)}, "gate": None}
+        return await self._apply_raw_update(
+            self._scoped_filter(todo_id, user_id),
+            {"$set": {"trigger_subscriptions.$[watch].gate": gate.model_dump()}},
+            scope=user_id,
+            extra_filter={"trigger_subscriptions": {"$elemMatch": ungated}},
+            array_filters=[{f"watch.{field}": value for field, value in ungated.items()}],
         )
 
     async def resume_trigger_subscriptions(

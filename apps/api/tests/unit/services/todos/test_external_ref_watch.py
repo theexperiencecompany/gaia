@@ -1,6 +1,7 @@
 """What an open todo about an outside object watches: a thread's mail, or new mail for the desk."""
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,8 +11,11 @@ from app.constants.todos import (
     INBOX_DESK_WATCH_LABELS,
     INBOX_DESK_WATCH_WINDOW_SECONDS,
 )
+from app.constants.trigger_gates import SystemGatePreset
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
-from app.models.todo_models import ExternalRef, ExternalRefSource
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
+from app.models.trigger_gate_models import AuthoredGate, SystemGate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
     SubscriptionAction,
@@ -19,9 +23,10 @@ from app.models.trigger_subscription_models import (
     SubscriptionResolution,
     TriggerSubscription,
 )
-from app.services.todos.external_ref_watch import watch_external_ref
+from app.services.todos.external_ref_watch import gate_watches, watch_external_ref
 from app.services.triggers.condition_matching import conditions_match
 from app.services.triggers.subscription_service import DEFAULT_COOLDOWN_SECONDS, SubscriptionError
+from tests.e2e._harness.fake_todos import InMemoryTodos
 
 pytestmark = pytest.mark.unit
 
@@ -30,6 +35,7 @@ TODO_ID = "66f838cc8829054e5f10e401"
 USER_ID = "507f1f77bcf86cd799439011"
 DESK = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
 THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
+DESK_GATE = SystemGate(preset=SystemGatePreset.INBOX_DESK)
 
 
 @pytest.fixture
@@ -52,6 +58,55 @@ def register() -> Iterator[AsyncMock]:
 def _desk_conditions(register: AsyncMock) -> list[SubscriptionCondition]:
     (call,) = register.await_args_list
     return list(call.kwargs["conditions"])
+
+
+@contextmanager
+def _stored(todo: TodoDocument) -> Iterator[InMemoryTodos]:
+    """Hold the todo behind the repository's gate write."""
+    fake = InMemoryTodos(todo)
+    with patch.object(
+        todo_repository, "gate_ungated_subscriptions", fake.gate_ungated_subscriptions
+    ):
+        yield fake
+
+
+async def _watches_made(register: AsyncMock, ref: ExternalRef) -> list[TriggerSubscription]:
+    """Return the subscriptions a first watch of ref stored, as an older release stored them."""
+    await watch_external_ref(TODO_ID, USER_ID, ref, ())
+    made = [
+        TriggerSubscription(
+            trigger_name=call.kwargs["trigger_name"],
+            conditions=call.kwargs["conditions"],
+            action=SubscriptionAction.EXECUTE,
+            cooldown_seconds=call.kwargs["cooldown_seconds"],
+            resolution=SubscriptionResolution.ACCOUNT,
+        )
+        for call in register.await_args_list
+    ]
+    register.reset_mock()
+    return made
+
+
+def _todo(ref: ExternalRef, watches: list[TriggerSubscription]) -> TodoDocument:
+    return TodoDocument.model_validate(
+        {
+            "id": TODO_ID,
+            "user_id": USER_ID,
+            "title": "Inbox desk",
+            "external_ref": ref,
+            "trigger_subscriptions": watches,
+        }
+    )
+
+
+async def _gates_after_rewatch(
+    ref: ExternalRef, todo: TodoDocument
+) -> list[AuthoredGate | SystemGate | None]:
+    with _stored(todo) as todos:
+        await watch_external_ref(TODO_ID, USER_ID, ref, todo.trigger_subscriptions)
+        stored = await todos.get(TODO_ID, user_id=USER_ID)
+    assert stored is not None
+    return [s.gate for s in stored.trigger_subscriptions]
 
 
 async def test_the_desk_wakes_on_new_mail_at_most_once_a_window(register: AsyncMock) -> None:
@@ -98,6 +153,68 @@ async def test_the_desk_skips_the_same_senders_its_fetch_filters(register: Async
     assert included == set(INBOX_DESK_WATCH_LABELS)
 
 
+async def test_the_desk_watch_asks_the_inbox_desk_gate_before_it_runs(
+    register: AsyncMock,
+) -> None:
+    await watch_external_ref(TODO_ID, USER_ID, DESK, ())
+
+    (call,) = register.await_args_list
+    assert call.kwargs["gate"] == DESK_GATE
+
+
+async def test_a_desk_watching_since_before_the_gate_gets_it_and_no_second_watch(
+    register: AsyncMock,
+) -> None:
+    desk = _todo(DESK, await _watches_made(register, DESK))
+
+    assert await _gates_after_rewatch(DESK, desk) == [DESK_GATE]
+    register.assert_not_awaited()
+
+
+async def test_gating_says_whether_this_call_gated_a_watch(register: AsyncMock) -> None:
+    """A snapshot read before another write gated the watch counts nothing twice."""
+    snapshot = await _watches_made(register, DESK)
+
+    with _stored(_todo(DESK, snapshot)) as todos:
+        assert await gate_watches(TODO_ID, USER_ID, DESK, snapshot) is True
+        assert await gate_watches(TODO_ID, USER_ID, DESK, snapshot) is False
+        stored = await todos.get(TODO_ID, user_id=USER_ID)
+        assert stored is not None
+        assert await gate_watches(TODO_ID, USER_ID, DESK, stored.trigger_subscriptions) is False
+
+
+@pytest.mark.parametrize(
+    "gate",
+    [SystemGate(preset=SystemGatePreset.INBOX_DESK, enabled=False), DESK_GATE],
+    ids=["turned_off_by_the_user", "already_on"],
+)
+async def test_a_desk_watch_that_has_a_gate_keeps_it(register: AsyncMock, gate: SystemGate) -> None:
+    (watch,) = await _watches_made(register, DESK)
+    desk = _todo(DESK, [watch.model_copy(update={"gate": gate})])
+
+    assert await _gates_after_rewatch(DESK, desk) == [gate]
+    register.assert_not_awaited()
+
+
+async def test_only_the_desks_mail_watch_is_gated(register: AsyncMock) -> None:
+    """A watch on one thread, or one that only notifies, is not the desk's mail watch."""
+    (watch,) = await _watches_made(register, DESK)
+    on_thread = TriggerSubscription(
+        trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+        conditions=[
+            SubscriptionCondition(
+                field_name="thread_id", operator=ConditionOperator.EQUALS, value=THREAD.id
+            )
+        ],
+        action=SubscriptionAction.EXECUTE,
+        resolution=SubscriptionResolution.ACCOUNT,
+    )
+    notify = watch.model_copy(update={"id": "notify-1", "action": SubscriptionAction.NOTIFY})
+    desk = _todo(DESK, [watch, on_thread, notify])
+
+    assert await _gates_after_rewatch(DESK, desk) == [DESK_GATE, None, None]
+
+
 async def test_a_desk_already_watching_gets_no_second_watch(register: AsyncMock) -> None:
     await watch_external_ref(TODO_ID, USER_ID, DESK, ())
     existing = TriggerSubscription(
@@ -105,6 +222,7 @@ async def test_a_desk_already_watching_gets_no_second_watch(register: AsyncMock)
         conditions=_desk_conditions(register),
         action=SubscriptionAction.EXECUTE,
         resolution=SubscriptionResolution.ACCOUNT,
+        gate=DESK_GATE,
     )
     register.reset_mock()
 
@@ -158,6 +276,17 @@ async def test_a_thread_watches_its_mail_both_ways_in_the_default_window(
         (GMAIL_EMAIL_SENT_TRIGGER_NAME, on_thread, DEFAULT_COOLDOWN_SECONDS),
     ]
     assert [call.kwargs["account_id"] for call in register.await_args_list] == [None, None]
+
+
+async def test_a_threads_watches_ask_no_gate(register: AsyncMock) -> None:
+    """Every event on a thread is a continuation, which runs without asking."""
+    await watch_external_ref(TODO_ID, USER_ID, THREAD, ())
+    assert [call.kwargs["gate"] for call in register.await_args_list] == [None, None]
+    register.reset_mock()
+
+    thread = _todo(THREAD, await _watches_made(register, THREAD))
+
+    assert await _gates_after_rewatch(THREAD, thread) == [None, None]
 
 
 async def test_a_thread_in_one_account_only_watches_that_account(register: AsyncMock) -> None:
