@@ -2,7 +2,7 @@
 
 data/trigger-gate/authored holds requests.yaml (each request's wanted and unwanted emails),
 extra_mail.yaml (pseudonymised emails the corpus lacks), rules.jsonl (the condition the real
-authoring prompt wrote for each request) and recorded.jsonl (JEV's sampled answers to every
+authoring prompt wrote for each request) and recorded.jsonl (JEV's answer to every
 gate request). scripts/evals/authored_gates.py writes the last two; the CI regrade
 (tests/unit/evals/test_authored_gate_sweep.py) replays them through decide_gate.
 """
@@ -190,15 +190,15 @@ def load_rules() -> dict[str, AuthoredRule]:
 def load_recorded() -> list[RecordedGate]:
     rows: list[RecordedGate] = []
     for row in read_jsonl(RECORDED_PATH):
-        responses = row["responses"]
-        if not isinstance(responses, list):
-            raise ValueError(f"recorded row without responses: {row['request_id']}")
+        response = row["response"]
+        if not isinstance(response, dict):
+            raise ValueError(f"recorded row without a response: {row['request_id']}")
         rows.append(
             RecordedGate(
                 request_id=str(row["request_id"]),
                 mail_id=str(row["mail_id"]),
                 request_sha=str(row["request_sha"]),
-                responses=responses,
+                response=response,
             )
         )
     return rows

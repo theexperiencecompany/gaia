@@ -5,8 +5,8 @@ author: send each creation request through the real authoring prompt on the prod
   or the todo prompt with the real subscribe_todo_to_trigger schema) and write the condition it
   produces to rules.jsonl. search_triggers is answered from the trigger catalog, not an account.
 gate: ask JEV, as production does, about every labelled email under each request's condition,
-  and write every sampled answer to recorded.jsonl for the CI regrade.
-report: wrong skips and wasted runs per split, one sample against the consensus.
+  and write every answer to recorded.jsonl for the CI regrade.
+report: wrong skips and wasted runs per split.
 
 Usage: uv run --group backend python -m scripts.evals.authored_gates author|gate|report [request-id ...]
 Needs OPENROUTER_API_KEY in the environment.
@@ -28,7 +28,6 @@ from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.constants.llm import DEFAULT_LLM_TEMPERATURE, DEFAULT_MODEL_NAME
 from app.constants.trigger_gates import (
-    TRIGGER_GATE_JEV_SAMPLES,
     TRIGGER_GATE_QUESTION_KEY,
     TRIGGER_GATE_SKIP_PROBABILITY,
 )
@@ -36,7 +35,7 @@ from app.models.jev_models import JevDecisionsResponse
 from app.models.trigger_gate_models import AuthoredGate
 from app.services.hil.jev_client import post_decisions
 from app.services.triggers.gmail_signals import gmail_gate_view
-from app.services.triggers.trigger_gate import consensus_skip, gate_request
+from app.services.triggers.trigger_gate import gate_request, skip_probability
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.utils.workflow_utils import build_new_workflow_task
 from scripts.evals.suites.authored_gate import (
@@ -74,7 +73,7 @@ Message = dict[str, object]
     stop=stop_after_attempt(4),
     wait=wait_exponential(min=1, max=20),
 )
-async def _sample(
+async def _ask_jev(
     state: Mapping[str, object], questions: Mapping[str, Mapping[str, object]]
 ) -> JevDecisionsResponse:
     """One production Decisions call; a transient 5xx is retried so a pass is never short."""
@@ -177,14 +176,12 @@ async def _ask(
     if view is None:
         raise ValueError(f"{mail_id} is not a readable Gmail payload")
     state, questions = gate_request(authored, view.as_event(), job_of(rule), quiet=False)
-    bodies = await asyncio.gather(
-        *(_sample(state, questions) for _ in range(TRIGGER_GATE_JEV_SAMPLES))
-    )
+    body = await _ask_jev(state, questions)
     return RecordedGate(
         request_id=rule["request_id"],
         mail_id=mail_id,
         request_sha=request_sha(jev_body(state, questions)),
-        responses=[b.model_dump(mode="json", exclude_none=True) for b in bodies],
+        response=body.model_dump(mode="json", exclude_none=True),
     )
 
 
@@ -225,21 +222,16 @@ def report() -> None:
         if authored is None:
             raise ValueError(f"{request['id']} has recorded answers but no condition")
         wanted = labelled(request)[row["mail_id"]]
-        answers = [
-            JevDecisionsResponse.model_validate(r).answers[TRIGGER_GATE_QUESTION_KEY]
-            for r in row["responses"]
-        ]
-        for mode, sampled in (("single", answers[:1]), ("consensus", answers)):
-            skipped = consensus_skip(authored, sampled)[1] >= TRIGGER_GATE_SKIP_PROBABILITY
-            counts = tally.setdefault((request["split"], mode), [0, 0, 0, 0])
-            counts[0 if wanted else 2] += 1
-            counts[1 if wanted else 3] += int(skipped if wanted else not skipped)
-            if wanted and skipped:
-                print(f"WRONG SKIP {mode} {request['id']} {row['mail_id']}")
-    for (split, mode), (n_wanted, wrong, n_unwanted, wasted) in sorted(tally.items()):
-        print(
-            f"{split:8} {mode:9} wrong skips {wrong}/{n_wanted}  wasted runs {wasted}/{n_unwanted}"
-        )
+        answer = JevDecisionsResponse.model_validate(row["response"])
+        p_skip = skip_probability(authored, answer.answers[TRIGGER_GATE_QUESTION_KEY])
+        skipped = p_skip >= TRIGGER_GATE_SKIP_PROBABILITY
+        counts = tally.setdefault(request["split"], [0, 0, 0, 0])
+        counts[0 if wanted else 2] += 1
+        counts[1 if wanted else 3] += int(skipped if wanted else not skipped)
+        if wanted and skipped:
+            print(f"WRONG SKIP {request['id']} {row['mail_id']}")
+    for split, (n_wanted, wrong, n_unwanted, wasted) in sorted(tally.items()):
+        print(f"{split:8} wrong skips {wrong}/{n_wanted}  wasted runs {wasted}/{n_unwanted}")
 
 
 def main() -> None:
