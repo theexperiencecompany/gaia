@@ -6,18 +6,17 @@ actually receives. That is the whole reason they survived in production.
 
 Every test here was written and observed RED before its fix, and the invariants
 they rest on are mutation-checked (see test_context_invariants.py). They
-deliberately carry no @pytest.mark.regression marker: that gate re-runs
+deliberately carry no regression marker: the regression-proof gate re-runs
 marked tests against the base revision, and these import a harness the same
 change introduces, so on base they do not fail — they fail to *collect*. An
 error is not proof, and claiming the marker would assert a proof the gate
 cannot actually perform.
 """
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AnyMessage, SystemMessage
 import pytest
 from tests._harness.context_chain import (
     ContextSeed,
-    HarnessUser,
     bound_for,
     effective_context,
     message_in_slot,
@@ -187,53 +186,21 @@ class TestAQueryChangeMovesOnlyTheVolatileSlot:
 
 
 @pytest.mark.unit
-class TestOnboardingPromptDoesNotEvictIdentity:
-    """construct_langchain_messages appended the onboarding prompt after the stable dynamic-context message, so the node's latest-marker-wins rule dropped the user's identity every onboarding turn."""
+class TestALegacyOnboardingPromptStaysInItsOwnSlot:
+    """Checkpoints still replay the retired onboarding prompt; read as STATIC it would evict the real one."""
 
-    async def test_identity_survives_an_onboarding_turn(self) -> None:
-        user = HarnessUser(name="Zylphara", timezone="Asia/Kolkata")
-        messages = await effective_context(
-            AgentTier.COMMS,
-            ContextSeed(
-                user=user,
-                sources=ContextSources(connected_integrations=[{"id": "gmail", "name": "Gmail"}]),
-                onboarding_prompt="Welcome! Ask about their inbox.",
-            ),
+    async def test_replayed_copies_collapse_to_one_and_leave_the_static_prompt_alone(self) -> None:
+        stale: list[AnyMessage] = [
+            SystemMessage(
+                content=f"stale onboarding {n}", additional_kwargs={"onboarding_context": True}
+            )
+            for n in (1, 2)
+        ]
+        replayed = await effective_context(AgentTier.COMMS, ContextSeed(prior_messages=stale))
+        fresh = await effective_context(AgentTier.COMMS)
+
+        assert slots_of(replayed).count(PromptSlot.ONBOARDING) == 1
+        assert stale[0] not in replayed
+        assert text_of(message_in_slot(replayed, PromptSlot.STATIC)) == text_of(
+            message_in_slot(fresh, PromptSlot.STATIC)
         )
-
-        stable = text_of(message_in_slot(messages, PromptSlot.DYNAMIC_STABLE))
-        assert user.name in stable
-        assert "Gmail" in stable
-
-    async def test_the_onboarding_prompt_still_reaches_the_model(self) -> None:
-        messages = await effective_context(
-            AgentTier.COMMS, ContextSeed(onboarding_prompt="Welcome! Ask about their inbox.")
-        )
-
-        assembled = " ".join(text_of(m) for m in messages if m.type == "system")
-        assert "Ask about their inbox" in assembled
-
-    async def test_the_comms_persona_also_survives(self) -> None:
-        """The naive fix of dropping the onboarding marker would just move the eviction to the static prompt."""
-        with_onboarding = await effective_context(
-            AgentTier.COMMS, ContextSeed(onboarding_prompt="Welcome! Ask about their inbox.")
-        )
-        without = await effective_context(AgentTier.COMMS)
-
-        assert text_of(message_in_slot(with_onboarding, PromptSlot.STATIC)) == text_of(
-            message_in_slot(without, PromptSlot.STATIC)
-        )
-
-    async def test_a_stale_onboarding_prompt_is_collapsed(self) -> None:
-        stale = SystemMessage(
-            content="stale onboarding", additional_kwargs={"onboarding_context": True}
-        )
-        messages = await effective_context(
-            AgentTier.COMMS,
-            ContextSeed(
-                onboarding_prompt="Welcome! Ask about their inbox.", prior_messages=[stale]
-            ),
-        )
-
-        assert slots_of(messages).count(PromptSlot.ONBOARDING) == 1
-        assert stale not in messages

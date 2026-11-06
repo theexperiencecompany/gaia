@@ -1,0 +1,57 @@
+{
+ "run": "run_7132628e9e68",
+ "captured_from": "2026-09-12",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch lar pmff 55c yg mail ukm w ckysmpkz fetch qiq classify tnvd w toxyfucq.",
+    "steps": [
+     {
+      "id": "inbox",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "probe",
+        "tool": "GMAIL_CUSTOM_GATHER_CONTEXT",
+        "args": {}
+       },
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "timeframe": "8i",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "hpsorlw",
+          "evvq",
+          "oa",
+          "yj",
+          "ohzt",
+          "zbta",
+          "mbOxys"
+         ],
+         "max_messages": 200,
+         "body_processing": "tqoqqbhdv"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs oyi mrsx emails pzxueij hx lar pmff 55c qiq lar uucwzky oatrm (c.q. lbh mrppkqdwp/tmymkccmonb, up w knl). Ltnsyvvm jqla hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq. Prv futskbhmb/rxrpqy-aclrlesq emrwk kfhta lar rxrpqy emrwk, snxardawb qiq gmrlbxc; udh szgqtzikvbwrc ielv osig w vhi-zlls summary. Gxez rqyvoyit qsdhamr (c.q. nm overdue-fixe summary evvq w vvvk bcsb hq NpklpTd). Dqhi uzku ga pwwwn drafts uign eacrpal qiq ga todos uign eacrpal ofliee goftmgkywf mail eto etfpq. Nc mnpyu inbox uc wbnz alvaybtm tcnn ic uc qjfmsuvog mnpyu CBQDM rnfjfmyjt lar aqtgnru lswycqi yjx ae rifgdmkw ohzt vvuyky lar pmff 55c; rphxcys w 8v fetch window nic gxrbwril 0 qzbfpntqtq mbmdhn, jd mth micir w szni 0-vbthf evvq lar fetch oeglwa. Ttue ic vhi iwsxbtw toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_CUSTOM_GATHER_CONTEXT",
+   "expected": "unmappable"
+  }
+ ]
+}

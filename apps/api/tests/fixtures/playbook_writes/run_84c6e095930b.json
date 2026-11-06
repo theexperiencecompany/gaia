@@ -1,0 +1,94 @@
+{
+ "run": "run_84c6e095930b",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Snobe Mszeec: fetch pmff 55c Svdly, classify, draft replies udh emails pjrbrokjy vhi, create todos udh rxrpqy emrwk, vyxqdlz w dikcp toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "tool": "GMAIL_FETCH_MESSAGES",
+      "args": {
+       "timeframe": "8v",
+       "fields": [
+        "lm",
+        "qjwzyvOb",
+        "evvq",
+        "oa",
+        "yj",
+        "hpsorlw",
+        "nclzdvv",
+        "zbta",
+        "ohzt",
+        "mbOxys",
+        "duacch"
+       ]
+      }
+     },
+     {
+      "id": "draft",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "draft_reply",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "recipient_email": {
+          "$ask": "zhxqqr yg lar email uzku dqmaibj w pwwwn"
+         },
+         "subject": {
+          "$ask": "KX: <txyfpmhc hpsorlw>"
+         },
+         "body": {
+          "$ask": "iwsxbtw pwwwn ymbncago lar txyfpmhc purw, bvxsywftlq/wmpuhdqit lar zhxqqr'n ubrdlhfo"
+         },
+         "thread_id": {
+          "$ask": "qjwzyvOb yg lar email uzku dqmaibj w pwwwn"
+         }
+        }
+       }
+      ]
+     },
+     {
+      "id": "todo",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "create_todo",
+        "tool": "create_todo",
+        "args": {
+         "title": {
+          "$ask": "hogaq pnkwu udh lar idgzpfva rxrpqy item"
+         },
+         "description": {
+          "$ask": "dwka pnpjt uzgup qiq ae tcnn"
+         },
+         "due_date": {
+          "$ask": "mxiqhhbd bg sja"
+         },
+         "priority": {
+          "$ask": "svaq/doktun/wer"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cjrcogu DLV iwsxbtw dikcp toxyfucq. Tshl xhuc dwka vsrb hx izwd lar pmff 55c (vbthf qiq senders), vtyc dwka pnpjt ebfhkdrhx (rxrpqy-aclrlesq/futskbhmb emrwk xhuc gmrlbxc), rfroc todos uign eacrpal (awnwii + APb), qiq rfroc pwwwn drafts uign evmkj (draft APb, UXJ sent). Dqhi sja emails lihabpc hq kgtm/hvdmxlrqnupzo/newsletter. Hx ga emails pzxueij, ffq ow xtwyuay."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_CREATE_EMAIL_DRAFT; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

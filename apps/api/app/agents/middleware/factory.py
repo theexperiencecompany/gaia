@@ -32,6 +32,7 @@ from app.constants.llm import (
     EXECUTOR_RECURSION_LIMIT,
 )
 from app.constants.log_tags import LogTag
+from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.constants.summarization import (
     COMMS_SUMMARIZATION_TRIGGER_TOKENS,
     COMPACTION_THRESHOLD,
@@ -47,9 +48,12 @@ from shared.py.wide_events import log
 CODING_TOOL_NAMES = {"bash", "read", "write", "edit", "query_json", "grep"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 
-# Tools that already perform their own context-safe offload (small digest +
-# clean file). Generic compaction must leave their output alone.
-SELF_OFFLOADING_TOOL_NAMES = {"GMAIL_FETCH_MESSAGES", "GMAIL_FETCH_THREAD"}
+# Gmail fetches spill to a mineable JSONL file once they carry more messages than
+# this, however few chars they are, so a metadata-only scan stays out of context.
+RECORD_LIMITED_TOOLS: Mapping[str, int] = {
+    "GMAIL_FETCH_MESSAGES": OFFLOAD_MIN_MESSAGES,
+    "GMAIL_FETCH_THREAD": OFFLOAD_MIN_MESSAGES,
+}
 
 
 @dataclass(frozen=True)
@@ -195,6 +199,7 @@ def create_middleware_stack(
             max_output_chars=context.max_output_chars,
             context_window=DEFAULT_MAX_TOKENS,
             excluded_tools=context.compaction_excluded_tools,
+            max_output_records=RECORD_LIMITED_TOOLS,
             summary_llm=chat_llm,  # same model as the conversation; None keeps deterministic tiers
         )
         middleware.append(compaction)
@@ -235,9 +240,7 @@ def create_executor_middleware(
         # The executor is the tier that spawns, so enablement is not the caller's to choose.
         subagent=replace(subagent or SubagentStackOptions(), enabled=True),
         context=ContextOptions(
-            compaction_excluded_tools=CODING_TOOL_NAMES
-            | SPAWN_SUBAGENT_TOOL
-            | SELF_OFFLOADING_TOOL_NAMES,
+            compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
         ),
     )
 
@@ -290,8 +293,6 @@ def create_subagent_middleware(
             # Summarization and compaction stay on (the ContextOptions defaults):
             # without summarization a subagent run grows unbounded, averaging 91k
             # input tokens per call in production against 43k for comms/executor.
-            compaction_excluded_tools=CODING_TOOL_NAMES
-            | SPAWN_SUBAGENT_TOOL
-            | SELF_OFFLOADING_TOOL_NAMES,
+            compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
         ),
     )

@@ -2,12 +2,9 @@
 
 from typing import ClassVar
 
-from shared.py.analytics.catalog.base import ServerEvent, WebEvent
-from shared.py.analytics.catalog.properties import Identifier
+from shared.py.analytics.catalog.base import ServerEvent
 
 __all__ = [
-    "EmailComposeOpened",
-    "EmailOpened",
     "EmailReplied",
     "EmailSent",
 ]
@@ -31,19 +28,3 @@ class EmailReplied(ServerEvent):
 
     has_attachments: bool
     attachment_count: int
-
-
-class EmailOpened(WebEvent):
-    """A user opened an email in the mail view."""
-
-    event: ClassVar[str] = "email:opened"
-    budget_per_user_day: ClassVar[int] = 50
-
-    mail_id: Identifier
-
-
-class EmailComposeOpened(WebEvent):
-    """A user opened the compose modal; the server only sees the eventual send."""
-
-    event: ClassVar[str] = "email:compose_opened"
-    budget_per_user_day: ClassVar[int] = 50

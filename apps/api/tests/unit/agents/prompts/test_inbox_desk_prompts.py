@@ -659,15 +659,14 @@ def test_the_sweep_counts_the_whole_window_the_filter_hides() -> None:
     )
 
 
-def test_the_sweep_asks_the_fetch_for_headers_in_a_file_never_a_body_or_thread() -> None:
+def test_the_sweep_asks_the_fetch_for_headers_never_a_body_or_thread() -> None:
     fields = list(todo_prompts.INBOX_DESK_SWEEP_FIELDS)
-    sweep = FetchMessagesInput(
-        query="newer_than:1d", fields=fields, body_processing="none", offload=True
-    )
+    sweep = FetchMessagesInput(query="newer_than:1d", fields=fields, body_processing="none")
 
-    assert f'fields {json.dumps(fields)}, body_processing "none", offload true' in (_mail_step("b"))
+    assert f'fields {json.dumps(fields)}, body_processing "none", split' in _mail_step("b")
     assert not message_view_needs_body(sweep.fields, sweep.body_processing)
-    assert "Never read the file, a swept body or its thread" in _mail_step("b")
+    assert "never reading the file" in _mail_step("b")
+    assert "Never read a swept body or its thread" in _mail_step("b")
 
 
 def test_the_sweep_is_counted_per_address_by_query_json_never_read() -> None:
@@ -675,8 +674,8 @@ def test_the_sweep_is_counted_per_address_by_query_json_never_read() -> None:
     collect = _mail_step("b")
 
     assert (
-        "Count each file it returns per sender with one query_json(path=<its offloaded_to>, "
-        'group_count_by="from_address")'
+        'one query_json(path=<the path it was saved at>, group_count_by="from_address") per file, '
+        "never reading the file"
     ) in collect
     assert 'group_count_by="from")' not in collect
     assert "from_address" in todo_prompts.INBOX_DESK_SWEEP_FIELDS

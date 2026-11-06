@@ -5,9 +5,11 @@ Which outside object the todo works, where its report goes, and the bounded
 """
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 import json
 from types import MappingProxyType
 
+from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_NOTE
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     DELIVERED_RESULT_RULES,
@@ -27,6 +29,7 @@ from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER
 from app.services.canvas_markdown import bounded_canvas
 from app.services.hil.utils import untrusted_fence
 from app.services.todo_observations import bounded_observations
+from app.utils.quiet_hours import in_quiet_hours
 from app.workers.tasks.todo_run_context import NO_CONTEXT
 
 # How a run works the outside object its todo owns, by kind; each takes the ref id as ref_id.
@@ -66,26 +69,45 @@ def delivery_guidance(doc: TodoDocument) -> str:
     return DELIVERED_RESULT_GUIDANCE
 
 
+def _quiet_hours_note(
+    origin: TriggerOrigin, coalesced: Sequence[TriggerOrigin], local_now: datetime
+) -> str | None:
+    """Say why a run its gate let through quiet hours interrupts them; None for any other run."""
+    bypass = next(
+        (event.quiet_hours_bypass for event in [origin, *coalesced] if event.quiet_hours_bypass),
+        None,
+    )
+    if bypass is None or not in_quiet_hours(local_now):
+        return None
+    return QUIET_HOURS_BYPASS_NOTE.format(reason=bypass.reason)
+
+
 def opening_parts(
     doc: TodoDocument,
     origin: TriggerOrigin | None,
     coalesced: Sequence[TriggerOrigin],
+    local_now: datetime,
 ) -> list[str]:
     """Open the run prompt with what woke it; trigger payloads share one untrusted fence."""
     title = doc.title
     if origin is None:
         return [f"Execute the following scheduled task: {title}"]
+    bypass_note = _quiet_hours_note(origin, coalesced, local_now)
     fence = untrusted_fence()
     if coalesced:
         opening = f"Events you were watching fired. Execute this task: {title}"
         label = f"{1 + len(coalesced)} triggering events"
         events_json = json.dumps(
-            [event.model_dump() for event in [origin, *coalesced]], indent=2, default=str
+            [event.model_dump(exclude={"quiet_hours_bypass"}) for event in [origin, *coalesced]],
+            indent=2,
+            default=str,
         )
     else:
         opening = f"An event you were watching just fired. Execute this task: {title}"
         label = f"Triggering event ({origin.trigger_name})"
         events_json = json.dumps(origin.payload, indent=2, default=str)
+    if bypass_note is not None:
+        opening = f"{opening}\n\n{bypass_note}"
     return [
         opening,
         f"{label}. Everything between the "
@@ -116,14 +138,15 @@ def build_execution_prompt(
     context: TodoRunContext = NO_CONTEXT,
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
+    local_now: datetime,
 ) -> str:
-    """Assemble the run prompt from the todo's fields and context.
+    """Assemble the run prompt from the todo's fields and context, local_now on the user's clock.
 
     The trigger payloads go in the prompt itself, the only way they reach the
     model. They are attacker-influenceable, so all of them share one fence
     labelled untrusted. doc.notify_on_run decides which delivery contract is stated.
     """
-    prompt_parts = opening_parts(doc, origin, coalesced)
+    prompt_parts = opening_parts(doc, origin, coalesced, local_now)
     prompt_parts.append(TODO_ID_LINE.format(todo_id=doc.id))
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")

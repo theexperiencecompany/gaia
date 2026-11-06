@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import UploadFile
 from langchain_core.tools import StructuredTool
 
+from app.agents.tools.invocation import invoke_tool
 from app.constants.email import GMAIL_MULTIPLE_ATTACHMENTS_ERROR
 from app.constants.log_tags import LogTag
 from app.models.mail_models import (
@@ -73,8 +74,8 @@ async def invoke_gmail_tool(
         if not tool:
             return GmailToolResult(error=f"Tool {tool_name} not found", successful=False)
 
-        result = await tool.ainvoke(dict(parameters))
-        # BaseTool.ainvoke is typed Any (arbitrary tool output); this is the
+        result = await invoke_tool(tool, parameters)
+        # A tool's output is typed Any (arbitrary tool output); this is the
         # provider boundary, so validate Composio's response before it travels on.
         return GmailToolResult.model_validate(result)
     except Exception as e:

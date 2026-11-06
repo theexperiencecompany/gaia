@@ -4,7 +4,6 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 import re
 from types import SimpleNamespace
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -309,6 +308,15 @@ async def test_queueing_hands_the_user_to_the_provisioning_job() -> None:
 
 
 STAMP = datetime(2026, 9, 1, tzinfo=UTC)
+
+
+def _note_writes() -> AsyncMock:
+    """Return the note write the stored fixture patched in."""
+    writes = todo_repository.replace_note_fields
+    assert isinstance(writes, AsyncMock)
+    return writes
+
+
 OLD_DESK_CANVAS = starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE])
 
 
@@ -342,11 +350,6 @@ def stored() -> Iterator[dict[str, TodoDocument]]:
         patch("app.services.todo_canvas_storage.schedule_gaia_tasks_sync", MagicMock()),
     ):
         yield docs
-
-
-def _note_writes() -> AsyncMock:
-    """Return the note write the stored fixture patched in, as the mock it is."""
-    return cast(AsyncMock, todo_repository.replace_note_fields)
 
 
 CANVAS_OBSERVATIONS = (

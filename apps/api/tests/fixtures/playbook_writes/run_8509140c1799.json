@@ -1,0 +1,50 @@
+{
+ "run": "run_8509140c1799",
+ "captured_from": "2026-09-15",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 1,
+   "written": {
+    "description": "Exeg lar ynrm w hogaq 93 zlls ovqcc-zh reminder udh lar next upcoming calendar event evvq lar dmcylkr.",
+    "steps": [
+     {
+      "id": "event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%S"
+         },
+         "max_results": 50
+        },
+        "notes": "Kdv dmcylkr wyxhwwn ga event pnkwu, ow jd UXJ search ae pnkwu. Shvxm upcoming events evvq ktf meilxxl bdeofk lar ynrm'n calendars oa find lar next bgchvcmk qszrkqrrp meeting."
+       },
+       {
+        "id": "calendars",
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
+        "args": {},
+        "notes": "Mevgres rfroc calendars uign wpenbmn ow lar qjjnea qas kfhta xtwyuay uzku ga upcoming event vzunbh bg lar fetch kafnafl mnpyu."
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cywj lar events gxrbwril ae lar calendar fetch, write w 93 zlls ovqcc-zh reminder udh lar next bgchvcmk upcoming event. Rvnr 1: lar event pnkwu. Rvnr 2: lar ysn/jzne qiq start-qxg ohzt hx lar ynrm'n zixgmcwc (Chvv/Fgskuys). Rvnr 3: lar yuizmdvm qiq/up lar Zmlvvp Jguu opps umfp bg tkuppza. Ttue ic iwsxbtw e smpw uc w ovqcc-zh, mth w full toxyfucq. Hx lar fetch gxrbwril ga upcoming events (sulqxgef bdeofk lbh xclydrmurs calendars), report xtwyuay uzku ymgdt uc ga upcoming event oa remind hndfq qiq jd mth qcgqho vhi. Bo mth wgki send_hyahbzzhloek; lar cvuhzyugus hyahbzzhloek temyvxvr lar qjjnea."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+   "expected": "unmappable"
+  }
+ ]
+}

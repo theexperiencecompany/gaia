@@ -17,6 +17,7 @@ stale last_active_at; nothing reads that field off a cached path.
 
 from collections.abc import Iterable
 from datetime import UTC, datetime
+import re
 from typing import cast
 
 from bson import ObjectId
@@ -54,9 +55,11 @@ from app.models.user_models import (
     OnboardingPreferences,
     PersonalizationBundle,
     PlatformLinkRecord,
+    StartingJobs,
     UserDocument,
     UserUpdate,
 )
+from shared.py.analytics.catalog.onboarding import OnboardingStep
 from shared.py.wide_events import log
 
 _SOCIAL_PROFILES_FIELD = "onboarding.social_profiles"
@@ -77,6 +80,10 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def get_by_email(self, email: str) -> UserDocument | None:
         """Return a user by email — the authentication hot path."""
         return await self._find_one({"email": email})
+
+    async def find_by_email_ignoring_case(self, email: str) -> list[UserDocument]:
+        """Every user whose email equals this one in any case — account erasure refuses all but one."""
+        return await self._find({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
 
     async def find_by_ids(self, user_ids: list[str]) -> list[UserDocument]:
         """Return users whose _id is in user_ids (invalid ids skipped) — the marketplace creator-join."""
@@ -265,8 +272,9 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Atomically mark onboarding complete (gated on it not being complete yet).
 
         The gate is onboarding.completed, not the subdocument's existence,
-        since the wizard writes onboarding.preferences before payment. None
-        when the gate misses — already completed, or the user is gone.
+        since the wizard writes onboarding.preferences before payment. Only the
+        preferences the caller set are written, so one the wizard stored earlier
+        (the browser language) survives completion. None when the gate misses.
         """
         now = datetime.now(UTC)
         set_fields: dict[str, object] = {
@@ -274,8 +282,9 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             "onboarding.completed_at": completed_at or now,
             "onboarding.phase": phase,
             "onboarding.bio_status": bio_status,
-            "onboarding.preferences": preferences.model_dump(),
         }
+        for field, value in preferences.model_dump(exclude_unset=True).items():
+            set_fields[f"onboarding.preferences.{field}"] = value
         if timezone is not None:
             set_fields["timezone"] = timezone
         return await self._apply_raw_update(
@@ -294,6 +303,14 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             set_fields[f"onboarding.preferences.{field}"] = value
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
+        )
+
+    async def set_starting_jobs(self, user_id: str, jobs: StartingJobs) -> None:
+        """Store the jobs drafted for the welcome thread and the paywall preview."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"onboarding.starting_jobs": jobs.model_dump()}},
+            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_first_conversation_id(
@@ -323,12 +340,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
 
     # ---------------------------------------------------- intelligence writes
 
-    async def set_onboarding_phase(self, user_id: str, phase: OnboardingPhase) -> bool:
-        """Set onboarding.phase; returns whether the user existed (for a 404)."""
+    async def record_onboarding_step(
+        self, user_id: str, step: OnboardingStep, reached_at: datetime
+    ) -> bool:
+        """Stamp the first time this onboarding run reached step; False when it was already stamped."""
+        field = f"onboarding.steps_reached.{step.value}"
         updated = await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.phase": phase}},
+            {"$set": {field: reached_at}},
             scope=REPO_GLOBAL_SCOPE,
+            extra_filter={field: {"$exists": False}},
             return_document=False,
         )
         return updated is not None

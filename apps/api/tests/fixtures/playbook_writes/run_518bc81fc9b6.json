@@ -1,0 +1,112 @@
+{
+ "run": "run_518bc81fc9b6",
+ "origin": "drive",
+ "captured_from": "2026-11-04",
+ "trigger_type": "manual",
+ "record": [
+  {
+   "tool_name": "list_todos",
+   "args": {
+    "project_id": null,
+    "completed": false,
+    "priority": null,
+    "has_due_date": null,
+    "overdue": null,
+    "skip": 0,
+    "limit": 100
+   },
+   "result_digest": "{\"todos\":[{\"title\":\"Iqlwjk phikk xpv zcol lle ofc\",\"description\":null,\"labels\":[],\"due_date\":null,\"due_date_timezone\":null,\"priority\":\"fjoy\",\"project_id\":\"3uwqj1118857kq335v89y1kh\",\"completed\":false,\"subtasks\":[],\"workflow_id\":null,\"vfs_path\":null,\"scheduled_at\":null,\"recurrence\":null,\"gaia_retry_count\":0,\"expires_at\":null,\"references\":[],\"notify_on_run\":true,\"id\":\"3ezb756sxn3p438p27202004\",\"user_id\":\"1yppc4a40604yt983c89s2j1\",\"created_at\":\"2026-11-04T19:33:51.225000Z\",\"updated_at\":\"2026-11-04T19:33:51.225000Z\",\"completed_at\":null,\"workflow_categories\":[],\"trigger_subscriptions\":[],\"pending_approval\":null,\"parent_todo_id\":null,\"sub_todo_count\":0},{\"title\":\"Iqlwjk phikk xpv zcol lle ofc\",\"description\":null,\"labels\":[],\"due_date\":null,\"due_date_timezone\":null,\"priority\":\"fjoy\",\"project_id\":\"3uwqj1118857kq335v89y1kh\",\"completed\":false,\"subtasks\":[],\"workflow_id\":null,\"vfs_path\":null,\"scheduled_at\":null,\"recurrence\":null,\"gaia_retry_count\":0,\"expires_at\":null,\"references\":[],\"notify_on_run\":true,\"id\":\"9sap598jzv2a562e0040756v\",\"user_id\":\"1yppc4a40604yt983c89s2j1\",\"created_at\":\"2026-11-04T19:33:35.434000Z\",\"updated_at\":\"2026-11-04T19:33:35.434000Z\",\"completed_at\":null,\"workflow_categories\":[],\"trigger_subscriptions\":[],\"pending_approval\":null,\"parent_todo_id\":null,\"sub_todo_count\":0},{\"title\":\"Iqlwjk phikk xpv zcol lle ofc\",\"description\":null,\"labels\":[],\"due_date\":null,\"due_date_timezone\":null,\"priority\":\"fjoy\",\"project_id\":\"3uwqj1118857kq335v89y1kh\",\"completed\":false,\"subtasks\":[],\"workflow_id\":null,\"vfs_path\":null,\"scheduled_at\":null,\"recurrence\":null,\"gaia_retry_count\":0,\"expires_at\":null,\"references\":[],\"notify_on_run\":true,\"id\":\"8oqg064tsr3g600n6856398j\",\"user_id\":\"1yppc4a40604yt983c89s2j1\",\"created_at\":\"2026-11-04T19:33:19.164000Z\",\"updated_at\":\"2026-11-04T19:33:19.164000Z\",\"completed_at\":null,\"workflow_categories\":[],\"trigger_subscriptions\":[],\"pending_approval\":null,\"parent_todo_id\":null,\"sub_todo_count\":0},{\"title\":\"Iqlwjk phikk xpv zcol lle ofc\",\"description\":null,\"labels\":[],\"due_date\":null,\"due_date_timezone\":null,\"priority\":\"fjoy\",\"project_id\":\"3uwqj1118857kq335v89y1kh\",\"completed\":false,\"subtasks\":[],\"workflow_id\":null,\"vfs_path\":null,\"scheduled_at\":null,\"recurrence\":null,\"gaia_retry_count\":0,\"expires_at\":null,\"references\":[],\"notify_on_run\":true,\"id\":\"8hef9334zo7l774z7899453h\",\"user_id\":\"1yppc4a40604yt983c89s2j1\",\"created_at\":\"2026-11-04T19:32:09.707000Z\",\"updated_at\":\"2026-11-04T19:32:09.707000Z\",\"completed_at\":null,\"workflow_categories\":[],\"trigger_subscriptions\":[],\"pending_approval\":null,\"parent_todo_id\":null,\"sub_todo_count\":0},{\"title\":\"Iqlwjk phikk xpv zcol lle ofc\",\"description\":null,\"labels\":[],\"due_date\":null,\"due_date_timezone\":null,\"priority\":\"fjoy\",\"project_id\":\"3uwqj1118857kq335v89y1kh\",\"completed\":false,\"subtasks\":[],\"workflow_id\":null,\"vfs_path\":null,\"scheduled_at\":null,\"recurrence\":null,\"gaia_retry_count\":0,\"expires_at\":null,\"references\":[],\"notify_on_run\":true,\"id\":\"6rgi308ygi5r624y06160929\",\"user_id\":\"1yppc4a40604yt983c89s2j1\",\"created_at\":\"2026-11-04T19:31:27.459000Z\",\"updated_at\":\"2026-11-04T19:31:27.459000Z\",\"completed_at\":null,\"workflow_categories\":[],\"trigger_subscriptions\":[],\"pending_approval\":null,\"parent_todo_id\":null,\"sub_todo_count\":0},{\"title\":\"vkzyz dwe\",\"description\":null,\"labels\":[],\"due_date\":null,\"due_date_timezone\":null,\"priority\":\"bbis\",\"project_id\":\"3uwqj1118857kq335v89y1kh\",\"completed\":false,\"subtasks\":[],\"workflow_id\":null,\"vfs_path\":null,\"scheduled_at\":null,\"recurrence\":null,\"gaia_retry_count\":0,\"expires_at\":null,\"references\":[],\"notify_on_run\":true,\"id\":\"2mwa02j740783ih8f24210i5\",\"user_id\":\"1yppc4a40604yt983c89s2j1\",\"created_at\":\"2026-11-04T19:22:26.191000Z\",\"updated_at\":\"2026-11-04T19:22:26.191000Z\",\"completed_at\":null,\"workflow_categories\":[],\"trigger_subscriptions\":[],\"pending_approval\":null,\"parent_todo_id\":null,\"sub_todo_count\":0}],\"count\":39,\"error\":null}"
+  },
+  {
+   "tool_name": "send_notification",
+   "args": {
+    "message": "Qqx ypza 39 ieraegu todos. Dqh dpjby ljstgp rsx: vkzyz xm B; vkzyz xm B; vkzyz xm B.",
+    "title": "Ltjl dxscbj",
+    "channels": null,
+    "notification_type": "heqs"
+   },
+   "result_digest": "{\"success\": true, \"delivered_channels\": [], \"delivered_via_conversation\": \"nkqys\", \"note\": \"Eqch wyrpbe np ycjxutuoo wx lle PAKT yts jrkauckrashpn. Fao lle sttdhp wx bsdd wyrpbe zwxwmpn uj rphfdegvv.\", \"_rate_limit_info\": {\"feature\": \"hzmuombwqwez_xkcedoqgfg\", \"plan\": \"stx\", \"usage\": {}}}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 16,
+   "record_len": 2,
+   "written": {
+    "description": "Gphs doh ieraegu todos, ddamg jahc, xpv gnfk j Ltjl dxscbj hzmuombwqwez wowvuj lle dpjby ljstgp.",
+    "steps": [
+     {
+      "call": 11,
+      "id": "pending_todos"
+     },
+     {
+      "call": 12,
+      "vary": {
+       "message": {
+        "$ask": "Stfvp lle ieraegu todos enriwoko wx lle jfuac vowe, cnoq lle gojio zttsu ddamg xpv kvid lle dpjby ljstgp todos, zblxcbv ljstgp siisj. Iadj lle hzmuombwqwez nsbdcnp rhfbnyc."
+       }
+      }
+     }
+    ],
+    "result_brief": "Ovveer lle ddamg uj ieraegu todos, lle dpjby ljstgp aq kvid, xpv efpc lle Ltjl dxscbj hzmuombwqwez ubp jbpl."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "11",
+     "id": "pending_todos"
+    },
+    {
+     "call": "12",
+     "vary": {
+      "message": {
+       "$ask": "Stfvp lle ieraegu todos enriwoko wx lle jfuac vowe, cnoq lle gojio zttsu ddamg xpv kvid lle dpjby ljstgp todos, zblxcbv ljstgp siisj. Iadj lle hzmuombwqwez nsbdcnp rhfbnyc."
+      }
+     }
+    }
+   ],
+   "expected": "refused",
+   "refusals": [
+    "not_in_record"
+   ]
+  },
+  {
+   "position": 17,
+   "record_len": 2,
+   "written": {
+    "description": "Gphs ieraegu todos, ddamg jahc xpv bocdrgqv lle dpjby ljstgp, jofl gnfk j hzmuombwqwez esarws Ltjl dxscbj egpl lle ddamg xpv ljstgp ofyd phbva.",
+    "steps": [
+     {
+      "call": 1,
+      "id": "pending_todos"
+     },
+     {
+      "call": 2,
+      "vary": {
+       "message": {
+        "$ask": "Stfvp lle ieraegu todos enriwoko wx lle jfuac vowe, bnddd j rhfbnyc hzmuombwqwez nsbdcnp egpl amqft gojio ddamg xpv lle phbva uj lle dpjby ljstgp, zblxcbv ljstgp siisj."
+       }
+      }
+     }
+    ],
+    "result_brief": "Ovveer ieraegu ofyd ddamg, dpjby ljstgp ofyd phbva, xpv hzmuombwqwez gnfk uakgxyl."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "list_todos#1",
+     "id": "pending_todos"
+    },
+    {
+     "call": "send_notification#1",
+     "vary": {
+      "message": {
+       "$ask": "Stfvp lle ieraegu todos enriwoko wx lle jfuac vowe, bnddd j rhfbnyc hzmuombwqwez nsbdcnp egpl amqft gojio ddamg xpv lle phbva uj lle dpjby ljstgp, zblxcbv ljstgp siisj."
+      }
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

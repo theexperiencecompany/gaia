@@ -86,6 +86,7 @@ export type ServerEventName =
   | "onboarding:phase_completed"
   | "onboarding:reset"
   | "onboarding:social_profiles_confirmed"
+  | "onboarding:started"
   | "onboarding:writing_style_example_regenerated"
   | "onboarding:writing_style_saved"
   | "payment:checkout_started"
@@ -132,6 +133,7 @@ export type ServerEventName =
   | "todos:updated"
   | "tool:execute_failed"
   | "tool:used"
+  | "trigger:gate_decided"
   | "usage:queried"
   | "user:active"
   | "user:logged_in"
@@ -161,8 +163,6 @@ export type WebEventName =
   | "cta:get_started_clicked"
   | "desktop_popup:dismissed"
   | "desktop_popup:opened"
-  | "email:compose_opened"
-  | "email:opened"
   | "error:occurred"
   | "error:route_error_shown"
   | "feature:discovered"
@@ -183,7 +183,7 @@ export type WebEventName =
   | "onboarding:checkout_retried"
   | "onboarding:restarted"
   | "onboarding:skipped"
-  | "onboarding:started"
+  | "payment:checkout_abandoned"
   | "paywall:modal_viewed"
   | "pin:viewed"
   | "profile:link_copied"
@@ -633,10 +633,6 @@ export interface EventProperties {
     "client": string;
     "platform": string;
   };
-  "email:compose_opened": Record<string, never>;
-  "email:opened": {
-    "mail_id": string;
-  };
   "email:replied": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1018,12 +1014,15 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "needs": (string)[];
     "has_other_need": boolean;
+    "linked_platform"?: string;
   };
   "onboarding:phase_completed": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "phase": string;
+    "phase": "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
+    "needs"?: (string)[];
+    "has_other_need"?: boolean;
   };
   "onboarding:reset": {
     "actor": "user" | "agent";
@@ -1044,7 +1043,9 @@ export interface EventProperties {
     "platforms": (string)[];
   };
   "onboarding:started": {
-    "has_saved_state": boolean;
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
   "onboarding:writing_style_example_regenerated": {
     "actor": "user" | "agent";
@@ -1056,6 +1057,11 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "summary_length": number;
+  };
+  "payment:checkout_abandoned": {
+    "source": "paywall_modal" | "pricing_card" | "payment_retry" | "checkout_resume" | "onboarding";
+    "billing_cycle": "monthly" | "yearly";
+    "furthest_step": "not_loaded" | "opened" | "details_submitted" | "payment_page" | "pay_pressed";
   };
   "payment:checkout_started": {
     "actor": "user" | "agent";
@@ -1455,6 +1461,20 @@ export interface EventProperties {
     "source"?: "mcp_app";
     "account_count"?: number;
     "account_is_primary"?: boolean;
+  };
+  "trigger:gate_decided": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "owner_type": "workflow" | "todo";
+    "trigger_name": string;
+    "gate_kind": "authored" | "system";
+    "author"?: "gaia" | "user";
+    "outcome": "run" | "skip" | "hold" | "bypass";
+    "reason": "jev_run" | "jev_skip" | "jev_urgent" | "jev_can_wait" | "free_run" | "jev_error" | "jev_timeout" | "jev_malformed" | "jev_unconfigured";
+    "urgent_choice"?: "incident" | "service_down" | "meeting";
+    "enforced": boolean;
+    "latency_ms"?: number;
   };
   "ui:sidebar_collapsed": Record<string, never>;
   "ui:sidebar_expanded": Record<string, never>;

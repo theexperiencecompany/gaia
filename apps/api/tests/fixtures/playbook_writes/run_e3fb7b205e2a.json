@@ -1,0 +1,71 @@
+{
+ "run": "run_e3fb7b205e2a",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "gmail",
+     "googlecalendar",
+     "calendar"
+    ]
+   },
+   "result_digest": "Svdly: f Kze Jukrtjhyu\nZmlvvp Tvelkhjg: f Kze Jukrtjhyu\nZmlvvp Tvelkhjg: f Kze Jukrtjhyu"
+  },
+  {
+   "tool_name": "list_todos",
+   "tool_category": "todos",
+   "args": {
+    "completed": false,
+    "limit": 100
+   },
+   "result_digest": "{\"todos\": [{\"title\": \"Ndxvlzi oa Qnzul! Tmndiuj lbh lar yezjkacu y\", \"description\": \"Koku zsyreipzfwk todo smnkm xhd dcdvtvnx ymfeqqmrng xhd qas jd xhuc tasks hx Styz.\\n\\n**Ikwmwasg oa zxo:**\\nq Nhjxenge qbetmzsm oa yhtoc fnmc mhvwvqap\\nq Udpb pnkwu, uvstqfniqxq, qiq details\\nq Xse duacch sxvt #work, #personal, up #tuqgnlbj\\nq Ous pdisnlvcqy oa rwnvapil ae nxgsekigwd\\nq Eshoni cwf swvao qiq get reminders\\nq Iklx fnbyyis yulbrbpn (sxvt Snobe, Klit, ewr.)\\nq Mhhetn fnmc mtx qbetmzsm udh omsirian fscy work\\n\\n**Qbp xmct:**\\nb Dwp Styz SD oa bqzd-bztqpufx todos evvq iowfpwaevjpyf\\nu Kkzsdb qiq filter todos ae label, aegwjeac, up jzne\\n\\nNhjxenge lar qbetmzsm oa wxhtr ae uzgup, vtyc create fnmc xzorv wmda todo!\", \"labels\": [\"tccfqzdc\", \"sabpfeu-mfmgbxk\"], \"due_date\": \"2026-08-11T13:57:23.118000Z\", \"due_date_timezone\": \"UTC\", \"priority\": \"svaq\", \"project_id\": \"6w04o9h971n753t9mvgi8070\", \"completed\": false, \"subtasks\": [{\"id\": \"2x1rc1ue-p95z-4680-awef-plm52a66264m\", \"title\": \"n Njhv smpw fkhobid hq fvoghplb oa tdf mhvwvqap ownizlll\", \"completed\": false, \"created_at\": \"2026-08-10T13:57:23.118000Z\"}, {\"id\": \"m61379h2-54o8-6uc1-w4z3-59z0li9498v9\", \"title\": \"j Udpb lar todo pnkwu up uvstqfniqxq ae qrvjvbgq fx ic\", \"completed\": false, \"created_at\": \"2026-08-10T13:57:23.118000Z\"}, {\"id\": \"06qj9s6o-v007-2i83-4gm8-g45y5g7u5920\", \"title\": \"tu Wam viasfx up vktlsliq duacch udh kmmdtotwdavc\", \"completed\": false, \"created_at\": \"2026-08-10T13:57:23.118000Z\"}, {\"id\": \"u69g84w1-376l-3bd9-025h-90665002wis9\", \"title\": \"d Iohpks lar aegwjeac zaizl (zxo svaq, doktun, up wer)\", \"completed\": false, \"created_at\": \"2026-08-10T13:57:23.118000Z\"}, {\"id\": \"uvwzj756-08n3-124u-n799-6iu7m465n434\", \"title\": \"s Gpfbwp lar cwf jzne oa tdf oyi yexqchbcwi wlqfn\", \"completed\": false, \"created_at\": \"2026-08-10T13:57:23.118000Z\"}, {\"id\": \"54n148cv-35a3-2s19-9914054506c50s67\", \"title\": \"h Iklx smpw todo oa w ydktdzcau sdnqmme\", \"completed\": false, \"created_at\": \"2026-08-10T13:57:23.118000Z\"}, {\"id\": \"0n6p9t5y-59t8-4317-s320-31349qk4z3y9\", \"title\": \"q Xse fnmc mtx qcenmg fkhobid oa smpw list\", \"completed\": false, \"created_at\": \"2026-08-10T13:57:23.118000Z\"}], \"workflow_id\": null, \"vfs_path\": null, \"scheduled_at\": null, \"recurrence\": null, \"gaia_retry_count\": 0, \"expires_at\": null, \"references\": [], \"id\": \"2s38m7c670t800d4kvim3184\", \"user_id\": \"0l22d76632e045x2zzgx047w\", \"created_at\": \"2026-08-10T13:57:23.415000Z\", \"updated_at\": \"2026-08-10T13:57:23.415000Z\", \"completed_at\": null, \"workflow_categories\": [], \"trigger_subscriptions\": []}], \"count\": 1, \"error\": null}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Cbswsimi: check lniglmkhtgi status udh Svdly/Tvelkhjg, list open todos, vyxqdlz toxyfucq.",
+    "steps": [
+     {
+      "id": "status",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "calendar"
+       ]
+      }
+     },
+     {
+      "id": "todos",
+      "tool": "list_todos",
+      "args": {
+       "completed": false,
+       "limit": 100
+      }
+     }
+    ],
+    "result_brief": "Cjrcogu lar Xdsle Cbswsimi. Rfsqha iultlh qiq ewbu sja sjfxpayb mayqho aidvmxn adphpxj hx lar jcqviucr'n agpit dlymy. Cvouqs unread emails hq exngwoqghii bg Svdly uc mth qtlgdynes (kfhta xtwyuay ic sjuyg mth ku aqtgnru), report today'n meetings hq exngwoqghii bg Zmlvvp Tvelkhjg uc mth qtlgdynes, qiq avloxtnrc lar open todos evvq list_todos (awnwii, pdisnlvcqy, cwf swvao, qbetmzsm). Indqt slfldlfbb dmqo udh exngwoqghii vyagigm."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "status"
+    },
+    {
+     "call": "list_todos#1",
+     "id": "todos"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}
