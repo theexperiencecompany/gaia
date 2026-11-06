@@ -67,6 +67,7 @@ NOT_A_TOOL: dict[tuple[str, str], str] = {
 }
 
 STREAM_ID = "stream-paths"
+WORKFLOW_ID = "wf-paths"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
@@ -155,7 +156,9 @@ class _Passthrough(AgentMiddleware):
 
 
 def _run_config() -> RunnableConfig:
-    return {"configurable": {"stream_id": STREAM_ID, "user_id": USER_ID}}
+    return {
+        "configurable": {"stream_id": STREAM_ID, "workflow_id": WORKFLOW_ID, "user_id": USER_ID}
+    }
 
 
 def _one_call(name: str) -> dict[str, Any]:
@@ -240,7 +243,7 @@ async def test_a_sandbox_script_calling_back_records_into_its_run(
     monkeypatch.setattr(
         settings, "SANDBOX_EXECUTE_CALLBACK_URL", "https://api.test/sandbox/execute"
     )
-    configurable = {"stream_id": STREAM_ID, "user_id": USER_ID}
+    configurable = {"stream_id": STREAM_ID, "workflow_id": WORKFLOW_ID, "user_id": USER_ID}
     token = mint_execute_env(
         user_id=USER_ID,
         run_id="bash-run-1",

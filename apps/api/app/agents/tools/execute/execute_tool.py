@@ -18,7 +18,7 @@ from shared.py.analytics.catalog.properties import Identifier
 def _for_model(output: object, account: str | None) -> str:
     """Serialise a tool result for the model, naming the account it ran as when there are several.
 
-    A dict keeps its top-level keys (the offload marker lives there), so the account joins them.
+    A dict keeps its top-level keys, so the account joins them.
     """
     if account is None:
         return output if isinstance(output, str) else json.dumps(output, default=str)

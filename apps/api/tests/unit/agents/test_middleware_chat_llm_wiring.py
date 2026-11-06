@@ -8,22 +8,24 @@ tests pin that wiring so a separate resolution path can't creep back in.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
-from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, ToolMessage
-from langchain_core.runnables import Runnable, RunnableBinding
+from langchain.agents.middleware.types import ToolCallRequest
+from langchain_core.language_models import BaseChatModel, LanguageModelInput
+from langchain_core.messages import AIMessage, ToolCall, ToolMessage
+from langchain_core.runnables import Runnable, RunnableBinding, RunnableConfig
 from langchain_core.tools import BaseTool, tool
+from pydantic import Field
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.empty_completion import EmptyCompletionRetryMiddleware
 from app.agents.middleware.factory import (
     CODING_TOOL_NAMES,
-    SELF_OFFLOADING_TOOL_NAMES,
+    RECORD_LIMITED_TOOLS,
     SPAWN_SUBAGENT_TOOL,
     AccountingOptions,
     ContextOptions,
@@ -45,9 +47,9 @@ from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.summarization import COMMS_SUMMARIZATION_TRIGGER_TOKENS
 from app.services.storage import JuiceFSUnavailable
-from tests.helpers import BindableToolsFakeModel
+from tests.helpers import BindableToolsFakeModel, tool_call_request
 
-COMPACTION_EXCLUSIONS = CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL | SELF_OFFLOADING_TOOL_NAMES
+COMPACTION_EXCLUSIONS = CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL
 
 
 def _fake_llm() -> BaseChatModel:
@@ -71,7 +73,7 @@ def _spawnable_tool(query: str) -> str:
     return query
 
 
-def _types(stack: list) -> list[type]:
+def _types(stack: Sequence[object]) -> list[type]:
     return [type(mw) for mw in stack]
 
 
@@ -169,48 +171,32 @@ class TestCommsStackComposition:
         assert not any(isinstance(mw, SubagentMiddleware) for mw in stack)
 
 
-class ConfigCapturingModel:
-    """Records the configurable passed to with_config(), then delegates.
+class ConfigCapturingModel(BindableToolsFakeModel):
+    """Records the configurable with_config() binds, then answers as the fake it is."""
 
-    Composed (not subclassed) so there is no override to silence; __getattr__
-    forwards everything else — ainvoke included — to the wrapped fake.
-    """
+    captured: dict[str, object] = Field(default_factory=dict)
 
-    def __init__(self, inner: BaseChatModel) -> None:
-        self._inner = inner
-        self.captured: dict[str, object] = {}
-
-    def with_config(self, **kwargs: Any) -> BaseChatModel:
+    def with_config(
+        self, config: RunnableConfig | None = None, **kwargs: Any
+    ) -> Runnable[LanguageModelInput, AIMessage]:
         self.captured.update(kwargs.get("configurable") or {})
-        return self._inner
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._inner, name)
+        return self
 
 
 class TestRequestConfigBinding:
     async def test_digest_is_invoked_with_the_request_configurable(self) -> None:
         """awrap_tool_call must bind the request's configurable onto the digest call, same as the model node."""
-        inner = BindableToolsFakeModel(responses=[AIMessage(content="digest text")])
-        capturing = ConfigCapturingModel(inner)
+        capturing = ConfigCapturingModel(responses=[AIMessage(content="digest text")])
 
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=capturing)
 
-        request = SimpleNamespace(
-            tool_call={"name": "search", "id": "call_1", "args": {}},
-            runtime=SimpleNamespace(
-                config={
-                    "configurable": {
-                        "user_id": "u1",
-                        "vfs_session_id": "conv1",
-                        "provider": "custom",
-                    }
-                }
-            ),
+        request = tool_call_request(
+            ToolCall(name="search", args={}, id="call_1"),
+            configurable={"user_id": "u1", "vfs_session_id": "conv1", "provider": "custom"},
             state={"messages": []},
         )
 
-        async def handler(_req):
+        async def handler(_req: ToolCallRequest) -> ToolMessage:
             return ToolMessage(content="x" * 5000, tool_call_id="call_1", name="search")
 
         with patch(
@@ -308,19 +294,12 @@ class TestStackConfigurationPropagation:
         assert accounting.agent_name == "provider_subagent"
 
     def test_subagent_exclusions_are_the_union(self) -> None:
-        from app.agents.middleware.factory import (
-            CODING_TOOL_NAMES,
-            SELF_OFFLOADING_TOOL_NAMES,
-            SPAWN_SUBAGENT_TOOL,
-        )
-
         stack = create_subagent_middleware(
             subagent=SubagentStackOptions(enabled=False, llm=_fake_llm())
         )
         compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
-        assert compactor.excluded_tools == (
-            CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL | SELF_OFFLOADING_TOOL_NAMES
-        )
+        assert compactor.excluded_tools == COMPACTION_EXCLUSIONS
+        assert compactor.max_output_records == RECORD_LIMITED_TOOLS
 
     def test_comms_accounting_name(self) -> None:
         from app.agents.middleware.accounting import LLMAccountingMiddleware
@@ -345,11 +324,10 @@ class TestBuildGraphChatLlmPassThrough:
         from tests.e2e._harness.graph_run import scripted_model
 
         captured: dict = {}
-        real_create_comms = bg.create_comms_middleware
 
         def spy(chat_llm=None):
             captured["chat_llm"] = chat_llm
-            return real_create_comms(chat_llm=chat_llm)
+            return create_comms_middleware(chat_llm=chat_llm)
 
         def _capture(**kwargs):
             captured_mw = kwargs

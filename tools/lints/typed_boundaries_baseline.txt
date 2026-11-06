@@ -23,10 +23,7 @@ apps/api/app/agents/memory/profile_extractor.py	TB001
 apps/api/app/agents/memory/profile_extractor.py	TB002
 apps/api/app/agents/middleware/accounting.py	TB001	deferred-until=2026-12-31; 12 Any annotations, all LangChain AgentMiddleware hook signatures (AgentState[Any], Runtime[Any], dict[str, Any] state updates) typed Any upstream; touched by the llm-cost single-source fix, which leaves them as they were (decided 2026-10-08)
 apps/api/app/agents/middleware/accounting.py	TB002	deferred-until=2026-12-31; 20 string-key reads off the run configurable and the wide-event model context; typing them needs a typed configurable view across the middleware stack, out of scope for the llm-cost single-source fix that touched the file (decided 2026-10-08)
-apps/api/app/agents/middleware/hil_approval.py	TB001
 apps/api/app/agents/middleware/media.py	TB001
-apps/api/app/agents/middleware/runtime_adapter.py	TB001
-apps/api/app/agents/middleware/runtime_adapter.py	TB002
 apps/api/app/agents/prompts/trigger_prompts.py	TB002
 apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB001
 apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB002
@@ -40,8 +37,6 @@ apps/api/app/agents/tools/workflow_shared_tools.py	TB001	deferred-until=2026-11-
 apps/api/app/agents/tools/workflow_shared_tools.py	TB002	deferred-until=2026-11-08; touched for the get_user_id import move (run-owner fix) and for search_triggers reading TriggerSearchResult attributes; the remaining dict[str, Any] tool returns and string-key reads belong to the other workflow tools, and typing them is its own change (decided 2026-10-08, reason refreshed 2026-10-15)
 apps/api/app/agents/tools/workflow_tool.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/workflow_tool.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
-apps/api/app/agents/workspace/offload.py	TB001
-apps/api/app/agents/workspace/offload.py	TB002
 apps/api/app/api/v1/endpoints/device_ws.py	TB002
 apps/api/app/api/v1/endpoints/platform_auth.py	TB001
 apps/api/app/api/v1/endpoints/platform_auth.py	TB002
@@ -70,8 +65,6 @@ apps/api/app/schemas/errors.py	TB001
 apps/api/app/schemas/errors.py	TB002
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
-apps/api/app/scripts/delete_user_account.py	TB001
-apps/api/app/scripts/delete_user_account.py	TB002
 apps/api/app/scripts/sync_user_workspaces.py	TB002
 apps/api/app/services/_vfs_scheduler.py	TB002
 apps/api/app/services/bot_token_service.py	TB001
@@ -110,7 +103,6 @@ apps/api/app/services/photon/photon_client.py	TB001
 apps/api/app/services/photon/photon_client.py	TB002
 apps/api/app/services/storage/metrics.py	TB002
 apps/api/app/services/storage/sessions/meta.py	TB002
-apps/api/app/services/triggers/condition_matching.py	TB001
 apps/api/app/services/triggers/handlers/asana.py	TB001
 apps/api/app/services/triggers/handlers/github.py	TB001
 apps/api/app/services/triggers/handlers/gmail_poll.py	TB001

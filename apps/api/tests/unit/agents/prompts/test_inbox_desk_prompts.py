@@ -15,6 +15,7 @@ from app.agents.templates.mail_templates import message_view_needs_body
 from app.agents.tools.coding.query_json_tool import query_json
 from app.constants import agents as agent_constants, todos as todo_constants
 from app.constants.email import DEFAULT_SUMMARY_FIELDS
+from app.constants.quiet_hours import QUIET_HOURS_END, QUIET_HOURS_START
 from app.constants.todos import INBOX_DESK_TITLE, NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL
 from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.models.todo_models import TodoModel
@@ -319,8 +320,7 @@ def test_a_mail_woken_run_alerts_only_for_what_cannot_wait_for_the_briefing() ->
         "opened this run and the events you added or proposed for today or tomorrow"
     ) in alert
     assert (
-        f"between {todo_constants.INBOX_DESK_QUIET_HOURS_START:02d}:00 and "
-        f"{todo_constants.INBOX_DESK_QUIET_HOURS_END:02d}:00 the user's local time"
+        f"between {QUIET_HOURS_START:02d}:00 and {QUIET_HOURS_END:02d}:00 the user's local time"
     ) in alert
     assert "it is only that nothing is new, and the next briefing carries the rest" in alert
 
@@ -407,15 +407,13 @@ def test_the_sweep_counts_the_whole_window_the_filter_hides() -> None:
     assert "Filtered: the number only, from step 3" in "\n".join(_step(BRIEFING_STEP))
 
 
-def test_the_sweep_asks_the_fetch_for_headers_in_a_file_never_a_body_or_thread() -> None:
+def test_the_sweep_asks_the_fetch_for_headers_never_a_body_or_thread() -> None:
     fields = list(todo_prompts.INBOX_DESK_SWEEP_FIELDS)
     step = "\n".join(_step(SWEEP_STEP))
 
-    sweep = FetchMessagesInput(
-        query="newer_than:1d", fields=fields, body_processing="none", offload=True
-    )
+    sweep = FetchMessagesInput(query="newer_than:1d", fields=fields, body_processing="none")
 
-    assert f'fields {json.dumps(fields)}, body_processing "none", offload true' in step
+    assert f'fields {json.dumps(fields)}, body_processing "none", split' in step
     assert not message_view_needs_body(sweep.fields, sweep.body_processing)
     assert "Never read a swept message's body or fetch its thread" in step
     assert "GMAIL_FETCH_THREAD" not in step
@@ -426,7 +424,7 @@ def test_the_sweep_is_counted_per_address_by_query_json_never_read() -> None:
     step = "\n".join(_step(SWEEP_STEP))
 
     assert (
-        'one query_json(path=<its offloaded_to>, group_count_by="from_address") per file, '
+        'one query_json(path=<the path it was saved at>, group_count_by="from_address") per file, '
         "never reading the file"
     ) in step
     assert 'group_count_by="from")' not in step

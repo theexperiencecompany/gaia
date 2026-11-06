@@ -22,6 +22,7 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FALLBACK_TEMPLATE,
     PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
 )
+from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_OPENING
 from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,
@@ -66,6 +67,7 @@ from app.models.notification.notification_models import (
 from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
 from app.models.scheduler_models import DeactivationReason
+from app.models.trigger_gate_models import QuietHoursBypass, QuietHoursHold, QuietHoursStamp
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
@@ -83,8 +85,10 @@ from app.services.notification_service import notification_service
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
+    hold_trigger_batch,
     reschedule_if_refilled,
 )
+from app.services.triggers.trigger_gate import quiet_hours_hold
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_playbook_run_messages,
@@ -100,6 +104,7 @@ from app.services.workflow.execution_service import (
     WorkflowRunFailed,
     complete_execution,
     create_execution,
+    record_skipped_execution,
 )
 from app.services.workflow.integration_pause import pause_workflow_before_fire
 from app.services.workflow.notifications import send_workflow_completion_notification
@@ -162,6 +167,8 @@ class _FireStamp(BaseModel):
     trigger_batch_key: str | None = None
     # Read for presence only (``model_fields_set``); the payload is forwarded as-is.
     trigger_data: object = None
+    # Set by the trigger gate on a fire it held for, or let through, the user's quiet hours.
+    quiet_hours: QuietHoursStamp | None = None
 
 
 class _RateLimitDetail(BaseModel):
@@ -769,6 +776,8 @@ class _Fire:
     user: AuthenticatedUser
     #: The busy-lock value this fire reserved its conversation with.
     reservation: str
+    #: What the user's quiet hours did to this fire, for its history and its message.
+    quiet_hours: QuietHoursBypass | QuietHoursHold | None = None
 
 
 async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
@@ -954,15 +963,19 @@ async def _deliver_replay(
             playbook_id=playbook.playbook_id,
             reason=result.narration_failed,
         )
+    text = result.text
+    if isinstance(fire.quiet_hours, QuietHoursBypass):
+        opening = QUIET_HOURS_BYPASS_OPENING.format(reason=fire.quiet_hours.reason)
+        text = f"{opening}\n\n{text}"
     await add_playbook_run_messages(
         conversation_id=conversation_id,
         user_id=workflow.user_id,
         workflow=workflow,
-        response=result.text,
+        response=text,
         trace=result.trace,
         playbook=playbook,
     )
-    await _notify_replay_finished(workflow, user, conversation_id, result.text)
+    await _notify_replay_finished(workflow, user, conversation_id, text)
     summary = REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
     return conversation_id, result.trace, summary
 
@@ -1283,8 +1296,8 @@ async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: 
     # one in the history.
     await complete_execution(
         execution_id=execution_id,
-        status="skipped" if summary == NOTHING_NEW_SUMMARY else "success",
-        summary=summary,
+        status="success",
+        summary=summary if fire.quiet_hours is None else f"{fire.quiet_hours.summary}. {summary}",
         conversation_id=conversation_id,
         trace=trace,
     )
@@ -1395,15 +1408,11 @@ async def _record_overlapped_fire(
     # Minted here rather than reused: the overlap is caught before the fire has a
     # record. The skip still belongs in history — without a row the user sees a
     # scheduled workflow that simply stopped producing runs.
-    execution = await create_execution(
-        workflow_id=workflow_id,
-        user_id=overlapped.user_id,
-        trigger_type=trigger_type,
-    )
-    await complete_execution(
-        execution_id=execution.execution_id,
-        status="skipped",
-        summary=OVERLAPPED_AWAITING_APPROVAL_SUMMARY if awaiting_approval else OVERLAPPED_SUMMARY,
+    await record_skipped_execution(
+        workflow_id,
+        overlapped.user_id,
+        trigger_type,
+        OVERLAPPED_AWAITING_APPROVAL_SUMMARY if awaiting_approval else OVERLAPPED_SUMMARY,
         conversation_id=overlapped.conversation_id,
     )
     await WorkflowService.increment_execution_count(
@@ -1483,9 +1492,27 @@ async def execute_workflow_by_id(
     context: dict[str, object] | None = None,
 ) -> str:
     """Execute a workflow by ID, as the agent, attributed to what fired it."""
-    trigger_type = _derive_trigger_type(_FireStamp.model_validate(context or {}))
+    stamp = _FireStamp.model_validate(context or {})
+    trigger_type = _derive_trigger_type(stamp)
     with analytics_context(_fire_analytics_context(trigger_type).acting_as(Actor.AGENT)):
+        if stamp.trigger_batch_key and (held := await _hold_for_quiet_hours(workflow_id, context)):
+            return held
         return await _execute_workflow_fire(workflow_id, context)
+
+
+async def _hold_for_quiet_hours(workflow_id: str, context: dict[str, object] | None) -> str | None:
+    """Move a batch drain due inside the user's quiet hours to their end; None when it runs now.
+
+    No batch holds an urgent event, so a gated one never drains inside them. Held
+    before the fire starts, it owes no refill: the drain at their end takes it all.
+    """
+    workflow = await workflow_scheduler.get_task(workflow_id)
+    hold = await quiet_hours_hold(workflow.gate, workflow.user_id) if workflow else None
+    if hold is None or not await hold_trigger_batch(workflow_id, hold.until, context or {}):
+        return None
+    log.set(workflow_id=workflow_id)
+    log.set_ns("workflow", outcome="held_for_quiet_hours", held_until=hold.until.isoformat())
+    return f"Workflow {workflow_id} held until the user's quiet hours end"
 
 
 def _fire_analytics_context(trigger_type: str) -> AnalyticsContext:
@@ -1597,6 +1624,7 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
             context=context or {},
             user=owner,
             reservation=build_lock_value(None, lock_task_id),
+            quiet_hours=stamp.quiet_hours,
         )
         return await _run_and_record_success(fire, trigger_type, execution_id)
 

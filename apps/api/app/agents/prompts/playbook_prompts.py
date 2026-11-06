@@ -15,8 +15,8 @@ the finished result. Two reasons, both load-bearing:
 
 import json
 
+from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.models.workflow_execution_models import RecordedCall
-from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.workflow.playbook.record import record_entries, render_record
 
 
