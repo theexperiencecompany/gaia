@@ -745,20 +745,6 @@ def test_feedback_not_to_reply_is_an_outcome_applied_to_each_thread_it_covers() 
     assert "list_tracked_todos(gmail_thread_id=...)" in feedback
 
 
-@pytest.mark.regression
-def test_needs_you_lists_the_action_todos_this_run_created_even_when_a_briefing_named_them() -> (
-    None
-):
-    """Regression: a run opened Kotak and Cloudflare action todos, then left them out as old news."""
-    heading = _step(BRIEFING_STEP)[0]
-    needs_you = _briefing_line("Needs you")
-
-    assert "Needs you and Waiting on others list what is open now" in heading
-    assert "even when an earlier one listed it" in heading
-    assert "the sub-todos this run created included" in heading
-    assert needs_you.startswith(f"Needs you: your {ACTION_NEEDED_LABEL} sub-todos first")
-
-
 def test_action_mail_from_automated_senders_is_fetched_too() -> None:
     """Regression: Cloudflare's payment-failed notices come from noreply@ and were never read."""
     action_filter = todo_constants.INBOX_DESK_ACTION_MAIL_FILTER

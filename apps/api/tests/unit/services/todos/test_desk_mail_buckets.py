@@ -165,11 +165,9 @@ async def test_an_email_jev_fails_on_reaches_the_desk_unbucketed_and_the_rest_ke
     assert [v.bucket for v in bucketed] == [None, DeskBucket.ACT]
 
 
-@pytest.mark.regression
 async def test_a_desk_whose_mail_watch_was_retired_still_buckets_its_fetch(
     seams: SimpleNamespace,
 ) -> None:
-    """Regression: the desk's mail watch was retired, and its fetch stopped being bucketed."""
     seams.get.return_value = _todo(trigger_subscriptions=[])
     seams.jev.mock(return_value=_bucket(DeskBucket.ACT))
 
