@@ -38,6 +38,7 @@ from app.utils.creator import (
     SYSTEM_CREATOR_NAME,
     format_creator,
 )
+from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.schedule import validate_recurring_schedule
 from app.utils.trigger_utils import get_integration_for_trigger
@@ -600,7 +601,25 @@ class WorkflowService:
             # distinction `model_dump(exclude_unset=True)` encoded, kept on the
             # request so every value below is read as a typed attribute.
             provided = request.model_fields_set
-            update = WorkflowUpdate(**request.model_dump(exclude_unset=True))
+            update = WorkflowUpdate(**request.model_dump(exclude_unset=True, exclude={"gate"}))
+            if (request.trigger_config or current_workflow.trigger_config).type is not (
+                TriggerType.INTEGRATION
+            ):
+                if request.gate is not None:
+                    raise AppError(
+                        message="Only a workflow started by an integration event can have a gate",
+                        why="a gate reads the event that fired the workflow; this trigger has none",
+                        fix="send gate null, or switch the trigger to an integration event",
+                        status_code=422,
+                        meta={"workflow_id": workflow_id},
+                    )
+                if current_workflow.gate is not None:
+                    # In the trigger's own $set: a stored gate on a trigger with no event would not load.
+                    update.gate = None
+            elif "gate" in provided:
+                update.gate = (
+                    None if request.gate is None else request.gate.applied_to(current_workflow.gate)
+                )
 
             # enabled mirrors activated (the single liveness field). Resolve the
             # effective activated value for this update and never trust a client-sent

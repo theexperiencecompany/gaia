@@ -7,6 +7,7 @@ from langchain_core.exceptions import OutputParserException
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.scheduler_models import (
     UNSET,
@@ -14,6 +15,7 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
     TaskRearm,
 )
+from app.models.trigger_gate_models import AuthoredGate
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     GeneratedPromptOutput,
@@ -49,6 +51,7 @@ from app.services.workflow.service import (
 from app.services.workflow.trigger_service import TriggerService
 from app.services.workflow.validators import WorkflowValidator
 from app.utils import auth_utils
+from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
 from tests.helpers import UNKNOWN_USER_ID, users_get
 
@@ -940,6 +943,151 @@ class TestUpdateWorkflow:
         mock_register_int.assert_awaited_once()
         mock_unregister.assert_awaited_once()
         assert result is not None
+
+
+_GAIA_GATE = AuthoredGate(condition="the email is from a customer", author=GateAuthor.GAIA)
+
+
+def _gated_gmail_workflow() -> Workflow:
+    workflow = _make_workflow(
+        trigger_config=_make_trigger_config(
+            trigger_type=TriggerType.INTEGRATION, trigger_name="gmail_new_message"
+        ),
+        activated=False,
+    )
+    workflow.gate = _GAIA_GATE
+    return workflow
+
+
+class TestUpdateWorkflowGate:
+    """The gate is a sibling of trigger_config: absent keeps it, null removes it, a value replaces it."""
+
+    @pytest.fixture
+    def repo(self):
+        current = _gated_gmail_workflow()
+        with (
+            patch(
+                "app.services.workflow.service.WorkflowService.get_workflow",
+                AsyncMock(return_value=current),
+            ),
+            patch(
+                f"{_REPO}.update_for_user", AsyncMock(return_value=_make_workflow_doc(current))
+            ) as update,
+            patch("app.services.workflow.service.workflow_scheduler"),
+        ):
+            yield update
+
+    @staticmethod
+    def _written(update: AsyncMock) -> dict[str, object]:
+        """Return the $set the repository was handed, as it serialises it."""
+        return update.await_args.args[2].model_dump(exclude_unset=True)
+
+    async def test_an_edit_that_names_no_gate_keeps_it(self, repo: AsyncMock) -> None:
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
+        )
+
+        assert self._written(repo) == {"title": "Renamed"}
+
+    async def test_a_trigger_rebuilt_from_the_editor_keeps_the_gate(self, repo: AsyncMock) -> None:
+        request = _make_update_request(
+            trigger_config=_make_trigger_config(
+                trigger_type=TriggerType.INTEGRATION, trigger_name="gmail_new_message"
+            )
+        )
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        assert "gate" not in self._written(repo)
+
+    async def test_a_null_gate_removes_it(self, repo: AsyncMock) -> None:
+        await WorkflowService.update_workflow(WORKFLOW_ID, _make_update_request(gate=None), USER_ID)
+
+        assert self._written(repo)["gate"] is None
+
+    async def test_a_sent_condition_is_stored_as_the_users(self, repo: AsyncMock) -> None:
+        request = UpdateWorkflowRequest.model_validate(
+            {"gate": {"condition": "the email is about an invoice", "author": "gaia"}}
+        )
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        stored = self._written(repo)["gate"]
+        assert Workflow.model_validate(
+            {**_gated_gmail_workflow().model_dump(), "gate": stored}
+        ).gate == AuthoredGate(condition="the email is about an invoice", author=GateAuthor.USER)
+
+    async def test_an_unchanged_condition_keeps_its_author(self, repo: AsyncMock) -> None:
+        request = UpdateWorkflowRequest.model_validate(
+            {"gate": {"condition": _GAIA_GATE.condition, "enabled": False}}
+        )
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        stored = self._written(repo)["gate"]
+        assert Workflow.model_validate(
+            {**_gated_gmail_workflow().model_dump(), "gate": stored}
+        ).gate == AuthoredGate(
+            condition=_GAIA_GATE.condition, author=GateAuthor.GAIA, enabled=False
+        )
+
+    async def test_moving_off_an_integration_trigger_drops_the_gate_in_the_same_write(
+        self, repo: AsyncMock
+    ) -> None:
+        request = _make_update_request(
+            trigger_config=_make_trigger_config(trigger_type=TriggerType.MANUAL)
+        )
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        assert self._written(repo)["gate"] is None
+        written_trigger = repo.await_args.args[2].trigger_config
+        assert written_trigger is not None
+        assert written_trigger.type is TriggerType.MANUAL
+
+    @pytest.mark.parametrize(
+        "request_fields",
+        [
+            {"trigger_config": {"type": "manual"}, "gate": {"condition": "always"}},
+            {"gate": {"condition": "always"}},
+        ],
+        ids=["with-the-trigger-change", "on-a-manual-workflow"],
+    )
+    async def test_a_gate_on_a_trigger_with_no_event_is_refused(
+        self, repo: AsyncMock, request_fields: dict[str, object]
+    ) -> None:
+        manual = _make_workflow(
+            trigger_config=_make_trigger_config(trigger_type=TriggerType.MANUAL)
+        )
+        request = UpdateWorkflowRequest.model_validate(request_fields)
+
+        with (
+            patch(
+                "app.services.workflow.service.WorkflowService.get_workflow",
+                AsyncMock(
+                    return_value=manual
+                    if "trigger_config" not in request_fields
+                    else _gated_gmail_workflow()
+                ),
+            ),
+            pytest.raises(AppError) as refused,
+        ):
+            await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        assert (
+            refused.value.status_code,
+            refused.value.message,
+            refused.value.why,
+            refused.value.fix,
+            refused.value.meta,
+        ) == (
+            422,
+            "Only a workflow started by an integration event can have a gate",
+            "a gate reads the event that fired the workflow; this trigger has none",
+            "send gate null, or switch the trigger to an integration event",
+            {"workflow_id": WORKFLOW_ID},
+        )
+        repo.assert_not_awaited()
 
 
 # ===========================================================================
@@ -2161,7 +2309,11 @@ class TestWorkflowQueueService:
             "execute_workflow_by_id:" + hashlib.sha256(dedup_payload.encode()).hexdigest()[:32]
         )
         mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {"key": "val"}, _job_id=expected_job_id
+            "execute_workflow_by_id",
+            WORKFLOW_ID,
+            {"key": "val"},
+            _job_id=expected_job_id,
+            _defer_until=None,
         )
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
@@ -2187,7 +2339,7 @@ class TestWorkflowQueueService:
         )
         # context defaults to empty dict
         mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {}, _job_id=expected_job_id
+            "execute_workflow_by_id", WORKFLOW_ID, {}, _job_id=expected_job_id, _defer_until=None
         )
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")

@@ -84,9 +84,16 @@ def test_outside_any_runnable_context_the_write_is_dropped() -> None:
 
 @pytest.mark.unit
 def test_a_dispatch_inside_a_run_keeps_that_runs_configurable_and_names_its_stream() -> None:
-    config = dispatch_config_for("u1", {"configurable": {"thread_id": "t1"}}, stream_id="s1")
+    config = dispatch_config_for(
+        "u1", {"configurable": {"thread_id": "t1"}}, stream_id="s1", workflow_id="wf1"
+    )
 
-    assert config.get("configurable") == {"thread_id": "t1", "user_id": "u1", "stream_id": "s1"}
+    assert config.get("configurable") == {
+        "thread_id": "t1",
+        "user_id": "u1",
+        "stream_id": "s1",
+        "workflow_id": "wf1",
+    }
 
 
 @pytest.mark.unit

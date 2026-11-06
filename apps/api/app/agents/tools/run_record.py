@@ -1,4 +1,4 @@
-"""The run record: every tool call one run made, in order, keyed by its stream id.
+"""The run record: every tool call one workflow run made, in order, keyed by its stream id.
 
 Written by ``app.agents.tools.invocation``, so a call is in the record because it
 ran, whatever path ran it: a graph tool node, the execute proxy, a sandbox script

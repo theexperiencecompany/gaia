@@ -161,6 +161,9 @@ class Settings(BrowserHostSettings):
     # one structured decision call per reply (hil-reply calibration: 0 dangerous
     # approves vs the LLM's 2), LLM classifier as the transport-failure fallback.
     ENABLE_HIL_JEV_REPLY: bool = True
+    # Trigger gates skip a run JEV is sure its event does not need. The kill switch:
+    # off still evaluates and records every gate, but every run goes ahead.
+    ENABLE_TRIGGER_GATES: bool = True
     # Private agent lab — Claude Code / OpenCode CLIs inside the
     # per-user E2B sandbox, controllable from chat. Off by default; PostHog
     # targeting enables it for specific users.
@@ -271,8 +274,10 @@ class Settings(BrowserHostSettings):
     # steers and signs off while Jev does the stepping. Served by OpenRouter.
     BROWSER_AGENT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
     BROWSER_AGENT_REASONING_EFFORT: BrowserAgentEffort = "low"
-    # Browser-Use's flash mode: the agent writes only its memory and actions, no thinking.
-    BROWSER_AGENT_FLASH_MODE: bool = True
+    # Browser-Use's flash mode: the agent writes only its memory and actions, no evaluation of
+    # its last step and no next goal or plan. Browser-Use turns it on only for its own trained
+    # model; on ours the agent stopped noticing it was looping (38 steps on GitHub's code page).
+    BROWSER_AGENT_FLASH_MODE: bool = False
 
     # Hard limits — everything is bounded so no browser task can run away. The
     # agent's step count is only Browser-Use's required backstop: a run ends on
@@ -315,10 +320,6 @@ class Settings(BrowserHostSettings):
     # When false, a session's login is never persisted or restored (per-deployment
     # opt-out of "log in once, reuse next time").
     BROWSER_PERSIST_LOGINS: bool = True
-    # Public base URL for the recap and step-screenshot links a user is sent, e.g.
-    # https://browser.heygaia.io where a vhost reverse-proxies to this api service.
-    # When unset, those links fall back to HOST.
-    BROWSER_LIVE_VIEW_BASE_URL: str | None = None
 
     # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage.
     # All three must be set; the "custom" provider is registered exclusively in

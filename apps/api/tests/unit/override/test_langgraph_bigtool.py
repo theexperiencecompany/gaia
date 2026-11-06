@@ -74,10 +74,6 @@ from app.override.langgraph_bigtool.create_agent import (
     nudge_continue_node,
     reject_unbound_tools,
 )
-from app.override.langgraph_bigtool.dynamic_tool_node import (
-    format_tool_error,
-    hil_and_timeout_guarded_tool_call,
-)
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult, State
 
 # ---------------------------------------------------------------------------
@@ -1022,7 +1018,7 @@ class TestSelectTools:
             tools_config=ToolRetrievalConfig(retrieve_tools_function=my_func),
         )
         select_node = _sync_tool_calls_node(builder, "select_tools")
-        config = _make_config(user_id="u1", stream_id="stream-select")
+        config = _make_config(user_id="u1", stream_id="stream-select", workflow_id="wf-1")
 
         select_node.func([{"id": "tc1", "args": {"query": "mail"}}], config, store=MagicMock())
 
@@ -1046,7 +1042,7 @@ class TestSelectTools:
             tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=my_coro),
         )
         select_node = _async_tool_calls_node(builder, "select_tools")
-        config = _make_config(user_id="u1", stream_id="stream-select")
+        config = _make_config(user_id="u1", stream_id="stream-select", workflow_id="wf-1")
 
         await select_node.afunc(
             [{"id": "tc1", "args": {"query": "mail"}}], config, store=MagicMock()
@@ -2298,10 +2294,7 @@ class TestToolNodeWiring:
 
         dynamic_node.assert_called_once()
         args, kwargs = dynamic_node.call_args
-        assert args[0] is deps.tool_registry
-        opts = args[1]
-        assert opts.handle_tool_errors is format_tool_error
-        assert opts.awrap_tool_call is hil_and_timeout_guarded_tool_call
+        assert args == (deps.tool_registry,)
         assert kwargs == {"middleware_executor": executor, "middleware_tools": [dummy_tool_b]}
         assert node is dynamic_node.return_value
 

@@ -84,7 +84,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(github.event_name == 'pull_request' && '["linux"]' || '["mac", "win", "linux"]') }}
+        # mac is out while GitHub's hosted macOS arm64 pool cannot acquire runners (2026-11-04); desktop-release.yml still packages mac
+        target: ${{ fromJSON(github.event_name == 'pull_request' && '["linux"]' || '["win", "linux"]') }}
     runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'win' && 'windows-latest' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -7,10 +7,8 @@ from shared.py.wide_events import log
 def apply() -> None:
     try:
         from composio.utils import shared
-        from langchain_core.tools import base as lc_base
-        from pydantic import ValidationError
 
-        # Patch 1: Composio flattening anyOf items in arrays
+        # Composio collapses anyOf items in arrays; flatten them into a real union
         original_json_schema_to_pydantic_type = shared.json_schema_to_pydantic_type
 
         def patched_json_schema_to_pydantic_type(
@@ -35,27 +33,6 @@ def apply() -> None:
             return original_json_schema_to_pydantic_type(json_schema)
 
         shared.json_schema_to_pydantic_type = patched_json_schema_to_pydantic_type
-
-        # Patch 2: Langchain swallowing Tool Validation Errors
-        # If we just override _handle_validation_error, that gets called from inside BaseTool._run
-        def patched_handle_validation_error(
-            e: t.Union[ValidationError, Exception],
-            *,
-            flag: t.Union[bool, str, t.Callable[[t.Any], str]],
-        ) -> str:
-            if isinstance(flag, str):
-                return flag
-            # bool is not callable, but check it explicitly: `callable()` cannot
-            # narrow a bool out on its own, and True must fall through to the
-            # real message rather than be invoked.
-            if not isinstance(flag, bool) and callable(flag):
-                return flag(e)
-            # flag is True (langchain's "handle it" signal) or something outside
-            # the documented union — either way, surface the actual error, which
-            # is the whole point of this patch.
-            return f"Tool input validation error: {e!s}"
-
-        lc_base._handle_validation_error = patched_handle_validation_error
 
         log.info(f"{LogTag.PATCH} Applied composio_langchain_patch", patch="composio_langchain")
     except Exception as e:
