@@ -124,7 +124,11 @@ def _integrations_line() -> str:
         f"INTEGRATIONS: {len(all_integrations())} services the user can connect ({categories}). "
         "GAIA can search them for what the user needs and show a connect card in chat. Nothing "
         "runs on a service before it is connected; once it is, GAIA gets that service's tools, "
-        "and the built-in workflows below switch on by themselves."
+        "and the built-in workflows below switch on by themselves. Beyond the catalog, GAIA can "
+        "add any remote MCP server by its URL (a vendor's official server or the user's own; "
+        "no auth, OAuth, or a token entered in a secure form, never in chat) and use its tools "
+        "the same way, and custom servers can be published to a community marketplace that "
+        "integration search also covers."
     )
 
 
@@ -143,11 +147,12 @@ def _channels_line() -> str:
 def _inbox_desk_line() -> str:
     return (
         f"INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the {INBOX_DESK_TITLE}, "
-        f"that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It triages new mail, opens a tracked "
-        "todo for every thread where the user owes a reply or is waiting on one, saves reply "
-        "drafts without sending them, puts personal events from mail on the calendar, and ends "
-        "with one briefing. The user changes when it runs or what it does by telling GAIA, like "
-        "any tracked todo."
+        f"that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It goes through every connected "
+        "inbox, opens a tracked todo for every thread where the user owes a reply or is waiting "
+        "on one, saves reply drafts without sending them, puts personal events from mail on the "
+        "calendar, and ends with one briefing. It organizes their Gmail or adds mail's tasks to "
+        "their todos only after they say yes. The user changes when it runs or what it does by "
+        "telling GAIA, like any tracked todo."
     )
 
 

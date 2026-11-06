@@ -43,7 +43,12 @@ class ExternalRefSource(StrEnum):
     @property
     def owns_report_form(self) -> bool:
         """Whether this kind's run guidance sets its final report's form, so it reaches the user as written."""
-        return self is ExternalRefSource.INBOX_DESK
+        return self in (ExternalRefSource.INBOX_DESK, ExternalRefSource.GMAIL_THREAD)
+
+    @property
+    def speaks_under_parent(self) -> bool:
+        """Whether a sub-todo of this kind still tells the user itself: a thread's news cannot wait for its parent."""
+        return self is ExternalRefSource.GMAIL_THREAD
 
 
 class ExternalRef(BaseModel):
@@ -55,6 +60,13 @@ class ExternalRef(BaseModel):
     id: str = Field(min_length=1)
     # The connected account the object lives in: a Gmail thread id means nothing outside its mailbox.
     account: str | None = None
+
+
+def default_notify_on_run(*, parent_todo_id: str | None, external_ref: ExternalRef | None) -> bool:
+    """Say whether a todo's runs reach the user when nobody chose: a sub-todo reports to its parent unless its kind speaks."""
+    return parent_todo_id is None or (
+        external_ref is not None and external_ref.source.speaks_under_parent
+    )
 
 
 class SubTask(ResponseModel):
@@ -643,6 +655,8 @@ class TodoRunContext(NamedTuple):
     """What a run reads beyond its own todo: its parent's rules, sub-todos, past lessons, account."""
 
     parent_rules: str = ""
+    # When the parent runs next, on the user's clock; "" for a todo with no scheduled parent.
+    parent_next_run: str = ""
     sub_todos: str = ""
     learnings: str = ""
     # The current name of the account the todo's outside object lives in; "" when it names none.

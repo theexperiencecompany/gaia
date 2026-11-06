@@ -24,8 +24,6 @@ from app.db.repositories.todos import TodosRepository
 from app.models import todo_models
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
-    ExternalRef,
-    ExternalRefSource,
     Priority,
     SearchMode,
     SubTask,
@@ -431,6 +429,30 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert (latest.title, latest.completed) == ("stopped", True)
         assert nothing is None
 
+    async def test_list_open_by_external_ref_source_is_every_users_open_todo_of_that_kind(
+        self, repo, make_doc
+    ):
+        desk = todo_models.ExternalRef(source=todo_models.ExternalRefSource.INBOX_DESK, id="gmail")
+        thread = todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611"
+        )
+        for title, owner, ref, completed in (
+            ("open desk", "u", desk, False),
+            ("their desk", "u2", desk, False),
+            ("stopped desk", "u3", desk, True),
+            ("thread", "u", thread, False),
+            ("no ref", "u", None, False),
+        ):
+            await repo.create(
+                make_doc(user_id=owner, title=title, external_ref=ref, completed=completed)
+            )
+
+        found = await repo.list_open_by_external_ref_source(
+            todo_models.ExternalRefSource.INBOX_DESK
+        )
+
+        assert sorted(t.title for t in found) == ["open desk", "their desk"]
+
     # ---- sub-todos ----------------------------------------------------------
 
     async def test_top_level_listing_leaves_out_every_sub_todo(self, repo, make_doc):
@@ -805,24 +827,6 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         assert written is None
         assert await raw_collection.find_one({"_id": ObjectId(doc.id)}) == before
-
-    async def test_every_users_open_todo_about_a_ref_is_listed(self, repo, make_doc):
-        desk = {"source": ExternalRefSource.INBOX_DESK, "id": "gmail"}
-        mine = await repo.create(make_doc(user_id="u1", external_ref=desk))
-        theirs = await repo.create(make_doc(user_id="u2", external_ref=desk))
-        await repo.create(make_doc(user_id="u3", external_ref=desk, completed=True))
-        await repo.create(
-            make_doc(
-                user_id="u1", external_ref={"source": ExternalRefSource.GMAIL_THREAD, "id": "t"}
-            )
-        )
-        await repo.create(make_doc(user_id="u1"))
-
-        found = await repo.list_open_by_external_ref_all_users(
-            ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
-        )
-
-        assert sorted(t.id for t in found) == sorted([mine.id, theirs.id])
 
     async def test_count_trigger_references_counts_across_users(self, repo, make_doc):
         sub = _subscription(

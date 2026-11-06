@@ -16,7 +16,6 @@ from app.agents.prompts.todo_prompts import (
     GMAIL_THREAD_ACCOUNT_GONE,
     GMAIL_THREAD_ACCOUNT_LINE,
     GMAIL_THREAD_RUN_GUIDANCE,
-    INBOX_DESK_MAIL_WAKE_OPENING,
     INBOX_DESK_QUIET_HOURS_NOTE,
     INBOX_DESK_RUN_GUIDANCE,
     SANDBOX_RUN_EVENT_GUIDANCE,
@@ -40,11 +39,6 @@ EXTERNAL_REF_RUN_GUIDANCE: Mapping[ExternalRefSource, str] = MappingProxyType(
         ExternalRefSource.GMAIL_THREAD: GMAIL_THREAD_RUN_GUIDANCE,
         ExternalRefSource.INBOX_DESK: INBOX_DESK_RUN_GUIDANCE,
     }
-)
-
-# Kinds whose watch only says when to run: the run's own steps read what changed.
-WAKE_OPENINGS: Mapping[ExternalRefSource, str] = MappingProxyType(
-    {ExternalRefSource.INBOX_DESK: INBOX_DESK_MAIL_WAKE_OPENING}
 )
 
 
@@ -102,14 +96,6 @@ def opening_parts(
         return [f"Execute the following scheduled task: {title}"]
     quiet_now = quiet_hours.contains(local_now)
     bypass_note = _quiet_hours_note(origin, coalesced, quiet_now)
-    wake = WAKE_OPENINGS.get(doc.external_ref.source) if doc.external_ref else None
-    if wake is not None:
-        woken = [wake.format(title=title)]
-        if bypass_note is not None:
-            woken.append(bypass_note)
-        elif quiet_now:
-            woken.append(INBOX_DESK_QUIET_HOURS_NOTE.format(local_time=f"{local_now:%H:%M}"))
-        return woken
     fence = untrusted_fence()
     if coalesced:
         opening = f"Events you were watching fired. Execute this task: {title}"
@@ -125,6 +111,14 @@ def opening_parts(
         events_json = json.dumps(origin.payload, indent=2, default=str)
     if bypass_note is not None:
         opening = f"{opening}\n\n{bypass_note}"
+    elif (
+        quiet_now
+        and doc.external_ref is not None
+        and doc.external_ref.source is ExternalRefSource.INBOX_DESK
+    ):
+        opening = f"{opening}\n\n" + INBOX_DESK_QUIET_HOURS_NOTE.format(
+            local_time=f"{local_now:%H:%M}"
+        )
     return [
         opening,
         f"{label}. Everything between the "
@@ -176,7 +170,9 @@ def build_execution_prompt(
         observations = bounded_observations(doc.observations_content)
         prompt_parts.append(f"Observations (observations.md):\n{observations}")
     # Next to the canvas: rules the run obeys and the sub-todos it answers for.
-    prompt_parts.extend(part for part in (context.parent_rules, context.sub_todos) if part)
+    prompt_parts.extend(
+        part for part in (context.parent_rules, context.parent_next_run, context.sub_todos) if part
+    )
     if activity_content := doc.activity_content:
         tail = activity_content[-ACTIVITY_PROMPT_TAIL_CHARS:]
         truncated = " (older entries omitted; read activity.md for the full log)"

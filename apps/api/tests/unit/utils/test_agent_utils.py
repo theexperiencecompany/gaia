@@ -79,7 +79,7 @@ class TestFormatToolCallEntry:
             result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
 
         assert result is not None
-        assert result["data"]["message"] == "Retrieve tools"
+        assert result["data"]["message"] == "Getting ready"
         assert result["data"]["show_category"] is False
 
     @pytest.mark.asyncio
@@ -100,7 +100,7 @@ class TestFormatToolCallEntry:
         assert result is not None
         # "integrations" is the frontend icon-config key carrying ConnectIcon.
         assert result["data"]["tool_category"] == "integrations"
-        assert result["data"]["message"] == "Activating integration"
+        assert result["data"]["message"] == "Opening your app"
         assert result["data"]["show_category"] is False
 
     @pytest.mark.asyncio

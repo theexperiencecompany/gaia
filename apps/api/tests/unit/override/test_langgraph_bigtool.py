@@ -1803,12 +1803,12 @@ class TestFinishTaskNodeDirect:
         assert msg.tool_call_id == "call-1"
         assert msg.name == FINISH_TASK_NAME
 
-    def test_missing_result_falls_back_to_task_completed(self) -> None:
+    def test_missing_result_is_no_answer_never_task_completed(self) -> None:
         result = finish_task_node(
             [ToolCall(name=FINISH_TASK_NAME, args={}, id="call-2")], store=MagicMock()
         )
 
-        assert result["messages"][0].content == "Task completed."
+        assert result["messages"][0].content == ""
 
     async def test_async_twin_delegates_to_the_sync_impl(self) -> None:
         result = await afinish_task_node(
