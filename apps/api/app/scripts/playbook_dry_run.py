@@ -7,7 +7,7 @@ real, every other step prints the call it would have made, and the narration
 is printed instead of delivered. Nothing is stored: no playbook, execution,
 message or notification. The model calls the replay makes are real, so they
 are metered to the user like any background call (COGS only, never their
-budget), and the reads leave the 2-day run record every tool call leaves.
+budget).
 
 A calendar recipe needs the event a fire would be about; the user's next
 upcoming event stands in for it.
