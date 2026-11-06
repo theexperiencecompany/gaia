@@ -4,14 +4,13 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { useDodoPayments } from "@/features/pricing/hooks/useDodoPayments";
+import {
+  DODO_RETURN_PARAM,
+  stripCheckoutReturnParams,
+} from "@/features/pricing/lib/dodoReturnUrl";
 import { track } from "@/lib/analytics";
 
 import { CHECKOUT_RETURNED_PARAM } from "../constants";
-
-/** Dodo appends the subscription it just created to the return URL. */
-const SUBSCRIPTION_ID_PARAM = "subscription_id";
-/** ...and the outcome of the charge: `succeeded`, `failed`, `processing`. */
-const STATUS_PARAM = "status";
 
 interface CheckoutReturn {
   /** Dodo just sent the browser back to the wizard after checkout. */
@@ -46,31 +45,9 @@ function readReturnParams(params: URLSearchParams): ReturnParams {
   if (!returned) return NOT_RETURNED;
   return {
     returned,
-    failed: params.get(STATUS_PARAM) === "failed",
-    subscriptionId: params.get(SUBSCRIPTION_ID_PARAM) ?? undefined,
+    failed: params.get(DODO_RETURN_PARAM.status) === "failed",
+    subscriptionId: params.get(DODO_RETURN_PARAM.subscriptionId) ?? undefined,
   };
-}
-
-/** The three Dodo appends to the return URL, and the only ones to remove. */
-const DODO_RETURN_PARAMS = [
-  CHECKOUT_RETURNED_PARAM,
-  STATUS_PARAM,
-  SUBSCRIPTION_ID_PARAM,
-];
-
-/**
- * The address without Dodo's checkout params — the current URL otherwise
- * untouched. Built off `window.location` rather than a literal path: this
- * page is reachable under every locale prefix (/fr/onboarding, /ja/onboarding),
- * and rewriting the address to a hardcoded /onboarding drops a non-English
- * user into English on the next reload, mid-payment.
- */
-function addressWithoutCheckoutParams(): string | null {
-  const params = new URLSearchParams(window.location.search);
-  if (!DODO_RETURN_PARAMS.some((param) => params.has(param))) return null;
-  for (const param of DODO_RETURN_PARAMS) params.delete(param);
-  const query = params.toString();
-  return `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
 }
 
 export function useCheckoutReturn(): CheckoutReturn {
@@ -82,8 +59,7 @@ export function useCheckoutReturn(): CheckoutReturn {
     readReturnParams(new URLSearchParams(searchParams.toString())),
   );
   useEffect(() => {
-    const address = addressWithoutCheckoutParams();
-    if (address) window.history.replaceState(null, "", address);
+    stripCheckoutReturnParams([CHECKOUT_RETURNED_PARAM]);
   }, []);
   const { checkoutPhase, confirmReturnedCheckout, clearError } =
     useDodoPayments();

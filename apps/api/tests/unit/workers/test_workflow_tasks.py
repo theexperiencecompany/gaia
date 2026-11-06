@@ -20,9 +20,10 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
 )
 from app.models.playbook_models import PlaybookRunStatus
+from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_execution_models import RecordedCall
-from app.models.workflow_models import DeactivationReason, TriggerType, WorkflowStep
+from app.models.workflow_models import TriggerType, WorkflowStep
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut
 from app.services.workflow.notifications import (
@@ -699,7 +700,10 @@ class TestProcessWorkflowGenerationTask:
         assert _no_real_analytics.call_args.args == (
             UserId(user_id),
             WorkflowCreated(
-                workflow_id=workflow.id, steps_count=len(workflow.steps), is_todo_workflow=True
+                origin="todo_requested",
+                workflow_id=workflow.id,
+                steps_count=len(workflow.steps),
+                is_todo_workflow=True,
             ),
         )
 
@@ -1802,7 +1806,11 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_ws_mgr.return_value = mock_ws
 
             await process_workflow_generation_task(
-                ctx, todo_id, user_id, "Buy groceries", description="Milk, eggs, bread"
+                ctx,
+                todo_id,
+                user_id,
+                "Buy groceries",
+                description="Milk, eggs, bread",
             )
 
         assert len(captured_requests) == 1
@@ -1953,6 +1961,7 @@ class TestRegenerateWorkflowStepsAdditional:
 
 
 MODULE = "app.workers.tasks.workflow_tasks"
+EXECUTION_SERVICE = "app.services.workflow.execution_service"
 
 #: A fixed occurrence stamp, so the claim a scheduled fire makes is assertable.
 SCHEDULED_FOR = datetime(2026, 5, 1, 9, 0, tzinfo=UTC)
@@ -1979,6 +1988,7 @@ class _FirePatches:
         self.execution = MagicMock()
         self.execution.execution_id = "exec_1"
         self.complete_execution = AsyncMock()
+        self.create_execution = AsyncMock(return_value=self.execution)
         self.increment = AsyncMock()
         self.chat = AsyncMock(return_value=("conv_1", []))
         self.cost_budget = AsyncMock()
@@ -1993,8 +2003,11 @@ class _FirePatches:
     def enter(self, stack) -> None:
         for patcher in (
             patch(f"{MODULE}.workflow_scheduler", self.scheduler),
-            patch(f"{MODULE}.create_execution", AsyncMock(return_value=self.execution)),
+            patch(f"{MODULE}.create_execution", self.create_execution),
             patch(f"{MODULE}.complete_execution", self.complete_execution),
+            # A fire that never ran is recorded through execution_service's own helper.
+            patch(f"{EXECUTION_SERVICE}.create_execution", self.create_execution),
+            patch(f"{EXECUTION_SERVICE}.complete_execution", self.complete_execution),
             patch(
                 f"{MODULE}.WorkflowService",
                 MagicMock(increment_execution_count=self.increment),

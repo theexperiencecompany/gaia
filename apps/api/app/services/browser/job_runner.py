@@ -688,6 +688,7 @@ async def _run_job(
             if await is_enabled(FeatureFlag.BROWSER_OBSCURA, request.user_id)
             else BrowserEngine.CHROMIUM
         )
+        jev = await is_enabled(FeatureFlag.BROWSER_JEV, request.user_id)
         host_url, fallback_host = hosts_for(engine)
         secrets = RunSecrets(request.secrets)
         async with contextlib.AsyncExitStack() as sessions:
@@ -704,7 +705,7 @@ async def _run_job(
             log.set(browser={"session_id": session.session_id})
             # A run that fails before its first card still links the recap of this session.
             emitter.session_id = session.session_id
-            log.set_ns("browser", engine=session.engine.value)
+            log.set_ns("browser", engine=session.engine.value, jev=jev)
             if engine is BrowserEngine.CHROMIUM and session.engine is not BrowserEngine.CHROMIUM:
                 # The host says it is not Chrome: a user who never chose Obscura is not run on it.
                 raise BrowserUnavailableError(BROWSER_NO_CHROME_HOST)
@@ -735,7 +736,10 @@ async def _run_job(
                     action_results=emitter.thread_mirror.results,
                     note=emitter.note,
                 ),
-                config=BrowserRunConfig.from_settings(start_url=request.start_url or None),
+                config=BrowserRunConfig.from_settings(
+                    start_url=request.start_url or None,
+                    jev=jev,
+                ),
                 user_id=request.user_id or None,
                 root_request_id=request.root_request_id,
             )

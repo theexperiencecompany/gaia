@@ -3,8 +3,8 @@
 Comms and the executor (streamed, with tools) follow tools/llm-stub's inline
 directives and re-voice a result handed to them word for word; a structured
 one-shot (one tool, unstreamed) gets the emptiest value its schema accepts. The
-Browser-Use agent ({memory, action}) and Jev's text model ({text}) are told apart
-by their json_schema; Jev's decisions and Gemini's embeddings (which seed the
+Browser-Use agent (memory and action, plus its evaluation, next goal and thinking
+outside flash mode) and Jev's text model ({text}) are told apart by their json_schema; Jev's decisions and Gemini's embeddings (which seed the
 tools store) have their own routes. The agent and Jev are scripted per run, found
 by a marker the task carries; targets are named by visible text and resolved to
 the index the request itself offers, so a script acts only on what the real page
@@ -56,6 +56,8 @@ _TAB = re.compile(r"^Tab (\w+): (\S+)", re.MULTILINE)
 PAGE_URL = "{page_url}"
 #: The tools and triggers stores are built for vectors this long.
 _EMBEDDING_DIMS = 768
+#: The agent's answer while what a step waits on is not there yet; Browser-Use sleeps seconds - 1.
+WAIT_A_SECOND: dict[str, dict[str, int]] = {"wait": {"seconds": 2}}
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,14 @@ class JevMove:
     value: str | None = None
     generated: str | None = None
     option: str | None = None
+
+
+@dataclass(frozen=True)
+class ModelError:
+    """A request the fake refused, and the run it belongs to when it could tell."""
+
+    marker: str | None
+    message: str
 
 
 @dataclass
@@ -170,7 +180,10 @@ class FakeModels:
     def __init__(self) -> None:
         self.port = pick_free_port()
         self.calls: list[ModelCall] = []
-        self.errors: list[str] = []
+        self._errors: list[ModelError] = []
+        #: Where the current scenario's errors start, and the runs it scripted.
+        self._scenario_start = 0
+        self._scenario_markers: set[str] = set()
         #: Every tool comms or the executor was answered with, in order.
         self.tool_calls: list[str] = []
         self._runs: dict[str, RunScript] = {}
@@ -194,6 +207,21 @@ class FakeModels:
     ) -> None:
         """Script the run whose task carries marker."""
         self._runs[marker] = RunScript(marker=marker, agent=agent, jev=jev or [])
+        self._scenario_markers.add(marker)
+
+    def begin_scenario(self) -> None:
+        """Start a scenario: errors shows only what goes wrong from here, in its own runs."""
+        self._scenario_start = len(self._errors)
+        self._scenario_markers = set()
+
+    @property
+    def errors(self) -> list[str]:
+        """What went wrong in this scenario; a run an earlier scenario scripted never counts."""
+        return [
+            error.message
+            for error in self._errors[self._scenario_start :]
+            if error.marker is None or error.marker in self._scenario_markers
+        ]
 
     def calls_for(self, marker: str, kind: str) -> int:
         return sum(1 for call in self.calls if call.marker == marker and call.kind == kind)
@@ -220,8 +248,9 @@ class FakeModels:
                 return run
         return None
 
-    def _fail(self, message: str) -> None:
-        self.errors.append(message)
+    def _fail(self, run: RunScript | None, message: str) -> None:
+        marker = run.marker if run else None
+        self._errors.append(ModelError(marker, f"{marker}: {message}" if marker else message))
 
     async def _chat(self, request: Request) -> Response:
         body = await request.json()
@@ -230,7 +259,7 @@ class FakeModels:
         except (
             Exception
         ) as exc:  # a fault in the fake itself is recorded and answered loud, never hidden
-            self._fail(f"the fake failed on {json.dumps(body)[:600]}: {exc!r}")
+            self._fail(None, f"the fake failed on {json.dumps(body)[:600]}: {exc!r}")
             return JSONResponse(status_code=500, content={"error": {"message": repr(exc)}})
 
     async def _answer_chat(self, body: dict[str, Any]) -> Response:
@@ -246,8 +275,9 @@ class FakeModels:
             await self.agent_tier_open.wait()
             return self._agent_tier(body)
         if (response_format.get("json_schema") or {}).get("name") == _AGENT_OUTPUT:
-            if properties == {"memory", "action"}:
-                return self._json_content(self._agent_step(messages, schema), messages)
+            if {"memory", "action"} <= properties:
+                answer = _agent_output(self._agent_step(messages, schema), properties)
+                return self._json_content(answer, messages)
             if properties == {"text"}:
                 return self._json_content(self._text_value(messages), messages)
         if system.startswith(_EXTRACT_SYSTEM):
@@ -258,7 +288,7 @@ class FakeModels:
         if system.startswith(_KEY_TERMS_PROMPT):
             self.calls.append(ModelCall("key_terms", None))
             return self._plain("page text", messages)
-        self._fail(f"a model request nothing here answers: {json.dumps(body)[:400]}")
+        self._fail(None, f"a model request nothing here answers: {json.dumps(body)[:400]}")
         return JSONResponse(status_code=500, content={"error": {"message": "unscripted request"}})
 
     # --- structured one-shots ------------------------------------------------
@@ -321,7 +351,7 @@ class FakeModels:
         run = self._marker_in(state)
         self.calls.append(ModelCall("agent", run.marker if run else None))
         if run is None:
-            self._fail(f"an agent step for no scripted run: {state[:300]}")
+            self._fail(None, f"an agent step for no scripted run: {state[:300]}")
             return _done("No run was scripted for this task.", success=False)
         asked = hashlib.sha256(json.dumps(messages, sort_keys=True).encode()).hexdigest()
         if asked in run.answered:
@@ -334,7 +364,7 @@ class FakeModels:
         self, run: RunScript, state: str, schema: dict[str, Any]
     ) -> dict[str, Any]:
         if run.agent_cursor >= len(run.agent):
-            self._fail(f"{run.marker}: the agent was asked for a step past its script")
+            self._fail(run, "the agent was asked for a step past its script")
             return _done("The scripted agent ran out of steps.", success=False)
         planned = run.agent[run.agent_cursor]
         page = _browser_state(state)
@@ -346,12 +376,12 @@ class FakeModels:
         if waiting:
             run.waited += 1
             if run.waited > planned.patience:
-                self._fail(f"{run.marker}: step {run.agent_cursor + 1} waited past its patience")
+                self._fail(run, f"step {run.agent_cursor + 1} waited past its patience")
                 return _done("What the step waited on never came.", success=False)
-            return {"memory": "Waiting.", "action": [{"wait": {"seconds": 1}}]}
+            return {"memory": "Waiting.", "action": [WAIT_A_SECOND]}
         missing = [needed for needed in planned.require if needed not in state]
         if missing:
-            self._fail(f"{run.marker}: the agent was to report {missing} but never saw them")
+            self._fail(run, f"the agent was to report {missing} but never saw them")
             return _done(f"Not seen on the page: {missing}", success=False)
         actions = [self._resolve(run, action, page, schema) for action in planned.actions]
         run.agent_cursor += 1
@@ -364,7 +394,7 @@ class FakeModels:
         ((name, params),) = action.items()
         offered = _action_params(schema, name)
         if offered is None:
-            self._fail(f"{run.marker}: the agent offers no {name!r} action")
+            self._fail(run, f"the agent offers no {name!r} action")
             return action
         resolved: dict[str, Any] = {}
         for key, value in params.items():
@@ -374,7 +404,7 @@ class FakeModels:
             if isinstance(value, Text):
                 index = element_index(page, value.text)
                 if index is None:
-                    self._fail(f"{run.marker}: no element reads {value.text!r} on the page")
+                    self._fail(run, f"no element reads {value.text!r} on the page")
                     index = 0
                 resolved[key] = index
             elif isinstance(value, str):
@@ -389,7 +419,7 @@ class FakeModels:
         self.calls.append(ModelCall("text_value", run.marker if run else None))
         move = run.last_move if run else None
         if move is None or move.generated is None:
-            self._fail(f"a value to write with nothing scripted: {user[:300]}")
+            self._fail(run, f"a value to write with nothing scripted: {user[:300]}")
             return {"text": None}
         return {"text": move.generated}
 
@@ -410,7 +440,7 @@ class FakeModels:
         run = self._marker_in(goals)
         self.calls.append(ModelCall("jev", run.marker if run else None))
         if run is None:
-            self._fail(f"a Jev decision for no scripted run: {goals[:300]}")
+            self._fail(None, f"a Jev decision for no scripted run: {goals[:300]}")
             return JSONResponse(status_code=500, content={"error": {"message": "unscripted"}})
         answers: dict[str, Any] = {}
         if "operation" in questions:
@@ -420,7 +450,7 @@ class FakeModels:
         elif "option" in questions:
             answers = {"option": self._option(run, questions["option"])}
         else:
-            self._fail(f"{run.marker}: a Jev question nothing here answers: {list(questions)}")
+            self._fail(run, f"a Jev question nothing here answers: {list(questions)}")
         return JSONResponse(
             content={"answers": answers, "usage": {"inputTokens": 0, "outputTokens": 0}}
         )
@@ -428,14 +458,14 @@ class FakeModels:
     def _operation(self, run: RunScript, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
         operations = list(questions["operation"]["criteria"])
         if run.jev_cursor >= len(run.jev):
-            self._fail(f"{run.marker}: Jev was asked past its script")
+            self._fail(run, "Jev was asked past its script")
             move = JevMove("BLOCKED")
         else:
             move = run.jev[run.jev_cursor]
             run.jev_cursor += 1
         run.last_move = move
         if move.operation not in operations:
-            self._fail(f"{run.marker}: Jev was not offered {move.operation} (offered {operations})")
+            self._fail(run, f"Jev was not offered {move.operation} (offered {operations})")
             move = JevMove("BLOCKED")
         answers: dict[str, Any] = {"operation": _choice(operations, move.operation)}
         head = f"{move.operation.lower()}_target"
@@ -443,7 +473,7 @@ class FakeModels:
             criteria = questions[head]["criteria"]
             chosen = _target_id(criteria, move.target)
             if chosen is None:
-                self._fail(f"{run.marker}: Jev was offered no {move.target!r} to {move.operation}")
+                self._fail(run, f"Jev was offered no {move.target!r} to {move.operation}")
                 chosen = next(iter(criteria))
             answers[head] = _choice(list(criteria), chosen)
         return answers
@@ -455,7 +485,7 @@ class FakeModels:
         if move is not None and move.value is not None:
             wanted = next((key for key, value in criteria.items() if value == move.value), None)
         if wanted is None:
-            self._fail(f"{run.marker}: no offered value matches {move}: {criteria}")
+            self._fail(run, f"no offered value matches {move}: {criteria}")
             wanted = "NONE"
         return _choice(list(criteria), wanted)
 
@@ -467,7 +497,7 @@ class FakeModels:
             None,
         )
         if wanted is None:
-            self._fail(f"{run.marker}: no offered option is {move}: {criteria}")
+            self._fail(run, f"no offered option is {move}: {criteria}")
             wanted = next(iter(criteria))
         return _choice(list(criteria), wanted)
 
@@ -485,7 +515,7 @@ class FakeModels:
             return JSONResponse(
                 content={"embedding": {"values": _vector(_content_text(body.get("content") or {}))}}
             )
-        self._fail(f"a Gemini call nothing here answers: {call}")
+        self._fail(None, f"a Gemini call nothing here answers: {call}")
         return JSONResponse(status_code=500, content={"error": {"message": "unscripted"}})
 
     # --- wire ---------------------------------------------------------------
@@ -531,6 +561,19 @@ def _vector(text: str) -> list[float]:
     """Return a stable vector for text: the same text always lands in the same place."""
     seed = hashlib.sha256(text.encode()).digest()
     return [((seed[i % len(seed)] + i) % 256) / 255 - 0.5 for i in range(_EMBEDDING_DIMS)]
+
+
+#: What the scripted agent writes into the fields Browser-Use asks for outside flash mode.
+_AGENT_NARRATION = {
+    "thinking": "Following the run's script.",
+    "evaluation_previous_goal": "The scripted step ran.",
+    "next_goal": "Take the script's next step.",
+}
+
+
+def _agent_output(answer: dict[str, Any], properties: set[str]) -> dict[str, Any]:
+    """Return the script's step in the agent output the request's schema asks for, flash mode or not."""
+    return {**{k: v for k, v in _AGENT_NARRATION.items() if k in properties}, **answer}
 
 
 def _done(text: str, *, success: bool) -> dict[str, Any]:

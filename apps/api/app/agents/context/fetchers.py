@@ -428,7 +428,7 @@ def _dedupe_by_provider(items: list[_ConnectedIntegration]) -> list[_ConnectedIn
 
     A connected set can hold two ids for the same account (a legacy
     google_calendar beside today's googlecalendar) — rendering both once gave
-    the agent two handoff targets, one resolving to no subagent.
+    the agent two activation targets, one resolving to no integration.
     """
     by_provider: dict[str, _ConnectedIntegration] = {}
     for item in items:
@@ -572,15 +572,8 @@ async def build_connected_devices_manifest(user_id: str, header: str) -> str:
     return "\n".join(lines)
 
 
-async def build_provider_metadata_block(integration_id: str | None, user_id: str | None) -> str:
-    """Who the user is on this provider: the identity of one account, or the list of several.
-
-    Shared by the worker context sections and activate_integration: an
-    executor acting on an integration directly needs the same identity a
-    worker got, or it does not know which account it is operating.
-    """
-    if not (integration_id and user_id):
-        return ""
+async def build_provider_metadata_block(integration_id: str, user_id: str) -> str:
+    """Who the user is on this provider, for activate_integration: one account's identity, or the list of several."""
     integration = get_integration_by_id(integration_id)
     if not integration:
         return ""

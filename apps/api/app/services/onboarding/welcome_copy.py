@@ -23,6 +23,7 @@ class WelcomeCopy:
     connect_calendar: str
     all_integrations: str
     whats_first: str
+    something_else: str
 
 
 DEFAULT_LANGUAGE = "en"
@@ -39,6 +40,7 @@ WELCOME_COPY: dict[str, WelcomeCopy] = {
         connect_calendar="Connect Calendar",
         all_integrations="All integrations",
         whats_first="What's first?",
+        something_else="Something else",
     ),
     "es": WelcomeCopy(
         welcome="Listo, ya estás dentro.",
@@ -51,6 +53,7 @@ WELCOME_COPY: dict[str, WelcomeCopy] = {
         connect_calendar="Conectar Calendar",
         all_integrations="Todas las integraciones",
         whats_first="¿Por dónde empezamos?",
+        something_else="Otra cosa",
     ),
     "fr": WelcomeCopy(
         welcome="Voilà, c'est parti.",
@@ -63,6 +66,7 @@ WELCOME_COPY: dict[str, WelcomeCopy] = {
         connect_calendar="Connecter l'agenda",
         all_integrations="Toutes les intégrations",
         whats_first="On commence par quoi ?",
+        something_else="Autre chose",
     ),
     "de": WelcomeCopy(
         welcome="So, du bist drin.",
@@ -75,6 +79,7 @@ WELCOME_COPY: dict[str, WelcomeCopy] = {
         connect_calendar="Kalender verbinden",
         all_integrations="Alle Integrationen",
         whats_first="Womit fangen wir an?",
+        something_else="Etwas anderes",
     ),
     "pt": WelcomeCopy(
         welcome="Pronto, você está dentro.",
@@ -87,6 +92,7 @@ WELCOME_COPY: dict[str, WelcomeCopy] = {
         connect_calendar="Conectar Agenda",
         all_integrations="Todas as integrações",
         whats_first="Por onde começamos?",
+        something_else="Outra coisa",
     ),
     "ja": WelcomeCopy(
         welcome="準備できました。",
@@ -99,6 +105,7 @@ WELCOME_COPY: dict[str, WelcomeCopy] = {
         connect_calendar="カレンダーを接続",
         all_integrations="すべての連携",
         whats_first="何から始めますか？",
+        something_else="その他",
     ),
     "ko": WelcomeCopy(
         welcome="자, 시작할게요.",
@@ -111,6 +118,7 @@ WELCOME_COPY: dict[str, WelcomeCopy] = {
         connect_calendar="캘린더 연결",
         all_integrations="모든 연동",
         whats_first="무엇부터 할까요?",
+        something_else="다른 것",
     ),
 }
 

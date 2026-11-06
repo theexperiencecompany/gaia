@@ -5,11 +5,11 @@ Pydantic models for bot chat, sessions, and related operations.
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
+from app.constants.platform_links import Platform
 from app.db.repositories.base import MongoDocument
 from app.models.message_models import FileData
 from app.models.stream_events import EmojiAckPayload
 from app.schemas.common import ResponseModel
-from app.services.platform_link_service import Platform
 
 # Shared field docs — the same platform identity fields recur across the
 # request/response models below, so their descriptions live in one place.
@@ -304,6 +304,7 @@ class BotRateLimitCardData(BaseModel):
 
     feature: JsonValue = None
     current_plan: JsonValue = None
+    message: str | None = None
 
 
 class BotWebStreamPayload(BaseModel):

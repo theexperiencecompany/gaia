@@ -22,6 +22,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 RELEASE_SH = REPO_ROOT / "scripts" / "ci" / "release.sh"
 NAMESPACE = "ghcr.io/theexperiencecompany"
 RELEASE_REPOS = ("gaia", "gaia-web", "gaia-bot-telegram", "gaia-bot-discord", "gaia-bot-slack")
+# Bounds a re-run test that never sees its gate pass; the passing case takes two polls,
+# about a second each on a loaded box, so 5 s timed one out under the full harness run.
+RERUN_WAIT_SECONDS = "60"
 
 # `imagetools inspect <ref>` succeeds when <ref> is in $PRESENT, or when it is
 # listed in $LATE as "<ref> <n>" and has been inspected more than n times.
@@ -50,11 +53,20 @@ esac
 # by the real jq, so the script's jq expressions are exercised too.
 GH_STUB = """#!/usr/bin/env bash
 set -euo pipefail
+# A re-run is recorded, and the run then judges the commit as a fresh run would.
+if [[ "$1" == "api" && "$2" == "-X" && "$3" == "POST" ]]; then
+  echo "POST $4" >> "$GH_CALLS"
+  id="${4#*/actions/runs/}"
+  echo '{"jobs":[{"name":"quality-gate","status":"completed","conclusion":"success"}]}' \\
+    > "$GH_FIXTURES/jobs-${id%%/*}.json"
+  exit 0
+fi
 [[ "$1" == "api" && "$3" == "--jq" ]] || { echo "gh stub: unexpected $*" >&2; exit 1; }
 echo "$2" >> "$GH_CALLS"
 case "$2" in
   */actions/workflows/ci.yml/runs\\?*) file="$GH_FIXTURES/runs-${2##*event=}.json" ;;
   */actions/runs/*/jobs*) id="${2#*/actions/runs/}"; file="$GH_FIXTURES/jobs-${id%%/*}.json" ;;
+  */actions/runs/*) file="$GH_FIXTURES/run-${2##*/}.json" ;;
   *) echo "gh stub: unexpected path $2" >&2; exit 1 ;;
 esac
 jq -r "$4" "$file"
@@ -303,6 +315,25 @@ def test_a_gate_that_never_finishes_times_out_loud_and_tags_nothing(workspace: P
     assert _created(workspace) == []
 
 
+def test_a_cli_release_run_a_newer_push_cancelled_is_re_run_not_timed_out(
+    workspace: Path,
+) -> None:
+    """The desktop release re-ran a cancelled gate; the CLI pin waited out its timeout instead."""
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        GitHubState(
+            present=_release_images(sha),
+            main_runs={7: {"quality-gate": ("completed", "cancelled")}},
+        ),
+        env_extra={"PIN_POLL_SECONDS": "0", "PIN_WAIT_SECONDS": RERUN_WAIT_SECONDS},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _posts(workspace) == ["POST repos/theexperiencecompany/gaia/actions/runs/7/rerun"]
+    assert len(_created(workspace)) == len(RELEASE_REPOS)
+
+
 def test_a_commit_main_yml_never_ran_on_is_not_released(workspace: Path) -> None:
     sha = _head(workspace)
     result = _pin(
@@ -499,3 +530,87 @@ def test_a_bot_without_an_arm64_build_fails_loud_and_tags_nothing(workspace: Pat
     assert result.returncode != 0
     assert "gaia-bot-discord" in result.stderr
     assert _created(workspace) == []
+
+
+# --- wait-quality-gate: desktop installers ship only from a green commit ------
+
+
+def _tag_head(workspace: Path, tag: str = "desktop-v9.9.9") -> str:
+    _git(workspace / "repo", "tag", tag)
+    return tag
+
+
+def test_desktop_installers_publish_once_the_release_commit_passed(workspace: Path) -> None:
+    tag = _tag_head(workspace)
+    result = _run(
+        workspace, "wait-quality-gate", env_extra={"RELEASE_TAG": tag, "GATE_POLL_SECONDS": "0"}
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_desktop_installers_never_publish_from_a_red_commit(workspace: Path) -> None:
+    """desktop-release shipped installers without asking whether the release commit was green."""
+    tag = _tag_head(workspace)
+    red = GitHubState(main_runs={1: {"quality-gate": ("completed", "failure")}})
+    result = _run(
+        workspace,
+        "wait-quality-gate",
+        github=red,
+        env_extra={"RELEASE_TAG": tag, "GATE_POLL_SECONDS": "0"},
+    )
+    assert result.returncode != 0
+    assert "quality gate failed" in result.stderr + result.stdout
+
+
+# ── wait-quality-gate (the desktop release) ─────────────────────────────────
+
+
+def _wait(
+    workspace: Path, main_runs: MainRuns, *, run_states: dict[int, JobState] | None = None
+) -> subprocess.CompletedProcess[str]:
+    repo = workspace / "repo"
+    if not _git(repo, "tag", "--list", "desktop-v0.6.0"):
+        _git(repo, "tag", "desktop-v0.6.0")
+    for run_id, (status, conclusion) in (run_states or {}).items():
+        (workspace / "gh" / f"run-{run_id}.json").write_text(
+            json.dumps({"status": status, "conclusion": conclusion})
+        )
+    return _run(
+        workspace,
+        "wait-quality-gate",
+        github=GitHubState(main_runs=main_runs),
+        env_extra={
+            "RELEASE_TAG": "desktop-v0.6.0",
+            "GATE_POLL_SECONDS": "0",
+            "GATE_WAIT_SECONDS": RERUN_WAIT_SECONDS,
+        },
+    )
+
+
+def _posts(workspace: Path) -> list[str]:
+    calls = (workspace / "gh-calls.txt").read_text().splitlines()
+    return [c for c in calls if c.startswith("POST ")]
+
+
+def test_a_release_run_a_newer_push_cancelled_is_re_run_not_failed(workspace: Path) -> None:
+    """A merge right after a release force-cancels its run; failing would leave the installers unpublished."""
+    result = _wait(workspace, {7: {"quality-gate": ("completed", "cancelled")}})
+    assert result.returncode == 0, result.stderr
+    assert _posts(workspace) == ["POST repos/theexperiencecompany/gaia/actions/runs/7/rerun"]
+
+
+def test_a_run_cancelled_before_it_created_its_gate_is_re_run(workspace: Path) -> None:
+    result = _wait(
+        workspace,
+        {7: {"lint-node": ("completed", "cancelled")}},
+        run_states={7: ("completed", "cancelled")},
+    )
+    assert result.returncode == 0, result.stderr
+    assert _posts(workspace) == ["POST repos/theexperiencecompany/gaia/actions/runs/7/rerun"]
+
+
+def test_a_release_whose_gate_failed_is_refused_without_a_re_run(workspace: Path) -> None:
+    result = _wait(workspace, {7: {"quality-gate": ("completed", "failure")}})
+    assert result.returncode != 0
+    assert "quality gate failed" in result.stderr
+    assert _posts(workspace) == []

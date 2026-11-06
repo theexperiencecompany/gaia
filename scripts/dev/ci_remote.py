@@ -1509,9 +1509,14 @@ def watch(repo: Repo, pr_number: int, branch: str, options: Options) -> tuple[di
             if not options.as_json:
                 print("watch: stopping at the first failure (--fail-fast).")
             break
-        if pending == 0 or time.monotonic() + options.interval > deadline:
-            if pending and not options.as_json:
-                print(f"watch: stopped after {options.max_wait}s with {pending} still pending.")
+        # No check at all is a run GitHub has not registered yet, not a finished one.
+        settled = pending == 0 and bool(report["checks"])
+        if settled or time.monotonic() + options.interval > deadline:
+            if not settled:
+                # Out of time is not green: the run is pending, stalled or never started.
+                exit_code = 1
+                if not options.as_json:
+                    print(f"watch: stopped after {options.max_wait}s with {pending} still pending.")
             break
         time.sleep(options.interval)
     if not options.as_json:

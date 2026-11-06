@@ -119,6 +119,7 @@ const mapApiMessagesToStored = (
       replyToMessageData: message.replyToMessage ?? null,
       kind: message.kind ?? null,
       reacts_to_message_id: message.reacts_to_message_id ?? null,
+      stopped: message.stopped ?? null,
     } satisfies IMessage;
   });
 

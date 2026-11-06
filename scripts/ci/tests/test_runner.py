@@ -16,6 +16,7 @@ import subprocess
 
 from github_fake import REPO, RUNNER, FakeGitHub, Reply, run_runner, runner
 import pytest
+import runner as runner_mod
 
 HOME = '["self-hosted","gaia-home"]'
 HOSTED = '["ubuntu-latest"]'
@@ -128,7 +129,7 @@ def idle_home(count: int, busy: int = 0) -> list[dict[str, object]]:
 def test_a_saturated_github_queue_overflows_every_class_to_a_box_that_fits_them(
     github: FakeGitHub,
 ) -> None:
-    pool(github, *idle_home(20, busy=2))  # services 9 + heavy 5 + light 6
+    pool(github, *idle_home(sum(ci_class_demand().values()), busy=2))
     saturate(github)
     out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
     assert out["light"] == out["heavy"] == out["services"] == HOME
@@ -397,3 +398,15 @@ def test_an_unknown_subcommand_prints_the_whole_usage_block() -> None:
     assert proc.returncode == 2
     for subcommand in ("select", "watchdog", "parallel", "with-slots", "health"):
         assert subcommand in proc.stderr, f"usage does not reach '{subcommand}'"
+
+
+def test_run_job_refuses_to_post_without_this_jobs_check_run_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("GITHUB_REPOSITORY", "HEAD_SHA", "GITHUB_RUN_ID"):
+        monkeypatch.setenv(name, "x")
+    monkeypatch.delenv("NO_POST", raising=False)
+    monkeypatch.setenv("JOB_CHECK_RUN_ID", "")
+
+    with pytest.raises(runner_mod.Die, match="JOB_CHECK_RUN_ID"):
+        runner_mod._post_target()

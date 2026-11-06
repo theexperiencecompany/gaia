@@ -46,8 +46,8 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
-from app.services.workflow.playbook.check import HEAL_STATUSES
 from app.services.workflow.playbook.evaluator import PlaybookUser
+from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.runner import FALLBACK_LINE_MAX_CHARS, PlaybookRunResult
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.utils.timezone import Timezone
@@ -68,6 +68,7 @@ from app.workers.tasks.workflow_tasks import (
 )
 
 MODULE = "app.workers.tasks.workflow_tasks"
+EXECUTION_SERVICE = "app.services.workflow.execution_service"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
@@ -129,6 +130,7 @@ class _Harness:
         self.execution = MagicMock()
         self.execution.execution_id = "exec_1"
         self.complete_execution = AsyncMock()
+        self.create_execution = AsyncMock(return_value=self.execution)
         self.chat = AsyncMock(return_value=("conv_1", [RecordedCall(tool_name="agent_tool")]))
         self.playbook_run = AsyncMock()
         self.get_for_workflow = AsyncMock(return_value=None)
@@ -171,8 +173,11 @@ class _Harness:
     def patches(self) -> list:
         return [
             patch(f"{MODULE}.workflow_scheduler", self.scheduler),
-            patch(f"{MODULE}.create_execution", AsyncMock(return_value=self.execution)),
+            patch(f"{MODULE}.create_execution", self.create_execution),
             patch(f"{MODULE}.complete_execution", self.complete_execution),
+            # A fire that never ran is recorded through execution_service's own helper.
+            patch(f"{EXECUTION_SERVICE}.create_execution", self.create_execution),
+            patch(f"{EXECUTION_SERVICE}.complete_execution", self.complete_execution),
             patch(
                 f"{MODULE}.WorkflowService",
                 MagicMock(increment_execution_count=AsyncMock()),
@@ -1062,15 +1067,17 @@ class TestHealAttemptsAreBounded:
         playbook = _distrusted(workflow)
         harness.get_for_workflow = AsyncMock(return_value=playbook)
         order: list[str] = []
-        harness.chat = AsyncMock(
-            side_effect=lambda *a, **k: (order.append("agent"), ("conv_1", []))[1]
-        )
-        harness.increment_heal_attempts = AsyncMock(
-            side_effect=lambda *a, **k: (
-                order.append("count"),
-                _distrusted(workflow, 1),
-            )[1]
-        )
+
+        async def agent_runs(*_args: object, **_kwargs: object) -> tuple[str, list[object]]:
+            order.append("agent")
+            return "conv_1", []
+
+        async def heal_counted(*_args: object, **_kwargs: object) -> PlaybookDocument:
+            order.append("count")
+            return _distrusted(workflow, 1)
+
+        harness.chat = AsyncMock(side_effect=agent_runs)
+        harness.increment_heal_attempts = AsyncMock(side_effect=heal_counted)
 
         await _fire(harness)
 
@@ -2180,7 +2187,7 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
                 timezone="Asia/Kolkata",
             )
         )
-        context = {"trigger_type": TriggerType.MANUAL.value, "note": "run it"}
+        context: dict[str, object] = {"trigger_type": TriggerType.MANUAL.value, "note": "run it"}
 
         await _fire_with_context(harness, context)
 
@@ -2655,7 +2662,7 @@ class TestAnAgentFireOverlapsToo:
         harness = _Harness(workflow)
         harness.acquire = AsyncMock(return_value=False)
         create = AsyncMock(return_value=harness.execution)
-        harness.extra.append(patch(f"{MODULE}.create_execution", create))
+        harness.extra.append(patch(f"{EXECUTION_SERVICE}.create_execution", create))
 
         await _fire(harness)
 
@@ -2679,3 +2686,43 @@ class TestAnAgentFireOverlapsToo:
         # conversation held by this very fire and drop the run that is finishing it.
         assert harness.chat.await_args.kwargs["reservation"] == harness.reservation()
         assert harness.complete_execution.await_args.kwargs["status"] == "success"
+
+
+_MEETING = "someone is waiting on you for a meeting happening soon"
+
+
+@pytest.mark.asyncio
+class TestQuietHoursOnTheRecord:
+    """A fire held for, or let through, the user's quiet hours says so in its history and message."""
+
+    async def test_a_let_through_replay_opens_its_message_with_why_it_interrupts(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(return_value=_finished_replay())
+
+        await _fire_with_context(harness, {"quiet_hours": {"kind": "bypass", "reason": _MEETING}})
+
+        delivered = harness.platform_delivery.await_args.kwargs["notification_text"]
+        assert delivered == (
+            f"I'm interrupting your quiet hours because {_MEETING}.\n\nAgenda sent."
+        )
+        assert harness.add_messages.await_args.kwargs["response"] == delivered
+        assert harness.summary() == f"Ran during quiet hours: {_MEETING}. {REPLAY_SUMMARY}"
+
+    async def test_a_held_agent_run_says_it_waited(self) -> None:
+        harness = _Harness(_workflow())
+
+        await _fire_with_context(harness, {"quiet_hours": {"kind": "hold"}})
+
+        assert harness.summary() == f"Held until your quiet hours ended. {AGENT_RUN_SUMMARY}"
+
+    async def test_a_held_replay_delivers_its_text_unchanged(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(return_value=_finished_replay())
+
+        await _fire_with_context(harness, {"quiet_hours": {"kind": "hold"}})
+
+        assert harness.platform_delivery.await_args.kwargs["notification_text"] == "Agenda sent."

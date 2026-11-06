@@ -6,17 +6,16 @@ actually receives. That is the whole reason they survived in production.
 
 Every test here was written and observed RED before its fix, and the invariants
 they rest on are mutation-checked (see test_context_invariants.py). They
-deliberately carry no @pytest.mark.regression marker: that gate re-runs
+deliberately carry no regression marker: the regression-proof gate re-runs
 marked tests against the base revision, and these import a harness the same
 change introduces, so on base they do not fail — they fail to *collect*. An
 error is not proof, and claiming the marker would assert a proof the gate
 cannot actually perform.
 """
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AnyMessage, SystemMessage
 import pytest
 from tests._harness.context_chain import (
-    AgentTier,
     ContextSeed,
     bound_for,
     effective_context,
@@ -28,6 +27,7 @@ from tests._harness.context_chain import (
 from tests._harness.context_sources import ContextSources, memory
 
 from app.agents.context.slots import PromptSlot
+from app.agents.context.tiers import AgentTier
 from app.constants.llm import LLMProviderName
 
 VOLATILE_SOURCES = ContextSources(
@@ -35,9 +35,7 @@ VOLATILE_SOURCES = ContextSources(
     memories=[memory("Ships on Fridays", mentioned="2026-02-01")],
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
-    account_identity={"email": "ada@example.com"},
     global_instructions="Reply in plain English.",
-    integration_instructions="Always archive newsletters.",
     tracked_todos="Tracked: ship the context refactor",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )
@@ -46,7 +44,6 @@ VOLATILE_SOURCES = ContextSources(
 #: volatile block out; every worker tier folded it into the cacheable prefix.
 WORKER_TIERS = [
     AgentTier.EXECUTOR,
-    AgentTier.PROVIDER_SUBAGENT,
     AgentTier.SPAWN,
     AgentTier.WORKFLOW_AUTHORING,
 ]
@@ -73,7 +70,7 @@ class TestVolatileContentIsNotInTheCacheablePrefix:
         assert "inbox-triage" in stable
         assert "inbox-triage" not in recall
 
-    @pytest.mark.parametrize("tier", [AgentTier.EXECUTOR, AgentTier.PROVIDER_SUBAGENT])
+    @pytest.mark.parametrize("tier", [AgentTier.EXECUTOR])
     async def test_run_banners_are_in_the_volatile_slot(self, tier: AgentTier) -> None:
         messages = await effective_context(
             tier,
@@ -193,7 +190,7 @@ class TestALegacyOnboardingPromptStaysInItsOwnSlot:
     """Checkpoints still replay the retired onboarding prompt; read as STATIC it would evict the real one."""
 
     async def test_replayed_copies_collapse_to_one_and_leave_the_static_prompt_alone(self) -> None:
-        stale = [
+        stale: list[AnyMessage] = [
             SystemMessage(
                 content=f"stale onboarding {n}", additional_kwargs={"onboarding_context": True}
             )

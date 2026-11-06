@@ -19,6 +19,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel
 import pytest
 
+from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.hil_models import HILApprovalRecord, HILPreferences
@@ -83,10 +84,8 @@ def make_request(
         tool_call={"id": call_id, "name": name, "args": args if args is not None else {}},
         tool=tool,
         state={"messages": messages if messages is not None else []},
-        runtime=SimpleNamespace(
-            config={
-                "configurable": default_configurable if configurable is None else configurable,
-            }
+        runtime=BigtoolToolRuntime.from_graph_context(
+            {"configurable": default_configurable if configurable is None else configurable}
         ),
     )
 
@@ -135,8 +134,7 @@ async def run_through_gate(request: ToolCallRequest, handler: Any) -> Any:
 
     The gate itself decides and never executes (see services/hil/gate), so the
     "did the tool run?" question these tests are built around lives here, in the same
-    two lines the real adapters use (middleware/hil_approval.py,
-    dynamic_tool_node.hil_and_timeout_guarded_tool_call).
+    two lines the real adapter uses (middleware/hil_approval.py).
     """
     blocked = await decide_tool_call(request)
     return blocked if blocked is not None else await handler(request)

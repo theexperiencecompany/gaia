@@ -19,6 +19,10 @@ import { LAST_CHECKOUT_PRODUCT_KEY } from "@/features/pricing/constants";
 import { useDodoPayments } from "@/features/pricing/hooks/useDodoPayments";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
 import { useReceiptPrinterStage } from "@/features/pricing/hooks/useReceiptPrinterStage";
+import {
+  DODO_RETURN_PARAM,
+  stripCheckoutReturnParams,
+} from "@/features/pricing/lib/dodoReturnUrl";
 import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
 import { verifyPaymentWithRetry } from "@/features/pricing/utils/verifyPaymentWithRetry";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
@@ -38,10 +42,16 @@ const trackFailure = (reason: VerificationFailureReason): void => {
 
 export default function PaymentSuccessPage() {
   const router = useRouter();
-  // Dodo appends the subscription id to the return URL. It is a hint the
-  // server verifies against Dodo before trusting, and it lets verification
-  // recover a paid user whose webhook never landed.
-  const subscriptionId = useSearchParams().get("subscription_id") ?? undefined;
+  // A hint the server verifies against Dodo, which recovers a payer whose
+  // webhook never landed. Read once: the query also carries the customer's
+  // email, and is stripped on mount.
+  const searchParams = useSearchParams();
+  const [subscriptionId] = useState(
+    () => searchParams.get(DODO_RETURN_PARAM.subscriptionId) ?? undefined,
+  );
+  useEffect(() => {
+    stripCheckoutReturnParams();
+  }, []);
   const { plans, subscriptionStatus, verifyPayment } = usePricing();
   const { createSubscriptionAndRedirect, isLoading: isRestarting } =
     useDodoPayments();
@@ -50,8 +60,8 @@ export default function PaymentSuccessPage() {
   // Send the user straight to onboarding when we already know it's incomplete,
   // so they don't land on /c and get bounced by the onboarding guard a couple
   // seconds later (once the user-info fetch resolves). Default to chat.
-  const continueDestination =
-    user.onboarding && !user.onboarding.completed ? "/onboarding" : "/c";
+  const isMidOnboarding = !!user.onboarding && !user.onboarding.completed;
+  const continueDestination = isMidOnboarding ? "/onboarding" : "/c";
 
   const [status, setStatus] = useState<PaymentStatus>("verifying");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -117,7 +127,7 @@ export default function PaymentSuccessPage() {
   // checkout lives in the wizard, so that is where a retry goes; otherwise
   // fall back to pricing.
   const handleTryAgain = () => {
-    if (continueDestination === "/onboarding") {
+    if (isMidOnboarding) {
       router.push("/onboarding");
       return;
     }
@@ -163,7 +173,7 @@ export default function PaymentSuccessPage() {
                   className="w-full"
                   onClick={() => router.push(continueDestination)}
                 >
-                  Continue to chat
+                  {isMidOnboarding ? "Finish setting up" : "Continue to chat"}
                   <CircleArrowRight02Icon className="size-4" />
                 </RaisedButton>
               </>

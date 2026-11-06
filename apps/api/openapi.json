@@ -1030,6 +1030,58 @@
         "title": "AuthorDetails",
         "type": "object"
       },
+      "AuthoredGate": {
+        "description": "A plain-text condition, shown to the user as \"Runs only when: <condition>\".",
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/GateAuthor"
+          },
+          "condition": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Condition",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "authored",
+            "default": "authored",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "condition",
+          "author"
+        ],
+        "title": "AuthoredGate",
+        "type": "object"
+      },
+      "AuthoredGateEdit": {
+        "description": "A condition as a client sends it; the server decides who wrote it.",
+        "properties": {
+          "condition": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Condition",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "condition"
+        ],
+        "title": "AuthoredGateEdit",
+        "type": "object"
+      },
       "BatchApprovalDecisionRequest": {
         "description": "Body for deciding several pending approvals in one submission.",
         "properties": {
@@ -1876,7 +1928,7 @@
           "source_browser": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3518,7 +3570,7 @@
         "description": "A profile the user confirmed; its platform is a slug so onboarding analytics can carry it.",
         "properties": {
           "platform": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           },
@@ -4664,7 +4716,7 @@
           },
           "product_id": {
             "description": "Product ID to subscribe to",
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Product Id",
             "type": "string"
           },
@@ -7098,6 +7150,15 @@
         "title": "FoldedCards",
         "type": "object"
       },
+      "GateAuthor": {
+        "description": "Who wrote an authored gate's condition; always set by the server.",
+        "enum": [
+          "gaia",
+          "user"
+        ],
+        "title": "GateAuthor",
+        "type": "string"
+      },
       "GenerateWorkflowPromptRequest": {
         "description": "Request model for AI-generated workflow instructions.",
         "properties": {
@@ -9037,6 +9098,41 @@
         "title": "IntegrationTool",
         "type": "object"
       },
+      "IntegrationToolApproval": {
+        "properties": {
+          "approval_key": {
+            "description": "Key the user's per-tool approval override is stored under; send it back unchanged.",
+            "title": "Approval Key",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "destructive": {
+            "default": false,
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "approval_key"
+        ],
+        "title": "IntegrationToolApproval",
+        "type": "object"
+      },
       "IntegrationToolsResponse": {
         "description": "Full tool list for a single integration (catalog data, on demand).",
         "properties": {
@@ -9052,7 +9148,7 @@
           "tools": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/IntegrationTool"
+              "$ref": "#/components/schemas/IntegrationToolApproval"
             },
             "title": "Tools",
             "type": "array"
@@ -9755,7 +9851,7 @@
             "type": "string"
           },
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           }
@@ -11194,6 +11290,17 @@
               }
             ]
           },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
           "subtype": {
             "anyOf": [
               {
@@ -11482,6 +11589,17 @@
               }
             ]
           },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
           "subtype": {
             "anyOf": [
               {
@@ -11678,7 +11796,7 @@
           "selectedTool": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -11700,7 +11818,7 @@
           "toolCategory": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -14073,6 +14191,21 @@
         "title": "PlanType",
         "type": "string"
       },
+      "PlatformConversationResponse": {
+        "description": "The linked platform's DM chat, opened from the settings page.",
+        "properties": {
+          "conversation_id": {
+            "description": "Conversation id of the platform's DM chat",
+            "title": "Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "title": "PlatformConversationResponse",
+        "type": "object"
+      },
       "PlatformLinkEntry": {
         "description": "One linked platform account \u2014 the single shape for this entry.\n\nA ``TypedDict`` rather than a model (Type Safety item 6) because it has two\nconsumers with different needs, and this type serves both without a rival\ncopy. ``PlatformLinkService.get_linked_platforms`` assembles it in-process\nfrom an already-loaded ``UserDocument``, and the outbound-delivery paths\nread it tolerating a legacy non-string ``platformUserId`` (Telegram stores\nchat_id as an int) which they coerce at the envelope; validating there would\nstart raising on those rows \u2014 a behaviour change (item 13). Pydantic still\nvalidates it as a field of ``GetPlatformLinksResponse`` below, so the HTTP\nboundary rejects the same values a ``BaseModel`` here would.",
         "properties": {
@@ -16088,7 +16221,7 @@
             "type": "object"
           },
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           }
@@ -16467,7 +16600,7 @@
             "type": "string"
           },
           "id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Id",
             "type": "string"
           },
@@ -16511,7 +16644,7 @@
             "type": "string"
           },
           "id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Id",
             "type": "string"
           },
@@ -16572,7 +16705,7 @@
           "client": {
             "maxLength": 20,
             "minLength": 1,
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Client",
             "type": "string"
           },
@@ -16598,7 +16731,7 @@
           "platform": {
             "maxLength": 60,
             "minLength": 1,
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           }
@@ -17768,6 +17901,9 @@
           "value": {
             "anyOf": [
               {
+                "type": "boolean"
+              },
+              {
                 "type": "string"
               },
               {
@@ -18445,6 +18581,38 @@
           "feature"
         ],
         "title": "SupportRequestType",
+        "type": "string"
+      },
+      "SystemGate": {
+        "description": "A preset owned by code; its question and wording are read from the preset table.",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "system",
+            "default": "system",
+            "title": "Kind",
+            "type": "string"
+          },
+          "preset": {
+            "$ref": "#/components/schemas/SystemGatePreset"
+          }
+        },
+        "required": [
+          "preset"
+        ],
+        "title": "SystemGate",
+        "type": "object"
+      },
+      "SystemGatePreset": {
+        "description": "A gate whose question, criteria and wording live in code, not on the job.",
+        "enum": [
+          "inbox_desk"
+        ],
+        "title": "SystemGatePreset",
         "type": "string"
       },
       "SystemPurpose": {
@@ -20141,6 +20309,32 @@
             "title": "Created At",
             "type": "string"
           },
+          "gate": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "authored": "#/components/schemas/AuthoredGate",
+                    "system": "#/components/schemas/SystemGate"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AuthoredGate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SystemGate"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The check a fired event must pass before an EXECUTE subscription runs",
+            "title": "Gate"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -20935,7 +21129,7 @@
         "properties": {
           "voice_id": {
             "description": "Catalog voice id to use for voice mode",
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Voice Id",
             "type": "string"
           }
@@ -20970,6 +21164,17 @@
               }
             ],
             "title": "Description"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthoredGateEdit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent keeps the gate, null removes it, a value replaces it"
           },
           "icon": {
             "anyOf": [
@@ -22299,6 +22504,32 @@
             "title": "Execution Logs",
             "type": "array"
           },
+          "gate": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "authored": "#/components/schemas/AuthoredGate",
+                    "system": "#/components/schemas/SystemGate"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AuthoredGate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SystemGate"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The check a fired integration event must pass before this workflow runs",
+            "title": "Gate"
+          },
           "icon": {
             "anyOf": [
               {
@@ -22589,6 +22820,7 @@
           "icon_color",
           "steps",
           "trigger_config",
+          "gate",
           "activated",
           "deactivated_reason",
           "notify_on_completion",
@@ -22873,7 +23105,7 @@
     },
     "/api/v1/approvals/tools/{tool_name}": {
       "put": {
-        "description": "Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.",
+        "description": "Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.\n\ntool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).",
         "operationId": "approvals_set_tool_approval",
         "parameters": [
           {
@@ -22881,7 +23113,7 @@
             "name": "tool_name",
             "required": true,
             "schema": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "title": "Tool Name",
               "type": "string"
             }
@@ -24466,6 +24698,79 @@
         ]
       }
     },
+    "/api/v1/browser/live/{code}/decision": {
+      "post": {
+        "description": "Done or Stop from the bot user's live-view page: the code that opened the page is the authority.\n\nThe same decision a chat reply or the web card's buttons make, for the\nhandoff this link was sent for.",
+        "operationId": "browser_decide_live_view_handoff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandoffDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Decide Live View Handoff",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
     "/api/v1/browser/logins": {
       "delete": {
         "description": "Forget every saved browser login for the user.",
@@ -24621,6 +24926,69 @@
         ]
       }
     },
+    "/api/v1/browser/replays/{code}": {
+      "get": {
+        "description": "Standalone recap slideshow for a finished session: its code is the capability.",
+        "operationId": "browser_replay_page",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Replay Page",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
     "/api/v1/browser/sessions/{session_id}/live-view-token": {
       "get": {
         "description": "Mint a short-lived takeover token the web card carries on its live-view\nsocket and full-page link, so neither depends on the session cookie.",
@@ -24679,6 +25047,71 @@
           }
         },
         "summary": "Get Live View Token",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/shots/{code}/{index}.jpg": {
+      "get": {
+        "description": "One step frame of a run, for deployments with no object store.\n\nSame capability model as the recap page it feeds: the code is the secret, so\na frame cannot be reached by guessing a session id, and it expires with the\ncode.",
+        "operationId": "browser_step_screenshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "title": "Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Step Screenshot",
         "tags": [
           "Browser"
         ]
@@ -34760,7 +35193,7 @@
     },
     "/api/v1/oauth/login/workos": {
       "get": {
-        "description": "Start the WorkOS SSO authentication flow.\n\nArgs:\n    return_url: Optional URL to redirect to after authentication.\n\nReturns:\n    RedirectResponse: Redirects the user to the WorkOS SSO authorization URL",
+        "description": "Start the WorkOS SSO authentication flow.\n\nArgs:\n    return_url: Optional URL to redirect to after authentication.\n    screen_hint: The AuthKit screen to open on; /signup asks for sign-up.\n\nReturns:\n    RedirectResponse: Redirects the user to the WorkOS SSO authorization URL",
         "operationId": "oauth_login_workos",
         "parameters": [
           {
@@ -34777,6 +35210,26 @@
                 }
               ],
               "title": "Return Url"
+            }
+          },
+          {
+            "in": "query",
+            "name": "screen_hint",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "sign-up",
+                    "sign-in"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Screen Hint"
             }
           }
         ],
@@ -36798,6 +37251,69 @@
           }
         },
         "summary": "Initiate Platform Connect",
+        "tags": [
+          "Platform Links"
+        ]
+      }
+    },
+    "/api/v1/platform-links/{platform}/conversation": {
+      "post": {
+        "description": "Open the DM chat of a linked Telegram, WhatsApp or iMessage account.",
+        "operationId": "platform_links_open_platform_chat_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Open Platform Chat Endpoint",
         "tags": [
           "Platform Links"
         ]
@@ -43273,7 +43789,7 @@
             "name": "voice_id",
             "required": true,
             "schema": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "title": "Voice Id",
               "type": "string"
             }
@@ -44965,207 +45481,6 @@
         "summary": "Readiness Check",
         "tags": [
           "Health"
-        ]
-      }
-    },
-    "/live/{code}/decision": {
-      "post": {
-        "description": "Done or Stop from the bot user's live-view page: the code that opened the page is the authority.\n\nThe same decision a chat reply or the web card's buttons make, for the\nhandoff this link was sent for.",
-        "operationId": "browser_decide_live_view_handoff",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HandoffDecisionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HandoffDecisionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Decide Live View Handoff",
-        "tags": [
-          "Browser"
-        ]
-      }
-    },
-    "/replays/{code}": {
-      "get": {
-        "description": "Standalone recap slideshow for a finished session: its code is the capability.",
-        "operationId": "browser_replay_page",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Replay Page",
-        "tags": [
-          "Browser"
-        ]
-      }
-    },
-    "/shots/{code}/{index}.jpg": {
-      "get": {
-        "description": "One step frame of a run, for deployments with no object store.\n\nSame capability model as the recap page it feeds: the code is the secret, so\na frame cannot be reached by guessing a session id, and it expires with the\ncode.",
-        "operationId": "browser_step_screenshot",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "index",
-            "required": true,
-            "schema": {
-              "title": "Index",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Step Screenshot",
-        "tags": [
-          "Browser"
         ]
       }
     }

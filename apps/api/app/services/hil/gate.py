@@ -10,7 +10,7 @@ The gate orchestrates, not decides or renders: unpack (utils.py), resolve policy
 (policy.py), judge intent (intent.py), publish card + record (bridge.py), speak to
 the model (prompts.py). interrupt() raises GraphInterrupt as control flow, never
 caught here nor by the wrappers above (the GraphBubbleUp guards in middleware/executor.py
-and dynamic_tool_node.py). A decision is a record, not a resume payload, so one decision can
+and LangGraph's ToolNode). A decision is a record, not a resume payload, so one decision can
 wake a run with several approvals outstanding; everything before a pause re-runs
 on replay, re-reading the record instead of remembering.
 """
@@ -71,6 +71,7 @@ from app.services.hil.intent import (
 from app.services.hil.jev_judge import JevIntentJudge
 from app.services.hil.policy import (
     GatingPolicy,
+    gated_tool_key,
     gated_tool_object,
     has_pausing_sibling,
     resolve_policy,
@@ -83,6 +84,7 @@ from app.services.hil.prompts import (
     TIMEOUT_TEMPLATE,
     UNPAUSABLE_DENIAL_TEMPLATE,
 )
+from app.services.hil.tool_key import hil_tool_key, mcp_tool_identity
 from app.services.hil.utils import (
     GatedCall,
     approval_window_label,
@@ -93,6 +95,7 @@ from app.services.hil.utils import (
     tool_schema,
     unpack_tool_call,
 )
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted
@@ -262,7 +265,7 @@ async def _decide_ledger(
             return _same_run_refusal_message(call, denied)
         deny_note = _prior_denial_note(denied)
 
-        integration_name = await _integration_name_for(call.name)
+        integration_name = await _integration_name_for(request, context.user_id, call.name)
         summary = build_summary(call.name, call.args, integration_name, call.account)
         # Owner is the worker thread, stable across runs: subagent threads read
         # "<integration>_<conversation>", the executor "executor_<...>", so a
@@ -278,6 +281,7 @@ async def _decide_ledger(
                 user_id=context.user_id,
                 fingerprint=fingerprint,
                 tool_name=call.name,
+                tool_key=await gated_tool_key(request, context.user_id, call.name),
                 args=call.args,
                 account=call.account,
                 summary=summary,
@@ -403,7 +407,7 @@ async def _decide(
         # decline shadow the very decision the user just gave.
         record = await get_approval(approval_id)
         if record is not None and record.status.settled:
-            return await _apply(record, context, call)
+            return await _apply(record, request, context, call)
 
         # A RETRY of something the user already declined this turn. Re-asking is the loop
         # we want to kill (the executor never learns its subagent was declined, so it
@@ -419,7 +423,7 @@ async def _decide(
         if invalid is not None:
             return invalid
 
-        integration_name = await _integration_name_for(call.name)
+        integration_name = await _integration_name_for(request, context.user_id, call.name)
         summary = build_summary(call.name, call.args, integration_name, call.account)
 
         decision: IntentDecision | None = None
@@ -479,7 +483,7 @@ async def _decide(
 
 
 async def _apply(
-    record: HILApprovalRecord, context: GateContext, call: GatedCall
+    record: HILApprovalRecord, request: ToolCallRequest, context: GateContext, call: GatedCall
 ) -> ToolMessage | None:
     """Turn a settled record into the call's fate: None runs it, a message blocks it.
 
@@ -491,7 +495,8 @@ async def _apply(
     )
     if outcome.status == HILApprovalStatus.APPROVED:
         if outcome.scope == "always_tool":
-            await set_tool_override(context.user_id, call.name, False)
+            tool_key = await gated_tool_key(request, context.user_id, call.name)
+            await set_tool_override(context.user_id, tool_key, False)
         return None
 
     # Remember an explicit decline so a retry of the same call this turn is auto-denied
@@ -521,17 +526,19 @@ async def _judge(
         log.info(f"{LogTag.HIL} not auto-approving : a sibling call may pause", name=call.name)
         return None
     history = await _auto_history(context.user_id, call.name)
-    never_auto = await _never_auto_tools(context.user_id)
+    tool = await gated_tool_object(request, context.user_id, call.name)
+    never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in await _never_auto_tools(
+        context.user_id
+    )
     judge = None
     if await is_jev_judge_enabled(context.user_id):
         # JEV classifies first, LLM stays as its transport-failure fallback.
         judge = JevIntentJudge()
-    tool = await gated_tool_object(request, context.user_id, call.name)
     decision = await judge_intent(
         AutoContext(
             user_id=context.user_id,
             history=history,
-            never_auto_tools=never_auto,
+            never_auto=never_auto,
         ),
         user_messages=context.user_messages,
         judge=judge,
@@ -667,7 +674,7 @@ async def _auto_ledger_verdict(
     """Let auto mode settle a ledger-path call, or say why it still needs the user."""
     if policy != "auto":
         return _AutoVerdict()
-    integration_name = await _integration_name_for(call.name)
+    integration_name = await _integration_name_for(request, context.user_id, call.name)
     summary = build_summary(call.name, call.args, integration_name, call.account)
     decision = await _judge(request, context, call, None, summary)
     if decision is None:
@@ -835,7 +842,16 @@ def _tool_message(call: GatedCall, content: str, status: HILToolMessageStatus) -
     )
 
 
-async def _integration_name_for(tool_name: str) -> str | None:
+async def _integration_name_for(
+    request: ToolCallRequest, user_id: str, tool_name: str
+) -> str | None:
+    """Name the approval card's integration: the registry category, else the MCP server."""
     registry = await get_tool_registry()
     category = registry.get_category(registry.get_category_of_tool(tool_name))
-    return category.integration_name if category else None
+    if category is not None:
+        return category.integration_name
+    mcp_tool = mcp_tool_identity(await gated_tool_object(request, user_id, tool_name))
+    if mcp_tool is None:
+        return None
+    resolved = await IntegrationResolver.resolve(mcp_tool.integration_id)
+    return resolved.name if resolved else mcp_tool.integration_id

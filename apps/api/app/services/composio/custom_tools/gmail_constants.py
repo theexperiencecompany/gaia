@@ -31,48 +31,24 @@ FETCH_CONCURRENCY = 8
 # higher can't be reached without more pages and would change semantics.
 MAX_ABSOLUTE_MESSAGES = 2 * GMAIL_MAX_PAGE_SIZE
 
-# Default per-timeframe message cap. Tuned to Gmail's per-page cap (500)
+# Default message cap per named timeframe. Tuned to Gmail's per-page cap (500)
 # and the GAIA compaction threshold (~8KB inline).
-TIMEFRAME_DEFAULT_MAX: dict[str, int] = {
+NAMED_TIMEFRAME_DEFAULT_MAX: dict[str, int] = {
     "today": 100,
     "yesterday": 100,
     "tomorrow": 100,
     "this_week": 200,
     "last_week": 200,
     "next_week": 200,
-    "1d": 100,
-    "3d": 100,
-    "5d": 200,
-    "7d": 200,
-    "1w": 200,
-    "2w": 400,
-    "1m": 500,
-    "3m": 500,
-    "6m": 500,
-    "1y": 500,
 }
 
-# Crossing this many chars (~30k tokens) writes a JSONL file (one message per
-# line) and returns a digest + read_plan. GMAIL_FETCH_MESSAGES is excluded from
-# the generic compaction middleware, so this is the sole offload trigger.
-INLINE_LIMIT_CHARS = 120_000
+# Default cap for a relative "last N days" window, by its length: the first
+# (max_days, cap) covering the window wins, longer ones take the long cap.
+RELATIVE_TIMEFRAME_DEFAULT_MAX: tuple[tuple[int, int], ...] = ((3, 100), (7, 200), (14, 400))
+RELATIVE_TIMEFRAME_LONG_MAX = 500
 
-# Offload file naming + sandbox-visible path.
-OFFLOAD_DIR = "gmail"
-OFFLOAD_FILE_PREFIX = "inbox_summary_"
-OFFLOAD_PREVIEW_SIZE = 10
-
-# Above this many aggregated messages we always offload to a JSONL file and
-# return a read-plan, even when the serialized payload fits under
-# INLINE_LIMIT_CHARS. Keeps large metadata-only scans out of the context window.
-OFFLOAD_MIN_MESSAGES = 50
-
-# Read-plan chunking: an offloaded JSONL (one message per line) is split into
-# contiguous line ranges each subagent reads via read(offset, limit). Chunk
-# count is the max of the by-message/by-byte estimates, capped at MAX_READ_SUBAGENTS.
-CHUNK_TARGET_MESSAGES = 25
-CHUNK_TARGET_BYTES = 50_000
-MAX_READ_SUBAGENTS = 4
+# Cap when the call names no timeframe.
+NO_TIMEFRAME_DEFAULT_MAX = 100
 
 # How many days a "d"/"w"/"m"/"y" relative timeframe spans.
 _DAYS_PER_UNIT: dict[str, int] = {"d": 1, "w": 7, "m": 30, "y": 365}

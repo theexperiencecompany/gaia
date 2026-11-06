@@ -4,7 +4,8 @@ The first matching event opens the window and runs the todo at once, because a
 reply should not wait. Events inside the window buffer on the todo's batch and
 one drain run at the window's end delivers them together, opening the next
 window. The window key holds its end, so every path that schedules a drain
-targets that end and ARQ dedupes them into one job.
+targets that end and ARQ dedupes them into one job. An event held for the end of
+the user's quiet hours stretches the window to that end.
 """
 
 from dataclasses import dataclass
@@ -128,6 +129,50 @@ async def buffer_todo_trigger_event(todo_id: str, event: TriggerOrigin) -> bool:
         _drain_job(todo_id, window_end),
         {"todo_id": todo_id},
     )
+
+
+async def stretch_trigger_window(todo_id: str, until: datetime) -> bool:
+    """Hold the todo's window open until at least until; False when it could not be stretched.
+
+    Every path that schedules the todo's drain targets the window's end, a run
+    ending overnight included, so each waits for it; a later window end stands.
+    """
+    key = TODO_TRIGGER_WINDOW_KEY.format(todo_id=todo_id)
+    client = redis_cache.redis
+    if client is None:
+        log.warning("todo_trigger.window_unavailable", window_key=key)
+        return False
+    now = occurrence_stamp(datetime.now(UTC))  # pragma: no mutate — naive now() stamps the same
+    try:
+        window_end = max(occurrence_stamp(until), await trigger_window_end(todo_id) or now)
+        await client.set(key, str(window_end), ex=max(window_end - now, 1))
+    except (RedisError, OSError) as e:
+        log.warning(
+            "todo_trigger.window_unavailable",
+            window_key=key,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return False
+    return True
+
+
+async def buffer_todo_trigger_event_until(
+    todo_id: str, event: TriggerOrigin, until: datetime
+) -> bool:
+    """Hold one event for a run no sooner than until; False when it could not be held."""
+    return await stretch_trigger_window(todo_id, until) and await buffer_todo_trigger_event(
+        todo_id, event
+    )
+
+
+async def held_todo_trigger_events(todo_id: str) -> list[TriggerOrigin]:
+    """Return the events held for the todo, oldest first, leaving them held."""
+    client = redis_cache.redis
+    if client is None:
+        return []
+    raw = await client.lrange(TODO_TRIGGER_BATCH_KEY.format(todo_id=todo_id), 0, -1)
+    return [TriggerOrigin.model_validate_json(event) for event in raw]
 
 
 async def drain_todo_trigger_events(todo_id: str) -> list[TriggerOrigin] | None:

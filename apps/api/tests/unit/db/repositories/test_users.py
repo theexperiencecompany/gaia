@@ -297,3 +297,17 @@ async def test_the_drafted_jobs_write_evicts_the_global_user_cache() -> None:
         {"$set": {"onboarding.starting_jobs": jobs.model_dump()}},
         scope=REPO_GLOBAL_SCOPE,
     )
+
+
+class TestFindByEmailIgnoringCase:
+    async def test_it_matches_the_whole_address_case_insensitively_with_metacharacters_escaped(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.find = MagicMock(return_value=_Cursor([_good("Erase.Me@Example.com")]))
+
+        found = await repo.find_by_email_ignoring_case("erase.me+1@example.com")
+
+        assert [user.email for user in found] == ["Erase.Me@Example.com"]
+        assert collection.find.call_args.args[0] == {
+            "email": {"$regex": r"^erase\.me\+1@example\.com$", "$options": "i"}
+        }

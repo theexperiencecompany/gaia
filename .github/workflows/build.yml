@@ -150,7 +150,7 @@ jobs:
             nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-
 
       - name: Set Nx SHAs
-        uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+        uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
         with:
           main-branch-name: master
 
@@ -159,7 +159,7 @@ jobs:
 
       # Login so the affected check can query GHCR for missing images.
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -172,61 +172,36 @@ jobs:
           RELEASE_IMAGES: ${{ inputs.release_images }}
         run: bash scripts/ci/release.sh cli-release-images
 
-      # Map affected project list to the image scopes: api (api + voice-agent),
-      # bots, and web.
+      # Which images this push changes: the nx.json release groups (apps = api +
+      # voice-agent, bots) with an affected docker:build task, and web's.
+      - name: Ask nx which images this push changes
+        id: nx
+        run: bash scripts/ci/changes.sh affected --since-last-success
+
       - name: Check affected projects
         id: affected
         env:
           CLI_RELEASE: ${{ steps.cli-release.outputs.required }}
+          API: ${{ contains(fromJSON(steps.nx.outputs.release_groups), 'apps') }}
+          BOTS: ${{ contains(fromJSON(steps.nx.outputs.release_groups), 'bots') }}
+          WEB: ${{ contains(fromJSON(steps.nx.outputs.tasks), 'web:docker:build') }}
         run: |
-          # Fail loud: a broken nx invocation must fail this job, not silently
-          # yield an empty list (which would skip image builds and deploys).
           set -euo pipefail
-          # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
+          api=$API
+          bots=$BOTS
+          web=$WEB
 
-          echo "Affected projects:"
-          echo "$AFFECTED"
-
-          api=false
-          bots=false
-          web=false
-
-          if echo "$AFFECTED" | grep -qx "api" || echo "$AFFECTED" | grep -qx "voice-agent"; then
-            api=true
-          fi
-
-          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp" || echo "$AFFECTED" | grep -qx "bot-imessage"; then
-            bots=true
-          fi
-
-          if echo "$AFFECTED" | grep -qx "web"; then
-            web=true
-          fi
-
-          # Force build if images don't exist in GHCR yet (first-time bootstrap).
-          # Only check on master branch to avoid unnecessary builds on feature branches.
+          # Force a group's build when one of its images has no :latest in GHCR
+          # yet (first-time bootstrap); the repos come from lib/image-repos.sh.
           if [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            image_missing() {
-              ! docker manifest inspect "$1" > /dev/null 2>&1
-            }
-
-            if [ "$api" = "false" ]; then
-              if image_missing "ghcr.io/theexperiencecompany/gaia:latest" || image_missing "ghcr.io/theexperiencecompany/gaia-voice-agent:latest"; then
-                echo "⚠️ API/voice-agent image missing from GHCR — forcing build"
-                api=true
-              fi
+            missing="$(bash scripts/ci/release.sh missing-latest)"
+            if [[ "$missing" == *apps* && "$api" = "false" ]]; then
+              echo "⚠️ An apps image is missing from GHCR — forcing build"
+              api=true
             fi
-
-            if [ "$bots" = "false" ]; then
-               if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-imessage:latest"; then
-                echo "⚠️ Bot image(s) missing from GHCR — forcing build"
-                bots=true
-              fi
+            if [[ "$missing" == *bots* && "$bots" = "false" ]]; then
+              echo "⚠️ A bot image is missing from GHCR — forcing build"
+              bots=true
             fi
           fi
 
@@ -292,7 +267,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Set Nx SHAs
-        uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+        uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
         with:
           main-branch-name: master
 
@@ -304,14 +279,14 @@ jobs:
 
       # resolve-image-tags pushes the released tags to GHCR.
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Determine version scheme
         if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots_image == 'true'
@@ -408,21 +383,21 @@ jobs:
           persist-credentials: false
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Same build as apps/api/project.json docker:build, for linux/arm64. Its
       # own cache ref: a per-platform cache written to the shared :buildcache
       # would overwrite the amd64 build's cache on every run.
       - name: Build and push API arm64 image by digest
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: apps/api/Dockerfile
@@ -450,14 +425,14 @@ jobs:
       packages: write
     steps:
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Add arm64 to the API release tag
         env:
@@ -495,14 +470,14 @@ jobs:
           persist-credentials: false
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build and push the self-host bot arm64 images by digest
         id: build
@@ -529,14 +504,14 @@ jobs:
           persist-credentials: false
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Tag the self-host bots :<sha> for amd64 + arm64
         env:
@@ -573,14 +548,14 @@ jobs:
           persist-credentials: false
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Layer cache lives in GHCR, not the GHA cache service: the type=gha
       # export of this image measured 449s of the 951s job (the GHA cache API
@@ -589,7 +564,7 @@ jobs:
       # never overwrite each other's cache.
       - name: Build and push web image by digest
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: apps/web/Dockerfile
@@ -629,21 +604,21 @@ jobs:
       web_sha: ${{ github.sha }}
     steps:
       - name: Download image digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: web-digest-*
           path: ${{ runner.temp }}/web-digests
           merge-multiple: true
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # phase=build runs BEFORE the quality gate, so it publishes only the
       # immutable :<sha> tag (the duplicate -t below collapses to one);
@@ -709,14 +684,14 @@ jobs:
           persist-credentials: false
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Same phase rule as docker-web: no :latest before the gate — the
       # deploy's `deploy.sh retag` (post-convergence) and promote-latest
@@ -737,7 +712,7 @@ jobs:
           fi
 
       - name: Build and push Grafana image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .infra/docker/observability/grafana
           file: .infra/docker/observability/grafana/Dockerfile
@@ -881,7 +856,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

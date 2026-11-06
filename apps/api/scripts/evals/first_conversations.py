@@ -34,6 +34,7 @@ import httpx
 from pydantic import BaseModel
 
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
+from app.services.onboarding.welcome_copy import WELCOME_COPY
 from scripts.evals.core.dev_users import dev_client, grant_pro, mint
 from scripts.evals.core.judge import judge
 from scripts.evals.core.live_chat import Turn, TurnOptions, send_turn
@@ -44,6 +45,10 @@ RUN_ID = time.strftime("%H%M%S")
 USER_TEMPLATE = "fc-{slug}-" + RUN_ID + "@gaia.local"
 JUDGE_TIMEOUT_SECONDS = 90.0
 TURN_OPTIONS = TurnOptions(timeout=240.0, delivery_wait_seconds=150.0, delivery_poll_seconds=4.0)
+#: The welcome thread's escape-hatch chip, in every language it ships in.
+SOMETHING_ELSE_LABELS = {copy.something_else for copy in WELCOME_COPY.values()}
+#: How long the wizard's next screens give the chips draft before completion.
+CHIPS_DRAFT_WAIT_SECONDS = 25
 #: A step whose message is this sends the welcome thread's first job chip.
 FIRST_CHIP = "<first chip>"
 
@@ -257,10 +262,15 @@ async def _run(api_url: str, scenario: Scenario) -> Row:
         body = preferences.model_dump(mode="json", exclude_none=True) | {
             "language": scenario.language
         }
-        (
-            await client.patch(f"{api_url}/api/v1/onboarding/preferences", json=body, timeout=60.0)
-        ).raise_for_status()
-        await asyncio.sleep(12)
+        # The wizard's own save, which starts the chips draft. Builds before the
+        # answers endpoint existed took the same answers on PATCH /preferences.
+        saved = await client.put(f"{api_url}/api/v1/onboarding/answers", json=body, timeout=60.0)
+        if saved.status_code in (404, 405):
+            saved = await client.patch(
+                f"{api_url}/api/v1/onboarding/preferences", json=body, timeout=60.0
+            )
+        saved.raise_for_status()
+        await asyncio.sleep(CHIPS_DRAFT_WAIT_SECONDS)
         completion = await client.post(
             f"{api_url}/api/v1/onboarding",
             json={
@@ -278,7 +288,9 @@ async def _run(api_url: str, scenario: Scenario) -> Row:
         for raw in scenario.messages:
             message = raw
             if raw == FIRST_CHIP:
-                message = next(iter(welcome.chips), "What should we start with?")
+                message = next(
+                    (c for c in welcome.chips if c not in SOMETHING_ELSE_LABELS), welcome.chips[-1]
+                )
             print(f"    > {message}", flush=True)
             turn = await send_turn(client, api_url, message, conversation_id, history, TURN_OPTIONS)
             history += [

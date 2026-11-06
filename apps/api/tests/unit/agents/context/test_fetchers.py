@@ -17,10 +17,12 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 from app.agents.context import fetchers
 from app.agents.context.fetchers import (
     NEW_USER_CONVERSATION_LIMIT,
+    _ConnectedIntegration,
     _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
@@ -33,6 +35,7 @@ from app.agents.context.fetchers import (
     build_memory_recall_block,
     build_new_user_guidance_block,
     build_open_pendings_block,
+    build_provider_metadata_block,
     build_tracked_todos_block,
     build_workspace_session_banner,
     format_active_todo_banner,
@@ -43,6 +46,7 @@ from app.agents.context.text import (
     GAIA_KNOWLEDGE_HEADER,
     MEMORY_IS_PAST_NOTE,
     MEMORY_RECALL_HEADER,
+    MULTI_ACCOUNT_INSTRUCTION,
 )
 from app.agents.context.tiers import AgentTier
 from app.agents.prompts.new_user_prompts import (
@@ -54,6 +58,7 @@ from app.agents.prompts.new_user_prompts import (
     build_new_user_guidance,
 )
 from app.agents.workspace.paths import session_dir
+from app.constants.log_tags import LogTag
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
@@ -585,7 +590,7 @@ class TestDedupeByProvider:
         self,
     ) -> None:
         """A later id-only entry for the same provider must not clobber an earlier resolved display name."""
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "slack", "name": "Slack Workspace"},
             {"id": "sl_ack", "name": "sl_ack"},
         ]
@@ -593,7 +598,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "slack", "name": "Slack Workspace"}]
 
     def test_an_id_named_entry_held_first_is_replaced_once_a_real_name_arrives(self) -> None:
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "slack", "name": "slack"},
             {"id": "sl_ack", "name": "Slack Workspace"},
         ]
@@ -602,7 +607,7 @@ class TestDedupeByProvider:
 
     def test_the_first_real_name_wins_over_a_second_equally_real_name(self) -> None:
         """Once a provider has resolved to ANY display name, a second row for it must not overwrite it, even with another real name."""
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "calendar", "name": "Calendar One"},
             {"id": "cal_endar", "name": "Calendar Two"},
         ]
@@ -610,13 +615,96 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "calendar", "name": "Calendar One"}]
 
     def test_distinct_providers_are_all_kept_in_first_seen_order(self) -> None:
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "gmail", "name": "Gmail"},
             {"id": "slack", "name": "Slack"},
             {"id": "notion", "name": "Notion"},
         ]
 
         assert _dedupe_by_provider(items) == items
+
+
+@pytest.mark.unit
+class TestProviderMetadataBlock:
+    INTEGRATION_ID = "gmail"
+
+    @staticmethod
+    def _record(*accounts: IntegrationAccount, primary: str = "ca_1") -> UserIntegrationDocument:
+        return make_integration_record(*accounts, user_id="user1", primary=primary)
+
+    async def test_it_names_who_the_user_is_on_that_provider(self) -> None:
+        """Two fields, not one: with a single entry the \\n joining them would be unobservable."""
+        record = self._record(
+            make_integration_account("ca_1", identity={"email": "ada@example.com", "login": "ada"})
+        )
+        with patch(
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
+        ):
+            rendered = await build_provider_metadata_block(self.INTEGRATION_ID, "user1")
+
+        assert rendered == "USER CONTEXT FOR GMAIL:\n- email: ada@example.com\n- login: ada"
+
+    async def test_several_accounts_are_listed_with_the_primary_and_the_rule_for_choosing(
+        self,
+    ) -> None:
+        record = self._record(
+            make_integration_account("ca_1", label="work@acme.com"),
+            make_integration_account("ca_2", label="me@gmail.com", nickname="Personal"),
+            make_integration_account("ca_3", label="old@acme.com", status="expired"),
+            primary="ca_2",
+        )
+        with patch(
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
+        ):
+            rendered = await build_provider_metadata_block(self.INTEGRATION_ID, "user1")
+
+        assert rendered == (
+            "USER'S GMAIL ACCOUNTS:\n"
+            '- "work@acme.com" (id ca_1)\n'
+            '- "Personal" or "me@gmail.com" (id ca_2, default)\n'
+            '- "old@acme.com" (id ca_3, expired)\n' + MULTI_ACCOUNT_INSTRUCTION
+        )
+
+    async def test_it_asks_about_this_user_on_this_integration(self) -> None:
+        lookup = AsyncMock(return_value=None)
+        with patch("app.agents.context.fetchers.get_account_record", lookup):
+            await build_provider_metadata_block(self.INTEGRATION_ID, "user1")
+
+        lookup.assert_awaited_once_with("user1", self.INTEGRATION_ID)
+
+    async def test_an_unregistered_integration_is_never_looked_up(self) -> None:
+        """An id that resolves to no integration has no accounts to ask about."""
+        lookup = AsyncMock(
+            return_value=self._record(make_integration_account("ca_1", identity={"email": "a@b.c"}))
+        )
+        with patch("app.agents.context.fetchers.get_account_record", lookup):
+            rendered = await build_provider_metadata_block("not-a-real-integration", "user1")
+
+        assert rendered == ""
+        lookup.assert_not_awaited()
+
+    async def test_one_account_without_an_identity_yields_no_block(self) -> None:
+        record = self._record(make_integration_account("ca_1"))
+        with patch(
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
+        ):
+            assert await build_provider_metadata_block(self.INTEGRATION_ID, "user1") == ""
+
+    async def test_a_failed_lookup_is_visible_in_the_wide_event(self) -> None:
+        async with captured_wide_event() as event:
+            with patch(
+                "app.agents.context.fetchers.get_account_record",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
+            ):
+                rendered = await build_provider_metadata_block(self.INTEGRATION_ID, "user1")
+
+        assert rendered == ""
+        (warning,) = event["warnings"]
+        assert warning["msg"] == f"{LogTag.AGENT} Failed to read the integration's accounts"
+        assert warning["integration_id"] == self.INTEGRATION_ID
+        assert warning["user_id"] == "user1"
+        assert warning["error"] == "mongo down"
+        assert warning["error_type"] == "RuntimeError"
 
 
 @pytest.mark.unit
@@ -661,7 +749,7 @@ def _tracked_doc(todo_id: str, title: str) -> TodoDocument:
 
 
 @pytest.fixture
-def repo_reads() -> AsyncMock:
+def repo_reads() -> Iterator[AsyncMock]:
     """Fake the repository's Mongo read with the cached_query cache seams faked.
 
     The active-tracked finder is generation-cached; these fakes stand in for the
@@ -1368,9 +1456,12 @@ class TestASectionDeclinesWhenItsContextIsAbsent:
     @pytest.mark.parametrize("missing", ["user_id", "active_todo_id"])
     async def test_the_active_todo_banner_needs_both_ids(self, missing: str) -> None:
         todo = TodoDocument(id="todo-7", user_id="user1", title="Ship the refactor")
-        present: dict[str, str | None] = {"user_id": "user1", "active_todo_id": "todo-7"}
+        ids: dict[str, str | None] = {"user_id": "user1", "active_todo_id": "todo-7", missing: None}
         with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=todo)):
-            assert await build_active_todo_banner(ctx(**{**present, missing: None})) == ""
+            banner = await build_active_todo_banner(
+                ctx(user_id=ids["user_id"], active_todo_id=ids["active_todo_id"])
+            )
+            assert banner == ""
 
 
 @pytest.mark.unit
