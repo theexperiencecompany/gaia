@@ -41,11 +41,15 @@ DESK_BUCKET_CRITERIA: Final[Mapping[DeskBucket, str]] = MappingProxyType(
     {
         DeskBucket.REPLY: (
             "A person the user already deals with expects an answer from them, or the user "
-            "promised them something: a conversation the user is part of; a cofounder, teammate, "
-            "investor, user or customer of the user's product; a support case awaiting the user's "
-            "reply. Examples: a customer asking for the deck by Friday; a teammate asking which "
-            "date works; a candidate asking about next steps; a person proposing a meeting that "
-            "needs a yes or no. A stranger's first email asking a question is not this: it is junk."
+            "promised them something: a conversation the user wrote in, answered or asked for, "
+            "even when the other side sells something (they quote the user's message, thank the "
+            "user for a reply or a bug report, or say the user was open to it); a cofounder, "
+            "teammate, investor, user or customer of the user's product, a user answering the "
+            "user's own product email included; a support case awaiting the user's reply. "
+            "Examples: a customer asking for the deck by Friday; a teammate asking which date "
+            "works; a candidate asking about next steps; a person proposing a meeting that needs "
+            "a yes or no; a partner the user said yes to asking for their pricing. A stranger's "
+            "first email asking a question is not this: it is junk."
         ),
         DeskBucket.WAITING: (
             "The user is waiting on a person: they asked or requested something and the next move "
@@ -59,7 +63,9 @@ DESK_BUCKET_CRITERIA: Final[Mapping[DeskBucket, str]] = MappingProxyType(
             "reached or a service suspended or cut off; a sign-in blocked, an account locked; a "
             "password, 2FA or recovery setting changed, turned on or turned off, which the user "
             "must confirm was them; access about to be lost unless the user logs in or verifies; "
-            "a deadline the user must meet. A one-time code is never act."
+            "mail the user sent that bounced or was not delivered, a delivery status "
+            "notification they must fix or resend; a deadline the user must meet. A one-time "
+            "code is never act."
         ),
         DeskBucket.FYI: (
             "Nothing is asked of the user, but it is news about their own accounts, work or plans "
@@ -78,7 +84,9 @@ DESK_BUCKET_CRITERIA: Final[Mapping[DeskBucket, str]] = MappingProxyType(
             "webinars, invitations to try a product, and product-update blasts; a stranger "
             "writing first to sell, pitch, propose a partnership, a link exchange or a listing, "
             "or to ask a favour, even when it is personal, asks a question or fakes a 'Re:' "
-            "thread; SEO pitches, spam, and nags from tools the user does not use."
+            "thread; a stranger quoting the user's own code, docs or repo to sell a tool, and "
+            "their follow-ups to a pitch the user never answered; SEO pitches, spam, and nags "
+            "from tools the user does not use."
         ),
     }
 )

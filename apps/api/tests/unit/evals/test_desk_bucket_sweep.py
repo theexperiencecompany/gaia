@@ -38,17 +38,17 @@ from .conftest import eval_config
 
 # Each bucket's share of its labelled emails JEV puts back in it, in every recorded pass.
 # junk is low by design: a junk under P 0.95 goes unbucketed and the desk judges it (~60 of 155).
-# waiting has one labelled email. Measured minimums: 0.61, 1.0, 0.86, 0.898, 0.465.
+# waiting has one labelled email. Measured minimums: 0.676, 1.0, 0.95, 0.894, 0.429.
 RECALL_FLOORS: Mapping[DeskBucket, float] = {
-    DeskBucket.REPLY: 0.60,
+    DeskBucket.REPLY: 0.67,
     DeskBucket.WAITING: 1.0,
-    DeskBucket.ACT: 0.85,
+    DeskBucket.ACT: 0.95,
     DeskBucket.FYI: 0.89,
-    DeskBucket.JUNK: 0.45,
+    DeskBucket.JUNK: 0.42,
 }
-# Needs-you emails some pass buckets junk, so the desk never reads them: mail-048 and mail-353
-# are the gate's own named false skips, mail-364 and mail-377 the same senders' first emails.
-RECORDED_LOST_TO_JUNK = frozenset({"mail-048", "mail-353", "mail-364", "mail-377"})
+# Needs-you emails some pass buckets junk, so the desk never reads them: the gate's own named
+# false skips.
+RECORDED_LOST_TO_JUNK = frozenset({"mail-048", "mail-353"})
 # The routine sign-in notices some pass buckets other than fyi.
 RECORDED_SIGN_IN_NOT_FYI: frozenset[str] = frozenset()
 SIGN_IN_NOTICE_TAG = "sign_in_notice"
