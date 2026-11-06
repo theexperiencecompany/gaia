@@ -34,8 +34,6 @@ apps/api/tests/e2e/test_executor_channel_matrix.py	return-value
 apps/api/tests/e2e/test_executor_interaction_scale.py	return-value
 apps/api/tests/e2e/test_executor_interjection.py	return-value
 apps/api/tests/e2e/test_executor_progress_e2e.py	arg-type
-apps/api/tests/e2e/test_file_share_sandbox_e2e.py	attr-defined
-apps/api/tests/e2e/test_file_share_sandbox_e2e.py	misc
 apps/api/tests/e2e/test_hil_spawn_e2e.py	arg-type
 apps/api/tests/e2e/test_hil_spawn_e2e.py	attr-defined
 apps/api/tests/e2e/test_hil_spawn_e2e.py	call-overload
@@ -128,10 +126,6 @@ apps/api/tests/unit/agents/nodes/test_manage_system_prompts.py	typeddict-item
 apps/api/tests/unit/agents/nodes/test_memory_node.py	arg-type
 apps/api/tests/unit/agents/nodes/test_pre_model_hooks.py	arg-type
 apps/api/tests/unit/agents/test_active_integrations.py	misc
-apps/api/tests/unit/agents/test_agent_core.py	arg-type
-apps/api/tests/unit/agents/test_agent_routing.py	attr-defined
-apps/api/tests/unit/agents/test_agent_routing.py	misc
-apps/api/tests/unit/agents/test_agent_routing.py	return-value
 apps/api/tests/unit/agents/test_browser_task_status_hook.py	arg-type
 apps/api/tests/unit/agents/test_call_record.py	arg-type
 apps/api/tests/unit/agents/test_comms_narrator.py	attr-defined
@@ -218,8 +212,6 @@ apps/api/tests/unit/api/test_bot_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_endpoint.py	union-attr
 apps/api/tests/unit/api/test_device_self_pair.py	attr-defined
 apps/api/tests/unit/api/test_integrations_user.py	call-arg
-apps/api/tests/unit/api/test_lab_events.py	arg-type
-apps/api/tests/unit/api/test_lab_events.py	attr-defined
 apps/api/tests/unit/api/test_mail_endpoint.py	list-item
 apps/api/tests/unit/api/test_oauth_dependencies.py	attr-defined
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
@@ -328,7 +320,6 @@ apps/api/tests/unit/middleware/test_unhandled_exception_middleware.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	call-arg
 apps/api/tests/unit/models/test_agent_config.py	typeddict-item
-apps/api/tests/unit/models/test_agent_config_reads.py	call-overload
 apps/api/tests/unit/models/test_auth_models.py	call-arg
 apps/api/tests/unit/models/test_authenticated_user_shape.py	arg-type
 apps/api/tests/unit/models/test_authenticated_user_shape.py	call-arg
@@ -435,7 +426,6 @@ apps/api/tests/unit/services/photon/test_photon_client.py	attr-defined
 apps/api/tests/unit/services/photon/test_photon_client.py	index
 apps/api/tests/unit/services/sandbox/test_execute_client.py	arg-type
 apps/api/tests/unit/services/sandbox/test_execute_client.py	attr-defined
-apps/api/tests/unit/services/sandbox/test_execute_token.py	attr-defined
 apps/api/tests/unit/services/test_artifact_events.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined

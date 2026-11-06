@@ -13613,18 +13613,21 @@ export interface components {
         };
         /**
          * RecordedCall
-         * @description One tool call as it actually ran.
+         * @description One tool call as it actually ran, recorded by app.agents.tools.invocation.
          *
-         *     Captured from the run's own tool events — the same stream the chat UI
-         *     renders — so recording costs nothing beyond persisting what was already
-         *     collected. ``args`` is what makes this useful: it is the material an agent
-         *     reads to author a playbook, and the cursor a later run picks up from.
+         *     args is what makes this useful: it is the material an agent reads to author
+         *     a playbook, and the cursor a later run picks up from.
          */
         RecordedCall: {
             /** Args */
             args?: {
                 [key: string]: unknown;
             };
+            /**
+             * Failed
+             * @default false
+             */
+            failed?: boolean;
             /**
              * Replayed
              * @default false
@@ -13636,8 +13639,6 @@ export interface components {
              * @default
              */
             result_digest?: string;
-            /** Subagent */
-            subagent?: string | null;
             /** Subagent Id */
             subagent_id?: string | null;
             /**
