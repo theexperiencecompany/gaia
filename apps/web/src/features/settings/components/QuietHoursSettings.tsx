@@ -94,7 +94,9 @@ export function QuietHoursSettings() {
           classNames={{
             filler: "bg-indigo-400/70",
             thumb: "bg-indigo-300 after:bg-indigo-300",
-            mark: "whitespace-nowrap text-[11px] text-zinc-500 tabular-nums",
+            // Marks label the axis, not move a thumb: HeroUI moves one on a mark click
+            // without firing onChangeEnd, which would preview a window that is never saved.
+            mark: "pointer-events-none whitespace-nowrap text-[11px] text-zinc-500 tabular-nums",
           }}
         />
       </div>
