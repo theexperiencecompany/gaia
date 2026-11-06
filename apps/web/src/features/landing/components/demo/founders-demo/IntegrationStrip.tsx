@@ -13,7 +13,7 @@ export default function IntegrationStrip({
           key={integration.id}
           variant="tertiary"
           size="sm"
-          className="bg-zinc-800 text-zinc-300"
+          className="bg-zinc-800 text-zinc-300 py-0.5"
         >
           <span className="mx-1 flex items-center">
             {getToolCategoryIcon(integration.id, {

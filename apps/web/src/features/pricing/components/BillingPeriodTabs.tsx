@@ -34,6 +34,7 @@ export function BillingPeriodTabs({
 
   return (
     <Tabs
+      variant="primary"
       selectedKey={isYearly ? "yearly" : "monthly"}
       onSelectionChange={(key) => onChange(key === "yearly")}
       aria-label="Billing period"

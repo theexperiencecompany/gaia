@@ -100,7 +100,7 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
             onChange={(event) => handleSearchChange(event.target.value)}
             aria-label="Search posts"
             placeholder="Search posts..."
-            className="input-group__input"
+            className="input-group__input min-w-0 flex-1"
           />
         </InputGroup>
       </TextField>

@@ -127,7 +127,9 @@ function DesktopDownloadButton({
 
   const meta = OS_META[os];
   const available = desktopDownloads[os].filter((v) => v.downloadUrl);
-  const buttonVariant = isPrimary ? "primary" : "tertiary";
+  // v2 parity: the primary CTA was the dark default button, which is v3
+  // secondary (dark fill). v3 primary is the blue accent fill.
+  const buttonVariant = isPrimary ? "secondary" : "tertiary";
   // Mac's apple.svg is dark; invert it on the light "tertiary" buttons.
   const invertIcon = os === "mac" && !isPrimary;
   const iconSize = getImageDimensions(meta.icon);
@@ -287,7 +289,7 @@ function DesktopSection() {
           Beta
         </Chip>
       }
-      description="Get the native desktop experience with enhanced performance."
+      description="Native apps for macOS, Windows, and Linux."
       actions={
         <div className="flex flex-col gap-3 justify-center items-center">
           <DesktopDownloadButton os={primaryOs} isPrimary />

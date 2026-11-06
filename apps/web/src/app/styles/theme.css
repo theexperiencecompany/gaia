@@ -34,6 +34,14 @@
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
+
+  /* Foreground scale (v2 parity): light uses the zinc ramp as-is. */
+  --color-foreground-300: var(--color-zinc-300);
+  --color-foreground-400: var(--color-zinc-400);
+  --color-foreground-500: var(--color-zinc-500);
+  --color-foreground-600: var(--color-zinc-600);
+  --color-foreground-700: var(--color-zinc-700);
+
   /* Border radius */
   --radius: 0.5rem;
   --border-radius-lg: var(--radius);
@@ -52,4 +60,14 @@
   --animate-shake: shake 0.7s ease-in-out;
   --animate-scale-in: scale-in 0.4s ease-out forwards;
   --animate-caret-blink: caret-blink 1.25s ease-out infinite;
+}
+
+/* Dark mode swaps the foreground ramp like the v2 theme did, so muted text
+   stays grey instead of inheriting white. */
+.dark {
+  --color-foreground-300: var(--color-zinc-700);
+  --color-foreground-400: var(--color-zinc-600);
+  --color-foreground-500: var(--color-zinc-500);
+  --color-foreground-600: var(--color-zinc-400);
+  --color-foreground-700: var(--color-zinc-300);
 }
