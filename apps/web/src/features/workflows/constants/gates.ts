@@ -23,9 +23,6 @@ export const GATE_SKIPS_LABEL = "Skipped recently";
 
 export const GATE_NO_SKIPS_NOTE = "Nothing skipped yet";
 
-/** The most skips the detail lists; the API keeps a few more. */
-export const GATE_SKIPS_SHOWN = 5;
-
 export const gateSkipCount = (count: number) => `${count} skipped`;
 
 /** Why a skip happened: the rule said no, and how sure it was when the API kept that. */
