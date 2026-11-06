@@ -5136,14 +5136,14 @@
       "class": "OnboardingCompleted",
       "owner": "server",
       "domain": "onboarding",
-      "description": "A user submitted onboarding; the typed other need is free text, so only its presence travels.",
+      "description": "A user left the platform step and submitted onboarding; linked_platform is None when they skipped.",
       "previous_names": [],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user submitted onboarding; the typed other need is free text, so only its presence travels.",
+        "description": "A user left the platform step and submitted onboarding; linked_platform is None when they skipped.",
         "properties": {
           "needs": {
             "items": {
@@ -5156,6 +5156,19 @@
           "has_other_need": {
             "title": "Has Other Need",
             "type": "boolean"
+          },
+          "linked_platform": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Linked Platform"
           }
         },
         "required": ["needs", "has_other_need"],
@@ -5168,19 +5181,59 @@
       "class": "OnboardingPhaseCompleted",
       "owner": "server",
       "domain": "onboarding",
-      "description": "A user reached an onboarding phase.",
+      "description": "A user reached a wizard step past the start; the answer shape rides only on questions_answered.",
       "previous_names": [],
-      "budget_per_user_day": 50,
+      "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
+        "$defs": {
+          "OnboardingStep": {
+            "description": "A wizard milestone, stamped once per onboarding run on users.onboarding.steps_reached.",
+            "enum": [
+              "started",
+              "questions_answered",
+              "paywall_reached",
+              "paid_reveal_seen",
+              "first_chat_opened"
+            ],
+            "title": "OnboardingStep",
+            "type": "string"
+          }
+        },
         "additionalProperties": false,
-        "description": "A user reached an onboarding phase.",
+        "description": "A user reached a wizard step past the start; the answer shape rides only on questions_answered.",
         "properties": {
           "phase": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Phase",
-            "type": "string"
+            "$ref": "#/$defs/OnboardingStep"
+          },
+          "needs": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Needs"
+          },
+          "has_other_need": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Has Other Need"
           }
         },
         "required": ["phase"],
@@ -5291,23 +5344,17 @@
     {
       "event": "onboarding:started",
       "class": "OnboardingStarted",
-      "owner": "web",
+      "owner": "server",
       "domain": "onboarding",
-      "description": "The onboarding wizard mounted, after persisted state restored.",
+      "description": "A user opened the onboarding wizard for the first time this onboarding run.",
       "previous_names": [],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
-      "base_properties": null,
+      "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "The onboarding wizard mounted, after persisted state restored.",
-        "properties": {
-          "has_saved_state": {
-            "title": "Has Saved State",
-            "type": "boolean"
-          }
-        },
-        "required": ["has_saved_state"],
+        "description": "A user opened the onboarding wizard for the first time this onboarding run.",
+        "properties": {},
         "title": "OnboardingStarted",
         "type": "object"
       }
@@ -7833,6 +7880,110 @@
         },
         "required": ["tool_name"],
         "title": "ToolUsed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "trigger:gate_decided",
+      "class": "TriggerGateDecided",
+      "owner": "server",
+      "domain": "trigger",
+      "description": "A trigger gate decided what a fired event does to its workflow or tracked todo.\n\n    outcome is what the run did and reason is why, so a shadow gate (enforced\n    false) reports reason jev_skip with outcome run. Inside the user's quiet hours\n    an event is held for the morning or let through now; urgent_choice names why\n    a let-through one could not wait.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A trigger gate decided what a fired event does to its workflow or tracked todo.\n\noutcome is what the run did and reason is why, so a shadow gate (enforced\nfalse) reports reason jev_skip with outcome run. Inside the user's quiet hours\nan event is held for the morning or let through now; urgent_choice names why\na let-through one could not wait.",
+        "properties": {
+          "owner_type": {
+            "enum": ["workflow", "todo"],
+            "title": "Owner Type",
+            "type": "string"
+          },
+          "trigger_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Trigger Name",
+            "type": "string"
+          },
+          "gate_kind": {
+            "enum": ["authored", "system"],
+            "title": "Gate Kind",
+            "type": "string"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "enum": ["gaia", "user"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Author"
+          },
+          "outcome": {
+            "enum": ["run", "skip", "hold", "bypass"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "jev_run",
+              "jev_skip",
+              "jev_urgent",
+              "jev_can_wait",
+              "free_run",
+              "jev_error",
+              "jev_timeout",
+              "jev_malformed",
+              "jev_unconfigured"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "urgent_choice": {
+            "anyOf": [
+              {
+                "enum": ["incident", "service_down", "meeting"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Urgent Choice"
+          },
+          "enforced": {
+            "title": "Enforced",
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Latency Ms"
+          }
+        },
+        "required": [
+          "owner_type",
+          "trigger_name",
+          "gate_kind",
+          "outcome",
+          "reason",
+          "enforced"
+        ],
+        "title": "TriggerGateDecided",
         "type": "object"
       }
     },

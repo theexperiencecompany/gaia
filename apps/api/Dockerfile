@@ -1,17 +1,14 @@
 # syntax=docker/dockerfile:1
 
-# ---- Browsers: the one Chromium the runtime launches, keyed ONLY on its version ----
-# Every Chromium GAIA starts is Playwright's: crawl4ai's dedicated crawls (no
-# UndetectedAdapter anywhere in app/, so crawl4ai never takes its patchright
-# path) and the browser host (app/browser_host/engine.py resolves through
-# sync_playwright). So only Playwright's revision is downloaded, and patchright
-# is excluded from the lock (root pyproject.toml exclude-dependencies).
+# ---- Browsers: Playwright's Chromium, keyed ONLY on its version ----
+# crawl4ai's dedicated crawls (no UndetectedAdapter anywhere in app/, so crawl4ai
+# never takes its patchright path) and the browser host's default Chromium
+# (resolve_chromium_path) launch Playwright's, so only Playwright's revision is
+# downloaded, and patchright is excluded from the lock (root pyproject.toml
+# exclude-dependencies). Fortress, the host's opt-in engine, is installed below.
 #
-# --only-shell: both launchers run headless and take Playwright's headless
-# shell (crawl4ai's headless launch with no channel; the browser host's
-# resolve_chromium_path prefers the shell even when BROWSER_HOST_HEADED), so the
-# full ~620 MB Chromium build was never started. A CHROMIUM_BIN override names
-# its own binary.
+# --only-shell: both launchers run headless and take Playwright's headless shell,
+# so the full ~620 MB Chromium build was never started.
 #
 # No --force (re-downloads unconditionally) and no --with-deps (an apt install
 # into this throwaway rootfs; the runtime installs its own deps further down).
@@ -180,6 +177,30 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Early in the stage so code and dependency changes never re-key this ~1.5 GB layer.
 COPY --from=models /opt/models /opt/models
 
+# Fortress — the browser host's opt-in Chromium (BROWSER_HOST_FORTRESS, off by
+# default): a Chromium fork that sets the fingerprint in C++, driven over CDP like
+# Chrome. Pinned to a release and its SHA-256 per arch (the release's SHA256SUMS);
+# scripts/ci/browser.sh reads these ARGs, so CI's browser stack runs this exact
+# build. The host launches /opt/fortress/tilion (FORTRESS_IMAGE_BIN), its launcher,
+# which sets up the fonts; its runtime libraries are Chromium's, installed by
+# playwright install-deps below. TILION_LICENSE_KEY (browser_host_settings) selects
+# the licensed v3 engine; unset, the public v1 engine.
+ARG TARGETARCH
+ARG FORTRESS_VERSION=156.0.8078.47
+ARG FORTRESS_SHA256_AMD64=181512397a027e65099c8f2c7c8591c98dfd19649fe7bdbb4fc629989237d3c9
+ARG FORTRESS_SHA256_ARM64=2fead923de56b92fad78940bde373c07d38a925f229b710353e601b07d13af87
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) platform=linux-x64 sha256="${FORTRESS_SHA256_AMD64}" ;; \
+      arm64) platform=linux-arm64 sha256="${FORTRESS_SHA256_ARM64}" ;; \
+      *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl --proto "=https" --tlsv1.2 -fsSL -o /tmp/fortress.tar.gz \
+       "https://github.com/tiliondev/fortress/releases/download/v${FORTRESS_VERSION}/fortress-v${FORTRESS_VERSION%%.*}-${platform}.tar.gz" \
+    && echo "${sha256}  /tmp/fortress.tar.gz" | sha256sum -c - \
+    && mkdir -p /opt/fortress \
+    && tar -xzf /tmp/fortress.tar.gz -C /opt/fortress --strip-components=1 \
+    && rm -f /tmp/fortress.tar.gz
+
 # JuiceFS client — needed by the host-side sidecar mount that the API writes
 # skills + migration data through. Sandboxes have their own copy baked into
 # the E2B template.
@@ -188,7 +209,6 @@ COPY --from=models /opt/models /opt/models
 # meta client) under Rosetta/QEMU emulation on arm64 hosts (Apple Silicon
 # dev, Graviton prod).
 ARG JUICEFS_VERSION=1.3.0
-ARG TARGETARCH
 RUN curl --proto "=https" --tlsv1.2 -fsSL "https://github.com/juicedata/juicefs/releases/download/v${JUICEFS_VERSION}/juicefs-${JUICEFS_VERSION}-linux-${TARGETARCH:-amd64}.tar.gz" \
     | tar -xz -C /tmp \
     && install -m 0755 /tmp/juicefs /usr/local/bin/juicefs \

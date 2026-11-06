@@ -5,11 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import SystemMessage
 import pytest
 
-from app.agents.prompts.onboarding_prompts import ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT
 from app.agents.prompts.workflow_prompts import TRIGGERED_ACCOUNT_SECTION
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
-from app.db.repositories.users import UserDocument
 from app.helpers.message_helpers import (
     _uploaded_file_lines,
     create_system_message,
@@ -18,20 +16,15 @@ from app.helpers.message_helpers import (
     format_reply_context,
     format_tool_selection_message,
     format_workflow_execution_message,
-    get_onboarding_system_prompt_if_applicable,
 )
+from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
-from app.models.user_models import (
-    OnboardingPhase,
-    OnboardingPreferences,
-    OnboardingSubdocument,
-)
-from tests.helpers import captured_wide_event
+from app.models.workflow_models import WorkflowStep
 
 # ---------------------------------------------------------------------------
 # create_system_message
@@ -122,7 +115,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf1",
             title="My Workflow",
             description="desc",
-            steps=[{"title": "Step 1", "category": "ai", "description": "Do AI"}],
+            steps=[WorkflowStep(title="Step 1", category="ai", description="Do AI")],
         )
         mock_wf = MagicMock()
         mock_wf.title = "DB Workflow"
@@ -146,13 +139,65 @@ class TestFormatWorkflowExecutionMessage:
         assert "DB Step" in result
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("trigger_type", ["gmail", None], ids=["email", "other"])
+    async def test_a_run_let_through_quiet_hours_is_told_to_say_why(
+        self, trigger_type: str | None
+    ) -> None:
+        selected = SelectedWorkflowData(id="wf9", title="Replies", description="d", steps=[])
+        reason = "someone is waiting on you for a meeting happening soon"
+        context = {
+            "type": trigger_type,
+            "quiet_hours": {"kind": "bypass", "reason": reason},
+            "workflow_id": "wf9",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            let_through = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=context
+            )
+            held = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context={**context, "quiet_hours": {"kind": "hold"}}
+            )
+
+        assert f"quiet-hours bypass: {reason}." in let_through
+        assert f"I'm interrupting your quiet hours because {reason}." in let_through
+        assert "quiet-hours bypass" not in held
+
+    @pytest.mark.asyncio
+    async def test_the_bypass_note_follows_a_playbook_fallback_on_its_own_paragraph(
+        self,
+    ) -> None:
+        selected = SelectedWorkflowData(id="wf9", title="Replies", description="d", steps=[])
+        reason = "someone is waiting on you for a meeting happening soon"
+        context = {
+            "quiet_hours": {"kind": "bypass", "reason": reason},
+            "playbook_fallback": "The playbook stopped at step 2.",
+            "workflow_id": "wf9",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            message = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=context
+            )
+
+        assert f"The playbook stopped at step 2.\n\nquiet-hours bypass: {reason}." in message
+
+    @pytest.mark.asyncio
     async def test_manual_fallback_to_selected_data(self) -> None:
         selected = SelectedWorkflowData(
             id="wf2",
             title="Fallback WF",
             description="fallback desc",
             prompt="custom prompt",
-            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="S1", category="c1", description="d1")],
         )
 
         with patch(
@@ -170,7 +215,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf3",
             title="Email WF",
             description="email desc",
-            steps=[{"title": "ES", "category": "email", "description": "email step"}],
+            steps=[WorkflowStep(title="ES", category="email", description="email step")],
         )
         trigger_ctx = {
             "type": "gmail",
@@ -200,7 +245,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf4",
             title="No User WF",
             description="d",
-            steps=[{"title": "S", "category": "c", "description": "d"}],
+            steps=[WorkflowStep(title="S", category="c", description="d")],
         )
         result = await format_workflow_execution_message(selected)
         assert "No User WF" in result
@@ -211,7 +256,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf5",
             title="Error WF",
             description="err desc",
-            steps=[{"title": "E", "category": "e", "description": "e"}],
+            steps=[WorkflowStep(title="E", category="e", description="e")],
         )
 
         with patch(
@@ -230,7 +275,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf6",
             title="Long Email WF",
             description="d",
-            steps=[{"title": "S", "category": "c", "description": "d"}],
+            steps=[WorkflowStep(title="S", category="c", description="d")],
         )
         trigger_ctx = {
             "type": "gmail",
@@ -270,7 +315,9 @@ class TestSignalMatchingSectionRenders:
             id="wf_meeting",
             title="Meeting Reminder",
             description="Remind me before meetings",
-            steps=[{"title": "Remind", "category": "calendar", "description": "send the reminder"}],
+            steps=[
+                WorkflowStep(title="Remind", category="calendar", description="send the reminder")
+            ],
         )
         trigger_ctx = {
             "type": "googlecalendar",
@@ -298,8 +345,8 @@ class TestFormatCalendarEventContext:
             id="ev1",
             summary="Team Standup",
             description="Daily sync",
-            start={"dateTime": "2024-01-01T09:00:00"},
-            end={"dateTime": "2024-01-01T09:30:00"},
+            start=GoogleCalendarEventDateTime(dateTime="2024-01-01T09:00:00"),
+            end=GoogleCalendarEventDateTime(dateTime="2024-01-01T09:30:00"),
             calendarTitle="Work",
         )
         result = format_calendar_event_context(event, "What should I prepare?")
@@ -310,13 +357,22 @@ class TestFormatCalendarEventContext:
 
     def test_timed_event_without_bounds_reads_unknown(self) -> None:
         event = SelectedCalendarEventData(
-            id="ev1b", summary="Standup", description="", start={}, end={}
+            id="ev1b",
+            summary="Standup",
+            description="",
+            start=GoogleCalendarEventDateTime(),
+            end=GoogleCalendarEventDateTime(),
         )
         assert "Unknown to Unknown" in format_calendar_event_context(event)
 
     def test_all_day_event_without_a_date_reads_unknown_date(self) -> None:
         event = SelectedCalendarEventData(
-            id="ev2b", summary="Holiday", description="", start={}, end={}, isAllDay=True
+            id="ev2b",
+            summary="Holiday",
+            description="",
+            start=GoogleCalendarEventDateTime(),
+            end=GoogleCalendarEventDateTime(),
+            isAllDay=True,
         )
         assert "All day on Unknown date" in format_calendar_event_context(event)
 
@@ -325,8 +381,8 @@ class TestFormatCalendarEventContext:
             id="ev2",
             summary="Holiday",
             description="",
-            start={"date": "2024-12-25"},
-            end={"date": "2024-12-26"},
+            start=GoogleCalendarEventDateTime(date="2024-12-25"),
+            end=GoogleCalendarEventDateTime(date="2024-12-26"),
             isAllDay=True,
         )
         result = format_calendar_event_context(event)
@@ -337,8 +393,8 @@ class TestFormatCalendarEventContext:
             id="ev3",
             summary="Meeting",
             description="desc",
-            start={"dateTime": "2024-01-01T10:00:00"},
-            end={"dateTime": "2024-01-01T11:00:00"},
+            start=GoogleCalendarEventDateTime(dateTime="2024-01-01T10:00:00"),
+            end=GoogleCalendarEventDateTime(dateTime="2024-01-01T11:00:00"),
         )
         result = format_calendar_event_context(event)
         assert "Calendar:" not in result
@@ -476,7 +532,7 @@ class TestWorkflowExecutionMessageBranches:
             title="Morning Brief",
             description="desc",
             prompt="do the thing",
-            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="S1", category="c1", description="d1")],
         )
 
     @staticmethod
@@ -715,186 +771,6 @@ class TestUploadedFileLines:
         assert _uploaded_file_lines(self._file(filename=".."), "conv1", True) is None
 
 
-# ---------------------------------------------------------------------------
-# get_onboarding_system_prompt_if_applicable
-# ---------------------------------------------------------------------------
-
-
-class TestGetOnboardingSystemPromptIfApplicable:
-    """The prompt is scoped to a RevealTodos "Run Now" demo turn, not any tagged onboarding conversation."""
-
-    @staticmethod
-    def _user(onboarding: OnboardingSubdocument | None, name: str = "Ada") -> UserDocument:
-        return UserDocument(id="u1", name=name, onboarding=onboarding)
-
-    @staticmethod
-    def _patched_repository(user: UserDocument | None) -> AsyncMock:
-        repository = MagicMock()
-        repository.get = AsyncMock(return_value=user)
-        return repository
-
-    async def test_a_typed_message_is_not_a_demo_turn_and_never_reads_the_user(self) -> None:
-        repository = self._patched_repository(self._user(OnboardingSubdocument()))
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", "Summarise my inbox please"
-            )
-
-        assert prompt is None
-        repository.get.assert_not_awaited()
-
-    @pytest.mark.parametrize("latest_user_message", [None, ""])
-    async def test_a_turn_with_no_user_message_is_not_a_demo_turn(
-        self, latest_user_message: str | None
-    ) -> None:
-        repository = self._patched_repository(self._user(OnboardingSubdocument()))
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", latest_user_message
-            )
-
-        assert prompt is None
-        repository.get.assert_not_awaited()
-
-    async def test_a_demo_turn_renders_the_profession_and_only_the_triage_summary_line(
-        self,
-    ) -> None:
-        """triage_summary is the persisted dump of the triage model; keying off it wholesale would leak it."""
-        onboarding = OnboardingSubdocument(
-            preferences=OnboardingPreferences(profession="doctor"),
-            triage_summary={
-                "summary": "12 unread, 3 need a reply",
-                "categories": ["billing", "scheduling"],
-                "email_count": 12,
-            },
-        )
-        repository = self._patched_repository(self._user(onboarding))
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", "Execute this todo for me: reply to the clinic"
-            )
-
-        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
-            name="Ada",
-            onboarding_context="Profession: doctor\nInbox summary: 12 unread, 3 need a reply",
-        )
-        repository.get.assert_awaited_once_with("u1")
-
-    async def test_a_triage_dump_without_a_summary_line_renders_no_inbox_line(self) -> None:
-        """A dump with no summary key must render the profession alone, not a placeholder line."""
-        onboarding = OnboardingSubdocument(
-            preferences=OnboardingPreferences(profession="doctor"),
-            triage_summary={"categories": ["billing"], "email_count": 12},
-        )
-        repository = self._patched_repository(self._user(onboarding))
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", "Execute this todo for me: reply to the clinic"
-            )
-
-        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
-            name="Ada", onboarding_context="Profession: doctor"
-        )
-
-    async def test_the_demo_prefix_is_matched_past_leading_whitespace(self) -> None:
-        repository = self._patched_repository(self._user(OnboardingSubdocument()))
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", "\n  Execute this todo for me: reply to the clinic"
-            )
-
-        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
-            name="Ada", onboarding_context="Profession: not specified"
-        )
-
-    @pytest.mark.parametrize(
-        "onboarding",
-        [None, OnboardingSubdocument(), OnboardingSubdocument(preferences=OnboardingPreferences())],
-    )
-    async def test_an_unset_profession_renders_as_not_specified(
-        self, onboarding: OnboardingSubdocument | None
-    ) -> None:
-        repository = self._patched_repository(self._user(onboarding))
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", "Execute this todo for me: reply to the clinic"
-            )
-
-        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
-            name="Ada", onboarding_context="Profession: not specified"
-        )
-
-    async def test_a_nameless_user_is_addressed_as_there(self) -> None:
-        repository = self._patched_repository(
-            UserDocument(id="u1", name=None, onboarding=OnboardingSubdocument())
-        )
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", "Execute this todo for me: reply to the clinic"
-            )
-
-        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
-            name="there", onboarding_context="Profession: not specified"
-        )
-
-    async def test_a_completed_onboarding_gets_no_prompt(self) -> None:
-        onboarding = OnboardingSubdocument(
-            phase=OnboardingPhase.COMPLETED,
-            preferences=OnboardingPreferences(profession="doctor"),
-        )
-        repository = self._patched_repository(self._user(onboarding))
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", "Execute this todo for me: reply to the clinic"
-            )
-
-        assert prompt is None
-
-    @pytest.mark.parametrize(
-        "phase",
-        [OnboardingPhase.INITIAL, OnboardingPhase.GETTING_STARTED],
-    )
-    async def test_an_unfinished_phase_still_gets_the_prompt(self, phase: OnboardingPhase) -> None:
-        repository = self._patched_repository(self._user(OnboardingSubdocument(phase=phase)))
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", "Execute this todo for me: reply to the clinic"
-            )
-
-        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
-            name="Ada", onboarding_context="Profession: not specified"
-        )
-
-    async def test_a_missing_user_gets_no_prompt(self) -> None:
-        repository = self._patched_repository(None)
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", "Execute this todo for me: reply to the clinic"
-            )
-
-        assert prompt is None
-
-    async def test_a_failed_user_read_is_swallowed_but_lands_on_the_wide_event(self) -> None:
-        repository = MagicMock()
-        repository.get = AsyncMock(side_effect=RuntimeError("mongo down"))
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            async with captured_wide_event() as event:
-                prompt = await get_onboarding_system_prompt_if_applicable(
-                    "u1", "conv1", "Execute this todo for me: reply to the clinic"
-                )
-
-        assert prompt is None
-        assert event["warnings"] == [
-            {
-                "msg": "[onboarding_prompt] Failed to check onboarding conversation",
-                "error": "mongo down",
-                "error_type": "RuntimeError",
-                "user_id": "u1",
-                "conversation_id": "conv1",
-            }
-        ]
-
-
 class TestTheTriggeringAccountReachesTheWorkflow:
     """With several mailboxes, the run must act on the one that received the event, not the primary."""
 
@@ -905,7 +781,7 @@ class TestTheTriggeringAccountReachesTheWorkflow:
             title="Triage",
             description="desc",
             prompt="triage it",
-            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="S1", category="c1", description="d1")],
         )
 
     @pytest.mark.asyncio

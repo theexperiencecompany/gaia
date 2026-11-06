@@ -1,4 +1,4 @@
-"""The run's Browser-Use session: stealth on every tab for its user, a capped load wait, and tabs titled from their documents."""
+"""The run's Browser-Use session: stealth on every tab for its user unless on Fortress, a capped load wait, and tabs titled from their documents."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from browser_use.browser.views import TabInfo
 import pytest
 
 from app.browser_host.stealth import build_stealth_script
-from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH, BrowserEngine
+from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 from app.services.browser import browser_use_session as session_mod
 from app.services.browser.browser_use_session import GaiaBrowserSession, seed_for_user
 from tests.helpers import captured_wide_event
@@ -19,10 +19,8 @@ from tests.helpers import captured_wide_event
 pytestmark = pytest.mark.unit
 
 
-def _session(
-    user_id: str | None = "user-1", engine: BrowserEngine = BrowserEngine.CHROMIUM
-) -> GaiaBrowserSession:
-    return GaiaBrowserSession(cdp_url="ws://host.test/x", user_id=user_id, engine=engine)
+def _session(user_id: str | None = "user-1", *, fortress: bool = False) -> GaiaBrowserSession:
+    return GaiaBrowserSession(cdp_url="ws://host.test/x", user_id=user_id, fortress=fortress)
 
 
 def _tabs(
@@ -84,15 +82,16 @@ async def test_every_tab_gets_the_users_stealth_script_once(
 
 
 @pytest.mark.regression
-async def test_an_obscura_tab_keeps_its_own_stealth_and_gets_no_chrome_disguise(
+async def test_a_fortress_engines_tabs_get_no_stealth_script(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression for GAIA-715: Chrome's window.chrome and PDF plugins on top of Obscura's --stealth fingerprint."""
+    """Regression for #1610: Fortress spoofs in C++, and a page script on top contradicts its persona."""
     add_script = AsyncMock(return_value={"identifier": "1"})
-    _tabs(monkeypatch, add_script)
-    session = _session(engine=BrowserEngine.OBSCURA)
+    served, _ = _tabs(monkeypatch, add_script)
+    session = _session("user-1", fortress=True)
 
-    await session.get_or_create_cdp_session(target_id="t1")
+    assert await session.get_or_create_cdp_session(target_id="t1") is served["t1"]
+    await session.get_or_create_cdp_session(target_id="t2", focus=False)
 
     add_script.assert_not_awaited()
 
