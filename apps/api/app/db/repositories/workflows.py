@@ -471,10 +471,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                 },
                 "$inc": {"gate.skipped_count": 1},
             },
-            # pragma: no mutate start — this repository has no cache, so neither argument is seen.
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-            # pragma: no mutate end
+            scope=REPO_GLOBAL_SCOPE,  # pragma: no mutate — this repository caches nothing
         )
 
     async def set_error_message(
