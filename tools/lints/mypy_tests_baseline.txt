@@ -237,7 +237,6 @@ apps/api/tests/unit/config/test_workos.py	attr-defined
 apps/api/tests/unit/core/test_lazy_loader.py	var-annotated
 apps/api/tests/unit/core/test_middleware.py	arg-type
 apps/api/tests/unit/core/test_middleware.py	attr-defined
-apps/api/tests/unit/core/test_provider_registration.py	attr-defined
 apps/api/tests/unit/db/repositories/test_base_repository.py	unused-ignore
 apps/api/tests/unit/db/repositories/test_playbooks.py	call-overload
 apps/api/tests/unit/db/test_chroma_store.py	arg-type
@@ -355,10 +354,8 @@ apps/api/tests/unit/scripts/test_archive_system_owned_runs.py	attr-defined
 apps/api/tests/unit/scripts/test_backfill_true_cost.py	attr-defined
 apps/api/tests/unit/scripts/test_loki.py	no-redef
 apps/api/tests/unit/scripts/test_migrate_hooked_tool_envelope.py	arg-type
-apps/api/tests/unit/scripts/test_migrate_integration_accounts.py	arg-type
 apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	arg-type
 apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	list-item
-apps/api/tests/unit/scripts/test_repair_memory_store.py	attr-defined
 apps/api/tests/unit/scripts/test_reset_admin_password.py	arg-type
 apps/api/tests/unit/scripts/test_save_provider.py	arg-type
 apps/api/tests/unit/scripts/test_sync_user_workspaces.py	attr-defined
@@ -480,6 +477,8 @@ apps/api/tests/unit/services/test_workflow_subagent.py	override
 apps/api/tests/unit/services/todos/test_signal_context.py	arg-type
 apps/api/tests/unit/services/triggers/test_subscription_service.py	union-attr
 apps/api/tests/unit/services/triggers/test_subscription_validation.py	var-annotated
+apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	arg-type
+apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	operator
 apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	attr-defined
 apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	typeddict-item
 apps/api/tests/unit/storage/test_sessions_lifecycle.py	attr-defined

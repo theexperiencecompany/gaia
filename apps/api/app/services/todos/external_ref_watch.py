@@ -27,6 +27,14 @@ class _RefWatch(NamedTuple):
     # The one account the object lives in; None watches every account.
     account_id: str | None = None
 
+    def covers(self, subscription: TriggerSubscription) -> bool:
+        """Whether subscription already fires on every event this watch needs."""
+        return (
+            subscription.trigger_name in self.trigger_names
+            and set(self.conditions) <= set(subscription.conditions)
+            and subscription.account_id == self.account_id
+        )
+
 
 def _ref_watch(ref: ExternalRef) -> _RefWatch | None:
     """Say what to watch for ref: a thread both ways; the desk runs on its schedule, so none."""
@@ -55,11 +63,7 @@ async def watch_external_ref(
     watch = _ref_watch(ref)
     if watch is None:
         return []
-    watched = {
-        sub.trigger_name
-        for sub in subscriptions
-        if set(watch.conditions) <= set(sub.conditions) and sub.account_id == watch.account_id
-    }
+    watched = {sub.trigger_name for sub in subscriptions if watch.covers(sub)}
     added: list[TriggerSubscription] = []
     try:
         for trigger_name in watch.trigger_names:

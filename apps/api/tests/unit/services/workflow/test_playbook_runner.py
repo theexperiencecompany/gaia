@@ -61,6 +61,7 @@ from app.models.workflow_execution_models import (
 )
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
 from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
+from app.services.workflow.playbook.dry_run import DRY_RUN_READ_TOOLS, DryRun
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
     AskAnswers,
@@ -234,6 +235,8 @@ class _Seams:
 
     find_previous: AsyncMock | None = None
     llm: AsyncMock | None = None
+    #: Runs the replay as a dry run, letting only these reads reach a tool.
+    dry_run: DryRun | None = None
 
 
 async def _run(
@@ -270,7 +273,11 @@ async def _run(
         _gate_policy(policy),
     ):
         result = await run_playbook(
-            playbook, user=USER, conversation_id="conv_1", trigger={"to": "team@example.com"}
+            playbook,
+            user=USER,
+            conversation_id="conv_1",
+            trigger={"to": "team@example.com"},
+            dry_run=seams.dry_run,
         )
     return result, llm
 
@@ -3257,3 +3264,37 @@ class TestItemOutsideForEach:
         assert result.failure is not None
         assert "$item is only meaningful inside a for_each step" in result.failure
         assert recorder.calls == []
+
+
+class TestDryRun:
+    """A dry run reaches only its allowlisted reads; every other step is only described."""
+
+    READS = DryRun(reads=frozenset({"list_events"}))
+
+    async def test_a_write_never_reaches_its_tool_and_says_what_it_would_have_called(
+        self,
+    ) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+
+        result, llm = await _run(
+            _playbook(AGENDA_STEPS), registry, seams=_Seams(dry_run=self.READS)
+        )
+
+        assert result.ok is True, result.failure
+        assert [name for name, _ in recorder.calls] == ["list_events"]
+        assert result.completed[1] == (
+            'mail (send_email {"to":"team@example.com"}) -> '
+            '{"dry_run": "would call send_email", "args": {"to": "team@example.com"}}'
+        )
+        assert llm.await_count == 1, "the narration still runs, over what the run would have done"
+
+    async def test_a_write_proxied_through_execute_is_held_back_by_its_real_name(self) -> None:
+        held = DryRun(reads=frozenset({"list_events"}))
+        proxied = {"tool_name": "GMAIL_SEND_EMAIL", "data": {"to": "a@b.c"}}
+
+        assert held.runs("execute", proxied) is False
+        assert held.runs("execute", {"tool_name": "list_events", "data": {}}) is True
+
+    async def test_the_default_allowlist_holds_back_every_write_a_recipe_can_make(self) -> None:
+        assert not {"send_email", "create_todo", "GMAIL_CREATE_EMAIL_DRAFT"} & DRY_RUN_READ_TOOLS

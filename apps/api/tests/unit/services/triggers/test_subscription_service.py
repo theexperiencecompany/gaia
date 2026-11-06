@@ -14,6 +14,7 @@ import pytest
 
 from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
 from app.models.todo_models import TodoDocument
+from app.models.trigger_configs import CalendarEventStartingSoonConfig
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
@@ -725,7 +726,7 @@ class TestBuildTriggerConfig:
         config = build_trigger_config("calendar_event_starting_soon", {"minutes_before_start": 60})
 
         assert config.trigger_name == "calendar_event_starting_soon"
-        assert config.trigger_data is not None
+        assert isinstance(config.trigger_data, CalendarEventStartingSoonConfig)
         assert config.trigger_data.minutes_before_start == 60
 
     def test_absent_trigger_data_still_builds_a_valid_config(self) -> None:
@@ -737,7 +738,7 @@ class TestBuildTriggerConfig:
     def test_an_omitted_window_falls_back_to_the_trigger_default(self) -> None:
         config = build_trigger_config("calendar_event_starting_soon", None)
 
-        assert config.trigger_data is not None
+        assert isinstance(config.trigger_data, CalendarEventStartingSoonConfig)
         assert config.trigger_data.minutes_before_start == 10
 
 
