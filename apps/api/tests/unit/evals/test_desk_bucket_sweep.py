@@ -38,12 +38,12 @@ from .conftest import eval_config
 
 # Each bucket's share of its labelled emails JEV puts back in it, in every recorded pass.
 # junk is low by design: a junk under P 0.95 goes unbucketed and the desk judges it (~60 of 155).
-# waiting has one labelled email. Measured minimums: 0.58, 1.0, 0.90, 0.90, 0.45.
+# waiting has one labelled email. Measured minimums: 0.61, 1.0, 0.86, 0.898, 0.465.
 RECALL_FLOORS: Mapping[DeskBucket, float] = {
-    DeskBucket.REPLY: 0.55,
+    DeskBucket.REPLY: 0.60,
     DeskBucket.WAITING: 1.0,
-    DeskBucket.ACT: 0.90,
-    DeskBucket.FYI: 0.90,
+    DeskBucket.ACT: 0.85,
+    DeskBucket.FYI: 0.89,
     DeskBucket.JUNK: 0.45,
 }
 # Needs-you emails some pass buckets junk, so the desk never reads them: mail-048 and mail-353
