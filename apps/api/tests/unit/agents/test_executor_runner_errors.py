@@ -149,7 +149,9 @@ class TestAFailureBeforeOrInsteadOfARunNamesItsCause:
         )
 
     @pytest.mark.regression
-    async def test_a_run_that_answered_nothing_is_a_failure_never_done(self) -> None:
+    async def test_a_run_that_answered_nothing_is_a_failure_never_done(
+        self, fake_cache: fakeredis.aioredis.FakeRedis
+    ) -> None:
         ctx = SimpleNamespace(config={}, configurable={})
         with patch.object(er, "log") as mock_log:
             result = await _run_with(
