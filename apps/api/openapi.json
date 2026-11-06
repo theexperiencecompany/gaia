@@ -4770,6 +4770,20 @@
             "title": "Prompt",
             "type": "string"
           },
+          "runs_only_when": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "GAIA's drafted condition for an integration trigger, stored as GAIA's gate",
+            "title": "Runs Only When"
+          },
           "source_integration": {
             "anyOf": [
               {

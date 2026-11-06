@@ -35,6 +35,7 @@ from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     LIST_TRACKED_TODOS_LIMIT,
 )
+from app.constants.trigger_gates import GateAuthor
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import get_user_id, read_agent_configurable
 from app.models.todo_models import (
@@ -46,6 +47,7 @@ from app.models.todo_models import (
     UpdateFieldInputs,
     default_notify_on_run,
 )
+from app.models.trigger_gate_models import AuthoredGate, GateCondition
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
@@ -726,6 +728,15 @@ async def subscribe_todo_to_trigger(
         "Only events on this one connected account, by its listed name or id (e.g. the "
         "user's work inbox). Omit to watch every account on the integration.",
     ] = None,
+    runs_only_when: Annotated[
+        GateCondition | None,
+        "Only with action 'execute': one short plain-text sentence, written from the "
+        "todo's intent and about the event itself, naming which events are worth running "
+        "the todo for, e.g. 'The reply confirms the invoice is paid or asks about it.' "
+        "GAIA checks it before each run and skips an event that clearly fails it, so make "
+        "it as broad as the todo needs: an event the todo would act on must pass. Omit it "
+        "when every event that passes the conditions should run.",
+    ] = None,
 ) -> str:
     """Make a tracked todo react to an integration event instead of only a schedule.
 
@@ -771,7 +782,12 @@ async def subscribe_todo_to_trigger(
         return f"Error: no connected account for {trigger_name} is named {account!r}."
 
     try:
-        subscription, outcome, _created = await register_subscription(
+        gate = (
+            None
+            if runs_only_when is None
+            else AuthoredGate(condition=runs_only_when, author=GateAuthor.GAIA)
+        )
+        subscription, outcome, created = await register_subscription(
             todo_id=todo_id,
             user_id=user_id,
             trigger_name=trigger_name,
@@ -781,10 +797,23 @@ async def subscribe_todo_to_trigger(
             cooldown_seconds=cooldown_seconds,
             trigger_data=trigger_data,
             account_id=account_id,
+            gate=gate,
         )
     except SubscriptionError as e:
         # The catalog rides along on failure so the retry has what it needs.
         return f"Could not subscribe: {e}\n\n{render_catalog(trigger_name)}"
+
+    if not created and subscription.gate != gate:
+        runs_on = (
+            f"runs only when: {subscription.gate.display_condition}"
+            if subscription.gate
+            else "runs on every event"
+        )
+        return (
+            f"Todo {todo_id} already watches {trigger_name} with these settings "
+            f"(subscription id: {subscription.id}), so nothing new was stored and it still "
+            f"{runs_on}. To change its runs_only_when, unsubscribe it and subscribe again."
+        )
 
     lines = [
         f"Todo {todo_id} is now watching {trigger_name} and will {parsed_action} when it fires.",

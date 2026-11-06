@@ -7936,6 +7936,11 @@ export interface components {
              */
             prompt: string;
             /**
+             * Runs Only When
+             * @description GAIA's drafted condition for an integration trigger, stored as GAIA's gate
+             */
+            runs_only_when?: string | null;
+            /**
              * Source Integration
              * @description Which integration provisioned this workflow.
              */

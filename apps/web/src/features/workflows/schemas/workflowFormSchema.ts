@@ -90,6 +90,8 @@ export const workflowFormSchema = z.object({
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
   notify_on_completion: z.boolean(),
+  // GAIA's drafted condition; the server stores it as GAIA's gate on create.
+  runs_only_when: z.string().optional(),
 });
 
 // Export the inferred type
