@@ -57,6 +57,7 @@ from app.services.workflow.service import (
     generate_unique_workflow_slug,
 )
 from app.utils.creator import format_creator
+from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import (
@@ -913,6 +914,8 @@ async def update_workflow(
             workflow=as_read_view(workflow), message="Workflow updated successfully"
         )
 
+    except AppError:
+        raise
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
         raise HTTPException(

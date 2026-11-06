@@ -89,6 +89,8 @@ EXTERNAL_TYPEDDICTS = (
     "OutputTokenDetails",
     # composio.core.models._modifiers.ToolExecuteParams: what a before-execute hook receives.
     "ToolExecuteParams",
+    # chromadb.api.types.GetResult: what Collection.get returns.
+    "GetResult",
 )
 # Library TypedDicts app classes subclass, by the path they are imported from: the
 # local name is often an alias (``State as _BigtoolState``), so the bare name can't

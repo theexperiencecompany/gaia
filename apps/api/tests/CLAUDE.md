@@ -11,7 +11,7 @@ One doc, read before writing any test. Enforcement lives in the lints and `tests
 | Unit | `tests/unit/` (mirrors `app/`) | nothing — mocked, hermetic, no I/O | new service fn → `unit/services/`; new endpoint → `unit/api/` |
 | Integration | `tests/integration/` | nothing — real production code, mocked infra | wiring between components, full request cycle |
 | Real-infra | `tests/integration/real/` (incl. `real/memory/`) | Docker + `USE_REAL_SERVICES=1` — otherwise the whole tier skips at collection (milliseconds, never a hang) | behavior only provable against real Postgres/Redis/Mongo |
-| Browser stack | `tests/integration/real/browser/` | the real-infra services plus Chrome (`CHROMIUM_BIN` or `google-chrome`) and `OBSCURA_BIN`; a missing binary fails, never skips | a browser promise a user sees end to end: one answer, a stop, a handoff, a secret kept, an engine or worker death |
+| Browser stack | `tests/integration/real/browser/` | the real-infra services plus Chrome (`CHROMIUM_BIN` or `google-chrome`), `OBSCURA_BIN` and the self-host Caddy (`CADDY_BIN` or `caddy`); a missing binary fails, never skips | a browser promise a user sees end to end: one answer, a stop, a handoff, a secret kept, an engine or worker death |
 | Contracts | `tests/contracts/` | real Mongo + Redis | repository contract changes (never mocks) |
 | E2E | `tests/e2e/` | real compiled graphs + fake LLM (`_harness/`), offline | user journey through the compiled graph |
 | Stress | `tests/stress/` | none — in-process fakes, no sleeps | race/retry/idempotency invariants |
@@ -110,9 +110,10 @@ and the browser stack (`tests/integration/real/browser/`, the `browser` CI slice
 `mise test:python:browser`). The stack runs the API and the ARQ browser worker as
 processes, a Chrome and an Obscura host, one fake model server and a two-origin
 fixture site the hosts may reach through `BROWSER_HOST_ALLOW_PRIVATE_ORIGINS`
-(refused in production), and judges each scenario on the Telegram user's
-transcript read off the outbound queue. Its models are scripted, so it proves
-plumbing and promises, never model judgement: that is the browser eval
+(refused in production), puts the self-host Caddyfile in front of the API so a
+user's live view and links work only where a deployed proxy forwards them, and
+judges each scenario on the Telegram user's transcript read off the outbound
+queue. Its models are scripted, so it proves plumbing and promises, never model judgement: that is the browser eval
 (`mise eval:browser`, real models on real sites, not gating).
 
 Unit tests here carry invariants and regressions only: an owner-checked lease, an applied

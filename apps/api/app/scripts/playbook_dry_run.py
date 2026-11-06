@@ -106,7 +106,7 @@ async def _run(args: argparse.Namespace) -> int:
             failed += 1
             print(f"  STOPPED: {result.failure}")
             continue
-        verdict = result.nothing_new or result.suspect or result.narration_failed
+        verdict = result.suspect or result.narration_failed
         print(f"  model calls: {result.llm_calls}; flagged: {verdict or 'no'}")
         print(f"  narration (not delivered):\n{result.text}\n")
     return failed

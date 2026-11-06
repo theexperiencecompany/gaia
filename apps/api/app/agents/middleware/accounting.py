@@ -28,7 +28,6 @@ from langgraph.runtime import Runtime
 
 from app.agents.llm.lane import ModelLane
 from app.config.rate_limits import (
-    PRIMARY_METERED_FEATURE,
     RateLimitPeriod,
     get_daily_cost_budget_usd,
     get_reset_time,
@@ -49,6 +48,7 @@ from app.models.payment_models import PlanType
 from app.services.cost_budget import (
     BUDGET_WRAPUP_NOTICE,
     BudgetCheck,
+    BudgetWall,
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
 )
@@ -141,13 +141,21 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             del stamps[thread_id]
         return value
 
-    def _emit_budget_stop_card(self, stop_reason: str, plan_type: PlanType) -> None:
-        """Stream a rate_limit_data frame so the frontend renders RateLimitCard instead of bare text."""
+    def _emit_budget_stop_card(
+        self, wall: BudgetWall, stop_reason: str, plan_type: PlanType
+    ) -> None:
+        """Stream a rate_limit_data frame naming the wall that bound, so every surface tells the real cause."""
+        # The task-size ceiling is per run: nothing resets, the next request starts fresh.
+        reset_time = (
+            get_reset_time(RateLimitPeriod.DAY).isoformat()
+            if wall == BudgetWall.DAILY_USAGE
+            else None
+        )
         current_stream_writer()(
             build_rate_limit_card(
-                feature=PRIMARY_METERED_FEATURE,
+                feature=wall.value,
                 plan_required="pro" if plan_type == PlanType.FREE else None,
-                reset_time=get_reset_time(RateLimitPeriod.DAY).isoformat(),
+                reset_time=reset_time,
                 current_plan=plan_type.value,
                 message=stop_reason,
             )
@@ -212,7 +220,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             )
             check = BudgetCheck(None, None, None)
 
-        if check.stop_reason is not None:
+        wall = check.wall
+        if wall is not None:
+            stop_reason = wall.stop_text(check.plan_type)
             log.warning(
                 "budget_stop",
                 event_name="budget_stop",
@@ -220,16 +230,17 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 user_id=user_id,
                 plan_type=plan_raw,
                 root_request_id=root_request_id,
+                budget_wall=wall.value,
             )
-            # check.plan_type is always resolved alongside stop_reason (see
-            # get_budget_stop_reason: every return that sets stop_reason also
-            # sets plan_type), so the card always has a real plan to render.
+            # check.plan_type is always resolved alongside the wall (see
+            # get_budget_stop_reason: every return that sets a wall also sets
+            # plan_type), so the card always has a real plan to render.
             if check.plan_type is not None:
-                self._emit_budget_stop_card(check.stop_reason, check.plan_type)
+                self._emit_budget_stop_card(wall, stop_reason, check.plan_type)
             return ModelResponse(
                 result=[
                     AIMessage(
-                        content=check.stop_reason,
+                        content=stop_reason,
                         response_metadata={BUDGET_STOP_METADATA_KEY: True},
                     )
                 ]

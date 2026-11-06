@@ -26,7 +26,6 @@ from app.agents.middleware.runtime_adapter import (
     BigtoolRuntime,
     BigtoolToolRuntime,
     create_model_request,
-    create_tool_call_request,
 )
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
@@ -52,5 +51,4 @@ __all__ = [
     "create_middleware_stack",
     "create_model_request",
     "create_subagent_middleware",
-    "create_tool_call_request",
 ]

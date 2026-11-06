@@ -100,6 +100,26 @@ class SensitiveCategory(str, Enum):
     IRREVERSIBLE = "irreversible"
 
 
+# The model reads this docstring in the action schema. It has no "none": offered one, the
+# agent filed a sign-in wall under it and the user's login was never saved.
+class TakeoverKind(StrEnum):
+    """What kind of step request_human_takeover hands to the user."""
+
+    PAYMENT = "payment"
+    SIGN_IN = "sign_in"
+    IRREVERSIBLE = "irreversible"
+    MISSING_VALUE = "missing_value"
+
+
+#: The sensitive category each takeover kind's handoff carries.
+TAKEOVER_KIND_CATEGORY: dict[TakeoverKind, SensitiveCategory] = {
+    TakeoverKind.PAYMENT: SensitiveCategory.PAYMENT,
+    TakeoverKind.SIGN_IN: SensitiveCategory.CREDENTIALS,
+    TakeoverKind.IRREVERSIBLE: SensitiveCategory.IRREVERSIBLE,
+    TakeoverKind.MISSING_VALUE: SensitiveCategory.NONE,
+}
+
+
 # Shown on a CREDENTIALS handoff where BROWSER_PERSIST_LOGINS keeps logins: the
 # session is saved (Fernet-encrypted per user+site) and reused so the next task
 # skips the login. The Browser settings page can list/remove saved sites.
@@ -168,7 +188,20 @@ BROWSER_SESSION_LEASE_SECONDS = 90.0
 # Three renewals per lease, so one slow or lost renewal never costs a live run its browser.
 BROWSER_SESSION_LEASE_RENEW_SECONDS = BROWSER_SESSION_LEASE_SECONDS / 3
 
-# A short capability code for the bot's live-view link (browser.heygaia.io/{code}):
+#: What the agent reads when it types into one box of a code split one character per box.
+BROWSER_CODE_BOXES_TO_JEV = (
+    "This box holds one character of a code split across {count} boxes, and typing box by "
+    "box loses characters as the page moves the cursor. Nothing was typed: give the whole "
+    "code to `jev` (its goal quoting the code), which types it into the boxes as one field."
+)
+#: How many one-character boxes in one form make one code field (snapshot.js MIN_SEGMENTS).
+BROWSER_CODE_MIN_BOXES = 4
+
+#: Where the browser routers sit under API_V1_PREFIX. The routers spell it as a literal, the
+#: only form tools/evlog_map resolves; links build on this one.
+BROWSER_ROUTE_PREFIX = "/browser"
+
+# A short capability code for the bot's live-view link ({FRONTEND_URL}/live/{code}):
 # the code IS the secret and maps to the session + owner in Redis, so the link
 # carries no 32-char session id and no long ?t= token. One per handoff, revoked on settle.
 BROWSER_LIVE_CODE_KEY_PREFIX = "browser:livecode:"
@@ -177,7 +210,7 @@ BROWSER_LIVE_CODE_HANDOFF_PREFIX = "browser:livecode:handoff:"
 BROWSER_LIVE_CODE_REVOKED_PREFIX = "browser:livecode:revoked:"
 
 # Replay: a short code maps to a finished session's screenshot set, so the recap
-# link (browser.heygaia.io/replays/{code}) plays every step back as a slideshow.
+# link ({HOST}/api/v1/browser/replays/{code}) plays every step back as a slideshow.
 # Longer-lived than the live code — a recap should still open days later.
 BROWSER_REPLAY_CODE_KEY_PREFIX = "browser:replay:"
 BROWSER_REPLAY_CODE_TTL_SECONDS = 7 * 24 * 3600
@@ -291,7 +324,8 @@ BROWSER_HUMAN_CHECKS = (
     "- A payment, a login whose credentials this task does not give as <secret>name</secret> "
     "placeholders, an OTP/2FA code, or an irreversible or legally-binding confirmation the "
     f"task did not ask for: call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` so the user "
-    "does that step in the live browser, then continue toward the goal. A login whose "
+    "does that step in the live browser, then continue toward the goal. Any page that asks "
+    "the user to sign in, log in or enter a code is a login, category sign_in. A login whose "
     "credentials the task gives is done by the run itself, never handed over. Before you hand "
     "off a login, fill every non-secret field yourself (username, email, the account "
     "identifier), so the user is left only the secret step.\n"
@@ -303,14 +337,8 @@ BROWSER_HUMAN_CHECKS = (
     "- A field you cannot leave empty that the task gives no value for: NEVER invent one (no "
     "made-up phone numbers, addresses, dates, amounts, countries or company details, and no "
     f"plausible-looking placeholder). Call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` "
-    "and say which field is missing, unless the task itself says the run is a test or that "
-    "dummy values are fine."
-)
-# Read with the task, not the system message: there the agent reported only "Received!" for a
-# page whose heading is "Form submitted" in about a third of runs.
-BROWSER_TASK_QUOTE_RULE = (
-    "\n\nWhen you report what a page shows, says or displays, quote all of its visible text "
-    "that answers that, the page's heading included: a result page's title and its message."
+    "with category missing_value and say which field is missing, unless the task itself says "
+    "the run is a test or that dummy values are fine."
 )
 #: What the agent reads when a bot check blocks a site the user never named: skip it, no pause.
 BROWSER_CAPTCHA_SKIP_SOURCE = (
@@ -319,10 +347,33 @@ BROWSER_CAPTCHA_SKIP_SOURCE = (
     "could not be opened."
 )
 
-# The agent's role around Jev, appended to Browser-Use's system prompt.
-# "Report only what the current page shows" made an agent back on a re-ordered
-# Hacker News drop its three opened stories as stale and quit (research3, 2026-10-02).
+# Appended to Browser-Use's system prompt; BROWSER_AGENT_JEV_ROLE when BROWSER_JEV registers Jev.
+_BROWSER_AGENT_ANSWER_RULE = (
+    "copy titles, messages, numbers and URLs exactly. Say plainly what was not done or could "
+    "not be found.\n"
+)
+_BROWSER_AGENT_READS = (
+    "to read a linked page, navigate to its exact URL from {link_source}, then extract; never "
+    "guess a URL.\n"
+)
+_BROWSER_AGENT_CLOSING = (
+    "Messages the user sends mid-task arrive as follow-up requests: "
+    "weigh what each says against the task; it changes the task only where it says so."
+)
 BROWSER_AGENT_ROLE = (
+    "You carry out the task in the browser. When the task started on a page, your step 0 "
+    "already opened it. On a blank tab, your first step opens the page to start on. You "
+    "finish the task and write the answer.\n"
+    "Each step, choose one:\n"
+    "1. The task is complete: call `done` with the answer. Report only what pages showed: "
+    "the current page and your reads; "
+    + _BROWSER_AGENT_ANSWER_RULE
+    + "2. Otherwise act on the page yourself: navigate to a URL you already know or go back, "
+    "click, type, choose, switch tabs; "
+    + _BROWSER_AGENT_READS.format(link_source="a `find_elements` href")
+    + _BROWSER_AGENT_CLOSING
+)
+BROWSER_AGENT_JEV_ROLE = (
     "You supervise Jev, the fast page operator exposed as the `jev` action: its description "
     "says what it does and what it leaves to you. When the task started on a page, your step "
     "0 already ran Jev there on the part of the task that page is for; its report is in your "
@@ -330,27 +381,14 @@ BROWSER_AGENT_ROLE = (
     "one who finishes the task and the only one who writes the answer.\n"
     "Each step, choose one:\n"
     "1. The task is complete: call `done` with the answer. Report only what pages showed: "
-    "the current page, your reads and Jev's reports; copy titles, messages, numbers and URLs "
-    "exactly. A list that changes while you work keeps the items you already chose from it. "
-    "Say plainly what was not done or could not be found. success=true means the user's "
-    "request was carried out and the answer it asks for delivered; a gap in supporting detail, "
-    "stated plainly, does not change that (one of three articles shows no text to summarise, a "
-    "page does not name the authors). success=false means the request itself could not be "
-    "done, however honestly you explain why: the button or page it names does not exist (no "
-    '"Buy now" button, so no order number), the site is unreachable (its address does not '
-    "resolve), or the action was refused. This replaces any rule for success above.\n"
-    "2. Interactions remain on the page you are on (filling a form, searching and choosing): "
+    "the current page, your reads and Jev's reports; "
+    + _BROWSER_AGENT_ANSWER_RULE
+    + "2. Interactions remain on the page you are on (filling a form, searching and choosing): "
     "call `jev` with a goal for that page and the done_when that page will show.\n"
     "3. Anything else: do it yourself. Navigate to a URL you already know or go back, click "
-    "once, switch tabs, read or summarise a page with `extract` (to "
-    "read a linked page, navigate to its exact URL from Jev's report or a `find_elements` href, "
-    "then extract; never guess a URL), "
-    "search a long page with `search_page`, count with `find_elements` (a CSS selector "
-    "returns every match), never count by eye.\n"
-    "Work through every part of the task before you finish: a part is reported as not done "
-    "only after you tried it and it could not be done.\n"
-    "Messages the user sends mid-task arrive as follow-up requests: "
-    "weigh what each says against the task; it changes the task only where it says so."
+    "once, switch tabs; "
+    + _BROWSER_AGENT_READS.format(link_source="Jev's report or a `find_elements` href")
+    + _BROWSER_AGENT_CLOSING
 )
 
 #: Step 0's single-page objective, written without a model call: the part of the task its page is for.

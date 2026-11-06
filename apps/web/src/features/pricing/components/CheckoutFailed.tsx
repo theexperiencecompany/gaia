@@ -2,6 +2,8 @@
 
 import { Button } from "@heroui/button";
 
+import { CHECKOUT_DECLINED_COPY } from "../constants";
+
 interface CheckoutFailedProps {
   /** Dodo reported the charge failed (vs. we simply never heard back). */
   declined: boolean;
@@ -15,12 +17,12 @@ export function CheckoutFailed({ declined, onRetry }: CheckoutFailedProps) {
     <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800/50 p-5 text-center">
       <p className="text-sm font-normal">
         {declined
-          ? "That payment didn't go through."
+          ? CHECKOUT_DECLINED_COPY.heading
           : "We couldn't confirm your payment."}
       </p>
       <p className="text-balance text-xs font-light text-zinc-400">
         {declined
-          ? "Nothing was charged. Try another card, or the same one again."
+          ? CHECKOUT_DECLINED_COPY.body
           : "If you were charged, everything unlocks the moment it lands. You can also just try again."}
       </p>
       <Button

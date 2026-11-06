@@ -149,6 +149,7 @@ export type ServerEventName =
   | "todos:updated"
   | "tool:execute_failed"
   | "tool:used"
+  | "trigger:gate_decided"
   | "usage:queried"
   | "user:active"
   | "user:logged_in"
@@ -199,6 +200,7 @@ export type WebEventName =
   | "onboarding:restarted"
   | "onboarding:skipped"
   | "onboarding:started"
+  | "payment:checkout_abandoned"
   | "paywall:modal_viewed"
   | "pin:viewed"
   | "profile:link_copied"
@@ -1164,6 +1166,11 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "summary_length": number;
   };
+  "payment:checkout_abandoned": {
+    "source": "paywall_modal" | "pricing_card" | "payment_retry" | "checkout_resume" | "onboarding";
+    "billing_cycle": "monthly" | "yearly";
+    "furthest_step": "not_loaded" | "opened" | "details_submitted" | "payment_page" | "pay_pressed";
+  };
   "payment:checkout_started": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1563,6 +1570,20 @@ export interface EventProperties {
     "account_count"?: number;
     "account_is_primary"?: boolean;
   };
+  "trigger:gate_decided": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "owner_type": "workflow" | "todo";
+    "trigger_name": string;
+    "gate_kind": "authored" | "system";
+    "author"?: "gaia" | "user";
+    "outcome": "run" | "skip" | "hold" | "bypass";
+    "reason": "jev_run" | "jev_skip" | "jev_urgent" | "jev_can_wait" | "free_run" | "jev_error" | "jev_timeout" | "jev_malformed" | "jev_unconfigured";
+    "urgent_choice"?: "incident" | "service_down" | "meeting";
+    "enforced": boolean;
+    "latency_ms"?: number;
+  };
   "ui:sidebar_collapsed": Record<string, never>;
   "ui:sidebar_expanded": Record<string, never>;
   "usage:queried": {
@@ -1681,7 +1702,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "workflow_id"?: string;
     "trigger_type"?: string;
-    "outcome"?: "ran" | "nothing_new";
   };
   "workflow:published": {
     "actor": "user" | "agent";

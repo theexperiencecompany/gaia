@@ -220,18 +220,32 @@ class ValidationFailure(t.TypedDict):
     data: None
 
 
+def _argument_failure(tool: object, tool_input: object) -> ValidationFailure | None:
+    """Parse a run's arguments before its body; the failure result when they are invalid.
+
+    Only the parse is checked here: a ValidationError the body raises after its
+    provider call propagates as the execution error it is.
+    """
+    if not (isinstance(tool, BaseStructuredTool) and isinstance(tool_input, dict)):
+        return None
+    try:
+        # The parse run performs before the body; langchain exposes no public twin.
+        tool._to_args_and_kwargs(dict(tool_input), None)
+    except pydantic.ValidationError as e:
+        return {"successful": False, "error": parse_pydantic_error(e), "data": None}
+    return None
+
+
 def _validation_failure_as_result(
     run: t.Callable[_P, _R],
 ) -> t.Callable[_P, _R | ValidationFailure]:
     """Wrap a tool's run so invalid arguments come back as a failure result, not a raise."""
 
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R | ValidationFailure:
-        try:
-            # Unmutated: this wraps run at class definition, before mutmut can switch a
-            # mutant in; replaying the edit shows TestInvalidArgumentsReturnAFailure fails.
-            return run(*args, **kwargs)  # pragma: no mutate
-        except pydantic.ValidationError as e:
-            return {"successful": False, "error": parse_pydantic_error(e), "data": None}
+        # Unmutated: this wraps run at class definition, before mutmut can switch a
+        # mutant in; run(self, tool_input, ...) always gets both positionally.
+        failure = _argument_failure(args[0], args[1])  # pragma: no mutate
+        return run(*args, **kwargs) if failure is None else failure  # pragma: no mutate
 
     return wrapper
 
@@ -462,7 +476,6 @@ class LangchainProvider(
                     toolkit=getattr(getattr(tool, "toolkit", None), "slug", None),
                 ),
                 handle_tool_error=True,
-                handle_validation_error=True,
                 metadata=metadata,
             ),
         )

@@ -25,6 +25,7 @@ from app.services.workflow.generation_service import (
     WorkflowPromptRequest,
     WorkflowStepGenerationError,
 )
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import (
     WorkflowActivated,
@@ -1352,6 +1353,15 @@ class TestUpdateWorkflow:
             f"{BASE_URL}/wf_abc123",
             json={"title": ""},
         )
+        assert response.status_code == 422
+
+    async def test_a_refused_update_keeps_its_status(self, client: AsyncClient):
+        refused = AppError(message="Only an integration workflow can have a gate", status_code=422)
+        with patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock, side_effect=refused):
+            response = await client.put(
+                f"{BASE_URL}/wf_abc123", json={"gate": {"condition": "from a customer"}}
+            )
+
         assert response.status_code == 422
 
     async def test_update_workflow_service_error_returns_500(self, client: AsyncClient):

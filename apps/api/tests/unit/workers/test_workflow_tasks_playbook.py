@@ -75,6 +75,7 @@ from app.workers.tasks.workflow_tasks import (
 )
 
 MODULE = "app.workers.tasks.workflow_tasks"
+EXECUTION_SERVICE = "app.services.workflow.execution_service"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
@@ -152,6 +153,7 @@ class _Harness:
         self.execution = MagicMock()
         self.execution.execution_id = "exec_1"
         self.complete_execution = AsyncMock()
+        self.create_execution = AsyncMock(return_value=self.execution)
         self.chat = _agent_run("agent_tool")
         self.playbook_run = AsyncMock()
         self.get_for_workflow = AsyncMock(return_value=None)
@@ -194,8 +196,11 @@ class _Harness:
     def patches(self) -> list:
         return [
             patch(f"{MODULE}.workflow_scheduler", self.scheduler),
-            patch(f"{MODULE}.create_execution", AsyncMock(return_value=self.execution)),
+            patch(f"{MODULE}.create_execution", self.create_execution),
             patch(f"{MODULE}.complete_execution", self.complete_execution),
+            # A fire that never ran is recorded through execution_service's own helper.
+            patch(f"{EXECUTION_SERVICE}.create_execution", self.create_execution),
+            patch(f"{EXECUTION_SERVICE}.complete_execution", self.complete_execution),
             patch(
                 f"{MODULE}.WorkflowService",
                 MagicMock(increment_execution_count=AsyncMock()),
@@ -500,77 +505,6 @@ async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -
     assert kwargs["error_message"] == "mongo away"
     assert [call.tool_name for call in kwargs["trace"]] == ["list_events"]
     harness.chat.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-class TestNothingNew:
-    """A replay whose opening read found nothing new is a skipped run: recorded, never delivered."""
-
-    def _harness(self) -> _Harness:
-        workflow = _workflow()
-        harness = _Harness(workflow)
-        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
-        harness.playbook_run = AsyncMock(
-            return_value=(
-                "conv_1",
-                PlaybookRunResult(
-                    ok=True,
-                    nothing_new="list_events returned nothing",
-                    trace=[RecordedCall(tool_name="list_events", replayed=True)],
-                ),
-            )
-        )
-        return harness
-
-    async def test_the_run_is_recorded_skipped_with_what_it_read(self) -> None:
-        harness = self._harness()
-
-        await _fire(harness)
-
-        recorded = harness.complete_execution.await_args.kwargs
-        assert recorded["status"] == "skipped"
-        assert recorded["summary"] == "Skipped: nothing new since the last run"
-        assert [call.tool_name for call in recorded["trace"]] == ["list_events"]
-
-    async def test_nothing_is_delivered_notified_or_judged(self) -> None:
-        harness = self._harness()
-
-        await _fire(harness)
-
-        harness.add_messages.assert_not_awaited()
-        harness.platform_delivery.assert_not_awaited()
-        harness.completion_notification.assert_not_awaited()
-        harness.chat.assert_not_awaited()
-        harness.record_run_outcome.assert_not_awaited()
-
-    async def test_the_skip_is_counted_and_named_on_the_wide_event(self) -> None:
-        harness = self._harness()
-        before = REGISTRY.get_sample_value("gaia_playbook_nothing_new_total") or 0.0
-
-        await _fire(harness)
-
-        assert (REGISTRY.get_sample_value("gaia_playbook_nothing_new_total") or 0.0) - before == 1
-        assert harness.playbook_event() == {
-            "mode": "skipped",
-            "reason": "nothing_new",
-            "playbook_id": "pb_1",
-            "nothing_new": "list_events returned nothing",
-            "llm_calls": 0,
-        }
-
-    async def test_the_skip_is_captured_as_a_nothing_new_execution(self) -> None:
-        harness = self._harness()
-        capture = MagicMock()
-        harness.extra.append(patch(f"{MODULE}.capture", capture))
-
-        with ExitStack() as stack:
-            for patcher in harness.patches():
-                stack.enter_context(patcher)
-            await execute_workflow_by_id(
-                {}, harness.workflow.id or "", {"trigger_type": "schedule"}
-            )
-
-        assert capture.call_args.args[1].outcome == "nothing_new"
 
 
 def _replays_counted(status: PlaybookRunStatus) -> float:
@@ -2782,7 +2716,7 @@ class TestAnAgentFireOverlapsToo:
         harness = _Harness(workflow)
         harness.acquire = AsyncMock(return_value=False)
         create = AsyncMock(return_value=harness.execution)
-        harness.extra.append(patch(f"{MODULE}.create_execution", create))
+        harness.extra.append(patch(f"{EXECUTION_SERVICE}.create_execution", create))
 
         await _fire(harness)
 
@@ -2884,3 +2818,43 @@ class TestAHealRunReadsTheStoppedReplaysCalls:
             _, later = await execute_workflow_as_chat(_workflow(), AGENT_USER, {}, reservation="r")
 
         assert later == []
+
+
+_MEETING = "someone is waiting on you for a meeting happening soon"
+
+
+@pytest.mark.asyncio
+class TestQuietHoursOnTheRecord:
+    """A fire held for, or let through, the user's quiet hours says so in its history and message."""
+
+    async def test_a_let_through_replay_opens_its_message_with_why_it_interrupts(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(return_value=_finished_replay())
+
+        await _fire_with_context(harness, {"quiet_hours": {"kind": "bypass", "reason": _MEETING}})
+
+        delivered = harness.platform_delivery.await_args.kwargs["notification_text"]
+        assert delivered == (
+            f"I'm interrupting your quiet hours because {_MEETING}.\n\nAgenda sent."
+        )
+        assert harness.add_messages.await_args.kwargs["response"] == delivered
+        assert harness.summary() == f"Ran during quiet hours: {_MEETING}. {REPLAY_SUMMARY}"
+
+    async def test_a_held_agent_run_says_it_waited(self) -> None:
+        harness = _Harness(_workflow())
+
+        await _fire_with_context(harness, {"quiet_hours": {"kind": "hold"}})
+
+        assert harness.summary() == f"Held until your quiet hours ended. {AGENT_RUN_SUMMARY}"
+
+    async def test_a_held_replay_delivers_its_text_unchanged(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(return_value=_finished_replay())
+
+        await _fire_with_context(harness, {"quiet_hours": {"kind": "hold"}})
+
+        assert harness.platform_delivery.await_args.kwargs["notification_text"] == "Agenda sent."
