@@ -41,7 +41,7 @@ KOLKATA = Timezone.parse("Asia/Kolkata")
 AFTERNOON = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 # Unwanted emails run anyway, of 63 holdout and 123 tune; a thread the user wrote in runs unasked.
-RECORDED_WASTED_RUNS = {Split.HOLDOUT: 17, Split.TUNE: 46}
+RECORDED_WASTED_RUNS = {Split.HOLDOUT: 21, Split.TUNE: 39}
 
 
 @dataclass(frozen=True)
