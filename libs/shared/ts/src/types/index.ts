@@ -88,7 +88,7 @@ export type {
   TodoLabel,
   TodoListResponse,
   TodoUpdate,
-  TriggerSubscription,
+  TriggerSubscriptionView,
 } from "./todo";
 export {
   ConditionMatch,

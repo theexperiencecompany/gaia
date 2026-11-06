@@ -7611,6 +7611,41 @@
       }
     },
     {
+      "event": "trigger:gate_edited",
+      "class": "TriggerGateEdited",
+      "owner": "server",
+      "domain": "trigger",
+      "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo.",
+        "properties": {
+          "owner_type": {
+            "enum": ["workflow", "todo"],
+            "title": "Owner Type",
+            "type": "string"
+          },
+          "action": {
+            "enum": ["added", "edited", "disabled", "enabled", "removed"],
+            "title": "Action",
+            "type": "string"
+          },
+          "gate_kind": {
+            "enum": ["authored", "system"],
+            "title": "Gate Kind",
+            "type": "string"
+          }
+        },
+        "required": ["owner_type", "action", "gate_kind"],
+        "title": "TriggerGateEdited",
+        "type": "object"
+      }
+    },
+    {
       "event": "ui:sidebar_collapsed",
       "class": "UiSidebarCollapsed",
       "owner": "web",

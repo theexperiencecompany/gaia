@@ -11,7 +11,7 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import GateAuthor
-from app.models.trigger_gate_models import AuthoredGate, AuthoredGateEdit
+from app.models.trigger_gate_models import AuthoredGate, GateEdit
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.workflow.subagent_output import FinalizedOutput
 from app.utils.workflow_utils import (
@@ -349,9 +349,7 @@ class TestEditKeepsTheGate:
             )
 
         request = mock_update.await_args.args[1]
-        assert request.gate == AuthoredGateEdit(
-            condition="The email is from my boss", enabled=False
-        )
+        assert request.gate == GateEdit(condition="The email is from my boss", enabled=False)
 
     async def test_a_condition_drafted_for_a_trigger_the_editor_must_set_is_not_sent(
         self,
@@ -382,7 +380,7 @@ class TestEditKeepsTheGate:
             )
 
         request = mock_update.await_args.args[1]
-        assert request.gate == AuthoredGateEdit(condition="The email is from my boss", enabled=True)
+        assert request.gate == GateEdit(condition="The email is from my boss", enabled=True)
 
     async def test_a_condition_drafted_for_a_new_integration_trigger_is_not_sent(
         self,

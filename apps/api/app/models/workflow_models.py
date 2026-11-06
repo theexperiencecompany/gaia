@@ -25,7 +25,7 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
 )
 from app.models.trigger_configs import TriggerConfigData
-from app.models.trigger_gate_models import AuthoredGateEdit, GateCondition, TriggerGate
+from app.models.trigger_gate_models import GateCondition, GateEdit, TriggerGate, TriggerGateView
 from app.schemas.common import ResponseModel
 from app.utils.cron_utils import get_next_run_time
 from app.utils.schedule import validate_recurring_schedule
@@ -374,6 +374,10 @@ class WorkflowWithIntegrations(Workflow):
         default=None,
         description="Required integrations the user has not connected yet.",
     )
+    gate: TriggerGateView | None = Field(
+        default=None,
+        description="The check a fired integration event must pass before this workflow runs",
+    )
 
 
 class CreateWorkflowRequest(BaseModel):
@@ -482,7 +486,7 @@ class UpdateWorkflowRequest(BaseModel):
     icon_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     steps: list[WorkflowStep] | None = Field(default=None)
     trigger_config: NewTriggerConfig | None = Field(default=None)
-    gate: AuthoredGateEdit | None = Field(
+    gate: GateEdit | None = Field(
         default=None,
         description="Absent keeps the gate, null removes it, a value replaces it",
     )

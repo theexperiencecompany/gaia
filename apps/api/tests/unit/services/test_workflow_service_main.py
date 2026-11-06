@@ -54,6 +54,8 @@ from app.services.workflow.validators import WorkflowValidator
 from app.utils import auth_utils
 from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.triggers import TriggerGateEdited
 from tests.helpers import UNKNOWN_USER_ID, users_get
 
 # ---------------------------------------------------------------------------
@@ -978,10 +980,40 @@ class TestUpdateWorkflowGate:
         ):
             yield update
 
+    @pytest.fixture(autouse=True)
+    def gate_capture(self):
+        with patch("app.services.triggers.gate_edits.capture") as capture:
+            yield capture
+
     @staticmethod
     def _written(update: AsyncMock) -> dict[str, object]:
         """Return the $set the repository was handed, as it serialises it."""
         return update.await_args.args[2].model_dump(exclude_unset=True)
+
+    async def test_turning_the_gate_off_keeps_its_condition_and_author(
+        self, repo: AsyncMock, gate_capture: MagicMock
+    ) -> None:
+        request = UpdateWorkflowRequest.model_validate({"gate": {"enabled": False}})
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        assert (
+            self._written(repo)["gate"]
+            == _GAIA_GATE.model_copy(update={"enabled": False}).model_dump()
+        )
+        gate_capture.assert_called_once_with(
+            UserId(USER_ID),
+            TriggerGateEdited(owner_type="workflow", action="disabled", gate_kind="authored"),
+        )
+
+    async def test_an_edit_that_leaves_the_gate_alone_reports_nothing(
+        self, repo: AsyncMock, gate_capture: MagicMock
+    ) -> None:
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
+        )
+
+        gate_capture.assert_not_called()
 
     async def test_an_edit_that_names_no_gate_keeps_it(self, repo: AsyncMock) -> None:
         await WorkflowService.update_workflow(

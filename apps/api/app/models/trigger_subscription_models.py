@@ -13,7 +13,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.trigger_gate_models import QuietHoursBypass, TriggerGate
+from app.models.trigger_gate_models import QuietHoursBypass, TriggerGate, TriggerGateView
+from app.schemas.common import ResponseModel
 
 
 class MatchableFieldType(StrEnum):
@@ -232,6 +233,15 @@ class TriggerSubscription(BaseModel):
         if self.gate is not None and self.action is not SubscriptionAction.EXECUTE:
             raise ValueError(f"a gate needs action execute, not {self.action.value}")
         return self
+
+
+class TriggerSubscriptionView(TriggerSubscription, ResponseModel):
+    """A subscription as the API returns it, its gate with what the user reads about it."""
+
+    gate: TriggerGateView | None = Field(
+        default=None,
+        description="The check a fired event must pass before an EXECUTE subscription runs",
+    )
 
 
 class TriggerOrigin(BaseModel):

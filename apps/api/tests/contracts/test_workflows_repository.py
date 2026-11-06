@@ -16,12 +16,14 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.trigger_gates import SystemGatePreset
 from app.db.repositories.workflows import WorkflowsRepository
 from app.models.scheduler_models import (
     DeactivationReason,
     ScheduledTaskStatus,
     TaskRearm,
 )
+from app.models.trigger_gate_models import GateSkipRecord, SystemGate
 from app.models.workflow_models import (
     SystemWorkflowDefinition,
     TriggerConfig,
@@ -76,6 +78,35 @@ class TestWorkflowsCore:
 
     async def test_get_missing_returns_none(self, repo):
         assert await repo.get(_uid("missing")) is None
+
+    async def test_a_skip_is_kept_on_the_gates_recent_five_only(self, repo):
+        integration = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message")
+        gated, ungated = (
+            await repo.create(
+                _workflow(
+                    trigger_config=integration,
+                    gate=SystemGate(preset=SystemGatePreset.INBOX_DESK),
+                )
+            ),
+            await repo.create(_workflow(trigger_config=integration)),
+        )
+        skips = [
+            GateSkipRecord(event=f"mail {n}", at=datetime(2026, 11, 5, n, tzinfo=UTC))
+            for n in range(6)
+        ]
+        warmed = await repo.get(gated.id)
+        assert warmed is not None and warmed.gate is not None
+        assert warmed.gate.recent_skips == []
+
+        for skip in skips:
+            await repo.remember_gate_skip(gated.id, gated.user_id, skip)
+        await repo.remember_gate_skip(gated.id, _uid("intruder"), skips[0])
+        await repo.remember_gate_skip(ungated.id, ungated.user_id, skips[0])
+
+        stored, untouched = await repo.get(gated.id), await repo.get(ungated.id)
+        assert stored is not None and stored.gate is not None
+        assert stored.gate.recent_skips == skips[1:]
+        assert untouched is not None and untouched.gate is None
 
     async def test_reads_legacy_iso_string_datetimes_as_tz_aware(self, repo, raw_collection):
         # A handful of legacy rows persist created_at/scheduled_at as ISO strings.

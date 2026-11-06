@@ -5,7 +5,7 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
 
-__all__ = ["TriggerGateDecided"]
+__all__ = ["TriggerGateDecided", "TriggerGateEdited"]
 
 
 class TriggerGateDecided(ServerEvent):
@@ -40,3 +40,14 @@ class TriggerGateDecided(ServerEvent):
     urgent_choice: Literal["incident", "service_down", "meeting"] | None = None
     enforced: bool
     latency_ms: int | None = None
+
+
+class TriggerGateEdited(ServerEvent):
+    """A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo."""
+
+    event: ClassVar[str] = "trigger:gate_edited"
+    budget_per_user_day: ClassVar[int] = 20
+
+    owner_type: Literal["workflow", "todo"]
+    action: Literal["added", "edited", "disabled", "enabled", "removed"]
+    gate_kind: Literal["authored", "system"]

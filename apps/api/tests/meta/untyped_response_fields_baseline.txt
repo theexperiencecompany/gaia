@@ -34,4 +34,4 @@ SupportRequestResponse.metadata	deferred-until=2026-12-15; free-form bag attache
 ToolContract.input_schema	deferred-until=2026-12-22; a tool's JSON Schema for its arguments, provider-owned and open by design (decided 2026-09-22)
 ToolContract.observed_output_schema	deferred-until=2026-12-22; JSON Schema merged from observed real responses, shape varies per tool (decided 2026-09-22)
 ToolContract.provider_output_schema	deferred-until=2026-12-22; the provider's declared output JSON Schema, provider-owned and open by design (decided 2026-09-22)
-TriggerSubscription.trigger_data	deferred-until=2026-12-15; the provider's own trigger configuration (decided 2026-09-16)
+TriggerSubscriptionView.trigger_data	deferred-until=2026-12-15; the provider's own trigger configuration (decided 2026-09-16)

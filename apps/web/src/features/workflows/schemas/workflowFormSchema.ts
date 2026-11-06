@@ -16,6 +16,7 @@ import type {
   Workflow,
 } from "@/types/features/workflowTypes";
 import { workflowApi } from "../api/workflowApi";
+import { GATE_CONDITION_MAX_CHARS } from "../constants/gates";
 
 // =============================================================================
 // TRIGGER CONFIG SCHEMAS
@@ -90,8 +91,16 @@ export const workflowFormSchema = z.object({
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
   notify_on_completion: z.boolean(),
-  // GAIA's drafted condition; the server stores it as GAIA's gate on create.
-  runs_only_when: z.string().optional(),
+  // "Runs only when": an empty condition is no gate. A system gate's is its preset's wording.
+  gate: z.object({
+    condition: z
+      .string()
+      .max(
+        GATE_CONDITION_MAX_CHARS,
+        `Condition too long (max ${GATE_CONDITION_MAX_CHARS} characters)`,
+      ),
+    enabled: z.boolean(),
+  }),
 });
 
 // Export the inferred type
@@ -100,6 +109,11 @@ export type WorkflowFormData = z.infer<typeof workflowFormSchema>;
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
+
+export const NO_GATE: WorkflowFormData["gate"] = {
+  condition: "",
+  enabled: true,
+};
 
 /**
  * Get default form values for new workflow creation.
@@ -117,6 +131,7 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
     enabled: true,
   },
   notify_on_completion: true,
+  gate: NO_GATE,
 });
 
 /**
@@ -162,5 +177,11 @@ export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
     selectedTrigger,
     trigger_config: workflow.trigger_config,
     notify_on_completion: workflow.notify_on_completion ?? true,
+    gate: workflow.gate
+      ? {
+          condition: workflow.gate.display_condition,
+          enabled: workflow.gate.enabled,
+        }
+      : NO_GATE,
   };
 };

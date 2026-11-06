@@ -32,7 +32,7 @@ from app.constants.trigger_gates import (
     SystemGatePreset,
     UrgentChoice,
 )
-from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
+from app.models.trigger_gate_models import AuthoredGate, GateSkipRecord, SystemGate, TriggerGate
 from app.services.triggers.trigger_gate import (
     GateBypass,
     GatedJob,
@@ -57,6 +57,8 @@ from tests.helpers import captured_wide_event, trigger_gate_seams
 pytestmark = pytest.mark.unit
 
 _MOD = "app.services.triggers.trigger_gate"
+# Where a gate reads whether its kind may skip a run.
+_GATES = "app.models.trigger_gate_models"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 OWNER_ID = "wf_gate_owner01"
 GMAIL = "gmail_new_message"
@@ -251,15 +253,63 @@ class TestTheSkipLine:
         skip = await _skip()
 
         assert skip == GateSkip(
-            event='Acme Billing <billing@acme.com>, "Invoice 4021 is past due"',
+            event="Acme Billing · Invoice 4021 is past due",
             condition=BILLING,
             certainty=0.95,
         )
         assert isinstance(skip, GateSkip)
         assert skip.summary == (
-            'Skipped: Acme Billing <billing@acme.com>, "Invoice 4021 is past due". '
+            "Skipped: Acme Billing · Invoice 4021 is past due. "
             f'Not a match for "{BILLING}" (95% sure).'
         )
+
+    async def test_a_skip_is_kept_on_the_workflows_gate(self, seams: SimpleNamespace) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
+
+        await _skip()
+
+        seams.workflow_skips.assert_awaited_once_with(
+            OWNER_ID,
+            USER_ID,
+            GateSkipRecord(
+                event="Acme Billing · Invoice 4021 is past due", at=AFTERNOON, certainty=0.95
+            ),
+        )
+        seams.watch_skips.assert_not_awaited()
+
+    async def test_a_skip_is_kept_on_the_todo_watchs_gate(self, seams: SimpleNamespace) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
+
+        await _skip(owner=GateOwner.TODO)
+
+        seams.watch_skips.assert_awaited_once_with(
+            user_id=USER_ID,
+            subscription_id=OWNER_ID,
+            skip=GateSkipRecord(
+                event="Acme Billing · Invoice 4021 is past due", at=AFTERNOON, certainty=0.95
+            ),
+        )
+        seams.workflow_skips.assert_not_awaited()
+
+    async def test_a_skip_that_cannot_be_kept_still_skips_and_warns(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95, run_label="needed")))
+        seams.workflow_skips.side_effect = RuntimeError("mongo down " + "x" * 400)
+
+        async with captured_wide_event() as event:
+            assert isinstance(await _skip(), GateSkip)
+
+        warnings = event.get("warnings", [])
+        assert isinstance(warnings, list)
+        (warning,) = [w for w in warnings if w["msg"] == "trigger_gate.skip_unrecorded"]
+        assert warning == {
+            "msg": "trigger_gate.skip_unrecorded",
+            "owner": "workflow",
+            "job_id": OWNER_ID,
+            "error_type": "RuntimeError",
+            "error": ("mongo down " + "x" * 400)[:300],
+        }
 
     async def test_just_under_the_line_runs(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.949, run_label="needed")))
@@ -299,7 +349,7 @@ class TestTheSkipLine:
 
         assert isinstance(skip, GateSkip)
         assert skip.summary == (
-            'Skipped: Acme Billing <billing@acme.com>, "Invoice 4021 is past due". Not a match '
+            "Skipped: Acme Billing · Invoice 4021 is past due. Not a match "
             'for "a real person or a real obligation is waiting on you" (99% sure).'
         )
 
@@ -311,7 +361,17 @@ class TestTheSkipLine:
         skip = await _skip(DESK, payload={"subject": ""})
 
         assert isinstance(skip, GateSkip)
-        assert skip.event == "Acme Billing <billing@acme.com>"
+        assert skip.event == "Acme Billing"
+
+    async def test_a_sender_with_no_name_is_named_by_its_address(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
+
+        skip = await _skip(DESK, payload={"sender": "<billing@acme.com>", "subject": "Hi"})
+
+        assert isinstance(skip, GateSkip)
+        assert skip.event == "billing@acme.com · Hi"
 
     async def test_a_calendar_event_is_named_by_its_title(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
@@ -365,7 +425,7 @@ class TestTheSkipLine:
         skip = await _skip(DESK, payload={"subject": "s" * 200})
 
         assert isinstance(skip, GateSkip)
-        assert skip.event == f'Acme Billing <billing@acme.com>, "{"s" * 120}{ELLIPSIS}"'
+        assert skip.event == f"Acme Billing · {'s' * 120}{ELLIPSIS}"
 
 
 class TestEveryFailureRuns:
@@ -589,7 +649,7 @@ class TestAnAutomatedThreadIsAskedAbout:
         skip = await _skip(DESK, payload=report)
 
         assert isinstance(skip, GateSkip)
-        assert skip.event == 'GitGuardian <security@gitguardian.com>, "Scan report for acme/api"'
+        assert skip.event == "GitGuardian · Scan report for acme/api"
         assert _decided(seams).reason == GateReason.JEV_SKIP
 
     async def test_it_still_runs_when_jev_is_not_sure(self, seams: SimpleNamespace) -> None:
@@ -643,6 +703,7 @@ class TestShadow:
 
         decided = _decided(seams)
         assert (decided.outcome, decided.reason, decided.enforced) == ("run", "jev_skip", False)
+        seams.workflow_skips.assert_not_awaited()
 
     async def test_the_kill_switch_is_read_for_the_jobs_user(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
@@ -656,7 +717,7 @@ class TestShadow:
     ) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
 
-        with patch(f"{_MOD}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
             assert await _skip() == GateRun()
 
         assert _decided(seams).enforced is False
@@ -670,7 +731,7 @@ class TestShadow:
         seams.wrote.return_value = False
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label=run_label)))
 
-        with patch(f"{_MOD}.ENFORCED_GATE_KINDS", ENFORCED_GATE_KINDS):
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", ENFORCED_GATE_KINDS):
             assert isinstance(await _skip(gate, payload={"message_id": "m7"}), GateSkip)
 
         assert _decided(seams).enforced is True
@@ -1272,5 +1333,5 @@ class TestQuietHoursHold:
     async def test_a_kind_outside_the_enforced_set_never_holds(
         self, night: SimpleNamespace
     ) -> None:
-        with patch(f"{_MOD}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
             assert await quiet_hours_hold(AUTHORED, USER_ID) is None

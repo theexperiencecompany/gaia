@@ -4701,6 +4701,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/todos/{todo_id}/subscriptions/{subscription_id}/gate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Subscription Gate Endpoint
+         * @description Rewrite, or turn on or off, the gate on one of a tracked todo's run watches.
+         */
+        patch: operations["todos_edit_subscription_gate_endpoint"];
+        trace?: never;
+    };
     "/api/v1/todos/{todo_id}/subtasks": {
         parameters: {
             query?: never;
@@ -6181,36 +6201,29 @@ export interface components {
             twitter?: string | null;
         };
         /**
-         * AuthoredGate
-         * @description A plain-text condition, shown to the user as "Runs only when: <condition>".
+         * AuthoredGateView
+         * @description An authored gate as the API returns it, with what the user reads about it.
          */
-        AuthoredGate: {
+        AuthoredGateView: {
             author: components["schemas"]["GateAuthor"];
             /** Condition */
             condition: string;
+            /** Display Condition */
+            readonly display_condition: string;
             /**
              * Enabled
              * @default true
              */
-            enabled?: boolean;
+            enabled: boolean;
+            /** Enforced */
+            readonly enforced: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             kind: "authored";
-        };
-        /**
-         * AuthoredGateEdit
-         * @description A condition as a client sends it; the server decides who wrote it.
-         */
-        AuthoredGateEdit: {
-            /** Condition */
-            condition: string;
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled?: boolean;
+            /** Recent Skips */
+            recent_skips: components["schemas"]["GateSkipRecord"][];
         };
         /**
          * BatchApprovalDecisionRequest
@@ -8911,6 +8924,43 @@ export interface components {
          * @enum {string}
          */
         GateAuthor: "gaia" | "user";
+        /**
+         * GateEdit
+         * @description A gate as a client edits it: a new condition, or the current gate turned on or off.
+         *
+         *     The server decides who wrote a condition. No condition keeps the current one,
+         *     a system preset included, so turning a gate off never loses its text.
+         */
+        GateEdit: {
+            /** Condition */
+            condition?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+        };
+        /**
+         * GateSkipRecord
+         * @description One event a gate kept from running its job, as the gate's panel lists it.
+         */
+        GateSkipRecord: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Certainty
+             * @description How sure GAIA was the event did not match; None on skips kept before it was
+             */
+            certainty?: number | null;
+            /**
+             * Event
+             * @description The skipped event as a person reads it: an email's sender and subject
+             */
+            event: string;
+        };
         /**
          * GenerateWorkflowPromptRequest
          * @description Request model for AI-generated workflow instructions.
@@ -14318,28 +14368,34 @@ export interface components {
          */
         SupportRequestType: "support" | "feature";
         /**
-         * SystemGate
-         * @description A preset owned by code; its question and wording are read from the preset table.
+         * SystemGatePreset
+         * @description A gate whose question, criteria and wording live in code, not on the job.
+         * @enum {string}
          */
-        SystemGate: {
+        SystemGatePreset: "inbox_desk";
+        /**
+         * SystemGateView
+         * @description A system gate as the API returns it: its preset's wording, which the user cannot rewrite.
+         */
+        SystemGateView: {
+            /** Display Condition */
+            readonly display_condition: string;
             /**
              * Enabled
              * @default true
              */
-            enabled?: boolean;
+            enabled: boolean;
+            /** Enforced */
+            readonly enforced: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             kind: "system";
             preset: components["schemas"]["SystemGatePreset"];
+            /** Recent Skips */
+            recent_skips: components["schemas"]["GateSkipRecord"][];
         };
-        /**
-         * SystemGatePreset
-         * @description A gate whose question, criteria and wording live in code, not on the job.
-         * @enum {string}
-         */
-        SystemGatePreset: "inbox_desk";
         /**
          * SystemPurpose
          * @description Why a system-generated conversation was created.
@@ -14643,7 +14699,7 @@ export interface components {
              * Trigger Subscriptions
              * @description Read-only; subscriptions are written by trigger registration, not by clients
              */
-            trigger_subscriptions: components["schemas"]["TriggerSubscription"][];
+            trigger_subscriptions: components["schemas"]["TriggerSubscriptionView"][];
             /**
              * Updated At
              * Format: date-time
@@ -15054,64 +15110,64 @@ export interface components {
             options: (components["schemas"]["TriggerOption"] | components["schemas"]["TriggerOptionGroup"])[];
         };
         /**
-         * TriggerSubscription
-         * @description A tracked todo's standing interest in one trigger.
+         * TriggerSubscriptionStatus
+         * @enum {string}
          */
-        TriggerSubscription: {
+        TriggerSubscriptionStatus: "active" | "paused";
+        /**
+         * TriggerSubscriptionView
+         * @description A subscription as the API returns it, its gate with what the user reads about it.
+         */
+        TriggerSubscriptionView: {
             /**
              * Account Id
              * @description GAIA id of the one connected account whose events fire it; None for every account
              */
-            account_id?: string | null;
+            account_id: string | null;
             action: components["schemas"]["SubscriptionAction"];
             /**
              * Composio Trigger Ids
              * @description Empty for account-level triggers, which register no instance
              */
-            composio_trigger_ids?: string[];
+            composio_trigger_ids: string[];
             /** Conditions */
-            conditions?: components["schemas"]["SubscriptionCondition"][];
+            conditions: components["schemas"]["SubscriptionCondition"][];
             /**
              * Cooldown Seconds
              * @description Minimum gap between two fires of this subscription
              * @default 900
              */
-            cooldown_seconds?: number;
+            cooldown_seconds: number;
             /**
              * Created At
              * Format: date-time
              */
-            created_at?: string;
+            created_at: string;
             /**
              * Gate
              * @description The check a fired event must pass before an EXECUTE subscription runs
              */
-            gate?: (components["schemas"]["AuthoredGate"] | components["schemas"]["SystemGate"]) | null;
+            gate: (components["schemas"]["AuthoredGateView"] | components["schemas"]["SystemGateView"]) | null;
             /** Id */
-            id?: string;
+            id: string;
             /**
              * @description Whether all conditions must hold (AND) or any one (OR)
              * @default all
              */
-            match?: components["schemas"]["ConditionMatch"];
+            match: components["schemas"]["ConditionMatch"];
             resolution: components["schemas"]["SubscriptionResolution"];
             /** @default active */
-            status?: components["schemas"]["TriggerSubscriptionStatus"];
+            status: components["schemas"]["TriggerSubscriptionStatus"];
             /**
              * Trigger Data
              * @description Registration-time knobs the payload cannot express (a calendar's minutes_before_start). Persisted so a resync rebuilds the trigger with the user's original config instead of resetting to defaults.
              */
-            trigger_data?: {
+            trigger_data: {
                 [key: string]: unknown;
             };
             /** Trigger Name */
             trigger_name: string;
         };
-        /**
-         * TriggerSubscriptionStatus
-         * @enum {string}
-         */
-        TriggerSubscriptionStatus: "active" | "paused";
         /**
          * TriggerType
          * @description What caused a run.
@@ -15409,7 +15465,7 @@ export interface components {
             /** Description */
             description?: string | null;
             /** @description Absent keeps the gate, null removes it, a value replaces it */
-            gate?: components["schemas"]["AuthoredGateEdit"] | null;
+            gate?: components["schemas"]["GateEdit"] | null;
             /** Icon */
             icon?: string | null;
             /** Icon Color */
@@ -16116,7 +16172,7 @@ export interface components {
              * Gate
              * @description The check a fired integration event must pass before this workflow runs
              */
-            gate: (components["schemas"]["AuthoredGate"] | components["schemas"]["SystemGate"]) | null;
+            gate: (components["schemas"]["AuthoredGateView"] | components["schemas"]["SystemGateView"]) | null;
             /**
              * Icon
              * @description User-chosen icon slug (gaia-icons component name) shown when the workflow has no integration icons.
@@ -16340,8 +16396,7 @@ export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
-export type AuthoredGate = components['schemas']['AuthoredGate'];
-export type AuthoredGateEdit = components['schemas']['AuthoredGateEdit'];
+export type AuthoredGateView = components['schemas']['AuthoredGateView'];
 export type BatchApprovalDecisionRequest = components['schemas']['BatchApprovalDecisionRequest'];
 export type BatchApprovalDecisionResponse = components['schemas']['BatchApprovalDecisionResponse'];
 export type BatchDecisionItem = components['schemas']['BatchDecisionItem'];
@@ -16504,6 +16559,8 @@ export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
 export type FoldedCards = components['schemas']['FoldedCards'];
 export type GateAuthor = components['schemas']['GateAuthor'];
+export type GateEdit = components['schemas']['GateEdit'];
+export type GateSkipRecord = components['schemas']['GateSkipRecord'];
 export type GenerateWorkflowPromptRequest = components['schemas']['GenerateWorkflowPromptRequest'];
 export type GenerateWorkflowPromptResponse = components['schemas']['GenerateWorkflowPromptResponse'];
 export type GetPlatformLinksResponse = components['schemas']['GetPlatformLinksResponse'];
@@ -16791,8 +16848,8 @@ export type SupportRequestResponse = components['schemas']['SupportRequestRespon
 export type SupportRequestStatus = components['schemas']['SupportRequestStatus'];
 export type SupportRequestSubmissionResponse = components['schemas']['SupportRequestSubmissionResponse'];
 export type SupportRequestType = components['schemas']['SupportRequestType'];
-export type SystemGate = components['schemas']['SystemGate'];
 export type SystemGatePreset = components['schemas']['SystemGatePreset'];
+export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
@@ -16822,8 +16879,8 @@ export type TriggerConfigFieldSchema = components['schemas']['TriggerConfigField
 export type TriggerOption = components['schemas']['TriggerOption'];
 export type TriggerOptionGroup = components['schemas']['TriggerOptionGroup'];
 export type TriggerOptionsResponse = components['schemas']['TriggerOptionsResponse'];
-export type TriggerSubscription = components['schemas']['TriggerSubscription'];
 export type TriggerSubscriptionStatus = components['schemas']['TriggerSubscriptionStatus'];
+export type TriggerSubscriptionView = components['schemas']['TriggerSubscriptionView'];
 export type TriggerType = components['schemas']['TriggerType'];
 export type UnlinkAccountResponse = components['schemas']['UnlinkAccountResponse'];
 export type UnpublishIntegrationResponse = components['schemas']['UnpublishIntegrationResponse'];
@@ -29580,6 +29637,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TodoConversationResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    todos_edit_subscription_gate_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GateEdit"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoResponse"];
                 };
             };
             /** @description Unprocessable Entity */
