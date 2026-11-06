@@ -53,6 +53,7 @@ from app.constants.todos import (
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
+from app.models.agent_models import SpawnJob
 from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -196,6 +197,13 @@ async def _defer_drain(todo_id: str, trigger_window: int) -> str | None:
         await reschedule_todo_trigger_drain(todo_id)
         return f"deferred:{todo_id} (trigger window open until {later_window})"
     return None
+
+
+def _spawn_job(doc: TodoDocument) -> SpawnJob:
+    """Name what the run's spawns do: an Inbox desk spawns only its per-account mail passes."""
+    if doc.external_ref is not None and doc.external_ref.source is ExternalRefSource.INBOX_DESK:
+        return SpawnJob.INBOX_MAIL
+    return SpawnJob.FOCUSED
 
 
 def _answers_held_events(doc: TodoDocument) -> bool:
@@ -719,6 +727,7 @@ async def _execute_on_executor(
                 conversation_id=conversation_id,
                 fresh_thread=True,
                 wake=_wake(origin, coalesced),
+                spawn_job=_spawn_job(doc),
                 on_started=partial(
                     record_activity,
                     todo_id,
@@ -860,6 +869,7 @@ async def _resume_holding_lock(
                     trigger_names=[],
                     approval_summary=receipt,
                 ),
+                spawn_job=_spawn_job(doc),
             )
         )
         return f"resumed:{todo_id}"

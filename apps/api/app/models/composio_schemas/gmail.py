@@ -505,3 +505,11 @@ class GmailFetchThreadResult(TypedDict):
     total_messages: int
     truncated: bool
     threads: list[GmailThreadResult]
+    #: Asked-for threads Gmail answered 404 for (deleted, or moved since they were listed).
+    missing_thread_ids: list[str]
+
+
+class GmailFetchThreadInlineResult(GmailFetchInlineResult):
+    """GMAIL_FETCH_THREAD past the offload size: every message flat, and the threads Gmail no longer has."""
+
+    missing_thread_ids: list[str]

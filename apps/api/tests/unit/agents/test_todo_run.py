@@ -25,6 +25,7 @@ from app.agents.llm.lane import AgentRole
 from app.constants.log_tags import LogTag
 from app.constants.streaming import DetachedStreamKind
 from app.constants.todos import TodoWakeKind
+from app.models.agent_models import SpawnJob
 from app.models.message_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.models.workflow_models import TriggerType
@@ -61,13 +62,15 @@ class _Seams:
         self.order = order
         self.announce = AsyncMock(side_effect=lambda *a, **k: order.append("announce"))
         self.end = AsyncMock(side_effect=lambda *a, **k: order.append("end"))
-        self.reset = AsyncMock(
-            side_effect=lambda *a, **k: order.append("reset") or ThreadReset(2, 0)
-        )
+        self.reset = AsyncMock(side_effect=self._reset)
         self.release = AsyncMock()
         self.wake = AsyncMock(side_effect=lambda *a, **k: order.append("wake"))
         self.stream_manager = MagicMock()
         self.stream_manager.is_cancelled = AsyncMock(return_value=False)
+
+    def _reset(self, *_args: object, **_kwargs: object) -> ThreadReset:
+        self.order.append("reset")
+        return ThreadReset(2, 0)
 
 
 @pytest.fixture
@@ -325,7 +328,11 @@ async def test_the_executor_config_is_a_background_run_bound_to_the_todo() -> No
     with patch.object(todo_run, "build_agent_config", built):
         configurable = await _todo_run_configurable(request, "stream-1")
 
-    assert configurable == {"thread_id": "run-conv", "stream_id": "stream-1"}
+    assert configurable == {
+        "thread_id": "run-conv",
+        "stream_id": "stream-1",
+        "spawn_job": SpawnJob.FOCUSED,
+    }
     kwargs = built.await_args.kwargs
     assert kwargs["identity"].conversation_id == "run-conv"
     assert kwargs["identity"].agent_name == "executor_agent"
