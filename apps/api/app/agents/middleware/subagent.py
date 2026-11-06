@@ -43,12 +43,13 @@ from app.agents.prompts.spawn_subagent_prompts import (
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import SPAWN_AGENT_NAME, SPAWN_THREAD_PREFIX
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
-from app.constants.llm import SUBAGENT_RECURSION_LIMIT
+from app.constants.llm import INBOX_MAIL_SUBAGENT_RECURSION_LIMIT, SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import AgentIdentity, AgentThread, build_agent_config
 from app.models.agent_models import (
     AgentConfigurable,
     AnyAgentMiddleware,
+    SpawnJob,
     SubagentKind,
     agent_configurable,
 )
@@ -286,7 +287,11 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 thread_id=thread_id,
                 base_configurable=configurable,
                 subagent_id=SPAWN_AGENT_NAME,
-                recursion_limit=self._max_turns,
+                recursion_limit=(
+                    INBOX_MAIL_SUBAGENT_RECURSION_LIMIT
+                    if configurable.get("spawn_job") == SpawnJob.INBOX_MAIL
+                    else self._max_turns
+                ),
             ),
         )
         new_configurable = agent_configurable(spawn_config)

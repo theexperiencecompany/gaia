@@ -80,6 +80,7 @@ from app.constants.todos import (
 from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
+from app.models.agent_models import SpawnJob
 from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
@@ -3238,6 +3239,26 @@ class TestExecuteOnExecutor:
         assert "Details: verify staging" in request.task
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
         assert "Recent activity (activity.md):\n- earlier run" in request.task
+
+    @pytest.mark.regression
+    async def test_an_inbox_desk_run_hands_its_spawns_the_mail_pass_budget(self) -> None:
+        """Regression: the desk's mail passes ran on the focused budget and ran out mid-inbox."""
+        desk = _doc(external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"))
+        # The desk's observations.md lives in Mongo; this run reads none.
+        with patch(f"{MODULE}.with_desk_notes", AsyncMock(return_value=desk)):
+            await self._execute(desk)
+
+        assert self._request().spawn_job is SpawnJob.INBOX_MAIL
+
+    @pytest.mark.parametrize(
+        "ref",
+        [None, ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")],
+        ids=["plain", "gmail_thread"],
+    )
+    async def test_any_other_run_spawns_focused_subagents(self, ref: ExternalRef | None) -> None:
+        await self._execute(_doc(external_ref=ref))
+
+        assert self._request().spawn_job is SpawnJob.FOCUSED
 
     async def test_the_runs_inherited_context_is_gathered_for_this_todo(self) -> None:
         doc = _doc(references=["todo-0", "todo-00"])

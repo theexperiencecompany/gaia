@@ -171,6 +171,9 @@ AGENT_RECURSION_LIMIT = 40  # Comms + workers (routing / focused work)
 # the accounting middleware's denominator read this, so they stay in sync.
 EXECUTOR_RECURSION_LIMIT = 100
 SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
+# The Inbox desk's mail pass: six turns whatever the thread count (batched reads, parallel drafts);
+# it measures 18 supersteps with the wrap-up window, and 30 leaves room for window splits and retries.
+INBOX_MAIL_SUBAGENT_RECURSION_LIMIT = 30
 # The workflow authoring subagent only discovers integrations/triggers then emits
 # JSON, never executes, so a handful of discovery calls is plenty. On hitting the
 # limit the runner forces a final answer instead of crashing ("stop wandering").
