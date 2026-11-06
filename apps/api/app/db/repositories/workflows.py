@@ -471,7 +471,8 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                 }
             },
             scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
+            # No entity cache here (cache_policy is None), so the read-back nobody uses is inert.
+            return_document=False,  # pragma: no mutate
         )
 
     async def set_error_message(
