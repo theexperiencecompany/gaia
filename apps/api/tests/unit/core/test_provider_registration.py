@@ -16,13 +16,14 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import ExitStack
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.core import provider_registration
 from app.core.provider_registration import unified_startup
+from app.services.todos.desk_mail_gate import desk_gated_views
 from app.utils.concurrency import reset_captured_loop
 
 _MOD = "app.core.provider_registration"
@@ -68,6 +69,16 @@ def auto_init_spy() -> Iterator[AsyncMock]:
             patch.object(provider_registration.providers, "initialize_auto_providers", spy)
         )
         yield spy
+
+
+@pytest.mark.parametrize("context", ["main_app", "arq_worker"])
+async def test_startup_installs_the_desk_gate_for_a_todo_runs_own_fetch(
+    auto_init_spy: AsyncMock, context: Literal["main_app", "arq_worker"]
+) -> None:
+    with patch(f"{_MOD}.install_fetched_mail_gate") as install:
+        await unified_startup(context)
+
+    install.assert_called_once_with(desk_gated_views)
 
 
 class TestBlockingStartupHonorsStrategy:

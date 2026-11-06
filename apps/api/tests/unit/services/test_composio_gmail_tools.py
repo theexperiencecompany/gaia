@@ -988,7 +988,9 @@ class TestATodoRunsFetchPassesItsGate:
             )
 
         assert len(result["messages"]) == 1
-        log.error.assert_called_once()
+        log.error.assert_called_once_with(
+            "[TOOL] GMAIL_FETCH_MESSAGES: no mail gate installed", todo_id="desk-1"
+        )
 
     def test_a_fetch_outside_any_todo_run_is_never_gated(self, mock_proxy: MagicMock) -> None:
         gate = AsyncMock(return_value=[])

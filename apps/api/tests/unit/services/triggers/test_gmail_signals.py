@@ -252,11 +252,15 @@ class TestAFetchedMessage:
         return build_message_view(RelayedGmailMessage.model_validate(self.RAW), "normalize")
 
     def test_its_gate_view_carries_the_headers_and_the_body(self) -> None:
-        view = gmail_gate_view(fetched_message_payload(self._view()))
+        attachment = {"filename": "a.pdf", "mimeType": None, "size": 1, "attachmentId": "x"}
+        fetched = self._view().model_copy(update={"attachments": [attachment]})
+        view = gmail_gate_view(fetched_message_payload(fetched))
 
         assert view is not None
         event = view.as_event()
         assert event["from"] == "Infisical <team@infisical.com>"
+        assert event["to"] == "aryan@heygaia.io"
+        assert event["attachments"] == 1
         assert event["cc"] == "ops@heygaia.io"
         assert event["subject"] == "Successful login from new device"
         assert event["snippet"] == "We noticed a new login."

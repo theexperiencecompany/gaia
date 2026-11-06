@@ -64,6 +64,7 @@ def _todo(
         "id": DESK_ID,
         "user_id": USER_ID,
         "title": "Inbox desk",
+        "description": "Triage the inbox",
         "external_ref": ExternalRef(source=source, id="gmail"),
         "trigger_subscriptions": [_watch()],
     }
@@ -92,7 +93,17 @@ async def test_the_desk_keeps_only_what_its_gate_lets_through(seams: SimpleNames
     gate, job, payloads = seams.decide.await_args.args
     assert gate == DESK_GATE
     assert (job.owner, job.id, job.user_id) == (GateOwner.TODO, watch.id, USER_ID)
+    assert job.automation == "Inbox desk: Triage the inbox"
     assert [p["subject"] for p in payloads] == ["Subject 0", "Subject 1", "Subject 2"]
+
+
+async def test_a_verdict_count_that_does_not_match_the_mail_fails_loud(
+    seams: SimpleNamespace,
+) -> None:
+    seams.decide.return_value = [GateRun()]
+
+    with pytest.raises(ValueError, match="zip"):
+        await desk_gated_views(USER_ID, DESK_ID, [_view(0), _view(1)])
 
 
 async def test_a_todo_that_is_not_the_desk_keeps_every_email_unasked(
