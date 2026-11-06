@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
+from prometheus_client import REGISTRY
 from pydantic import BaseModel, ValidationError
 import pytest
 import yaml
@@ -427,6 +428,7 @@ class TestDeclinePlaybook:
         ):
             result = await decline_playbook.ainvoke(
                 {
+                    "messages": [],
                     "kind": "order_branches",
                     "branch_on": "create_todo",
                     "reason": "the call order depends on the inbox",
@@ -456,7 +458,12 @@ class TestDeclinePlaybook:
     ) -> None:
         """Regression: the third decline retired a workflow for good, and a later decline was refused as not_asked."""
         workflows = _FakeWorkflowStore()
-        decline = {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"}
+        decline = {
+            "kind": "order_branches",
+            "branch_on": "create_todo",
+            "reason": "order varies",
+            "messages": [],
+        }
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
@@ -483,7 +490,12 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke(
-                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                {
+                    "messages": [],
+                    "kind": "order_branches",
+                    "branch_on": "create_todo",
+                    "reason": "order varies",
+                },
                 config=_config(),
             )
 
@@ -505,7 +517,12 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
         ):
             result = await decline_playbook.ainvoke(
-                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                {
+                    "messages": [],
+                    "kind": "order_branches",
+                    "branch_on": "create_todo",
+                    "reason": "order varies",
+                },
                 config=_config(),
             )
 
@@ -549,7 +566,12 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
         ):
             result = await decline_playbook.ainvoke(
-                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                {
+                    "messages": [],
+                    "kind": "order_branches",
+                    "branch_on": "create_todo",
+                    "reason": "order varies",
+                },
                 config=_config_for(OTHER_USER),
             )
 
@@ -631,7 +653,7 @@ class TestWorkflowIdFromConfig:
         [
             (write_playbook, NEW_ARGS),
             (read_playbook, {}),
-            (decline_playbook, {"kind": "unstable_discovery", "reason": "r"}),
+            (decline_playbook, {"kind": "unstable_discovery", "reason": "r", "messages": []}),
             (disable_playbook, {"reason": "r"}),
         ],
         ids=["write", "read", "decline", "disable"],
@@ -759,7 +781,12 @@ class TestPlaybookToolContract:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke(
-                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                {
+                    "messages": [],
+                    "kind": "order_branches",
+                    "branch_on": "create_todo",
+                    "reason": "order varies",
+                },
                 config=_config(),
             )
 
@@ -862,6 +889,7 @@ class TestPlaybookStorageDetails:
         log.warning.assert_called_once_with(
             f"{LogTag.TOOL} write_playbook: rejected — " + "; ".join(SIX_ISSUES[:5]),
             issues=6,
+            refusal="not_in_record",
             workflow_id=WORKFLOW_ID,
         )
         assert result["message"] == (
@@ -1465,7 +1493,11 @@ class TestReadRunRecord:
         ):
             await write_playbook.ainvoke(NEW_ARGS | {"steps": steps}, config=_config())
 
-        assert log.warning.call_args.kwargs == {"issues": 1, "workflow_id": WORKFLOW_ID}
+        assert log.warning.call_args.kwargs == {
+            "issues": 1,
+            "refusal": "step_reference",
+            "workflow_id": WORKFLOW_ID,
+        }
 
 
 PAUSE_TARGET = "app.services.workflow.integration_pause.pause_workflow_for_missing_integrations"
@@ -1494,6 +1526,7 @@ class TestBlockedDeclines:
         ):
             result = await decline_playbook.ainvoke(
                 {
+                    "messages": [],
                     "kind": "blocked_missing_integration",
                     "integrations": ["github"],
                     "reason": "GitHub is not connected, so no PRs were fetched",
@@ -1527,6 +1560,7 @@ class TestBlockedDeclines:
         ):
             result = await decline_playbook.ainvoke(
                 {
+                    "messages": [],
                     "kind": "blocked_missing_integration",
                     "integrations": ["github", "gmail"],
                     "reason": "neither is connected",
@@ -1576,7 +1610,7 @@ class TestBlockedDeclines:
                     "kind": "blocked_missing_integration",
                     "integrations": ["slack", "notion"],
                     "reason": "neither is connected",
-                    "state": {"messages": [activated, answered]},
+                    "messages": [activated, answered],
                 },
                 config=_config(),
             )
@@ -1604,6 +1638,7 @@ class TestBlockedDeclines:
         ):
             result = await decline_playbook.ainvoke(
                 {
+                    "messages": [],
                     "kind": "blocked_missing_integration",
                     "integrations": ["slack"],
                     "reason": "Slack is not connected",
@@ -1624,6 +1659,7 @@ class TestBlockedDeclines:
         ):
             result = await decline_playbook.ainvoke(
                 {
+                    "messages": [],
                     "kind": "blocked_missing_integration",
                     "integrations": ["github"],
                     "reason": "GitHub looked disconnected",
@@ -1653,6 +1689,7 @@ class TestBlockedDeclines:
         ):
             await decline_playbook.ainvoke(
                 {
+                    "messages": [],
                     "kind": "blocked_missing_integration",
                     "integrations": ["gmail"],
                     "reason": "Gmail is not connected",
@@ -1671,7 +1708,11 @@ class TestBlockedDeclines:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke(
-                {"kind": "blocked_no_budget", "reason": "daily allowance was spent"},
+                {
+                    "messages": [],
+                    "kind": "blocked_no_budget",
+                    "reason": "daily allowance was spent",
+                },
                 config=_config(),
             )
 
@@ -1697,7 +1738,11 @@ class TestDeclineKindArguments:
             patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
         ):
             result = await decline_playbook.ainvoke(
-                {"kind": "blocked_missing_integration", "reason": "nothing was connected"},
+                {
+                    "messages": [],
+                    "kind": "blocked_missing_integration",
+                    "reason": "nothing was connected",
+                },
                 config=_config(),
             )
 
@@ -1718,7 +1763,11 @@ class TestDeclineKindArguments:
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
         ):
             result = await decline_playbook.ainvoke(
-                {"kind": "order_branches", "reason": "the attendees differ every run"},
+                {
+                    "messages": [],
+                    "kind": "order_branches",
+                    "reason": "the attendees differ every run",
+                },
                 config=_config(),
             )
 
@@ -1754,7 +1803,12 @@ class TestOneDecisionPerRun:
         ):
             written = await write_playbook.ainvoke(NEW_ARGS, config=_config())
             declined = await decline_playbook.ainvoke(
-                {"kind": "order_branches", "branch_on": "list_events", "reason": "r"},
+                {
+                    "messages": [],
+                    "kind": "order_branches",
+                    "branch_on": "list_events",
+                    "reason": "r",
+                },
                 config=_config(),
             )
 
@@ -1791,7 +1845,7 @@ class TestOneDecisionPerRun:
                 {
                     "kind": "no_work_today",
                     "reason": "nothing to do",
-                    "state": {"messages": [did_work, *answered]},
+                    "messages": [did_work, *answered],
                 },
                 config=_config(),
             )
@@ -1825,7 +1879,7 @@ class TestOneDecisionPerRun:
                 {
                     "kind": "no_work_today",
                     "reason": "nothing to do",
-                    "state": {"messages": [in_flight]},
+                    "messages": [in_flight],
                 },
                 config=_config(),
             )
@@ -1865,7 +1919,7 @@ class TestOneDecisionPerRun:
                 {
                     "kind": "no_work_today",
                     "reason": "only newsletters arrived",
-                    "state": {"messages": [bookkeeping]},
+                    "messages": [bookkeeping],
                 },
                 config=_config(),
             )
@@ -1901,7 +1955,7 @@ class TestOneDecisionPerRun:
                 {
                     "kind": "no_work_today",
                     "reason": "nothing to do",
-                    "state": {"messages": [drafted]},
+                    "messages": [drafted],
                 },
                 config=_config(),
             )
@@ -1920,7 +1974,8 @@ class TestOneDecisionPerRun:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke(
-                {"kind": "no_work_today", "reason": "no overdue todos"}, config=_config()
+                {"messages": [], "kind": "no_work_today", "reason": "no overdue todos"},
+                config=_config(),
             )
 
         assert result == {
@@ -1931,3 +1986,128 @@ class TestOneDecisionPerRun:
         }
         assert call("playbook", quiet_day=True) in log.set_ns.call_args_list
         assert workflows.workflow.activated is True
+
+
+def _decisions(tool_label: str, outcome: str, reason: str) -> float:
+    value = REGISTRY.get_sample_value(
+        "gaia_playbook_decision_total", {"tool": tool_label, "outcome": outcome, "reason": reason}
+    )
+    return value or 0.0
+
+
+@pytest.mark.unit
+class TestDecisionCounter:
+    """Each decision is counted once, a refusal by its kind: the series the refusal alert reads."""
+
+    async def test_a_written_playbook_is_counted_as_accepted(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        before = _decisions("write", "accepted", "none")
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        assert _decisions("write", "accepted", "none") - before == 1
+
+    async def test_a_refused_write_is_counted_by_its_first_problems_kind(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        before = _decisions("write", "refused", "not_in_record")
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            await write_playbook.ainvoke(NEW_ARGS | {"steps": SIX_INVALID_STEPS}, config=_config())
+
+        assert _decisions("write", "refused", "not_in_record") - before == 1
+
+    async def test_a_write_whose_arguments_miss_the_schema_is_counted_as_malformed(self) -> None:
+        before = _decisions("write", "refused", "malformed")
+
+        await write_playbook.ainvoke({"description": "d", "result_brief": "r"}, config=_config())
+
+        assert _decisions("write", "refused", "malformed") - before == 1
+
+    async def test_a_refused_decline_is_counted_as_refused_by_its_kind(self) -> None:
+        before = _decisions("decline", "refused", "order_branches")
+
+        await decline_playbook.ainvoke(
+            {"kind": "order_branches", "reason": "r", "messages": []}, config=_config()
+        )
+
+        assert _decisions("decline", "refused", "order_branches") - before == 1
+
+    async def test_a_quiet_day_claim_on_a_run_that_did_work_is_counted_refused(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        did_work = AIMessage(
+            content="",
+            tool_calls=[{"id": "c1", "name": "create_todo", "args": {}, "type": "tool_call"}],
+        )
+        before = _decisions("decline", "refused", "no_work_today")
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+        ):
+            await decline_playbook.ainvoke(
+                {"kind": "no_work_today", "reason": "r", "messages": [did_work]},
+                config=_config(),
+            )
+
+        assert _decisions("decline", "refused", "no_work_today") - before == 1
+
+    async def test_a_quiet_day_that_was_quiet_is_counted_accepted(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        before = _decisions("decline", "accepted", "no_work_today")
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+        ):
+            await decline_playbook.ainvoke(
+                {"kind": "no_work_today", "reason": "r", "messages": []}, config=_config()
+            )
+
+        assert _decisions("decline", "accepted", "no_work_today") - before == 1
+
+    async def test_a_blocked_claim_on_an_integration_the_run_never_used_is_counted_refused(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        before = _decisions("decline", "refused", "blocked_missing_integration")
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+            patch(
+                PAUSE_TARGET,
+                AsyncMock(return_value=PauseOutcome(paused=[], unrelated=["slack"])),
+            ),
+        ):
+            await decline_playbook.ainvoke(
+                {
+                    "kind": "blocked_missing_integration",
+                    "integrations": ["slack"],
+                    "reason": "r",
+                    "messages": [],
+                },
+                config=_config(),
+            )
+
+        assert _decisions("decline", "refused", "blocked_missing_integration") - before == 1
+
+    async def test_a_disable_is_counted_accepted_and_disabling_nothing_refused(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        _existing(store)
+        accepted, refused = (
+            _decisions("disable", "accepted", "none"),
+            _decisions("disable", "refused", "none"),
+        )
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            await disable_playbook.ainvoke({"reason": "r"}, config=_config())
+            await disable_playbook.ainvoke({"reason": "r"}, config=_config())
+
+        assert _decisions("disable", "accepted", "none") - accepted == 1
+        assert _decisions("disable", "refused", "none") - refused == 1

@@ -30,6 +30,7 @@ from app.models.playbook_models import (
     AskSlot,
     ForEachStep,
     PlaybookBody,
+    PlaybookRefusal,
     PlaybookStep,
     TimeSlot,
     ToolStep,
@@ -49,6 +50,7 @@ from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, place
 from app.services.workflow.playbook.time_layouts import (
     detect_layout,
     renders_inside,
+    slot_layout,
     time_slot_layout,
 )
 from app.services.workflow.playbook.tool_space import ToolSpace, tool_space_denial
@@ -90,6 +92,7 @@ class RecordedResult:
 class PlaybookIssue(BaseModel):
     """One reason a parsed playbook cannot run, addressed to its author."""
 
+    kind: PlaybookRefusal = Field(description="Which kind of problem this is")
     where: str = Field(description="Path to the offending node, e.g. steps[1].args.to")
     problem: str = Field(description="What is wrong and what would be valid instead")
 
@@ -174,6 +177,7 @@ def _check_steps(
             if step.id in walk.declared_steps:
                 walk.issues.append(
                     PlaybookIssue(
+                        kind=PlaybookRefusal.DUPLICATE_ID,
                         where=here,
                         problem=f"step id {step.id!r} is already used by an earlier step; "
                         "ids must be unique so $steps references and the run's record "
@@ -190,7 +194,9 @@ def _check_tool_step(
     recorded = _check_source(step, tool_name, path, walk) if walk.sources is not None else None
     denial = tool_space_denial(tool_name, space)
     if denial is not None:
-        walk.issues.append(PlaybookIssue(where=path, problem=denial))
+        walk.issues.append(
+            PlaybookIssue(kind=PlaybookRefusal.TOOL_SPACE, where=path, problem=denial)
+        )
         return
 
     sample = _check_for_each_source(step, path, walk) if isinstance(step, ForEachStep) else NO_ITEM
@@ -202,6 +208,7 @@ def _check_tool_step(
         if arg_schema is None:
             walk.issues.append(
                 PlaybookIssue(
+                    kind=PlaybookRefusal.ARG_SCHEMA,
                     where=where,
                     problem=f"{step.tool} takes no arg {key!r}; it takes: "
                     f"{', '.join(sorted(schema)) or 'nothing'}",
@@ -227,6 +234,7 @@ def _check_tool_step(
             # share a key and receive one text between them.
             walk.issues.append(
                 PlaybookIssue(
+                    kind=PlaybookRefusal.ASK_SLOT,
                     where=where,
                     problem=f"a step carrying an $ask slot needs an id; give this "
                     f"{step.tool} step one so the slot has an address of its own",
@@ -260,13 +268,13 @@ def _check_source(
     call = _take_source(walk, path)
     if step.id:
         walk.step_results[step.id] = StepResult(value=call.result)
-    refusal = _result_refusal(tool_name, call)
+    refusal = _result_refusal(tool_name, call, path)
     if refusal is not None:
-        walk.issues.append(PlaybookIssue(where=path, problem=refusal))
+        walk.issues.append(refusal)
     return call
 
 
-def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
+def _result_refusal(tool_name: str, call: RecordedResult, where: str) -> PlaybookIssue | None:
     """Why the call this step froze is not worth freezing, or None.
 
     The error envelope is tested first: a tool that reports its own failure
@@ -274,17 +282,23 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
     name the symptom while the message says the cause.
     """
     if is_error_envelope(call.result):
-        return (
-            f"{tool_name} failed in this run ({_envelope_error(call.result)}); a playbook "
-            "freezes calls that succeeded — fix the call and run it again, or drop the step"
+        return PlaybookIssue(
+            kind=PlaybookRefusal.FAILED_CALL,
+            where=where,
+            problem=f"{tool_name} failed in this run ({_envelope_error(call.result)}); a "
+            "playbook freezes calls that succeeded — fix the call and run it again, or drop "
+            "the step",
         )
     # Not a list length: a write tool answers with the record it just made, and
     # that record's own empty attributes are not the call returning nothing.
     # See carries_no_data.
     if carries_no_data(call.result):
-        return (
-            f"{tool_name} returned no items in this run (args: {_rendered_args(call.args)}); "
-            "freeze a call that produced data — widen the args or decline the playbook"
+        return PlaybookIssue(
+            kind=PlaybookRefusal.EMPTY_RESULT,
+            where=where,
+            problem=f"{tool_name} returned no items in this run (args: "
+            f"{_rendered_args(call.args)}); freeze a call that produced data — widen the args "
+            "or decline the playbook",
         )
     return None
 
@@ -347,7 +361,11 @@ def _check_step_reference(token: str, path: str, where: str, walk: _Walk) -> obj
         return resolve_step(token, path, walk.step_results)
     except PlaceholderError as error:
         walk.issues.append(
-            PlaybookIssue(where=where, problem=error.message + _shape_hint(result.value))
+            PlaybookIssue(
+                kind=PlaybookRefusal.STEP_REFERENCE,
+                where=where,
+                problem=error.message + _shape_hint(result.value),
+            )
         )
         return _UNRESOLVED
 
@@ -375,6 +393,7 @@ def _check_required_args(
     for name in sorted(_required_args(tool) - set(step.args)):
         walk.issues.append(
             PlaybookIssue(
+                kind=PlaybookRefusal.ARG_SCHEMA,
                 where=f"{path}.args",
                 problem=f"{tool_name} requires {name!r} and this step does not set it; "
                 f"it takes: {', '.join(sorted(tool.args))}",
@@ -412,6 +431,7 @@ def _check_ask_slot(slot: Mapping[str, object], where: str, walk: _Walk) -> None
     except ValidationError:
         walk.issues.append(
             PlaybookIssue(
+                kind=PlaybookRefusal.ASK_SLOT,
                 where=where,
                 problem="an $ask slot takes only '$ask' (what to write) and an optional "
                 f"max_tokens 1..8192; got {sorted(slot)}",
@@ -442,6 +462,7 @@ def _check_item_placeholder(
     if not in_for_each:
         walk.issues.append(
             PlaybookIssue(
+                kind=PlaybookRefusal.STEP_REFERENCE,
                 where=where,
                 problem=f"{token} addresses the element of a for_each, and this step is not one",
             )
@@ -452,6 +473,7 @@ def _check_item_placeholder(
         if path:
             walk.issues.append(
                 PlaybookIssue(
+                    kind=PlaybookRefusal.STEP_REFERENCE,
                     where=where,
                     problem=(
                         f"{token} reads a field of an $ask pick, but each pick is one text "
@@ -470,7 +492,11 @@ def _check_item_placeholder(
             except PlaceholderError as error:
                 at = f" (element {index})" if index else ""
                 walk.issues.append(
-                    PlaybookIssue(where=where, problem=error.message + at + _shape_hint(element))
+                    PlaybookIssue(
+                        kind=PlaybookRefusal.STEP_REFERENCE,
+                        where=where,
+                        problem=error.message + at + _shape_hint(element),
+                    )
                 )
                 return
 
@@ -491,6 +517,7 @@ def _check_step_placeholder(match: re.Match[str], where: str, walk: _Walk) -> ob
     if name not in walk.declared_steps:
         walk.issues.append(
             PlaybookIssue(
+                kind=PlaybookRefusal.STEP_REFERENCE,
                 where=where,
                 problem=f"{token} points at a step that no earlier node declares",
             )
@@ -519,6 +546,7 @@ def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> object:
     if match.group("root") == "item":
         walk.issues.append(
             PlaybookIssue(
+                kind=PlaybookRefusal.FOR_EACH_SOURCE,
                 where=where,
                 problem=(
                     f"{source} addresses the element of a for_each, and the list itself "
@@ -535,6 +563,7 @@ def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> object:
     result = walk.step_results[match.group("path").removeprefix(".").partition(".")[0]]
     walk.issues.append(
         PlaybookIssue(
+            kind=PlaybookRefusal.FOR_EACH_SOURCE,
             where=where,
             problem=(
                 f"{source} resolved to {type(resolved).__name__}, and for_each needs a list "
@@ -559,15 +588,23 @@ def _check_time_slot(
     try:
         slot = TimeSlot.model_validate(value)
     except ValidationError as error:
-        walk.issues.append(PlaybookIssue(where=where, problem=_first_validation_message(error)))
-        return
-    layout = detect_layout(recorded.args.get(key)) if recorded is not None else None
-    if layout is not None and layout != slot.format:
         walk.issues.append(
             PlaybookIssue(
+                kind=PlaybookRefusal.TIME_EXPRESSION,
+                where=where,
+                problem=_first_validation_message(error),
+            )
+        )
+        return
+    example = recorded.args.get(key) if recorded is not None else None
+    layout = detect_layout(example)
+    if layout is not None and slot_layout(example, slot.format) != slot.format:
+        walk.issues.append(
+            PlaybookIssue(
+                kind=PlaybookRefusal.TIME_LAYOUT,
                 where=where,
                 problem=(
-                    f"{key!r} was {recorded.args.get(key)!r} in this run, whose layout is "
+                    f"{key!r} was {example!r} in this run, whose layout is "
                     f"{layout!r}, not {slot.format!r}; write "
                     f"{_time_slot_hint(slot.placeholder, layout)}"
                 ),
@@ -615,7 +652,9 @@ def _check_time_layout(
             f"ISO 8601 inside that text, which is not this layout. Write the whole value as "
             f"{_time_slot_hint(placeholder, layout)}, with the clock inside the placeholder"
         )
-    walk.issues.append(PlaybookIssue(where=where, problem=problem))
+    walk.issues.append(
+        PlaybookIssue(kind=PlaybookRefusal.TIME_LAYOUT, where=where, problem=problem)
+    )
 
 
 class _ErrorDetail(BaseModel):
@@ -644,6 +683,7 @@ def _check_value_type(
         return
     issues.append(
         PlaybookIssue(
+            kind=PlaybookRefusal.ARG_SCHEMA,
             where=where,
             problem=f"expected {_describe(node)}, got {type(value).__name__}",
         )
@@ -655,10 +695,17 @@ def _variants(node: JsonSchemaNode) -> list[JsonSchemaNode]:
 
 
 def _accepted_types(node: JsonSchemaNode) -> tuple[type, ...]:
+    """Return the Python types a node accepts; () when it cannot tell.
+
+    A variant that declares no type at all (a $ref to an enum, a bare {}) could
+    be anything, so the union is unknown; a declared type with no mapping is skipped.
+    """
     if isinstance(node.type, str):
         return _JSON_TYPE_TO_PYTHON.get(node.type, ())
     accepted: list[type] = []
     for variant in _variants(node):
+        if variant.type is None and not _variants(variant):
+            return ()
         accepted.extend(_accepted_types(variant))
     return tuple(accepted)
 

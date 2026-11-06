@@ -268,13 +268,6 @@ async def test_the_execute_proxy_records_the_real_tool_and_not_itself(fake_redis
     assert (call.proxied, call.account) == (True, None)
 
 
-async def test_a_directly_bound_call_is_not_recorded_as_proxied(fake_redis: Any) -> None:
-    await DynamicToolNode({"probe": probe})._afunc(_one_call("probe"), _run_config(), Runtime())
-
-    (call,) = await read_run_record(STREAM_ID)
-    assert (call.proxied, call.account) == (False, None)
-
-
 @pytest.mark.parametrize(
     ("account_arg", "account_id", "expected"),
     [("work", "ca_work", "ca_work"), (None, None, None)],
@@ -309,6 +302,13 @@ async def test_the_execute_proxy_records_the_chosen_account_id(
 
     (call,) = await read_run_record(STREAM_ID)
     assert call.account == expected
+
+
+async def test_a_directly_bound_call_is_not_recorded_as_proxied(fake_redis: Any) -> None:
+    await DynamicToolNode({"probe": probe})._afunc(_one_call("probe"), _run_config(), Runtime())
+
+    (call,) = await read_run_record(STREAM_ID)
+    assert (call.proxied, call.account) == (False, None)
 
 
 @pytest.mark.parametrize("subagent_id", [None, "playbook-agent"], ids=["executor", "subagent"])

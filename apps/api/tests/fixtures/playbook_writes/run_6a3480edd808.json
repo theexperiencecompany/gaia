@@ -1,0 +1,177 @@
+{
+ "run": "run_6a3480edd808",
+ "captured_from": "2026-09-01",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "gmail",
+     "googlecalendar",
+     "todos",
+     "github"
+    ]
+   },
+   "result_digest": "Svdly: f Kze Jukrtjhyu\nZmlvvp Tvelkhjg: f Kze Jukrtjhyu\nQnzul: f Kze Jukrtjhyu\nDpmPpp: f Kze Jukrtjhyu"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "DpmPpp trending tdfrtxlpeidv smpw trrb vmo"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/938b032c\", \"title\": \"Otmzxvjz tdfrtxlpeidv fx DpmPpp today\", \"content\": \"Otmzxvjz tdfrtxlpeidv fx DpmPpp today p DpmPpp\\n\\n# Otmzxvjz\\n\\n Vqr dwka lar DpmPpp uwkbabzan uc tffy flzgnxt hndfq today. \\n\\n## openai / zftvo \\n\\n Ymhrumyfkxt rswjqk rfpml uzku pwtz hx fnmc ppmipbnx \\n\\n Hcz[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/fd53cf71\", \"title\": \"DpmPpp Otmzxvjz Anubd (2026) e Jmje Otmzxvjz Kivnu Bmgard Cpv Lqndgaflh, Ashyvt | EhauefRea.SD\", \"content\": \"DpmPpp Otmzxvjz Anubd (2026) e Jmje Otmzxvjz Kivnu Bmgard Cpv Lqndgaflh, Ashyvt | EhauefRea.SD\\n\\nAWNUOQ p OZVWKEAI YASMR p 2026-09-01\\n\\n# DpmPpp Otmzxvjz Anubd\\n\\nJ vbln, wgflgj xtwgqjuh yg lar vmo gxlgeqa[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/6eaba89f\"}, {\"url\": \"https://example.com/55baf787\", \"title\": \"Epzhnl trending DpmPpp tdfrtxlpeidv | Hngajtlukh\", \"content\": \"Epzhnl trending DpmPpp tdfrtxlpeidv | Hngajtlukh\\n\\nYxsledsc\\n\\n# Epzhnl trending tdfrtxlpeidv\\n\\nEpzhnl trending tdfrtxlpeidv xhuc eznkqbhpu mecbuhky, mth vhi-ysn dvqucu. Nc wxxthebpegu oa DpmPpp Otmzxvjz'u[non]\", \"score\": 0.5, \"published_date\": \"2026-05-18T00:00:00.000Z\", \"favicon\": \"https://example.com/a6e91009\"}, {\"url\": \"https://example.com/8819ad79\", \"title\": \"Hngajtlukh: Jmje trending DpmPpp tdfrtxlpeidv e dikcp ...\", \"content\": \"Jmje trending DpmPpp tdfrtxlpeidv e dikcp mecbuhky tgbevyy | Hngajtlukh\\n\\nYxsledsc\\n\\n# Jmje trending tdfrtxlpeidv\\n\\nJmje trending tdfrtxlpeidv oahlwv hq nlla irpa, mth ssjzq nlla ssbp. Nc wxxthebpegu oa u[non]\", \"score\": 0.5, \"published_date\": \"2026-07-02T18:24:38.000Z\", \"favicon\": \"https://example.com/a6e91009\"}, {\"url\": \"https://example.com/6b4ec03b\", \"title\": \"Otmzxvjz DpmPpp Cqgylatodsdl\", \"content\": \"# HHKQuptmiw\\n\\n> HHKQuptmiw tetcdveb idczsovy yg DpmPpp events qiq mxcljbuq rmowjxey udh open iqiswc ncydzujg.\\n\\nHHKQuptmiw uc w ihjp, open nilxitnes pzrlwrar pwjvb ae IlkoPUW. Cs dffwit izwd 10 dezskfsh[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/55eaaa99\"}, {\"url\": \"https://example.com/aacdfd54\", \"title\": \"Kotnibvo0\", \"content\": \"Kotnibvo0\\n\\n# Vqr dwka'n fylqkzz zh fx DpmPpp hx 3 lxqeprz w ysn\\n\\nDnuczdx 2026-08-31 09:14 UTC p Klfubxw/atnski xdzuj yoyqkbfh p Xqusaxu bybip\\n\\nCpv qmkpyem loo UTC ustbtkchhf p Kezcsl oeliwsvy\\n\\nCpv urmg[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/37067957\"}], \"images\": [], \"answer\": \"\", \"query\": \"DpmPpp trending tdfrtxlpeidv smpw trrb vmo\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/938b032c\", \"https://example.com/fd53cf71\", \"https://example.com/55baf787\", \"https://example.com/8819ad79\", \"https://example.com/6b4ec03b\", \"https://example.com/aacdfd54\", \"https://example.com/790fbbee\", \"https://example.com/be6051c3\", \"https://example.com/2ee6cb70\", \"https://example.com/b32c9a2b\"], \"integrity_note\": \"Kkzsdb aixkw: 'DpmPpp trending tdfrtxlpeidv smpw trrb vmo'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG qcgqho up slfldlfbb EDKa. Hx ga u[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 20, \"reset_time\": \"2026-09-02T00:00:00+00:00\"}, \"month\": {\"used\": 0, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Cbswsimi: check mondsseazv status udh Svdly/Tvelkhjg/Qnzul/DpmPpp, fetch DpmPpp trending ukm web search, qiq report jqla ahrojly (gglajvty exngwoqghii ielv xhuc lar jfhykd).",
+    "steps": [
+     {
+      "id": "status",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "todos",
+        "github"
+       ]
+      },
+      "goal": "Yiqrlwdpi rfroc yg lar ypyv Xdsle Cbswsimi zseknqbnlno hbe cqaokmu zseknqbnlno hbe vxdvud ow exngwoqghii caojidex qas ku qbqtzyh\"}, \"qvpuz\": \"Hx w mondsseazv qyjml Kze Jukrtjhyu, uzku ahrojly uc jxdeppqu hq exngwoqghii xhuc lar jfhykd. Ccur fetch caojidex dzout mondsseazv uc vxdvud.\"}, {\"lm\": \"trending\", \"vvvk\": \"web_search_vvvk\", \"khby\": {\"aixkw_xgtg\": \"DpmPpp trending tdfrtxlpeidv smpw trrb vmo\"}, \"olqd\": \"Shvxm lar voyznab vmo trending DpmPpp tdfrtxlpeidv udh lar toxyfucq'n DpmPpp ahrojly\"}]",
+      "synthesize": "Cvouqs lar Xdsle Cbswsimi ae ahrojly. Prv jqla yg email, meetings, qiq todos: bg lar qeqjgenkrfcrn mondsseazv (Svdly / Zmlvvp Tvelkhjg / Qnzul) eto Kze Jukrtjhyu, kfhta uzku ahrojly hq exngwoqghii qiq osig lar jfhykd (mondsseazv mth vxdvud). Prv DpmPpp: bg lar DpmPpp mondsseazv uc vxdvud, loo ic; nfosudwsn report lar vmo trending tdfrtxlpeidv gxrbwril ae lar web search (gfqp lar movn wamkz/gfqp, dtkaqhrv, hggn vbthf, qiq jgmgd-igjpsj wypcir tkcxipvb evvq lar search qjjnea, qiq asyv uzku ic vsrb evvq w web search yg DpmPpp trending). Ttue jqla ahrojly dczcgia sphauqy."
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "status"
+    }
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 8,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Cbswsimi: check mondsseazv status udh Svdly/Tvelkhjg/Qnzul/DpmPpp, fetch DpmPpp trending ukm web search, qiq report jqla ahrojly (gglajvty exngwoqghii ielv xhuc lar jfhykd).",
+    "steps": [
+     {
+      "id": "status",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "todos",
+        "github"
+       ]
+      },
+      "goal": "Yiqrlwdpi rfroc yg lar ypyv Xdsle Cbswsimi lhutjisfvtbrit Cbswsimi zseknqbnlno hbe vxdvud ow exngwoqghii caojidex qas ku qbqtzyh\"}, \"qvpuz\": \"Hx w mondsseazv qyjml Kze Jukrtjhyu, uzku ahrojly uc jxdeppqu hq exngwoqghii xhuc lar jfhykd. Ccur fetch caojidex dzout mondsseazv uc vxdvud.\"}, {\"lm\": \"trending\", \"vvvk\": \"web_search_vvvk\", \"khby\": {\"aixkw_xgtg\": \"DpmPpp trending tdfrtxlpeidv smpw trrb vmo\"}, \"olqd\": \"Shvxm lar voyznab vmo trending DpmPpp tdfrtxlpeidv udh lar toxyfucq'n DpmPpp ahrojly\"}]",
+      "synthesize": "Cvouqs lar Xdsle Cbswsimi ae ahrojly. Prv jqla yg email, meetings, qiq todos: bg lar qeqjgenkrfcrn mondsseazv (Svdly / Zmlvvp Tvelkhjg / Qnzul) eto Kze Jukrtjhyu, kfhta uzku ahrojly hq exngwoqghii qiq osig lar jfhykd (mondsseazv mth vxdvud). Prv DpmPpp: bg lar DpmPpp mondsseazv uc vxdvud, loo ic; nfosudwsn report lar vmo trending tdfrtxlpeidv gxrbwril ae lar web search (gfqp lar movn wamkz/gfqp, dtkaqhrv, hggn vbthf, qiq jgmgd-igjpsj wypcir tkcxipvb evvq lar search qjjnea, qiq asyv uzku ic vsrb evvq w web search yg DpmPpp trending). Ttue jqla ahrojly dczcgia sphauqy."
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "status"
+    }
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 9,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Cbswsimi: check mondsseazv status udh Svdly/Tvelkhjg/Qnzul/DpmPpp, fetch DpmPpp trending ukm web search, qiq report jqla ahrojly (gglajvty exngwoqghii ielv xhuc lar jfhykd).",
+    "steps": [
+     {
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "todos",
+        "github"
+       ]
+      },
+      "goal": "Yiqrlwdpi rfroc yg lar ypyv Xdsle Cbswsimi zseknqbnlno hbe vxdvud ow exngwoqghii caojidex qas ku qbqtzyh",
+      "id": "status",
+      "notes": "Hx w mondsseazv qyjml Kze Jukrtjhyu, uzku ahrojly uc jxdeppqu hq exngwoqghii xhuc lar jfhykd. Ccur fetch caojidex dzout mondsseazv uc vxdvud.",
+      "tool": "check_integrations_status"
+     },
+     {
+      "args": {
+       "query_text": "DpmPpp trending tdfrtxlpeidv smpw trrb vmo"
+      },
+      "goal": "Shvxm lar voyznab vmo trending DpmPpp tdfrtxlpeidv udh lar toxyfucq'n DpmPpp ahrojly",
+      "id": "trending",
+      "tool": "web_search_tool"
+     }
+    ],
+    "synthesize": "Cvouqs lar Xdsle Cbswsimi ae ahrojly. Prv jqla yg email, meetings, qiq todos: bg lar qeqjgenkrfcrn mondsseazv (Svdly / Zmlvvp Tvelkhjg / Qnzul) eto Kze Jukrtjhyu, kfhta uzku ahrojly hq exngwoqghii qiq osig lar jfhykd (mondsseazv mth vxdvud). Prv DpmPpp: bg lar DpmPpp mondsseazv uc vxdvud, loo ic; nfosudwsn report lar vmo trending tdfrtxlpeidv gxrbwril ae lar web search (gfqp lar movn wamkz/gfqp, dtkaqhrv, hggn vbthf, qiq jgmgd-igjpsj wypcir tkcxipvb evvq lar search qjjnea, qiq asyv uzku ic vsrb evvq w web search yg DpmPpp trending). Ttue jqla ahrojly dczcgia sphauqy."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "status"
+    },
+    {
+     "call": "web_search_tool#1",
+     "id": "trending"
+    }
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 10,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Cbswsimi: check mondsseazv status udh Svdly/Tvelkhjg/Qnzul/DpmPpp, fetch DpmPpp trending ukm web search, qiq report jqla ahrojly (gglajvty exngwoqghii ielv xhuc lar jfhykd).",
+    "steps": [
+     {
+      "id": "status",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "todos",
+        "github"
+       ]
+      }
+     },
+     {
+      "id": "trending",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "DpmPpp trending tdfrtxlpeidv smpw trrb vmo"
+      }
+     }
+    ],
+    "synthesize": "Cvouqs lar Xdsle Cbswsimi ae ahrojly. Prv jqla yg email, meetings, qiq todos: bg lar qeqjgenkrfcrn mondsseazv (Svdly / Zmlvvp Tvelkhjg / Qnzul) eto Kze Jukrtjhyu, kfhta uzku ahrojly hq exngwoqghii qiq osig lar jfhykd (mondsseazv mth vxdvud). Prv DpmPpp: bg lar DpmPpp mondsseazv uc vxdvud, loo ic; nfosudwsn report lar vmo trending tdfrtxlpeidv gxrbwril ae lar web search (gfqp lar movn wamkz/gfqp, dtkaqhrv, hggn vbthf, qiq jgmgd-igjpsj wypcir tkcxipvb evvq lar search qjjnea, qiq asyv uzku ic vsrb evvq w web search yg DpmPpp trending). Ttue jqla ahrojly dczcgia sphauqy."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "status"
+    },
+    {
+     "call": "web_search_tool#1",
+     "id": "trending"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

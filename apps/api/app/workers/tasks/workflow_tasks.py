@@ -116,6 +116,7 @@ from app.services.workflow.playbook.lifecycle import (
     discard_reason,
     needs_heal,
 )
+from app.services.workflow.playbook.metrics import record_replay
 from app.services.workflow.playbook.runner import (
     PlaybookRunResult,
     completed_block,
@@ -1000,6 +1001,7 @@ async def _finish_after_replay(
     else:
         status = PlaybookRunStatus.SUCCESS
         reason = None
+    record_replay(status)
     updated = await playbook_repository.record_run_outcome(
         workflow_id,
         workflow.user_id,

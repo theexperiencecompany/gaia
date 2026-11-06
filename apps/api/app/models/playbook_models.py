@@ -106,6 +106,34 @@ class DeclineKind(str, Enum):
     NO_WORK_TODAY = "no_work_today"
 
 
+class PlaybookRefusal(str, Enum):
+    """Why a write_playbook call was refused: the closed set its refusals are counted by."""
+
+    #: The arguments missed the tool's own schema before any pick was read.
+    MALFORMED = "malformed"
+    NOT_IN_RECORD = "not_in_record"
+    PICKED_TWICE = "picked_twice"
+    DUPLICATE_ID = "duplicate_id"
+    NO_STEPS = "no_steps"
+    #: A rewrite leaves out an action the stored playbook takes for the user.
+    DROPS_ACTION = "drops_action"
+    FAILED_CALL = "failed_call"
+    #: The picked call returned nothing: a quiet day, which declines no_work_today.
+    EMPTY_RESULT = "empty_result"
+    NO_SUCH_ARG = "no_such_arg"
+    NO_PLACEHOLDER = "no_placeholder"
+    #: A time the placeholder vocabulary cannot say ($trigger.start + 1d).
+    TIME_EXPRESSION = "time_expression"
+    TIME_LAYOUT = "time_layout"
+    FOR_EACH_UNMARKED = "for_each_unmarked"
+    FOR_EACH_SOURCE = "for_each_source"
+    #: A $steps or $item reference to a step or field that does not exist.
+    STEP_REFERENCE = "step_reference"
+    ASK_SLOT = "ask_slot"
+    TOOL_SPACE = "tool_space"
+    ARG_SCHEMA = "arg_schema"
+
+
 #: Kinds saying the run never reached the work, so there was no sequence to judge.
 BLOCKED_DECLINE_KINDS = frozenset(
     {

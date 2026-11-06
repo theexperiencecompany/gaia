@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import UUID
 
 from langchain_core.runnables import RunnableConfig
+from prometheus_client import REGISTRY
 import pytest
 
 from app.agents.prompts.playbook_prompts import (
@@ -52,6 +53,7 @@ from app.models.workflow_models import (
 )
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
+from app.services.workflow.playbook.metrics import REPLAY_STATUSES
 from app.services.workflow.playbook.runner import FALLBACK_LINE_MAX_CHARS, PlaybookRunResult
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.utils.timezone import Timezone
@@ -503,6 +505,39 @@ async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -
     assert kwargs["error_message"] == "mongo away"
     assert [call.tool_name for call in kwargs["trace"]] == ["list_events"]
     harness.chat.assert_not_awaited()
+
+
+def _replays_counted(status: PlaybookRunStatus) -> float:
+    return REGISTRY.get_sample_value("gaia_playbook_replay_total", {"status": status.value}) or 0.0
+
+
+@pytest.mark.parametrize(
+    ("result", "status"),
+    [
+        (PlaybookRunResult(ok=True, text="done", llm_calls=1), PlaybookRunStatus.SUCCESS),
+        (
+            PlaybookRunResult(ok=True, text="t", suspect="empty", trace=[], llm_calls=1),
+            PlaybookRunStatus.SUSPECT,
+        ),
+        (PlaybookRunResult(ok=False, failure="stopped", llm_calls=0), PlaybookRunStatus.FAILED),
+    ],
+    ids=["success", "suspect", "failed"],
+)
+async def test_each_replay_is_counted_once_by_its_outcome(
+    result: PlaybookRunResult, status: PlaybookRunStatus
+) -> None:
+    workflow = _workflow()
+    harness = _Harness(workflow)
+    harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+    harness.playbook_run = AsyncMock(return_value=("conv_1", result))
+    before = {each: _replays_counted(each) for each in REPLAY_STATUSES}
+
+    await _fire(harness)
+
+    after = {each: _replays_counted(each) for each in before}
+    assert {each: after[each] - before[each] for each in before} == {
+        each: 1.0 if each is status else 0.0 for each in before
+    }
 
 
 def _suspect_replay(

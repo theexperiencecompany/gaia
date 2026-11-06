@@ -14,6 +14,7 @@ from app.services.workflow.playbook.time_layouts import (
     detect_layout,
     render_iso,
     renders_inside,
+    slot_layout,
     time_slot_layout,
 )
 
@@ -145,3 +146,22 @@ class TestTimeSlotLayout:
         match = PLACEHOLDER_TOKEN.fullmatch(placeholder)
         assert match is not None
         assert time_slot_layout(match, example) == layout
+
+
+@pytest.mark.parametrize(
+    ("value", "named", "layout"),
+    [
+        ("2026-10-08T14:50:20Z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ"),
+        ("2026-09-10T14:50:00-04:00", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S%:z"),
+        ("03/11/2026", "%m/%d/%Y", "%m/%d/%Y"),
+        ("10/09/2026 14:50 -04:00", "%d/%m/%Y %H:%M %:z", "%d/%m/%Y %H:%M %:z"),
+        ("2026-11-20", None, "%Y-%m-%d"),
+        ("Plan for September 5, 2026", "Plan for %B %d, %Y", "Plan for %B %d, %Y"),
+        ("soon", "%Y", None),
+        ("soon", None, None),
+    ],
+)
+def test_a_slot_renders_in_the_named_layout_only_when_it_writes_the_value_back(
+    value: str, named: str | None, layout: str | None
+) -> None:
+    assert slot_layout(value, named) == layout

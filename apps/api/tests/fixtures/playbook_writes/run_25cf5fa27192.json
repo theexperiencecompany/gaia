@@ -1,0 +1,89 @@
+{
+ "run": "run_25cf5fa27192",
+ "captured_from": "2026-10-08",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "SLACK_SEND_MESSAGE"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle rxrpqy emrwk summary: fetch Fjuuow'n unread Svdly evvq lar pmff 55c, znkiciio rxrpqy emrwk, qiq send lar summary oa xrn Searn IK.",
+    "steps": [
+     {
+      "id": "inbox",
+      "tool": "execute",
+      "args": {
+       "data": {
+        "body_processing": "tqoqqbhdv",
+        "fields": [
+         "evvq",
+         "hpsorlw",
+         "zbta",
+         "ohzt",
+         "lm",
+         "qjwzyvOb"
+        ],
+        "query": "uc:unread wfjho_wqbg:8v"
+       },
+       "task_description": "Ngakdvlg unread emails evvq lar pmff 24 caasu",
+       "tool_name": "GMAIL_FETCH_MESSAGES"
+      }
+     },
+     {
+      "id": "notify",
+      "tool": "execute",
+      "args": {
+       "data": {
+        "channel": "O69EITL51GK",
+        "markdown_text": {
+         "$ask": "Pypvv lar *Xdsle Slkguh Wkpxa Yijkicd* Searn lswycqi udh Fjuuow evvq lar unread emails aqtgnru hx $steps.inbox: w ixdaqkma list, vhi svnuuf vls wmda rxrpqy item (zhxqqr, hpsorlw, snovdnmu khicceebb rxrpqy, mxiqhhbd tcnn jwiqvilsn, QWVWZE udh sja mxiqhhbd vvuyky lar next 55c). Gpbopjc tmymkccmonb, mrppkqdwp mvkokuuisgfie, calendar PYOWx/jjagghr, WRPB mvkokuuisgfie, qiq edhihwgks ofliee nm sjfxpayb khicceebb rxrpqy uc tkuppza. Hx ga unread email zqmtoyhy nm rxrpqy item, write vhi iwsxbtw lswycqi spcvxpe ymgdt hbe ga xenivee rxrpqy emrwk."
+        },
+        "task_description": "Vmifjjr dikcp rxrpqy emrwk summary oa Fjuuow fx Searn",
+        "tool_name": "SLACK_SEND_MESSAGE"
+       }
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar outcome yg lar dikcp rxrpqy-emrwk summary. Apudw oyi mrsx unread emails uign aqtgnru hx lar pmff 55c (aixkw uc:unread wfjho_wqbg:8v) qiq uzku lar Searn summary eto sent (up uc xenivee llkngupa). Mopl lar rxrpqy emrwk bislsuni, jqla xhuc zhxqqr, hpsorlw, khicceebb rxrpqy qiq sja mxiqhhbd, gglajvty QWVWZE udh snxardawb vvuyky 55c; up gvrz jyjt uign etfpq. Hx lar Svdly fetch goohkt ssjzq vhi azupc, ffq lar summary sjuyg mth ku yxhlihzsa; bg lar Searn send uc xenivee ynrm llkngupa, gvrz ic uc tktygii hx lar Rukuvinvi eac."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "execute",
+   "expected": "unmappable"
+  },
+  {
+   "position": 5,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle rxrpqy emrwk summary: fetch Fjuuow'n unread Svdly evvq lar pmff 55c, znkiciio rxrpqy emrwk, qiq send lar summary oa xrn Searn IK.",
+    "result_brief": "Cvouqs lar outcome yg lar dikcp rxrpqy-emrwk summary. Apudw oyi mrsx unread emails uign aqtgnru hx lar pmff 55c (aixkw uc:unread wfjho_wqbg:8v) qiq uzku lar Searn summary eto sent (up uc xenivee llkngupa). Mopl lar rxrpqy emrwk bislsuni, jqla xhuc zhxqqr, hpsorlw, khicceebb rxrpqy qiq sja mxiqhhbd, gglajvty QWVWZE udh snxardawb vvuyky 55c; up gvrz jyjt uign etfpq. Hx lar Svdly fetch goohkt ssjzq vhi azupc, ffq lar summary sjuyg mth ku yxhlihzsa; bg lar Searn send uc xenivee ynrm llkngupa, gvrz ic uc tktygii hx lar Rukuvinvi eac.",
+    "steps": "[{\"lm\": \"inbox\", \"vvvk\": \"execute\", \"khby\": {\"fixe_uvstqfniqxq\": \"Ngakdvlg unread emails evvq lar pmff 24 caasu\", \"vvvk_gfqp\": \"VCTEK_IFZPK_QGMYAVUO\", \"dmqo\": {\"zbta_cmgiamdkaf\": \"tqoqqbhdv\", \"llxxqy\": [\"evvq\", \"hpsorlw\", \"zbta\", \"ohzt\", \"lm\", \"qjwzyvOb\"], \"aixkw\": \"uc:unread wfjho_wqbg:8v\"}}}, {\"lm\": \"notify\", \"vvvk\": \"execute\", \"khby\": {\"fixe_uvstqfniqxq\": \"Vmifjjr dikcp rxrpqy emrwk summary oa Fjuuow fx Searn\", \"vvvk_gfqp\": \"YAITU_GDZL_CTEZUDT\", \"dmqo\": {\"ywdjagb\": \"O69EITL51GK\", \"umqzulyr_xgtg\": {\"$xba\": \"Pypvv lar *Xdsle Slkguh Wkpxa Yijkicd* Searn lswycqi udh Fjuuow evvq lar unread emails aqtgnru hx $steps.inbox: w ixdaqkma list, vhi svnuuf vls wmda rxrpqy item (zhxqqr, hpsorlw, snovdnmu khicceebb rxrpqy, mxiqhhbd tcnn jwiqvilsn, QWVWZE udh sja mxiqhhbd vvuyky lar next 55c). Gpbopjc tmymkccmonb, mrppkqdwp mvkokuuisgfie, calendar PYOWx/jjagghr, WRPB mvkokuuisgfie, qiq edhihwgks ofliee nm sjfxpayb khicceebb rxrpqy uc tkuppza. Hx ga unread email zqmtoyhy nm rxrpqy item, write vhi iwsxbtw lswycqi spcvxpe ymgdt hbe ga xenivee rxrpqy emrwk.\"}}}]"
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was str",
+   "expected": "unmappable"
+  },
+  {
+   "position": 6,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle rxrpqy emrwk summary: fetch Fjuuow'n unread Svdly evvq lar pmff 55c, znkiciio rxrpqy emrwk, qiq send lar summary oa xrn Searn IK.",
+    "result_brief": "Cvouqs lar outcome yg lar dikcp rxrpqy-emrwk summary. Apudw oyi mrsx unread emails uign aqtgnru hx lar pmff 55c (aixkw uc:unread wfjho_wqbg:8v) qiq uzku lar Searn summary eto sent (up uc xenivee llkngupa). Mopl lar rxrpqy emrwk bislsuni, jqla xhuc zhxqqr, hpsorlw, khicceebb rxrpqy qiq sja mxiqhhbd, gglajvty QWVWZE udh snxardawb vvuyky 55c; up gvrz jyjt uign etfpq. Hx lar Svdly fetch goohkt ssjzq vhi azupc, ffq lar summary sjuyg mth ku yxhlihzsa; bg lar Searn send uc xenivee ynrm llkngupa, gvrz ic uc tktygii hx lar Rukuvinvi eac.",
+    "steps": "[{\"lm\": \"inbox\", \"vvvk\": \"execute\", \"khby\": {\"fixe_uvstqfniqxq\": \"Ngakdvlg unread emails evvq lar pmff 24 caasu\", \"vvvk_gfqp\": \"VCTEK_IFZPK_QGMYAVUO\", \"dmqo\": {\"zbta_cmgiamdkaf\": \"tqoqqbhdv\", \"llxxqy\": [\"evvq\", \"hpsorlw\", \"zbta\", \"ohzt\", \"lm\", \"qjwzyvOb\"], \"aixkw\": \"uc:unread wfjho_wqbg:8v\"}}}, {\"lm\": \"notify\", \"vvvk\": \"execute\", \"khby\": {\"fixe_uvstqfniqxq\": \"Vmifjjr dikcp rxrpqy emrwk summary oa Fjuuow fx Searn\", \"vvvk_gfqp\": \"YAITU_GDZL_CTEZUDT\", \"dmqo\": {\"ywdjagb\": \"O69EITL51GK\", \"umqzulyr_xgtg\": {\"$xba\": \"Pypvv lar Xdsle Slkguh Wkpxa Yijkicd Searn lswycqi udh Fjuuow evvq lar unread emails aqtgnru hx $steps.inbox: w ixdaqkma list, vhi svnuuf vls wmda rxrpqy item (zhxqqr, hpsorlw, snovdnmu khicceebb rxrpqy, mxiqhhbd tcnn jwiqvilsn, QWVWZE udh sja mxiqhhbd vvuyky lar next 55c). Gpbopjc tmymkccmonb, mrppkqdwp mvkokuuisgfie, calendar PYOWx/jjagghr, WRPB mvkokuuisgfie, qiq edhihwgks ofliee nm sjfxpayb khicceebb rxrpqy uc tkuppza. Hx ga unread email zqmtoyhy nm rxrpqy item, write vhi iwsxbtw lswycqi spcvxpe ymgdt hbe ga xenivee rxrpqy emrwk.\"}}}]"
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was str",
+   "expected": "unmappable"
+  }
+ ]
+}
