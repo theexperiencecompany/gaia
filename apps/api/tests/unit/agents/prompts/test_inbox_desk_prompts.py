@@ -310,6 +310,9 @@ def test_the_desk_never_does_a_subagents_step_itself() -> None:
 def test_a_mail_pass_takes_the_same_steps_however_many_threads_it_keeps() -> None:
     """Regression: one thread read per thread ran a 7-day inbox out of steps before any draft."""
     assert "in one GMAIL_FETCH_THREAD call carrying all their thread_ids" in _mail_step("d")
+    assert "when it says truncated, read the threads it did not return in one more call" in (
+        _mail_step("d")
+    )
     assert "Save every draft in one turn, as parallel calls" in _mail_step("e")
 
 
