@@ -275,13 +275,18 @@ class TestTheOrphanCancelIsOnTheRunsRecord:
     def _lines(log: MagicMock, level: str, phrase: str) -> list[Any]:
         return [c for c in getattr(log, level).call_args_list if phrase in (c.args[0] or "")]
 
+    @pytest.mark.parametrize(
+        "ending",
+        [GraphRecursionError("limit"), SubagentOutcome(text="", answered=False)],
+        ids=["step-limit", "no-answer"],
+    )
     async def test_a_cancelled_job_is_named_with_its_conversation_and_stream(
-        self, fake_cache: fakeredis.aioredis.FakeRedis
+        self, fake_cache: fakeredis.aioredis.FakeRedis, ending: BaseException | SubagentOutcome
     ) -> None:
         await _running_job("conv-1", "job-1")
 
         with patch.object(er, "log") as log:
-            await _run_with(GraphRecursionError("limit"))
+            await _run_with(ending)
 
         [line] = self._lines(log, "warning", "Cancelled the browser job orphaned")
         assert line.kwargs == {
