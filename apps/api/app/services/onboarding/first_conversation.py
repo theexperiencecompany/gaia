@@ -20,6 +20,12 @@ from app.services.onboarding.first_message import (
     _ARTICLES,
     PROFESSION_PHRASES,
 )
+from app.services.onboarding.welcome_copy import (
+    DEFAULT_LANGUAGE,
+    WELCOME_COPY,
+    WelcomeCopy,
+    welcome_copy,
+)
 
 INTEGRATIONS_PATH = "/integrations"
 GMAIL_INTEGRATION_ID = "gmail"
@@ -31,35 +37,13 @@ def connect_link(integration_id: str) -> str:
     return f"{INTEGRATIONS_PATH}?connect={integration_id}"
 
 
-WELCOME = "Okay, you're in."
-HANDOVER_LINE = "Anything you'd rather not do yourself, hand it to me."
-PLATFORM_TEMPLATE = " I'm on your {platform} too."
-ROUTINES_INTRO = "Two things worth switching on now."
-GMAIL_LINE = "Gmail: every morning your mail comes back sorted, replies drafted."
-CALENDAR_LINE = "Calendar: I brief you before every meeting."
-#: One bubble, skimmable: the intro line, then one bullet per routine.
-ROUTINES_BUBBLE = f"{ROUTINES_INTRO}\n- {GMAIL_LINE}\n- {CALENDAR_LINE}"
 #: The buttons under the routines bubble: rendered by the web as a plain row of
 #: buttons outside the bubble (``connect_options`` in ToolRenderers), same tab,
 #: opening the app's connect flow on arrival exactly as the old links did.
 CONNECT_OPTIONS_TOOL_NAME = "connect_options"
-CONNECT_OPTIONS: list[dict[str, str]] = [
-    {
-        "integration_id": GMAIL_INTEGRATION_ID,
-        "label": "Connect Gmail",
-        "href": connect_link(GMAIL_INTEGRATION_ID),
-    },
-    {
-        "integration_id": CALENDAR_INTEGRATION_ID,
-        "label": "Connect Calendar",
-        "href": connect_link(CALENDAR_INTEGRATION_ID),
-    },
-    {"label": "All integrations", "href": INTEGRATIONS_PATH},
-]
 HANDOVER_TEMPLATE = "You're {job}. What's first?"
 HANDOVER_SENTENCE_TEMPLATE = "{sentence}. What's first?"
-HANDOVER_WITHOUT_JOB = "What's first?"
-SOMETHING_ELSE_CHIP = "Something else"
+SOMETHING_ELSE_CHIP = WELCOME_COPY[DEFAULT_LANGUAGE].something_else
 _VOWELS = ("a", "e", "i", "o", "u")
 
 #: A typed sentence turned to the second person: "I run a bakery" reads
@@ -87,15 +71,31 @@ class FirstConversation(BaseModel):
     opening: list[str]
     question: str
     follow_ups: list[str]
+    connect_options: list[dict[str, str]]
 
     @property
     def lines(self) -> list[str]:
         """Every bubble in order, for anything that reads the thread as text."""
         return [*self.opening, self.question]
 
-    @staticmethod
-    def connect_tool_data() -> dict[str, object]:
-        return {"tool_name": CONNECT_OPTIONS_TOOL_NAME, "data": {"options": CONNECT_OPTIONS}}
+    def connect_tool_data(self) -> dict[str, object]:
+        return {"tool_name": CONNECT_OPTIONS_TOOL_NAME, "data": {"options": self.connect_options}}
+
+
+def _connect_options(copy: WelcomeCopy) -> list[dict[str, str]]:
+    return [
+        {
+            "integration_id": GMAIL_INTEGRATION_ID,
+            "label": copy.connect_gmail,
+            "href": connect_link(GMAIL_INTEGRATION_ID),
+        },
+        {
+            "integration_id": CALENDAR_INTEGRATION_ID,
+            "label": copy.connect_calendar,
+            "href": connect_link(CALENDAR_INTEGRATION_ID),
+        },
+        {"label": copy.all_integrations, "href": INTEGRATIONS_PATH},
+    ]
 
 
 def platform_label(connected_platform: str) -> str:
@@ -106,18 +106,19 @@ def platform_label(connected_platform: str) -> str:
     return source.display_name
 
 
-def _handover_line(connected_platform: str | None) -> str:
+def _handover_line(copy: WelcomeCopy, connected_platform: str | None) -> str:
     if not connected_platform:
-        return HANDOVER_LINE
-    return HANDOVER_LINE + PLATFORM_TEMPLATE.format(platform=platform_label(connected_platform))
+        return copy.handover_line
+    platform = copy.platform_template.format(platform=platform_label(connected_platform))
+    return copy.handover_line + platform
 
 
-def _handover(profession: str | None) -> str:
-    """Build the handover line ("Since you're a founder..."), or the plain question if skipped/Other."""
+def _handover(profession: str | None) -> str | None:
+    """Build the English handover line ("You're a founder. What's first?"), or None if skipped/Other."""
     cleaned = (profession or "").strip().rstrip(".!")
     key = cleaned.lower()
     if not cleaned or key == "other":
-        return HANDOVER_WITHOUT_JOB
+        return None
     if key in PROFESSION_PHRASES:
         return HANDOVER_TEMPLATE.format(job=PROFESSION_PHRASES[key])
     for opener, replacement in _FIRST_PERSON_TO_SECOND:
@@ -135,26 +136,27 @@ def _handover(profession: str | None) -> str:
 def compose_first_conversation(
     preferences: OnboardingPreferences, connected_platform: str | None
 ) -> FirstConversation:
-    """Build the bubbles GAIA opens with.
+    """Build the bubbles GAIA opens with, in the user's browser language.
 
-    The escape-hatch chip is always offered; model-written jobs join it in
-    with_starting_jobs.
+    Outside English the question skips the job: a profession rendered into a
+    gendered language guesses the reader's gender. The escape-hatch chip is
+    always offered; model-written jobs join it in with_starting_jobs.
     """
+    copy = welcome_copy(preferences.language)
+    english = copy is WELCOME_COPY[DEFAULT_LANGUAGE]
+    question = (_handover(preferences.profession) if english else None) or copy.whats_first
     return FirstConversation(
         opening=[
-            WELCOME,
-            _handover_line(connected_platform),
-            ROUTINES_BUBBLE,
+            copy.welcome,
+            _handover_line(copy, connected_platform),
+            f"{copy.routines_intro}\n- {copy.gmail_line}\n- {copy.calendar_line}",
         ],
-        question=_handover(preferences.profession),
-        follow_ups=[SOMETHING_ELSE_CHIP],
+        question=question,
+        follow_ups=[copy.something_else],
+        connect_options=_connect_options(copy),
     )
 
 
 def with_starting_jobs(composed: FirstConversation, chips: list[str]) -> FirstConversation:
     """Return composed with the model-written starting jobs ahead of the escape hatch."""
-    return FirstConversation(
-        opening=composed.opening[:],
-        question=composed.question,
-        follow_ups=[*chips, SOMETHING_ELSE_CHIP],
-    )
+    return composed.model_copy(update={"follow_ups": [*chips, *composed.follow_ups]})

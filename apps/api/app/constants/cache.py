@@ -268,11 +268,6 @@ VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 # so a degraded pro user is told once per month, not once per turn.
 COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"
 
-# Keyed by user plus a hash of the answers it was written from, so a changed
-# Q1/Q2 answer reads a never-written key rather than a stale question. Two
-# hours covers a wizard someone walked away from before pressing completion.
-FIRST_QUESTION_CACHE_PREFIX = "onboarding:first_question:"
-FIRST_QUESTION_CACHE_TTL = 2 * ONE_HOUR_TTL
 #: Prefix of the tiered rate limiter's per-user counters: ``{prefix}:{user_id}:{feature}:{period}:{window}``.
 #: Named so a dev tool can clear one user's counters without knowing the rest of the key.
 RATE_LIMIT_KEY_PREFIX = "rate_limit"

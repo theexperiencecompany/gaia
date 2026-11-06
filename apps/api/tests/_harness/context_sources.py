@@ -53,9 +53,6 @@ class ContextSources:
     workflow_integrations_hint: str = ""
     #: Task id of a live background executor run, or ``None`` for "not busy".
     executor_busy_task_id: str | None = None
-    #: Comms-only: the onboarding system prompt for this turn, or ``None`` when
-    #: the conversation is not an onboarding one.
-    onboarding_prompt: str | None = None
     #: What the root's presence read returns; the default is a user never seen anywhere.
     presence: PresenceSnapshot = field(
         default_factory=lambda: PresenceSnapshot(captured_at=0, last_seen={})
@@ -162,15 +159,6 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
             patch(
                 "app.services.workflow.workflow_subagent.build_connected_integrations_hint",
                 AsyncMock(return_value=sources.workflow_integrations_hint),
-            )
-        )
-        # Whether a turn is an onboarding turn is decided by a Mongo probe plus
-        # the user document. That resolution is its own subject with its own
-        # tests; here only its answer matters, so the answer is what is pinned.
-        enter(
-            patch(
-                "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-                AsyncMock(return_value=sources.onboarding_prompt),
             )
         )
         # Roots with no presence read it (comms in _core_agent_logic, others in
