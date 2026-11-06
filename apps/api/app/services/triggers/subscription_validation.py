@@ -24,6 +24,7 @@ from app.models.trigger_subscription_models import (
     MatchableTrigger,
     SubscriptionCondition,
 )
+from app.services.triggers.condition_matching import parse_bool
 from app.services.triggers.matchable_fields import get_matchable_trigger
 from app.services.triggers.scope_catalog import scope_fields_for
 
@@ -111,24 +112,35 @@ def _resolve_field(entry: MatchableTrigger, name: str) -> tuple[MatchableField |
     return None, None
 
 
-def _coerce_value(
-    value: str | int | float, field: MatchableField
-) -> tuple[str | int | float | None, str | None]:
+ConditionValue = bool | str | int | float
+Coerced = tuple[ConditionValue | None, str | None]
+
+
+def _coerce_bool(value: ConditionValue, field: MatchableField) -> Coerced:
+    parsed = parse_bool(value)
+    if parsed is None or isinstance(value, bool):
+        return parsed, None
+    return parsed, f"'{value}' read as {str(parsed).lower()} for '{field.name}'"
+
+
+def _coerce_number(value: ConditionValue, field: MatchableField) -> Coerced:
+    integer = field.type is MatchableFieldType.INTEGER
+    if isinstance(value, int) if integer else isinstance(value, int | float):
+        return (value if integer else float(value)), None
+    try:
+        parsed: int | float = int(str(value)) if integer else float(str(value))
+    except ValueError:
+        return None, None
+    kind = "an integer" if integer else "a number"
+    return parsed, f"'{value}' coerced to {kind} for '{field.name}'"
+
+
+def _coerce_value(value: ConditionValue, field: MatchableField) -> Coerced:
     """Fit value to the field's type, or return None when it cannot be."""
-    if field.type is MatchableFieldType.INTEGER:
-        if isinstance(value, int):
-            return value, None
-        try:
-            return int(str(value)), f"'{value}' coerced to an integer for '{field.name}'"
-        except ValueError:
-            return None, None
-    if field.type is MatchableFieldType.NUMBER:
-        if isinstance(value, int | float):
-            return float(value), None
-        try:
-            return float(str(value)), f"'{value}' coerced to a number for '{field.name}'"
-        except ValueError:
-            return None, None
+    if field.type is MatchableFieldType.BOOLEAN:
+        return _coerce_bool(value, field)
+    if field.type in _NUMERIC_TYPES:
+        return _coerce_number(value, field)
     # STRING and STRING_LIST both compare against text.
     if isinstance(value, str):
         return value, None

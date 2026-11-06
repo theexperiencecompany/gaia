@@ -131,6 +131,26 @@ async def create_execution(
     return execution
 
 
+async def record_skipped_execution(
+    workflow_id: str,
+    user_id: str,
+    trigger_type: str,
+    summary: str,
+    conversation_id: str | None = None,
+) -> WorkflowExecution:
+    """Record a fire that never ran, so run history shows it and why instead of a silent gap."""
+    execution = await create_execution(
+        workflow_id=workflow_id, user_id=user_id, trigger_type=trigger_type
+    )
+    await complete_execution(
+        execution_id=execution.execution_id,
+        status="skipped",
+        summary=summary,
+        conversation_id=conversation_id,
+    )
+    return execution
+
+
 async def complete_execution(
     execution_id: str,
     status: WorkflowExecutionStatus,

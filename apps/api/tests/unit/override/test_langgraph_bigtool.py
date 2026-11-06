@@ -74,10 +74,6 @@ from app.override.langgraph_bigtool.create_agent import (
     nudge_continue_node,
     reject_unbound_tools,
 )
-from app.override.langgraph_bigtool.dynamic_tool_node import (
-    format_tool_error,
-    hil_and_timeout_guarded_tool_call,
-)
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult, State
 
 # ---------------------------------------------------------------------------
@@ -2298,10 +2294,7 @@ class TestToolNodeWiring:
 
         dynamic_node.assert_called_once()
         args, kwargs = dynamic_node.call_args
-        assert args[0] is deps.tool_registry
-        opts = args[1]
-        assert opts.handle_tool_errors is format_tool_error
-        assert opts.awrap_tool_call is hil_and_timeout_guarded_tool_call
+        assert args == (deps.tool_registry,)
         assert kwargs == {"middleware_executor": executor, "middleware_tools": [dummy_tool_b]}
         assert node is dynamic_node.return_value
 

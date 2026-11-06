@@ -94,6 +94,20 @@ describe("useCheckoutReturn", () => {
     spy.mockRestore();
   });
 
+  it("strips the customer's email and payment id Dodo appends, not just its outcome", () => {
+    // The exact query Dodo's test mode returned to after a declined charge:
+    // leaving email in the address bar sends it to every pageview capture.
+    search =
+      "checkout=returned&subscription_id=sub_1&payment_id=pay_1&status=failed&email=pat%40example.com";
+    window.history.replaceState(null, "", `/onboarding?${search}`);
+    const spy = vi.spyOn(window.history, "replaceState");
+
+    renderHook(() => useCheckoutReturn());
+
+    expect(spy).toHaveBeenCalledWith(null, "", "/onboarding");
+    spy.mockRestore();
+  });
+
   it("retry settles the store and leaves the confirming state without touching the URL again", () => {
     search = "checkout=returned&status=failed";
     const { result } = renderHook(() => useCheckoutReturn());

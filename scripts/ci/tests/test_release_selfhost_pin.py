@@ -22,6 +22,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 RELEASE_SH = REPO_ROOT / "scripts" / "ci" / "release.sh"
 NAMESPACE = "ghcr.io/theexperiencecompany"
 RELEASE_REPOS = ("gaia", "gaia-web", "gaia-bot-telegram", "gaia-bot-discord", "gaia-bot-slack")
+# Bounds a re-run test that never sees its gate pass; the passing case takes two polls,
+# about a second each on a loaded box, so 5 s timed one out under the full harness run.
+RERUN_WAIT_SECONDS = "60"
 
 # `imagetools inspect <ref>` succeeds when <ref> is in $PRESENT, or when it is
 # listed in $LATE as "<ref> <n>" and has been inspected more than n times.
@@ -323,7 +326,7 @@ def test_a_cli_release_run_a_newer_push_cancelled_is_re_run_not_timed_out(
             present=_release_images(sha),
             main_runs={7: {"quality-gate": ("completed", "cancelled")}},
         ),
-        env_extra={"PIN_POLL_SECONDS": "0", "PIN_WAIT_SECONDS": "5"},
+        env_extra={"PIN_POLL_SECONDS": "0", "PIN_WAIT_SECONDS": RERUN_WAIT_SECONDS},
     )
 
     assert result.returncode == 0, result.stderr
@@ -579,7 +582,7 @@ def _wait(
         env_extra={
             "RELEASE_TAG": "desktop-v0.6.0",
             "GATE_POLL_SECONDS": "0",
-            "GATE_WAIT_SECONDS": "5",
+            "GATE_WAIT_SECONDS": RERUN_WAIT_SECONDS,
         },
     )
 
