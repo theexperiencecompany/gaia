@@ -45,7 +45,11 @@ from shared.py.analytics.catalog.chat import (
     ChatMessageSubmitted,
 )
 from shared.py.analytics.catalog.notifications import NotificationAgentSent
-from shared.py.analytics.catalog.onboarding import OnboardingCompleted, OnboardingPhaseCompleted
+from shared.py.analytics.catalog.onboarding import (
+    OnboardingCompleted,
+    OnboardingPhaseCompleted,
+    OnboardingStarted,
+)
 from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from shared.py.analytics.catalog.workflows import (
@@ -211,8 +215,14 @@ def build_journeys(transcript: Path) -> list[Journey]:
             "onboarding",
             journeys.onboarding,
             (
+                # Reported twice, as a reload does; the server's step stamp keeps it to one.
+                Expect(OnboardingStarted.event, BROWSER, True),
+                *(
+                    Expect(OnboardingPhaseCompleted.event, BROWSER, True, (("phase", step.value),))
+                    for step in journeys.ONBOARDING_PHASES
+                ),
                 Expect(OnboardingCompleted.event, BROWSER, True),
-                Expect(OnboardingPhaseCompleted.event, BROWSER, True),
+                Expect(UserActive.event, BROWSER, True),
                 # Onboarding opens the user's first conversation.
                 Expect(
                     ChatConversationCreated.event,
@@ -236,8 +246,6 @@ def build_journeys(transcript: Path) -> list[Journey]:
             journeys.chat,
             (
                 Expect(ChatMessageSubmitted.event, BROWSER, True, (("source", web),)),
-                # The user's first use of GAIA today; onboarding before it is not use.
-                Expect(UserActive.event, BROWSER, True),
                 # The agent titles the conversation.
                 Expect(ChatConversationRenamed.event, BROWSER_AGENT, True),
                 *_agent_turn(BROWSER, True, web),

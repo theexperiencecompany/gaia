@@ -11,7 +11,7 @@ Assertions go through :class:GraphRun, never through raw event tuples.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
@@ -338,7 +338,7 @@ class CallAllToolsModel(RecordingFakeModel):
 
 @asynccontextmanager
 async def executor_graph(
-    script: Sequence[ToolCall | dict[str, Any] | str],
+    script: Sequence[Mapping[str, object] | str],
     store: InMemoryStore | None = None,
     model: RecordingFakeModel | None = None,
 ) -> AsyncIterator[Any]:

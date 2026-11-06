@@ -2,34 +2,16 @@ import type { CheckoutEvent } from "dodopayments-checkout";
 
 import { DODO_CHECKOUT_MODE } from "../constants";
 
-/** The overlay dressed as GAIA: zinc surfaces, the brand blue on the one
- *  button that matters, and a button label that matches ours. Dark only —
- *  the app is dark, so the overlay never flashes light over it. */
+/** The overlay's own options. The theme is set on the session the API mints
+ *  (the SDK's themeConfig is deprecated and ignored). `manualRedirect` keeps
+ *  the app in charge of the page: Dodo reports the charge's outcome through
+ *  `checkout.status` instead of navigating the whole tab to its status page
+ *  and back to a return URL carrying the customer's email. */
 const CHECKOUT_OPTIONS = {
   payButtonText: "Subscribe",
+  manualRedirect: true,
   showSecurityBadge: true,
   showTimer: false,
-  themeConfig: {
-    radius: "16px",
-    dark: {
-      bgPrimary: "#18181b",
-      bgSecondary: "#27272a",
-      borderPrimary: "#3f3f46",
-      borderSecondary: "#27272a",
-      textPrimary: "#fafafa",
-      textSecondary: "#a1a1aa",
-      textPlaceholder: "#71717a",
-      textError: "#f87171",
-      textSuccess: "#4ade80",
-      buttonPrimary: "#00bbff",
-      buttonPrimaryHover: "#33c9ff",
-      buttonTextPrimary: "#000000",
-      buttonSecondary: "#27272a",
-      buttonSecondaryHover: "#3f3f46",
-      buttonTextSecondary: "#fafafa",
-      inputFocusBorder: "#00bbff",
-    },
-  },
 } as const;
 
 /**
@@ -54,7 +36,6 @@ export async function openDodoOverlay(
   if (!initialized) {
     DodoPayments.Initialize({
       mode: DODO_CHECKOUT_MODE,
-      theme: "dark",
       displayType: "overlay",
       onEvent: (event) => currentHandler?.(event),
     });

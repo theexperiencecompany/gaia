@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime
+from typing import ClassVar
 
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
@@ -30,6 +31,7 @@ from app.constants.chat import (
     USER_MESSAGE_TYPE,
 )
 from app.db.repositories.base import UserScopedRepository
+from app.db.repositories.cache import CachePolicy
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -82,7 +84,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     update_model = ConversationUpdate
     uses_object_id = True
     identity_field = "conversation_id"
-    cache_policy = None
+    cache_policy: ClassVar[CachePolicy | None] = None
 
     # ---- conversation-list reads (projected: no messages) ----
 
@@ -619,6 +621,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _SourceRow,
         )
         return None if row is None else ConversationSource.coerce(row.source)
+
+    async def owner_ids(self, conversation_id: str) -> set[str]:
+        """Every user holding a conversation under this id; more than one means they share its agent thread."""
+        return set(await self._distinct("user_id", {"conversation_id": conversation_id}))
 
     async def is_system_generated(self, conversation_id: str) -> bool:
         """Whether GAIA created this conversation itself (workflow/email/reminder runs).

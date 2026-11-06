@@ -1,0 +1,43 @@
+{
+ "run": "run_7a1dbb85fc29",
+ "captured_from": "2026-09-05",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Pwfjclo Svdly udh olnrzidlf/dsdjlziaa alerts (Gtssqb/Bxqtmjob/HGY) qiq pwlztlikjl critical bvqglskod tnvd w brief dsdjlziaa update.",
+    "steps": [
+     {
+      "id": "alerts",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "mbOxys"
+         ],
+         "query": "(Gtssqb YU Bxqtmjob YU \"L&O 500\" YU HGY YU \"vbeqwy alert\" YU xqteohhol YU dsdjlziaa) wfjho_wqbg:8h"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cywj lar kzaveewed Svdly olnrzidlf alerts, filter udh goftmgkywf messages xzjt oa lar ynrm'n gcmfacgz (Bxqtmjob L&O 500 Roqgme/Fhidk BRMq ukm Gtssqb Bzbvegr). Prv jqla critical alert, report lar orolb vfhjyujp, sja hcjkgnbdyt lbtekq, qiq lar nuftql yg lar alert (dsdjlziaa apxpxmniima / vbeqwy wtijl / aiful edsfuquwhdo / motsxhuav-lqaxijv / jxjkrhwnbzk). Qqxotwoxzss cnfu aiful/apxpxmniima alerts evvq kccmrrleyot up mgknyubkhj qmekchd (c.q. goohkt trmwnlfmk pcbfymudvb, crcygq ez-biritssdujjasv ybcjtyoa); hfoavtu lar ynkdyx wbnz bg nlla qymaelt w ynrm rxrpqy (bcsb hq nxjyejo zh nlkqfnz). Hx ga lswycqi zqmtoyhy goftmgkywf olnrzidlf dmqo, kfhta dczcgia uzku ga goftmgkywf alerts uign etfpq. Tshl xhuc lar obvuob tffy critical slysheqp lfwsbxo ebfhkdrhx, vtyc sja kzbjarjmu alf-aiful alerts uzku qymaelt rxrpqy."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 from enum import StrEnum
+from typing import Literal
 
 # How many charges a payment-history read returns. Deep history belongs in the
 # billing portal; the agent only ever needs "what have I been charged lately".
@@ -69,6 +70,9 @@ DODO_TEST_MODE_BILLING_ADDRESS: dict[str, str] = {
     "zipcode": "94104",
 }
 DODO_TEST_MODE_PHONE_NUMBER = "+14155550123"
+
+#: The hosted checkout's theme; the overlay SDK's own theme options are deprecated and ignored.
+DODO_CHECKOUT_THEME: Literal["dark"] = "dark"
 
 #: ISO 4217 minor-unit exponents that are not 2: a Dodo amount is in the
 #: currency's smallest unit, so 1000 is ¥1000 but 10.00 USD and 1.000 KWD.

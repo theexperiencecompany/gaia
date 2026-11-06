@@ -429,6 +429,7 @@ class TestTriggerHandlerBase:
                 "trigger_data": payload,
                 "trigger_type": TriggerType.INTEGRATION.value,
             },
+            defer_until=None,
         )
 
     @patch("app.services.triggers.base.get_signal_matching_context")

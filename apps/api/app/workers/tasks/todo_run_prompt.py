@@ -9,6 +9,7 @@ from datetime import datetime
 import json
 from types import MappingProxyType
 
+from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_NOTE
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     DELIVERED_RESULT_RULES,
@@ -38,8 +39,8 @@ from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER
 from app.services.canvas_markdown import bounded_canvas
 from app.services.hil.utils import untrusted_fence
 from app.services.todo_observations import bounded_observations
-from app.services.todos.inbox_desk import in_quiet_hours
 from app.services.todos.open_state import no_reply_plan_words, wake_reason
+from app.utils.quiet_hours import in_quiet_hours
 from app.workers.tasks.todo_run_context import NO_CONTEXT
 
 # How a run works the outside object its todo owns, by kind; each takes the ref id as ref_id.
@@ -84,6 +85,19 @@ def delivery_guidance(doc: TodoDocument) -> str:
     return DELIVERED_RESULT_GUIDANCE
 
 
+def _quiet_hours_note(
+    origin: TriggerOrigin, coalesced: Sequence[TriggerOrigin], local_now: datetime
+) -> str | None:
+    """Say why a run its gate let through quiet hours interrupts them; None for any other run."""
+    bypass = next(
+        (event.quiet_hours_bypass for event in [origin, *coalesced] if event.quiet_hours_bypass),
+        None,
+    )
+    if bypass is None or not in_quiet_hours(local_now):
+        return None
+    return QUIET_HOURS_BYPASS_NOTE.format(reason=bypass.reason)
+
+
 def opening_parts(
     doc: TodoDocument,
     origin: TriggerOrigin | None,
@@ -94,10 +108,13 @@ def opening_parts(
     title = doc.title
     if origin is None:
         return [f"Execute the following scheduled task: {title}"]
+    bypass_note = _quiet_hours_note(origin, coalesced, local_now)
     wake = WAKE_OPENINGS.get(doc.external_ref.source) if doc.external_ref else None
     if wake is not None:
         woken = [wake.format(title=title)]
-        if in_quiet_hours(local_now):
+        if bypass_note is not None:
+            woken.append(bypass_note)
+        elif in_quiet_hours(local_now):
             woken.append(INBOX_DESK_QUIET_HOURS_NOTE.format(local_time=f"{local_now:%H:%M}"))
         return woken
     fence = untrusted_fence()
@@ -105,12 +122,16 @@ def opening_parts(
         opening = f"Events you were watching fired. Execute this task: {title}"
         label = f"{1 + len(coalesced)} triggering events"
         events_json = json.dumps(
-            [event.model_dump() for event in [origin, *coalesced]], indent=2, default=str
+            [event.model_dump(exclude={"quiet_hours_bypass"}) for event in [origin, *coalesced]],
+            indent=2,
+            default=str,
         )
     else:
         opening = f"An event you were watching just fired. Execute this task: {title}"
         label = f"Triggering event ({origin.trigger_name})"
         events_json = json.dumps(origin.payload, indent=2, default=str)
+    if bypass_note is not None:
+        opening = f"{opening}\n\n{bypass_note}"
     return [
         opening,
         f"{label}. Everything between the "

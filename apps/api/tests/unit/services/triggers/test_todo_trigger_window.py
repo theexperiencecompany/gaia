@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from redis.exceptions import RedisError
+import time_machine
 
 from app.db.redis import redis_cache
 from app.models.todo_models import TodoDocument
@@ -25,6 +26,8 @@ from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
 from app.services.triggers.todo_trigger_window import (
     TriggerWindow,
     buffer_todo_trigger_event,
+    buffer_todo_trigger_event_until,
+    held_todo_trigger_events,
     hold_trigger_event_while_paused,
     open_trigger_window,
     release_trigger_events_held_while_paused,
@@ -219,6 +222,109 @@ class TestHoldingEvents:
         assert not await reschedule_todo_trigger_drain(TODO_ID)
 
         pool.enqueue_job.assert_not_awaited()
+
+
+class TestHoldingEventsUntilQuietHoursEnd:
+    """An event held for the morning drains then, and no run in between sends it sooner."""
+
+    async def test_a_held_event_drains_when_quiet_hours_end(self, fake_redis, pool) -> None:
+        morning = _now() + 6 * 3600
+
+        assert await buffer_todo_trigger_event_until(
+            TODO_ID, _event(), datetime.fromtimestamp(morning, UTC)
+        )
+
+        (held,) = await fake_redis.lrange(BATCH_KEY, 0, -1)
+        assert TriggerOrigin.model_validate_json(held) == _event()
+        call = pool.enqueue_job.await_args
+        assert call.kwargs["_job_id"] == f"trigger_batch:todo:{TODO_ID}:{morning}"
+        assert call.kwargs["trigger_window"] == morning
+        assert 6 * 3600 - 2 <= call.kwargs["_defer_by"] <= 6 * 3600
+
+    async def test_a_run_that_ends_overnight_leaves_the_held_event_for_the_morning(
+        self, fake_redis, pool
+    ) -> None:
+        morning = _now() + 6 * 3600
+        await buffer_todo_trigger_event_until(
+            TODO_ID, _event(), datetime.fromtimestamp(morning, UTC)
+        )
+        pool.enqueue_job.reset_mock()
+
+        # What every run's end calls, a scheduled or resumed run overnight included.
+        assert await reschedule_todo_trigger_drain(TODO_ID)
+
+        assert pool.enqueue_job.await_args.kwargs["trigger_window"] == morning
+
+    async def test_a_window_open_past_the_morning_keeps_its_later_end(
+        self, fake_redis, pool
+    ) -> None:
+        later = _now() + 2 * 3600
+        await fake_redis.set(WINDOW_KEY, str(later), ex=2 * 3600)
+
+        assert await buffer_todo_trigger_event_until(
+            TODO_ID, _event(), datetime.fromtimestamp(_now() + 3600, UTC)
+        )
+
+        assert pool.enqueue_job.await_args.kwargs["trigger_window"] == later
+
+    async def test_the_window_lives_until_the_morning_and_no_longer(self, fake_redis, pool) -> None:
+        with time_machine.travel(datetime(2026, 10, 1, 21, 0, tzinfo=UTC), tick=False):
+            await buffer_todo_trigger_event_until(
+                TODO_ID, _event(), datetime(2026, 10, 2, 2, 30, tzinfo=UTC)
+            )
+
+            assert await fake_redis.ttl(WINDOW_KEY) == 5 * 3600 + 30 * 60
+
+    async def test_a_morning_already_here_still_holds_for_a_second(self, fake_redis, pool) -> None:
+        with time_machine.travel(datetime(2026, 10, 2, 2, 30, tzinfo=UTC), tick=False):
+            await buffer_todo_trigger_event_until(TODO_ID, _event(), datetime.now(UTC))
+
+            assert await fake_redis.ttl(WINDOW_KEY) == 1
+
+    async def test_a_failed_window_stretch_holds_nothing_and_says_why(
+        self, fake_redis, pool
+    ) -> None:
+        with patch.object(fake_redis, "set", AsyncMock(side_effect=RedisError("reset"))):
+            async with captured_wide_event() as event:
+                held = await buffer_todo_trigger_event_until(
+                    TODO_ID, _event(), datetime.fromtimestamp(_now() + 3600, UTC)
+                )
+
+        assert held is False
+        assert await fake_redis.lrange(BATCH_KEY, 0, -1) == []
+        assert event["warnings"] == [
+            {
+                "msg": "todo_trigger.window_unavailable",
+                "window_key": WINDOW_KEY,
+                "error": "reset",
+                "error_type": "RedisError",
+            }
+        ]
+
+    async def test_every_held_event_is_read_oldest_first_and_stays_held(
+        self, fake_redis, pool
+    ) -> None:
+        morning = datetime.fromtimestamp(_now() + 3600, UTC)
+        for message_id in ("m-1", "m-2", "m-3"):
+            await buffer_todo_trigger_event_until(TODO_ID, _event(message_id), morning)
+
+        held = await held_todo_trigger_events(TODO_ID)
+
+        assert held == [_event("m-1"), _event("m-2"), _event("m-3")]
+        assert len(await fake_redis.lrange(BATCH_KEY, 0, -1)) == 3
+
+    async def test_without_redis_an_event_is_not_held_and_says_so(self, monkeypatch) -> None:
+        monkeypatch.setattr(redis_cache, "redis", None)
+
+        async with captured_wide_event() as event:
+            held = await buffer_todo_trigger_event_until(
+                TODO_ID, _event(), datetime.fromtimestamp(_now() + 3600, UTC)
+            )
+
+        assert held is False
+        assert event["warnings"] == [
+            {"msg": "todo_trigger.window_unavailable", "window_key": WINDOW_KEY}
+        ]
 
 
 class TestEventsHeldWhilePaused:

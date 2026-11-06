@@ -585,6 +585,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/browser/live/{code}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Live View Handoff
+         * @description Done or Stop from the bot user's live-view page: the code that opened the page is the authority.
+         *
+         *     The same decision a chat reply or the web card's buttons make, for the
+         *     handoff this link was sent for.
+         */
+        post: operations["browser_decide_live_view_handoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/browser/logins": {
         parameters: {
             query?: never;
@@ -629,6 +652,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/browser/replays/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Replay Page
+         * @description Standalone recap slideshow for a finished session: its code is the capability.
+         */
+        get: operations["browser_replay_page"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/browser/sessions/{session_id}/live-view-token": {
         parameters: {
             query?: never;
@@ -642,6 +685,30 @@ export interface paths {
          *     socket and full-page link, so neither depends on the session cookie.
          */
         get: operations["browser_get_live_view_token"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/shots/{code}/{index}.jpg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Step Screenshot
+         * @description One step frame of a run, for deployments with no object store.
+         *
+         *     Same capability model as the recap page it feeds: the code is the secret, so
+         *     a frame cannot be reached by guessing a session id, and it expires with the
+         *     code.
+         */
+        get: operations["browser_step_screenshot"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3614,6 +3681,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Answers
+         * @description Store the wizard's Q1 and Q2 as soon as they are confirmed.
+         */
+        put: operations["onboarding_save_answers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/personalization": {
         parameters: {
             query?: never;
@@ -3646,11 +3733,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Update Onboarding Phase
-         * @description Update the user's onboarding phase.
-         *     Used to track progress through onboarding stages.
+         * Report Onboarding Step
+         * @description Stamp a wizard step the browser reached; a repeat report is a no-op.
          */
-        post: operations["onboarding_update_onboarding_phase"];
+        post: operations["onboarding_report_onboarding_step"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3672,8 +3758,7 @@ export interface paths {
         head?: never;
         /**
          * Update User Preferences
-         * @description Update user's onboarding preferences.
-         *     This can be used from the settings page to update preferences after onboarding.
+         * @description Update the user's preferences from settings; the wizard's answers go to PUT /answers.
          */
         patch: operations["onboarding_update_user_preferences"];
         trace?: never;
@@ -6286,73 +6371,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/live/{code}/decision": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Decide Live View Handoff
-         * @description Done or Stop from the bot user's live-view page: the code that opened the page is the authority.
-         *
-         *     The same decision a chat reply or the web card's buttons make, for the
-         *     handoff this link was sent for.
-         */
-        post: operations["browser_decide_live_view_handoff"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/replays/{code}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Replay Page
-         * @description Standalone recap slideshow for a finished session: its code is the capability.
-         */
-        get: operations["browser_replay_page"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/shots/{code}/{index}.jpg": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Step Screenshot
-         * @description One step frame of a run, for deployments with no object store.
-         *
-         *     Same capability model as the recap page it feeds: the code is the secret, so
-         *     a frame cannot be reached by guessing a session id, and it expires with the
-         *     code.
-         */
-        get: operations["browser_step_screenshot"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6751,6 +6769,38 @@ export interface components {
             role: string;
             /** Twitter */
             twitter?: string | null;
+        };
+        /**
+         * AuthoredGate
+         * @description A plain-text condition, shown to the user as "Runs only when: <condition>".
+         */
+        AuthoredGate: {
+            author: components["schemas"]["GateAuthor"];
+            /** Condition */
+            condition: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "authored";
+        };
+        /**
+         * AuthoredGateEdit
+         * @description A condition as a client sends it; the server decides who wrote it.
+         */
+        AuthoredGateEdit: {
+            /** Condition */
+            condition: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
         };
         /**
          * BatchApprovalDecisionRequest
@@ -9573,6 +9623,12 @@ export interface components {
              */
             since: string;
         };
+        /**
+         * GateAuthor
+         * @description Who wrote an authored gate's condition; always set by the server.
+         * @enum {string}
+         */
+        GateAuthor: "gaia" | "user";
         /**
          * GenerateWorkflowPromptRequest
          * @description Request model for AI-generated workflow instructions.
@@ -12409,6 +12465,35 @@ export interface components {
             token_endpoint_auth_method?: "none";
         };
         /**
+         * OnboardingAnswers
+         * @description The wizard's answers — Q1 (profession) and Q2 (needs).
+         *
+         *     The name is derived from the email server-side, so it is not submitted;
+         *     nothing else is generated at onboarding, so nothing else is collected.
+         */
+        OnboardingAnswers: {
+            /**
+             * Language
+             * @description The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")
+             */
+            language?: string | null;
+            /**
+             * Needs
+             * @description The jobs the user handed GAIA (onboarding Q2, up to three)
+             */
+            needs?: components["schemas"]["OnboardingNeed"][];
+            /**
+             * Other Need
+             * @description What the user typed under 'Something else' in Q2, verbatim
+             */
+            other_need?: string | null;
+            /**
+             * Profession
+             * @description User's profession
+             */
+            profession: string;
+        };
+        /**
          * OnboardingNeed
          * @description The pains the user handed GAIA during onboarding (Q2, up to three picks).
          *
@@ -12420,29 +12505,33 @@ export interface components {
          */
         OnboardingNeed: "inbox" | "calendar" | "mornings" | "reminders" | "grunt_work" | "tools" | "founder_team_updates" | "founder_competitors" | "executive_reports" | "executive_decisions" | "sales_leads" | "sales_call_research" | "product_feedback" | "product_specs" | "marketing_content" | "marketing_reports" | "engineering_prs" | "engineering_notifications" | "finance_numbers" | "finance_reports" | "creative_revisions" | "creative_deadlines" | "student_assignments" | "student_exams";
         /**
-         * OnboardingPhase
-         * @description Tracks the current phase of user onboarding
-         * @enum {string}
+         * OnboardingPhaseUpdateRequest
+         * @description A wizard step the browser reached; the server stamps and reports it once per onboarding run.
          */
-        OnboardingPhase: "initial" | "personalization_pending" | "personalization_complete" | "getting_started" | "completed";
-        /** OnboardingPhaseUpdateRequest */
         OnboardingPhaseUpdateRequest: {
-            /** @description The onboarding phase to transition to */
-            phase: components["schemas"]["OnboardingPhase"];
+            /**
+             * Phase
+             * @description The wizard step the user reached
+             * @enum {string}
+             */
+            phase: "started" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
         };
         /**
          * OnboardingPhaseUpdateResponse
-         * @description Response body for an onboarding phase update.
+         * @description Response body for a reported wizard step; first_time is False when the step was already stamped.
          */
         OnboardingPhaseUpdateResponse: {
-            /** Message */
-            message: string;
-            phase: components["schemas"]["OnboardingPhase"];
-            /** Success */
-            success: boolean;
+            /** First Time */
+            first_time: boolean;
+            phase: components["schemas"]["OnboardingStep"];
         };
         /** OnboardingPreferences */
         OnboardingPreferences: {
+            /**
+             * Language
+             * @description The user's browser language as a primary subtag ("de", "pt"), set at onboarding
+             */
+            language?: string | null;
             /**
              * Needs
              * @description The jobs the user handed GAIA (onboarding Q2, up to three)
@@ -12466,12 +12555,14 @@ export interface components {
         };
         /**
          * OnboardingRequest
-         * @description The onboarding submission — Q1 (profession) and Q2 (needs).
-         *
-         *     The name is derived from the email server-side, so it is not submitted;
-         *     nothing else is generated at onboarding, so nothing else is collected.
+         * @description The onboarding submission: the answers again, plus the browser's timezone.
          */
         OnboardingRequest: {
+            /**
+             * Language
+             * @description The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")
+             */
+            language?: string | null;
             /**
              * Needs
              * @description The jobs the user handed GAIA (onboarding Q2, up to three)
@@ -12555,6 +12646,12 @@ export interface components {
             phase: string | null;
             preferences: components["schemas"]["OnboardingPreferences"];
         };
+        /**
+         * OnboardingStep
+         * @description A wizard milestone, stamped once per onboarding run on users.onboarding.steps_reached.
+         * @enum {string}
+         */
+        OnboardingStep: "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
         /**
          * PaginatedNotificationsResponse
          * @description Response model for paginated notifications
@@ -13516,18 +13613,28 @@ export interface components {
         };
         /**
          * RecordedCall
-         * @description One tool call as it actually ran.
+         * @description One tool call as it actually ran, recorded by app.agents.tools.invocation.
          *
-         *     Captured from the run's own tool events — the same stream the chat UI
-         *     renders — so recording costs nothing beyond persisting what was already
-         *     collected. ``args`` is what makes this useful: it is the material an agent
-         *     reads to author a playbook, and the cursor a later run picks up from.
+         *     args is what makes this useful: it is the material an agent reads to author
+         *     a playbook, and the cursor a later run picks up from.
          */
         RecordedCall: {
+            /** Account */
+            account?: string | null;
             /** Args */
             args?: {
                 [key: string]: unknown;
             };
+            /**
+             * Failed
+             * @default false
+             */
+            failed?: boolean;
+            /**
+             * Proxied
+             * @default false
+             */
+            proxied?: boolean;
             /**
              * Replayed
              * @default false
@@ -13539,8 +13646,6 @@ export interface components {
              * @default
              */
             result_digest?: string;
-            /** Subagent */
-            subagent?: string | null;
             /** Subagent Id */
             subagent_id?: string | null;
             /**
@@ -14715,7 +14820,7 @@ export interface components {
             field_name: string;
             operator: components["schemas"]["ConditionOperator"];
             /** Value */
-            value: string | number;
+            value: boolean | string | number;
         };
         /**
          * SubscriptionDocument
@@ -15120,6 +15225,29 @@ export interface components {
          * @enum {string}
          */
         SupportRequestType: "support" | "feature";
+        /**
+         * SystemGate
+         * @description A preset owned by code; its question and wording are read from the preset table.
+         */
+        SystemGate: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "system";
+            preset: components["schemas"]["SystemGatePreset"];
+        };
+        /**
+         * SystemGatePreset
+         * @description A gate whose question, criteria and wording live in code, not on the job.
+         * @enum {string}
+         */
+        SystemGatePreset: "inbox_desk";
         /**
          * SystemPurpose
          * @description Why a system-generated conversation was created.
@@ -15873,6 +16001,11 @@ export interface components {
              * Format: date-time
              */
             created_at?: string;
+            /**
+             * Gate
+             * @description The check a fired event must pass before an EXECUTE subscription runs
+             */
+            gate?: (components["schemas"]["AuthoredGate"] | components["schemas"]["SystemGate"]) | null;
             /** Id */
             id?: string;
             /**
@@ -16216,6 +16349,8 @@ export interface components {
             activated?: boolean | null;
             /** Description */
             description?: string | null;
+            /** @description Absent keeps the gate, null removes it, a value replaces it */
+            gate?: components["schemas"]["AuthoredGateEdit"] | null;
             /** Icon */
             icon?: string | null;
             /** Icon Color */
@@ -16919,6 +17054,11 @@ export interface components {
              */
             execution_logs: string[];
             /**
+             * Gate
+             * @description The check a fired integration event must pass before this workflow runs
+             */
+            gate: (components["schemas"]["AuthoredGate"] | components["schemas"]["SystemGate"]) | null;
+            /**
              * Icon
              * @description User-chosen icon slug (gaia-icons component name) shown when the workflow has no integration icons.
              */
@@ -17143,6 +17283,8 @@ export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
+export type AuthoredGate = components['schemas']['AuthoredGate'];
+export type AuthoredGateEdit = components['schemas']['AuthoredGateEdit'];
 export type BatchApprovalDecisionRequest = components['schemas']['BatchApprovalDecisionRequest'];
 export type BatchApprovalDecisionResponse = components['schemas']['BatchApprovalDecisionResponse'];
 export type BatchDecisionItem = components['schemas']['BatchDecisionItem'];
@@ -17313,6 +17455,7 @@ export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollaps
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
 export type FoldedCards = components['schemas']['FoldedCards'];
+export type GateAuthor = components['schemas']['GateAuthor'];
 export type GenerateWorkflowPromptRequest = components['schemas']['GenerateWorkflowPromptRequest'];
 export type GenerateWorkflowPromptResponse = components['schemas']['GenerateWorkflowPromptResponse'];
 export type GetPlatformLinksResponse = components['schemas']['GetPlatformLinksResponse'];
@@ -17470,8 +17613,8 @@ export type NotionNewPageInDbConfig = components['schemas']['NotionNewPageInDbCo
 export type NotionPageContentUpdatedConfig = components['schemas']['NotionPageContentUpdatedConfig'];
 export type NotionPageUpdatedConfig = components['schemas']['NotionPageUpdatedConfig'];
 export type OAuthClientMetadataResponse = components['schemas']['OAuthClientMetadataResponse'];
+export type OnboardingAnswers = components['schemas']['OnboardingAnswers'];
 export type OnboardingNeed = components['schemas']['OnboardingNeed'];
-export type OnboardingPhase = components['schemas']['OnboardingPhase'];
 export type OnboardingPhaseUpdateRequest = components['schemas']['OnboardingPhaseUpdateRequest'];
 export type OnboardingPhaseUpdateResponse = components['schemas']['OnboardingPhaseUpdateResponse'];
 export type OnboardingPreferences = components['schemas']['OnboardingPreferences'];
@@ -17479,6 +17622,7 @@ export type OnboardingRequest = components['schemas']['OnboardingRequest'];
 export type OnboardingResetResponse = components['schemas']['OnboardingResetResponse'];
 export type OnboardingResponse = components['schemas']['OnboardingResponse'];
 export type OnboardingStatusResponse = components['schemas']['OnboardingStatusResponse'];
+export type OnboardingStep = components['schemas']['OnboardingStep'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
@@ -17614,6 +17758,8 @@ export type SupportRequestResponse = components['schemas']['SupportRequestRespon
 export type SupportRequestStatus = components['schemas']['SupportRequestStatus'];
 export type SupportRequestSubmissionResponse = components['schemas']['SupportRequestSubmissionResponse'];
 export type SupportRequestType = components['schemas']['SupportRequestType'];
+export type SystemGate = components['schemas']['SystemGate'];
+export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
@@ -19188,6 +19334,59 @@ export interface operations {
             };
         };
     };
+    browser_decide_live_view_handoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandoffDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandoffDecisionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     browser_list_browser_logins_endpoint: {
         parameters: {
             query?: never;
@@ -19327,6 +19526,55 @@ export interface operations {
             };
         };
     };
+    browser_replay_page: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     browser_get_live_view_token: {
         parameters: {
             query?: never;
@@ -19364,6 +19612,54 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LiveViewTokenResponse"];
                 };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_step_screenshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unprocessable Entity */
             422: {
@@ -27356,6 +27652,57 @@ export interface operations {
             };
         };
     };
+    onboarding_save_answers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingAnswers"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     onboarding_get_onboarding_personalization: {
         parameters: {
             query?: never;
@@ -27403,7 +27750,7 @@ export interface operations {
             };
         };
     };
-    onboarding_update_onboarding_phase: {
+    onboarding_report_onboarding_step: {
         parameters: {
             query?: never;
             header?: never;
@@ -34541,156 +34888,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadinessResponse"];
-                };
-            };
-        };
-    };
-    browser_decide_live_view_handoff: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HandoffDecisionRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HandoffDecisionResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    browser_replay_page: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/html": string;
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    browser_step_screenshot: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                code: string;
-                index: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

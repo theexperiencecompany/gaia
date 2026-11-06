@@ -161,13 +161,20 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
           </>
         ) : (
           <>
-            {/* What happened */}
-            <Text className="text-xs leading-relaxed text-zinc-400">
-              You{"'"}ve used all your{" "}
-              <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
-              calls for today. Your limit will automatically reset, no action
-              needed.
-            </Text>
+            {/* What happened — backend copy wins when provided (it names the
+                wall that bound), otherwise the generic daily-count copy applies. */}
+            {message ? (
+              <Text className="text-xs leading-relaxed text-zinc-400">
+                {message}
+              </Text>
+            ) : (
+              <Text className="text-xs leading-relaxed text-zinc-400">
+                You{"'"}ve used all your{" "}
+                <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
+                calls for today. Your limit will automatically reset, no action
+                needed.
+              </Text>
+            )}
 
             {/* Reset time block — web `bg-zinc-700` */}
             {resetInfo && (

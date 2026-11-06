@@ -1,26 +1,29 @@
-"""Playbook tools: write, read, decline, and disable a workflow's frozen sequence.
+"""Playbook tools: read the run record, then write, read, decline, or disable a workflow's playbook.
 
 A workflow keeps at most one playbook. There is no edit path and no version
 history, because the agent revises by writing the whole document again, so a
 write always replaces what was there and a rejected write leaves the previous
-playbook untouched.
+playbook untouched. A write picks its steps from the run record by call id, so
+every step is a call this run really made, as it made it.
 """
 
-from collections.abc import Mapping
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
-from typing import Annotated, Any
+from typing import Annotated
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, ToolCall
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-from pydantic import BeforeValidator, ValidationError
+from pydantic import BaseModel, BeforeValidator, ConfigDict, ValidationError
 from pydantic.v1 import ValidationError as LegacyValidationError
 
 from app.agents.tools.execute.unwrap import unwrap_execute_call
+from app.agents.tools.run_record import read_run_record as read_recorded_calls
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
-from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
+from app.constants.agents import PLAYBOOK_TOOL_NAMES, PLAYBOOK_UNPICKABLE_TOOLS
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
@@ -31,19 +34,29 @@ from app.models.playbook_models import (
     INTEGRATION_DECLINE_KINDS,
     DeclineKind,
     PlaybookDocument,
+    PlaybookRefusal,
     PlaybookRunStatus,
-    PlaybookStepInput,
     is_work_call,
-    playbook_body_from_input,
 )
-from app.models.workflow_execution_models import RecordedCall, parse_result
 from app.models.workflow_models import WorkflowDocument, WorkflowUpdate
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
+from app.services.workflow.playbook.metrics import (
+    PlaybookDecisionOutcome,
+    record_decline,
+    record_disable,
+    record_write,
+)
 from app.services.workflow.playbook.parser import (
-    RecordedResult,
-    RunResults,
+    PlaybookIssue,
     dump_playbook,
     validate_playbook,
+)
+from app.services.workflow.playbook.record import (
+    PlaybookPick,
+    RecordEntry,
+    build_playbook,
+    record_entries,
+    render_record,
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.utils.json_args import decode_json_container
@@ -58,7 +71,7 @@ from shared.py.wide_events import log
 
 
 def _render_location(location: tuple[int | str, ...]) -> str:
-    """One pydantic error location as the author wrote it: ``steps[0].tool``."""
+    """One pydantic error location as the author wrote it: ``steps[0].call``."""
     rendered = ""
     for part in location:
         if isinstance(part, int):
@@ -66,6 +79,15 @@ def _render_location(location: tuple[int | str, ...]) -> str:
         else:
             rendered += f".{part}" if rendered else str(part)
     return rendered or "arguments"
+
+
+class _ValidationProblem(BaseModel):
+    """One pydantic error, as both generations report it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    loc: tuple[int | str, ...]
+    msg: str
 
 
 def _explain_validation_error(error: ValidationError | LegacyValidationError) -> str:
@@ -80,8 +102,10 @@ def _explain_validation_error(error: ValidationError | LegacyValidationError) ->
     langchain's hook declares; either one reports ``loc``/``msg`` the same way.
     """
     problems = "; ".join(
-        f"{_render_location(item['loc'])}: {item['msg']}" for item in error.errors()
+        f"{_render_location(problem.loc)}: {problem.msg}"
+        for problem in map(_ValidationProblem.model_validate, error.errors())
     )
+    record_write(PlaybookDecisionOutcome.REFUSED, PlaybookRefusal.MALFORMED)
     return json.dumps(
         error_response(
             "invalid_playbook",
@@ -90,124 +114,98 @@ def _explain_validation_error(error: ValidationError | LegacyValidationError) ->
     )
 
 
-def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str, Any], object]]:
-    """Every tool call in the run's messages that has an answer: name, args, parsed answer.
-
-    Failed calls are kept, unlike the call record's successful-only lines
-    (``call_record.py``): a step frozen on a call that errored is precisely one
-    of the things the validator has to catch. A call with no answer is one still
-    in flight (this very tool call, in every real run) and is left out.
-    """
-    if state is None:
-        return []
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return []
-    answers = _answers_by_call_id(messages)
-    calls: list[tuple[str, dict[str, Any], object]] = []
-    for message in messages:
-        for call in getattr(message, "tool_calls", None) or []:
-            call_id = call.get("id")
-            name = str(call.get("name") or "")
-            if name and call_id in answers:
-                calls.append((name, dict(call.get("args") or {}), answers[call_id]))
-    return calls
+def _tool_calls(messages: Sequence[AnyMessage]) -> list[ToolCall]:
+    """Every tool call the run's model has issued so far, answered or still in flight."""
+    return [
+        call
+        for message in messages
+        if isinstance(message, AIMessage)
+        for call in message.tool_calls
+    ]
 
 
-def _activated_integrations(state: Mapping[str, Any] | None) -> list[str]:
+class _ActivationArgs(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    integration_id: str | None = None
+
+
+def _activated_integrations(messages: Sequence[AnyMessage]) -> list[str]:
     """The integrations this run activated, in order, each once.
 
     A blocked-run claim is held to this: activation is how a run reaches an
     integration, and where an unconnected one shows its connect card, so a run
     that never activated Slack cannot have been blocked on Slack.
     """
-    if state is None:
-        return []
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return []
+    calls: list[ToolCall] = _tool_calls(messages)
     targets = [
-        (call.get("args") or {}).get("integration_id")
-        for message in messages
-        for call in getattr(message, "tool_calls", None) or []
-        if call.get("name") == ACTIVATE_INTEGRATION_TOOL_NAME
+        _ActivationArgs.model_validate(call["args"]).integration_id
+        for call in calls
+        if call["name"] == ACTIVATE_INTEGRATION_TOOL_NAME
     ]
-    return [str(target) for target in dict.fromkeys(targets) if target]
+    return [target for target in dict.fromkeys(targets) if target]
 
 
-def _invoked_call_names(state: Mapping[str, Any] | None) -> list[str]:
+def _invoked_call_names(messages: Sequence[AnyMessage]) -> list[str]:
     """Every tool the run has called so far, answered or still in flight, seen through execute.
 
-    The quiet-day check reads this rather than the answered record: a model
-    can issue ``create_todo`` and the decline in one parallel batch, and the
-    create has no answer yet when the decline is judged.
+    The quiet-day check reads this rather than the run record: a model can
+    issue ``create_todo`` and the decline in one parallel batch, and the create
+    has not finished (so is not recorded) when the decline is judged.
     """
-    if state is None:
-        return []
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return []
-    return [
-        unwrap_execute_call(str(call["name"]), dict(call.get("args") or {}))[0]
-        for message in messages
-        for call in getattr(message, "tool_calls", None) or []
-        if call.get("name")
-    ]
+    calls: list[ToolCall] = _tool_calls(messages)
+    return [unwrap_execute_call(call["name"], dict(call["args"]))[0] for call in calls]
 
 
-def _answers_by_call_id(messages: list[object]) -> dict[str, object]:
-    """Each tool message's parsed answer, keyed by the call it answers."""
-    answers: dict[str, object] = {}
-    for message in messages:
-        if isinstance(message, ToolMessage) and message.tool_call_id:
-            content = message.content
-            answers[message.tool_call_id] = parse_result(
-                content if isinstance(content, str) else json.dumps(content, default=str)
-            )
-    return answers
+async def _pickable_record(config: RunnableConfig) -> list[RecordEntry]:
+    """Return this run's calls a playbook may replay, each with its id.
 
-
-def _replayed_results(config: RunnableConfig) -> list[RecordedResult]:
-    """The calls a stopped replay made this fire, as results a write may freeze.
-
-    They ran, they produced their results, and the fallback brief told the agent
-    not to run them again. They are this run's calls in every sense the
-    validator cares about.
+    A heal run's record opens with the stopped replay's calls (the worker seeds
+    them), so a rewrite can keep a step the replay already ran.
     """
-    raw = (config.get("configurable") or {}).get(PLAYBOOK_REPLAYED_CALLS_KEY) or []
-    replayed = [RecordedCall.model_validate(item) for item in raw]
-    return [
-        RecordedResult(
-            tool_name=call.tool_name,
-            args=call.args,
-            result=parse_result(call.result_digest),
+    return record_entries(await read_recorded_calls(get_stream_id(config)), UNPICKABLE_TOOLS)
+
+
+def _refused(issues: list[PlaybookIssue], workflow_id: str) -> dict[str, object]:
+    """Return the refusal for a write, every issue with where it is."""
+    record_write(PlaybookDecisionOutcome.REFUSED, issues[0].kind)
+    problems = "; ".join(f"{issue.where}: {issue.problem}" for issue in issues)
+    log.warning(
+        f"{LogTag.TOOL} write_playbook: rejected — "
+        + "; ".join(f"{issue.where}: {issue.problem}" for issue in issues[:5]),
+        issues=len(issues),
+        refusal=issues[0].kind.value,
+        workflow_id=workflow_id,
+    )
+    return error_response(
+        "invalid_playbook",
+        "The playbook was not written. Fix these and call write_playbook again: " + problems,
+    )
+
+
+@tool
+async def read_run_record(config: RunnableConfig) -> dict[str, object]:
+    """
+    List the tool calls this run has made, each with its id, to pick a playbook's steps from.
+
+    Each call shows its id (its tool and which of that tool's calls it is, e.g.
+    GMAIL_FETCH_EMAILS#1), the args it was sent and the shape of what it
+    returned: the keys a $steps reference can read. Call this right before
+    write_playbook; a playbook's steps are these ids, copied exactly.
+    """
+    try:
+        workflow_id = get_workflow_id(config)
+    except WorkflowConfigError as e:
+        return error_response("not_in_workflow_run", str(e))
+    log.set(tool={"name": "read_run_record", "action": "read"}, workflow_id=workflow_id)
+    record = await _pickable_record(config)
+    log.set_ns("playbook", record_calls=len(record))
+    if not record:
+        return success_response(
+            {"calls": []},
+            "This run has made no call a playbook can replay, so there is nothing to freeze.",
         )
-        for call in replayed
-    ]
-
-
-def _run_results(state: Mapping[str, Any] | None) -> RunResults | None:
-    """The authoring run's tool calls with what each one returned, in call order.
-
-    ``None`` when there is no run to read: the dev ``/dev/executor`` route and
-    the unit tests build these tools without a graph, and a playbook written
-    there is validated exactly as it was before rather than refused for a run
-    that was never recorded. An empty list is NOT the same answer — it means the
-    run really made no calls, and a playbook freezing calls is wrong.
-
-    Failed calls are kept, unlike the call record's successful-only lines
-    (``call_record.py``): a step frozen on a call that errored is precisely one
-    of the things the validator has to catch.
-    """
-    if state is None:
-        return None
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return None
-    return [
-        RecordedResult(tool_name=name, args=args, result=answer)
-        for name, args, answer in _answered_calls(state)
-    ]
+    return success_response({"calls": render_record(record)})
 
 
 @tool
@@ -216,37 +214,34 @@ async def write_playbook(
     description: Annotated[str, "What this playbook does, in one or two lines."],
     # Models often JSON-encode this list (prod: 7 refused writes); the schema stays an array.
     steps: Annotated[
-        list[PlaybookStepInput],
+        list[PlaybookPick],
         BeforeValidator(decode_json_container),
-        "The calls to replay, in the order you made them: only the calls that did "
-        "the work, never discovery or dead ends. Writing the result is not a step; "
-        "that is what result_brief is for.",
+        "The calls from read_run_record that did the work, by their id: never "
+        "discovery, dead ends or retries. Each step replays its call exactly as "
+        "recorded, except the values you mark in vary.",
     ],
     result_brief: Annotated[
         str,
         "How to write the run's result for the user from the steps' results. "
         "Classification, judgement and summarising go here.",
     ],
-    #: The run's own messages, injected by the graph and absent from the schema
-    #: the model sees. Defaulted because a tool built without a graph (the dev
-    #: executor route, the unit tests) is called with arguments only.
-    state: Annotated[dict[str, Any] | None, InjectedState] = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """
-    Freeze this workflow run's settled tool sequence as a playbook, so later runs
-    execute it instead of reasoning it out again. The playbook attaches to the
-    workflow this run is executing; there is no id to supply.
+    Freeze calls this workflow run made as its playbook, so later runs replay
+    them instead of reasoning the work out again. Pick the calls by their id in
+    read_run_record, copied exactly, and mark the values that change per run; the tool and every
+    other argument come from the record. The playbook attaches
+    to the workflow this run is executing; there is no id to supply.
 
-    The steps are checked against the real tools AND against what this run's
-    calls actually returned before anything is stored: if a tool or an argument
-    does not exist, if a step froze a call this run never made or one that came
-    back empty, or if a $steps reference reads a field the result does not have,
-    NOTHING is written and the problems come back so you can fix them and call
-    this again. A successful write replaces the workflow's previous playbook
-    entirely, which is also how you revise one.
+    Nothing is written if a pick is wrong (an id that is not in the record, a
+    path the call does not have, a $steps reference to a field its call did not
+    return) or if it drops an action the previous playbook took for the user; the
+    problems come back so you can fix them and call this again. A successful
+    write replaces the workflow's previous playbook entirely.
 
-    Only write a playbook when the same order of calls would work tomorrow
-    unchanged. A run whose order depends on what it finds is not a playbook.
+    Only write a playbook when the same calls would do the work tomorrow with
+    only the marked values changed. A run whose calls depend on what it finds is
+    not a playbook.
     """
     try:
         workflow_id = get_workflow_id(config)
@@ -259,44 +254,26 @@ async def write_playbook(
         if workflow is None:
             return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
 
-        try:
-            body = playbook_body_from_input(description, steps, result_brief)
-        except ValueError as e:
-            # A shape the body cannot take (a for_each without its ceiling) is
-            # an authoring error like a bad reference: refused, not raised.
-            return error_response("invalid_playbook", f"The playbook was not written. {e}")
-
-        results = _run_results(state)
-        if results is not None:
-            # The replay's calls come first: they ran before anything the agent did.
-            results = [*_replayed_results(config), *results]
-        # On the wide event because it is the one thing a rejected-or-accepted
-        # write cannot show from its outcome: whether the run's own results
-        # were in hand (None: no graph state reached the tool at all).
-        log.set_ns("playbook", checked_against_calls=None if results is None else len(results))
-        validation = await validate_playbook(body, results)
+        record = await _pickable_record(config)
+        current_hash = workflow_hash(workflow.prompt, workflow.steps)
+        stored = await playbook_repository.get_for_workflow(workflow_id, user_id)
+        # A playbook for an edited workflow binds nothing: the edit may have dropped the action.
+        replaced = stored.steps if stored and stored.workflow_hash == current_hash else []
+        built = build_playbook(description, steps, result_brief, record, replaces=replaced)
+        log.set_ns("playbook", record_calls=len(record), picks=len(steps))
+        if built.body is None:
+            return _refused(built.issues, workflow_id)
+        validation = await validate_playbook(built.body, built.sources)
         if not validation.valid:
-            # The issues themselves, not just how many. A refused playbook is
-            # diagnosed from the reason, and a count in a structured field that
-            # the console format drops tells whoever is watching nothing at all.
-            log.warning(
-                f"{LogTag.TOOL} write_playbook: rejected — "
-                + "; ".join(f"{issue.where}: {issue.problem}" for issue in validation.issues[:5]),
-                issues=len(validation.issues),
-                workflow_id=workflow_id,
-            )
-            return error_response(
-                "invalid_playbook",
-                "The playbook was not written. Fix these and call write_playbook again: "
-                + "; ".join(f"{issue.where}: {issue.problem}" for issue in validation.issues),
-            )
+            return _refused(validation.issues, workflow_id)
+        body = built.body
 
         now = datetime.now(UTC)
         stored = await playbook_repository.upsert_for_workflow(
             PlaybookDocument(
                 workflow_id=workflow_id,
                 user_id=user_id,
-                workflow_hash=workflow_hash(workflow.prompt, workflow.steps),
+                workflow_hash=current_hash,
                 authored_run=get_stream_id(config),
                 created_at=now,
                 updated_at=now,
@@ -311,6 +288,7 @@ async def write_playbook(
             workflow_id, user_id, WorkflowUpdate(last_playbook_discard=None)
         )
         log.set_ns("playbook", id=stored.playbook_id, steps=len(stored.steps))
+        record_write(PlaybookDecisionOutcome.ACCEPTED)
         return success_response(
             {"playbook_id": stored.playbook_id, "steps": len(stored.steps)},
             "Playbook written. Later runs of this workflow replay it.",
@@ -319,6 +297,7 @@ async def write_playbook(
         log.error(
             f"{LogTag.TOOL} write_playbook: exception", error_type=type(e).__name__, exc_info=True
         )
+        record_write(PlaybookDecisionOutcome.ERROR)
         return error_response("write_failed", str(e))
 
 
@@ -331,7 +310,7 @@ write_playbook.handle_validation_error = _explain_validation_error
 @tool
 async def read_playbook(
     config: RunnableConfig,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """
     Read back this workflow's playbook: the YAML as written, when it was written,
     and whether the most recent run replayed it or fell back to reasoning.
@@ -368,6 +347,14 @@ async def read_playbook(
         return error_response("read_failed", str(e))
 
 
+@dataclass(frozen=True, slots=True)
+class _Decision:
+    """What a well-formed decline answers, and whether that answer refuses it."""
+
+    response: dict[str, object]
+    refused: bool = False
+
+
 async def _record_blocked_run(
     workflow_id: str,
     user_id: str,
@@ -375,7 +362,7 @@ async def _record_blocked_run(
     integrations: list[str],
     *,
     used_by_run: list[str],
-) -> dict[str, Any]:
+) -> _Decision:
     """Settle a run that never reached the work.
 
     The stored playbook is deliberately left alone even mid-heal: a heal run that
@@ -392,10 +379,12 @@ async def _record_blocked_run(
 
     log.set_ns("playbook", blocked=True, blocked_integrations=integrations)
     if kind not in INTEGRATION_DECLINE_KINDS:
-        return success_response(
-            {"declined": True, "blocked": True},
-            "Noted — this run never reached the work. It will be asked again on a run that "
-            "gets further.",
+        return _Decision(
+            success_response(
+                {"declined": True, "blocked": True},
+                "Noted — this run never reached the work. It will be asked again on a run "
+                "that gets further.",
+            )
         )
 
     outcome = await pause_workflow_for_missing_integrations(
@@ -406,36 +395,44 @@ async def _record_blocked_run(
         # this run's activations involve what it named. Refused, not recorded, so
         # the model re-decides with the integration it actually needed.
         named = ", ".join(outcome.unrelated)
-        return error_response(
-            "integration_not_in_run",
-            f"{named} {'is' if len(outcome.unrelated) == 1 else 'are'} not part of this "
-            "workflow's steps and this run never activated it. Name the integration "
-            "the run actually needed, or decline with the kind that says why the "
-            "sequence cannot hold.",
+        return _Decision(
+            error_response(
+                "integration_not_in_run",
+                f"{named} {'is' if len(outcome.unrelated) == 1 else 'are'} not part of this "
+                "workflow's steps and this run never activated it. Name the integration "
+                "the run actually needed, or decline with the kind that says why the "
+                "sequence cannot hold.",
+            ),
+            refused=True,
         )
     paused = outcome.paused
     if not paused:
         # The claim did not check out. Say so rather than pausing on it.
-        return success_response(
-            {"declined": True, "blocked": True, "paused": False},
-            "Noted, but those integrations look connected from here, so the workflow is "
-            "still active.",
+        return _Decision(
+            success_response(
+                {"declined": True, "blocked": True, "paused": False},
+                "Noted, but those integrations look connected from here, so the workflow is "
+                "still active.",
+            )
         )
-    return success_response(
-        {
-            "declined": True,
-            "blocked": True,
-            "paused": True,
-            "integrations": paused,
-        },
-        f"Noted. This workflow is paused until {', '.join(paused)} "
-        f"{'is' if len(paused) == 1 else 'are'} connected, and resumes by itself then.",
+    return _Decision(
+        success_response(
+            {
+                "declined": True,
+                "blocked": True,
+                "paused": True,
+                "integrations": paused,
+            },
+            f"Noted. This workflow is paused until {', '.join(paused)} "
+            f"{'is' if len(paused) == 1 else 'are'} connected, and resumes by itself then.",
+        )
     )
 
 
 @tool
 async def decline_playbook(
     config: RunnableConfig,
+    messages: Annotated[list[AnyMessage], InjectedState("messages")],
     kind: Annotated[
         DeclineKind,
         "Which of the five cases this is. There is no member for 'the arguments "
@@ -453,8 +450,7 @@ async def decline_playbook(
         "Required for order_branches: the ONE call that runs on some days and "
         "not others. If you cannot name such a call, the order does not branch.",
     ] = None,
-    state: Annotated[dict[str, Any] | None, InjectedState] = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """
     Record that this run's sequence is not worth freezing as a playbook.
 
@@ -476,6 +472,7 @@ async def decline_playbook(
 
     refused = _decline_request_problem(kind, integrations, branch_on)
     if refused is not None:
+        record_decline(kind, refused=True)
         return refused
 
     try:
@@ -483,14 +480,16 @@ async def decline_playbook(
         workflow = await workflow_repository.get_for_user(workflow_id, user_id)
         if workflow is None:
             return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
-        return await _record_decline(
+        decision = await _record_decline(
             workflow,
             kind=kind,
             reason=reason,
             integrations=integrations,
-            state=state,
+            messages=messages,
             config=config,
         )
+        record_decline(kind, refused=decision.refused)
+        return decision.response
     except Exception as e:
         log.error(
             f"{LogTag.TOOL} decline_playbook: exception", error_type=type(e).__name__, exc_info=True
@@ -500,7 +499,7 @@ async def decline_playbook(
 
 def _decline_request_problem(
     kind: DeclineKind, integrations: list[str] | None, branch_on: str | None
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """The refusal for a decline whose kind needs a detail the call did not give."""
 
     if kind in INTEGRATION_DECLINE_KINDS and not integrations:
@@ -527,9 +526,9 @@ async def _record_decline(
     kind: DeclineKind,
     reason: str,
     integrations: list[str] | None,
-    state: Mapping[str, Any] | None,
+    messages: Sequence[AnyMessage],
     config: RunnableConfig,
-) -> dict[str, Any]:
+) -> _Decision:
     """What one well-formed decline means for the workflow, by its kind.
 
     A blocked run pauses, a quiet day is checked against the run's own calls, and
@@ -543,29 +542,34 @@ async def _record_decline(
             user_id,
             kind,
             integrations or [],
-            used_by_run=_activated_integrations(state),
+            used_by_run=_activated_integrations(messages),
         )
     if kind is DeclineKind.NO_WORK_TODAY:
         # The claim is checked against the run's own record, not taken on
         # trust: a run that made a doing-call had work to freeze.
         worked = [
             name
-            for name in _invoked_call_names(state)
+            for name in _invoked_call_names(messages)
             if name not in _RUN_BOOKKEEPING_TOOLS and is_work_call(name)
         ]
         if worked:
-            return error_response(
-                "work_happened",
-                f"This run called {', '.join(sorted(set(worked)))}, so the work happened "
-                "today. Freeze it with write_playbook, or decline with the kind that "
-                "says why the sequence cannot hold.",
+            return _Decision(
+                error_response(
+                    "work_happened",
+                    f"This run called {', '.join(sorted(set(worked)))}, so the work happened "
+                    "today. Freeze it with write_playbook, or decline with the kind that "
+                    "says why the sequence cannot hold.",
+                ),
+                refused=True,
             )
         # The work never happened, so there was nothing to freeze.
         log.set_ns("playbook", quiet_day=True)
-        return success_response(
-            {"declined": True},
-            "Noted: nothing to freeze on a day the work did not happen. The next run is "
-            "asked again.",
+        return _Decision(
+            success_response(
+                {"declined": True},
+                "Noted: nothing to freeze on a day the work did not happen. The next run is "
+                "asked again.",
+            )
         )
 
     playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
@@ -573,9 +577,11 @@ async def _record_decline(
         # Seen on the real model: a valid write, then a decline in the same
         # turn. The write was checked against the run and stored; the
         # decline is a second voice of a decision already made.
-        return success_response(
-            {"declined": True},
-            "This run already wrote a playbook, and that is its decision; nothing to record.",
+        return _Decision(
+            success_response(
+                {"declined": True},
+                "This run already wrote a playbook, and that is its decision; nothing to record.",
+            )
         )
 
     # A decline inside a heal run is the agent saying the stored sequence
@@ -584,14 +590,18 @@ async def _record_decline(
     if playbook is not None and playbook.last_run_status in HEAL_STATUSES:
         await playbook_repository.delete_for_workflow(workflow_id, user_id)
         log.set_ns("playbook", disabled=True, reason=reason)
-        return success_response(
-            {"declined": True, "disabled": True},
-            "Noted. The stored playbook was removed; the next run reasons it out and is "
-            "asked again.",
+        return _Decision(
+            success_response(
+                {"declined": True, "disabled": True},
+                "Noted. The stored playbook was removed; the next run reasons it out and is "
+                "asked again.",
+            )
         )
-    return success_response(
-        {"declined": True},
-        "Noted. This run reasons it out; the next run is asked again.",
+    return _Decision(
+        success_response(
+            {"declined": True},
+            "Noted. This run reasons it out; the next run is asked again.",
+        )
     )
 
 
@@ -599,7 +609,7 @@ async def _record_decline(
 async def disable_playbook(
     config: RunnableConfig,
     reason: Annotated[str, "Why this sequence no longer holds. Be specific."],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """
     Delete this workflow's playbook so its runs go back to being reasoned out.
 
@@ -617,12 +627,14 @@ async def disable_playbook(
         if not removed:
             # Not a decision: there was nothing to decide about. A briefed run
             # that has no playbook must write or decline, not disable air.
+            record_disable(PlaybookDecisionOutcome.REFUSED)
             return error_response(
                 "nothing_to_disable",
                 f"Workflow {workflow_id} has no playbook. Call write_playbook or "
                 "decline_playbook instead.",
             )
         log.set_ns("playbook", disabled=True, reason=reason)
+        record_disable(PlaybookDecisionOutcome.ACCEPTED)
         return success_response(
             {"disabled": True}, "Playbook removed. This workflow reasons out every run again."
         )
@@ -633,7 +645,9 @@ async def disable_playbook(
         return error_response("disable_failed", str(e))
 
 
-tools = [write_playbook, read_playbook, decline_playbook, disable_playbook]
+tools = [read_run_record, write_playbook, read_playbook, decline_playbook, disable_playbook]
 
 #: The run tracking its own plan and deciding its playbook: never the workflow's work.
-_RUN_BOOKKEEPING_TOOLS = frozenset(TODO_TOOL_NAMES | {t.name for t in tools})
+_RUN_BOOKKEEPING_TOOLS = frozenset(TODO_TOOL_NAMES | PLAYBOOK_TOOL_NAMES)
+#: Calls a playbook step can never be: read_run_record lists everything else.
+UNPICKABLE_TOOLS = _RUN_BOOKKEEPING_TOOLS | PLAYBOOK_UNPICKABLE_TOOLS

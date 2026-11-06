@@ -357,6 +357,22 @@ def test_every_grouped_job_runs_its_nx_checks_then_posts_every_check(
             )
 
 
+def test_every_step_that_posts_statuses_is_told_its_own_job_id(workflow: dict[str, Any]) -> None:
+    """The id is the status link; `job` is unreadable in a job-level env, so each step reads it."""
+    posting = [
+        (name, step)
+        for name, job in workflow["jobs"].items()
+        for step in job.get("steps", [])
+        if POST in str(step.get("run", "")) or "runner.py run-job" in str(step.get("run", ""))
+    ]
+    assert posting, "found no step that posts statuses"
+    for name, step in posting:
+        env = mapping(step.get("env") or {})
+        assert env.get("JOB_CHECK_RUN_ID") == "${{ job.check_run_id }}", (name, step.get("name"))
+        if POST in str(step["run"]):
+            assert '--job-id "$JOB_CHECK_RUN_ID"' in step["run"], (name, step.get("name"))
+
+
 def test_every_check_has_an_area() -> None:
     # post-statuses posts `ci / <area> / <check>`; an area-less check has no status.
     for checks in _checks_by_job().values():

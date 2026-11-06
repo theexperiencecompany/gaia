@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from enum import StrEnum
 from importlib import import_module
 import os
 import sys
+from typing import Final
 
 from pydantic import ValidationError
 
@@ -17,6 +19,7 @@ from .core.dashboards import build as build_dashboards
 from .core.flaky import report as flaky_report
 from .core.ingest import rebuild, verify as verify_ingest
 from .core.ingest_check import api_base
+from .core.journal import RunJournal, RunMeta
 from .core.opiksink import load_opik_env
 from .core.project import project
 from .core.providers import EvalConfig, load_config, price_book
@@ -48,6 +51,7 @@ def _load_suites() -> None:
         "ownership",
         "hil_judge",
         "hil_reply",
+        "trigger_gate",
         "longmemeval",
         "regression",
         "browser",
@@ -55,11 +59,41 @@ def _load_suites() -> None:
         import_module(f".suites.{_suite_module}", __package__)
 
 
-def _build_parser() -> argparse.ArgumentParser:
+class Command(StrEnum):
+    """The harness's subcommands, as typed on the command line."""
+
+    RUN = "run"
+    REPORT = "report"
+    COST = "cost"
+    SEED = "seed"
+    INGEST = "ingest"
+    INGEST_CHECK = "ingest-check"
+    RESCORE = "rescore"
+    COMPARE = "compare"
+    FLAKY = "flaky"
+    SWEEP = "sweep"
+    DASHBOARDS = "dashboards"
+    VERIFY = "verify"
+
+
+def main() -> int | None:
+    _load_suites()
+    args = _parser().parse_args()
+    command = Command(args.command)
+    if command is Command.RUN and args.sim:
+        os.environ["GAIA_SIM_MODE"] = "1"
+        os.environ.setdefault(
+            "OPENROUTER_BASE_URL",
+            f"http://localhost:{os.environ.get('LLM_STUB_PORT', '9797')}/api/v1",
+        )
+    return _COMMANDS[command](load_config(), args)
+
+
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="evals", description="GAIA eval harness")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    run_p = sub.add_parser("run", help="run a suite")
+    run_p = sub.add_parser(Command.RUN, help="run a suite")
     run_p.add_argument(
         "--suite",
         required=True,
@@ -92,13 +126,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="run N cases at once (pins one provider; rotation is sequential-only)",
     )
 
-    report_p = sub.add_parser("report", help="regenerate HTML report for a run")
+    report_p = sub.add_parser(Command.REPORT, help="regenerate HTML report for a run")
     report_p.add_argument("run_id")
 
-    cost_p = sub.add_parser("cost", help="project eval cost from journal history")
+    cost_p = sub.add_parser(Command.COST, help="project eval cost from journal history")
     cost_p.add_argument("--project", action="store_true")
 
-    seed_p = sub.add_parser("seed", help="backfill Opik from every run journal (idempotent)")
+    seed_p = sub.add_parser(Command.SEED, help="backfill Opik from every run journal (idempotent)")
     seed_p.add_argument(
         "--reset",
         action="store_true",
@@ -106,7 +140,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     ingest_p = sub.add_parser(
-        "ingest", help="delete the gaia-* Opik projects and rebuild them from the journals"
+        Command.INGEST, help="delete the gaia-* Opik projects and rebuild them from the journals"
     )
     ingest_p.add_argument(
         "--dry-run",
@@ -125,16 +159,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser(
-        "ingest-check", help="read every Opik project back and fail if the numbers are impossible"
+        Command.INGEST_CHECK,
+        help="read every Opik project back and fail if the numbers are impossible",
     )
 
     rescore_p = sub.add_parser(
-        "rescore", help="re-grade a finished run from its journal (no model calls)"
+        Command.RESCORE, help="re-grade a finished run from its journal (no model calls)"
     )
     rescore_p.add_argument("run_id")
 
     compare_p = sub.add_parser(
-        "compare", help="score a finished run against its suite's baseline (free, from the journal)"
+        Command.COMPARE,
+        help="score a finished run against its suite's baseline (free, from the journal)",
     )
     compare_p.add_argument("run_id")
     compare_p.add_argument(
@@ -150,38 +186,27 @@ def _build_parser() -> argparse.ArgumentParser:
         "every later comparison against it prints the reason",
     )
 
-    sub.add_parser("flaky", help="cases whose verdict changes between runs (free, from journals)")
+    sub.add_parser(
+        Command.FLAKY, help="cases whose verdict changes between runs (free, from journals)"
+    )
 
     sub.add_parser(
-        "sweep",
+        Command.SWEEP,
         help="find runs still holding errored cases; print the retry plan and exit "
         "non-zero while any remain (retryable ones name their resume command)",
     )
 
-    sub.add_parser("dashboards", help="create/refresh the Opik dashboards (idempotent)")
+    sub.add_parser(Command.DASHBOARDS, help="create/refresh the Opik dashboards (idempotent)")
 
     verify_p = sub.add_parser(
-        "verify", help="prove every case's gates can reject a worthless run (no model, no DB)"
+        Command.VERIFY, help="prove every case's gates can reject a worthless run (no model, no DB)"
     )
     verify_p.add_argument("--suite", help="only this suite (default: every registered suite)")
+
     return parser
 
 
-def main() -> int | None:
-    _load_suites()
-    args = _build_parser().parse_args()
-
-    if args.command == "run" and args.sim:
-        os.environ["GAIA_SIM_MODE"] = "1"
-        os.environ.setdefault(
-            "OPENROUTER_BASE_URL",
-            f"http://localhost:{os.environ.get('LLM_STUB_PORT', '9797')}/api/v1",
-        )
-
-    return _COMMANDS[args.command](load_config(), args)
-
-
-def _run(cfg: EvalConfig, args: argparse.Namespace) -> int | None:
+def _run(cfg: EvalConfig, args: argparse.Namespace) -> None:
     opts = runner.RunOptions(
         suite=args.suite,
         resume=args.resume,
@@ -199,92 +224,67 @@ def _run(cfg: EvalConfig, args: argparse.Namespace) -> int | None:
         rebaseline=args.rebaseline,
     )
     asyncio.run(runner.run_suite(cfg, opts))
-    return None
 
 
-def _report(cfg: EvalConfig, args: argparse.Namespace) -> int | None:
-    journal = runner.RunJournal(runner.RUNS_DIR, args.run_id)
-    label = (journal.load_meta() or runner.RunMeta(args.run_id, "?", "?")).suite
+def _report(cfg: EvalConfig, args: argparse.Namespace) -> None:
+    journal = RunJournal(runner.RUNS_DIR, args.run_id)
+    label = (journal.load_meta() or RunMeta(args.run_id, "?", "?")).suite
     print(write_report(journal, label, price_book(cfg)))
-    return None
 
 
-def _cost(cfg: EvalConfig, _args: argparse.Namespace) -> int | None:
-    project(runner.RUNS_DIR, price_book(cfg))
-    return None
-
-
-def _seed(cfg: EvalConfig, args: argparse.Namespace) -> int | None:
-    seed(cfg, reset=args.reset)
-    return None
-
-
-def _ingest(cfg: EvalConfig, args: argparse.Namespace) -> int | None:
-    return rebuild(cfg, dry_run=args.dry_run, pilot=args.pilot, skip_teardown=args.skip_teardown)
-
-
-def _ingest_check(_cfg: EvalConfig, _args: argparse.Namespace) -> int | None:
+def _ingest_check(cfg: EvalConfig, args: argparse.Namespace) -> int:
+    del cfg, args
     ok, report = verify_ingest(api_base(os.environ["OPIK_URL_OVERRIDE"]))
     print(report)
     return 0 if ok else 1
 
 
-def _dashboards(_cfg: EvalConfig, _args: argparse.Namespace) -> int | None:
-    build_dashboards()
-    return None
-
-
-def _rescore(cfg: EvalConfig, args: argparse.Namespace) -> int | None:
+def _rescore(cfg: EvalConfig, args: argparse.Namespace) -> None:
     result = rescore(runner.RUNS_DIR, args.run_id, cfg)
     print(result.render())
     print(f"[rescore] {write_sibling(runner.RUNS_DIR, result)}")
-    return None
 
 
-def _compare(_cfg: EvalConfig, args: argparse.Namespace) -> int | None:
+def _compare(cfg: EvalConfig, args: argparse.Namespace) -> int:
+    del cfg
     comparison = baseline.for_run(
-        runner.RunJournal(runner.RUNS_DIR, args.run_id),
+        RunJournal(runner.RUNS_DIR, args.run_id),
         rebaseline=args.rebaseline,
         provisional=args.provisional,
     )
     print(comparison.render())
-    # A regression is a result, not a crash: the verdict is printed first, then the
-    # exit code carries it to whatever called this.
-    sys.exit(0 if comparison.ok else 1)
+    # A regression is a result, not a crash — the verdict is printed first,
+    # then the exit code carries it to whatever called this.
+    return 0 if comparison.ok else 1
 
 
-def _flaky(_cfg: EvalConfig, _args: argparse.Namespace) -> int | None:
-    print(flaky_report(runner.RUNS_DIR))
-    return None
-
-
-def _sweep(_cfg: EvalConfig, _args: argparse.Namespace) -> int | None:
+def _sweep(cfg: EvalConfig, args: argparse.Namespace) -> int:
+    del cfg, args
     sweeps = plan(runner.RUNS_DIR)
     print(render(sweeps))
-    sys.exit(1 if sweeps else 0)
+    return 1 if sweeps else 0
 
 
-def _verify_command(cfg: EvalConfig, args: argparse.Namespace) -> int | None:
-    sys.exit(_verify(cfg, args.suite))
-
-
-_COMMANDS: dict[str, Callable[[EvalConfig, argparse.Namespace], int | None]] = {
-    "run": _run,
-    "report": _report,
-    "cost": _cost,
-    "seed": _seed,
-    "ingest": _ingest,
-    "ingest-check": _ingest_check,
-    "dashboards": _dashboards,
-    "rescore": _rescore,
-    "compare": _compare,
-    "flaky": _flaky,
-    "sweep": _sweep,
-    "verify": _verify_command,
+# Each command's work, given the loaded config and its parsed flags; the return is the exit code.
+_COMMANDS: Final[Mapping[Command, Callable[[EvalConfig, argparse.Namespace], int | None]]] = {
+    Command.RUN: _run,
+    Command.REPORT: _report,
+    Command.COST: lambda cfg, _args: project(runner.RUNS_DIR, price_book(cfg)),
+    Command.SEED: lambda cfg, args: seed(cfg, reset=args.reset),
+    Command.INGEST: lambda cfg, args: rebuild(
+        cfg, dry_run=args.dry_run, pilot=args.pilot, skip_teardown=args.skip_teardown
+    ),
+    Command.INGEST_CHECK: _ingest_check,
+    Command.DASHBOARDS: lambda _cfg, _args: build_dashboards(),
+    Command.RESCORE: _rescore,
+    Command.COMPARE: _compare,
+    Command.FLAKY: lambda _cfg, _args: print(flaky_report(runner.RUNS_DIR)),
+    Command.SWEEP: _sweep,
+    Command.VERIFY: lambda cfg, args: _verify(cfg, args.suite),
 }
 
 
-def _verify(cfg: object, only: str | None) -> int:
+def _verify(cfg: EvalConfig, only: str | None) -> int:
     """Falsifiability sweep across every registered suite.
 
     Exits non-zero when any case's gate accepted a worthless run, so this can

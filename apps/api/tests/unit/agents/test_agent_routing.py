@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
+from pydantic import ValidationError
 import pytest
 
 from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
@@ -22,9 +23,7 @@ from app.override.langgraph_bigtool.agent_config import (
     HookConfig,
     ToolRetrievalConfig,
 )
-from app.override.langgraph_bigtool.create_agent import (
-    create_agent,
-)
+from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import BindableToolsFakeModel
 
 
@@ -807,8 +806,8 @@ class TestRetrievedToolDiscoveryRendering:
         assert "dummy_tool" in self._discovery_message(result)
 
     @pytest.mark.asyncio
-    async def test_a_non_string_prerendered_block_is_refused(self):
-        """response_text can come back any shape; anything not a string must fall back, not reach ToolMessage as a dict."""
+    async def test_a_non_string_prerendered_block_fails_loud(self):
+        """A retriever whose response_text is not a string is a broken retriever, not a shape to paper over."""
 
         async def _retrieve(query: str) -> dict:
             """Retrieve tools matching the query."""
@@ -820,14 +819,13 @@ class TestRetrievedToolDiscoveryRendering:
 
         graph = self._compile(_retrieve)
 
-        result = await graph.ainvoke(
-            {"messages": [HumanMessage(content="find me email tools")]},
-            config={"configurable": {"thread_id": "retr-4", "user_id": "user-1"}},
-        )
+        with pytest.raises(ValidationError, match="response_text"):
+            await graph.ainvoke(
+                {"messages": [HumanMessage(content="find me email tools")]},
+                config={"configurable": {"thread_id": "retr-4", "user_id": "user-1"}},
+            )
 
-        assert "dummy_tool" in self._discovery_message(result)
-
-    def test_the_sync_path_also_refuses_a_non_string_block(self):
+    def test_the_sync_path_also_fails_loud_on_a_non_string_block(self):
         from langgraph.checkpoint.memory import MemorySaver
         from langgraph.store.memory import InMemoryStore
 
@@ -847,12 +845,11 @@ class TestRetrievedToolDiscoveryRendering:
         )
         graph = builder.compile(checkpointer=MemorySaver(), store=InMemoryStore())
 
-        result = graph.invoke(
-            {"messages": [HumanMessage(content="find me email tools")]},
-            config={"configurable": {"thread_id": "retr-sync-3", "user_id": "user-1"}},
-        )
-
-        assert "dummy_tool" in self._discovery_message(result)
+        with pytest.raises(ValidationError, match="response_text"):
+            graph.invoke(
+                {"messages": [HumanMessage(content="find me email tools")]},
+                config={"configurable": {"thread_id": "retr-sync-3", "user_id": "user-1"}},
+            )
 
     @pytest.mark.asyncio
     async def test_a_retriever_returning_a_plain_list_still_renders(self):

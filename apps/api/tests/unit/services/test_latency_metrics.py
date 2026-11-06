@@ -2,6 +2,8 @@
 
 from prometheus_client import REGISTRY
 
+from app.services.latency_metrics import observe_trigger_gate_decision
+
 
 def test_histograms_registered_and_observe():
     from app.services import latency_metrics as m
@@ -89,3 +91,12 @@ def test_tool_call_histogram_resolves_a_call_that_ran_to_the_timeout():
         REGISTRY.get_sample_value("tool_call_seconds_bucket", {**labels, "le": "300.0"})
         == resolved_before + 1
     )
+
+
+def test_a_trigger_gate_decision_is_counted_under_its_labels() -> None:
+    labels = {"owner": "workflow", "outcome": "run", "reason": "jev_timeout"}
+    before = REGISTRY.get_sample_value("trigger_gate_decision_total", labels) or 0.0
+
+    observe_trigger_gate_decision(owner="workflow", outcome="run", reason="jev_timeout")
+
+    assert REGISTRY.get_sample_value("trigger_gate_decision_total", labels) == before + 1

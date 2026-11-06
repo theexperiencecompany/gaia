@@ -106,6 +106,34 @@ class DeclineKind(str, Enum):
     NO_WORK_TODAY = "no_work_today"
 
 
+class PlaybookRefusal(str, Enum):
+    """Why a write_playbook call was refused: the closed set its refusals are counted by."""
+
+    #: The arguments missed the tool's own schema before any pick was read.
+    MALFORMED = "malformed"
+    NOT_IN_RECORD = "not_in_record"
+    PICKED_TWICE = "picked_twice"
+    DUPLICATE_ID = "duplicate_id"
+    NO_STEPS = "no_steps"
+    #: A rewrite leaves out an action the stored playbook takes for the user.
+    DROPS_ACTION = "drops_action"
+    FAILED_CALL = "failed_call"
+    #: The picked call returned nothing: a quiet day, which declines no_work_today.
+    EMPTY_RESULT = "empty_result"
+    NO_SUCH_ARG = "no_such_arg"
+    NO_PLACEHOLDER = "no_placeholder"
+    #: A time the placeholder vocabulary cannot say ($trigger.start + 1d).
+    TIME_EXPRESSION = "time_expression"
+    TIME_LAYOUT = "time_layout"
+    FOR_EACH_UNMARKED = "for_each_unmarked"
+    FOR_EACH_SOURCE = "for_each_source"
+    #: A $steps or $item reference to a step or field that does not exist.
+    STEP_REFERENCE = "step_reference"
+    ASK_SLOT = "ask_slot"
+    TOOL_SPACE = "tool_space"
+    ARG_SCHEMA = "arg_schema"
+
+
 #: Kinds saying the run never reached the work, so there was no sequence to judge.
 BLOCKED_DECLINE_KINDS = frozenset(
     {
@@ -534,137 +562,6 @@ class PlaybookBody(BaseModel):
     steps: list[PlaybookStep] = Field(min_length=1)
     result_brief: str = Field(
         description="How to write the run's result for the user, from every step's result."
-    )
-
-
-#: The placeholder vocabulary, spelled out for the tool-boundary schema. A JSON
-#: Schema cannot express "this string may be a reference", so the model only
-#: learns the namespaces if the ``args`` description carries them.
-_ARGS_DESCRIPTION = (
-    "The call's arguments, exactly as the tool takes them. A value may be a "
-    "placeholder resolved at replay: $now, $today, $now + 1d; $user.email, "
-    "$user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path>; "
-    "$last_run.<TOOL_NAME>.<path>. A time may carry a clock: $today + 1d 09:00. "
-    "A time argument the tool takes in its own layout is written as "
-    '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}, the format '
-    "being the layout of the value you actually sent. $ask is not a placeholder; "
-    "if a value genuinely cannot be frozen or built from $now/$today/$user/$trigger/"
-    '$steps/$last_run, write {"$ask": "what to write"} as that value and a '
-    "model fills it at replay."
-)
-
-
-#: Names a model reaches for when it means args. If dropped as unknown keys,
-#: the call would store with no arguments and pass as authored — refusing
-#: them by name keeps lenience from swallowing the one key a step needs.
-_ARGS_NEAR_MISSES = ("arguments", "input", "inputs", "params", "parameters", "kwargs")
-
-
-def _refuse_args_near_miss(data: Mapping[str, object]) -> None:
-    if "args" in data:
-        return
-    for key in _ARGS_NEAR_MISSES:
-        if key in data:
-            raise ValueError(f"a step's arguments go under 'args', not {key!r}; rename it")
-
-
-_FOR_EACH_DESCRIPTION = (
-    "Repeat this step once per element of a list, with $item addressing the "
-    "element ($item.field for a field of it). This is the WHOLE value and "
-    "nothing else: either one placeholder naming a previous step's list, e.g. "
-    '$steps.inbox.messages, or {"$ask": "which of the above to act on"} for a '
-    "list a model picks at replay. A placeholder inside a longer string, like "
-    "'overdue-from-$steps.list', resolves to text, and text is not a list. Use "
-    "this when the NUMBER of calls depends on what the run found; it is not a "
-    "reason to decline."
-)
-_MAX_ITEMS_DESCRIPTION = (
-    f"Required with for_each, at most {MAX_FOR_EACH_ITEMS}: the most elements this "
-    "step may ever run for."
-)
-
-
-class _CallInput(BaseModel):
-    """What every authored call carries, at the tool boundary.
-
-    Unknown keys are dropped rather than refused. A model that adds a ``goal``
-    or a ``note`` to a step it otherwise wrote correctly has said everything the
-    playbook needs; refusing the whole write over a stray key threw away 17 of
-    the 57 authoring attempts made in production. The near-miss spellings of
-    ``args`` are the one exception, refused by name, because dropping one of
-    those would store a call with no arguments and pass it off as authored.
-    """
-
-    id: str = Field(default="", description=_STEP_ID_DESCRIPTION)
-    args: dict[str, Any] = Field(default_factory=dict, description=_ARGS_DESCRIPTION)
-    for_each: str | AskSlot | None = Field(default=None, description=_FOR_EACH_DESCRIPTION)
-    max_items: int | None = Field(default=None, description=_MAX_ITEMS_DESCRIPTION)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _args_spelled_right(cls, data: object) -> object:
-        if isinstance(data, Mapping):
-            _refuse_args_near_miss(data)
-        return data
-
-    @model_validator(mode="after")
-    def _ceiling_only_with_a_loop(self) -> Self:
-        # Unrepresentable on the executed model; a model can still send it here.
-        if self.for_each is None and self.max_items is not None:
-            raise ValueError(
-                f"step {self.id or '<unnamed>'}: max_items only means something with for_each"
-            )
-        return self
-
-    def _call(self, tool: str) -> ToolStep | ForEachStep:
-        if self.for_each is None:
-            return ToolStep(id=self.id, tool=tool, args=self.args)
-        if self.max_items is None:
-            raise ValueError(
-                f"step {self.id or tool}: for_each needs max_items, at most {MAX_FOR_EACH_ITEMS}, "
-                "so the replay's cost is known before it runs"
-            )
-        return ForEachStep(
-            id=self.id, tool=tool, args=self.args, for_each=self.for_each, max_items=self.max_items
-        )
-
-
-#: Keys of the retired ``handoff`` step. Refused by name rather than dropped as
-#: unknown: dropping them would store the step without the calls it carried.
-_HANDOFF_KEYS = ("handoff", "steps")
-
-
-class PlaybookStepInput(_CallInput):
-    """One step as the authoring tool takes it: one tool call."""
-
-    tool: str = Field(min_length=1, description="Exact name of the tool this step calls")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _no_handoff(cls, data: object) -> object:
-        if isinstance(data, Mapping):
-            nested = sorted(key for key in _HANDOFF_KEYS if key in data)
-            if nested:
-                raise ValueError(
-                    f"a step is one tool call and cannot carry {' or '.join(nested)}: list "
-                    "every call the run made as its own step, in order"
-                )
-        return data
-
-    def to_step(self) -> ToolStep | ForEachStep:
-        return self._call(self.tool)
-
-
-def playbook_body_from_input(
-    description: str,
-    steps: Sequence[PlaybookStepInput],
-    result_brief: str,
-) -> PlaybookBody:
-    """Turn the tool boundary's flat arguments into the stored playbook body."""
-    return PlaybookBody(
-        description=description,
-        steps=[step.to_step() for step in steps],
-        result_brief=result_brief,
     )
 
 

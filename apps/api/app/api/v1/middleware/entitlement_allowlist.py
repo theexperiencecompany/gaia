@@ -74,6 +74,12 @@ FREE_PATH_PREFIXES: tuple[str, ...] = (
     "/api/v1/device/pair/poll",  # the pairing code, not a user session
     "/api/v1/device/token",  # refresh-credential exchange
     "/api/v1/device/servers",  # device connect JWT, checked in-handler
+    # Browser links a run hands out, each authorised by the capability in its URL (a live
+    # code or takeover token, a recap or step-frame code); the browser's own task and
+    # session routes beside them stay paid.
+    "/api/v1/browser/live/",
+    "/api/v1/browser/replays/",
+    "/api/v1/browser/shots/",
 )
 
 
