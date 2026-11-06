@@ -1335,6 +1335,10 @@ class TestMCPIntegrationConnection:
                 "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
                 AsyncMock(),
             ),
+            patch(
+                "app.services.integrations.integration_connection_service.update_user_integration_status",
+                AsyncMock(return_value=True),
+            ) as update_status,
         ):
             response = await connect_mcp_integration(
                 user_id=USER_ID,
@@ -1348,6 +1352,7 @@ class TestMCPIntegrationConnection:
             assert response.status == "error"
             assert response.error is not None
             mock_token_store.delete_credentials.assert_called_once_with("broken-api")
+            update_status.assert_awaited_once_with(USER_ID, "broken-api", "created")
 
     async def test_connect_auth_required_mcp_returns_redirect(self) -> None:
         """MCP integration requiring OAuth returns redirect with auth URL."""

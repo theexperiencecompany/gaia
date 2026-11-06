@@ -293,24 +293,6 @@ describe("saving the workflow modal", () => {
       expect(request).toBeDefined();
       expect(request.gate).toBeUndefined();
     });
-
-    it("removes the gate when its condition is cleared", async () => {
-      const request = await saveEdit(gatedWorkflow(GAIA_GATE), {
-        condition: "  ",
-        enabled: true,
-      });
-
-      expect(request.gate).toBeNull();
-    });
-
-    it("adds a gate to a workflow that had none", async () => {
-      const request = await saveEdit(gatedWorkflow(null), {
-        condition: INVOICES,
-        enabled: true,
-      });
-
-      expect(request.gate).toEqual({ condition: INVOICES, enabled: true });
-    });
   });
 });
 

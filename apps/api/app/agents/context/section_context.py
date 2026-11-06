@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from app.agents.context.tiers import AgentTier
 from app.models.agent_models import AgentConfigurable
+from app.models.user_models import OnboardingSubdocument
 
 ExecutionMode = Literal["interactive", "background"]
 
@@ -48,6 +49,9 @@ class SectionContext:
     #: Onboarding answers; open by construction, so no fixed shape.
     user_preferences: dict[str, Any] | None = None
     writing_style: dict[str, Any] | None = None
+    #: The user's whole onboarding record, set only where the comms turn is built:
+    #: the new-user guidance reads what their mail said and which thread was seeded.
+    onboarding: OnboardingSubdocument | None = None
     #: What this turn is about — the retrieval query for every volatile section.
     query: str | None = None
     #: The user's own words for this turn, when comms already recalled memories

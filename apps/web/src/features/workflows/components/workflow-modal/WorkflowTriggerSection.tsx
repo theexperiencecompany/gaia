@@ -1,10 +1,12 @@
 import { Tab, Tabs } from "@heroui/tabs";
 import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
 import type { ReactElement } from "react";
+import { PanelRowGroup } from "@/components/shared/PanelRowGroup";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import type { Workflow } from "../../api/workflowApi";
+import { MAIL_TRIGGER_NAMES } from "../../constants/gates";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
-import { RunsOnlyWhenPanel } from "../../triggers/components/RunsOnlyWhenPanel";
+import { GateRow } from "../../triggers/components/GateRow";
 import { createDefaultTriggerConfig } from "../../triggers/registry";
 import { isIntegrationTrigger } from "../../triggers/types";
 import { ScheduleBuilder } from "../ScheduleBuilder";
@@ -127,18 +129,21 @@ export default function WorkflowTriggerSection({
           onTriggerChange={onSelectedTriggerChange}
           onConfigChange={onTriggerConfigChange}
         />
-        {isIntegrationTrigger(triggerConfig) && (
-          <RunsOnlyWhenPanel
-            condition={gate.condition}
-            enabled={gate.enabled}
-            saved={savedGate ?? null}
-            editable={savedGate?.kind !== "system"}
-            onConditionSave={(condition) =>
-              onGateChange({ ...gate, condition })
-            }
-            onEnabledChange={(enabled) => onGateChange({ ...gate, enabled })}
-            isDisabled={isPreview}
-          />
+        {isIntegrationTrigger(triggerConfig) && gate.condition.trim() && (
+          <PanelRowGroup>
+            <GateRow
+              condition={gate.condition}
+              enabled={gate.enabled}
+              saved={savedGate ?? null}
+              editable={savedGate?.kind !== "system"}
+              watchesMail={MAIL_TRIGGER_NAMES.has(selectedTrigger)}
+              onConditionSave={(condition) =>
+                onGateChange({ ...gate, condition })
+              }
+              onEnabledChange={(enabled) => onGateChange({ ...gate, enabled })}
+              isDisabled={isPreview}
+            />
+          </PanelRowGroup>
         )}
       </div>
     );

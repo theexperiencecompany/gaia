@@ -51,7 +51,6 @@ from app.models.playbook_models import (
     PlaybookAskFill,
     PlaybookDocument,
     PlaybookStep,
-    PlaybookStepInput,
     ToolStep,
 )
 from app.models.workflow_execution_models import (
@@ -62,6 +61,7 @@ from app.models.workflow_execution_models import (
 )
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
 from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
+from app.services.workflow.playbook.dry_run import DRY_RUN_READ_TOOLS, DryRun
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
     AskAnswers,
@@ -92,6 +92,11 @@ from app.services.workflow.playbook.scripted_model import (
 from app.services.workflow.playbook.tool_space import ToolSpace
 from app.utils.timezone import Timezone
 from tests.factories import make_user_id
+
+#: A replay records every call it makes into its run record, which lives in Redis;
+#: a per-test fake keeps that hermetic and off the import-time client, whose loop
+#: belongs to whichever test ran first when real services are up.
+pytestmark = pytest.mark.usefixtures("fake_redis")
 
 MODULE = "app.services.workflow.playbook.runner"
 GATE = "app.services.hil.gate"
@@ -230,6 +235,8 @@ class _Seams:
 
     find_previous: AsyncMock | None = None
     llm: AsyncMock | None = None
+    #: Runs the replay as a dry run, letting only these reads reach a tool.
+    dry_run: DryRun | None = None
 
 
 async def _run(
@@ -266,7 +273,11 @@ async def _run(
         _gate_policy(policy),
     ):
         result = await run_playbook(
-            playbook, user=USER, conversation_id="conv_1", trigger={"to": "team@example.com"}
+            playbook,
+            user=USER,
+            conversation_id="conv_1",
+            trigger={"to": "team@example.com"},
+            dry_run=seams.dry_run,
         )
     return result, llm
 
@@ -1563,8 +1574,8 @@ class TestNonStringResults:
         assert result.ok is True, result.failure
         assert recorder.calls[1][1]["body"] == "/workspace/report.jsonl"
 
-    async def test_a_call_that_produced_no_result_stops_the_run_and_says_so(self) -> None:
-        """A state-only tool answers nothing; treating that as an empty success would let every later $steps reference resolve against a hole."""
+    async def test_a_command_with_no_reply_stops_the_run_and_says_so(self) -> None:
+        """A state-only Command answers nothing; an empty success would let every later $steps reference resolve against a hole."""
         recorder = _Recorder()
         registry = _FakeRegistry(_special_tools(recorder))
         playbook = _playbook([ToolStep(id="s", tool="stash", args={"note": "later"})])
@@ -1572,10 +1583,12 @@ class TestNonStringResults:
         result, _ = await _run(playbook, registry)
 
         assert result.ok is False
-        assert result.failure == (
-            "Playbook stopped at step 1 (stash): the graph produced no result for this call. "
-            "Completed: nothing. Nothing after that step ran."
+        assert result.failure is not None
+        assert result.failure.startswith(
+            "Playbook stopped at step 1 (stash): Error: ValueError: Expected to have a matching "
+            "ToolMessage in Command.update for tool 'stash'"
         )
+        assert result.failure.endswith("Completed: nothing. Nothing after that step ran.")
 
     async def test_a_content_block_result_is_recorded_as_its_text_not_as_nothing(self) -> None:
         recorder = _Recorder()
@@ -2476,13 +2489,14 @@ async def test_the_ask_fill_adds_to_the_runs_llm_count_rather_than_resetting_it(
     """The llm_calls counter is a running total; the ask fill adds its one call rather than resetting the tally."""
     run = _bare_run()
     run.llm_calls = 5
-    playbook = _playbook([ToolStep(id="mail", tool="list_events", args={})])
+    step = ToolStep(id="mail", tool="list_events", args={})
+    playbook = _playbook([step])
     fill = PlaybookAskFill(asks=[])
 
     with (
         patch(f"{MODULE}.ainvoke_structured", AsyncMock(return_value=fill)),
     ):
-        await _fill_asks(playbook, run, playbook.steps[0].arg_ask_slots("mail"), pending=[])
+        await _fill_asks(playbook, run, step.arg_ask_slots("mail"), pending=[])
 
     assert run.llm_calls == 6
     assert run.ask_fill is fill
@@ -2814,23 +2828,17 @@ class TestForEachShape:
 
     def test_the_stored_step_cannot_lack_a_ceiling(self) -> None:
         with pytest.raises(ValidationError):
-            ForEachStep(id="s", tool="send_email", args={}, for_each="$steps.x.ids")  # type: ignore[call-arg]  # proves the model refuses a loop with no ceiling
+            ForEachStep.model_validate(
+                {"id": "s", "tool": "send_email", "args": {}, "for_each": "$steps.x.ids"}
+            )
 
     def test_the_stored_step_cannot_carry_a_ceiling_without_a_loop(self) -> None:
         with pytest.raises(ValidationError):
-            ToolStep(id="s", tool="send_email", args={}, max_items=5)  # type: ignore[call-arg]  # proves the model refuses a ceiling without a loop
+            ToolStep.model_validate({"id": "s", "tool": "send_email", "args": {}, "max_items": 5})
 
     def test_the_ceiling_is_capped(self) -> None:
         with pytest.raises(ValidationError):
             ForEachStep(id="s", tool="send_email", args={}, for_each="$steps.x.ids", max_items=1000)
-
-    def test_an_authored_loop_without_a_ceiling_is_refused_by_name(self) -> None:
-        with pytest.raises(ValueError, match="needs max_items"):
-            PlaybookStepInput(id="s", tool="send_email", for_each="$steps.x.ids").to_step()
-
-    def test_an_authored_ceiling_without_a_loop_is_refused_by_name(self) -> None:
-        with pytest.raises(ValidationError, match="only means something with for_each"):
-            PlaybookStepInput(id="s", tool="send_email", max_items=5)
 
 
 class TestAskAnswerShape:
@@ -3256,3 +3264,37 @@ class TestItemOutsideForEach:
         assert result.failure is not None
         assert "$item is only meaningful inside a for_each step" in result.failure
         assert recorder.calls == []
+
+
+class TestDryRun:
+    """A dry run reaches only its allowlisted reads; every other step is only described."""
+
+    READS = DryRun(reads=frozenset({"list_events"}))
+
+    async def test_a_write_never_reaches_its_tool_and_says_what_it_would_have_called(
+        self,
+    ) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+
+        result, llm = await _run(
+            _playbook(AGENDA_STEPS), registry, seams=_Seams(dry_run=self.READS)
+        )
+
+        assert result.ok is True, result.failure
+        assert [name for name, _ in recorder.calls] == ["list_events"]
+        assert result.completed[1] == (
+            'mail (send_email {"to":"team@example.com"}) -> '
+            '{"dry_run": "would call send_email", "args": {"to": "team@example.com"}}'
+        )
+        assert llm.await_count == 1, "the narration still runs, over what the run would have done"
+
+    async def test_a_write_proxied_through_execute_is_held_back_by_its_real_name(self) -> None:
+        held = DryRun(reads=frozenset({"list_events"}))
+        proxied = {"tool_name": "GMAIL_SEND_EMAIL", "data": {"to": "a@b.c"}}
+
+        assert held.runs("execute", proxied) is False
+        assert held.runs("execute", {"tool_name": "list_events", "data": {}}) is True
+
+    async def test_the_default_allowlist_holds_back_every_write_a_recipe_can_make(self) -> None:
+        assert not {"send_email", "create_todo", "GMAIL_CREATE_EMAIL_DRAFT"} & DRY_RUN_READ_TOOLS

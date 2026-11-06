@@ -34,6 +34,7 @@ from app.constants.onboarding import (
 )
 from app.models.user_models import (
     BioStatus,
+    OnboardingAnswers,
     OnboardingNeed,
     OnboardingPhase,
     OnboardingPreferences,
@@ -50,13 +51,21 @@ from app.services.onboarding.intelligence_job import (
 )
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
+    complete_onboarding_on_platform_link,
     get_user_onboarding_status,
+    record_onboarding_step,
     reset_onboarding,
+    save_onboarding_answers,
     update_onboarding_preferences,
 )
 from app.utils.redis_utils import RedisPoolManager
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.onboarding import OnboardingCompleted
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.catalog.onboarding import (
+    OnboardingCompleted,
+    OnboardingPhaseCompleted,
+    OnboardingStarted,
+    OnboardingStep,
+)
 from tests.helpers import captured_wide_event
 
 SERVICE = "app.services.onboarding.onboarding_service"
@@ -69,6 +78,7 @@ def mock_repo() -> Iterator[MagicMock]:
         repo.get = AsyncMock()
         repo.reset_onboarding = AsyncMock()
         repo.update_onboarding_preferences = AsyncMock()
+        repo.record_onboarding_step = AsyncMock(return_value=True)
         yield repo
 
 
@@ -79,7 +89,7 @@ def sample_user_id() -> str:
 
 @pytest.fixture
 def sample_onboarding_request() -> OnboardingRequest:
-    return OnboardingRequest(profession="Engineer", needs=["inbox"], timezone="UTC")
+    return OnboardingRequest(profession="Engineer", needs=[OnboardingNeed.INBOX], timezone="UTC")
 
 
 @pytest.fixture
@@ -200,7 +210,7 @@ class TestCompleteOnboarding:
             SOMETHING_ELSE_CHIP,
         ]
 
-    async def test_no_written_jobs_means_no_chips_rather_than_invented_ones(
+    async def test_no_written_jobs_means_only_the_escape_hatch(
         self,
         mock_repo: MagicMock,
         sample_user_id: str,
@@ -300,8 +310,11 @@ class TestCompleteOnboarding:
         sample_onboarding_request: OnboardingRequest,
         no_llm_question: AsyncMock,
     ) -> None:
-        """User, answers, and platform together are the cache key the PATCH prewarmed under."""
-        user = _completed_user(sample_user_id)
+        """User, stored answers, and platform together are the cache key the answers save prewarmed under."""
+        # What the completion write stored: the seeder reads the document, not the request.
+        user = _completed_user(
+            sample_user_id, preferences={"profession": "Engineer", "needs": ["inbox"]}
+        )
         user.platform_links = {"telegram": {"id": "tg-1"}}
         mock_repo.complete_onboarding.return_value = user
         mock_repo.set_first_conversation_id = AsyncMock(return_value=None)
@@ -405,7 +418,9 @@ class TestCompleteOnboarding:
     ) -> None:
         """A retried POST never reaches the capture: the atomic gate returns early on it."""
         mock_repo.complete_onboarding.return_value = sample_user
-        request = OnboardingRequest(profession="Engineer", needs=["reminders", "inbox"])
+        request = OnboardingRequest(
+            profession="Engineer", needs=[OnboardingNeed.REMINDERS, OnboardingNeed.INBOX]
+        )
 
         with (
             patch(f"{SERVICE}.capture") as capture,
@@ -424,6 +439,48 @@ class TestCompleteOnboarding:
             {"profession": "Engineer", "onboarding_completed": True},
         )
 
+    async def test_the_linked_platform_reaches_the_event_and_the_first_conversation(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        """The wizard submits after the link lands, so the platform line and the event both see it."""
+        linked = _completed_user(sample_user_id).model_copy(
+            update={"platform_links": {"telegram": {"id": "tg-1"}}}
+        )
+        mock_repo.complete_onboarding.return_value = linked
+        request = OnboardingRequest(profession="Engineer", needs=[OnboardingNeed.INBOX])
+
+        with (
+            patch(f"{SERVICE}.capture") as capture,
+            patch(f"{SERVICE}.identify_user"),
+            patch(f"{SERVICE}.compose_first_conversation") as compose,
+            patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value=None)),
+            patch(f"{SERVICE}.resolve_first_question", AsyncMock(return_value=None)),
+        ):
+            await complete_onboarding(sample_user_id, request)
+
+        assert capture.call_args.args[1].linked_platform == "telegram"
+        assert compose.call_args.args[1] == "telegram"
+
+    async def test_the_first_conversation_is_built_from_the_stored_preferences(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        """The wizard stored the language earlier; the request does not carry it."""
+        mock_repo.complete_onboarding.return_value = _completed_user(
+            sample_user_id, preferences={"profession": "Engineer", "language": "de"}
+        )
+        request = OnboardingRequest(profession="Engineer", needs=[OnboardingNeed.INBOX])
+
+        with (
+            patch(f"{SERVICE}.capture"),
+            patch(f"{SERVICE}.identify_user"),
+            patch(f"{SERVICE}.compose_first_conversation") as compose,
+            patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value=None)),
+            patch(f"{SERVICE}.resolve_first_question", AsyncMock(return_value=None)),
+        ):
+            await complete_onboarding(sample_user_id, request)
+
+        assert compose.call_args.args[0].language == "de"
+
     async def test_a_typed_need_travels_only_as_a_flag(
         self,
         mock_repo: MagicMock,
@@ -432,7 +489,7 @@ class TestCompleteOnboarding:
     ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
         request = OnboardingRequest(
-            profession="Engineer", needs=["reminders"], other_need="chase invoices"
+            profession="Engineer", needs=[OnboardingNeed.REMINDERS], other_need="chase invoices"
         )
 
         with (
@@ -498,7 +555,7 @@ class TestCompleteOnboarding:
         sample_user: UserDocument,
     ) -> None:
         request = OnboardingRequest(
-            profession="Engineer", needs=["inbox"], timezone="America/New_York"
+            profession="Engineer", needs=[OnboardingNeed.INBOX], timezone="America/New_York"
         )
         mock_repo.complete_onboarding.return_value = sample_user
 
@@ -513,7 +570,9 @@ class TestCompleteOnboarding:
         sample_user: UserDocument,
     ) -> None:
         request = OnboardingRequest(
-            profession="  Engineer  ", needs=["inbox", "calendar"], timezone=" UTC "
+            profession="  Engineer  ",
+            needs=[OnboardingNeed.INBOX, OnboardingNeed.CALENDAR],
+            timezone=" UTC ",
         )
         mock_repo.complete_onboarding.return_value = sample_user
 
@@ -537,7 +596,7 @@ class TestCompleteOnboarding:
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
-        request = OnboardingRequest(profession="Engineer", needs=["inbox"])
+        request = OnboardingRequest(profession="Engineer", needs=[OnboardingNeed.INBOX])
         mock_repo.complete_onboarding.return_value = sample_user
 
         await complete_onboarding(sample_user_id, request)
@@ -546,7 +605,8 @@ class TestCompleteOnboarding:
 
     async def test_duplicate_needs_are_deduped_in_selection_order(self) -> None:
         request = OnboardingRequest(
-            profession="Engineer", needs=["reminders", "inbox", "reminders"]
+            profession="Engineer",
+            needs=[OnboardingNeed.REMINDERS, OnboardingNeed.INBOX, OnboardingNeed.REMINDERS],
         )
         assert request.needs == [OnboardingNeed.REMINDERS, OnboardingNeed.INBOX]
 
@@ -1171,7 +1231,7 @@ class TestLocalAuthOnboardingSynthesis:
         assert result.phase is None
 
 
-class TestUpdateOnboardingPreferences:
+class TestSaveOnboardingAnswers:
     async def test_saving_the_answers_starts_writing_the_question(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
@@ -1179,106 +1239,129 @@ class TestUpdateOnboardingPreferences:
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
             {"id": sample_user_id, "platform_links": {"telegram": {"id": "tg-1"}}}
         )
-        prefs = OnboardingPreferences(profession="founder", needs=[OnboardingNeed.INBOX])
+        answers = OnboardingAnswers(profession="founder", needs=[OnboardingNeed.INBOX])
 
         with (
             patch(f"{SERVICE}.spawn_background_task") as spawn,
             patch(f"{SERVICE}.prewarm_first_question") as prewarm,
+            patch(f"{SERVICE}.capture"),
         ):
-            await update_onboarding_preferences(sample_user_id, prefs)
+            await save_onboarding_answers(sample_user_id, answers)
 
         spawn.assert_called_once()
-        assert prewarm.call_args.args == (sample_user_id, prefs, "telegram")
+        user_id, prefs, platform = prewarm.call_args.args
+        assert (user_id, prefs.profession, prefs.needs, platform) == (
+            sample_user_id,
+            "founder",
+            [OnboardingNeed.INBOX],
+            "telegram",
+        )
         # The task name is how this shows up in the wide event; unnamed, a stuck
         # prewarm is indistinguishable from every other background task.
         assert spawn.call_args.kwargs["name"] == f"prewarm_first_question:{sample_user_id}"
 
-    async def test_a_user_with_no_linked_platform_prewarms_without_one(
+    async def test_stamps_questions_answered_with_the_answer_shape(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
-        """Linking is optional and happens on a later screen, so a user may have none yet."""
-        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
-            {"id": sample_user_id}
+        mock_repo.update_onboarding_preferences.return_value = UserDocument(id=sample_user_id)
+        answers = OnboardingAnswers(
+            profession="founder",
+            needs=[OnboardingNeed.REMINDERS, OnboardingNeed.INBOX],
+            other_need="x",
         )
-        prefs = OnboardingPreferences(profession="founder")
 
         with (
             patch(f"{SERVICE}.spawn_background_task"),
-            patch(f"{SERVICE}.prewarm_first_question") as prewarm,
+            patch(f"{SERVICE}.capture") as capture,
         ):
-            await update_onboarding_preferences(sample_user_id, prefs)
+            await save_onboarding_answers(sample_user_id, answers)
 
-        assert prewarm.call_args.args == (sample_user_id, prefs, None)
+        step = mock_repo.record_onboarding_step.await_args.args[1]
+        assert step is OnboardingStep.QUESTIONS_ANSWERED
+        assert capture.call_args.args[1] == OnboardingPhaseCompleted(
+            phase=OnboardingStep.QUESTIONS_ANSWERED,
+            needs=["inbox", "reminders"],
+            has_other_need=True,
+        )
 
-    async def test_a_missing_user_is_a_404_that_says_so(
+    async def test_writes_every_answer_for_this_user_and_stamps_them_for_this_user(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
-        """The settings page shows this detail verbatim."""
+        mock_repo.update_onboarding_preferences.return_value = UserDocument(id=sample_user_id)
+        answers = OnboardingAnswers(
+            profession="founder",
+            needs=[OnboardingNeed.INBOX],
+            other_need="chasing invoices",
+            language="de-DE",
+        )
+
+        with (
+            patch(f"{SERVICE}.spawn_background_task"),
+            patch(f"{SERVICE}.prewarm_first_question"),
+            patch(f"{SERVICE}.capture"),
+        ):
+            await save_onboarding_answers(sample_user_id, answers)
+
+        written_for, written = mock_repo.update_onboarding_preferences.await_args.args
+        assert written_for == sample_user_id
+        assert (written.profession, written.needs, written.other_need, written.language) == (
+            "founder",
+            [OnboardingNeed.INBOX],
+            "chasing invoices",
+            "de",
+        )
+        assert mock_repo.record_onboarding_step.await_args.args[0] == sample_user_id
+
+    async def test_a_missing_user_is_a_404_and_stamps_nothing(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
         mock_repo.update_onboarding_preferences.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
-            await update_onboarding_preferences(
-                sample_user_id, OnboardingPreferences(profession="founder")
+            await save_onboarding_answers(
+                sample_user_id,
+                OnboardingAnswers(profession="founder", needs=[OnboardingNeed.INBOX]),
             )
 
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "User not found"
+        mock_repo.record_onboarding_step.assert_not_awaited()
 
-    async def test_a_failed_prewarm_never_fails_the_save(
+
+class TestRecordOnboardingStep:
+    async def test_the_first_stamp_reports_the_step_deduped_on_its_own_time(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
-        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
-            {"id": sample_user_id}
+        with patch(f"{SERVICE}.capture") as capture:
+            assert await record_onboarding_step(sample_user_id, OnboardingStep.PAYWALL_REACHED)
+
+        _, _, reached_at = mock_repo.record_onboarding_step.await_args.args
+        capture.assert_called_once_with(
+            UserId(sample_user_id),
+            OnboardingPhaseCompleted(phase=OnboardingStep.PAYWALL_REACHED),
+            Dedupe(key="onboarding_step:paywall_reached", occurred_at=reached_at),
         )
-        prefs = OnboardingPreferences(profession="founder")
 
-        with patch(f"{SERVICE}.spawn_background_task", side_effect=RuntimeError("no loop")):
-            result = await update_onboarding_preferences(sample_user_id, prefs)
-
-        assert result["user_id"] == sample_user_id
-
-    async def test_a_failed_prewarm_is_reported_with_its_cause(
+    async def test_the_start_reports_onboarding_started(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
-        """Swallowed by design, so this warning is the only trace of why the prewarm failed."""
-        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
-            {"id": sample_user_id}
-        )
+        with patch(f"{SERVICE}.capture") as capture:
+            await record_onboarding_step(sample_user_id, OnboardingStep.STARTED)
 
-        with (
-            patch(f"{SERVICE}.spawn_background_task", side_effect=RuntimeError("no loop")),
-            patch(f"{SERVICE}.log") as log,
-        ):
-            await update_onboarding_preferences(
-                sample_user_id, OnboardingPreferences(profession="founder")
-            )
+        assert capture.call_args.args[1] == OnboardingStarted()
 
-        log.warning.assert_called_once_with(
-            f"{LogTag.ONBOARDING} could not start the first question prewarm",
-            user_id=sample_user_id,
-            error="no loop",
-            error_type="RuntimeError",
-        )
-
-    async def test_a_long_prewarm_failure_is_truncated_before_it_reaches_the_event(
+    async def test_an_already_stamped_step_reports_nothing(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
-        """The cause is attacker-influenced text of unbounded length that could otherwise dominate the shared wide event."""
-        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
-            {"id": sample_user_id}
-        )
-        cause = "x" * 250
+        mock_repo.record_onboarding_step.return_value = False
 
-        with (
-            patch(f"{SERVICE}.spawn_background_task", side_effect=RuntimeError(cause)),
-            patch(f"{SERVICE}.log") as log,
-        ):
-            await update_onboarding_preferences(
-                sample_user_id, OnboardingPreferences(profession="founder")
-            )
+        with patch(f"{SERVICE}.capture") as capture:
+            assert not await record_onboarding_step(sample_user_id, OnboardingStep.STARTED)
 
-        assert log.warning.call_args.kwargs["error"] == "x" * 200
+        capture.assert_not_called()
 
+
+class TestUpdateOnboardingPreferences:
     async def test_updates_preferences(self, mock_repo: MagicMock, sample_user_id: str) -> None:
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
             {"id": sample_user_id, "onboarding": {"preferences": {"profession": "Designer"}}}
@@ -1468,7 +1551,9 @@ class TestCompleteOnboardingExactKwargs:
         sample_user: UserDocument,
     ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
-        request = OnboardingRequest(profession="  Engineer  ", needs=["mornings"], timezone=" UTC ")
+        request = OnboardingRequest(
+            profession="  Engineer  ", needs=[OnboardingNeed.MORNINGS], timezone=" UTC "
+        )
         await complete_onboarding(sample_user_id, request)
 
         kwargs = mock_repo.complete_onboarding.await_args.kwargs
@@ -1478,3 +1563,70 @@ class TestCompleteOnboardingExactKwargs:
             needs=[OnboardingNeed.MORNINGS],
             response_style="casual",
         )
+
+
+class TestCompleteOnboardingOnPlatformLink:
+    """The bot link landing finishes onboarding through the one completion path the web submit uses."""
+
+    @staticmethod
+    def _at_platform_step(user_id: str, **onboarding: Any) -> UserDocument:
+        return UserDocument.model_validate(
+            {
+                "id": user_id,
+                "onboarding": {
+                    "preferences": {
+                        "profession": "founder",
+                        "needs": ["inbox"],
+                        "other_need": "invoices",
+                    },
+                    "steps_reached": {"paid_reveal_seen": "2026-11-02T10:00:00Z"},
+                    **onboarding,
+                },
+            }
+        )
+
+    async def test_completes_from_the_stored_answers(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        mock_repo.get.return_value = self._at_platform_step(sample_user_id)
+
+        with patch(f"{SERVICE}.complete_onboarding", AsyncMock()) as complete:
+            await complete_onboarding_on_platform_link(sample_user_id)
+
+        mock_repo.get.assert_awaited_once_with(sample_user_id)
+        user_id, request = complete.await_args.args
+        assert user_id == sample_user_id
+        assert (request.profession, request.needs, request.other_need) == (
+            "founder",
+            [OnboardingNeed.INBOX],
+            "invoices",
+        )
+
+    @pytest.mark.parametrize(
+        "onboarding",
+        [
+            {"completed": True},
+            {"steps_reached": {}},
+            {"preferences": {"profession": None}},
+        ],
+        ids=["already-complete", "before-the-platform-step", "no-stored-answers"],
+    )
+    async def test_leaves_anyone_else_alone(
+        self, mock_repo: MagicMock, sample_user_id: str, onboarding: dict[str, Any]
+    ) -> None:
+        mock_repo.get.return_value = self._at_platform_step(sample_user_id, **onboarding)
+
+        with patch(f"{SERVICE}.complete_onboarding", AsyncMock()) as complete:
+            await complete_onboarding_on_platform_link(sample_user_id)
+
+        complete.assert_not_awaited()
+
+    async def test_a_user_without_onboarding_is_left_alone(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        mock_repo.get.return_value = UserDocument(id=sample_user_id)
+
+        with patch(f"{SERVICE}.complete_onboarding", AsyncMock()) as complete:
+            await complete_onboarding_on_platform_link(sample_user_id)
+
+        complete.assert_not_awaited()

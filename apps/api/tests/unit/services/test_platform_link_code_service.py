@@ -6,12 +6,14 @@ parse back) are the boundaries worth probing.
 """
 
 from collections.abc import Generator
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 import pytest
 from redis.exceptions import RedisError
 
+from app.config.settings import settings
 from app.constants.auth import PLATFORM_LINK_CODE_BYTES
 from app.constants.cache import (
     PLATFORM_LINK_CODE_CLAIM_ATTEMPTS,
@@ -36,7 +38,13 @@ PREFS = OnboardingPreferences(profession="founder", needs=[OnboardingNeed.INBOX]
 
 
 @pytest.fixture
-def fake_store() -> Generator[dict[str, tuple[object, int | None]], None, None]:
+def redis_set() -> AsyncMock:
+    """Build the fake Redis client's SET, shared with fake_store so a test can steer it."""
+    return AsyncMock()
+
+
+@pytest.fixture
+def fake_store(redis_set: AsyncMock) -> Generator[dict[str, tuple[object, int | None]], None, None]:
     """In-memory stand-in for the Redis single-use store."""
     store: dict[str, tuple[object, int | None]] = {}
 
@@ -44,7 +52,7 @@ def fake_store() -> Generator[dict[str, tuple[object, int | None]], None, None]:
         store[key] = (value, ttl)
         return True
 
-    async def _get(key: str, model: type | None = None) -> object | None:
+    async def _get(key: str, model: type[BaseModel] | None = None) -> object | None:
         entry = store.get(key)
         if entry is None:
             return None
@@ -71,7 +79,8 @@ def fake_store() -> Generator[dict[str, tuple[object, int | None]], None, None]:
         return True
 
     redis = MagicMock()
-    redis.client.set = AsyncMock(side_effect=_set_nx)
+    redis_set.side_effect = _set_nx
+    redis.client.set = redis_set
     redis.client.get = AsyncMock(side_effect=_get_raw)
 
     with (
@@ -116,11 +125,11 @@ class TestClaimReleaseDiscard:
         assert second.in_flight is True
 
     async def test_a_marker_that_vanishes_after_a_lost_claim_is_retried(
-        self, fake_store: dict[str, tuple[object, int | None]]
+        self, fake_store: dict[str, tuple[object, int | None]], redis_set: AsyncMock
     ) -> None:
         """A twin releasing between the lost SET NX and the read must not make a live code look spent."""
         code = await mint_platform_link_code("user1", PREFS)
-        real_set = svc.redis_cache.client.set.side_effect
+        real_set = redis_set.side_effect
         lost = {"once": False}
 
         async def _lose_once(name: str, value: str, *, ex: int | None = None, nx: bool = False):
@@ -129,7 +138,7 @@ class TestClaimReleaseDiscard:
                 return None
             return await real_set(name, value, ex=ex, nx=nx)
 
-        svc.redis_cache.client.set.side_effect = _lose_once
+        redis_set.side_effect = _lose_once
 
         claim = await claim_platform_link_code(code)
 
@@ -137,12 +146,12 @@ class TestClaimReleaseDiscard:
         assert claim.in_flight is False
 
     async def test_a_claim_lost_on_every_attempt_fails_loud_instead_of_claiming_success(
-        self, fake_store: dict[str, tuple[object, int | None]]
+        self, fake_store: dict[str, tuple[object, int | None]], redis_set: AsyncMock
     ) -> None:
         """Contention that outlasts every retry must not be answered as linked; the user taps again."""
         code = await mint_platform_link_code("user1", PREFS)
-        svc.redis_cache.client.set.side_effect = None
-        svc.redis_cache.client.set.return_value = None
+        redis_set.side_effect = None
+        redis_set.return_value = None
 
         with pytest.raises(AppError) as exc:
             await claim_platform_link_code(code)
@@ -153,7 +162,7 @@ class TestClaimReleaseDiscard:
             "why": "the one-tap code was claimed and released by concurrent redemptions on every attempt",
             "fix": "tap the link again; the code is still valid",
         }
-        assert svc.redis_cache.client.set.await_count == PLATFORM_LINK_CODE_CLAIM_ATTEMPTS
+        assert redis_set.await_count == PLATFORM_LINK_CODE_CLAIM_ATTEMPTS
 
     async def test_releasing_leaves_the_code_claimable_again(
         self, fake_store: dict[str, tuple[object, int | None]]
@@ -180,12 +189,12 @@ class TestClaimReleaseDiscard:
         assert spent.in_flight is False
 
     async def test_a_transient_failure_writing_the_spent_marker_is_retried(
-        self, fake_store: dict[str, tuple[object, int | None]]
+        self, fake_store: dict[str, tuple[object, int | None]], redis_set: AsyncMock
     ) -> None:
         """One Redis blip at spend time must not leave a live record to redeem again."""
         code = await mint_platform_link_code("user1", PREFS)
         await claim_platform_link_code(code)
-        real_set = svc.redis_cache.client.set.side_effect
+        real_set = redis_set.side_effect
         calls = 0
 
         async def _blip_once(*args: object, **kwargs: object) -> bool:
@@ -195,7 +204,7 @@ class TestClaimReleaseDiscard:
                 raise RedisError("connection reset")
             return await real_set(*args, **kwargs)
 
-        svc.redis_cache.client.set.side_effect = _blip_once
+        redis_set.side_effect = _blip_once
         await discard_platform_link_code(code)
 
         _elapse(fake_store, PLATFORM_LINK_CODE_CLAIM_TTL)
@@ -204,19 +213,19 @@ class TestClaimReleaseDiscard:
         assert spent.in_flight is False
 
     async def test_a_spend_that_fails_every_attempt_raises_the_last_error(
-        self, fake_store: dict[str, tuple[object, int | None]]
+        self, fake_store: dict[str, tuple[object, int | None]], redis_set: AsyncMock
     ) -> None:
         code = await mint_platform_link_code("user1", PREFS)
         await claim_platform_link_code(code)
         errors = [RedisError(f"down {n}") for n in range(PLATFORM_LINK_CODE_CLAIM_ATTEMPTS)]
-        svc.redis_cache.client.set.side_effect = errors
-        svc.redis_cache.client.set.await_count = 0
+        redis_set.side_effect = errors
+        redis_set.await_count = 0
 
         with pytest.raises(RedisError) as excinfo:
             await discard_platform_link_code(code)
 
         assert excinfo.value is errors[-1]
-        assert svc.redis_cache.client.set.await_count == PLATFORM_LINK_CODE_CLAIM_ATTEMPTS
+        assert redis_set.await_count == PLATFORM_LINK_CODE_CLAIM_ATTEMPTS
 
     async def test_a_spend_whose_record_delete_fails_still_kills_the_code(
         self, fake_store: dict[str, tuple[object, int | None]]
@@ -321,9 +330,11 @@ class TestClaimReleaseDiscard:
                 "needs": ["inbox", "calendar"],
                 "response_style": None,
                 "other_need": None,
+                "language": None,
             },
         }
-        assert [type(need) for need in value["preferences"]["needs"]] == [str, str]
+        stored = cast(dict[str, dict[str, list[object]]], value)
+        assert [type(need) for need in stored["preferences"]["needs"]] == [str, str]
         assert ttl == PLATFORM_LINK_CODE_TTL
 
     async def test_code_length_matches_the_adapters_regex(
@@ -365,12 +376,12 @@ class TestHandoffLinks:
         assert build_handoff_text("Hi there!", "abc123") == "Hi there! #abc123"
 
     def test_telegram_link_carries_the_code_as_a_start_payload(self) -> None:
-        with patch.object(svc.settings, "TELEGRAM_BOT_USERNAME", "heygaia_bot"):
+        with patch.object(settings, "TELEGRAM_BOT_USERNAME", "heygaia_bot"):
             links = build_handoff_links("CODE123", FIRST_MESSAGE)
         assert links["telegram"] == "https://t.me/heygaia_bot?start=CODE123"
 
     def test_whatsapp_link_urlencodes_the_handoff_text(self) -> None:
-        with patch.object(svc.settings, "WHATSAPP_PHONE_NUMBER", "15551234567"):
+        with patch.object(settings, "WHATSAPP_PHONE_NUMBER", "15551234567"):
             links = build_handoff_links("CODE123", "Hi! I'm a founder. Who are you?")
         assert links["whatsapp"] == (
             "https://wa.me/15551234567?text="
@@ -379,16 +390,16 @@ class TestHandoffLinks:
 
     def test_imessage_has_no_link_its_number_is_per_user(self) -> None:
         with (
-            patch.object(svc.settings, "TELEGRAM_BOT_USERNAME", "heygaia_bot"),
-            patch.object(svc.settings, "WHATSAPP_PHONE_NUMBER", "15551234567"),
+            patch.object(settings, "TELEGRAM_BOT_USERNAME", "heygaia_bot"),
+            patch.object(settings, "WHATSAPP_PHONE_NUMBER", "15551234567"),
         ):
             links = build_handoff_links("CODE123", FIRST_MESSAGE)
         assert set(links) == {"telegram", "whatsapp"}
 
     def test_unconfigured_platform_is_omitted_not_broken(self) -> None:
         with (
-            patch.object(svc.settings, "ENV", "selfhost"),
-            patch.object(svc.settings, "TELEGRAM_BOT_USERNAME", None),
-            patch.object(svc.settings, "WHATSAPP_PHONE_NUMBER", None),
+            patch.object(settings, "ENV", "selfhost"),
+            patch.object(settings, "TELEGRAM_BOT_USERNAME", None),
+            patch.object(settings, "WHATSAPP_PHONE_NUMBER", None),
         ):
             assert build_handoff_links("CODE123", FIRST_MESSAGE) == {}

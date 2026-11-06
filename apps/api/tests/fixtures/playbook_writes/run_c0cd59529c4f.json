@@ -1,0 +1,61 @@
+{
+ "run": "run_c0cd59529c4f",
+ "captured_from": "2026-09-07",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 0,
+   "written": {
+    "description": "Sclrxea Cbswsimi: gather today'n calendar events qiq Rbwxszg tasks, vtyc vyxqdlz w hogaq Bdbzna ycsxrnd toxyfucq hx KUBXGR qglau.",
+    "steps": [
+     {
+      "id": "cal",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "cal_rick",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$qdnsoU47:00:006642",
+         "timeMax": "$dvohaB56:59:596642",
+         "singleEvents": true,
+         "maxResults": 100
+        }
+       },
+       {
+        "id": "cal_ben",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$qdnsoU47:00:006642",
+         "timeMax": "$dvohaB56:59:596642",
+         "singleEvents": true,
+         "maxResults": 100
+        }
+       }
+      ]
+     },
+     {
+      "id": "tasks",
+      "handoff": "todoist",
+      "steps": [
+       {
+        "id": "all_tasks",
+        "tool": "TODOIST_GET_ALL_TASKS",
+        "args": {}
+       }
+      ]
+     }
+    ],
+    "result_brief": "Pypvv w hogaq Bdbzna ycsxrnd toxyfucq hx KUBXGR qglau, qxbbuzule jxmcylhusp xhuc 'ju' (Hi-Qgxd), fzdnbo qiq fohvsvp. Bvzkofvte: (1) Anubd'n calendar events xhuc fakuo, awnwii, hlgjoarkvt qiq Jguu nyxvw e klaeynext lar rdsguv 'Oipsccvaex VM' (Qdgbym-Tdsvmmq OszT, 09:30k15:30, jvyqwndby ae Hrntjggl Gvk, Isfg hq fkekmylmoyk) qiq sja pjqqh events; (2) muqgfx/ohzt-lyrgyuiao emrwk evvq Rbwxszg e gvrz evqhlbd uc cwf today, list overdue tasks (Qdidggyrqsuzs Mnfxochl, Locsqunwzjrd Himgeofyk, Mlhxuoe Ksyhpsq SWG) qiq lar fixe cwf xgdkamgj (Mnfxochl nm oaa qwqnyn); (3) higci Isfg aeduhdibkg kqpn gbkesmkcd up ocxeow today (c.q. naaxvv lar Oipsccvaex, lar Nyoix-hx Eqkl Puelnhbqnra, lar Nhnflc Ofbdwxot meeting, qiq ichlk lar overdue Qdidggyrqsuzs-Mnfxochl). Ttue ic iwsxbtw qiq rxrpqy-vubrrfyy."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar', 'todoist']",
+   "expected": "unmappable"
+  }
+ ]
+}

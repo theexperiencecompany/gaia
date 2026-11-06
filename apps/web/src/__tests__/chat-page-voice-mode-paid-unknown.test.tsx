@@ -117,6 +117,11 @@ vi.mock("@/features/chat/hooks/useStreamResume", () => ({
   useStreamResume: () => undefined,
 }));
 
+vi.mock("@/features/onboarding/hooks/useReportFirstChatOpened", () => ({
+  // Onboarding's funnel report on the seeded chat — irrelevant to the voice-mode gate.
+  useReportFirstChatOpened: () => undefined,
+}));
+
 vi.mock("@/features/integrations/hooks/useIntegrations", () => ({
   // Refreshes the integrations catalog — irrelevant to the voice-mode gate.
   useIntegrations: () => undefined,

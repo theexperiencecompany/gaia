@@ -50,27 +50,5 @@ RELATIVE_TIMEFRAME_LONG_MAX = 500
 # Cap when the call names no timeframe.
 NO_TIMEFRAME_DEFAULT_MAX = 100
 
-# Crossing this many chars (~30k tokens) writes a JSONL file (one message per
-# line) and returns a digest + read_plan. GMAIL_FETCH_MESSAGES is excluded from
-# the generic compaction middleware, so this is the sole offload trigger.
-INLINE_LIMIT_CHARS = 120_000
-
-# Offload file naming + sandbox-visible path.
-OFFLOAD_DIR = "gmail"
-OFFLOAD_FILE_PREFIX = "inbox_summary_"
-OFFLOAD_PREVIEW_SIZE = 10
-
-# Above this many aggregated messages we always offload to a JSONL file and
-# return a read-plan, even when the serialized payload fits under
-# INLINE_LIMIT_CHARS. Keeps large metadata-only scans out of the context window.
-OFFLOAD_MIN_MESSAGES = 50
-
-# Read-plan chunking: an offloaded JSONL (one message per line) is split into
-# contiguous line ranges each subagent reads via read(offset, limit). Chunk
-# count is the max of the by-message/by-byte estimates, capped at MAX_READ_SUBAGENTS.
-CHUNK_TARGET_MESSAGES = 25
-CHUNK_TARGET_BYTES = 50_000
-MAX_READ_SUBAGENTS = 4
-
 # How many days a "d"/"w"/"m"/"y" relative timeframe spans.
 _DAYS_PER_UNIT: dict[str, int] = {"d": 1, "w": 7, "m": 30, "y": 365}

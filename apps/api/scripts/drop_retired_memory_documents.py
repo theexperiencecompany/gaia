@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import delete, select
 
 from app.constants.memory import MemoryDocType
-from app.core.provider_registration import register_lazy_providers
+from app.core.provider_registration import boot_process
 from app.db.postgresql import close_postgresql_db
 from app.memory.pg_store._session import memory_session
 from app.models.memory_db_models import MemoryDocument
@@ -66,7 +66,7 @@ async def drop_retired_documents(*, apply: bool) -> list[MemoryDocument]:
 
 async def _run(apply: bool) -> None:
     # A script has no lifespan, so nobody registers the lazy Postgres engine otherwise.
-    register_lazy_providers("main_app")
+    boot_process("main_app")
     try:
         await drop_retired_documents(apply=apply)
     finally:

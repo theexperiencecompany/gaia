@@ -23,6 +23,7 @@ from sentry_sdk.types import Event
 import time_machine
 
 from app.constants.trigger_gates import (
+    ENFORCED_GATE_KINDS,
     GateAuthor,
     GateKind,
     GateOutcome,
@@ -253,13 +254,13 @@ class TestTheSkipLine:
         skip = await _skip()
 
         assert skip == GateSkip(
-            event='Acme Billing <billing@acme.com>, "Invoice 4021 is past due"',
+            event="Acme Billing · Invoice 4021 is past due",
             condition=BILLING,
             certainty=0.95,
         )
         assert isinstance(skip, GateSkip)
         assert skip.summary == (
-            'Skipped: Acme Billing <billing@acme.com>, "Invoice 4021 is past due". '
+            "Skipped: Acme Billing · Invoice 4021 is past due. "
             f'Not a match for "{BILLING}" (95% sure).'
         )
 
@@ -272,7 +273,7 @@ class TestTheSkipLine:
             OWNER_ID,
             USER_ID,
             GateSkipRecord(
-                event='Acme Billing <billing@acme.com>, "Invoice 4021 is past due"', at=AFTERNOON
+                event="Acme Billing · Invoice 4021 is past due", at=AFTERNOON, certainty=0.95
             ),
         )
         seams.watch_skips.assert_not_awaited()
@@ -331,7 +332,7 @@ class TestTheSkipLine:
 
         assert isinstance(skip, GateSkip)
         assert skip.summary == (
-            'Skipped: Acme Billing <billing@acme.com>, "Invoice 4021 is past due". Not a match '
+            "Skipped: Acme Billing · Invoice 4021 is past due. Not a match "
             'for "a real person or a real obligation is waiting on you" (99% sure).'
         )
 
@@ -343,7 +344,17 @@ class TestTheSkipLine:
         skip = await _skip(DESK, payload={"subject": ""})
 
         assert isinstance(skip, GateSkip)
-        assert skip.event == "Acme Billing <billing@acme.com>"
+        assert skip.event == "Acme Billing"
+
+    async def test_a_sender_with_no_name_is_named_by_its_address(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
+
+        skip = await _skip(DESK, payload={"sender": "<billing@acme.com>", "subject": "Hi"})
+
+        assert isinstance(skip, GateSkip)
+        assert skip.event == "billing@acme.com · Hi"
 
     async def test_a_calendar_event_is_named_by_its_title(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
@@ -397,7 +408,7 @@ class TestTheSkipLine:
         skip = await _skip(DESK, payload={"subject": "s" * 200})
 
         assert isinstance(skip, GateSkip)
-        assert skip.event == f'Acme Billing <billing@acme.com>, "{"s" * 120}{ELLIPSIS}"'
+        assert skip.event == f"Acme Billing · {'s' * 120}{ELLIPSIS}"
 
 
 class TestEveryFailureRuns:
@@ -621,7 +632,7 @@ class TestAnAutomatedThreadIsAskedAbout:
         skip = await _skip(DESK, payload=report)
 
         assert isinstance(skip, GateSkip)
-        assert skip.event == 'GitGuardian <security@gitguardian.com>, "Scan report for acme/api"'
+        assert skip.event == "GitGuardian · Scan report for acme/api"
         assert _decided(seams).reason == GateReason.JEV_SKIP
 
     async def test_it_still_runs_when_jev_is_not_sure(self, seams: SimpleNamespace) -> None:
@@ -693,6 +704,20 @@ class TestShadow:
             assert await _skip() == GateRun()
 
         assert _decided(seams).enforced is False
+
+    @pytest.mark.parametrize(
+        ("gate", "run_label"), [(AUTHORED, "needed"), (DESK, "needs_you")], ids=["authored", "desk"]
+    )
+    async def test_a_confident_skip_stops_the_run_for_every_kind_shipped_enforced(
+        self, seams: SimpleNamespace, gate: TriggerGate, run_label: str
+    ) -> None:
+        seams.wrote.return_value = False
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label=run_label)))
+
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", ENFORCED_GATE_KINDS):
+            assert isinstance(await _skip(gate, payload={"message_id": "m7"}), GateSkip)
+
+        assert _decided(seams).enforced is True
 
 
 class TestTheRequestJevReads:

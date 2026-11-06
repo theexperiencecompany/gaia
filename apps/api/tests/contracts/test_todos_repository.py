@@ -755,12 +755,12 @@ class TestTodosRepository(UserScopedRepositoryContract):
             "enabled": False,
         }
 
-    async def test_a_skip_is_kept_on_its_watchs_gate_newest_three_only(self, repo, make_doc):
+    async def test_a_skip_is_kept_on_its_watchs_gate_newest_five_only(self, repo, make_doc):
         desk_mail, other = _subscription(gate=_DESK_GATE), _subscription(gate=_DESK_GATE)
         doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[desk_mail, other]))
         skips = [
             GateSkipRecord(event=f"mail {n}", at=datetime(2026, 11, 5, n, tzinfo=UTC))
-            for n in range(4)
+            for n in range(6)
         ]
 
         for skip in skips:

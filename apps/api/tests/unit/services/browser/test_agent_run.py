@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, ClassVar
@@ -26,6 +26,7 @@ from browser_use.agent.views import (
 )
 from browser_use.browser.views import BrowserStateHistory
 from browser_use.tools.registry.views import ActionModel
+from pydantic import BaseModel
 import pytest
 
 from app.constants.browser import (
@@ -76,39 +77,42 @@ CONFIG = BrowserRunConfig(
     handoff_timeout_seconds=60,
     stream_screenshots=True,
     solve_captcha=False,
+    jev=True,
 )
 SECRET = "hunter2-secret"
 
 
-class _Action:
-    """One of Browser-Use's action models: every action a field, all but the chosen one None."""
+class _Actions(ActionModel):
+    """Browser-Use's action model: every action a field, all but the chosen one None."""
 
-    def __init__(self, name: str, params: dict[str, Any]) -> None:
-        self._fields: dict[str, Any] = {
-            "click": None,
-            "navigate": None,
-            "done": None,
-            JEV_ACTION: None,
-        }
-        self._fields[name] = params
-
-    def model_dump(self, exclude_none: bool = False) -> dict[str, Any]:
-        if not exclude_none:
-            return dict(self._fields)
-        return {name: params for name, params in self._fields.items() if params is not None}
+    click: dict[str, object] | None = None
+    input: dict[str, object] | None = None
+    navigate: dict[str, object] | None = None
+    extract: dict[str, object] | None = None
+    done: dict[str, object] | None = None
+    jev: dict[str, object] | None = None
 
 
-class _Result:
-    def __init__(
-        self, *, error: str | None = None, content: str | None = "", memory: str | None = None
-    ) -> None:
-        self.error = error
-        self.extracted_content = content
-        self.long_term_memory = memory
+def _action(name: str, params: dict[str, object]) -> _Actions:
+    """Name the action by a variable, as JEV_ACTION and parametrized names do."""
+    return _Actions.model_validate({name: params})
 
 
-def _output(*actions: _Action) -> SimpleNamespace:
-    return SimpleNamespace(action=list(actions), next_goal=None)
+def _result(
+    *, error: str | None = None, content: str | None = "", memory: str | None = None
+) -> ActionResult:
+    return ActionResult(error=error, extracted_content=content, long_term_memory=memory)
+
+
+def _output(*actions: _Actions) -> AgentOutput:
+    return AgentOutput(action=list(actions))
+
+
+@dataclass
+class _EndedStep:
+    """What the step-end hook reads off Browser-Use's agent."""
+
+    state: AgentState
 
 
 def _node(
@@ -151,6 +155,7 @@ class _Harness:
         messages: list[str] | None = None,
         started: bool = True,
         engine: BrowserEngine = BrowserEngine.CHROMIUM,
+        fortress: bool = False,
         resumed_from: AgentState | None = None,
     ) -> None:
         self.frames: list[StepFrame] = []
@@ -163,6 +168,7 @@ class _Harness:
                 cdp_url="ws://browser.test/cdp",
                 host_url="http://browser.test",
                 engine=engine,
+                fortress=fortress,
             ),
             config=CONFIG,
             hooks=RunHooks(
@@ -212,10 +218,10 @@ class _Harness:
         selector_map: dict[int, Any] | None = None,
         **params: Any,
     ) -> None:
-        await self.run._on_step(_state(url, selector_map), _output(_Action(name, params)), 0)  # type: ignore[arg-type]  # duck-typed Browser-Use views
+        await self.run._on_step(_state(url, selector_map), _output(_action(name, params)), 0)
 
-    def end(self, *results: _Result) -> Awaitable[None]:
-        return self.run._on_step_end(SimpleNamespace(state=SimpleNamespace(last_result=results)))
+    def end(self, *results: ActionResult) -> Awaitable[None]:
+        return self.run._on_step_end(_EndedStep(AgentState(last_result=list(results))))
 
 
 class _JevPages:
@@ -242,10 +248,10 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> _Harness:
 class TestCards:
     async def test_cards_are_numbered_by_what_the_user_saw(self, harness: _Harness) -> None:
         await harness.step(index=4)
-        await harness.end(_Result(content="clicked"))
-        await harness.end(_Result(error="Step 3 timed out after 30 seconds"))
+        await harness.end(_result(content="clicked"))
+        await harness.end(_result(error="Step 3 timed out after 30 seconds"))
         await harness.step(index=9)
-        await harness.end(_Result(content="confirmed"))
+        await harness.end(_result(content="confirmed"))
 
         assert [frame.index for frame in harness.frames] == [1, 2, 3]
         assert harness.frames[1].goal == STEP_ERROR_CAPTION
@@ -257,7 +263,7 @@ class TestCards:
         self, harness: _Harness
     ) -> None:
         await harness.step(index=4)
-        await harness.end(_Result(error="element is not clickable"))
+        await harness.end(_result(error="element is not clickable"))
 
         assert [frame.goal == STEP_ERROR_CAPTION for frame in harness.frames] == [False]
 
@@ -265,7 +271,7 @@ class TestCards:
         self, harness: _Harness
     ) -> None:
         await harness.step(JEV_ACTION, goal="open the pricing page")
-        await harness.end(_Result(content="Jev ran"))
+        await harness.end(_result(content="Jev ran"))
 
         assert harness.frames == []
 
@@ -273,7 +279,7 @@ class TestCards:
         self, harness: _Harness
     ) -> None:
         await harness.step("click", index=3, text=SECRET)
-        await harness.end(_Result(content=f"typed {SECRET}"))
+        await harness.end(_result(content=f"typed {SECRET}"))
 
         assert SECRET not in repr(harness.frames)
         assert SECRET not in repr(harness.outputs)
@@ -284,7 +290,7 @@ class TestCards:
         fields = {8: _node(attributes={"type": "PASSWORD"}, tag="INPUT")}
 
         await harness.step("input", selector_map=fields, index=8, text="gaia-test-123")
-        await harness.end(_Result(content="submitted-form.html?my-password=gaia-test-123"))
+        await harness.end(_result(content="submitted-form.html?my-password=gaia-test-123"))
 
         assert "gaia-test-123" not in repr(harness.frames)
         assert "gaia-test-123" not in repr(harness.outputs)
@@ -299,7 +305,7 @@ class TestCards:
         fields = {8: _node(attributes=attributes, tag="INPUT")}
 
         await harness.step(action, selector_map=fields, index=8, text="Ada Lovelace")
-        await harness.end(_Result(content="Hello Ada Lovelace"))
+        await harness.end(_result(content="Hello Ada Lovelace"))
 
         assert harness.outputs == [(1, ["Hello Ada Lovelace"])]
 
@@ -335,16 +341,16 @@ class TestCards:
     @pytest.mark.parametrize(
         ("result", "shown"),
         [
-            (_Result(error="element is gone", content="clicked"), ["element is gone"]),
-            (_Result(content=None, memory="noted the price"), ["noted the price"]),
-            (_Result(content="  two\n  lines "), ["two lines"]),
-            (_Result(content="x" * 1000), ["x" * 1000]),
-            (_Result(content="y" * 1200), ["y" * 999 + "…"]),
-            (_Result(content="y" * 998 + " " + "z" * 300), ["y" * 998 + "…"]),
+            (_result(error="element is gone", content="clicked"), ["element is gone"]),
+            (_result(content=None, memory="noted the price"), ["noted the price"]),
+            (_result(content="  two\n  lines "), ["two lines"]),
+            (_result(content="x" * 1000), ["x" * 1000]),
+            (_result(content="y" * 1200), ["y" * 999 + "…"]),
+            (_result(content="y" * 998 + " " + "z" * 300), ["y" * 998 + "…"]),
         ],
     )
     async def test_an_actions_outcome_is_shown_short_and_on_one_line(
-        self, harness: _Harness, result: _Result, shown: list[str]
+        self, harness: _Harness, result: ActionResult, shown: list[str]
     ) -> None:
         await harness.step(index=4)
         await harness.end(result)
@@ -353,11 +359,11 @@ class TestCards:
 
     @pytest.mark.parametrize(
         "result",
-        [_Result(content="  ", memory=None), _Result(content=None, memory=None)],
+        [_result(content="  ", memory=None), _result(content=None, memory=None)],
         ids=["blank", "nothing"],
     )
     async def test_an_action_with_nothing_to_show_adds_no_output(
-        self, harness: _Harness, result: _Result
+        self, harness: _Harness, result: ActionResult
     ) -> None:
         await harness.step(index=4)
         await harness.end(result)
@@ -368,7 +374,7 @@ class TestCards:
         self, harness: _Harness
     ) -> None:
         await harness.step(JEV_ACTION, goal="open the pricing page")
-        await harness.end(_Result(content="Jev ran: opened the pricing page"))
+        await harness.end(_result(content="Jev ran: opened the pricing page"))
 
         assert harness.outputs == []
 
@@ -376,7 +382,7 @@ class TestCards:
         self, harness: _Harness
     ) -> None:
         await harness.step(index=4)
-        await harness.end(_Result(content="clicked"))
+        await harness.end(_result(content="clicked"))
 
         [action] = harness.ledger.actions
         assert (action.component, action.description, action.count) == (
@@ -390,7 +396,7 @@ class TestCards:
     ) -> None:
         # Jev records each action it executes; the hand-off itself does nothing on the page.
         await harness.step(JEV_ACTION, goal="open the pricing page")
-        await harness.end(_Result(content="Jev ran"))
+        await harness.end(_result(content="Jev ran"))
 
         assert harness.ledger.action_count == 0
 
@@ -409,12 +415,15 @@ async def test_an_actions_outcome_lands_on_its_own_row_of_its_steps_card_never_o
         landed.append((step_index, [(out.position, out.output) for out in outputs]))
 
     harness.run._hooks = replace(harness.run._hooks, action_results=_record)
-    params = {"click": {"index": 3}, JEV_ACTION: {"goal": "open the pricing page"}}
-    step = _output(*(_Action(name, params[name]) for name in order))
-    await harness.run._on_step(_state(), step, 0)  # type: ignore[arg-type]  # duck-typed Browser-Use views
+    params: dict[str, dict[str, object]] = {
+        "click": {"index": 3},
+        JEV_ACTION: {"goal": "open the pricing page"},
+    }
+    step = _output(*(_action(name, params[name]) for name in order))
+    await harness.run._on_step(_state(), step, 0)
     # The burst that runs inside the step shows its own card.
     await harness.run._emit_burst([BrowserAction(name="click", inputs={})], "https://x.test", "X")
-    results = {"click": _Result(content="clicked"), JEV_ACTION: _Result(content="Jev ran: ...")}
+    results = {"click": _result(content="clicked"), JEV_ACTION: _result(content="Jev ran: ...")}
 
     await harness.end(*(results[name] for name in order))
 
@@ -426,7 +435,7 @@ class TestStepRecords:
     async def test_a_first_step_that_errors_before_its_card_still_gets_one(
         self, harness: _Harness
     ) -> None:
-        await harness.end(_Result(error="Browser-Use could not read the page"))
+        await harness.end(_result(error="Browser-Use could not read the page"))
 
         [frame] = harness.frames
         assert frame.goal == STEP_ERROR_CAPTION
@@ -478,7 +487,7 @@ class TestStepRecords:
         harness.run._hooks = replace(harness.run._hooks, action_results=None)
 
         await harness.step(index=4)
-        await harness.end(_Result(content="clicked"))
+        await harness.end(_result(content="clicked"))
 
         assert harness.ledger.action_count == 1
 
@@ -490,10 +499,10 @@ class TestStepRecords:
 
         await harness.run._on_step(
             _state(),
-            _output(_Action("click", {"index": 4}), _Action("navigate", {"url": "https://x.test"})),
+            _output(_Actions(click={"index": 4}), _Actions(navigate={"url": "https://x.test"})),
             0,
-        )  # type: ignore[arg-type]  # duck-typed Browser-Use views
-        await harness.end(_Result(content="ok"), _Result(content="ok"))
+        )
+        await harness.end(_result(content="ok"), _result(content="ok"))
 
         [action] = harness.ledger.actions
         assert (action.description, action.duration_ms, action.count) == (
@@ -505,12 +514,12 @@ class TestStepRecords:
     async def test_a_finishing_step_is_captioned_with_what_it_found(
         self, harness: _Harness
     ) -> None:
-        output = SimpleNamespace(
-            action=[_Action("done", {"success": True, "text": "3 orders"})],
+        output = AgentOutput(
+            action=[_Actions(done={"success": True, "text": "3 orders"})],
             next_goal="Read the 3 open orders",
         )
 
-        await harness.run._on_step(_state(), output, 0)  # type: ignore[arg-type]  # duck-typed Browser-Use views
+        await harness.run._on_step(_state(), output, 0)
 
         assert harness.frames[0].goal == "Read the 3 open orders"
 
@@ -667,7 +676,7 @@ class _Browser:
 class _Agent:
     """Browser-Use's Agent: runs scripted steps through the callbacks the run gave it."""
 
-    steps: ClassVar[list[_Action]] = []
+    steps: ClassVar[list[_Actions]] = []
     history: ClassVar[_History] = _History("done")
     raises: ClassVar[BaseException | None] = None
     built: ClassVar[list[_Agent]] = []
@@ -687,7 +696,7 @@ class _Agent:
             get_current_page_url=self._url, reset=self._noop, is_cdp_connected=False
         )
         self.message_manager = SimpleNamespace(add_new_task=lambda task: None)
-        self.state = SimpleNamespace(last_result=None)
+        self.state = AgentState()
         self.task = options["task"]
         _Agent.built.append(self)
 
@@ -714,13 +723,13 @@ class _Agent:
                 break
             await on_step_start(self)
             await self.options["register_new_step_callback"](_state(), _output(action), 1)
-            self.state.last_result = [_Result(content="ok")]
+            self.state.last_result = [_result(content="ok")]
             self.ran_steps += 1
             await on_step_end(self)
         return self.history
 
 
-class _Stalls(agent_run_mod.StalledLoads):
+class _Stalls(StalledLoads):
     """The run's stall watcher, recording whether the run closed it."""
 
     closed = False
@@ -846,7 +855,20 @@ class TestExecute:
         assert built_with == [("agent", harness.ledger), ("text", harness.ledger)]
         browser = agent.options["browser"]
         # The run's own session, fingerprinted for the run's user.
-        assert browser.options == {"cdp_url": "ws://browser.test/cdp", "user_id": "user-1"}
+        assert browser.options == {
+            "cdp_url": "ws://browser.test/cdp",
+            "user_id": "user-1",
+            "fortress": False,
+        }
+
+    async def test_a_run_on_fortress_tells_its_browser_the_engine_owns_the_fingerprint(
+        self, monkeypatch: pytest.MonkeyPatch, built_with: list[tuple[str, object]]
+    ) -> None:
+        harness = _Harness(fortress=True)
+
+        await harness.run.execute("read my orders")
+
+        assert _Agent.built[-1].options["browser"].options["fortress"] is True
 
     async def test_the_stall_watcher_listens_on_every_connect_of_this_browser(
         self, harness: _Harness
@@ -943,14 +965,14 @@ class TestExecute:
         harness = _Harness(started=False, engine=engine)
         pages = _JevPages(harness.run, FakePage(page_state()))
         monkeypatch.setattr(agent_run_mod, "JevPage", pages)
-        _Agent.steps = [_Action("click", {"index": 1})]
+        _Agent.steps = [_Actions(click={"index": 1})]
 
         await harness.run.execute("read my orders")
 
         assert set(pages.engines) == {engine}
 
     async def test_a_run_stops_at_its_step_limit(self, harness: _Harness) -> None:
-        _Agent.steps = [_Action("click", {"index": n}) for n in range(CONFIG.max_steps + 5)]
+        _Agent.steps = [_Actions(click={"index": n}) for n in range(CONFIG.max_steps + 5)]
 
         await harness.run.execute("read my orders")
 
@@ -1009,6 +1031,24 @@ class TestTools:
         await harness.run._on_step_end(agent)
 
         assert "cancelled" in agent.state.last_result[-1].error
+
+    async def test_a_run_without_jev_opens_no_gateway_and_offers_no_jev_action(
+        self, harness: _Harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _never_opened() -> AsyncIterator[MagicMock]:
+            raise AssertionError("a run without Jev opened Jev's gateway")
+
+        monkeypatch.setattr(agent_run_mod, "open_jev_client", _never_opened)
+        harness.run._config = replace(CONFIG, jev=False, start_url="https://shop.test/")
+
+        outcome = await harness.run.execute("buy the ticket")
+
+        options = _Agent.built[-1].options
+        assert JEV_ACTION not in options["tools"].registry.registry.actions
+        assert options["initial_actions"] == [
+            {"navigate": {"url": "https://shop.test/", "new_tab": False}}
+        ]
+        assert outcome.success is True
 
     async def test_only_a_run_that_can_move_engines_offers_it_or_a_captcha_tool_when_asked(
         self, harness: _Harness
@@ -1210,17 +1250,10 @@ class TestJevInTheRun:
         assert f"Stopped: {JevStop.USER_MESSAGE.value}." in report
 
 
-class _Actions(ActionModel):
-    """Two of Browser-Use's actions, as an agent step names them."""
-
-    extract: dict[str, str] | None = None
-    click: dict[str, int] | None = None
-
-
 def _did(memory: str | None, *acts: tuple[str, dict[str, Any], ActionResult]) -> AgentHistory:
     return AgentHistory(
         model_output=AgentOutput(
-            memory=memory, action=[_Actions(**{name: params}) for name, params, _ in acts]
+            memory=memory, action=[_action(name, params) for name, params, _ in acts]
         ),
         result=[result for _, _, result in acts],
         state=BrowserStateHistory(url="", title="", tabs=[], interacted_element=[]),
@@ -1234,7 +1267,7 @@ def test_what_a_run_found_is_each_page_it_read_and_its_last_note() -> None:
     # A step cut short ran fewer actions than it chose.
     cut_short = _did("Opened the shop.", read, clicked)
     cut_short.result.pop()
-    history = AgentHistoryList(
+    history: AgentHistoryList[BaseModel] = AgentHistoryList(
         history=[cut_short, _did("Price is $12; reviews next.", failed), _did(None, clicked)]
     )
 

@@ -1,0 +1,97 @@
+{
+ "run": "run_695a34780a36",
+ "captured_from": "2026-09-12",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Dovtnio Kkkppnct: nsmagjts w calendar-window fetch oa lar googlecalendar jlrxtbcm, vtyc nbhf lar obvuob next event ssjzq lar dmcylkr ohzt.",
+    "steps": [
+     {
+      "id": "events",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
+        "args": {},
+        "id": "calendars",
+        "for_each": null,
+        "max_items": null
+       },
+       {
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+        "args": {
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         },
+         "time_max": {
+          "$time": "$now + 7d",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         },
+         "max_results_per_calendar": 100
+        },
+        "id": "events_fetch",
+        "for_each": null,
+        "max_items": null
+       }
+      ],
+      "task": null
+     },
+     {
+      "tool": null,
+      "args": null,
+      "handoff": null,
+      "id": null,
+      "steps": null,
+      "for_each": null,
+      "max_items": null
+     }
+    ],
+    "result_brief": "Cywj lar gxrbwril events, ucpomwdcmbj bdeofk calendars (lar kbam meeting xzpzrtl fx yagc 'Klit' qiq 'Klit - VNT'; vbthf ic xglt, nvfzvsd lar 'Klit - VNT' qpbk xhuc lar Zmlvvp Jguu umfp). Jkgnptzb lar obvuob event xhuc lar QVNFHLWH start ohzt trightzi ssjzq lar voyznab dmcylkr ohzt e lar next upcoming meeting. Bo UXJ nbhf lar pmff item hx lar list; lar window'n nueokbx uc wbnz oa qchodegzw xzatwrgf, lar pttyrl uc lar trezfsx idwrfd event. Hx ga event qjmqiy ssjzq ktf, kfhta dczcgia ymgdt hbe ga upcoming meetings qiq jd mth qcgqho vhi. Zoholz w iwsxbtw 93 zlls ovqcc-zh reminder hx Grctj'n bmdmnu, fzdnbo qglau (hogaq fwjcipmlo, ga hpwgdmxl/yxpx-qkv): event pnkwu, start ohzt hx Yeazxzv/Cko_Sput (tsa qxg ohzt bg hogaq), qiq lar opps umfp (Zmlvvp Jguu xbzpggfNehj/wjqfbmrikoFeah) up yuizmdvm bg upuwifttl."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 5,
+   "record_len": 0,
+   "written": {
+    "description": "Dovtnio Kkkppnct: nsmagjts w calendar-window fetch oa lar googlecalendar jlrxtbcm, vtyc nbhf lar obvuob next event ssjzq lar dmcylkr ohzt.",
+    "result_brief": "Cywj lar gxrbwril events, ucpomwdcmbj bdeofk calendars (lar kbam meeting xzpzrtl fx yagc 'Klit' qiq 'Klit - VNT'; vbthf ic xglt, nvfzvsd lar 'Klit - VNT' qpbk xhuc lar Zmlvvp Jguu umfp). Jkgnptzb lar obvuob event xhuc lar QVNFHLWH start ohzt trightzi ssjzq lar voyznab dmcylkr ohzt e lar next upcoming meeting. Bo UXJ nbhf lar pmff item hx lar list; lar window'n nueokbx uc wbnz oa qchodegzw xzatwrgf, lar pttyrl uc lar trezfsx idwrfd event. Hx ga event qjmqiy ssjzq ktf, kfhta dczcgia ymgdt hbe ga upcoming meetings qiq jd mth qcgqho vhi. Zoholz w iwsxbtw 93 zlls ovqcc-zh reminder hx Grctj'n bmdmnu, fzdnbo qglau (hogaq fwjcipmlo, ga hpwgdmxl/yxpx-qkv): event pnkwu, start ohzt hx Yeazxzv/Cko_Sput (tsa qxg ohzt bg hogaq), qiq lar opps umfp (Zmlvvp Jguu xbzpggfNehj/wjqfbmrikoFeah) up yuizmdvm bg upuwifttl.",
+    "steps": [
+     {
+      "id": "events",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+        "id": "events_fetch",
+        "args": {
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         },
+         "time_max": {
+          "$time": "$now + 7d",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         },
+         "max_results_per_calendar": 100
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

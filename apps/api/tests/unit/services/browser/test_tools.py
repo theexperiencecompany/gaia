@@ -95,6 +95,36 @@ async def test_takeover_passes_explicit_category_through_unchanged() -> None:
     assert result == "resolved:Enter your card number:payment"
 
 
+def test_the_model_is_never_offered_none_as_a_takeover_category() -> None:
+    """Regression: a sign-in wall was handed off as none, so the user's login was never saved."""
+    tools = build_browser_tools(
+        user_sites=SITES, solve_captcha=False, handle_takeover=_FakeTakeover()
+    )
+    schema = _get_action(tools, "request_human_takeover").param_model.model_json_schema()
+    offered = {value for definition in schema["$defs"].values() for value in definition["enum"]}
+
+    assert offered == {"payment", "sign_in", "irreversible", "missing_value"}
+
+
+@pytest.mark.parametrize(
+    ("kind", "category"),
+    [
+        ("sign_in", SensitiveCategory.CREDENTIALS),
+        ("missing_value", SensitiveCategory.NONE),
+        ("irreversible", SensitiveCategory.IRREVERSIBLE),
+    ],
+)
+async def test_a_takeover_reaches_the_handoff_as_its_sensitive_category(
+    kind: str, category: SensitiveCategory
+) -> None:
+    takeover = _FakeTakeover()
+    tools = build_browser_tools(user_sites=SITES, solve_captcha=False, handle_takeover=takeover)
+
+    await _call_action(tools, "request_human_takeover", reason="Sign in to claim.", category=kind)
+
+    assert takeover.calls == [("Sign in to claim.", category)]
+
+
 async def test_takeover_propagates_cancellation_from_seam() -> None:
     class _Cancelled(Exception):
         pass

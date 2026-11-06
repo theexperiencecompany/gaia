@@ -19,6 +19,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import json
+import math
 from typing import TypedDict
 from uuid import uuid4
 
@@ -217,7 +218,9 @@ def _held_drain(workflow_id: str, until: datetime, context: Mapping[str, object]
 
 
 def _seconds_until(moment: datetime) -> int:
-    return max(int((moment - datetime.now(UTC)).total_seconds()), 0)
+    # Round up: a truncated sub-second delay becomes 0 and the drain runs before
+    # its moment, re-enqueuing its own held job id and stranding the batch.
+    return max(math.ceil((moment - datetime.now(UTC)).total_seconds()), 0)
 
 
 async def hold_trigger_event(

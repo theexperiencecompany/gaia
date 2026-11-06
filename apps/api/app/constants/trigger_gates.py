@@ -123,7 +123,7 @@ TRIGGER_GATE_SKIP_PROBABILITY: Final = 0.95
 TRIGGER_GATE_JEV_TIMEOUT_SECONDS: Final = 3.0
 TRIGGER_GATE_CONDITION_MAX_CHARS: Final = 300
 # How many of its latest skips a gate keeps for its panel to show.
-GATE_RECENT_SKIPS_KEPT: Final = 3
+GATE_RECENT_SKIPS_KEPT: Final = 5
 # Each event field, the snippet included, is clipped to this before JEV reads it.
 TRIGGER_GATE_FIELD_MAX_CHARS: Final = 300
 # An owner's title and description as JEV reads them; a long todo note costs tokens on every event.
@@ -135,6 +135,7 @@ TRIGGER_GATE_SKIPPED_SUMMARY: Final = (
 )
 # How a skip names its event, clipped so one line stays one line.
 TRIGGER_GATE_EVENT_LABEL_MAX_CHARS: Final = 120
+TRIGGER_GATE_EVENT_LABEL_SEPARATOR: Final = " · "
 TRIGGER_GATE_UNTITLED_EVENT: Final = "a {trigger_name} event"
 
 TRIGGER_GATE_URGENT_QUESTION_KEY: Final = "urgent"
@@ -184,8 +185,8 @@ QUIET_HOURS_HELD_SUMMARY: Final = "Held until your quiet hours ended"
 QUIET_HOURS_CONTEXT_KEY: Final = "quiet_hours"
 
 # Gate kinds whose skip may stop a run; any other kind is decided and recorded, then runs.
-# Authored stays out while the eval's authored template loses needs_you mail the desk preset runs.
-ENFORCED_GATE_KINDS: Final = frozenset({GateKind.SYSTEM})
+# Authored is enforced by founder decision although its template loses needs_you mail the desk runs.
+ENFORCED_GATE_KINDS: Final = frozenset({GateKind.SYSTEM, GateKind.AUTHORED})
 
 # Every email on these continues a thread or starts one; a continued conversation runs unasked.
 GMAIL_MESSAGE_TRIGGERS: Final = frozenset(

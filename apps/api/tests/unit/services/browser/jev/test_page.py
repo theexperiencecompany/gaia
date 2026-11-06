@@ -12,7 +12,12 @@ from typing import Any, cast
 from browser_use.browser.session import BrowserSession
 import pytest
 
-from app.constants.browser import BROWSER_STEP_PHOTO_QUALITY, BrowserEngine
+from app.constants.browser import (
+    BROWSER_STEP_PHOTO_QUALITY,
+    JEV_SETTLE_MAX_SECONDS,
+    JEV_WAIT_SECONDS,
+    BrowserEngine,
+)
 from app.constants.log_tags import LogTag
 from app.services.browser.jev import page as page_mod
 from app.services.browser.jev.page import (
@@ -69,6 +74,7 @@ SNAPSHOT: dict[str, Any] = {
     "page_key": PAGE_KEY,
     "guards": GUARDS,
     "omitted_actions": 3,
+    "disabled": ["Authorize"],
     "frames": [
         {"src": "https://pay.test/frame", "same_origin": False, "loaded": False, "visible": True}
     ],
@@ -310,7 +316,9 @@ async def test_a_snapshot_is_read_into_the_page_state() -> None:
 
     state = await page.observe()
 
-    assert state == _state(fingerprint=state.fingerprint, omitted_actions=3)
+    assert state == _state(
+        fingerprint=state.fingerprint, omitted_actions=3, disabled=("Authorize",)
+    )
 
 
 @pytest.mark.parametrize(
@@ -475,7 +483,7 @@ async def test_the_read_after_an_input_stops_waiting_at_the_cap(
     # The page's own wait was told how long it may take.
     [(_, cap)] = [call for call in tab.calls if call[0] == "settle"]
     assert isinstance(cap, float)
-    assert 0 < cap <= page_mod.JEV_SETTLE_MAX_SECONDS
+    assert 0 < cap <= JEV_SETTLE_MAX_SECONDS
 
 
 async def test_a_wait_waits_for_the_page_to_change_then_settles_and_sends_no_input() -> None:
@@ -487,7 +495,7 @@ async def test_a_wait_waits_for_the_page_to_change_then_settles_and_sends_no_inp
     await page.observe()
 
     assert tab.scripts[-3:] == ["wait", "settle", "snapshot"]
-    assert ("wait", page_mod.JEV_WAIT_SECONDS) in tab.calls
+    assert ("wait", JEV_WAIT_SECONDS) in tab.calls
     assert (tab.mouse, tab.keys) == ([], [])
 
 
@@ -531,6 +539,27 @@ async def test_a_press_lands_where_the_page_says_it_reaches_and_a_dropdown_needs
     ]
 
 
+@pytest.mark.regression
+async def test_a_code_split_into_boxes_is_typed_without_the_separators_its_page_draws() -> None:
+    """Regression for GAIA-715: a dash typed into GitHub's code boxes shifted every character after it."""
+    code_field = PageAction(
+        id="e5",
+        node=7,
+        kind="fill",
+        label="User code",
+        value="",
+        segments=[7, 8, 9, 10, 11, 12, 13, 14],
+    )
+    tab = _Tab(act={7: {"x": 1, "y": 1}}, value="WDJBMJHT")
+    page, _ = _page(tab)
+
+    held = await page.act(code_field, _state(), text="WDJB-MJHT")
+
+    assert held == "WDJBMJHT"
+    assert [key["text"] for key in tab.keys[2:] if key["type"] == "keyDown"] == list("WDJBMJHT")
+    assert ("value", code_field) in tab.calls
+
+
 async def test_typing_replaces_the_focused_fields_text_with_real_keys_and_reads_it_back() -> None:
     tab = _Tab(act={7: {"x": 1, "y": 1}}, value="Ad")
     page, _ = _page(tab)
@@ -539,7 +568,7 @@ async def test_typing_replaces_the_focused_fields_text_with_real_keys_and_reads_
 
     assert held == "Ad"
     assert ("focused", 7) in tab.calls
-    assert ("value", 7) in tab.calls
+    assert ("value", FIELD) in tab.calls
     assert tab.keys[0]["commands"] == ["selectAll"]
     assert tab.keys[2:] == [
         {"type": "keyDown", "key": "a", "text": "a", "code": "KeyA", "windowsVirtualKeyCode": 65},

@@ -1929,7 +1929,7 @@
           "source_browser": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3571,7 +3571,7 @@
         "description": "A profile the user confirmed; its platform is a slug so onboarding analytics can carry it.",
         "properties": {
           "platform": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           },
@@ -4717,7 +4717,7 @@
           },
           "product_id": {
             "description": "Product ID to subscribe to",
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Product Id",
             "type": "string"
           },
@@ -7206,6 +7206,20 @@
             "format": "date-time",
             "title": "At",
             "type": "string"
+          },
+          "certainty": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How sure GAIA was the event did not match; None on skips kept before it was",
+            "title": "Certainty"
           },
           "event": {
             "description": "The skipped event as a person reads it: an email's sender and subject",
@@ -9912,7 +9926,7 @@
             "type": "string"
           },
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           }
@@ -11857,7 +11871,7 @@
           "selectedTool": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -11879,7 +11893,7 @@
           "toolCategory": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -13207,6 +13221,57 @@
         "title": "OAuthClientMetadataResponse",
         "type": "object"
       },
+      "OnboardingAnswers": {
+        "description": "The wizard's answers \u2014 Q1 (profession) and Q2 (needs).\n\nThe name is derived from the email server-side, so it is not submitted;\nnothing else is generated at onboarding, so nothing else is collected.",
+        "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The web locale the wizard ran in, reduced to a primary subtag (\"de\", \"pt\")",
+            "title": "Language"
+          },
+          "needs": {
+            "description": "The jobs the user handed GAIA (onboarding Q2, up to three)",
+            "items": {
+              "$ref": "#/components/schemas/OnboardingNeed"
+            },
+            "maxItems": 3,
+            "title": "Needs",
+            "type": "array"
+          },
+          "other_need": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the user typed under 'Something else' in Q2, verbatim",
+            "title": "Other Need"
+          },
+          "profession": {
+            "description": "User's profession",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Profession",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profession"
+        ],
+        "title": "OnboardingAnswers",
+        "type": "object"
+      },
       "OnboardingNeed": {
         "description": "The pains the user handed GAIA during onboarding (Q2, up to three picks).\n\nSix are shown to everyone; the rest come in pairs, one pair per Q1 role, and\nonly that role sees its pair (``ROLE_NEEDS``). Each value is a different job\nGAIA can start on, so the picks carry signal into the first thread, the\nbot opener and the comms playbooks.",
         "enum": [
@@ -13238,23 +13303,19 @@
         "title": "OnboardingNeed",
         "type": "string"
       },
-      "OnboardingPhase": {
-        "description": "Tracks the current phase of user onboarding",
-        "enum": [
-          "initial",
-          "personalization_pending",
-          "personalization_complete",
-          "getting_started",
-          "completed"
-        ],
-        "title": "OnboardingPhase",
-        "type": "string"
-      },
       "OnboardingPhaseUpdateRequest": {
+        "description": "A wizard step the browser reached; the server stamps and reports it once per onboarding run.",
         "properties": {
           "phase": {
-            "$ref": "#/components/schemas/OnboardingPhase",
-            "description": "The onboarding phase to transition to"
+            "description": "The wizard step the user reached",
+            "enum": [
+              "started",
+              "paywall_reached",
+              "paid_reveal_seen",
+              "first_chat_opened"
+            ],
+            "title": "Phase",
+            "type": "string"
           }
         },
         "required": [
@@ -13264,30 +13325,37 @@
         "type": "object"
       },
       "OnboardingPhaseUpdateResponse": {
-        "description": "Response body for an onboarding phase update.",
+        "description": "Response body for a reported wizard step; first_time is False when the step was already stamped.",
         "properties": {
-          "message": {
-            "title": "Message",
-            "type": "string"
+          "first_time": {
+            "title": "First Time",
+            "type": "boolean"
           },
           "phase": {
-            "$ref": "#/components/schemas/OnboardingPhase"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
+            "$ref": "#/components/schemas/OnboardingStep"
           }
         },
         "required": [
-          "success",
           "phase",
-          "message"
+          "first_time"
         ],
         "title": "OnboardingPhaseUpdateResponse",
         "type": "object"
       },
       "OnboardingPreferences": {
         "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The user's browser language as a primary subtag (\"de\", \"pt\"), set at onboarding",
+            "title": "Language"
+          },
           "needs": {
             "anyOf": [
               {
@@ -13346,8 +13414,20 @@
         "type": "object"
       },
       "OnboardingRequest": {
-        "description": "The onboarding submission \u2014 Q1 (profession) and Q2 (needs).\n\nThe name is derived from the email server-side, so it is not submitted;\nnothing else is generated at onboarding, so nothing else is collected.",
+        "description": "The onboarding submission: the answers again, plus the browser's timezone.",
         "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The web locale the wizard ran in, reduced to a primary subtag (\"de\", \"pt\")",
+            "title": "Language"
+          },
           "needs": {
             "description": "The jobs the user handed GAIA (onboarding Q2, up to three)",
             "items": {
@@ -13539,6 +13619,18 @@
         ],
         "title": "OnboardingStatusResponse",
         "type": "object"
+      },
+      "OnboardingStep": {
+        "description": "A wizard milestone, stamped once per onboarding run on users.onboarding.steps_reached.",
+        "enum": [
+          "started",
+          "questions_answered",
+          "paywall_reached",
+          "paid_reveal_seen",
+          "first_chat_opened"
+        ],
+        "title": "OnboardingStep",
+        "type": "string"
       },
       "PaginatedNotificationsResponse": {
         "description": "Response model for paginated notifications",
@@ -15514,12 +15606,33 @@
         "type": "object"
       },
       "RecordedCall": {
-        "description": "One tool call as it actually ran.\n\nCaptured from the run's own tool events \u2014 the same stream the chat UI\nrenders \u2014 so recording costs nothing beyond persisting what was already\ncollected. ``args`` is what makes this useful: it is the material an agent\nreads to author a playbook, and the cursor a later run picks up from.",
+        "description": "One tool call as it actually ran, recorded by app.agents.tools.invocation.\n\nargs is what makes this useful: it is the material an agent reads to author\na playbook, and the cursor a later run picks up from.",
         "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account"
+          },
           "args": {
             "additionalProperties": true,
             "title": "Args",
             "type": "object"
+          },
+          "failed": {
+            "default": false,
+            "title": "Failed",
+            "type": "boolean"
+          },
+          "proxied": {
+            "default": false,
+            "title": "Proxied",
+            "type": "boolean"
           },
           "replayed": {
             "default": false,
@@ -15532,17 +15645,6 @@
             "maxLength": 4000,
             "title": "Result Digest",
             "type": "string"
-          },
-          "subagent": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subagent"
           },
           "subagent_id": {
             "anyOf": [
@@ -16233,7 +16335,7 @@
             "type": "object"
           },
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           }
@@ -16612,7 +16714,7 @@
             "type": "string"
           },
           "id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Id",
             "type": "string"
           },
@@ -16656,7 +16758,7 @@
             "type": "string"
           },
           "id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Id",
             "type": "string"
           },
@@ -16717,7 +16819,7 @@
           "client": {
             "maxLength": 20,
             "minLength": 1,
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Client",
             "type": "string"
           },
@@ -16743,7 +16845,7 @@
           "platform": {
             "maxLength": 60,
             "minLength": 1,
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           }
@@ -21173,7 +21275,7 @@
         "properties": {
           "voice_id": {
             "description": "Catalog voice id to use for voice mode",
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Voice Id",
             "type": "string"
           }
@@ -23157,7 +23259,7 @@
             "name": "tool_name",
             "required": true,
             "schema": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "title": "Tool Name",
               "type": "string"
             }
@@ -24742,6 +24844,79 @@
         ]
       }
     },
+    "/api/v1/browser/live/{code}/decision": {
+      "post": {
+        "description": "Done or Stop from the bot user's live-view page: the code that opened the page is the authority.\n\nThe same decision a chat reply or the web card's buttons make, for the\nhandoff this link was sent for.",
+        "operationId": "browser_decide_live_view_handoff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandoffDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Decide Live View Handoff",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
     "/api/v1/browser/logins": {
       "delete": {
         "description": "Forget every saved browser login for the user.",
@@ -24897,6 +25072,69 @@
         ]
       }
     },
+    "/api/v1/browser/replays/{code}": {
+      "get": {
+        "description": "Standalone recap slideshow for a finished session: its code is the capability.",
+        "operationId": "browser_replay_page",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Replay Page",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
     "/api/v1/browser/sessions/{session_id}/live-view-token": {
       "get": {
         "description": "Mint a short-lived takeover token the web card carries on its live-view\nsocket and full-page link, so neither depends on the session cookie.",
@@ -24955,6 +25193,71 @@
           }
         },
         "summary": "Get Live View Token",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/shots/{code}/{index}.jpg": {
+      "get": {
+        "description": "One step frame of a run, for deployments with no object store.\n\nSame capability model as the recap page it feeds: the code is the secret, so\na frame cannot be reached by guessing a session id, and it expires with the\ncode.",
+        "operationId": "browser_step_screenshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "title": "Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Step Screenshot",
         "tags": [
           "Browser"
         ]
@@ -35529,6 +35832,68 @@
         ]
       }
     },
+    "/api/v1/onboarding/answers": {
+      "put": {
+        "description": "Store the wizard's Q1 and Q2 as soon as they are confirmed.",
+        "operationId": "onboarding_save_answers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingAnswers"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Save Answers",
+        "tags": [
+          "Onboarding"
+        ]
+      }
+    },
     "/api/v1/onboarding/personalization": {
       "get": {
         "description": "Get personalization data (house, phrase, bio, workflows) for current authenticated user.\nUsed as fallback if WebSocket fails or to refetch data.\nReturns default values if personalization hasn't completed yet.",
@@ -35583,8 +35948,8 @@
     },
     "/api/v1/onboarding/phase": {
       "post": {
-        "description": "Update the user's onboarding phase.\nUsed to track progress through onboarding stages.",
-        "operationId": "onboarding_update_onboarding_phase",
+        "description": "Stamp a wizard step the browser reached; a repeat report is a no-op.",
+        "operationId": "onboarding_report_onboarding_step",
         "requestBody": {
           "content": {
             "application/json": {
@@ -35637,7 +36002,7 @@
             "description": "Server Error"
           }
         },
-        "summary": "Update Onboarding Phase",
+        "summary": "Report Onboarding Step",
         "tags": [
           "Onboarding"
         ]
@@ -35645,7 +36010,7 @@
     },
     "/api/v1/onboarding/preferences": {
       "patch": {
-        "description": "Update user's onboarding preferences.\nThis can be used from the settings page to update preferences after onboarding.",
+        "description": "Update the user's preferences from settings; the wizard's answers go to PUT /answers.",
         "operationId": "onboarding_update_user_preferences",
         "requestBody": {
           "content": {
@@ -43778,7 +44143,7 @@
             "name": "voice_id",
             "required": true,
             "schema": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "title": "Voice Id",
               "type": "string"
             }
@@ -45470,207 +45835,6 @@
         "summary": "Readiness Check",
         "tags": [
           "Health"
-        ]
-      }
-    },
-    "/live/{code}/decision": {
-      "post": {
-        "description": "Done or Stop from the bot user's live-view page: the code that opened the page is the authority.\n\nThe same decision a chat reply or the web card's buttons make, for the\nhandoff this link was sent for.",
-        "operationId": "browser_decide_live_view_handoff",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HandoffDecisionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HandoffDecisionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Decide Live View Handoff",
-        "tags": [
-          "Browser"
-        ]
-      }
-    },
-    "/replays/{code}": {
-      "get": {
-        "description": "Standalone recap slideshow for a finished session: its code is the capability.",
-        "operationId": "browser_replay_page",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Replay Page",
-        "tags": [
-          "Browser"
-        ]
-      }
-    },
-    "/shots/{code}/{index}.jpg": {
-      "get": {
-        "description": "One step frame of a run, for deployments with no object store.\n\nSame capability model as the recap page it feeds: the code is the secret, so\na frame cannot be reached by guessing a session id, and it expires with the\ncode.",
-        "operationId": "browser_step_screenshot",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "index",
-            "required": true,
-            "schema": {
-              "title": "Index",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Step Screenshot",
-        "tags": [
-          "Browser"
         ]
       }
     }

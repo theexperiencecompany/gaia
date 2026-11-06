@@ -44,6 +44,12 @@ class GateSkipRecord(BaseModel):
         description="The skipped event as a person reads it: an email's sender and subject"
     )
     at: datetime
+    certainty: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="How sure GAIA was the event did not match; None on skips kept before it was",
+    )
 
 
 class _StoredGate(BaseModel):
