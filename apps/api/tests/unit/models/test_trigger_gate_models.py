@@ -1,11 +1,12 @@
 """A trigger gate as its owner stores it: GAIA's or the user's condition, or a code preset."""
 
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 from pydantic import ValidationError
 import pytest
 
-from app.constants.trigger_gates import GateAuthor, SystemGatePreset
+from app.constants.trigger_gates import GateAuthor, GateKind, SystemGatePreset
 from app.models.todo_models import TodoDocument, TodoResponse
 from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
 from app.models.trigger_subscription_models import (
@@ -21,6 +22,7 @@ from app.models.workflow_models import (
     as_read_view,
 )
 
+_GATES = "app.models.trigger_gate_models"
 pytestmark = pytest.mark.unit
 
 AUTHORED = AuthoredGate(
@@ -122,15 +124,23 @@ class TestTheGateTheUserReads:
     @pytest.mark.parametrize(
         ("gate", "shown", "enforced"),
         [
-            (AUTHORED, AUTHORED.condition, False),
+            (AUTHORED, AUTHORED.condition, True),
             (DESK, "a real person or a real obligation is waiting on you", True),
         ],
-        ids=["authored_in_shadow", "system_enforced"],
+        ids=["authored_enforced", "system_enforced"],
     )
     def test_a_workflow_shows_its_gate(self, gate: TriggerGate, shown: str, enforced: bool) -> None:
         wire = as_read_view(_workflow(TriggerType.INTEGRATION, gate)).model_dump(mode="json")
 
         assert (wire["gate"]["display_condition"], wire["gate"]["enforced"]) == (shown, enforced)
+
+    def test_a_kind_outside_the_enforced_set_shows_as_not_enforced(self) -> None:
+        with patch(f"{_GATES}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
+            wire = as_read_view(_workflow(TriggerType.INTEGRATION, AUTHORED)).model_dump(
+                mode="json"
+            )
+
+        assert wire["gate"]["enforced"] is False
 
     def test_a_tracked_todo_shows_each_watchs_gate(self) -> None:
         doc = TodoDocument(
