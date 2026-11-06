@@ -22,6 +22,7 @@ from pydantic_core import ErrorDetails
 from app.constants.todos import TodoActivityEvent
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument
+from app.models.trigger_gate_models import TriggerGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
@@ -84,6 +85,7 @@ async def register_subscription(
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS,
     trigger_data: Mapping[str, object] | None = None,
     account_id: str | None = None,
+    gate: TriggerGate | None = None,
 ) -> tuple[TriggerSubscription, ValidationOutcome, bool]:
     """Validate, register with Composio, and store one subscription on todo_id.
 
@@ -160,6 +162,7 @@ async def register_subscription(
         ),
         composio_trigger_ids=trigger_ids,
         trigger_data=dict(trigger_data or {}),
+        gate=gate,
     )
 
     stored = await store_subscription(
