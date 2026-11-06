@@ -108,13 +108,6 @@ async def test_a_second_call_to_a_blocked_integration_is_refused_without_reachin
         "Gmail",
         False,
     )
-    recorded = await read_run_record(STREAM_ID)
-    assert [(c.args, c.failed) for c in recorded] == [
-        ({"query": "one"}, True),
-        ({"query": "two"}, True),
-    ]
-    assert recorded[0].result_digest == first
-    assert recorded[1].result_digest == f"Error: IntegrationBlockedError: {BLOCKED_GMAIL}"
 
 
 async def test_another_integration_in_the_same_run_still_runs(fake_redis: Any) -> None:
@@ -274,6 +267,30 @@ async def test_bot_and_workflow_runs_stop_calling_the_integration_too(
             await invoke_tool(gmail, {"query": "two"}, config)
 
     assert calls == ["one"]
+
+
+async def test_a_workflow_run_records_both_blocked_calls_as_failed(fake_redis: Any) -> None:
+    config: RunnableConfig = {
+        "configurable": {"stream_id": STREAM_ID, "user_id": USER_ID, "workflow_id": "wf-block"}
+    }
+
+    with (
+        patch(f"{CHECKER}.get_config", return_value=config),
+        patch(f"{CHECKER}.current_stream_writer", return_value=MagicMock()),
+        patch(f"{CHECKER}.build_connect_link_url", AsyncMock(return_value=None)),
+        patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)),
+    ):
+        first = await invoke_tool(_gmail_tool([]), {"query": "one"}, config)
+        with pytest.raises(IntegrationBlockedError) as refused:
+            await invoke_tool(_gmail_tool([]), {"query": "two"}, config)
+
+    recorded = await read_run_record(STREAM_ID)
+    assert [(c.args, c.failed) for c in recorded] == [
+        ({"query": "one"}, True),
+        ({"query": "two"}, True),
+    ]
+    assert recorded[0].result_digest == first
+    assert recorded[1].result_digest == f"Error: IntegrationBlockedError: {refused.value}"
 
 
 async def test_a_call_with_no_user_behind_it_gets_the_error_and_no_card(fake_redis: Any) -> None:
