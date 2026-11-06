@@ -23,6 +23,7 @@ from sentry_sdk.types import Event
 import time_machine
 
 from app.constants.trigger_gates import (
+    ENFORCED_GATE_KINDS,
     GateAuthor,
     GateKind,
     GateOutcome,
@@ -659,6 +660,20 @@ class TestShadow:
             assert await _skip() == GateRun()
 
         assert _decided(seams).enforced is False
+
+    @pytest.mark.parametrize(
+        ("gate", "run_label"), [(AUTHORED, "needed"), (DESK, "needs_you")], ids=["authored", "desk"]
+    )
+    async def test_a_confident_skip_stops_the_run_for_every_kind_shipped_enforced(
+        self, seams: SimpleNamespace, gate: TriggerGate, run_label: str
+    ) -> None:
+        seams.wrote.return_value = False
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label=run_label)))
+
+        with patch(f"{_MOD}.ENFORCED_GATE_KINDS", ENFORCED_GATE_KINDS):
+            assert isinstance(await _skip(gate, payload={"message_id": "m7"}), GateSkip)
+
+        assert _decided(seams).enforced is True
 
 
 class TestTheRequestJevReads:
