@@ -13104,3 +13104,317 @@
       gates:
       - gate_outcome
       - quiet_wake
+- id: mail-421
+  ticket: Inbox desk gate on a routine sign-in notice
+  tags:
+  - noise
+  - holdout
+  - new_thread
+  - sign_in_notice
+  setup:
+    message:
+      thread_id: mail-421
+      message_id: mail-421
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: Vaprisal <team@vaprisal.example>
+      to: teciok@graliogior.example
+      subject: Successful login for teciok@graliogior.example from new device
+      message_text: 'Hello, We''re verifying a recent login for teciok@graliogior.example: Timestamp: 2026-11-04 10:12:44 UTC IP address: 192.0.2.41 User agent: Mozilla/5.0 (Macintosh) Chrome If you believe that this login is suspicious, please contact your administrator or reset your password immediately.'
+      payload:
+        headers: []
+  expected:
+    label: noise
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-422
+  ticket: Inbox desk gate on a routine sign-in notice
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - sign_in_notice
+  setup:
+    message:
+      thread_id: mail-422
+      message_id: mail-422
+      label_ids:
+      - UNREAD
+      - IMPORTANT
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: Gromiea <no-reply@accounts.gromiea.example>
+      to: teciok@graliogior.example
+      subject: Security alert
+      message_text: 'A new sign-in on Mac teciok@graliogior.example We noticed a new sign-in to your Gromiea Account on a Mac device. If this was you, you don''t need to do anything. If not, we''ll help you secure your account. Check activity You can also see security activity at https://myaccount.gromiea.example/notifications'
+      payload:
+        headers: []
+  expected:
+    label: noise
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-423
+  ticket: Inbox desk gate on a routine sign-in notice
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - sign_in_notice
+  setup:
+    message:
+      thread_id: mail-423
+      message_id: mail-423
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: Truvake <security@truvake.example>
+      to: teciok@graliogior.example
+      subject: Your Truvake verification code
+      message_text: 'Your verification code is 604217. Enter this code to finish signing in to Truvake. The code expires in 10 minutes. If you did not request this code, you can ignore this email.'
+      payload:
+        headers: []
+  expected:
+    label: noise
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-424
+  ticket: Inbox desk gate on a routine sign-in notice
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - sign_in_notice
+  setup:
+    message:
+      thread_id: mail-424
+      message_id: mail-424
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: Pelvaro <noreply@pelvaro.example>
+      to: teciok@graliogior.example
+      subject: Your two-factor authentication code
+      message_text: 'Hi Teciok, here is your two-factor authentication code: 381 552. It is valid for 5 minutes. Pelvaro will never ask you for this code by phone or chat.'
+      payload:
+        headers: []
+  expected:
+    label: noise
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-425
+  ticket: Inbox desk gate on a routine sign-in notice
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - sign_in_notice
+  setup:
+    message:
+      thread_id: mail-425
+      message_id: mail-425
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: Drosaio <account@drosaio.example>
+      to: teciok@graliogior.example
+      subject: New login to your Drosaio account
+      message_text: 'Hi Teciok, Your Drosaio account was just accessed from a new device. Device: Chrome on macOS Location: Kaviora, VASHAI (approximate) If this was you, no action is needed. If you don''t recognise this activity, change your password.'
+      payload:
+        headers: []
+  expected:
+    label: noise
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-426
+  ticket: Inbox desk gate on a security problem the email reports
+  tags:
+  - needs_you
+  - holdout
+  - new_thread
+  - security_problem
+  setup:
+    message:
+      thread_id: mail-426
+      message_id: mail-426
+      label_ids:
+      - UNREAD
+      - IMPORTANT
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: Gromiea <no-reply@accounts.gromiea.example>
+      to: teciok@graliogior.example
+      subject: 'Critical security alert: suspicious sign-in blocked'
+      message_text: 'Someone just used your password to try to sign in to your Gromiea Account teciok@graliogior.example from a device you don''t usually use. Gromiea blocked them, but you should check what happened and change your password. Check activity'
+      payload:
+        headers: []
+  expected:
+    label: needs_you
+    urgent: false
+    split: holdout
+    outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-427
+  ticket: Inbox desk gate on a security problem the email reports
+  tags:
+  - needs_you
+  - tune
+  - new_thread
+  - security_problem
+  setup:
+    message:
+      thread_id: mail-427
+      message_id: mail-427
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: Zuvetra <security@zuvetra.example>
+      to: teciok@graliogior.example
+      subject: Two-factor authentication was turned off on your account
+      message_text: 'Hi Teciok, two-factor authentication was turned off for your Zuvetra account on Nov 5 at 23:41 UTC from 198.51.100.17. If you did not make this change, your account may be compromised: secure it now and turn two-factor authentication back on.'
+      payload:
+        headers: []
+  expected:
+    label: needs_you
+    urgent: false
+    split: tune
+    outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-428
+  ticket: Inbox desk gate on a security problem the email reports
+  tags:
+  - needs_you
+  - tune
+  - new_thread
+  - security_problem
+  setup:
+    message:
+      thread_id: mail-428
+      message_id: mail-428
+      label_ids:
+      - UNREAD
+      - IMPORTANT
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: Pelvaro <noreply@pelvaro.example>
+      to: teciok@graliogior.example
+      subject: Your Pelvaro account has been locked
+      message_text: 'We locked your Pelvaro account after several failed sign-in attempts we did not recognise. Until you verify your identity and reset your password, your workspace and API keys stay unavailable. Unlock your account'
+      payload:
+        headers: []
+  expected:
+    label: needs_you
+    urgent: false
+    split: tune
+    outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-429
+  ticket: Inbox desk gate on a security problem the email reports
+  tags:
+  - needs_you
+  - tune
+  - new_thread
+  - security_problem
+  setup:
+    message:
+      thread_id: mail-429
+      message_id: mail-429
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: Drosaio <account@drosaio.example>
+      to: teciok@graliogior.example
+      subject: The recovery email on your account was changed
+      message_text: 'Hi Teciok, the recovery email for your Drosaio account was changed to v****@kemuria.example. If you made this change, you can ignore this message. If you didn''t, someone else may have access to your account: recover it now.'
+      payload:
+        headers: []
+  expected:
+    label: needs_you
+    urgent: false
+    split: tune
+    outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-430
+  ticket: Inbox desk gate on a security problem the email reports
+  tags:
+  - needs_you
+  - tune
+  - new_thread
+  - security_problem
+  setup:
+    message:
+      thread_id: mail-430
+      message_id: mail-430
+      label_ids:
+      - UNREAD
+      - IMPORTANT
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: Truvake <security@truvake.example>
+      to: teciok@graliogior.example
+      subject: Unrecognised activity on your Truvake account
+      message_text: 'We detected sign-ins to your Truvake account from 203.0.113.52 and 203.0.113.90 that do not match your usual activity, and two API tokens were created. If this was not you, revoke the tokens and reset your password now.'
+      payload:
+        headers: []
+  expected:
+    label: needs_you
+    urgent: false
+    split: tune
+    outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake

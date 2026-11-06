@@ -56,12 +56,14 @@ from app.helpers.lifespan_helpers import (
 )
 from app.services.blob_store import ensure_blob_store_ready
 from app.services.composio.composio_service import init_composio_service
+from app.services.composio.custom_tools.fetched_mail_gate import install_fetched_mail_gate
 from app.services.composio.instance_toolkits import load_instance_toolkits
 from app.services.delivery_alerts.slack import init_delivery_alerts_slack
 from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.sandbox.pool import init_sandbox_pool
 from app.services.startup_validation import validate_startup_requirements
 from app.services.storage.bootstrap import init_juicefs_mount
+from app.services.todos.desk_mail_gate import desk_gated_views
 from app.services.tools.tools_warmup import warmup_tools_cache
 from app.services.workspace_sync import init_system_subtree, resync_stale_user_workspaces
 from app.utils.concurrency import capture_running_loop
@@ -200,6 +202,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # (sync Composio custom tools) can dispatch coroutines back onto the loop the
     # Motor/Redis clients are bound to instead of spinning a fresh one.
     capture_running_loop()
+    install_fetched_mail_gate(desk_gated_views)
 
     # Before anything serves: a blob volume or bucket that cannot take writes stops the boot.
     await ensure_blob_store_ready()

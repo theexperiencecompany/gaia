@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.constants.log_tags import LogTag
 from app.constants.todos import INBOX_DESK_AUTOMATED_SENDERS
 from app.constants.trigger_gates import TRIGGER_GATE_FIELD_MAX_CHARS
-from app.models.composio_schemas.gmail import GmailHeader
+from app.models.composio_schemas.gmail import GmailHeader, GmailMessageView
 from shared.py.wide_events import log
 
 _GMAIL_CATEGORY_PREFIX = "CATEGORY_"
@@ -158,3 +158,18 @@ def gmail_gate_view(data: Mapping[str, object]) -> GmailGateView | None:
         sender_looks_automated=signals.sender_looks_automated,
         continues_thread=signals.continues_thread,
     )
+
+
+def fetched_message_payload(view: GmailMessageView) -> dict[str, object]:
+    """Return a message a run fetched in the new-message payload shape the gate view reads."""
+    return {
+        "thread_id": view.thread_id,
+        "message_id": view.id,
+        "label_ids": view.labels,
+        "sender": view.sender,
+        "to": view.to,
+        "subject": view.subject,
+        "message_text": view.body or view.snippet,
+        "attachment_list": view.attachments,
+        "payload": {"headers": [header.model_dump() for header in view.headers]},
+    }

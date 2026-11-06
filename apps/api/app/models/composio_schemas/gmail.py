@@ -330,6 +330,8 @@ class GmailMessageView(BaseModel):
     content: GmailMessageContent | None = Field(
         default=None, exclude_if=lambda content: content is None
     )
+    # Read by the trigger gate's signals (List-Unsubscribe, Precedence); never on the wire.
+    headers: list[GmailHeader] = Field(default_factory=list, exclude=True)
 
 
 class GmailMessageRef(BaseModel):

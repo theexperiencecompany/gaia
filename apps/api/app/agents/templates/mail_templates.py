@@ -399,6 +399,7 @@ def _message_view(message: RelayedGmailMessage, *, include_body: bool) -> GmailM
         attachments=_attachment_metadata(message.payload),
         labels=labels,
         cc=parser.cc,
+        headers=message.payload.headers if message.payload is not None else [],
     )
     if include_body:
         content: GmailMessageContent = parser.content

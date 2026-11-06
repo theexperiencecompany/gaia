@@ -5,11 +5,19 @@ not claim the mail is free of List-Unsubscribe, or a todo condition would act on
 a fact the event never carried.
 """
 
+import base64
 import json
 
 import pytest
 
-from app.services.triggers.gmail_signals import gmail_gate_view, gmail_message_signals
+from app.agents.templates.mail_templates import build_message_view, project_message_view
+from app.models.composio_schemas.gmail import GmailMessageView
+from app.models.integrations.gmail_messages import RelayedGmailMessage
+from app.services.triggers.gmail_signals import (
+    fetched_message_payload,
+    gmail_gate_view,
+    gmail_message_signals,
+)
 from app.services.triggers.handlers.gmail import gmail_trigger_handler
 from tests.helpers import captured_wide_event
 
@@ -217,6 +225,48 @@ class TestGateView:
 
     def test_an_unreadable_payload_has_no_view(self) -> None:
         assert gmail_gate_view({"label_ids": "INBOX"}) is None
+
+
+class TestAFetchedMessage:
+    """A message a run fetched itself reads to the gate as the same mail's webhook would."""
+
+    RAW: dict[str, object] = {  # noqa: RUF012 -- read-only fixture
+        "id": "m2",
+        "threadId": "t1",
+        "labelIds": ["INBOX", "CATEGORY_UPDATES"],
+        "snippet": "the snippet",
+        "payload": {
+            "headers": [
+                {"name": "From", "value": "Infisical <team@infisical.com>"},
+                {"name": "To", "value": "aryan@heygaia.io"},
+                {"name": "Cc", "value": "ops@heygaia.io"},
+                {"name": "Subject", "value": "Successful login from new device"},
+                {"name": "In-Reply-To", "value": "<m1@infisical.com>"},
+                {"name": "List-Unsubscribe", "value": "<mailto:u@infisical.com>"},
+            ],
+            "body": {"data": base64.urlsafe_b64encode(b"We noticed a  new\nlogin.").decode()},
+        },
+    }
+
+    def _view(self) -> GmailMessageView:
+        return build_message_view(RelayedGmailMessage.model_validate(self.RAW), "normalize")
+
+    def test_its_gate_view_carries_the_headers_and_the_body(self) -> None:
+        view = gmail_gate_view(fetched_message_payload(self._view()))
+
+        assert view is not None
+        event = view.as_event()
+        assert event["from"] == "Infisical <team@infisical.com>"
+        assert event["cc"] == "ops@heygaia.io"
+        assert event["subject"] == "Successful login from new device"
+        assert event["snippet"] == "We noticed a new login."
+        assert event["gmail_category"] == "CATEGORY_UPDATES"
+        assert event["has_list_unsubscribe"] is True
+        assert event["is_reply"] is True
+        assert view.continues_thread is True
+
+    def test_the_headers_never_reach_the_agent(self) -> None:
+        assert "headers" not in project_message_view(self._view(), None)
 
 
 class TestHandler:

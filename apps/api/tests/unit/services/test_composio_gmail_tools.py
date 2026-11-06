@@ -9,7 +9,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 import re
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, ValidationError
@@ -929,6 +929,80 @@ class TestTheDesksSweep:
 # ---------------------------------------------------------------------------
 # Whose mailbox, and what was asked of it
 # ---------------------------------------------------------------------------
+
+
+class TestATodoRunsFetchPassesItsGate:
+    """A tracked todo's mail fetch is handed to the desk gate; a body-less count never is."""
+
+    DESK_RUN: dict[str, Any] = {"configurable": {"active_todo_id": "desk-1"}}  # noqa: RUF012
+
+    def _fetch(self, mock_proxy: MagicMock, gate: AsyncMock, **request: Any) -> dict[str, Any]:
+        mock_proxy.side_effect = _one_message_mailbox()
+        with (
+            patch(f"{GMAIL_TOOLS}.current_run_config", return_value=self.DESK_RUN),
+            patch(f"{GMAIL_TOOLS}.installed_fetched_mail_gate", return_value=gate),
+        ):
+            return _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", **request),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+    def test_the_messages_are_what_the_gate_kept(self, mock_proxy: MagicMock) -> None:
+        gate = AsyncMock(return_value=[])
+
+        result = self._fetch(mock_proxy, gate)
+
+        (user_id, todo_id, views), _ = gate.await_args
+        assert (user_id, todo_id) == (AUTH_CREDS["user_id"], "desk-1")
+        assert [v.id for v in views] == ["msg-1"]
+        assert result["messages"] == []
+
+    def test_a_count_only_sweep_is_never_gated(self, mock_proxy: MagicMock) -> None:
+        gate = AsyncMock(return_value=[])
+
+        result = self._fetch(
+            mock_proxy,
+            gate,
+            fields=list(todo_prompts.INBOX_DESK_SWEEP_FIELDS),
+            body_processing="none",
+        )
+
+        gate.assert_not_awaited()
+        assert len(result["messages"]) == 1
+
+    def test_a_process_with_no_gate_installed_keeps_the_mail_and_says_so(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = _one_message_mailbox()
+
+        with (
+            patch(f"{GMAIL_TOOLS}.current_run_config", return_value=self.DESK_RUN),
+            patch(f"{GMAIL_TOOLS}.installed_fetched_mail_gate", return_value=None),
+            patch(f"{GMAIL_TOOLS}.log") as log,
+        ):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000"),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert len(result["messages"]) == 1
+        log.error.assert_called_once()
+
+    def test_a_fetch_outside_any_todo_run_is_never_gated(self, mock_proxy: MagicMock) -> None:
+        gate = AsyncMock(return_value=[])
+        mock_proxy.side_effect = _one_message_mailbox()
+
+        with patch(f"{GMAIL_TOOLS}.installed_fetched_mail_gate", return_value=gate):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000"),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        gate.assert_not_awaited()
+        assert len(result["messages"]) == 1
 
 
 def _one_message_mailbox(

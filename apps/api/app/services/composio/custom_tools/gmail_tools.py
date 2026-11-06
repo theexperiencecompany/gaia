@@ -23,7 +23,7 @@ from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
-from app.models.agent_models import current_run_config, current_stream_writer
+from app.models.agent_models import agent_configurable, current_run_config, current_stream_writer
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
@@ -49,6 +49,7 @@ from app.models.composio_schemas.gmail import (
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.integrations.gmail import GmailThreadData
 from app.models.integrations.gmail_messages import GmailApiMessage, RelayedGmailMessage
+from app.services.composio.custom_tools.fetched_mail_gate import installed_fetched_mail_gate
 from app.services.composio.custom_tools.gmail_constants import (
     _DAYS_PER_UNIT,
     FETCH_CONCURRENCY,
@@ -65,7 +66,7 @@ from app.services.composio.custom_tools.gmail_constants import (
 )
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request_sync
 from app.services.contact_service import build_contact_index
-from app.utils.concurrency import ContextThreadPoolExecutor
+from app.utils.concurrency import ContextThreadPoolExecutor, run_on_captured_loop
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
@@ -461,12 +462,37 @@ def _fetch_and_shape(
             reason=exc.reason,
         )
 
+    full_views = _through_todo_gate(user_id, request, full_views)
     if len(full_views) > OFFLOAD_MIN_MESSAGES:
         return _format_inline_result(_file_bound_views(full_views), truncated=truncated)
     _emit_email_card(full_views)
     return _format_inline_result(
         [project_message_view(view, request.fields) for view in full_views], truncated=truncated
     )
+
+
+def _through_todo_gate(
+    user_id: str, request: FetchMessagesInput, views: list[GmailMessageView]
+) -> list[GmailMessageView]:
+    """Return the views a tracked todo run's gate lets through; all of them outside one.
+
+    body_processing "none" is the desk's count sweep, so only mail it triages meets the gate.
+    """
+    todo_id = agent_configurable(current_run_config()).get("active_todo_id")
+    if not todo_id or not views or request.body_processing == "none":
+        return views
+    gate = installed_fetched_mail_gate()
+    if gate is None:
+        log.error(f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: no mail gate installed", todo_id=todo_id)
+        return views
+    kept = run_on_captured_loop(gate(user_id, todo_id, views))
+    log.info(
+        f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: mail passed its todo's gate",
+        todo_id=todo_id,
+        fetched=len(views),
+        gate_skipped=len(views) - len(kept),
+    )
+    return kept
 
 
 def _file_bound_views(views: list[GmailMessageView]) -> list[dict[str, object]]:
