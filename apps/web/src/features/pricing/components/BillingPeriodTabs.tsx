@@ -39,19 +39,25 @@ export function BillingPeriodTabs({
       onSelectionChange={(key) => onChange(key === "yearly")}
       aria-label="Billing period"
     >
-      <Tabs.List>
-        <Tabs.Tab id="monthly">Monthly</Tabs.Tab>
-        <Tabs.Tab id="yearly">
-          <div className="flex items-center gap-2">
-            Yearly
-            {savings !== null && (
-              <Chip color="accent" size="sm" variant="primary">
-                {annualSavingsLabel(savings)}
-              </Chip>
-            )}
-          </div>
-        </Tabs.Tab>
-      </Tabs.List>
+      <Tabs.ListContainer>
+        <Tabs.List>
+          <Tabs.Tab id="monthly">
+            Monthly
+            <Tabs.Indicator />
+          </Tabs.Tab>
+          <Tabs.Tab id="yearly">
+            <div className="flex items-center gap-2">
+              Yearly
+              {savings !== null && (
+                <Chip color="accent" size="sm" variant="primary">
+                  {annualSavingsLabel(savings)}
+                </Chip>
+              )}
+            </div>
+            <Tabs.Indicator />
+          </Tabs.Tab>
+        </Tabs.List>
+      </Tabs.ListContainer>
       <Tabs.Panel id="monthly">{null}</Tabs.Panel>
       <Tabs.Panel id="yearly">{null}</Tabs.Panel>
     </Tabs>

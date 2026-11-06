@@ -94,13 +94,10 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
           <InputGroup.Prefix>
             <SearchIcon className="size-5 text-default-400" />
           </InputGroup.Prefix>
-          <input
+          <InputGroup.Input
             type="text"
-            value={searchQuery}
-            onChange={(event) => handleSearchChange(event.target.value)}
             aria-label="Search posts"
             placeholder="Search posts..."
-            className="input-group__input min-w-0 flex-1"
           />
         </InputGroup>
       </TextField>

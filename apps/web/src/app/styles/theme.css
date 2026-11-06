@@ -63,11 +63,12 @@
 }
 
 /* Dark mode swaps the foreground ramp like the v2 theme did, so muted text
-   stays grey instead of inheriting white. */
+   stays grey instead of inheriting white. Matches swapColorValues(zinc):
+   300<->600, 400<->500. */
 .dark {
-  --color-foreground-300: var(--color-zinc-700);
-  --color-foreground-400: var(--color-zinc-600);
-  --color-foreground-500: var(--color-zinc-500);
-  --color-foreground-600: var(--color-zinc-400);
-  --color-foreground-700: var(--color-zinc-300);
+  --color-foreground-300: var(--color-zinc-600);
+  --color-foreground-400: var(--color-zinc-500);
+  --color-foreground-500: var(--color-zinc-400);
+  --color-foreground-600: var(--color-zinc-300);
+  --color-foreground-700: var(--color-zinc-200);
 }
