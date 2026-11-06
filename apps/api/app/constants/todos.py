@@ -257,13 +257,30 @@ INBOX_DESK_ROUTINE_SIGN_IN_TERMS: Final[tuple[str, ...]] = (
     "(login code)",
     "(sign-in code)",
 )
+# A security problem is fetched whatever else its subject says, sign-in words included.
+INBOX_DESK_SECURITY_PROBLEM_TERMS: Final[tuple[str, ...]] = (
+    "blocked",
+    "locked",
+    "suspicious",
+    "unrecognised",
+    "unrecognized",
+    "compromised",
+    "(password changed)",
+    "(password was changed)",
+    "(recovery changed)",
+    "(turned off)",
+    "disabled",
+)
 # Gmail's (a b) is every word, so no quote reaches the prompt's quoted query, and no brace
 # reaches the run prompt's str.format.
 INBOX_DESK_ACTION_MAIL_FILTER: Final[str] = (
-    "in:inbox ("
+    "in:inbox ((("
     + " OR ".join(f"subject:{term}" for term in INBOX_DESK_ACTION_MAIL_TERMS)
     + ") "
     + " ".join(f"-subject:{term}" for term in INBOX_DESK_ROUTINE_SIGN_IN_TERMS)
+    + ") OR ("
+    + " OR ".join(f"subject:{term}" for term in INBOX_DESK_SECURITY_PROBLEM_TERMS)
+    + "))"
 )
 # Gmail labels new mail needs to wake the desk: in the inbox, in Primary.
 INBOX_DESK_WATCH_LABELS: Final[tuple[str, ...]] = ("INBOX", "CATEGORY_PERSONAL")

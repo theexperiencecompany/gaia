@@ -322,6 +322,17 @@ def test_the_action_fetch_leaves_out_routine_sign_in_subjects() -> None:
     assert '"' not in action_filter and "{" not in action_filter
 
 
+def test_a_security_problem_is_fetched_even_when_its_subject_reads_like_a_sign_in() -> None:
+    """Review: "new sign-in blocked" or "your account is locked" never reached the desk."""
+    action_filter = todo_constants.INBOX_DESK_ACTION_MAIL_FILTER
+    routine, problems = action_filter.removeprefix("in:inbox (").split(" OR (", 1)
+
+    assert routine.startswith("(") and "-subject:(new sign-in)" in routine
+    assert "-subject:" not in problems
+    for term in ("blocked", "locked", "suspicious", "(password changed)", "compromised"):
+        assert f"subject:{term}" in problems
+
+
 def test_a_past_dated_event_is_never_added_or_proposed() -> None:
     """Regression: the briefing proposed a Cloudflare deadline that had already passed."""
     assert "Never add or propose an event whose date has already passed" in "\n".join(_step(8))
