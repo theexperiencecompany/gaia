@@ -620,19 +620,25 @@ class TestCreateTrackedTodoValidation:
             patch(
                 "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
                 AsyncMock(return_value={"notion"}),
-            ),
+            ) as connected,
             patch(
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
                 new_callable=AsyncMock,
             ) as create,
         ):
             result = await create_tracked_todo.coroutine(
-                config=_config(), title="Watch for replies", needs_integrations=["gmail"]
+                config=_config(),
+                title="Watch for replies",
+                needs_integrations=["gmail", "notion", "not-a-real-service"],
             )
 
         create.assert_not_awaited()
-        assert "Gmail" in result
-        assert "Nothing was saved" in result
+        connected.assert_awaited_once_with("user-1")
+        assert result == (
+            "Error: Gmail, not-a-real-service is not connected, so no later run of this todo "
+            "could do its work. Nothing was saved. Activate it first (activation brings the "
+            "user its connect card) and create the todo once it is connected."
+        )
 
     async def test_a_watch_on_a_connected_service_is_created(self):
         with (

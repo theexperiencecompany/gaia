@@ -150,13 +150,22 @@ class TestAFailureBeforeOrInsteadOfARunNamesItsCause:
 
     @pytest.mark.regression
     async def test_a_run_that_answered_nothing_is_a_failure_never_done(self) -> None:
-        result = await _run_with(SubagentOutcome(text="unconfirmed", answered=False))
+        ctx = SimpleNamespace(config={}, configurable={})
+        with patch.object(er, "log") as mock_log:
+            result = await _run_with(
+                SubagentOutcome(text="unconfirmed", answered=False), prepared=(ctx, None)
+            )
 
-        assert (result.text, result.type, result.error_type) == (
+        assert result == er._ExecutorResult(
             executor_constants.EXECUTOR_CRASH_MESSAGE,
             "error",
-            executor_constants.EXECUTOR_ERROR_NO_ANSWER,
+            ctx=ctx,
+            error_type=executor_constants.EXECUTOR_ERROR_NO_ANSWER,
         )
+        mock_log.error.assert_called_once()
+        message = mock_log.error.call_args.args[0]
+        assert "without an answer" in message
+        assert mock_log.error.call_args.kwargs == {"stream_id": "stream-1"}
 
     async def test_a_stopped_run_with_no_answer_is_left_to_the_cancellation_path(self) -> None:
         result = await _run_with(SubagentOutcome(text="", answered=False, stopped=True))
