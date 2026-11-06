@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from zoneinfo import ZoneInfo
 
 from bson.errors import InvalidId
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from pydantic import ValidationError
 import pytest
@@ -93,7 +94,7 @@ def recorded_changes() -> Iterator[AsyncMock]:
         yield recorded
 
 
-def _config(user_id: str | None = "user-1") -> dict:
+def _config(user_id: str | None = "user-1") -> RunnableConfig:
     return {"metadata": {"user_id": user_id}} if user_id else {"metadata": {}}
 
 
@@ -622,6 +623,81 @@ class TestCreateTrackedTodoValidation:
             )
 
         repo.create.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_watch_on_an_unconnected_service_is_never_created(self):
+        """Regression: "I'll monitor the replies" made a check that could never read the mail."""
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
+                AsyncMock(return_value={"notion"}),
+            ) as connected,
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+            ) as create,
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(),
+                title="Watch for replies",
+                needs_integrations=["gmail", "notion", "not-a-real-service"],
+            )
+
+        create.assert_not_awaited()
+        connected.assert_awaited_once_with("user-1")
+        assert result == (
+            "Error: Gmail, not-a-real-service is not connected, so no later run of this todo "
+            "could do its work. Nothing was saved. Activate it first (activation brings the "
+            "user its connect card) and create the todo once it is connected."
+        )
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("needs_integrations", [None, ["gmail"]])
+    async def test_a_thread_watch_is_never_created_without_gmail(
+        self, needs_integrations: list[str] | None
+    ) -> None:
+        """Regression: a thread watch saved with no Gmail account could never receive its mail."""
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
+                AsyncMock(return_value=set()),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+            ) as create,
+        ):
+            result = await create_tracked_todo.ainvoke(
+                {
+                    "title": "Chase the reply",
+                    "gmail_thread_id": "abc",
+                    "needs_integrations": needs_integrations,
+                },
+                config=_config(),
+            )
+
+        create.assert_not_awaited()
+        assert str(result).startswith("Error: Gmail is not connected")
+
+    async def test_a_watch_on_a_connected_service_is_created(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
+                AsyncMock(return_value={"gmail"}),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+            ) as create,
+        ):
+            create.return_value = TodoResponse(
+                id="t1", user_id="u1", title="t", created_at=_FUTURE, updated_at=_FUTURE
+            )
+            await create_tracked_todo.coroutine(
+                config=_config(), title="Watch for replies", needs_integrations=["gmail"]
+            )
+
+        create.assert_awaited_once()
 
     async def test_a_new_tracked_todo_delivers_its_run_results_by_default(self):
         """The agent usually omits this argument, so the default is what almost every todo gets."""
@@ -1629,7 +1705,7 @@ class TestUpdateTrackedTodoSuccess:
 
 
 class TestCreateTrackedTodoSuccess:
-    def _response(self, **overrides) -> TodoResponse:
+    def _response(self, **overrides: object) -> TodoResponse:
         now = datetime.now(UTC)
         base = {
             "id": "t1",
@@ -1811,6 +1887,15 @@ class TestCreateThreadTrackedTodo:
         ) as lookup:
             yield lookup
 
+    @pytest.fixture(autouse=True)
+    def gmail_connected(self) -> Iterator[AsyncMock]:
+        """Connect Gmail, since a thread watch is refused without it."""
+        with patch(
+            "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
+            AsyncMock(return_value={"gmail"}),
+        ) as connected:
+            yield connected
+
     @staticmethod
     def _response() -> TodoResponse:
         now = datetime.now(UTC)
@@ -1842,7 +1927,9 @@ class TestCreateThreadTrackedTodo:
 
     async def test_the_thread_id_becomes_the_todo_ref(self):
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(config=_config(), title="t", gmail_thread_id="abc")
+            await create_tracked_todo.ainvoke(
+                {"title": "t", "gmail_thread_id": "abc"}, config=_config()
+            )
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
             source=ExternalRefSource.GMAIL_THREAD, id="abc"
         )

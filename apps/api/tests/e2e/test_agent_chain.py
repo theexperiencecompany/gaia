@@ -33,6 +33,7 @@ from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.subagents import spawn_agent
 from app.agents.prompts.spawn_subagent_prompts import SPAWN_SUBAGENT_SYSTEM_PROMPT
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.executor import EXECUTOR_CRASH_MESSAGE
 from app.constants.memory import ReconcileOutcome
 from app.core.stream_manager import stream_manager
 from app.core.websocket_manager import websocket_manager
@@ -76,7 +77,7 @@ class StreamingScriptedModel(RecordingFakeModel):
     implements only _agenerate, so without this override LangGraph falls back to
     one whole AIMessage. That matters only in composition: _process_messages_payload
     (the executor/subagent driver) accepts AIMessageChunk alone, so a non-streaming
-    double would collapse every answer to the "Task completed" fallback instead of
+    double would collapse every answer to the no-answer notice instead of
     the real text.
     """
 
@@ -483,6 +484,17 @@ class TestCommsToExecutor:
             "Handed to the executor (task_id:"
         )
         assert run.transcript.final_text() == "On it."
+
+    @pytest.mark.regression
+    async def test_an_executor_that_reports_nothing_is_delivered_as_a_failure(self) -> None:
+        """An empty finish once reached comms as the literal "Task completed", read back as done."""
+        run = await run_chain(
+            "draw me a flowchart",
+            comms=comms_delegating_script(),
+            executor=[*executor_flowchart_script()[:2], call("finish_task", {}, call_id="f1")],
+        )
+
+        assert run.delivered == [(EXECUTOR_CRASH_MESSAGE, "error")]
 
     async def test_only_the_comms_tier_speaks_in_the_response_frames(self) -> None:
         """Both tiers share one graph driver; without this gate the executor's prose would interleave into the user's reply."""

@@ -216,7 +216,7 @@ CLAUSES: tuple[Clause, ...] = (
         name="acknowledge_exactly_once",
         source="comms",
         starts_at="## Actions: three moments",
-        ends_before="Needs a service they haven't connected",
+        ends_before="Writing the task, since the executor knows only what you write:",
         governs="the three moments: silent call, a reaction or one short ack, then the outcome",
         depends_on=("data/quality/bubbles.yaml", "data/quality/multiturn_extra.yaml"),
     ),

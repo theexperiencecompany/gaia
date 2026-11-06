@@ -124,7 +124,11 @@ def _integrations_line() -> str:
         f"INTEGRATIONS: {len(all_integrations())} services the user can connect ({categories}). "
         "GAIA can search them for what the user needs and show a connect card in chat. Nothing "
         "runs on a service before it is connected; once it is, GAIA gets that service's tools, "
-        "and the built-in workflows below switch on by themselves."
+        "and the built-in workflows below switch on by themselves. Beyond the catalog, GAIA can "
+        "add any remote MCP server by its URL (a vendor's official server or the user's own; "
+        "no auth, OAuth, or a token entered in a secure form, never in chat) and use its tools "
+        "the same way, and custom servers can be published to a community marketplace that "
+        "integration search also covers."
     )
 
 

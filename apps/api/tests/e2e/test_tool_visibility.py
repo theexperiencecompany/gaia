@@ -136,7 +136,7 @@ class TestToolCallVisibility:
 
         call = transcript.tool_call("call_executor")
         assert call.category == "executor"
-        assert call.message == "Delegating to executor"
+        assert call.message == "Working on it"
         assert call.show_category is False
 
     async def test_several_tool_calls_in_one_message_all_stream_in_order(self):

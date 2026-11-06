@@ -82,6 +82,8 @@ export interface StreamingOptions {
 
 export type MessageEditor = (text: string) => Promise<void>;
 export type NewMessageSender = (text: string) => Promise<MessageEditor>;
+/** Clears what the adapter showed while waiting, for a turn that ended with no reply. */
+export type NoReplyHandler = () => Promise<void>;
 
 export const STREAMING_DEFAULTS: Record<PlatformName, StreamingOptions> = {
   discord: {
@@ -131,6 +133,7 @@ async function _handleStream(
   onGenericError: (formattedError: string, cause: unknown) => Promise<void>,
   options: StreamingOptions,
   onReaction: ReactionHandler | undefined,
+  onNoReply: NoReplyHandler | undefined,
 ): Promise<void> {
   const { editIntervalMs, streaming, platform } = options;
 
@@ -170,6 +173,8 @@ async function _handleStream(
   let bubbleProvisional = false;
   /** True once the stream's own error handler has told the user about a failure. */
   let failureReported = false;
+  /** True once the turn's emoji ack attached natively, which is a reply of its own. */
+  let reacted = false;
 
   // Serialization queue to prevent concurrent Telegram API calls
   // which cause out-of-order message updates
@@ -384,6 +389,7 @@ async function _handleStream(
     let outcome: ReactionOutcome = REACTION_OUTCOME.NO_TARGET;
     await enqueue(async () => {
       outcome = await onReaction(emoji);
+      reacted = outcome === REACTION_OUTCOME.ATTACHED;
     });
     return outcome;
   };
@@ -443,6 +449,12 @@ async function _handleStream(
         // it must still be visible that this happened.
         if (bubbleProvisional) {
           logger.info("bubble_preamble_kept", { chars: shownText.length });
+        }
+
+        // A hand-off says nothing: the work's result arrives as its own message, so
+        // whatever the adapter put up while waiting must not outlive the turn.
+        if (!shownText && !reacted && onNoReply) {
+          await onNoReply();
         }
       },
       async (error) => {
@@ -515,6 +527,7 @@ export async function handleStreamingChat(
   options: StreamingOptions,
   analytics?: AnalyticsContext,
   onReaction?: ReactionHandler,
+  onNoReply?: NoReplyHandler,
 ): Promise<void> {
   // Latency + high-cardinality observability for the chat pipeline. user_hash
   // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
@@ -546,6 +559,7 @@ export async function handleStreamingChat(
         analytics,
         userHash,
         onReaction,
+        onNoReply,
       ),
   );
 }
@@ -562,6 +576,7 @@ async function runStreamingChat(
   analytics: AnalyticsContext | undefined,
   userHash: string | undefined,
   onReaction: ReactionHandler | undefined,
+  onNoReply: NoReplyHandler | undefined,
 ): Promise<void> {
   const startMs = Date.now();
   let responseLength = 0;
@@ -694,6 +709,7 @@ async function runStreamingChat(
       wrappedOnGenericError,
       options,
       onReaction,
+      onNoReply,
     );
   } finally {
     wideLog.set({
