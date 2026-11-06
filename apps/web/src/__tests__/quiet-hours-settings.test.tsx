@@ -82,6 +82,36 @@ describe("the quiet-hours section", () => {
     await waitFor(() => expect(screen.getByText("Off")).toBeTruthy());
   });
 
+  it("sends a second save only after the first lands, and keeps showing the second", async () => {
+    const pending: Array<() => void> = [];
+    updateHours.mockImplementation(
+      (hours) => new Promise((resolve) => pending.push(() => resolve(hours))),
+    );
+    render(<QuietHoursSettings />, { wrapper });
+    const toggle = await screen.findByRole("switch", {
+      name: "Use quiet hours",
+    });
+
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(updateHours).toHaveBeenCalledTimes(1));
+    expect(updateHours).toHaveBeenLastCalledWith({ ...NIGHT, enabled: false });
+
+    pending[0]();
+    await waitFor(() => expect(updateHours).toHaveBeenCalledTimes(2));
+    expect(updateHours).toHaveBeenLastCalledWith(NIGHT);
+    expect(
+      screen.getByText(`${formatHour(22)} to ${formatHour(8)}`),
+    ).toBeTruthy();
+
+    pending[1]();
+    await waitFor(() =>
+      expect(
+        screen.getByText(`${formatHour(22)} to ${formatHour(8)}`),
+      ).toBeTruthy(),
+    );
+  });
+
   it("shows nothing, and throws nothing, when the stored window cannot be read", async () => {
     fetchHours.mockRejectedValue(new Error("500"));
     const { container } = render(<QuietHoursSettings />, { wrapper });

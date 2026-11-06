@@ -20,17 +20,22 @@ export function useQuietHours() {
     queryFn: quietHoursApi.fetch,
   });
 
-  // The API layer already told the user about a failed save; the slider goes back to what is stored.
+  // One scope runs saves in order, so an earlier PATCH never lands after a later one. The API
+  // layer already told the user about a failed save; the slider goes back to what is stored.
   const mutation = useMutation({
+    scope: { id: QUIET_HOURS_KEY.join("/") },
     mutationFn: (next: QuietHours) => quietHoursApi.update(next),
-    onMutate: setDraft,
     onSuccess: (stored) => qc.setQueryData(QUIET_HOURS_KEY, stored),
-    onSettled: () => setDraft(null),
+    onSettled: (_stored, _error, next) =>
+      setDraft((current) => (current === next ? null : current)),
   });
 
   return {
     hours: draft ?? saved ?? null,
     preview: setDraft,
-    save: (next: QuietHours) => mutation.mutate(next),
+    save: (next: QuietHours) => {
+      setDraft(next);
+      mutation.mutate(next);
+    },
   };
 }
