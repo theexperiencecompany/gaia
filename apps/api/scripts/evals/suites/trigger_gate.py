@@ -1,11 +1,12 @@
 """trigger-gate suite: the Inbox desk gate's JEV answers on 420 founder-labelled emails, anonymised.
 
 Each email's request is built by the production builder (gmail_gate_view, gate_request) and
-sent through the production client (post_decisions), by day and inside quiet hours, as many
-times as production samples it. The journal keeps every request's hash and every answer, so
-the CI sweep (tests/unit/evals/test_trigger_gate_sweep.py) regrades it through decide_gate
-itself, and a prompt edit that is not re-recorded fails there. Every address and link is on
-a reserved .example domain.
+sent through the production client (post_decisions), once by day and once inside quiet
+hours. The journal keeps every request's hash and JEV's answers, so the CI sweep
+(tests/unit/evals/test_trigger_gate_sweep.py) regrades it through decide_gate itself, and a
+prompt edit that is not re-recorded fails there. Every address and link is on a reserved
+.example domain; the recorded answers were given on an earlier pseudonymisation of the same
+emails and re-keyed to this one, so a re-record is what refreshes them.
 
 Run:  uv run --group backend python -m scripts.evals run --suite trigger-gate --concurrency 6
   TRIGGER_GATE_EVAL_GATE=system|authored (default system)
@@ -14,8 +15,7 @@ Record: uv run --group backend python -m scripts.evals.record_trigger_gate <run-
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from enum import StrEnum
 import hashlib
 import json
@@ -30,7 +30,6 @@ import httpx
 from app.constants.hil import HIL_JEV_MODEL_NAME
 from app.constants.trigger_gates import (
     SYSTEM_GATE_PRESETS,
-    TRIGGER_GATE_JEV_SAMPLES,
     TRIGGER_GATE_QUESTION_KEY,
     TRIGGER_GATE_SKIP_PROBABILITY,
     TRIGGER_GATE_URGENT_PROBABILITY,
@@ -42,7 +41,7 @@ from app.models.jev_models import JevDecisionsResponse
 from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
 from app.services.hil.jev_client import JevUnconfiguredError, post_decisions
 from app.services.triggers.gmail_signals import gmail_gate_view
-from app.services.triggers.trigger_gate import consensus_skip, consensus_urgency, gate_request
+from app.services.triggers.trigger_gate import gate_request, skip_probability, urgency
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.journal import RunJournal
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
@@ -82,10 +81,10 @@ USER_WROTE_IN_THREAD: Final = "user_wrote_in_thread"
 
 
 class AskedRequest(TypedDict):
-    """One request JEV answered: the hash of the body it read, and each sample's answer."""
+    """One request JEV answered: the hash of the body it read, and its answer."""
 
     request_sha: str
-    responses: list[dict[str, object]]
+    response: dict[str, object]
 
 
 class GateJournalFields(TypedDict):
@@ -139,9 +138,7 @@ def gate_requests(
     }
 
 
-def day_outcome(
-    gate: TriggerGate, setup: Mapping[str, object], bodies: Sequence[JevDecisionsResponse]
-) -> str:
+def day_outcome(gate: TriggerGate, setup: Mapping[str, object], body: JevDecisionsResponse) -> str:
     """Return "skip" or "run" by day; a conversation always runs. The sweep checks decide_gate agrees.
 
     A continuation is a conversation when setup says the user wrote in its thread.
@@ -154,19 +151,14 @@ def day_outcome(
         return "run"
     if view.continues_thread and setup.get(USER_WROTE_IN_THREAD) is not False:
         return "run"
-    _, p_skip = consensus_skip(gate, [b.answers[TRIGGER_GATE_QUESTION_KEY] for b in bodies])
-    return "skip" if p_skip >= TRIGGER_GATE_SKIP_PROBABILITY else "run"
+    answer = body.answers[TRIGGER_GATE_QUESTION_KEY]
+    return "skip" if skip_probability(gate, answer) >= TRIGGER_GATE_SKIP_PROBABILITY else "run"
 
 
-def quiet_wakes(bodies: Sequence[JevDecisionsResponse]) -> bool:
-    """Return whether the quiet-hours answers wake the user. The sweep checks decide_gate agrees."""
-    answers = [b.answers[TRIGGER_GATE_URGENT_QUESTION_KEY] for b in bodies]
-    return consensus_urgency(answers).probability >= TRIGGER_GATE_URGENT_PROBABILITY
-
-
-def answered(asked: AskedRequest) -> list[JevDecisionsResponse]:
-    """Return a recorded request's sampled answers as the client parsed them."""
-    return [JevDecisionsResponse.model_validate(r) for r in asked["responses"]]
+def quiet_wakes(body: JevDecisionsResponse) -> bool:
+    """Return whether the quiet-hours answer wakes the user. The sweep checks decide_gate agrees."""
+    answer = body.answers[TRIGGER_GATE_URGENT_QUESTION_KEY]
+    return urgency(answer).probability >= TRIGGER_GATE_URGENT_PROBABILITY
 
 
 def quiet_wake(case: Case, run: CaseRun) -> float:
@@ -174,7 +166,7 @@ def quiet_wake(case: Case, run: CaseRun) -> float:
     asked = (run.end_state or {}).get("requests", {}).get(GateMode.QUIET)
     if asked is None:
         return 0.0
-    woke = quiet_wakes(answered(asked))
+    woke = quiet_wakes(JevDecisionsResponse.model_validate(asked["response"]))
     return 0.0 if woke and not case.expected["urgent"] else 1.0
 
 
@@ -204,25 +196,23 @@ class GateTransport:
         gate = EVAL_GATES[self._gate]
         message = case.setup["message"]
         asked: dict[str, AskedRequest] = {}
-        answers: dict[GateMode, list[JevDecisionsResponse]] = {}
+        answers: dict[GateMode, JevDecisionsResponse] = {}
         for mode, (state, questions) in gate_requests(gate, message).items():
             try:
-                bodies = await asyncio.gather(
-                    *(post_decisions(state, questions) for _ in range(TRIGGER_GATE_JEV_SAMPLES))
-                )
+                body = await post_decisions(state, questions)
             except (JevUnconfiguredError, httpx.HTTPError, ValueError) as e:
                 raise ProviderError(provider.name, f"decisions API failed ({mode}): {e}") from e
-            answers[mode] = bodies
+            answers[mode] = body
             asked[mode] = AskedRequest(
                 request_sha=request_sha(jev_body(state, questions)),
-                responses=[b.model_dump(mode="json", exclude_none=True) for b in bodies],
+                response=body.model_dump(mode="json", exclude_none=True),
             )
         outcome = day_outcome(gate, case.setup, answers[GateMode.DAY])
         duration_s = time.monotonic() - start
         want = str(case.expected.get("outcome"))
         print(f"[{'ok' if outcome == want else 'MISS'}] {case.id}: want={want} got={outcome}")
         fields = GateJournalFields(gate=self._gate.value, outcome=outcome, requests=asked)
-        tokens = [body.tokens() for bodies in answers.values() for body in bodies]
+        tokens = [body.tokens() for body in answers.values()]
         return CaseRun(
             case_id=case.id,
             provider=provider.name,
