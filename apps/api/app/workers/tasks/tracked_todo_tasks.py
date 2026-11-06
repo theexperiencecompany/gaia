@@ -644,10 +644,9 @@ async def _execute_on_executor(
     user_id = doc.user_id
     prompt = build_execution_prompt(
         doc,
-        context=await collect_run_context(doc),
+        context=await collect_run_context(doc, user_tz),
         origin=origin,
         coalesced=coalesced,
-        local_now=datetime.now(user_tz.tzinfo),
     )
 
     # The todo's own chat, reused by every run so the user can follow them in one

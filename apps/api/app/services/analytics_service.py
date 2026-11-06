@@ -72,7 +72,6 @@ class AIFeature(StrEnum):
     WORKFLOW = "workflow", ("playbook_ask_fill", "playbook_narration")
     MEMORY = "memory", ("profile_extraction",)
     VISION = "vision", ("image_to_text", "tool_media_vision", "vision_fallback")
-    MAIL = "mail", ("mail_compose",)
     HIL = (
         "hil",
         (

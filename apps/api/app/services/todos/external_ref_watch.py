@@ -3,11 +3,6 @@
 from collections.abc import Sequence
 from typing import NamedTuple
 
-from app.constants.todos import (
-    INBOX_DESK_AUTOMATED_SENDERS,
-    INBOX_DESK_WATCH_LABELS,
-    INBOX_DESK_WATCH_WINDOW_SECONDS,
-)
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.todo_models import ExternalRef, ExternalRefSource
 from app.models.trigger_subscription_models import (
@@ -33,25 +28,8 @@ class _RefWatch(NamedTuple):
     account_id: str | None = None
 
 
-# A person's new mail in the Primary inbox; the desk's fetch skips the same senders.
-_DESK_MAIL = (
-    *(
-        SubscriptionCondition(
-            field_name="label_ids", operator=ConditionOperator.CONTAINS, value=label
-        )
-        for label in INBOX_DESK_WATCH_LABELS
-    ),
-    *(
-        SubscriptionCondition(
-            field_name="sender", operator=ConditionOperator.NOT_CONTAINS, value=sender
-        )
-        for sender in INBOX_DESK_AUTOMATED_SENDERS
-    ),
-)
-
-
-def _ref_watch(ref: ExternalRef) -> _RefWatch:
-    """Say what to watch for ref: a thread both ways, or the desk's mailbox for new mail."""
+def _ref_watch(ref: ExternalRef) -> _RefWatch | None:
+    """Say what to watch for ref: a thread both ways; the desk runs on its schedule, so none."""
     match ref.source:
         case ExternalRefSource.GMAIL_THREAD:
             on_thread = SubscriptionCondition(
@@ -64,9 +42,7 @@ def _ref_watch(ref: ExternalRef) -> _RefWatch:
                 ref.account,
             )
         case ExternalRefSource.INBOX_DESK:
-            return _RefWatch(
-                _DESK_MAIL, (GMAIL_NEW_MESSAGE_TRIGGER_NAME,), INBOX_DESK_WATCH_WINDOW_SECONDS
-            )
+            return None
 
 
 async def watch_external_ref(
@@ -77,6 +53,8 @@ async def watch_external_ref(
     Returns the watches it added; when one fails, the ones it added are removed again.
     """
     watch = _ref_watch(ref)
+    if watch is None:
+        return []
     watched = {
         sub.trigger_name
         for sub in subscriptions

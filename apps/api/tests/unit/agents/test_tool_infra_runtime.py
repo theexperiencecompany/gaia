@@ -37,6 +37,7 @@ from app.agents.tools.instructions_tools import (
     get_user_instructions,
     update_integration_instructions,
 )
+from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.models.integration_models import UserToolNamespaces
 from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
@@ -366,7 +367,13 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
 
     executor_child = build_executor_child_tool_runtime_config()
     assert executor_child.enable_retrieve_tools is True
-    assert executor_child.initial_tool_names == ["read", "bash", "finish_task"]
+    assert executor_child.initial_tool_names == [
+        "read",
+        "bash",
+        "execute",
+        "get_tool_schema",
+        "finish_task",
+    ]
 
     kwargs = build_create_agent_tool_kwargs(parent_dynamic, tool_space="provider_space")
     tools_config = kwargs["tools_config"]
@@ -514,6 +521,21 @@ async def test_spawn_graph_wires_identity_middleware_and_hooks_into_create_agent
     assert list(captured["hooks_config"].pre_model_hooks) == list(
         worker_pre_model_hooks(drains_subagent_inbox=True)
     )
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_an_executor_spawn_can_run_the_integration_tools_retrieve_hands_it():
+    """Regression: retrieve_tools told a desk's subagents to run Gmail via execute, which they lacked."""
+    captured = await _spawn_graph_agent_kwargs(
+        registry={"vfs_read": vfs_read, "normal_tool": normal_tool},
+        excluded=set(),
+        runtime=build_executor_child_tool_runtime_config(),
+    )
+
+    bound = captured["tools_config"].initial_tool_ids
+    assert EXECUTE_TOOL_NAME in bound
+    assert "get_tool_schema" in bound
 
 
 @pytest.mark.asyncio

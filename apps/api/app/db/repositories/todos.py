@@ -23,6 +23,7 @@ from app.db.repositories.cache import CachePolicy
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     ExternalRef,
+    ExternalRefSource,
     SearchMode,
     SubTask,
     SubTodoCount,
@@ -432,6 +433,12 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._find_one(
             {"user_id": user_id, **_external_ref_filter(ref)}, sort=[("created_at", -1)]
         )
+
+    async def list_open_by_external_ref_source(
+        self, source: ExternalRefSource
+    ) -> list[TodoDocument]:
+        """Every user's open todos about one kind of outside object, for one-off migrations."""
+        return await self._find({"completed": False, "external_ref.source": source.value})
 
     async def list_active_tracked_all_users(self, *, limit: int) -> list[TodoDocument]:
         """Every user's active tracked todos — the maintenance sweep's scan set."""

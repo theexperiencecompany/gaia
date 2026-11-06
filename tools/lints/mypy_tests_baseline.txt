@@ -44,8 +44,6 @@ apps/api/tests/e2e/test_hil_spawn_e2e.py	arg-type
 apps/api/tests/e2e/test_hil_spawn_e2e.py	attr-defined
 apps/api/tests/e2e/test_hil_spawn_e2e.py	call-overload
 apps/api/tests/e2e/test_hil_spawn_e2e.py	var-annotated
-apps/api/tests/e2e/test_hil_streaming.py	arg-type
-apps/api/tests/e2e/test_hil_streaming.py	attr-defined
 apps/api/tests/e2e/test_memory_context_e2e.py	arg-type
 apps/api/tests/e2e/test_memory_context_e2e.py	attr-defined
 apps/api/tests/e2e/test_platform_delivery_recording_e2e.py	attr-defined
@@ -53,7 +51,6 @@ apps/api/tests/e2e/test_reminder_dispatch_e2e.py	arg-type
 apps/api/tests/e2e/test_stream_transport.py	arg-type
 apps/api/tests/e2e/test_stream_transport.py	assignment
 apps/api/tests/e2e/test_todo_trigger_dispatch_e2e.py	arg-type
-apps/api/tests/e2e/test_tracked_todo_chat_e2e.py	arg-type
 apps/api/tests/e2e/test_user_instructions_e2e.py	attr-defined
 apps/api/tests/e2e/test_voice_device_realtime_e2e.py	arg-type
 apps/api/tests/e2e/test_voice_device_realtime_e2e.py	attr-defined
@@ -102,12 +99,6 @@ apps/api/tests/integration/real/test_local_sandbox_docker.py	misc
 apps/api/tests/integration/real/test_postgres_checkpointer.py	arg-type
 apps/api/tests/integration/real/test_sandbox_lock_real.py	attr-defined
 apps/api/tests/integration/real/test_websocket_broadcast_real.py	unused-ignore
-apps/api/tests/integration/test_composio_hooks.py	arg-type
-apps/api/tests/integration/test_composio_hooks.py	index
-apps/api/tests/integration/test_composio_hooks.py	operator
-apps/api/tests/integration/test_composio_hooks.py	return-value
-apps/api/tests/integration/test_composio_hooks.py	typeddict-item
-apps/api/tests/integration/test_composio_hooks.py	typeddict-unknown-key
 apps/api/tests/integration/test_lazy_provider_init.py	arg-type
 apps/api/tests/integration/test_lazy_provider_init.py	var-annotated
 apps/api/tests/integration/test_llm_fallback_chain.py	arg-type
@@ -208,8 +199,6 @@ apps/api/tests/unit/agents/test_subagent_landing_wake.py	arg-type
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	attr-defined
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	typeddict-item
 apps/api/tests/unit/agents/test_todo_run.py	func-returns-value
-apps/api/tests/unit/agents/test_todo_run_delivery.py	arg-type
-apps/api/tests/unit/agents/test_todo_run_delivery.py	attr-defined
 apps/api/tests/unit/agents/test_vision_describe.py	arg-type
 apps/api/tests/unit/agents/test_vision_describe.py	attr-defined
 apps/api/tests/unit/agents/test_workflow_platform_delivery.py	arg-type
@@ -243,7 +232,6 @@ apps/api/tests/unit/api/test_device_self_pair.py	attr-defined
 apps/api/tests/unit/api/test_integrations_user.py	call-arg
 apps/api/tests/unit/api/test_lab_events.py	arg-type
 apps/api/tests/unit/api/test_lab_events.py	attr-defined
-apps/api/tests/unit/api/test_mail_endpoint.py	list-item
 apps/api/tests/unit/api/test_oauth_dependencies.py	attr-defined
 apps/api/tests/unit/api/test_onboarding_endpoint.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
@@ -581,7 +569,6 @@ apps/api/tests/unit/services/test_share_fetcher_compat.py	str-bytes-safe
 apps/api/tests/unit/services/test_social_profile_service.py	arg-type
 apps/api/tests/unit/services/test_startup_validation.py	func-returns-value
 apps/api/tests/unit/services/test_todo_canvas_storage.py	arg-type
-apps/api/tests/unit/services/test_tracked_todo_service.py	arg-type
 apps/api/tests/unit/services/test_trigger_handler_base.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers.py	union-attr
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	arg-type
@@ -595,7 +582,6 @@ apps/api/tests/unit/services/test_user_todos_fs.py	arg-type
 apps/api/tests/unit/services/test_voice_service.py	arg-type
 apps/api/tests/unit/services/test_workflow_subagent.py	arg-type
 apps/api/tests/unit/services/test_workflow_subagent.py	override
-apps/api/tests/unit/services/todos/test_inbox_desk.py	attr-defined
 apps/api/tests/unit/services/todos/test_signal_context.py	arg-type
 apps/api/tests/unit/services/triggers/test_subscription_dispatch.py	arg-type
 apps/api/tests/unit/services/triggers/test_subscription_service.py	union-attr
@@ -664,8 +650,6 @@ apps/api/tests/unit/tools/test_support_tool.py	attr-defined
 apps/api/tests/unit/tools/test_todo_tools.py	attr-defined
 apps/api/tests/unit/tools/test_tracked_todo_subscription_tools.py	arg-type
 apps/api/tests/unit/tools/test_tracked_todo_subscription_tools.py	attr-defined
-apps/api/tests/unit/tools/test_tracked_todo_tools.py	arg-type
-apps/api/tests/unit/tools/test_tracked_todo_tools.py	attr-defined
 apps/api/tests/unit/tools/test_twitter_tool.py	call-arg
 apps/api/tests/unit/tools/test_weather_tool.py	attr-defined
 apps/api/tests/unit/tools/test_weather_tool.py	call-arg
@@ -676,11 +660,6 @@ apps/api/tests/unit/utils/search/test_providers.py	arg-type
 apps/api/tests/unit/utils/search/test_providers.py	attr-defined
 apps/api/tests/unit/utils/search/test_providers.py	misc
 apps/api/tests/unit/utils/test_auth_utils.py	arg-type
-apps/api/tests/unit/utils/test_composio_hooks.py	arg-type
-apps/api/tests/unit/utils/test_composio_hooks.py	func-returns-value
-apps/api/tests/unit/utils/test_composio_hooks.py	index
-apps/api/tests/unit/utils/test_composio_hooks.py	operator
-apps/api/tests/unit/utils/test_composio_hooks.py	typeddict-item
 apps/api/tests/unit/utils/test_context_utils.py	index
 apps/api/tests/unit/utils/test_context_utils.py	return-value
 apps/api/tests/unit/utils/test_crawl_obscura.py	attr-defined
@@ -712,11 +691,6 @@ apps/api/tests/unit/workers/test_memory_sweep_tasks.py	func-returns-value
 apps/api/tests/unit/workers/test_paid_person_tasks.py	arg-type
 apps/api/tests/unit/workers/test_reminder_tasks.py	unused-ignore
 apps/api/tests/unit/workers/test_tracked_todo_recurrence.py	arg-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	arg-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	func-returns-value
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	has-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	misc
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	return-value
 apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_coverage.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_onboarding_gate.py	arg-type

@@ -42,6 +42,7 @@ from app.models.todo_models import (
     TodoDocument,
     TodoUpdate,
     UpdateFieldInputs,
+    default_notify_on_run,
 )
 from app.models.trigger_subscription_models import (
     ConditionMatch,
@@ -527,10 +528,8 @@ async def update_tracked_todo(
     )
     if error := await apply_field_updates(inputs, user_id, update_fields, notes):
         return error
-    # Moved under a parent, a todo reports to it like a new sub-todo unless told otherwise.
-    moved_default = False if parent_todo_id else None
     plain_fields = {
-        "notify_on_run": moved_default if notify_on_run is None else notify_on_run,
+        "notify_on_run": notify_on_run,
         "parent_todo_id": parent_todo_id or None,
     }
     update_fields.update({name: value for name, value in plain_fields.items() if value is not None})
@@ -545,6 +544,11 @@ async def update_tracked_todo(
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
     if refusal := await _link_refusal(user_id, todo_id, references, parent_todo_id):
         return refusal
+    if parent_todo_id and notify_on_run is None:
+        # Moved under a parent, a todo reports like a new sub-todo of its kind unless told otherwise.
+        update_fields["notify_on_run"] = default_notify_on_run(
+            parent_todo_id=parent_todo_id, external_ref=existing.external_ref
+        )
 
     if update_fields:
         actor = agent_actor(read_agent_configurable(config).conversation_id)

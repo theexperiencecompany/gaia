@@ -21,14 +21,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
-from langchain_core.messages import AIMessageChunk, BaseMessage
+from langchain_core.messages import AIMessageChunk, BaseMessage, SystemMessage
 from langchain_core.outputs import ChatGenerationChunk
 from langgraph.store.memory import InMemoryStore
+from pydantic import PrivateAttr
 import pytest
 
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
+from app.agents.core.subagents import spawn_agent
+from app.agents.prompts.spawn_subagent_prompts import SPAWN_SUBAGENT_SYSTEM_PROMPT
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.memory import ReconcileOutcome
 from app.core.stream_manager import stream_manager
@@ -104,6 +107,42 @@ def streaming_model(script: Sequence[Any]) -> StreamingScriptedModel:
     return StreamingScriptedModel(responses=scripted_model(script).responses)
 
 
+class TierRoutedModel(StreamingScriptedModel):
+    """The executor and the spawns it runs share one model object; each tier replays its own script.
+
+    A background spawn's model calls interleave with the executor's in scheduling
+    order, so one shared script would hand responses to whichever tier asked first.
+    """
+
+    _spawn: StreamingScriptedModel | None = PrivateAttr(default=None)
+
+    async def _astream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        spawned = any(
+            isinstance(m, SystemMessage) and SPAWN_SUBAGENT_SYSTEM_PROMPT in str(m.content)
+            for m in messages
+        )
+        model: StreamingScriptedModel = self._spawn if spawned and self._spawn else self
+        stream = (
+            model._astream(messages, stop, run_manager, **kwargs)
+            if model is not self
+            else super()._astream(messages, stop, run_manager, **kwargs)
+        )
+        async for chunk in stream:
+            yield chunk
+
+
+def tier_routed_model(executor: Sequence[Any], spawn: Sequence[Any]) -> TierRoutedModel:
+    model = TierRoutedModel(responses=streaming_model(executor).responses)
+    model._spawn = streaming_model(spawn)
+    return model
+
+
 @dataclass
 class ChainRun:
     """One composed turn: what the client saw, and what was written down."""
@@ -150,13 +189,14 @@ async def run_chain(
     *,
     comms: Sequence[Any],
     executor: Sequence[Any],
+    spawn: Sequence[Any] | None = None,
 ) -> ChainRun:
     """Drive one full turn through the real orchestrator and read the stream back.
 
-    comms/executor are scripted_model scripts, one entry per model call. Doubled, all
-    off the chain: tools store + checkpointer (exact_tool_names never searches), Mongo writes
-    and reads (recorded; assertion targets), deliver_result, the memory engine and follow-up
-    generator (as graph_run.comms_graph doubles them).
+    comms/executor/spawn are scripted_model scripts, one entry per model call (spawn: what a
+    subagent the executor spawns replays). Doubled, all off the chain: tools store +
+    checkpointer, Mongo writes and reads (recorded; assertion targets), deliver_result, the
+    memory engine and follow-up generator.
     """
     conversation_id = str(uuid4())
     stream_id = str(uuid4())
@@ -240,6 +280,15 @@ async def run_chain(
             "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
             new=AsyncMock(side_effect=RuntimeError("no postgres in tests")),
         ),
+        # A spawn's graph is compiled once per process and cached by model type, so a run
+        # gets a fresh cache (its own scripted model) and an in-memory thread.
+        patch.dict(spawn_agent._graph_cache, clear=True),
+        patch.object(spawn_agent, "get_tools_store", AsyncMock(return_value=InMemoryStore())),
+        patch.object(
+            spawn_agent,
+            "get_checkpointer_manager",
+            AsyncMock(side_effect=RuntimeError("no postgres in tests")),
+        ),
         # Mongo here is a MagicMock, so the presence note's user read gets no chat app.
         patch(
             "app.agents.context.presence_note.resolve_proactive_target",
@@ -255,7 +304,11 @@ async def run_chain(
                     chat_llm=streaming_model(comms), in_memory_checkpointer=True
                 )
             )
-            run.executor_model = streaming_model(executor)
+            run.executor_model = (
+                tier_routed_model(executor, spawn)
+                if spawn is not None
+                else streaming_model(executor)
+            )
             executor_graph = await stack.enter_async_context(
                 build_graph_module.build_executor_graph(
                     chat_llm=run.executor_model, in_memory_checkpointer=True
@@ -486,6 +539,64 @@ class TestCommsToExecutor:
         )
         assert flowchart["data"]["inputs"] == FLOWCHART_ARGS
         assert flowchart["data"]["output"] == run.transcript.result_for("create_flowchart")
+
+
+# ---------------------------------------------------------------------------
+# Scenario — comms -> executor -> a subagent it spawns
+# ---------------------------------------------------------------------------
+
+BRIEFING = "2 need you · 1 waiting"
+SPAWN_LINES = "fetched_at: 1793963246\nthread: 1a2b | Primary | Priya | deck | TO_REPLY"
+
+
+def executor_spawning_script() -> list[Any]:
+    return [
+        call(
+            "spawn_subagent",
+            {"task": "read the mailbox", "background": False},
+            call_id="tc_spawn",
+        ),
+        BRIEFING,
+    ]
+
+
+@pytest.mark.regression
+class TestASpawnedSubagentsWords:
+    """Regression: an Inbox desk's briefing was dropped for its subagent's lines, or glued behind them.
+
+    The spawn runs inside the executor's tool node, so its model chunks and its finish_task
+    stream through the executor's own driver; only the executor's words are its delivered answer.
+    """
+
+    @pytest.mark.parametrize(
+        "spawn",
+        [
+            [call("finish_task", {"result": SPAWN_LINES}, call_id="tc_finish")],
+            [SPAWN_LINES],
+        ],
+        ids=["finish_task", "reply"],
+    )
+    async def test_only_the_executors_own_answer_is_delivered(self, spawn: list[Any]) -> None:
+        run = await run_chain(
+            "brief me on my inbox",
+            comms=comms_delegating_script("brief me on my inbox"),
+            executor=executor_spawning_script(),
+            spawn=spawn,
+        )
+
+        assert run.delivered == [(BRIEFING, "final")]
+
+    async def test_the_executor_still_reads_what_its_subagent_returned(self) -> None:
+        run = await run_chain(
+            "brief me on my inbox",
+            comms=comms_delegating_script("brief me on my inbox"),
+            executor=executor_spawning_script(),
+            spawn=[call("finish_task", {"result": SPAWN_LINES}, call_id="tc_finish")],
+        )
+
+        assert run.executor_model is not None
+        shown = [str(m.content) for prompt in run.executor_model.prompts for m in prompt]
+        assert any(SPAWN_LINES in text for text in shown)
 
 
 class TestFeedbackOnATrackedTodo:

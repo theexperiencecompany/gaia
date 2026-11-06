@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 import re
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -120,10 +121,8 @@ def seams() -> Iterator[SimpleNamespace]:
         ) as schedule,
         patch(f"{MODULE}.record_field_changes", AsyncMock()) as timeline,
         patch(f"{MODULE}.capture", MagicMock()) as capture,
-        patch(f"{MODULE}.watch_external_ref", AsyncMock(return_value=[])) as watch,
     ):
         yield SimpleNamespace(
-            watch=watch,
             paid=paid,
             connected=connected,
             repo=repo,
@@ -222,26 +221,6 @@ async def test_a_scheduled_desk_only_has_its_next_run_queued_again(
     seams.create.assert_not_awaited()
     seams.repo.update.assert_not_awaited()
     seams.schedule.assert_awaited_once_with(DESK_ID, TOMORROW_8)
-
-
-async def test_every_provision_makes_sure_the_desk_watches_new_mail(
-    seams: SimpleNamespace,
-) -> None:
-    """A desk opened before it had a watch gets one on its next provision, never a second."""
-    desk = _desk(scheduled_at=TOMORROW_8, recurrence=INBOX_DESK_RECURRENCE)
-    seams.repo.find_latest_by_external_ref.return_value = desk
-
-    await provision_inbox_desk(USER_ID)
-
-    seams.watch.assert_awaited_once_with(DESK_ID, USER_ID, DESK_REF, desk.trigger_subscriptions)
-
-
-async def test_a_desk_the_user_stopped_gets_no_watch(seams: SimpleNamespace) -> None:
-    seams.repo.find_latest_by_external_ref.return_value = _desk(completed=True)
-
-    await provision_inbox_desk(USER_ID)
-
-    seams.watch.assert_not_awaited()
 
 
 async def test_a_concurrent_create_uses_the_desk_that_won(seams: SimpleNamespace) -> None:
@@ -365,6 +344,11 @@ def stored() -> Iterator[dict[str, TodoDocument]]:
         yield docs
 
 
+def _note_writes() -> AsyncMock:
+    """Return the note write the stored fixture patched in, as the mock it is."""
+    return cast(AsyncMock, todo_repository.replace_note_fields)
+
+
 CANVAS_OBSERVATIONS = (
     "## Observations\n<!-- patterns the desk learned -->\n### Senders\n<!-- <sender>: <volume> -->\n"
     "- notifications@github.com: GitHub notifications, ~224/day, low priority\n"
@@ -384,7 +368,7 @@ async def test_a_desk_without_observations_md_is_seeded_once_before_its_run(
     assert ready.canvas_content == OLD_DESK_CANVAS
     assert again == ready == stored[DESK_ID]
     assert ready.updated_at == STAMP
-    assert todo_repository.replace_note_fields.await_count == 1
+    assert _note_writes().await_count == 1
 
 
 @time_machine.travel(datetime(2026, 10, 3, 19, 30, tzinfo=UTC), tick=False)
@@ -413,7 +397,7 @@ async def test_the_canvas_observations_move_into_observations_md_once(
     )
     assert again == ready == stored[DESK_ID]
     assert ready.updated_at == STAMP
-    assert todo_repository.replace_note_fields.await_count == 1
+    assert _note_writes().await_count == 1
 
 
 async def test_a_desk_with_no_canvas_at_all_is_seeded_from_the_seed_alone(
@@ -435,7 +419,7 @@ async def test_a_desk_that_keeps_observations_md_is_not_written(
     stored[DESK_ID] = desk
 
     assert await inbox_desk.with_desk_notes(desk) is desk
-    todo_repository.replace_note_fields.assert_not_awaited()
+    _note_writes().assert_not_awaited()
 
 
 @time_machine.travel(datetime(2026, 10, 3, 19, 30, tzinfo=UTC), tick=False)
@@ -469,7 +453,7 @@ async def test_a_repair_writes_this_desks_own_notes_under_its_own_user(
 
     await inbox_desk.with_desk_notes(stored[DESK_ID])
 
-    assert todo_repository.replace_note_fields.await_args.args[:2] == (DESK_ID, USER_ID)
+    assert _note_writes().await_args.args[:2] == (DESK_ID, USER_ID)
 
 
 @pytest.mark.parametrize(
@@ -485,12 +469,4 @@ async def test_a_todo_that_is_not_the_desk_gets_no_observations(
     stored[DESK_ID] = todo
 
     assert await inbox_desk.with_desk_notes(todo) is todo
-    todo_repository.replace_note_fields.assert_not_awaited()
-
-
-@pytest.mark.parametrize(
-    ("hour", "minute", "quiet"),
-    [(21, 59, False), (22, 0, True), (23, 8, True), (0, 30, True), (7, 59, True), (8, 0, False)],
-)
-def test_quiet_hours_span_midnight(hour: int, minute: int, quiet: bool) -> None:
-    assert inbox_desk.in_quiet_hours(datetime(2026, 10, 3, hour, minute, tzinfo=KOLKATA)) is quiet
+    _note_writes().assert_not_awaited()
