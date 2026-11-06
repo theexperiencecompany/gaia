@@ -61,15 +61,12 @@ apps/api/app/models/composio_schemas/github_tools.py	TB001
 apps/api/app/models/composio_schemas/github_tools.py	TB002
 apps/api/app/models/composio_schemas/slack_tools.py	TB002
 apps/api/app/schemas/desktop_schemas.py	TB001
-apps/api/app/schemas/errors.py	TB001
-apps/api/app/schemas/errors.py	TB002
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
 apps/api/app/scripts/sync_user_workspaces.py	TB002
 apps/api/app/services/_vfs_scheduler.py	TB002
 apps/api/app/services/bot_token_service.py	TB001
 apps/api/app/services/bot_token_service.py	TB002
-apps/api/app/services/calendar_service.py	TB002
 apps/api/app/services/chat/artifact_forwarder.py	TB001
 apps/api/app/services/chat/artifact_forwarder.py	TB002
 apps/api/app/services/chat/artifacts_registry.py	TB001

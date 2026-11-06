@@ -204,6 +204,8 @@ BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
 # the longest run (a parked approval) so the trace and a playbook write read it whole.
 RUN_RECORD_PREFIX = "run_record:"
 RUN_RECORD_TTL = ONE_DAY_TTL * 2
+# The integrations a run already showed a connect card for; calls to them are refused.
+RUN_BLOCKED_INTEGRATIONS_PREFIX = "run_blocked_integrations:"
 
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL

@@ -5973,10 +5973,34 @@
             ],
             "title": "Fix"
           },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Integration an INTEGRATION_NOT_CONNECTED error asks to connect.",
+            "title": "Integration Id"
+          },
           "message": {
             "description": "Human-readable description of the failure.",
             "title": "Message",
             "type": "string"
+          },
+          "toolkit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.",
+            "title": "Toolkit"
           },
           "why": {
             "anyOf": [

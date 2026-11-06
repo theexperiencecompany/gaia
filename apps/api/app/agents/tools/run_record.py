@@ -15,7 +15,11 @@ from functools import cache
 import redis as redislib
 
 from app.config.settings import settings
-from app.constants.cache import RUN_RECORD_PREFIX, RUN_RECORD_TTL
+from app.constants.cache import (
+    RUN_BLOCKED_INTEGRATIONS_PREFIX,
+    RUN_RECORD_PREFIX,
+    RUN_RECORD_TTL,
+)
 from app.db.redis import redis_cache
 from app.models.workflow_execution_models import RecordedCall
 
@@ -57,3 +61,25 @@ async def read_run_record(stream_id: str) -> list[RecordedCall]:
     """Every call the run made so far, in the order each finished."""
     raw = await redis_cache.client.lrange(_key(stream_id), 0, -1)
     return [RecordedCall.model_validate_json(entry) for entry in raw]
+
+
+def _blocked_key(stream_id: str) -> str:
+    return f"{RUN_BLOCKED_INTEGRATIONS_PREFIX}{stream_id}"
+
+
+async def block_integration(stream_id: str, integration_id: str) -> bool:
+    """Mark an integration unusable for the rest of a run; True when this is the first mark."""
+    key = _blocked_key(stream_id)
+    added = await redis_cache.client.sadd(key, integration_id)
+    await redis_cache.client.expire(key, RUN_RECORD_TTL)
+    return bool(added)
+
+
+async def is_integration_blocked(stream_id: str, integration_id: str) -> bool:
+    """Whether this run already showed the user a connect card for the integration."""
+    return bool(await redis_cache.client.sismember(_blocked_key(stream_id), integration_id))
+
+
+def is_integration_blocked_sync(stream_id: str, integration_id: str) -> bool:
+    """Sync twin of is_integration_blocked, for LangGraph's sync node functions."""
+    return bool(_sync_client().sismember(_blocked_key(stream_id), integration_id))

@@ -24,11 +24,22 @@ from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.subagents.call_record import is_error_envelope
-from app.agents.tools.run_record import append_call, append_call_sync
+from app.agents.tools.run_record import (
+    append_call,
+    append_call_sync,
+    is_integration_blocked,
+    is_integration_blocked_sync,
+)
+from app.agents.tools.tool_integration import tool_integration_id
 from app.constants.execute import EXECUTE_TOOL_NAME
+from app.constants.integrations import ConnectMode
 from app.constants.log_tags import LogTag
+from app.models.agent_config import read_agent_configurable
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.workflow_execution_models import RecordedCall, build_result_digest, parse_result
+from app.services.integrations.integration_resolver import IntegrationResolver
+from app.utils.errors import IntegrationNotConnectedError
+from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log
 
 #: How a graph tool node marks its input as a ToolCall rather than plain args.
@@ -58,10 +69,19 @@ async def invoke_tool(
     """
     pending = _pending(tool, tool_input, config, call_args, via)
     try:
+        blocked = _blocked_run(tool, config)
+        if blocked is not None and await is_integration_blocked(*blocked):
+            raise IntegrationBlockedError(blocked[1])
         output = await tool.ainvoke(dict(tool_input), config=config)
     except GraphBubbleUp:
         # A pause for approval, not a finished call: recorded when it resumes and runs.
         raise
+    except IntegrationNotConnectedError as exc:
+        # Only the user can fix it: show the connect card (which blocks the
+        # integration for the run) and answer the call with the instruction.
+        prompt = await _connect_prompt(exc, config)
+        await _write(pending, prompt, failed=True)
+        return _as_tool_output(tool, tool_input, prompt)
     except Exception as exc:
         await _write(pending, _error_text(exc), failed=True)
         raise
@@ -79,6 +99,9 @@ def invoke_tool_sync(
     """Sync twin of invoke_tool, for LangGraph's sync node functions."""
     pending = _pending(tool, tool_input, config, call_args, None)
     try:
+        blocked = _blocked_run(tool, config)
+        if blocked is not None and is_integration_blocked_sync(*blocked):
+            raise IntegrationBlockedError(blocked[1])
         output = tool.invoke(dict(tool_input), config=config)
     except GraphBubbleUp:
         raise
@@ -87,6 +110,55 @@ def invoke_tool_sync(
         raise
     _write_sync(pending, output)
     return output
+
+
+class IntegrationBlockedError(Exception):
+    """A call to an integration this run already asked the user to connect; it was not sent."""
+
+    def __init__(self, integration_id: str) -> None:
+        super().__init__(
+            f"'{integration_id}' is not connected and the user was already shown how to connect "
+            f"it this run, so this call was not sent. Do not call {integration_id} again this "
+            "run; finish the rest of the task and say what is waiting on the connection."
+        )
+
+
+def _blocked_run(tool: BaseTool, config: RunnableConfig | None) -> tuple[str, str] | None:
+    """Return (stream id, integration id) to check a call against, or None when it has neither."""
+    if config is None:
+        return None
+    stream_id = read_agent_configurable(config).stream_id
+    if not stream_id:
+        return None
+    integration_id = tool_integration_id(tool)
+    return (stream_id, integration_id) if integration_id is not None else None
+
+
+async def _connect_prompt(exc: IntegrationNotConnectedError, config: RunnableConfig | None) -> str:
+    """Show the connect card for the integration the call needed and return its instruction."""
+    user_id = read_agent_configurable(config).user_id
+    if not user_id:
+        # No user behind the run (a trigger option lookup): nobody to show a card to.
+        return str(exc)
+    name = exc.integration_name
+    if name is None:
+        # An MCP tool knows only its server's id; the card names the integration.
+        resolved = await IntegrationResolver.resolve(exc.integration_id)
+        name = resolved.name if resolved else exc.integration_id
+    return await request_integration_connection(
+        exc.integration_id,
+        name,
+        user_id,
+        mode=ConnectMode.RECONNECT if exc.grant_died else ConnectMode.CONNECT,
+    )
+
+
+def _as_tool_output(tool: BaseTool, tool_input: Mapping[str, object], text: str) -> object:
+    """Answer in the shape the caller expects: a ToolMessage for a graph ToolCall, else the text."""
+    call = _GraphToolCall.model_validate(dict(tool_input))
+    if call.type != GRAPH_TOOL_CALL_TYPE:
+        return text
+    return ToolMessage(content=text, tool_call_id=call.id or "", name=tool.name, status="error")
 
 
 async def _write(
@@ -171,6 +243,7 @@ class _GraphToolCall(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     type: str | None = None
+    id: str | None = None
     args: dict[str, object] = Field(default_factory=dict)
 
 
