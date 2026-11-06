@@ -203,6 +203,23 @@ async def test_a_tool_that_reports_its_own_failure_is_recorded_as_failed(fake_re
     assert (failed.failed, answered.failed) == (True, False)
 
 
+@tool
+async def reports_error_message(query: str) -> ToolMessage:
+    """Answer under a normal return with the plain-text error a handle_tool_error produces."""
+    del query
+    return ToolMessage("Permission denied", tool_call_id="call_1", status="error")
+
+
+async def test_a_tool_that_answers_with_an_error_message_is_recorded_as_failed(
+    fake_redis: Any,
+) -> None:
+    await invoke_tool(reports_error_message, {"query": "q"}, CONFIG)
+    await invoke_tool(answers, {"query": "q"}, CONFIG)
+
+    failed, answered = await read_run_record(STREAM_ID)
+    assert (failed.failed, answered.failed) == (True, False)
+
+
 @pytest.mark.parametrize("tool_under_test", [answers, raises], ids=["returned", "raised"])
 async def test_a_call_the_record_could_not_take_keeps_its_own_outcome(
     fake_redis: Any, tool_under_test: BaseTool
@@ -334,6 +351,22 @@ def test_a_sync_call_that_raises_is_recorded_as_failed_and_still_raises(
         True,
         "Error: RuntimeError: no q",
     )
+
+
+@tool
+def reports_error_message_sync(query: str) -> ToolMessage:
+    """Answer under a normal return with an error ToolMessage, synchronously."""
+    del query
+    return ToolMessage("Permission denied", tool_call_id="call_1", status="error")
+
+
+def test_a_sync_tool_that_answers_with_an_error_message_is_recorded_as_failed(
+    sync_redis: fakeredis.FakeRedis,
+) -> None:
+    invoke_tool_sync(reports_error_message_sync, {"query": "q"}, CONFIG)
+
+    (call,) = _sync_record(sync_redis)
+    assert (call.failed, call.result_digest) == (True, "Permission denied")
 
 
 def test_a_sync_chat_run_records_nothing(sync_redis: fakeredis.FakeRedis) -> None:
