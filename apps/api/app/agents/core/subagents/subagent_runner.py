@@ -58,6 +58,7 @@ from app.helpers.message_helpers import (
     create_system_message,
     format_files_list,
 )
+from app.models.agent_config import AgentConfigurableView
 from app.models.agent_models import (
     AgentConfigurable,
     AgentRunnableConfig,
@@ -306,6 +307,11 @@ class _StreamRun:
     tool_ran: bool = False
     pending_approvals: list[HilInterruptPayload] = field(default_factory=list)
     run_messages: list[AnyMessage] = field(default_factory=list)
+    #: The run's own thread, which build_agent_config stamps on every chunk its model streams.
+    thread_id: str | None = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.thread_id = AgentConfigurableView.model_validate(self.ctx.configurable).thread_id
 
     @property
     def complete_message(self) -> str:
@@ -332,8 +338,12 @@ def _process_messages_payload(
     if metadata.get("silent"):
         return
 
+    # A spawned subagent's chunks share this stream: its reply and finish_task are its own.
+    nested = metadata.get("agent_thread_id", run.thread_id) != run.thread_id
+
     if chunk and isinstance(chunk, AIMessageChunk):
-        run.held.hold(chunk, metadata)
+        if not nested:
+            run.held.hold(chunk, metadata)
 
         # Stream reasoning token by token, carrying subagent_id for step nesting
         # (empty for non-reasoning models). Deltas are per chunk; the stream
@@ -350,7 +360,7 @@ def _process_messages_payload(
     # inline media (base64 image blocks) never streams to the frontend.
     elif chunk and isinstance(chunk, ToolMessage):
         content_str = extract_text_content(chunk.content)
-        if (finish_result := _finish_task_result(chunk)) is not None:
+        if not nested and (finish_result := _finish_task_result(chunk)) is not None:
             run.finish_result = finish_result
         if run.stream_writer and claim_tool_output(
             run.ctx.stream_id or "", chunk.tool_call_id, run.subagent_id

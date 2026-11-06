@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Final, Literal, NamedTuple, get_args
 
+from app.agents.prompts.todo_prompts import TODO_FEEDBACK_RULES
 from app.config.settings import settings
 
 # Topic docs: one self-contained file per concern, faithfully merged from
@@ -107,7 +108,9 @@ Typical flow:
 """
 
 
-TRACKED_TODOS_DOC: Final[str] = """# Tracked todos: GAIA-managed todos with memory
+TRACKED_TODOS_DOC: Final[str] = "".join(
+    (
+        """# Tracked todos: GAIA-managed todos with memory
 
 Tracked todos are **GAIA-managed todos**: they show on the user's todos page, but
 GAIA owns them and keeps working notes as files (a recall doc plus a dated activity
@@ -234,16 +237,9 @@ notification above, which always fires.
 
 ## The user's feedback on a todo
 
-Feedback on how a todo should behave from now on ("Apply the user's feedback to
-this todo: ...") is kept in exactly one place, so every later run obeys it:
-- How this todo behaves (what it shows or skips, what it does on its own, how it
-  reports): one dated line in its canvas.md `Standing rules`. Rewrite a rule the
-  feedback changes; remove one only when the user retracts it.
-- How GAIA writes email, to one person or in general: the user's standing
-  instructions for Gmail (`update_user_instructions`, scope `gmail`), so chat
-  drafting obeys it too.
-- When it runs: `update_tracked_todo` with `recurrence` / `scheduled_at`.
-A sub-todo's run also obeys its parent's Standing rules.
+""",
+        TODO_FEEDBACK_RULES,
+        """
 
 ## Anti-patterns
 
@@ -254,7 +250,9 @@ A sub-todo's run also obeys its parent's Standing rules.
 - Appending activity to the end of canvas.md (it belongs in activity.md).
 - Not searching before creating.
 - Not writing learnings before completing.
-"""
+""",
+    )
+)
 
 
 USER_TODOS_DOC: Final[str] = """# Todos: the USER's own todo list
