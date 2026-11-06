@@ -91,7 +91,10 @@ async def sandbox_execute(
         # Synthesized run config: the wrappers resolve per-user auth server-side
         # from this identity (Composio connected account, MCP token store).
         config=dispatch_config_for(
-            claims.user_id, stream_id=claims.stream_id, workflow_id=claims.workflow_id
+            claims.user_id,
+            stream_id=claims.stream_id,
+            workflow_id=claims.workflow_id,
+            subagent_id=claims.subagent_id,
         ),
         # Integration tools only (internal ones need graph runtime), within the
         # minting agent's tool space so a script cannot escape a subagent's scope.

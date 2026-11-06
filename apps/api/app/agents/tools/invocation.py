@@ -146,8 +146,11 @@ def _recorded(
         subagent_id=configurable.get("subagent_id"),
         args=args,
         result_digest=digest,
-        # A tool that reports its own failure under a normal return failed all the same.
-        failed=failed or is_error_envelope(parse_result(digest)),
+        # A tool that reports its own failure under a normal return failed all the same,
+        # whether it answered with an error envelope or its own handle_tool_error.
+        failed=failed
+        or (isinstance(output, ToolMessage) and output.status == "error")
+        or is_error_envelope(parse_result(digest)),
     )
     return stream_id, call
 

@@ -150,6 +150,20 @@ def probe_command_sync(
     )
 
 
+@tool
+async def probe_error(query: str, tool_call_id: Annotated[str, InjectedToolCallId]) -> ToolMessage:
+    """Fail under a normal return, the way a tool's own handle_tool_error does."""
+    del query
+    return ToolMessage("Permission denied", tool_call_id=tool_call_id, status="error")
+
+
+@tool
+def probe_error_sync(query: str, tool_call_id: Annotated[str, InjectedToolCallId]) -> ToolMessage:
+    """Fail under a normal return, synchronously."""
+    del query
+    return ToolMessage("Permission denied", tool_call_id=tool_call_id, status="error")
+
+
 class _Passthrough(AgentMiddleware):
     async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
         return await handler(request)
@@ -205,6 +219,30 @@ def test_the_sync_graph_tool_node_records_the_call(monkeypatch: pytest.MonkeyPat
     assert '"tool_name":"probe_sync"' in raw
 
 
+async def test_a_tool_that_returns_an_error_message_is_recorded_as_failed(fake_redis: Any) -> None:
+    """handle_tool_error's plain-text ToolMessage(status="error") is not an envelope, and still failed."""
+    node = DynamicToolNode({"probe_error": probe_error})
+
+    await node._afunc(_one_call("probe_error"), _run_config(), Runtime())
+
+    (call,) = await read_run_record(STREAM_ID)
+    assert call.result_digest == "Permission denied"
+    assert call.failed is True
+
+
+def test_the_sync_node_records_an_error_message_as_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = fakeredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(run_record, "_sync_client", lambda: client)
+    node = DynamicToolNode({"probe_error_sync": probe_error_sync})
+
+    node._func(_one_call("probe_error_sync"), _run_config(), Runtime())
+
+    recorded = client.lrange(f"run_record:{STREAM_ID}", 0, -1)
+    assert isinstance(recorded, list)
+    (raw,) = recorded
+    assert '"failed":true' in raw
+
+
 async def test_the_execute_proxy_records_the_real_tool_and_not_itself(fake_redis: Any) -> None:
     resolved = ResolvedTool(name="probe", tool=probe, is_integration=False)
     with (
@@ -220,15 +258,21 @@ async def test_the_execute_proxy_records_the_real_tool_and_not_itself(fake_redis
     assert await _recorded() == [("probe", {"query": "q"}, "answered q")]
 
 
+@pytest.mark.parametrize("subagent_id", [None, "playbook-agent"], ids=["executor", "subagent"])
 async def test_a_sandbox_script_calling_back_records_into_its_run(
-    fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+    fake_redis: Any, monkeypatch: pytest.MonkeyPatch, subagent_id: str | None
 ) -> None:
-    """The token minted for the bash run carries the run its calls land in."""
+    """The token minted for the bash run carries the run and the scope its calls land in."""
     monkeypatch.setattr(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", "s" * 32)
     monkeypatch.setattr(
         settings, "SANDBOX_EXECUTE_CALLBACK_URL", "https://api.test/sandbox/execute"
     )
-    configurable = {"stream_id": STREAM_ID, "workflow_id": WORKFLOW_ID, "user_id": USER_ID}
+    configurable = {
+        "stream_id": STREAM_ID,
+        "workflow_id": WORKFLOW_ID,
+        "user_id": USER_ID,
+        "subagent_id": subagent_id,
+    }
     token = mint_execute_env(
         user_id=USER_ID,
         run_id="bash-run-1",
@@ -252,6 +296,8 @@ async def test_a_sandbox_script_calling_back_records_into_its_run(
 
     assert response.ok
     assert await _recorded() == [("probe", {"query": "q"}, "answered q")]
+    (call,) = await read_run_record(STREAM_ID)
+    assert call.subagent_id == subagent_id
 
 
 async def test_a_state_updating_tool_still_updates_state_and_is_recorded(fake_redis: Any) -> None:
