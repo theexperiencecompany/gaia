@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, type ButtonProps } from "@heroui/button";
+import { Button } from "@heroui/button";
 import type { ComponentType, ReactNode } from "react";
 import { ChevronRight } from "@/components/shared/icons";
+import { PANEL_ROW_BUTTON_PROPS } from "@/components/shared/panelRowButtonProps";
 import { cn } from "@/lib/utils";
 
 interface PanelRowContentProps {
@@ -14,14 +15,6 @@ interface PanelRowContentProps {
   end?: ReactNode;
   isMuted?: boolean;
 }
-
-/** The Button props every panel row shares, so a row a popover opens looks like the rest. */
-export const PANEL_ROW_BUTTON_PROPS = {
-  variant: "light",
-  radius: "lg",
-  className:
-    "h-auto min-h-12 w-full min-w-0 justify-start gap-3 px-3 py-2 text-left data-[hover=true]:bg-zinc-700/50",
-} as const satisfies ButtonProps;
 
 /** What a panel row shows: icon, label, an optional one-line summary, and a disclosure chevron. */
 export function PanelRowContent({
