@@ -793,28 +793,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             array_filters=[{"watch.id": {"$in": list(subscription_ids)}}],
         )
 
-    async def gate_ungated_subscriptions(
-        self,
-        todo_id: str,
-        *,
-        user_id: str,
-        subscription_ids: Collection[str],
-        gate: TriggerGate,
-    ) -> TodoDocument | None:
-        """Put gate on these watches where none was ever set, in one atomic update.
-
-        A gate already there, one the user turned off included, is left as it is. Returns
-        the todo after the write, or None when none of them was without a gate.
-        """
-        ungated = {"id": {"$in": list(subscription_ids)}, "gate": None}
-        return await self._apply_raw_update(
-            self._scoped_filter(todo_id, user_id),
-            {"$set": {"trigger_subscriptions.$[watch].gate": gate.model_dump()}},
-            scope=user_id,
-            extra_filter={"trigger_subscriptions": {"$elemMatch": ungated}},
-            array_filters=[{f"watch.{field}": value for field, value in ungated.items()}],
-        )
-
     async def set_subscription_gate(
         self, todo_id: str, *, user_id: str, subscription_id: str, gate: TriggerGate
     ) -> TodoDocument | None:
