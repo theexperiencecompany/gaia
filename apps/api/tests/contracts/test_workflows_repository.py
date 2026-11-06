@@ -94,6 +94,9 @@ class TestWorkflowsCore:
             GateSkipRecord(event=f"mail {n}", at=datetime(2026, 11, 5, n, tzinfo=UTC))
             for n in range(6)
         ]
+        warmed = await repo.get(gated.id)
+        assert warmed is not None and warmed.gate is not None
+        assert warmed.gate.recent_skips == []
 
         for skip in skips:
             await repo.remember_gate_skip(gated.id, gated.user_id, skip)
