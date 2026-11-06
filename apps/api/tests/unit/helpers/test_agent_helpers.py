@@ -35,7 +35,7 @@ from app.helpers.agent_helpers import (
     opens_thread,
     recent_user_messages,
 )
-from app.models.agent_models import AgentUserContext, SpawnJob, run_analytics_context
+from app.models.agent_models import AgentUserContext, run_analytics_context
 from app.models.payment_models import PlanType
 from app.models.presence_models import PresenceSnapshot
 from app.utils.stream_publishers import ExtractedToolData
@@ -1662,15 +1662,15 @@ class TestBuildAgentConfigWorkflowInheritance:
         assert configurable["workflow_notify_on_completion"] is True
 
 
-class TestBuildAgentConfigSpawnJob:
+class TestBuildAgentConfigSpawnBudget:
     async def test_the_executor_keeps_the_spawn_job_its_todo_run_stamped(self):
         """Regression: dropped here, the desk's mail passes ran on the focused budget and ran out."""
         config = await build_agent_config(
             identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
-            thread=AgentThread(base_configurable={"spawn_job": SpawnJob.INBOX_MAIL}),
+            thread=AgentThread(base_configurable={"spawn_job": "inbox_mail"}),
         )
 
-        assert config["configurable"]["spawn_job"] is SpawnJob.INBOX_MAIL
+        assert config["configurable"]["spawn_job"] == "inbox_mail"
 
     async def test_a_run_with_no_spawn_job_stamps_none(self):
         config = await build_agent_config(

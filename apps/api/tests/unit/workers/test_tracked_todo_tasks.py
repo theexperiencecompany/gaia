@@ -80,7 +80,6 @@ from app.constants.todos import (
 from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
-from app.models.agent_models import SpawnJob
 from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
@@ -3248,7 +3247,7 @@ class TestExecuteOnExecutor:
         with patch(f"{MODULE}.with_desk_notes", AsyncMock(return_value=desk)):
             await self._execute(desk)
 
-        assert self._request().spawn_job is SpawnJob.INBOX_MAIL
+        assert self._request().spawn_job == "inbox_mail"
 
     @pytest.mark.parametrize(
         "ref",
@@ -3258,7 +3257,7 @@ class TestExecuteOnExecutor:
     async def test_any_other_run_spawns_focused_subagents(self, ref: ExternalRef | None) -> None:
         await self._execute(_doc(external_ref=ref))
 
-        assert self._request().spawn_job is SpawnJob.FOCUSED
+        assert self._request().spawn_job == "focused"
 
     async def test_the_runs_inherited_context_is_gathered_for_this_todo(self) -> None:
         doc = _doc(references=["todo-0", "todo-00"])
