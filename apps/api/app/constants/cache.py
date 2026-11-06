@@ -206,6 +206,10 @@ RUN_RECORD_PREFIX = "run_record:"
 RUN_RECORD_TTL = ONE_DAY_TTL * 2
 
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
+# Set when an executor run ends asking the user to confirm; only then may the
+# next call_executor carry irreversible_approved (confirmation_gate.py).
+AWAITING_CONFIRMATION_PREFIX = "executor:awaiting_confirmation:"
+AWAITING_CONFIRMATION_TTL = ONE_HOUR_TTL
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 # Keyed by holder: whatever holds the busy lock renews this while its process lives (a parked
 # run for as long as its park); a lock without it is a dead holder, reclaimable by anyone.

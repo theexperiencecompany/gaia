@@ -22,15 +22,24 @@ from app.agents.prompts.todo_prompts import (
     SANDBOX_RUN_EVENT_GUIDANCE,
     SILENT_RUN_GUIDANCE,
     TODO_ID_LINE,
+    TODO_REARM_BRIEF,
+    TODO_WAKES_AGAIN_BRIEF,
     TRIGGERED_RELEVANCE_GUIDANCE,
+    WAKE_REASON_TEXT,
 )
-from app.constants.todos import ACTIVITY_PROMPT_TAIL_CHARS, TRIGGER_EVENTS_PROMPT_MAX_CHARS
+from app.constants.todos import (
+    ACTIVITY_PROMPT_TAIL_CHARS,
+    MAX_HOLD_CHECK_AHEAD,
+    MAX_HOLD_CHECKS,
+    TRIGGER_EVENTS_PROMPT_MAX_CHARS,
+)
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoRunContext
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER
 from app.services.canvas_markdown import bounded_canvas
 from app.services.hil.utils import untrusted_fence
 from app.services.todo_observations import bounded_observations
+from app.services.todos.open_state import no_reply_plan_words, wake_reason
 from app.utils.quiet_hours import in_quiet_hours
 from app.workers.tasks.todo_run_context import NO_CONTEXT
 
@@ -183,5 +192,20 @@ def build_execution_prompt(
         prompt_parts.append(f"{label}:\n{tail}")
     if context.learnings:
         prompt_parts.append(context.learnings)
+    if origin is None and not doc.recurrence:
+        prompt_parts.append(TODO_REARM_BRIEF.format(why=wake_text(doc)))
+    else:
+        prompt_parts.append(TODO_WAKES_AGAIN_BRIEF)
     prompt_parts.append(delivery_guidance(doc))
     return "\n\n".join(prompt_parts)
+
+
+def wake_text(doc: TodoDocument) -> str:
+    """Say why this scheduled run woke, with what was decided earlier and the budget left."""
+    return WAKE_REASON_TEXT[wake_reason(doc)].format(
+        question=doc.question,
+        plan=no_reply_plan_words(doc),
+        hold_checks=doc.hold_checks,
+        max_hold_checks=MAX_HOLD_CHECKS,
+        hold_days=MAX_HOLD_CHECK_AHEAD.days,
+    )

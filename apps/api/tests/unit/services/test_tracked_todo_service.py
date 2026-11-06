@@ -15,10 +15,14 @@ import pytest
 from app.constants import todos as todo_constants
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
+    CANVAS_DONE_WHEN_SECTION,
+    CANVAS_EVIDENCE_SECTION,
     CANVAS_SECTIONS,
     GAIA_TRACKED_LABEL,
     INBOX_DESK_WATCH_WINDOW_SECONDS,
+    NoReplyPlan,
     TodoActivityEvent,
+    WaitingOn,
 )
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.scheduler_models import DeactivationReason
@@ -38,9 +42,10 @@ from app.models.trigger_subscription_models import (
     SubscriptionResolution,
     TriggerSubscription,
 )
-from app.services.canvas_markdown import normalize_canvas
+from app.services.canvas_markdown import normalize_canvas, section_body
 from app.services.todos import errors as todo_errors
 from app.services.todos.errors import SubTodoParentError
+from app.services.todos.open_state import require_open_state
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
     TrackedTodoService,
@@ -74,7 +79,7 @@ def _todo_doc(**overrides: object) -> TodoDocument:
         "due_date": None,
     }
     data.update(overrides)
-    return TodoDocument(**data)
+    return TodoDocument.model_validate(data)
 
 
 def _todo_response(**overrides: object) -> TodoResponse:
@@ -87,7 +92,7 @@ def _todo_response(**overrides: object) -> TodoResponse:
         "updated_at": now,
     }
     data.update(overrides)
-    return TodoResponse(**data)
+    return TodoResponse.model_validate(data)
 
 
 @pytest.fixture
@@ -117,8 +122,12 @@ def mock_deps():
         patch(f"{_MOD}.append_log", new_callable=AsyncMock) as m_append_log,
         patch(f"{_MOD}.teardown_subscriptions", new_callable=AsyncMock) as m_teardown,
         patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as m_record,
+        # Most tests pin what a create writes, not the next-step rule; the class that
+        # pins the rule points this at the real check.
+        patch(f"{_MOD}.require_open_state") as m_open_state,
     ):
         yield SimpleNamespace(
+            open_state=m_open_state,
             create=m_create,
             store=m_store,
             mark=m_mark,
@@ -200,9 +209,11 @@ class TestCreateThreadTodo:
         mock_deps.create.return_value = _todo_response()
         mock_repo.update.side_effect = lambda *a, **k: order.append("setup")
 
-        async def register(**kwargs: object) -> tuple[TriggerSubscription, None, bool]:
-            order.append(str(kwargs["trigger_name"]))
-            return await _registered(**kwargs)
+        async def register(
+            *, trigger_name: str, conditions: list[SubscriptionCondition], **rest: object
+        ) -> tuple[TriggerSubscription, None, bool]:
+            order.append(trigger_name)
+            return await _registered(trigger_name=trigger_name, conditions=conditions, **rest)
 
         watch.register.side_effect = register
 
@@ -390,6 +401,23 @@ class TestCreateTrackedTodo:
         for section in ("## Current State", "## Context", "## Learnings"):
             assert canvas.count(section) == 1
 
+    async def test_done_when_and_evidence_land_in_their_canvas_sections(self, mock_repo, mock_deps):
+        """Every run reads what closes the todo and where the proof will show up."""
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID,
+            "Hidden per-todo chat",
+            done_when=["the feature is live for users", " "],
+            evidence="the release notes on the changelog page",
+        )
+
+        canvas = mock_repo.update.await_args.kwargs["update"].canvas_content
+        assert section_body(canvas, CANVAS_DONE_WHEN_SECTION) == "- the feature is live for users"
+        assert section_body(canvas, CANVAS_EVIDENCE_SECTION) == (
+            "the release notes on the changelog page"
+        )
+
     async def test_a_clean_initial_canvas_sets_no_activity(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
 
@@ -398,7 +426,9 @@ class TestCreateTrackedTodo:
         )
 
         update = mock_repo.update.await_args.kwargs["update"]
-        assert update.canvas_content.startswith("# T\n\n## Standing rules\n\n## Key Details\nk\n")
+        assert update.canvas_content.startswith(
+            "# T\n\n## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n"
+        )
         assert update.activity_content.count("\n") == 0  # only the creation marker
 
     async def test_creates_with_template_canvas_and_indexes(self, mock_repo, mock_deps):
@@ -774,6 +804,67 @@ class TestACompletedSubTodoReportsToItsParent:
         ]
 
 
+class TestACompletedSubTodoWakesAParentThatWaitsOnIt:
+    @pytest.fixture
+    def parents(self, mock_repo):
+        """Serve the child by id and the parent as the test sets it up."""
+        docs = {_CHILD_ID: _child(), _PARENT_ID: _parent()}
+        mock_repo.get.side_effect = lambda todo_id, user_id: docs[todo_id]
+        return docs
+
+    @pytest.fixture
+    def armed(self):
+        with patch.object(TrackedTodoService, "schedule_execution", AsyncMock()) as armed:
+            yield armed
+
+    async def test_the_parent_runs_soon_after_instead_of_at_its_backup_check(
+        self, mock_repo, mock_deps, parents, armed
+    ):
+        """Seen in real use: a parent waiting on its sub-todos only heard of a finished one at its next run."""
+        backup = datetime.now(UTC) + timedelta(days=5)
+        parents[_PARENT_ID] = _parent(waiting_on=WaitingOn.SUB_TODOS, scheduled_at=backup)
+
+        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+
+        woken = mock_repo.update.await_args_list[-1]
+        assert woken.args[0] == _PARENT_ID
+        wake_at = woken.kwargs["update"].scheduled_at
+        assert datetime.now(UTC) < wake_at < datetime.now(UTC) + timedelta(minutes=2)
+        armed.assert_awaited_once_with(_PARENT_ID, wake_at)
+
+    async def test_a_parent_waiting_on_something_else_is_left_alone(
+        self, mock_repo, mock_deps, parents, armed
+    ):
+        parents[_PARENT_ID] = _parent(
+            waiting_on=WaitingOn.TIME, scheduled_at=datetime.now(UTC) + timedelta(days=5)
+        )
+
+        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+
+        armed.assert_not_awaited()
+        assert _PARENT_ID not in [c.args[0] for c in mock_repo.update.await_args_list]
+
+    async def test_a_parent_already_due_sooner_is_not_pushed_later(
+        self, mock_repo, mock_deps, parents, armed
+    ):
+        parents[_PARENT_ID] = _parent(
+            waiting_on=WaitingOn.SUB_TODOS, scheduled_at=datetime.now(UTC) + timedelta(seconds=5)
+        )
+
+        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+
+        armed.assert_not_awaited()
+
+    async def test_a_parent_that_is_already_closed_is_left_alone(
+        self, mock_repo, mock_deps, parents, armed
+    ):
+        parents[_PARENT_ID] = _parent(waiting_on=WaitingOn.SUB_TODOS, completed=True)
+
+        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+
+        armed.assert_not_awaited()
+
+
 class TestTheSummaryCollapsesSubTodos:
     """Sub-todos would push every other todo out of the 15 the agent sees; they fold under a count."""
 
@@ -807,14 +898,38 @@ class TestTheSummaryCollapsesSubTodos:
         mock_repo.get.assert_awaited_once_with(_CHILD_ID, user_id=USER_ID)
 
     async def test_a_todo_without_sub_todos_shows_no_count(self, mock_repo):
-        mock_repo.list_active_tracked.return_value = [_todo_doc()]
+        doc = _todo_doc(
+            waiting_on=WaitingOn.TIME, scheduled_at=datetime.now(UTC) + timedelta(days=3, hours=1)
+        )
+        mock_repo.list_active_tracked.return_value = [doc]
 
         summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
 
         assert "sub-todo" not in summary
         assert summary.split("\n")[1] == (
             '  "Prepare Q3 report" [work] (2d old, updated 0d ago)'
+            " | next check in 3d"
             " | ID: todo-1 | files: /workspace/gaia-tasks/prepare-q3-report-todo-1/"
+        )
+
+    async def test_a_todo_waiting_on_the_user_shows_the_question_and_what_happens_if_unanswered(
+        self, mock_repo
+    ):
+        """The model reads this block on every turn: it must see why each todo is still open."""
+        doc = _todo_doc(
+            waiting_on=WaitingOn.USER,
+            question="Keep newsletters out?",
+            if_no_reply=NoReplyPlan.PROCEED,
+            default_action="skip them",
+            scheduled_at=datetime.now(UTC) + timedelta(days=2, hours=1),
+        )
+        mock_repo.list_active_tracked.return_value = [doc]
+
+        line = (await TrackedTodoService.get_active_tracked_summary(USER_ID)).split("\n")[1]
+
+        assert (
+            'waiting on the user: "Keep newsletters out?" (expires in 2d, then proceed: skip them)'
+            in line
         )
 
     async def test_a_completed_running_todo_is_not_pinned(self, mock_repo):
@@ -845,8 +960,8 @@ class TestStartingCanvas:
         canvas = starting_canvas("Inbox desk", ["Brief me by 9", "Never send a draft"])
 
         assert canvas == template.replace(
-            "-->\n\n## Key Details",
-            "-->\n- Brief me by 9\n- Never send a draft\n\n## Key Details",
+            "-->\n\n## Done when",
+            "-->\n- Brief me by 9\n- Never send a draft\n\n## Done when",
             1,
         )
         assert normalize_canvas(canvas) == (canvas, None)
@@ -857,7 +972,7 @@ class TestStartingCanvas:
         canvas = starting_canvas("## Standing rules", ["Brief me by 9"])
 
         assert canvas == template.replace(
-            "-->\n\n## Key Details", "-->\n- Brief me by 9\n\n## Key Details", 1
+            "-->\n\n## Done when", "-->\n- Brief me by 9\n\n## Done when", 1
         )
 
 
@@ -1104,8 +1219,8 @@ class TestSingleton:
 
 
 _CLEAN_CANVAS = (
-    "# T\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
-    "## Learnings\n"
+    "# T\n\n## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n\n"
+    "## Current State\n\n## Context\n\n## Learnings\n"
 )
 
 
@@ -1352,3 +1467,69 @@ class TestResumePausedFor:
             ((TODO_ID,), USER_ID),
             ((TODO_ID,), USER_ID),
         ]
+
+
+class TestACreatedTodoNeedsANextStep:
+    """Every caller of the service, not just the agent tool, gets the open-state rule."""
+
+    @pytest.fixture(autouse=True)
+    def _real_rule(self, mock_deps):
+        mock_deps.open_state.side_effect = require_open_state
+
+    async def test_a_todo_with_no_next_step_is_refused_and_nothing_is_written(
+        self, mock_repo, mock_deps
+    ):
+        with pytest.raises(todo_errors.OpenStateError) as refused:
+            await TrackedTodoService.create_tracked_todo(USER_ID, "Prepare Q3 report")
+
+        assert any("waiting_on is missing" in problem for problem in refused.value.problems)
+        assert any("scheduled_at is missing" in problem for problem in refused.value.problems)
+        mock_deps.create.assert_not_awaited()
+        mock_repo.update.assert_not_awaited()
+
+    async def test_a_recurring_todo_needs_no_waiting_on(self, mock_repo, mock_deps):
+        mock_deps.create.return_value = _todo_response()
+        schedule = TodoUpdate(
+            recurrence="daily", scheduled_at=datetime.now(UTC) + timedelta(days=1)
+        )
+
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Brief me", schedule=schedule)
+
+        mock_deps.create.assert_awaited_once()
+
+    async def test_a_check_past_the_limit_is_refused_with_the_limit_named(
+        self, mock_repo, mock_deps
+    ):
+        schedule = TodoUpdate(
+            waiting_on=WaitingOn.TIME, scheduled_at=datetime.now(UTC) + timedelta(days=30)
+        )
+
+        with pytest.raises(todo_errors.OpenStateError) as refused:
+            await TrackedTodoService.create_tracked_todo(USER_ID, "Prepare", schedule=schedule)
+
+        assert "at most 14 days" in str(refused.value)
+        mock_deps.create.assert_not_awaited()
+
+    async def test_the_waiting_fields_are_saved_and_on_the_timeline(self, mock_repo, mock_deps):
+        mock_deps.create.return_value = _todo_response()
+        schedule = TodoUpdate(
+            waiting_on=WaitingOn.USER,
+            question="Should I ignore Raj's email?",
+            if_no_reply=NoReplyPlan.PROCEED,
+            default_action="archive the thread",
+            scheduled_at=datetime.now(UTC) + timedelta(days=2),
+        )
+
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Raj", schedule=schedule)
+
+        update = mock_repo.update.await_args.kwargs["update"]
+        assert (update.waiting_on, update.question) == (
+            WaitingOn.USER,
+            "Should I ignore Raj's email?",
+        )
+        assert (update.if_no_reply, update.default_action) == (
+            NoReplyPlan.PROCEED,
+            "archive the thread",
+        )
+        assert "[waiting_changed] waiting on user" in update.activity_content
+        assert "if no reply: proceed (archive the thread)" in update.activity_content
