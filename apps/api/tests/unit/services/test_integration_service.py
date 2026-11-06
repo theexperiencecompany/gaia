@@ -2608,7 +2608,7 @@ class TestConnectMcpIntegration:
 
         assert (result.status, result.error, result.message) == (
             "error",
-            "server unreachable",
+            "Couldn't connect Test. Please try again.",
             "Connection failed",
         )
         assert event["integration"] == {
@@ -2688,6 +2688,10 @@ class TestConnectMcpIntegration:
         mock_store.store_bearer_token.assert_awaited_once()
 
     @patch(
+        "app.services.integrations.integration_connection_service.update_user_integration_status",
+        new_callable=AsyncMock,
+    )
+    @patch(
         "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
@@ -2699,7 +2703,7 @@ class TestConnectMcpIntegration:
         new_callable=AsyncMock,
     )
     async def test_connect_bearer_token_failure_rolls_back(
-        self, mock_get_client, mock_token_store_cls, mock_invalidate
+        self, mock_get_client, mock_token_store_cls, mock_invalidate, mock_update_status
     ):
         mock_client = AsyncMock()
         mock_client.connect.side_effect = RuntimeError("Connection failed")
@@ -2720,6 +2724,7 @@ class TestConnectMcpIntegration:
         assert result.status == "error"
         assert result.error is not None
         mock_store.delete_credentials.assert_awaited_once()
+        mock_update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
 
     @patch(
         "app.services.integrations.integration_connection_service.get_mcp_client",

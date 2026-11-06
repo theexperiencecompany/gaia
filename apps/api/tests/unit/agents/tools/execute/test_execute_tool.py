@@ -363,8 +363,8 @@ class TestExecuteToolCall:
         ("output", "rendered"),
         [
             (
-                {"data": [1], "__offload__": {"path": "f"}},
-                json.dumps({"ran_as_account": "Work", "data": [1], "__offload__": {"path": "f"}}),
+                {"data": [1], "successful": True},
+                json.dumps({"ran_as_account": "Work", "data": [1], "successful": True}),
             ),
             ("plain text", "ran_as_account: Work\nplain text"),
             ([1, 2], json.dumps({"ran_as_account": "Work", "result": [1, 2]})),

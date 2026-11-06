@@ -10,7 +10,7 @@ The gate orchestrates, not decides or renders: unpack (utils.py), resolve policy
 (policy.py), judge intent (intent.py), publish card + record (bridge.py), speak to
 the model (prompts.py). interrupt() raises GraphInterrupt as control flow, never
 caught here nor by the wrappers above (the GraphBubbleUp guards in middleware/executor.py
-and dynamic_tool_node.py). A decision is a record, not a resume payload, so one decision can
+and LangGraph's ToolNode). A decision is a record, not a resume payload, so one decision can
 wake a run with several approvals outstanding; everything before a pause re-runs
 on replay, re-reading the record instead of remembering.
 """

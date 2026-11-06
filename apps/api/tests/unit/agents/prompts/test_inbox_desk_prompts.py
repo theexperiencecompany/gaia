@@ -407,15 +407,13 @@ def test_the_sweep_counts_the_whole_window_the_filter_hides() -> None:
     assert "Filtered: the number only, from step 3" in "\n".join(_step(BRIEFING_STEP))
 
 
-def test_the_sweep_asks_the_fetch_for_headers_in_a_file_never_a_body_or_thread() -> None:
+def test_the_sweep_asks_the_fetch_for_headers_never_a_body_or_thread() -> None:
     fields = list(todo_prompts.INBOX_DESK_SWEEP_FIELDS)
     step = "\n".join(_step(SWEEP_STEP))
 
-    sweep = FetchMessagesInput(
-        query="newer_than:1d", fields=fields, body_processing="none", offload=True
-    )
+    sweep = FetchMessagesInput(query="newer_than:1d", fields=fields, body_processing="none")
 
-    assert f'fields {json.dumps(fields)}, body_processing "none", offload true' in step
+    assert f'fields {json.dumps(fields)}, body_processing "none", split' in step
     assert not message_view_needs_body(sweep.fields, sweep.body_processing)
     assert "Never read a swept message's body or fetch its thread" in step
     assert "GMAIL_FETCH_THREAD" not in step
@@ -426,7 +424,7 @@ def test_the_sweep_is_counted_per_address_by_query_json_never_read() -> None:
     step = "\n".join(_step(SWEEP_STEP))
 
     assert (
-        'one query_json(path=<its offloaded_to>, group_count_by="from_address") per file, '
+        'one query_json(path=<the path it was saved at>, group_count_by="from_address") per file, '
         "never reading the file"
     ) in step
     assert 'group_count_by="from")' not in step

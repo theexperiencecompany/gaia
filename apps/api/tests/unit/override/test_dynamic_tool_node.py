@@ -1,23 +1,28 @@
-"""Unit tests for DynamicToolNode's middleware dispatch path.
+"""Unit tests for DynamicToolNode's one execution path.
 
-The middleware branch of _afunc only runs when a middleware executor is
-present AND at least one tool call escapes parent routing — the state
-normalization between the two (_coerce_middleware_state) is what the
-executor and every wrap_tool_call hook consume as their view of graph state.
+Every call runs through LangGraph's own ToolNode execution, wrapped by the
+middleware chain, the argument check and the timeout — whatever the tool injects
+or returns.
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Annotated, Any
+from unittest.mock import AsyncMock, patch
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import InjectedToolCallId, tool
+from langgraph.errors import GraphInterrupt
+from langgraph.prebuilt import InjectedState, InjectedStore
 from langgraph.runtime import Runtime
+from langgraph.store.base import BaseStore
+from langgraph.store.memory import InMemoryStore
+from langgraph.types import Command
+from pydantic import BaseModel
 import pytest
 
 from app.agents.middleware.executor import MIDDLEWARE_FAILURE_TEMPLATE, MiddlewareExecutor
@@ -34,122 +39,6 @@ from shared.py.analytics.context import (
 NODE = "app.override.langgraph_bigtool.dynamic_tool_node"
 
 pytestmark = pytest.mark.unit
-
-
-def _echo_registry() -> dict[str, Any]:
-    @tool
-    def echo(query: str) -> str:
-        """Echo back."""
-        return query
-
-    return {"echo": echo}
-
-
-def _make_node() -> tuple[DynamicToolNode, MagicMock]:
-    """Build a DynamicToolNode whose middleware executor claims wrap_tool_call."""
-    executor = MagicMock()
-    executor.has_wrap_tool_call.return_value = True
-    executor.wrap_tool_invocation = AsyncMock(
-        return_value=ToolMessage(content="done", tool_call_id="call_1")
-    )
-    node = DynamicToolNode(_echo_registry(), middleware_executor=executor)
-    return node, executor
-
-
-def _input_with_echo_call() -> dict[str, Any]:
-    return {
-        "messages": [
-            AIMessage(
-                content="",
-                tool_calls=[
-                    {"name": "echo", "args": {"query": "hi"}, "id": "call_1", "type": "tool_call"}
-                ],
-            )
-        ]
-    }
-
-
-class TestMiddlewareDispatchPath:
-    async def test_afunc_routes_plain_tool_calls_through_the_middleware_executor(self):
-        node, executor = _make_node()
-
-        result = await node._afunc(_input_with_echo_call(), {}, MagicMock())
-
-        executor.wrap_tool_invocation.assert_awaited_once()
-        returned = result["messages"]
-        assert len(returned) == 1
-        assert isinstance(returned[0], ToolMessage)
-        assert returned[0].content == "done"
-        assert returned[0].tool_call_id == "call_1"
-
-    async def test_executor_receives_coerced_state_with_a_copied_messages_list(self):
-        node, executor = _make_node()
-        node_input = _input_with_echo_call()
-
-        await node._afunc(node_input, {}, MagicMock())
-
-        state = executor.wrap_tool_invocation.await_args.kwargs["state"]
-        # The coerced state carries a messages channel even when the raw input
-        # dict came straight through _extract_state unchanged.
-        assert set(state.keys()) >= {"messages"}
-        assert len(state["messages"]) == 1
-        assert state["messages"][0].tool_calls[0]["name"] == "echo"
-        assert state["messages"] is not node_input["messages"]
-
-
-class TestMiddlewareDispatchPins:
-    """Pin the dispatch branches: parent routing, missing executor, Command mix."""
-
-    async def test_all_parent_routed_calls_delegate_to_the_parent_path(self):
-        node, executor = _make_node()
-        # InjectedState args make "echo" parent-routed for this node.
-        object.__setattr__(node, "_injected_args", {"echo": MagicMock(state={"messages": True})})
-        with patch.object(DynamicToolNode.__bases__[0], "_afunc", new_callable=AsyncMock) as parent:
-            parent.return_value = {"messages": [ToolMessage(content="parent", tool_call_id="c1")]}
-            result = await node._afunc(_input_with_echo_call(), {}, MagicMock())
-
-        executor.wrap_tool_invocation.assert_not_awaited()
-        assert isinstance(result, dict)
-        assert result["messages"][0].content == "parent"
-
-    async def test_mixed_command_results_are_returned_as_a_flat_list(self):
-        from langgraph.types import Command
-
-        node, _ = _make_node()
-        command = Command(update={"messages": [ToolMessage(content="cmd", tool_call_id="c1")]})
-        node._middleware_executor.wrap_tool_invocation = AsyncMock(return_value=command)
-
-        result = await node._afunc(_input_with_echo_call(), {}, MagicMock())
-
-        # Commands must NOT be wrapped in {"messages": ...} — LangGraph handles
-        # a bare list containing Commands itself.
-        assert isinstance(result, list)
-
-    async def test_tool_messages_only_are_returned_under_the_messages_key(self):
-        node, _ = _make_node()
-        result = await node._afunc(_input_with_echo_call(), {}, MagicMock())
-        assert set(result.keys()) == {"messages"}
-
-    async def test_store_from_runtime_reaches_the_executor(self):
-        node, executor = _make_node()
-        store = MagicMock()
-
-        class Runtime:
-            pass
-
-        runtime = Runtime()
-        runtime.store = store
-
-        await node._afunc(_input_with_echo_call(), {}, runtime)
-
-        assert executor.wrap_tool_invocation.await_args.kwargs["store"] is store
-
-    async def test_missing_runtime_store_passes_none(self):
-        node, executor = _make_node()
-
-        await node._afunc(_input_with_echo_call(), {}, MagicMock(spec=[]))
-
-        assert executor.wrap_tool_invocation.await_args.kwargs["store"] is None
 
 
 class _Passthrough(AgentMiddleware):
@@ -177,6 +66,14 @@ async def proxy(tool_name: str, data: dict[str, Any]) -> str:
     return f"ran {tool_name}"
 
 
+@tool
+async def files_a_ticket(
+    title: str, labels: list[int], store: Annotated[BaseStore, InjectedStore()]
+) -> str:
+    """File a ticket; never reached with invalid arguments."""
+    raise AssertionError("the tool ran with invalid arguments")
+
+
 def _real_node(*tools: Any) -> DynamicToolNode:
     registry = {t.name: t for t in tools}
     return DynamicToolNode(registry, middleware_executor=MiddlewareExecutor([_Passthrough()]))
@@ -188,9 +85,146 @@ def _one_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _run(node: DynamicToolNode, name: str, args: dict[str, Any]) -> ToolMessage:
-    result = await node._afunc(_one_call(name, args), {}, MagicMock(spec=[]))
+    result = await node._afunc(_one_call(name, args), {}, Runtime(store=InMemoryStore()))
     (message,) = result["messages"]
     return message
+
+
+class _Recorder(AgentMiddleware):
+    """Record each request the chain hands on, then pass it through."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests: list[ToolCallRequest] = []
+
+    async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
+        self.requests.append(request)
+        return await handler(request)
+
+
+class _SwapsInTool(AgentMiddleware):
+    """Hand the call to a tool the node never registered, as a wrap_tool_call may."""
+
+    def __init__(self, replacement: Any) -> None:
+        super().__init__()
+        self.replacement = replacement
+
+    async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
+        return await handler(request.override(tool=self.replacement))
+
+
+class TestToolsBoundAfterCompilation:
+    """The registry is live: a tool added after the node was built runs, and is checked, like any other."""
+
+    async def test_a_tool_added_to_the_registry_later_runs(self) -> None:
+        @tool
+        def added_later(query: str) -> str:
+            """Answer late."""
+            return f"late {query}"
+
+        registry: dict[str, Any] = {}
+        node = DynamicToolNode(registry, middleware_executor=MiddlewareExecutor([_Passthrough()]))
+        registry["added_later"] = added_later
+
+        message = await _run(node, "added_later", {"query": "q"})
+
+        assert message.content == "late q"
+
+    async def test_a_later_tools_injected_arguments_are_never_blamed_on_the_model(self) -> None:
+        @tool
+        def counts(limit: int, todos: Annotated[list[int], InjectedState("todos")]) -> str:
+            """Count todos up to a limit."""
+            raise AssertionError("the tool ran with invalid arguments")
+
+        registry: dict[str, Any] = {}
+        node = DynamicToolNode(registry, middleware_executor=MiddlewareExecutor([_Passthrough()]))
+        registry["counts"] = counts
+        state = {**_one_call("counts", {"limit": "many"}), "todos": ["not-an-int"]}
+
+        result = await node._afunc(state, {}, Runtime())
+
+        (message,) = result["messages"]
+        _, *fields, _ = message.text.splitlines()
+        assert fields == [
+            "limit: Input should be a valid integer, unable to parse string as an integer"
+        ]
+
+    async def test_a_tool_a_middleware_swaps_in_gets_its_injected_arguments(self) -> None:
+        @tool
+        async def keeps_notes(note: str, store: Annotated[BaseStore, InjectedStore()]) -> str:
+            """Store a note."""
+            return f"kept {note}"
+
+        node = DynamicToolNode(
+            {}, middleware_executor=MiddlewareExecutor([_SwapsInTool(keeps_notes)])
+        )
+
+        message = await _run(node, "keeps_notes", {"note": "n"})
+
+        assert message.content == "kept n"
+
+
+class TestEveryCallTakesTheOnePath:
+    """Injection, Commands and interrupts all come back through the middleware chain."""
+
+    async def test_a_state_injected_tool_runs_inside_the_chain_with_the_graph_state(self) -> None:
+        @tool
+        def counts_todos(prefix: str, todos: Annotated[list[str], InjectedState("todos")]) -> str:
+            """Count the run's todos."""
+            return f"{prefix}{len(todos)}"
+
+        recorder = _Recorder()
+        node = DynamicToolNode(
+            {"counts_todos": counts_todos}, middleware_executor=MiddlewareExecutor([recorder])
+        )
+        state = {**_one_call("counts_todos", {"prefix": "n="}), "todos": ["a", "b"]}
+
+        result = await node._afunc(state, {}, Runtime())
+
+        (message,) = result["messages"]
+        assert message.content == "n=2"
+        (request,) = recorder.requests
+        assert request.tool_call["name"] == "counts_todos"
+        assert request.state["todos"] == ["a", "b"]
+
+    async def test_a_middleware_tool_runs_inside_the_chain(self) -> None:
+        @tool
+        def spawns(task: str) -> str:
+            """Stand in for spawn_subagent."""
+            return f"spawned {task}"
+
+        recorder = _Recorder()
+        node = DynamicToolNode(
+            {}, middleware_executor=MiddlewareExecutor([recorder]), middleware_tools=[spawns]
+        )
+
+        message = await _run(node, "spawns", {"task": "t"})
+
+        assert message.content == "spawned t"
+        assert [r.tool_call["name"] for r in recorder.requests] == ["spawns"]
+
+    async def test_a_tools_command_comes_back_with_its_state_update(self) -> None:
+        @tool
+        def plans(title: str, tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
+            """Write a plan into state."""
+            reply = ToolMessage(content="planned", tool_call_id=tool_call_id)
+            return Command(update={"messages": [reply], "todos": [title]})
+
+        result = await _real_node(plans)._afunc(_one_call("plans", {"title": "x"}), {}, Runtime())
+
+        (command,) = result
+        assert isinstance(command, Command)
+        assert command.update["todos"] == ["x"]
+        assert command.update["messages"][0].tool_call_id == "call_1"
+
+    async def test_an_interrupt_raised_by_a_tool_reaches_the_runtime(self) -> None:
+        @tool
+        def asks_first(to: str) -> str:
+            """Pause for approval."""
+            raise GraphInterrupt(())
+
+        with pytest.raises(GraphInterrupt):
+            await _run(_real_node(asks_first), "asks_first", {"to": "bob"})
 
 
 @pytest.fixture
@@ -201,7 +235,7 @@ def shrunk_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.usefixtures("shrunk_bounds")
 class TestRealMiddlewarePath:
-    """The tool call runs through a real MiddlewareExecutor, so invoke_tool itself executes."""
+    """The tool call runs through a real MiddlewareExecutor around LangGraph's execution."""
 
     async def test_a_hung_tool_is_cut_short_under_its_own_name(self) -> None:
         message = await _run(_real_node(hangs), "hangs", {"query": "q"})
@@ -218,7 +252,7 @@ class TestRealMiddlewarePath:
             _real_node(proxy), "execute", {"tool_name": "GMAIL_SEND_EMAIL", "data": {}}
         )
         assert message.name == "execute"
-        assert message.content.startswith(
+        assert message.text.startswith(
             "Error: TimeoutError: 'GMAIL_SEND_EMAIL' timed out after 0.03s."
         )
 
@@ -237,9 +271,99 @@ class TestRealMiddlewarePath:
         assert message.name == "breaks"
         assert message.content == "Error: ValueError: bad q"
 
+    async def test_invalid_arguments_come_back_as_a_fixable_call_naming_each_field(
+        self,
+    ) -> None:
+        """The model reads this text to retry: each field it controls, and only those, with its problem."""
+        message = await _run(_real_node(files_a_ticket), "files_a_ticket", {"labels": ["x"]})
+
+        assert message.status == "error"
+        assert message.tool_call_id == "call_1"
+        assert message.name == "files_a_ticket"
+        first, *fields, last = message.text.splitlines()
+        assert first == (
+            "Error: ToolInvocationError: 'files_a_ticket' was not run, its arguments are invalid:"
+        )
+        assert fields == [
+            "title: Field required",
+            "labels.0: Input should be a valid integer, unable to parse string as an integer",
+        ]
+        assert last == "Nothing happened yet. Call it again with these arguments fixed."
+
+    @pytest.mark.parametrize(
+        "middleware_executor", [None, MiddlewareExecutor([_Passthrough()])], ids=["plain", "chain"]
+    )
+    async def test_invalid_arguments_never_reach_the_tool_body(
+        self, middleware_executor: MiddlewareExecutor | None
+    ) -> None:
+        ran: list[str] = []
+
+        @tool
+        async def sends_mail(to: str, retries: int) -> str:
+            """Send one email."""
+            ran.append(to)
+            return "sent"
+
+        node = DynamicToolNode({"sends_mail": sends_mail}, middleware_executor=middleware_executor)
+        message = await _run(node, "sends_mail", {"to": "bob@example.com", "retries": "many"})
+
+        assert ran == []
+        assert message.text.startswith(
+            "Error: ToolInvocationError: 'sends_mail' was not run, its arguments are invalid:"
+        )
+        assert "retries: Input should be a valid integer" in message.text
+
+    @pytest.mark.parametrize(
+        "middleware_executor", [None, MiddlewareExecutor([_Passthrough()])], ids=["plain", "chain"]
+    )
+    async def test_a_validation_error_after_a_side_effect_never_claims_nothing_happened(
+        self, middleware_executor: MiddlewareExecutor | None
+    ) -> None:
+        """A tool that sent the email then failed to parse the reply must not invite a resend."""
+        sent: list[str] = []
+
+        class _ProviderReply(BaseModel):
+            message_id: str
+
+        @tool
+        async def sends_then_misparses(to: str) -> str:
+            """Send an email and parse the provider's reply."""
+            sent.append(to)
+            return _ProviderReply.model_validate({}).message_id
+
+        node = DynamicToolNode(
+            {"sends_then_misparses": sends_then_misparses}, middleware_executor=middleware_executor
+        )
+        message = await _run(node, "sends_then_misparses", {"to": "bob@example.com"})
+
+        assert sent == ["bob@example.com"]
+        assert message.status == "error"
+        assert message.tool_call_id == "call_1"
+        assert message.text.startswith(
+            "Error: ValidationError: 1 validation error for _ProviderReply"
+        )
+        assert "was not run" not in message.text
+        assert "Nothing happened" not in message.text
+
+    async def test_a_tool_that_explains_its_own_invalid_arguments_keeps_its_text(self) -> None:
+        """write_playbook renders its own argument errors."""
+
+        @tool
+        async def explains_itself(steps: list[int]) -> str:
+            """Store steps."""
+            raise AssertionError("the tool ran with invalid arguments")
+
+        explains_itself.handle_validation_error = "steps must be step numbers"
+
+        message = await _run(_real_node(explains_itself), "explains_itself", {"steps": ["x"]})
+
+        assert message.status == "error"
+        assert message.content == "steps must be step numbers"
+
     async def test_an_unknown_tool_is_answered_on_its_own_call_id(self) -> None:
         message = await _run(_real_node(breaks), "ghost", {"query": "q"})
-        assert message.content == "Tool 'ghost' not found"
+        assert message.content == "Error: ghost is not a valid tool, try one of [breaks]."
+        assert message.status == "error"
         assert message.tool_call_id == "call_1"
 
 
@@ -252,7 +376,7 @@ def reports_its_analytics_context(query: str) -> str:
     return f"{query}:{current_analytics_context().model_dump_json()}"
 
 
-def _config_stamped() -> dict[str, Any]:
+def _config_stamped() -> RunnableConfig:
     return {"configurable": {"analytics_context": _STAMPED.model_dump(mode="json")}}
 
 
@@ -300,16 +424,6 @@ class TestToolCallsActAsTheRunsAgent:
         (message,) = result["messages"]
         assert message.content == f"q:{_STAMPED.model_dump_json()}"
 
-    async def test_an_executor_with_no_tool_hooks_leaves_the_call_to_the_parent_path(self) -> None:
-        node, executor = _make_node()
-        executor.has_wrap_tool_call.return_value = False
-
-        result = await node._afunc(_input_with_echo_call(), _config_stamped(), Runtime())
-
-        executor.wrap_tool_invocation.assert_not_awaited()
-        (message,) = result["messages"]
-        assert message.content == "hi"
-
 
 @tool
 def reports_its_thread(query: str, config: RunnableConfig) -> str:
@@ -317,7 +431,7 @@ def reports_its_thread(query: str, config: RunnableConfig) -> str:
     return f"{query}:{config['configurable']['thread_id']}"
 
 
-def _config_with_thread() -> dict[str, Any]:
+def _config_with_thread() -> RunnableConfig:
     return {"configurable": {**_config_stamped()["configurable"], "thread_id": "thread-1"}}
 
 
@@ -368,7 +482,7 @@ class TestProductionStackFailsClosed:
         node = DynamicToolNode(
             {"send_email": send_email}, middleware_executor=MiddlewareExecutor(stack)
         )
-        config = {
+        config: RunnableConfig = {
             "configurable": {
                 "user_id": "user_1",
                 "thread_id": "thread_1",
@@ -385,7 +499,7 @@ class TestProductionStackFailsClosed:
             ),
         ):
             result = await node._afunc(
-                _one_call("send_email", {"to": "bob@example.com"}), config, MagicMock(spec=[])
+                _one_call("send_email", {"to": "bob@example.com"}), config, Runtime()
             )
 
         (message,) = result["messages"]

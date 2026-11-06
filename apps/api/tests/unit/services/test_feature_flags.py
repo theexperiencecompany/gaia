@@ -483,14 +483,25 @@ def stored_user() -> Iterator[AsyncMock]:
 
 
 class TestUserFlagRegistry:
-    def test_obscura_is_the_one_user_facing_flag_and_off_by_default(self) -> None:
-        user_facing = [flag for flag, spec in FEATURE_FLAGS.items() if spec.user_toggle]
-        assert user_facing == [FeatureFlag.BROWSER_OBSCURA]
-        spec = FEATURE_FLAGS[FeatureFlag.BROWSER_OBSCURA]
+    @pytest.mark.parametrize(
+        ("flag", "label"),
+        [
+            (FeatureFlag.BROWSER_OBSCURA, "Obscura browser engine"),
+            (FeatureFlag.BROWSER_JEV, "Jev page operator"),
+        ],
+    )
+    def test_the_browser_flags_are_user_facing_experiments_off_by_default(
+        self, flag: FeatureFlag, label: str
+    ) -> None:
+        spec = FEATURE_FLAGS[flag]
         assert spec.default() is False
         assert spec.user_toggle is not None
-        assert spec.user_toggle.label == "Obscura browser engine"
+        assert spec.user_toggle.label == label
         assert spec.user_toggle.stage is FeatureStage.EXPERIMENTAL
+
+    def test_only_the_browser_flags_are_user_facing(self) -> None:
+        user_facing = [flag for flag, spec in FEATURE_FLAGS.items() if spec.user_toggle]
+        assert user_facing == [FeatureFlag.BROWSER_OBSCURA, FeatureFlag.BROWSER_JEV]
 
     def test_every_user_facing_flag_carries_settings_copy(self) -> None:
         for spec in FEATURE_FLAGS.values():
