@@ -156,12 +156,12 @@ class TestAFailureBeforeOrInsteadOfARunNamesItsCause:
                 SubagentOutcome(text="unconfirmed", answered=False), prepared=(ctx, None)
             )
 
-        assert result == er._ExecutorResult(
+        assert (result.text, result.type, result.error_type) == (
             executor_constants.EXECUTOR_CRASH_MESSAGE,
             "error",
-            ctx=ctx,
-            error_type=executor_constants.EXECUTOR_ERROR_NO_ANSWER,
+            executor_constants.EXECUTOR_ERROR_NO_ANSWER,
         )
+        assert result.ctx is ctx
         mock_log.error.assert_called_once()
         message = mock_log.error.call_args.args[0]
         assert "without an answer" in message
