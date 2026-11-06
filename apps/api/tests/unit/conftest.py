@@ -104,7 +104,6 @@ def mock_mongodb():
         "files_collection",
         "notifications_collection",
         "feedback_collection",
-        "mail_collection",
         "blog_collection",
         "support_collection",
         "payments_collection",

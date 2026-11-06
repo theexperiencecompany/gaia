@@ -1,17 +1,16 @@
-"""In-memory stand-in for the todo repository calls agent-lab runs and watch gating make.
+"""In-memory stand-in for the todo repository calls agent-lab runs make.
 
-Implements only what those paths touch: the bash tool's lookup, the run
-subscription's append and its removal, the receiver's open-todos-by-trigger
+Implements only what the run path touches: the bash tool's lookup, the run
+subscription's append and its removal, and the receiver's open-todos-by-trigger
 query (incomplete todos with an ACTIVE subscription on that trigger, like the
-real query), and the open-todos-by-ref read and gate write the desk gate uses.
+real query).
 """
 
 from __future__ import annotations
 
 from collections.abc import Collection
 
-from app.models.todo_models import ExternalRef, TodoDocument
-from app.models.trigger_gate_models import AuthoredGate, SystemGate
+from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
     TriggerSubscription,
     TriggerSubscriptionStatus,
@@ -62,31 +61,6 @@ class InMemoryTodos:
                 for s in todo.trigger_subscriptions
             )
         ]
-
-    async def list_open_by_external_ref_all_users(self, ref: ExternalRef) -> list[TodoDocument]:
-        return [t for t in self._by_id.values() if not t.completed and t.external_ref == ref]
-
-    async def gate_ungated_subscriptions(
-        self,
-        todo_id: str,
-        *,
-        user_id: str,
-        subscription_ids: Collection[str],
-        gate: AuthoredGate | SystemGate,
-    ) -> TodoDocument | None:
-        todo = self._by_id.get(todo_id)
-        if todo is None or todo.user_id != user_id:
-            return None
-        due = {
-            s.id for s in todo.trigger_subscriptions if s.id in subscription_ids and s.gate is None
-        }
-        if not due:
-            return None
-        todo.trigger_subscriptions = [
-            s.model_copy(update={"gate": gate}) if s.id in due else s
-            for s in todo.trigger_subscriptions
-        ]
-        return todo
 
 
 def with_watch(todo: TodoDocument, subscription: TriggerSubscription) -> TodoDocument:

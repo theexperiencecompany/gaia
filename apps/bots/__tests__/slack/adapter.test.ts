@@ -389,6 +389,7 @@ describe("SlackAdapter - handleSlackStreaming", () => {
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      expect.any(Function), // onNoReply
     );
   });
 
@@ -712,6 +713,7 @@ describe("SlackAdapter - app_mention event handling", () => {
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      expect.any(Function), // onNoReply
     );
   });
 
@@ -800,6 +802,7 @@ describe("SlackAdapter - DM message event handling", () => {
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      expect.any(Function), // onNoReply
     );
   });
 

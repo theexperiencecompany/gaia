@@ -398,30 +398,15 @@ async def _run_chat_stream(
         # so its array position is correct even if a concurrent stream finishes
         # while we wait for the executor below.
         await _persist_turn(stream_id, body, user, conversation_id, state)
+        # Before the executor wait: a reaction acknowledging a hand-off lands now,
+        # not beside the result the work produces minutes later.
+        await _publish_emoji_ack(stream_id, state)
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         # A stop pressed during the executor wait arrives after the consume
         # loop's check: re-read it here or the turn closes as completed.
         await _note_cancellation(stream_id, state)
 
         await _finalize_description(description_task, stream_id)
-        # Unmutated: resolve_turn_emoji_ack sets kind and target together, so and/or agree.
-        if (
-            state.message_kind is MessageKind.EMOJI_ACK  # pragma: no mutate
-            and state.reacts_to_message_id
-        ):
-            # The driver held the directive's text back, so this frame is all the
-            # client learns of the turn: attach the emoji as a reaction badge.
-            await stream_manager.publish_chunk(
-                stream_id,
-                format_sse_data(
-                    EmojiAckFrame(
-                        emoji_ack=EmojiAckPayload(
-                            emoji=state.complete_message,
-                            reacts_to_message_id=state.reacts_to_message_id,
-                        )
-                    ).model_dump()
-                ),
-            )
         await stream_manager.publish_chunk(
             stream_id,
             format_sse_data(
@@ -962,6 +947,27 @@ async def _handle_stream_error(
         )
     await stream_manager.set_error(stream_id, user_error)
     return user_error
+
+
+async def _publish_emoji_ack(stream_id: str, state: _StreamState) -> None:
+    """Attach the turn's emoji ack as a reaction badge; the frame is all the client learns of it."""
+    # Unmutated: resolve_turn_emoji_ack sets kind and target together, so and/or agree.
+    if (
+        state.message_kind is not MessageKind.EMOJI_ACK  # pragma: no mutate
+        or not state.reacts_to_message_id
+    ):
+        return
+    await stream_manager.publish_chunk(
+        stream_id,
+        format_sse_data(
+            EmojiAckFrame(
+                emoji_ack=EmojiAckPayload(
+                    emoji=state.complete_message,
+                    reacts_to_message_id=state.reacts_to_message_id,
+                )
+            ).model_dump()
+        ),
+    )
 
 
 def resolve_turn_emoji_ack(
