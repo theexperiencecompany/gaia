@@ -30,7 +30,7 @@ class QuietHours(BaseModel):
         """Whether moment, on the user's own clock, falls inside these quiet hours."""
         if not self.enabled:
             return False
-        if self.start_hour < self.end_hour:
+        if self.start_hour < self.end_hour:  # pragma: no mutate — start == end is refused
             return self.start_hour <= moment.hour < self.end_hour
         return moment.hour >= self.start_hour or moment.hour < self.end_hour
 
@@ -38,7 +38,7 @@ class QuietHours(BaseModel):
         """Return moment, or the end of the quiet hours it falls in, on moment's own clock."""
         if not self.contains(moment):
             return moment
-        crosses_midnight = self.start_hour > self.end_hour
+        crosses_midnight = self.start_hour > self.end_hour  # pragma: no mutate — never equal
         day = moment.date()
         if crosses_midnight and moment.hour >= self.start_hour:
             day += timedelta(days=1)

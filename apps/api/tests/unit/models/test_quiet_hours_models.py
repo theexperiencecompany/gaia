@@ -78,8 +78,12 @@ def test_a_moment_outside_quiet_hours_is_its_own_answer() -> None:
 
 
 def test_quiet_hours_that_start_when_they_end_are_refused() -> None:
-    with pytest.raises(ValidationError, match="different hours"):
+    with pytest.raises(ValidationError) as refused:
         QuietHours(enabled=True, start_hour=8, end_hour=8)
+
+    assert [e["msg"] for e in refused.value.errors()] == [
+        "Value error, quiet hours must start and end at different hours"
+    ]
 
 
 @pytest.mark.parametrize("hour", [-1, 24])

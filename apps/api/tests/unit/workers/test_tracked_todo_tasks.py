@@ -3310,6 +3310,13 @@ class TestExecuteOnExecutor:
         task = run.await_args.args[0].task
         assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.format(local_time="23:00") in task
 
+    async def test_the_run_reads_the_quiet_hours_of_the_todos_owner(
+        self, quiet_hours: AsyncMock
+    ) -> None:
+        await self._execute()
+
+        quiet_hours.assert_awaited_once_with(OWNER_ID)
+
     async def test_every_run_executes_in_the_todos_own_chat_on_a_fresh_thread(
         self, todo_chat: AsyncMock
     ) -> None:

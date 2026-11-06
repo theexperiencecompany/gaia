@@ -70,6 +70,21 @@ class TestQuietHours:
         assert response.status_code == 200
         assert response.json() == {"enabled": True, "start_hour": 22, "end_hour": 8}
 
+    async def test_a_user_reads_the_hours_they_saved_on_a_logged_read(self, client: AsyncClient):
+        saved = QuietHours(enabled=False, start_hour=1, end_hour=6)
+        with patch(
+            "app.services.user_service.user_repository.get",
+            AsyncMock(return_value=UserDocument(id=FAKE_USER_ID, quiet_hours=saved)),
+        ) as read:
+            async with captured_wide_event() as live:
+                response = await client.get(f"{USER_BASE}/quiet-hours")
+                event = dict(live)
+
+        assert response.status_code == 200
+        assert response.json() == {"enabled": False, "start_hour": 1, "end_hour": 6}
+        read.assert_awaited_once_with(FAKE_USER_ID)
+        assert (event["user"], event["operation"]) == ({"id": FAKE_USER_ID}, "read_quiet_hours")
+
     async def test_saved_hours_are_stored_echoed_and_reported(self, client: AsyncClient):
         body = {"enabled": True, "start_hour": 23, "end_hour": 7}
         with (
@@ -79,10 +94,16 @@ class TestQuietHours:
             ) as update,
             patch("app.services.user_service.capture") as capture,
         ):
-            response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
+            async with captured_wide_event() as live:
+                response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
+                event = dict(live)
 
         assert response.status_code == 200
         assert response.json() == body
+        assert (event["user"], event["operation"]) == ({"id": FAKE_USER_ID}, "update_quiet_hours")
+        assert event["audit"] == [
+            {"msg": "quiet hours updated", "actor": FAKE_USER_ID, "quiet_hours": body}
+        ]
         update.assert_awaited_once_with(
             FAKE_USER_ID, QuietHours(enabled=True, start_hour=23, end_hour=7)
         )
@@ -90,6 +111,21 @@ class TestQuietHours:
             UserId(FAKE_USER_ID),
             SettingsQuietHoursUpdated(enabled=True, start_hour=23, end_hour=7),
         )
+
+    async def test_hours_for_a_user_that_does_not_exist_are_a_404(self, client: AsyncClient):
+        body = {"enabled": True, "start_hour": 23, "end_hour": 7}
+        with (
+            patch(
+                "app.services.user_service.user_repository.set_quiet_hours",
+                AsyncMock(return_value=None),
+            ),
+            patch("app.services.user_service.capture") as capture,
+        ):
+            response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
+
+        assert response.status_code == 404
+        assert response.json()["message"] == "User not found"
+        capture.assert_not_called()
 
     @pytest.mark.parametrize(
         "body",
