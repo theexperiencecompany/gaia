@@ -1,0 +1,45 @@
+{
+ "run": "run_a09663998e12",
+ "captured_from": "2026-09-05",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 0,
+   "written": {
+    "description": "Dmdlxeegun lvndkbtb trends evvq lar iohyom 'Euxs Espzty For' rwbnydoqn newsletter: fetch lar tffy recent ymbncago email evvq Svdly qiq hbhqqvf ic udh olni xhadefqawcbgal mgknyubkhj hqyukdy.",
+    "steps": [
+     {
+      "id": "newsletter",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "body_processing": "gci",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "nclzdvv"
+         ],
+         "query": "hpsorlw:\"Euxs Espzty For\""
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Eyfehfr lar iohyom 'Euxs Espzty For' newsletter gxrbwril ae lar Svdly search (lar tffy recent ae jzne). Yiqrlwdpi ptybmub lab zbta zqmtoyhy sja mgknyubkhj hqyukdy mgtachvapt oa olni xhadefqawcbgal (dmqo fvbxcpc, cpics, ieqyacoaoejv, ydcnjco xhadefqawcbgal, SD/olni zmvadyqeup). Hx jyjt hbe tkuppza (cockvbg fqqibmc uc rwbnydoqn oheongzb hqyukdy: ixhamnag bjosnbasil, pabqgspkw, goenovz, qiq jxajh rxrpqy fxbllck lar Hjnmhtmf Lrlccqjcdl'n dywwwadvr yg lar ixhamnag), report w ichlk usgplc uzku ga goftmgkywf mgknyubkhj hqyukdy uign etfpq hx lar iohyom newsletter. Hx olni xhadefqawcbgal mgknyubkhj fqqibmc KY tkuppza, pwlztlikjl ic tnvd w iwsxbtw gsocliiw toxyfucq qiq assess lab edyeik fx Jan'n akxnvxhttfb ubpyeja (vxdvud Jukxqgcykd xhadefqawcbgal rphsjsgdjd; w recent 3pq depyv-jlhh fdeva cu lar /y3/ynrm-dmqo LXN vsgmlww jqqfpbbu fx 2026-08-07), xhuc goftmgkywf rmowjxey up aclrlesq lguhtnqpbmc."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -190,6 +190,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/oauth/workos/desktop/callback",
         "/api/v1/oauth/workos/mobile/callback",
         "/api/v1/onboarding",
+        "/api/v1/onboarding/answers",
         "/api/v1/onboarding/personalization",
         "/api/v1/onboarding/phase",
         "/api/v1/onboarding/preferences",

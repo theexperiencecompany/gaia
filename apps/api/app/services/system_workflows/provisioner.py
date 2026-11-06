@@ -36,6 +36,7 @@ from app.models.workflow_models import (
 )
 from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
+from app.services.system_workflows.recipes import install_recipe
 from app.services.user_service import get_profile_timezone
 from app.services.workflow.scheduler import workflow_scheduler
 from app.services.workflow.service import WorkflowService
@@ -116,6 +117,9 @@ async def provision_system_workflows(
                 f"{LogTag.WORKFLOW} Provisioned system workflow for user", key=key, user_id=user_id
             )
             await _activate_for_paying_user(workflow.id, user_id, key)
+            # Last: the workflow runs without its recipe (the agent authors one), so a
+            # failed install is logged below and costs only the shortcut.
+            await install_recipe(key, workflow.id, user_id, workflow.prompt, workflow.steps)
         except DuplicateKeyError:
             log.info(
                 f"{LogTag.WORKFLOW} System workflow already exists for user (concurrent creation), skipping",
@@ -376,7 +380,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     # Only unregister old triggers AFTER new ones are confirmed registered
     await _unregister_old_triggers_for_reset(old_trigger_ids, trigger_name, workflow_id, user_id)
 
-    await workflow_repository.reset_system_workflow(
+    reset = await workflow_repository.reset_system_workflow(
         workflow_id,
         SystemWorkflowDefinition(
             title=request.title,
@@ -387,11 +391,16 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
             composio_trigger_ids=new_trigger_ids,
         ),
     )
+    if reset is None:
+        return False
 
     # A failed re-arm must fail the reset: reporting success would leave a
     # workflow that looks reset but never fires (retrying re-arms it).
     if not await _rearm_reset_schedule(existing, trigger_config, workflow_id, user_id):
         return False
+    # After the re-arm: the reset's new hash makes the old playbook stale and the
+    # shipped recipe replaces it, but a failed install must not cost the next fire.
+    await install_recipe(key, workflow_id, user_id, reset.prompt, reset.steps)
 
     log.info(
         f"{LogTag.WORKFLOW} Reset system workflow to default for user",

@@ -26,8 +26,7 @@ from app.agents.tools.execute.dispatch import ToolExecutionResult
 from app.api.v1.endpoints.sandbox_execute import SandboxExecuteRequest, sandbox_execute
 from app.config.settings import settings
 from app.constants.execute import SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN
-from app.services.sandbox import execute_token
-from app.services.sandbox.execute_token import mint_execute_token
+from app.services.sandbox.execute_token import ExecuteGrant, mint_execute_token
 from app.services.share_service import mint_share_url, redeem_share_grant
 from app.utils.errors import AppError
 
@@ -45,9 +44,8 @@ def _share_secret(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def _exec_secret() -> None:
-    with patch.object(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", EXEC_SECRET):
-        yield
+def _exec_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", EXEC_SECRET)
 
 
 @pytest.fixture
@@ -133,7 +131,9 @@ class TestSandboxTokenBudgetChain:
         fake_redis: fakeredis.aioredis.FakeRedis,
     ) -> None:
         """Unit tests faked the counts; here a key mismatch between increment and limit would show."""
-        token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=600)
+        token = mint_execute_token(
+            ExecuteGrant(user_id="u1", run_id="run-1", scoped_tool_names=None), ttl_seconds=600
+        )
         auth = f"Bearer {token}"
 
         with patch(f"{SANDBOX_MODULE}.dispatch_tool", new=self._ok_dispatch()):
@@ -157,8 +157,12 @@ class TestSandboxTokenBudgetChain:
         _frozen_minute: None,
         fake_redis: fakeredis.aioredis.FakeRedis,
     ) -> None:
-        good = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=600)
-        other = mint_execute_token("u1", "run-2", scoped_tool_names=None, ttl_seconds=600)
+        good = mint_execute_token(
+            ExecuteGrant(user_id="u1", run_id="run-1", scoped_tool_names=None), ttl_seconds=600
+        )
+        other = mint_execute_token(
+            ExecuteGrant(user_id="u1", run_id="run-2", scoped_tool_names=None), ttl_seconds=600
+        )
         await fake_redis.set("sandbox_execute:calls:run-1", SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN)
         with patch(f"{SANDBOX_MODULE}.dispatch_tool", new=self._ok_dispatch()):
             with pytest.raises(AppError) as err:
@@ -182,7 +186,9 @@ class TestSandboxTokenBudgetChain:
         _frozen_minute: None,
         fake_redis: fakeredis.aioredis.FakeRedis,
     ) -> None:
-        token = mint_execute_token("u1", "run-9", scoped_tool_names=None, ttl_seconds=600)
+        token = mint_execute_token(
+            ExecuteGrant(user_id="u1", run_id="run-9", scoped_tool_names=None), ttl_seconds=600
+        )
         with (
             patch(f"{SANDBOX_MODULE}.dispatch_tool", new=self._ok_dispatch()),
             patch(f"{SANDBOX_MODULE}.log") as mocked_log,

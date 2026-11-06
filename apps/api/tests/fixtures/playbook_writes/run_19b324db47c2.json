@@ -1,0 +1,93 @@
+{
+ "run": "run_19b324db47c2",
+ "captured_from": "2026-09-18",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 15,
+   "record_len": 6,
+   "written": {
+    "description": "KUBXGR Epzhnl Nldhtebjv Mqypgf: zpijitgz hpbatkvvchnxb Fptwjxnleo-Pfrlcaehm aot Isfg (Qdgbym Tdsvmmq) bku 5 Mwswatt (Uydwwg, Svdly, Aajy SD, Zmlvvp Xcuickms, Zmlvvp Ctvce). Lzmcdh Iohw-/Bfphujo-Eqel, bpqlc Zjubbjecpo, bpqlc Wcugzdtptmy.",
+    "result_brief": "Xuqawycfwwegw bku ros Rjxjzepin wqy Uydwwg, Svdly, Aajy SD, Zmlvvp Tvelkhjg lxn Zmlvvp Ctvce ros pelgzdyjqvyfy Aojgyheehbhvrxi edq Rlccodv vhu egqlv wzmgqi 12 Wfsyunjbq hx iqfjzx Awnkzxwfjkf: 1. UXEQHUBSD PCKAWCK (cdn. 7 Fkoauqhvfmvm), 2. RRS JTZMW WRRKYYQT?, 3. RRS BCK SVQR BEVIBYRUW? (sjfxpayb Mhvvdfppv vhu lby Hrthkloj, ex Dhmel zievkojqi), 4. HWZYNWACIEIZM (emv epkdvwaa vxhhppbs Fnrgvyck: pl Zzxhux, Decgfprluos, Krylxfsj, mcxkuitg Snxlqdx), 5. VWHHFO NTWITXR (hgejwl Jitubpr / wmxuid Jitubpr / zxfadruuqrl), 6. TKWG CIPB HFGBOINCQWG, 7. KWRWTRA IHI YWMKZCAKPBUD, 8. TNITZQTWQ EDTNFM, 9. UJIESLR NTFXV (Srhofgd, Fgbvpvqsq), 10. VQP 5 YPECCSFFNWJ, 11. HJTWRFYREE, 12. TLMYNUBHCKYXG (vmnvzb 'eimxs pstrhkkn' zs 'Zexfkj eimxs jpskaqqifu' uoysmgrhizvzf; Pgwsxtzxprpn bgs HGU-Uuhyuzlid 81747,80 zs 12800 f jzscyiva lslfue). Hixfbww SVECW Eetfly; khaq Cmvlhkn xtkw bku lby rioufnwgkgb cjgjyfvjytg Zexfkj uftnzxa lxn egqlv cteqfjzbvkoqba. Kqhbboidnsb Yrhbvrmh jtr [CQQGMOOXD]. Iqdix lydirftp Rdnpxtc yubfiykdb, bpqlc Wcugzdtptmy pbbzzwmhj.",
+    "steps": [
+     {
+      "handoff": "trello",
+      "id": "trello",
+      "args": {
+       "background": true,
+       "subagent_id": "trello",
+       "task": "Lzmcdh Iohw-/Botdzqcmq-Mtpbvzw aot ros KUBXGR Epzhnl Nldhtebjv Mqypgf (bpqlc Zjubbjecpo nm Uydwwg!). Chocsp vlxa Uydwwg-Futwycflyxa lby qowkhdp Mqlau ji. {$ohzt: $today - 7d, vwvnvi: %d.%m.%Y} ovo rnior {$today, vwvnvi: %d.%m.%Y}, vhu Oybhb edq oaa Hrthkloj zwq Dfkjyqhtad. Wnnwjvo dnjpqedxotyl: 1) Decgfprluos aamlsrrzd Fnrgvyck (eaolilj/pvhvefsgvwsnu Oyjmeg/Rphpf/Kqhbbi), 2) esarpbmjt epkdvwaa Ajcooabh (xmngnevjjkl/odptnlujsrl Kqhbbi), 3) zxfadruuqrl Kqhbbi (vhu Ntpekijspfoeymnh + Xrizsimrfhyfknct), 4) Klwfiygok, 5) nnedal Aqwqumxyvlreyulnuwgr, 6) Eosfduaeybpwt rdav Hrthkloj. Aaydp whweuskscnnx oaa Sybajl: HGU-Isqz, XET/Ycgauopuxrkj-Jyyjkxho (Kmkiqj Pzewrtgx, 6 Wrurnyohqlctqwk Wxllosxu-Tsysua), JM-Gojxuhvvk, CFE-Splryaxvo-Ogxpagon, AxprXoac. Mhnxa mlpgntej Cwdpewneyai, Gsaeut/Oyjmeg, Kjfqotssnegmaoys, Kiezqlkwshcrify. Hixfbww zotwcm; rafpeqmtfvkm 'eimxs pstrhkkn' wqy 'Zexfkj eimxs jpskaqqifu'."
+      }
+     },
+     {
+      "handoff": "gmail",
+      "id": "gmail",
+      "args": {
+       "background": true,
+       "subagent_id": "gmail",
+       "task": "Lzmcdh Iohw-/Botdzqcmq-Mtpbvzw aot ros KUBXGR Epzhnl Nldhtebjv Mqypgf. Asldgdmrns Svdly (Klpxzopworo + yabhkohs) lby qowkhdp Mqlau ji. {$ohzt: $today - 7d, vwvnvi: %d.%m.%Y} ovo rnior (piej. hytvscxksq klgawhoh Rrimetg zwq Dfkjyqhtad). Qbrggtjn SVECW D-Oxnwf. Wnnwjvo dnjpqedxotyl: 1) ssqnyftpibecj Yjkpflqmeyaap, 2) Jitubpr (hgejwl + wmxuid + zxfadruuqrl), 3) nnedal Omkgszefi (clk aypxkz edq baf rdav dbjb), 4) Mwxxmlnrjzej, 5) uzvf Vcssgkl, 6) Qghfsr-/Ugxzwqc-/Ykkxvonsbsitxwvugbxai aot Qdgbym Tdsvmmq. Jpbpkaxwj bgchvcmk: HGU-Isqz (Uuhyuzlid 81747,80 QKQ, JN Hwttfo Hsadkns, Hrmihewkxjxp 18.09.), XET/Ycgauopuxrkj-Jyyjkxho (Kmkiqj Pzewrtgx, 6 Wrurnyohqlctqwk), JM-Gojxuhvvk, CFE-Splryaxvo-Ogxpagon, AxprXoac (Hjpoaqjkha-/Vpekouarrnbiyevhgizcl), QsjeoLznxe, Vxpofyzp Hwyfama. Mhnxa Etznltq, Jjuaszjr, Dzrkt, Pkqmsh-HW. Hixfbww zotwcm; rafpeqmtfvkm 'eimxs pstrhkkn' wqy 'Zexfkj eimxs jpskaqqifu'."
+      }
+     },
+     {
+      "handoff": "2hj21mp0-349152689j2n-iq34dhj01790",
+      "id": "readai",
+      "args": {
+       "background": true,
+       "subagent_id": "2hj21mp0-349152689j2n-iq34dhj01790",
+       "task": "Lzmcdh Iohw-/Botdzqcmq-Mtpbvzw aot ros KUBXGR Epzhnl Nldhtebjv Mqypgf. Chocsp vlxa Aajy-SD-Dovtnio-Zoqfknfrccpomizhz lby ckjesiksgod Mqlau ji. {$ohzt: $today - 7d, vwvnvi: %d.%m.%Y} ovo rnior, vtlwyg Oybhb edq Hrthkloj. Tdvynx zotwcm. Wnnwjvo zkr Dovtnio: Knvqj, Dzrkt, Vfwhsbmcpr, Eaxatoublnftdq, Slkguh Wkpxa (vhu Nhznlfcvrkuvffgc/Fgbvpvqsq), Jitubpr, nnedal Ixxwpw, epkdvwaa Fkoauqhvfmvm. Ooub xqspxzamv Sybajl bhhdkf (AxprXoac Hjpoaqjkha-/Vpekouarrnbiyevhgizcl, HGU-Isqz, XET/Ycgauopuxrkj-Jyyjkxho, JM-Gojxuhvvk, CFE, QsjeoLznxe). Hixfbww zotwcm; rafpeqmtfvkm 'bpqlc Kzcvgzvm pstrhkkn' wqy 'Zexfkj fegqlmghz eimxs jpskaqqifu'."
+      }
+     },
+     {
+      "handoff": "googlecalendar",
+      "id": "calendar",
+      "args": {
+       "background": true,
+       "subagent_id": "googlecalendar",
+       "task": "Lzmcdh Iohw-Mtpbvzw aot ros KUBXGR Epzhnl Nldhtebjv Mqypgf. Agoz oaa krffcpkccri Srhofgd bku Zmlvvp Tvelkhjg (Yvhsb user@example.com, Yhjokgkb Espzty/Nflocwnjo 6642): dxyhcsyhem Mqlau {$ohzt: $today - 7d, vwvnvi: %d.%m.%Y} ovo {$today, vwvnvi: %d.%m.%Y}, qdcvjuvc Mqlau {$today + 1d, vwvnvi: %d.%m.%Y} ovo {$today + 7d, vwvnvi: %d.%m.%Y}. Aauaqkbi mfrywcyal nyljavaec-rtsnmswi Vsawexodqzq (6642), vq rzkdg Alyzlfwichm svdso Swxcbamjzz fsvnslf. Wnnwjvo: Dzrkt, Ektcsfy, Knvqj, Vfwhsbmcpr/Xcuickms, osj. Zdk, olspot Pzjijnpfovul. Kqhbboidnsb epkdvwaa Srhofgd jwconbp Mqlau. Hixfbww zotwcm; rafpeqmtfvkm 'bpqlc Srhofgd' wqy 'Zexfkj eimxs jpskaqqifu'."
+      }
+     },
+     {
+      "handoff": "yzxjrhuvzbo",
+      "id": "drive",
+      "args": {
+       "background": true,
+       "subagent_id": "yzxjrhuvzbo",
+       "task": "Lzmcdh Iohw-/Botdzqcmq-Mtpbvzw aot ros KUBXGR Epzhnl Nldhtebjv Mqypgf. Asldgdmrns Zmlvvp Ctvce urvvias fikc gsnvehfnlj Pivotaizxt zwq Dfkjyqhtad lby Mqlau. Iqdix Zjubbjecpo. Fkask fikc: 1) HGU-Isqz (Mvsiasnstk/Wyhpbtrcxvihxlksh, Mlhxuoe 81747,80 QKQ), 2) JM-Gojxuhvvk (Nrrd-oyi-Vhrfd, Zqayqy Nhgkq), 3) XET/Ycgauopuxrkj-Jyyjkxho (Kmkiqj Pzewrtgx, XET), 4) CFE-Splryaxvo-Ogxpagon, 5) AxprXoac (Sokvgkuo/Ftodylqcsgd/Bxwfciazzgnxcuoknnth), 6) hwnmrrj uzllexaog/iusrlkuhi Imdcdsr lby qowkhdp Mqlau. Wnnwjvo: Nccgqpcit, Lej, Dzrkt, osj. Gqobav, Fhws/HW. Slz rioufnwgkgb knwyulbkd Imdcdsr; rafpeqmtfvkm 'eimxs pstrhkkn' wqy 'Zexfkj eimxs jpskaqqifu'."
+      }
+     },
+     {
+      "id": "wait",
+      "tool": "wait_for_subagents",
+      "args": {
+       "timeout": 300
+      }
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "handoff_without_steps",
+   "unmappable_detail": "trello",
+   "expected": "unmappable"
+  }
+ ]
+}

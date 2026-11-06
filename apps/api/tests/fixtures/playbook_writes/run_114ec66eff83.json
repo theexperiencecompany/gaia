@@ -1,0 +1,254 @@
+{
+ "run": "run_114ec66eff83",
+ "captured_from": "2026-09-05",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "get_notification_preferences"
+  },
+  {
+   "tool_name": "send_notification"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "send_notification"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 14,
+   "record_len": 4,
+   "written": {
+    "description": "Pwfjclo Zcs'n Svdly udh critical cpics-xhadefqawcbgal/security alerts, label ssjf 'Kpuyzx Mqypgf', qiq notify Zcs bg sja critical alert uc etfpq.",
+    "steps": [
+     {
+      "id": "monitor",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "wfjho_wqbg:6h",
+         "fields": [
+          "hpsorlw",
+          "evvq",
+          "nclzdvv",
+          "zbta",
+          "qjwzyvOb",
+          "lm",
+          "ohzt",
+          "oa"
+         ],
+         "body_processing": "tqoqqbhdv"
+        }
+       },
+       {
+        "id": "label",
+        "tool": "GMAIL_CREATE_LABEL",
+        "args": {
+         "label_name": "Kpuyzx Mqypgf"
+        }
+       },
+       {
+        "id": "modify",
+        "tool": "GMAIL_BATCH_MODIFY_MESSAGES",
+        "args": {
+         "messageIds": {
+          "$ask": "rxmvxeqCws yg emails ivlzzgqbwf WPQPZEYT/EFUFPWBRIWN/lfwsbxo mmgxp bjwple smpw rui"
+         },
+         "addLabelIds": [
+          "Zrojw_3"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "alert",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc",
+        "owwvyot",
+        "rtssswxe",
+        "slack",
+        "nfhtdtip"
+       ],
+       "message": {
+        "$ask": "QWVWZE alert dhkwhvuurxc lar critical dfelpkeu udh Zcs (hpsorlw, zhxqqr, dwka rxrpqy qpxlxm)"
+       },
+       "title": {
+        "$ask": "Krtkh alert pnkwu lfvesi lar critical ursyk"
+       },
+       "notification_type": "cyjbhqx"
+      }
+     }
+    ],
+    "result_brief": "Cvouqs oyi mrsx emails uign yazvuxrs (evvq lar fetch vbthf) qiq group ssjf ae kfxsfogoxeqyfs (WPQPZEYT BCBMY / UZRGAG ECKRRI QIKPXOW / LHKAHRZBFXHJDL KFPBJBBNNMFU CAICVEW / REANFOJ / EFUFPWBRIWN), cequaj zhxqqr qiq hpsorlw vls item. Apudw rfroc emails dbn lar 'Kpuyzx Mqypgf' label (rxmvxeqCws) qiq uzku nm muqgfx hyahbzzhloek eto sent (hyahbzzhloek_lm) bg sja critical/rumzphyaavp alert swgnmmb. Hx ga critical alert eto etfpq, ffq ga hyahbzzhloek qiq ga vhdvntmy eto qpxlxm. Mvh ae lfvesi lar obvuob lbomgty-aegwjeac item ovsrfcakl Zcs'n mmgxp qbaqstwssusi qiq dwka lar lmdqzkulhhl rxrpqy uc."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 15,
+   "record_len": 4,
+   "written": {
+    "description": "Pwfjclo Zcs'n Svdly udh critical cpics-xhadefqawcbgal/security alerts, label ssjf 'Kpuyzx Mqypgf', qiq notify Zcs bg sja critical alert uc etfpq.",
+    "result_brief": "Cvouqs oyi mrsx emails uign yazvuxrs (evvq lar fetch vbthf) qiq group ssjf ae kfxsfogoxeqyfs (WPQPZEYT BCBMY / UZRGAG ECKRRI QIKPXOW / LHKAHRZBFXHJDL KFPBJBBNNMFU CAICVEW / REANFOJ / EFUFPWBRIWN), cequaj zhxqqr qiq hpsorlw vls item. Apudw rfroc emails dbn lar 'Kpuyzx Mqypgf' label (rxmvxeqCws) qiq uzku nm muqgfx hyahbzzhloek eto sent bg sja critical/rumzphyaavp alert swgnmmb. Hx ga critical alert eto etfpq, ffq ga hyahbzzhloek qiq ga vhdvntmy eto qpxlxm. Mvh ae lfvesi lar obvuob lbomgty-aegwjeac item ovsrfcakl Zcs'n mmgxp qbaqstwssusi qiq dwka lar lmdqzkulhhl rxrpqy uc.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "monitor",
+      "steps": [
+       {
+        "args": {
+         "body_processing": "tqoqqbhdv",
+         "fields": [
+          "hpsorlw",
+          "evvq",
+          "nclzdvv",
+          "zbta",
+          "qjwzyvOb",
+          "lm",
+          "ohzt",
+          "oa"
+         ],
+         "query": "wfjho_wqbg:6h"
+        },
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "label_name": "Kpuyzx Mqypgf"
+        },
+        "id": "label",
+        "tool": "GMAIL_CREATE_LABEL"
+       },
+       {
+        "args": {
+         "addLabelIds": [
+          "Zrojw_3"
+         ],
+         "messageIds": {
+          "$ask": "rxmvxeqCws yg emails ivlzzgqbwf WPQPZEYT/EFUFPWBRIWN/lfwsbxo mmgxp bjwple smpw rui"
+         }
+        },
+        "id": "modify",
+        "tool": "GMAIL_BATCH_MODIFY_MESSAGES"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc",
+        "owwvyot",
+        "rtssswxe",
+        "slack",
+        "nfhtdtip"
+       ],
+       "message": {
+        "$ask": "QWVWZE alert dhkwhvuurxc lar critical dfelpkeu udh Zcs (hpsorlw, zhxqqr, dwka rxrpqy qpxlxm)"
+       },
+       "notification_type": null,
+       "title": {
+        "$ask": "Krtkh alert pnkwu lfvesi lar critical ursyk"
+       }
+      },
+      "id": "alert",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 16,
+   "record_len": 4,
+   "written": {
+    "description": "Pwfjclo Zcs'n Svdly udh critical cpics-xhadefqawcbgal/security alerts, label ssjf 'Kpuyzx Mqypgf', qiq notify Zcs bg sja critical alert uc etfpq.",
+    "result_brief": "Cvouqs oyi mrsx emails uign yazvuxrs (evvq lar fetch vbthf) qiq group ssjf ae kfxsfogoxeqyfs (WPQPZEYT BCBMY / UZRGAG ECKRRI QIKPXOW / LHKAHRZBFXHJDL KFPBJBBNNMFU CAICVEW / REANFOJ / EFUFPWBRIWN), cequaj zhxqqr qiq hpsorlw vls item. Apudw rfroc emails dbn lar 'Kpuyzx Mqypgf' label (rxmvxeqCws) qiq uzku nm muqgfx hyahbzzhloek eto sent bg sja critical/rumzphyaavp alert swgnmmb. Hx ga critical alert eto etfpq, ffq ga hyahbzzhloek qiq ga vhdvntmy eto qpxlxm. Mvh ae lfvesi lar obvuob lbomgty-aegwjeac item ovsrfcakl Zcs'n mmgxp qbaqstwssusi qiq dwka lar lmdqzkulhhl rxrpqy uc.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "monitor",
+      "steps": [
+       {
+        "args": {
+         "body_processing": "tqoqqbhdv",
+         "fields": [
+          "hpsorlw",
+          "evvq",
+          "nclzdvv",
+          "zbta",
+          "qjwzyvOb",
+          "lm",
+          "ohzt",
+          "oa"
+         ],
+         "query": "wfjho_wqbg:6h"
+        },
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "label_name": "Kpuyzx Mqypgf"
+        },
+        "id": "label",
+        "tool": "GMAIL_CREATE_LABEL"
+       },
+       {
+        "args": {
+         "addLabelIds": [
+          "Zrojw_3"
+         ],
+         "messageIds": {
+          "$ask": "rxmvxeqCws yg emails ivlzzgqbwf WPQPZEYT/EFUFPWBRIWN/lfwsbxo mmgxp bjwple smpw rui"
+         }
+        },
+        "id": "modify",
+        "tool": "GMAIL_BATCH_MODIFY_MESSAGES"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc",
+        "owwvyot",
+        "rtssswxe",
+        "slack",
+        "nfhtdtip"
+       ],
+       "message": {
+        "$ask": "QWVWZE alert dhkwhvuurxc lar critical dfelpkeu udh Zcs (hpsorlw, zhxqqr, dwka rxrpqy qpxlxm)"
+       },
+       "title": {
+        "$ask": "Krtkh alert pnkwu lfvesi lar critical ursyk"
+       }
+      },
+      "id": "alert",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -16,6 +16,7 @@ from app.agents.tools.core.registry import (
     ToolRegistry,
 )
 from app.config.settings import settings
+from app.constants.agents import PLAYBOOK_TOOL_NAMES
 from shared.py.wide_events import log
 
 
@@ -947,12 +948,13 @@ class TestInitializeCategories:
                 f"{tool_name} must stay in the {category!r} category"
             )
 
-    def test_the_playbook_category_holds_exactly_its_four_tools(
+    def test_the_playbook_category_holds_exactly_the_playbook_tools(
         self, registry: ToolRegistry
     ) -> None:
         names = {tool.name for tool in registry._categories["playbooks"].tools}
 
-        assert names == {"write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
+        assert names == PLAYBOOK_TOOL_NAMES
+        assert "read_run_record" in names
 
     def test_playbook_tools_are_curated_as_non_destructive(self, registry: ToolRegistry) -> None:
         """None sends a tool to the LLM risk classifier; an explicit empty set means curated non-destructive — writing a playbook has no side effect on user data, so it must be the latter."""

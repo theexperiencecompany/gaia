@@ -9,6 +9,7 @@ path the tool's recorded result lacks, an unresolvable $steps / $trigger
 
 from datetime import datetime
 import re
+import time
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -47,7 +48,7 @@ def _context(
     steps: dict[str, StepResult] | None = None,
     trigger: dict[str, object] | None = None,
     last_run: dict[str, object] | None = None,
-    asks: dict[str, str] | None = None,
+    asks: AskAnswers | None = None,
     user: PlaybookUser | None = None,
     now: datetime = NOW,
 ) -> RunContext:
@@ -57,7 +58,7 @@ def _context(
         trigger=trigger or {},
         steps=steps or {},
         last_run=last_run or {},
-        asks=asks or {},
+        asks=asks if asks is not None else AskAnswers(),
     )
 
 
@@ -144,7 +145,7 @@ def test_a_field_the_current_element_lacks_is_refused_naming_the_element() -> No
         trigger={},
         steps={},
         last_run={},
-        asks={},
+        asks=AskAnswers(),
         item={"id": "m1"},
     )
     with pytest.raises(PlaceholderError) as caught:
@@ -163,7 +164,7 @@ def test_a_field_of_the_current_element_is_read_from_it() -> None:
         trigger={},
         steps={},
         last_run={},
-        asks={},
+        asks=AskAnswers(),
         item={"id": "m1", "title": "Renew passport"},
     )
     assert resolve_value("$item.title", context) == "Renew passport"
@@ -189,6 +190,21 @@ def test_a_time_slot_that_is_not_a_time_is_refused_with_the_grammar() -> None:
     assert caught.value.message == "tomorrow is not a time placeholder"
     assert caught.value.why == "$time takes $now or $today with an optional offset and clock"
     assert caught.value.fix == "write the time as $today + 1d 09:00 or similar"
+
+
+@pytest.mark.parametrize("host_zone", ["UTC", "Asia/Kolkata"])
+def test_a_layout_ending_in_z_is_rendered_in_utc(
+    host_zone: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A trailing Z says UTC; the user's own clock, or the host's, with a Z on it is a different instant."""
+    monkeypatch.setenv("TZ", host_zone)
+    time.tzset()
+    slot = TimeSlot.model_validate({"$time": "$now", "format": "%Y-%m-%dT%H:%M:%SZ"})
+    try:
+        assert _render_time_slot(slot, NOW) == "2026-03-14T08:30:00Z"
+    finally:
+        monkeypatch.undo()
+        time.tzset()
 
 
 def test_a_clock_makes_a_date_an_instant() -> None:
@@ -536,7 +552,7 @@ def test_a_slot_that_reached_resolution_unfilled_stops_the_run() -> None:
 
 def test_dollar_ask_in_a_string_is_literal_text_not_a_placeholder() -> None:
     """$ask left the placeholder vocabulary when asks moved inline, so $ask.body in a string is literal text, not a token."""
-    context = _context(asks={"mail.body": "Here is your digest."})
+    context = _context(asks=_answers({"mail.body": "Here is your digest."}))
     assert resolve_value("$ask.body", context) == "$ask.body"
     assert resolve_value("Sent $ask.body today", context) == "Sent $ask.body today"
 
@@ -600,6 +616,7 @@ def test_embedded_value_that_is_not_json_serialisable_still_renders() -> None:
     """A trigger payload can carry a datetime; rendering it must not blow up the run with a TypeError."""
     context = _context(trigger={"when": NOW})
     resolved = resolve_value("due $trigger.when", context)
+    assert isinstance(resolved, str)
     assert "2026-03-14 09:30:00+01:00" in resolved
 
 
