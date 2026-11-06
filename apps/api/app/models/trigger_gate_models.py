@@ -67,14 +67,11 @@ class _StoredGate(BaseModel):
         return self.kind in ENFORCED_GATE_KINDS
 
     @model_validator(mode="after")
-    def _count_kept_skips(self) -> Self:
-        # A gate stored before the count existed holds its skips and no count: they are its count.
-        if "skipped_count" in self.model_fields_set:
-            return self
-        return self.model_copy(update={"skipped_count": len(self.recent_skips)})
-
-    @model_validator(mode="after")
     def _persist_defaults(self) -> Self:
+        # A gate stored before the count existed holds its skips and no count: they are its
+        # count. Frozen, so set in place; a copy returned here would drop the fields set below.
+        if "skipped_count" not in self.model_fields_set:
+            self.__dict__["skipped_count"] = len(self.recent_skips)
         # Owners are written with exclude_unset, which recurses: a defaulted kind
         # left unset is dropped, and the stored gate no longer loads.
         self.__pydantic_fields_set__.update(type(self).model_fields.keys())
