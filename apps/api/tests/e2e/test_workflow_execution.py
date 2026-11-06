@@ -40,6 +40,7 @@ from app.db.repositories.workflows import workflow_repository
 from app.models.agent_models import SilentRunResult
 from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import (
+    RecordedCall,
     WorkflowExecutionDocument,
     WorkflowExecutionUpdate,
 )
@@ -571,15 +572,18 @@ class TestWorkflowExecutionFailurePropagation:
         """
 
         completed: list[str] = []
+        recorded: list[RecordedCall] = []
 
         async def _run_steps(request, conversation_id, user, options=None):
             tool_data: list[dict[str, object]] = []
+            recorded.clear()
             for step in request.selectedWorkflow.steps:
                 if step.title == failing_step_title:
                     raise RuntimeError(
                         f"Step '{step.title}' failed: Gmail API returned 503 Service Unavailable"
                     )
                 completed.append(step.title)
+                recorded.append(RecordedCall(tool_name=step.title, args={"step_id": step.id}))
                 tool_data.append(
                     {
                         "tool_name": "tool_calls_data",
@@ -590,9 +594,16 @@ class TestWorkflowExecutionFailurePropagation:
                         },
                     }
                 )
-            return SilentRunResult(message="", tool_data=tool_data)
+            return SilentRunResult(message="", tool_data=tool_data, stream_id="stream-e2e-stepwise")
 
         monkeypatch.setattr(agent_module, "call_agent_silent", _run_steps)
+        # The record is written by the invocation layer inside the real run; the
+        # stand-in seeds it, so the run trace still reads back what it did.
+        monkeypatch.setattr(
+            workflow_tasks,
+            "read_run_record",
+            AsyncMock(side_effect=lambda _stream_id: list(recorded)),
+        )
         return completed
 
     async def test_step_failure_records_a_failed_execution_naming_the_step(
