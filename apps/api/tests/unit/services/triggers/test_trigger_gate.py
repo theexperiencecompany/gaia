@@ -258,7 +258,7 @@ class TestTheSkipLine:
         assert skip.reason == f'Not a match for "{BILLING}" (95% sure).'
         workflow_id, user_id, record = seams.workflow_skip.await_args.args
         assert (workflow_id, user_id) == (OWNER_ID, USER_ID)
-        assert (record.event, record.reason) == (skip.event, skip.reason)
+        assert (record.event, record.reason, record.at) == (skip.event, skip.reason, AFTERNOON)
         seams.todo_skip.assert_not_awaited()
 
     async def test_just_under_the_line_runs(self, seams: SimpleNamespace) -> None:

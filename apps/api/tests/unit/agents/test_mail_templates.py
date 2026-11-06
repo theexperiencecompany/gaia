@@ -22,6 +22,7 @@ from app.agents.templates.mail_templates import (
     project_message_view,
     thread_template,
 )
+from app.constants.desk_buckets import DeskBucket
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
     GmailMessagePart,
@@ -645,6 +646,13 @@ class TestFetchedMessageView:
 
         assert "body" not in project_message_view(view, None)
         assert project_message_view(view, ["body", "id"]) == {"id": "msg_001"}
+
+    def test_a_desk_bucket_rides_on_every_projection_and_only_when_set(self) -> None:
+        bucketed = _fetched_view("none").model_copy(update={"bucket": DeskBucket.ACT})
+
+        assert project_message_view(bucketed, ["id"]) == {"id": "msg_001", "bucket": "act"}
+        assert project_message_view(bucketed, None)["bucket"] == "act"
+        assert "bucket" not in project_message_view(_fetched_view("none"), ["id"])
 
 
 # ---------------------------------------------------------------------------

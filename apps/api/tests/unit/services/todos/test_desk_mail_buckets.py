@@ -1,5 +1,6 @@
 """The Inbox desk's own fetches come back bucketed by one JEV call per email; any other run's mail is untouched."""
 
+import asyncio
 from collections.abc import Iterator
 import json
 from types import SimpleNamespace
@@ -8,8 +9,13 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from app.constants.desk_buckets import DESK_BUCKET_CRITERIA, DESK_BUCKET_QUESTION_KEY, DeskBucket
-from app.constants.trigger_gates import SystemGatePreset
+from app.constants.desk_buckets import (
+    DESK_BUCKET_CRITERIA,
+    DESK_BUCKET_INSTRUCTIONS,
+    DESK_BUCKET_QUESTION_KEY,
+    DeskBucket,
+)
+from app.constants.trigger_gates import SYSTEM_GATE_PRESETS, SystemGatePreset
 from app.models.composio_schemas.gmail import GmailMessageView
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.trigger_gate_models import SystemGate
@@ -130,6 +136,10 @@ async def test_jev_is_asked_one_choice_among_the_five_buckets(seams: SimpleNames
     (question,) = sent["questions"].values()
     assert list(sent["questions"]) == [DESK_BUCKET_QUESTION_KEY]
     assert question["type"] == "choice"
+    assert question["instructions"] == DESK_BUCKET_INSTRUCTIONS
+    assert (
+        sent["state"]["automation"] == SYSTEM_GATE_PRESETS[SystemGatePreset.INBOX_DESK].automation
+    )
     assert list(question["criteria"]) == [bucket.value for bucket in DeskBucket]
     assert question["criteria"] == {b.value: t for b, t in DESK_BUCKET_CRITERIA.items()}
     assert sent["state"]["event"]["subject"] == DECLINED
@@ -198,3 +208,75 @@ async def test_a_less_sure_answer_of_any_other_bucket_still_stands(
     (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, DECLINED)])
 
     assert view.bucket is DeskBucket.ACT
+
+
+@pytest.mark.parametrize(
+    "probabilities",
+    [{"fyi": 0.6}, None],
+    ids=["no-junk-probability", "no-probabilities"],
+)
+async def test_a_junk_answer_without_its_own_probability_is_left_unbucketed(
+    seams: SimpleNamespace, probabilities: dict[str, float] | None
+) -> None:
+    answer = {"type": "choice", "choice": "junk", "probabilities": probabilities}
+    seams.jev.mock(
+        return_value=httpx.Response(200, json={"answers": {DESK_BUCKET_QUESTION_KEY: answer}})
+    )
+
+    (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, NEWSLETTER)])
+
+    assert view.bucket is None
+
+
+async def test_a_failed_bucket_call_is_logged_with_why(seams: SimpleNamespace) -> None:
+    seams.jev.mock(return_value=_bucket("not_a_bucket"))
+
+    with patch(f"{MODULE}.log") as log:
+        (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, DECLINED)])
+
+    assert view.bucket is None
+    log.warning.assert_called_once_with(
+        "desk_bucket.jev_failed",
+        reason="jev_malformed",
+        error="unknown JEV bucket choice: 'not_a_bucket'",
+        error_type="ValueError",
+    )
+
+
+async def test_a_long_error_is_logged_clipped(seams: SimpleNamespace) -> None:
+    seams.jev.mock(side_effect=httpx.ConnectError("x" * 400))
+
+    with patch(f"{MODULE}.log") as log:
+        await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, DECLINED)])
+
+    assert log.warning.call_args.kwargs["error"] == "x" * 300
+
+
+async def test_no_openrouter_key_leaves_the_mail_unbucketed_without_a_warning(
+    seams: SimpleNamespace,
+) -> None:
+    with (
+        patch("app.services.hil.jev_client.resolve", AsyncMock(return_value=None)),
+        patch(f"{MODULE}.log") as log,
+    ):
+        (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, DECLINED)])
+
+    assert view.bucket is None
+    log.warning.assert_not_called()
+
+
+async def test_an_answer_slower_than_the_budget_leaves_the_mail_unbucketed(
+    seams: SimpleNamespace,
+) -> None:
+    async def never_answers(*_: object, **__: object) -> None:
+        await asyncio.Event().wait()
+
+    with (
+        patch(f"{MODULE}.DESK_BUCKET_JEV_TIMEOUT_SECONDS", 0.01),
+        patch(f"{MODULE}.post_decisions", never_answers),
+        patch(f"{MODULE}.log") as log,
+    ):
+        (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, DECLINED)])
+
+    assert view.bucket is None
+    assert log.warning.call_args.kwargs["reason"] == "jev_timeout"

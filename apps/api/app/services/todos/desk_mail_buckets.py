@@ -57,8 +57,8 @@ def read_bucket(body: JevDecisionsResponse) -> DeskBucket | None:
     """Return JEV's bucket, None for a junk under the line; raise ValueError for a choice never offered."""
     answer = body.choice(DESK_BUCKET_QUESTION_KEY, _BUCKET_LABELS, label="bucket ")
     bucket = DeskBucket(answer.choice)
-    p_junk = (answer.probabilities or {}).get(DeskBucket.JUNK, 0.0)
-    if bucket is DeskBucket.JUNK and p_junk < DESK_BUCKET_JUNK_PROBABILITY:
+    p_junk = (answer.probabilities or {}).get(DeskBucket.JUNK)
+    if bucket is DeskBucket.JUNK and (p_junk is None or p_junk < DESK_BUCKET_JUNK_PROBABILITY):
         return None
     return bucket
 
@@ -107,8 +107,8 @@ async def desk_bucketed_views(
     """Return views in order, each carrying its bucket; unchanged when todo_id is no desk with its gate on."""
     if not _buckets_on(await todo_repository.get(todo_id, user_id=user_id)):
         return views
-    buckets = await asyncio.gather(*(_ask_bucket(view) for view in views))
-    return [
-        view.model_copy(update={"bucket": bucket})
-        for view, bucket in zip(views, buckets, strict=True)
-    ]
+    return list(await asyncio.gather(*(_bucketed(view) for view in views)))
+
+
+async def _bucketed(view: GmailMessageView) -> GmailMessageView:
+    return view.model_copy(update={"bucket": await _ask_bucket(view)})
