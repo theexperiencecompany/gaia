@@ -17,16 +17,13 @@ from pydantic import Field, TypeAdapter, ValidationError, v1
 import pytest
 import yaml
 
-from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
 from app.agents.tools.execute.execute_tool import execute
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.playbook_models import (
     ForEachStep,
     PlaybookBody,
     PlaybookStep,
-    PlaybookStepInput,
     ToolStep,
-    playbook_body_from_input,
 )
 from app.services.workflow.playbook.parser import (
     PlaybookValidation,
@@ -150,51 +147,6 @@ class TestValidatePlaybook:
             result = await validate_playbook(body)
         assert result.valid is True
         assert result.issues == []
-
-    async def test_an_arg_carrying_the_records_cut_marker_is_refused(self) -> None:
-        """Dead until ensure_ascii=False: json.dumps escaped the marker ellipsis to \\u2026, so the containment check never fired."""
-        body = _body(
-            f"""
-description: Copied from the record
-steps:
-  - id: one
-    tool: list_events
-    args: {{"calendar_id": "primary", "query": "newsletters {ARG_TRUNCATION_MARKER}"}}
-result_brief: x
-"""
-        )
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
-
-        assert [issue.problem for issue in result.issues] == [
-            "'query' was cut short in the call record; pass the full value "
-            "you actually sent, not the recorded stub"
-        ]
-
-    async def test_a_cut_arg_does_not_stop_the_rest_of_the_args_being_checked(self) -> None:
-        """One stubbed arg must not silence the report on its siblings."""
-        from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
-
-        body = _body(
-            f"""
-description: Copied from the record
-steps:
-  - id: one
-    tool: list_events
-    args:
-      calendar_id: primary
-      query: "newsletters {ARG_TRUNCATION_MARKER}"
-      bogus: "x"
-result_brief: x
-"""
-        )
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
-
-        problems = sorted(issue.problem for issue in result.issues)
-        assert len(problems) == 2
-        assert problems[0].startswith("'query' was cut short in the call record")
-        assert problems[1].startswith("list_events takes no arg 'bogus'")
 
     async def test_a_shapeless_step_does_not_stop_its_siblings_being_checked(self) -> None:
         """Uses model_construct to conjure a step with an empty tool name, which the variants themselves refuse to construct."""
@@ -1112,9 +1064,9 @@ result_brief: x
         assert result.issues == []
 
 
-def _call(tool_name: str, args: dict[str, Any], result: object) -> RecordedResult:
-    """One call as the authoring run made it, with what came back."""
-    return RecordedResult(tool_name=tool_name, args=args, result=result)
+def _source(args: dict[str, Any], result: object) -> RecordedResult:
+    """Record the call one tool step was built from, with what came back."""
+    return RecordedResult(args=args, result=result)
 
 
 @pytest.mark.unit
@@ -1126,114 +1078,6 @@ class TestValidateAgainstTheRunThatIsWritingIt:
     were frozen from calls that came back empty. The run had every answer in
     hand at write time, and nothing looked at it.
     """
-
-    async def test_a_step_is_matched_to_the_call_whose_literal_args_agree(self) -> None:
-        """A tool called twice left two results; matching the wrong one refuses the playbook for an emptiness belonging to the other call."""
-        body = _body(
-            """
-description: Read the work calendar
-steps:
-  - id: agenda
-    tool: list_events
-    args:
-      calendar_id: work
-result_brief: x
-"""
-        )
-        results = [
-            _call("list_events", {"calendar_id": "work"}, {"events": [{"id": "e1"}]}),
-            _call("list_events", {"calendar_id": "primary"}, {"events": []}),
-        ]
-
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, results)
-
-        assert result.issues == []
-
-    async def test_a_non_string_arg_picks_the_call_that_used_that_value(self) -> None:
-        """Numbers agree by equality like anything else; matched to the wrong call, the step is refused for a run's emptiness it never froze."""
-        body = _body(
-            """
-description: Mail with two retries
-steps:
-  - id: mail
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: hi
-      retries: 2
-result_brief: x
-"""
-        )
-        results = [
-            _call(
-                "send_email",
-                {"to": "a@b.com", "subject": "hi", "retries": 2},
-                {"sent": [{"id": "1"}]},
-            ),
-            _call("send_email", {"to": "a@b.com", "subject": "hi", "retries": 5}, {"sent": []}),
-        ]
-
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, results)
-
-        assert result.issues == []
-
-    async def test_an_arg_holding_a_placeholder_matches_any_recorded_value(self) -> None:
-        """A placeholder has no value until replay, so it cannot disagree with a recorded arg; treated as a literal it would match no call."""
-        body = _body(
-            """
-description: Mail the digest
-steps:
-  - id: mail
-    tool: send_email
-    args:
-      to: $user.email
-      subject: one
-result_brief: x
-"""
-        )
-        results = [
-            _call("send_email", {"to": "a@b.com", "subject": "one"}, {"sent": [{"id": "1"}]}),
-            _call("send_email", {"to": "z@z.com", "subject": "two"}, {"sent": []}),
-        ]
-
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, results)
-
-        assert result.issues == []
-
-    async def test_a_step_agreeing_with_no_call_is_refused_with_the_args_that_did_run(
-        self,
-    ) -> None:
-        """Handing an unmatched step the run's last call anyway used to validate that call's result as the step's own; the refusal names the args that actually ran."""
-        body = _body(
-            """
-description: Read a third calendar
-steps:
-  - id: agenda
-    tool: list_events
-    args:
-      calendar_id: other
-result_brief: x
-"""
-        )
-        results = [
-            _call("list_events", {"calendar_id": "work"}, {"events": [{"id": "e1"}]}),
-            _call("list_events", {"calendar_id": "primary"}, {"events": []}),
-        ]
-
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, results)
-
-        assert [(issue.where, issue.problem) for issue in result.issues] == [
-            (
-                "steps[0]",
-                "list_events ran 2 time(s) in this run, but never with these args (the last "
-                'call used {"calendar_id": "primary"}); freeze the call that ran, with the '
-                "args that produced its result, or run it with these args",
-            )
-        ]
 
     @pytest.mark.regression
     async def test_an_execute_step_matches_its_call_whatever_card_label_it_carries(self) -> None:
@@ -1253,8 +1097,7 @@ result_brief: x
         )
         sent = {"timeframe": "1d", "query": "in:inbox"}
         results = [
-            _call(
-                "execute",
+            _source(
                 {
                     "task_description": "Fetching last 24h inbox emails for triage",
                     "tool_name": "GMAIL_FETCH_MESSAGES",
@@ -1286,8 +1129,7 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "execute",
+            _source(
                 {
                     "task_description": "Fetching mail",
                     "tool_name": "GMAIL_FETCH_MESSAGES",
@@ -1315,261 +1157,13 @@ steps:
 result_brief: x
 """
         )
-        results = [_call("post_raw", {"data": '{"a": 1}'}, {"posted": [{"id": "p1"}]})]
+        results = [_source({"data": '{"a": 1}'}, {"posted": [{"id": "p1"}]})]
         registry = _schema_registry(post_raw={"data": {"type": "string"}})
 
         with patch(f"{MODULE}.get_tool_registry", return_value=registry):
             result = await validate_playbook(body, results)
 
         assert result.issues == []
-
-    async def test_an_execute_step_with_other_data_is_still_refused(self) -> None:
-        body = _body(
-            """
-description: Daily inbox triage
-steps:
-  - id: inbox
-    tool: execute
-    args:
-      task_description: Fetching mail
-      tool_name: GMAIL_FETCH_MESSAGES
-      data: {timeframe: 7d}
-result_brief: x
-"""
-        )
-        results = [
-            _call(
-                "execute",
-                {
-                    "task_description": "Fetching mail",
-                    "tool_name": "GMAIL_FETCH_MESSAGES",
-                    "data": {"timeframe": "1d"},
-                },
-                {"messages": [{"id": "m1"}]},
-            )
-        ]
-
-        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
-            result = await validate_playbook(body, results)
-
-        assert [issue.problem.split(" (")[0] for issue in result.issues] == [
-            "execute ran 1 time(s) in this run, but never with these args"
-        ]
-
-    async def test_the_refusal_shows_the_args_of_the_last_call_still_unfrozen(self) -> None:
-        """Of four calls, one already frozen by an earlier step, the refusal must show the run's last still-unfrozen attempt."""
-        body = _body(
-            """
-description: Freeze the work calendar, then a calendar nobody read
-steps:
-  - id: work
-    tool: list_events
-    args:
-      calendar_id: work
-  - id: other
-    tool: list_events
-    args:
-      calendar_id: other
-result_brief: x
-"""
-        )
-        results = [
-            _call("list_events", {"calendar_id": "work"}, {"events": [{"id": "e1"}]}),
-            _call("list_events", {"calendar_id": "primary"}, {"events": [{"id": "e2"}]}),
-            _call("list_events", {"calendar_id": "shared"}, {"events": [{"id": "e3"}]}),
-            _call("list_events", {"calendar_id": "personal"}, {"events": [{"id": "e4"}]}),
-        ]
-
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, results)
-
-        assert [(issue.where, issue.problem) for issue in result.issues] == [
-            (
-                "steps[1]",
-                "list_events ran 4 time(s) in this run, but never with these args (the last "
-                'call used {"calendar_id": "personal"}); freeze the call that ran, with the '
-                "args that produced its result, or run it with these args",
-            )
-        ]
-
-    async def test_a_literal_nested_beside_a_placeholder_still_picks_the_call(self) -> None:
-        """Treating a structured arg as a wildcard because it holds a placeholder would match the wrong call and refuse on the wrong emptiness."""
-        body = _body(
-            """
-description: Read the inbox
-steps:
-  - id: mail
-    tool: search_mail
-    args:
-      filters:
-        label: INBOX
-        after: $today
-result_brief: x
-"""
-        )
-        results = [
-            _call(
-                "search_mail",
-                {"filters": {"label": "INBOX", "after": "2026-09-01"}},
-                {"messages": [{"id": "m1"}]},
-            ),
-            _call(
-                "search_mail",
-                {"filters": {"label": "SPAM", "after": "2026-09-01"}},
-                {"messages": []},
-            ),
-        ]
-
-        registry = _schema_registry(search_mail={"filters": {"type": "object"}})
-        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
-            result = await validate_playbook(body, results)
-
-        assert result.issues == []
-
-    async def test_a_key_the_recorded_call_lacks_disagrees_with_it(self) -> None:
-        """An arg the step names but the recorded call omits is a disagreement, not something to shrug at."""
-        body = _body(
-            """
-description: Read the inbox
-steps:
-  - id: mail
-    tool: search_mail
-    args:
-      filters:
-        label: INBOX
-        after: $today
-result_brief: x
-"""
-        )
-        results = [
-            _call(
-                "search_mail",
-                {"filters": {"label": "INBOX", "after": "2026-09-01"}},
-                {"messages": [{"id": "m1"}]},
-            ),
-            _call("search_mail", {"filters": {"after": "2026-09-01"}}, {"messages": []}),
-        ]
-
-        registry = _schema_registry(search_mail={"filters": {"type": "object"}})
-        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
-            result = await validate_playbook(body, results)
-
-        assert result.issues == []
-
-    async def test_an_ask_slot_nested_in_an_arg_matches_any_recorded_value(self) -> None:
-        """An $ask slot has no value yet, so it agrees with whatever sat in that position, while the literal beside it still picks the call."""
-        body = _body(
-            """
-description: Read the inbox
-steps:
-  - id: mail
-    tool: search_mail
-    args:
-      filters:
-        label: INBOX
-        after:
-          $ask: Which day to read from
-result_brief: x
-"""
-        )
-        results = [
-            _call(
-                "search_mail",
-                {"filters": {"label": "INBOX", "after": "2026-09-01"}},
-                {"messages": [{"id": "m1"}]},
-            ),
-            _call(
-                "search_mail",
-                {"filters": {"label": "SPAM", "after": "2026-08-01"}},
-                {"messages": []},
-            ),
-        ]
-
-        registry = _schema_registry(search_mail={"filters": {"type": "object"}})
-        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
-            result = await validate_playbook(body, results)
-
-        assert result.issues == []
-
-    async def test_a_list_arg_agrees_at_its_own_length_only(self) -> None:
-        """A placeholder element stands for one value, not for any length, so a recorded list of another length is a different call."""
-        body = _body(
-            """
-description: Tag the inbox
-steps:
-  - id: tagged
-    tool: tag_mail
-    args:
-      labels:
-        - INBOX
-        - $today
-result_brief: x
-"""
-        )
-        results = [
-            _call("tag_mail", {"labels": ["INBOX", "2026-09-01"]}, {"tagged": [{"id": "m1"}]}),
-            _call("tag_mail", {"labels": ["INBOX", "2026-09-01", "SPAM"]}, {"tagged": []}),
-        ]
-
-        registry = _schema_registry(tag_mail={"labels": {"type": "array"}})
-        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
-            result = await validate_playbook(body, results)
-
-        assert result.issues == []
-
-    async def test_a_key_the_step_left_out_does_not_break_agreement(self) -> None:
-        """A recorded key the step never mentions, such as a tool-filled default, cannot be evidence that this is some other call."""
-        body = _body(
-            """
-description: Read the inbox
-steps:
-  - id: mail
-    tool: search_mail
-    args:
-      filters:
-        label: INBOX
-result_brief: x
-"""
-        )
-        results = [
-            _call(
-                "search_mail",
-                {"filters": {"label": "INBOX", "after": "2026-09-01"}},
-                {"messages": [{"id": "m1"}]},
-            ),
-            _call("search_mail", {"filters": {"label": "SPAM"}}, {"messages": []}),
-        ]
-
-        registry = _schema_registry(search_mail={"filters": {"type": "object"}})
-        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
-            result = await validate_playbook(body, results)
-
-        assert result.issues == []
-
-    async def test_a_tool_the_run_never_called_is_refused(self) -> None:
-        """A step for a tool this run never touched was invented; its args have never been proven to work."""
-        body = _body(
-            """
-description: Mail an agenda that was never mailed
-steps:
-  - id: mail
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: hi
-result_brief: x
-"""
-        )
-        results = [_call("list_events", {"calendar_id": "primary"}, {"events": [{"id": "e1"}]})]
-
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, results)
-
-        assert [issue.where for issue in result.issues] == ["steps[0]"]
-        assert result.issues[0].problem == (
-            "send_email did not run in this run; a playbook freezes calls that ran and "
-            "produced their result — run it, or drop the step"
-        )
 
     async def test_a_call_that_returned_no_items_is_refused(self) -> None:
         """Seen live: two production playbooks froze a zero-item call and were marked SUSPECT one fire later; the list is nested under an envelope."""
@@ -1584,7 +1178,7 @@ steps:
 result_brief: x
 """
         )
-        results = [_call("list_events", {"calendar_id": "primary"}, {"data": {"events": []}})]
+        results = [_source({"calendar_id": "primary"}, {"data": {"events": []}})]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -1610,8 +1204,7 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "send_email",
+            _source(
                 {"to": "a@b.com", "subject": "hi"},
                 {"success": False, "error": "Gmail token expired"},
             )
@@ -1650,7 +1243,7 @@ steps:
 result_brief: x
 """
         )
-        results = [_call("send_email", {"to": "a@b.com", "subject": "hi"}, envelope)]
+        results = [_source({"to": "a@b.com", "subject": "hi"}, envelope)]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -1675,8 +1268,7 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "list_events",
+            _source(
                 {"calendar_id": "primary", "query": "café ☕", "after": datetime(2026, 9, 1)},
                 {"events": []},
             )
@@ -1714,9 +1306,7 @@ steps:
 result_brief: x
 """
         )
-        results = [
-            _call("list_events", {"calendar_id": "primary", "q": "x" * filler}, {"events": []})
-        ]
+        results = [_source({"calendar_id": "primary", "q": "x" * filler}, {"events": []})]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -1745,12 +1335,11 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "list_events",
+            _source(
                 {"calendar_id": "primary"},
                 {"messages": [{"id": "m1"}], "nextPage": "abc"},
             ),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _source({"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1792,8 +1381,8 @@ result_brief: x
         )
         wide = {f"k{i:02d}": i for i in range(key_count)}
         results = [
-            _call("list_events", {"calendar_id": "primary"}, wide),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _source({"calendar_id": "primary"}, wide),
+            _source({"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1828,39 +1417,6 @@ result_brief: x
             )
         ]
 
-    async def test_a_call_the_run_made_once_cannot_be_frozen_twice(self) -> None:
-        """Two steps matching one recorded call used to both freeze it, replaying the send twice; the refusal must say how many times it really ran."""
-        body = _body(
-            """
-description: The same mail, listed twice
-steps:
-  - id: first
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: hi
-  - id: again
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: hi
-result_brief: x
-"""
-        )
-        results = [_call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]})]
-
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, results)
-
-        assert [(issue.where, issue.problem) for issue in result.issues] == [
-            (
-                "steps[1]",
-                "send_email ran 1 time(s) in this run and earlier steps froze every one of "
-                "them; a step cannot replay a call the run did not make — drop this step, "
-                "or run it again",
-            )
-        ]
-
     async def test_an_item_field_is_checked_against_the_listed_elements(self) -> None:
         """Seen live (D2): a for_each over elements carrying id, written with a field they do not have."""
         body = _body(
@@ -1882,12 +1438,11 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "list_events",
+            _source(
                 {"calendar_id": "primary"},
                 {"events": [{"id": "e1", "title": "standup"}]},
             ),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, "sent"),
+            _source({"to": "a@b.com", "subject": "hi"}, "sent"),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1899,41 +1454,6 @@ result_brief: x
                 "$item.email is not in the current for_each element; its result has keys: id, title",
             )
         ]
-
-    async def test_a_tool_the_run_called_twice_can_be_frozen_twice(self) -> None:
-        """A run that genuinely made the call twice left two records; two steps may each take one, but a third has nothing left."""
-        body = _body(
-            """
-description: Two mails, then one too many
-steps:
-  - id: first
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: hi
-  - id: second
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: hi
-  - id: third
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: hi
-result_brief: x
-"""
-        )
-        results = [
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "2"}]}),
-        ]
-
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, results)
-
-        assert [issue.where for issue in result.issues] == ["steps[2]"]
-        assert result.issues[0].problem.startswith("send_email ran 2 time(s) in this run")
 
     async def test_a_reference_deeper_than_one_field_is_still_read_from_its_step(self) -> None:
         """$steps.agenda.organizer.email names step agenda and path organizer.email; split from the other end, nothing answers to agenda.organizer."""
@@ -1954,8 +1474,8 @@ result_brief: x
 """
         )
         results = [
-            _call("list_events", {"calendar_id": "primary"}, {"organizer": {"name": "Ada"}}),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _source({"calendar_id": "primary"}, {"organizer": {"name": "Ada"}}),
+            _source({"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1986,8 +1506,8 @@ result_brief: x
 """
         )
         results = [
-            _call("list_events", {"calendar_id": "primary"}, ["m1", "m2"]),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _source({"calendar_id": "primary"}, ["m1", "m2"]),
+            _source({"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -2017,8 +1537,8 @@ result_brief: x
 """
         )
         results = [
-            _call("list_events", {"calendar_id": "primary"}, {"messages": [{"id": "m1"}]}),
-            _call("send_email", {"to": "m1", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _source({"calendar_id": "primary"}, {"messages": [{"id": "m1"}]}),
+            _source({"to": "m1", "subject": "hi"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -2045,8 +1565,8 @@ result_brief: x
 """
         )
         results = [
-            _call("list_events", {"calendar_id": "primary"}, {"messages": [{"id": "m1"}]}),
-            _call("send_email", {"to": "a@b.com", "subject": "x"}, {"sent": [{"id": "1"}]}),
+            _source({"calendar_id": "primary"}, {"messages": [{"id": "m1"}]}),
+            _source({"to": "a@b.com", "subject": "x"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -2054,17 +1574,24 @@ result_brief: x
 
         assert result.issues == []
 
-    async def test_without_results_the_verdict_is_the_one_it_was_before(self) -> None:
-        """The dev executor route and any caller with no graph behind it pass no results at all, not an empty run, and must get the registry checks only."""
+    async def test_without_sources_only_the_registry_checks_run(self) -> None:
+        """A predefined recipe is checked with no run behind it; that is not an empty run."""
         body = _body(VALID_YAML)
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             without = await validate_playbook(body)
-            empty_run = await validate_playbook(body, [])
 
-        assert without.valid is True
         assert without.issues == []
-        assert [issue.where for issue in empty_run.issues] == ["steps[0]", "steps[1]"]
+
+    async def test_sources_that_do_not_line_up_with_the_tool_steps_are_a_bug(self) -> None:
+        """Sources are the builder's own output, one per tool step; a short list is never the author's fault."""
+        body = _body(VALID_YAML)
+
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            pytest.raises(ValueError, match="no source for tool step steps\\[0\\]"),
+        ):
+            await validate_playbook(body, [])
 
 
 @pytest.mark.unit
@@ -2157,82 +1684,6 @@ class TestStoredShapesAreUnrepresentable:
     def test_it_cannot_be_read(self, document: dict[str, object]) -> None:
         with pytest.raises(ValidationError):
             PlaybookStep_adapter.validate_python(document)
-
-
-class TestStepShapeMessages:
-    """What a rejected step actually tells the agent that wrote it.
-
-    These messages are the authoring loop: the write fails, the agent reads the
-    message, and rewrites the step. A message that does not name the offending
-    node leaves it to guess which of a dozen steps to change, and a message that
-    names the wrong thing sends it to rewrite a step that was fine. Both models
-    carry the same rule because a playbook is authored through the input models
-    and stored through PlaybookStep, and the two must refuse the same shapes.
-    """
-
-    def test_an_authored_tool_step_carrying_children_says_to_list_them_as_steps(self) -> None:
-        """Nesting is gone; dropping the children as unknown keys would store the parent call alone."""
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStepInput.model_validate(
-                {
-                    "id": "notify",
-                    "tool": "send_email",
-                    "steps": [{"id": "inner", "tool": "send_email"}],
-                }
-            )
-
-        assert any(
-            "a step is one tool call and cannot carry steps: list every call the run made as "
-            "its own step, in order" in m
-            for m in _messages(exc)
-        )
-
-    def test_an_authored_handoff_is_refused_by_name(self) -> None:
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStepInput.model_validate(
-                {
-                    "id": "delegate",
-                    "handoff": "mail_agent",
-                    "steps": [{"id": "inner", "tool": "send_email"}],
-                }
-            )
-
-        assert any("cannot carry handoff or steps" in m for m in _messages(exc))
-
-    def test_an_authored_step_with_no_tool_is_refused_for_the_missing_tool(self) -> None:
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStepInput.model_validate({"args": {"to": "x@example.com"}})
-
-        assert [error["loc"] for error in exc.value.errors()] == [("tool",)]
-
-
-class TestAuthoredPlaybookBecomesTheStoredOne:
-    """The tool boundary's flat arguments, turned into the body that is stored.
-
-    Everything dropped here is dropped silently: the playbook validates, stores
-    and replays, and only the arguments the recorded call actually needed are
-    missing. The replay then calls the right tool with the wrong arguments.
-    """
-
-    def test_an_ask_slot_written_into_an_arg_reaches_the_stored_body(self) -> None:
-        """A slot is ordinary argument data all the way through the conversion; the tool boundary no longer has an ask parameter that could drop it."""
-        body = playbook_body_from_input(
-            description="Mail the agenda",
-            steps=[
-                PlaybookStepInput(id="events", tool="list_events", args={"calendar_id": "x"}),
-                PlaybookStepInput(
-                    id="mail",
-                    tool="send_email",
-                    args={"to": "a@b.com", "subject": {"$ask": "Write the digest."}},
-                ),
-            ],
-            result_brief="Say how many events there were.",
-        )
-
-        mail = body.steps[1]
-        assert isinstance(mail, ToolStep)
-        assert mail.args["subject"] == {"$ask": "Write the digest."}
-        assert body.result_brief == "Say how many events there were."
 
 
 @pytest.mark.unit
@@ -2406,13 +1857,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"count": 2, "items": [{"id": 1}, {"id": 2}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -2448,13 +1896,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"items": [{"id": 1, "title": "standup"}, {"id": 2, "title": "1:1"}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -2489,13 +1934,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"items": [{"id": 1, "email": "a@b.com"}, {"id": 2, "title": "1:1"}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -2528,13 +1970,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"items": [{"id": 1, "title": "standup"}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "standup", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "standup", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -2600,13 +2039,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"stats": {"count": 2}, "items": []},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -2641,13 +2077,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"items": [{"id": 1}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -2675,9 +2108,7 @@ result_brief: x
 """
         )
         results = [
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -2711,13 +2142,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"items": [{"id": 1, "title": "rent"}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "rent", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "rent", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
@@ -2781,7 +2209,7 @@ result_brief: x
 
     async def _validate(self, body: PlaybookBody, recorded_subject: str) -> PlaybookValidation:
         results = [
-            _call("send_email", {"to": "a@b.com", "subject": recorded_subject}, "sent"),
+            _source({"to": "a@b.com", "subject": recorded_subject}, "sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             return await validate_playbook(body, results)
@@ -2801,11 +2229,11 @@ result_brief: x
     ) -> None:
         result = await self._validate(self._body('"$today + 1d 09:00"'), "2026-09-06 09:00:00")
 
-        assert len(result.issues) == 1
-        assert (
+        assert [issue.problem for issue in result.issues] == [
+            "'subject' was '2026-09-06 09:00:00' in this run, whose layout is "
+            "'%Y-%m-%d %H:%M:%S'; $today + 1d 09:00 renders as ISO 8601, so write "
             '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}'
-            in result.issues[0].problem
-        )
+        ]
 
     async def test_a_bare_placeholder_matching_the_tools_layout_is_accepted(self) -> None:
         dated = await self._validate(self._body('"$today + 1d"'), "2026-09-06")
@@ -2906,24 +2334,23 @@ result_brief: x
     async def test_every_argument_is_checked_even_after_one_is_refused(self) -> None:
         """One refusal per argument, in argument order, so several wrong arguments are told all at once, not one per round trip."""
         body = _body(
-            f"""
+            """
 description: x
 steps:
   - id: mail
     tool: send_email
     args:
-      to: "abc{ARG_TRUNCATION_MARKER}"
+      to: 5
       cc: nobody
-      subject: {{"$time": "$today", "format": "%Y-%m-%d"}}
+      subject: {"$time": "$today", "format": "%Y-%m-%d"}
       retries: $item
 result_brief: x
 """
         )
         results = [
-            _call(
-                "send_email",
+            _source(
                 {
-                    "to": f"abc{ARG_TRUNCATION_MARKER}",
+                    "to": 5,
                     "cc": "nobody",
                     "subject": "2026-09-06",
                     "retries": 0,
@@ -2934,14 +2361,23 @@ result_brief: x
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, results)
         assert [(issue.where, issue.problem) for issue in result.issues] == [
-            (
-                "steps[0].args.to",
-                "'to' was cut short in the call record; pass the full value you actually "
-                "sent, not the recorded stub",
-            ),
+            ("steps[0].args.to", "expected string, got int"),
             ("steps[0].args.cc", "send_email takes no arg 'cc'; it takes: retries, subject, to"),
             (
                 "steps[0].args.retries",
                 "$item addresses the element of a for_each, and this step is not one",
             ),
         ]
+
+
+@pytest.mark.unit
+class TestSourcesLineUpWithToolSteps:
+    async def test_too_many_sources_is_a_bug_named_with_both_counts(self) -> None:
+        body = _body(VALID_YAML)
+        sources = [_source({}, {"items": [1]})] * 5
+
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            pytest.raises(ValueError, match="^5 sources for 2 tool steps$"),
+        ):
+            await validate_playbook(body, sources)

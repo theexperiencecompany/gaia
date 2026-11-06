@@ -16,6 +16,8 @@ and the site that strips one (strip_internal_agent_tags) can never disagree.
 from enum import StrEnum
 import re
 
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
+
 
 class AgentTag(StrEnum):
     """Tag names framing an internal payload passed between agent tiers."""
@@ -94,10 +96,17 @@ def leading_agent_tag(text: str) -> AgentTag | None:
 # agent run that takes over. Named once here because a drift between the
 # writer (workflow worker) and reader (format_workflow_execution_message) is silent.
 PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"
-#: The calls a replay made before it stopped, so a rewrite may freeze them —
-#: without this the write validator refused every rewrite that kept one
-#: ("did not run in this run").
-PLAYBOOK_REPLAYED_CALLS_KEY = "playbook_replayed_calls"
+#: Calls a playbook never replays: delegation, whose children are in the run
+#: record themselves, and tool discovery and binding, which do no work.
+PLAYBOOK_UNPICKABLE_TOOLS = frozenset(
+    {
+        "call_executor",
+        "cancel_executor",
+        "spawn_subagent",
+        "retrieve_tools",
+        ACTIVATE_INTEGRATION_TOOL_NAME,
+    }
+)
 
 # The trigger-context key carrying the busy-lock value a workflow fire reserved.
 # Written by the workflow worker, read by call_executor so the dispatched
@@ -154,8 +163,8 @@ PLAYBOOK_DECISION_NUDGE_MESSAGE = (
 )
 MAX_PLAYBOOK_DECISION_NUDGES = 1
 
-#: The playbook decision tools. Bookkeeping about a run, never the run itself:
-#: left out of the record the next run reads, or the model copies them as steps.
+#: The playbook tools. Bookkeeping about a run, never the run itself: left out
+#: of the record the next run reads, or the model copies them as steps.
 PLAYBOOK_TOOL_NAMES = frozenset(
-    {"write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
+    {"read_run_record", "write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
 )

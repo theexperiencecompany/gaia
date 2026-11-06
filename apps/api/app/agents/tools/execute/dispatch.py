@@ -25,7 +25,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.agents.tools.execute.account_choice import choose_account, tool_used, with_account
 from app.agents.tools.execute.resolver import ResolvedTool, resolve_tool
-from app.agents.tools.invocation import invoke_tool
+from app.agents.tools.invocation import ViaExecute, invoke_tool
 from app.constants.execute import (
     TICKET_APPROVE_NAME,
     TICKET_NAMES,
@@ -250,7 +250,12 @@ async def dispatch_tool(
     bound = None if resolved_name in TOOL_TIMEOUT_EXEMPT_TOOLS else TOOL_EXECUTION_TIMEOUT_SECONDS
     try:
         async with asyncio.timeout(bound):
-            output = await invoke_tool(tool, validated, with_account(config, choice))
+            output = await invoke_tool(
+                tool,
+                validated,
+                with_account(config, choice),
+                via=ViaExecute(choice.account_id if choice is not None else None),
+            )
     except TimeoutError:
         # The only failure whose effect is unknown — the provider may have
         # applied it after we stopped waiting. Bounded here so the model gets

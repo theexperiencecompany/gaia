@@ -17,10 +17,9 @@ tool with a hole in it.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import json
 import re
-from typing import Any
 
 from app.models.playbook_models import (
     ASK_KEY,
@@ -35,7 +34,7 @@ from app.models.playbook_models import (
 )
 from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall, parse_result
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
-from app.services.workflow.playbook.time_layouts import render_iso
+from app.services.workflow.playbook.time_layouts import render_iso, renders_in_utc
 from app.utils.errors import AppError
 
 #: Offset suffixes ``$now``/``$today`` accept, as ``timedelta`` keywords.
@@ -213,7 +212,9 @@ class AskAnswers:
         return "\n".join(lines)
 
 
-def fill_ask_slots(args: Mapping[str, Any], asks: AskAnswers, key_prefix: str) -> dict[str, Any]:
+def fill_ask_slots(
+    args: Mapping[str, object], asks: AskAnswers, key_prefix: str
+) -> dict[str, object]:
     """Return one step's arguments with every inline ask slot replaced by its written text.
 
     A separate pass ahead of resolve_args: a slot becomes an ordinary string
@@ -241,7 +242,7 @@ def _fill_value(
     return value
 
 
-def resolve_args(args: Mapping[str, Any], context: RunContext) -> dict[str, Any]:
+def resolve_args(args: Mapping[str, object], context: RunContext) -> dict[str, object]:
     """One step's arguments with every placeholder resolved.
 
     An argument that IS a placeholder and resolves to None (a $last_run
@@ -249,7 +250,7 @@ def resolve_args(args: Mapping[str, Any], context: RunContext) -> dict[str, Any]
     rather than a null reaching a parameter that does not accept one. A literal
     null, and a null inside a nested value, are kept as written.
     """
-    resolved: dict[str, Any] = {}
+    resolved: dict[str, object] = {}
     for key, value in args.items():
         item = resolve_value(value, context)
         if item is None and isinstance(value, str) and PLACEHOLDER_TOKEN.fullmatch(value):
@@ -325,7 +326,10 @@ def _render_time_slot(slot: TimeSlot, now: datetime) -> str:
             why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
             fix="write the time as $today + 1d 09:00 or similar",
         )
-    return _resolve_moment(match, now).strftime(slot.format)
+    moment = _resolve_moment(match, now)
+    if renders_in_utc(slot.format):
+        moment = moment.astimezone(UTC)
+    return moment.strftime(slot.format)
 
 
 def _resolve_token(match: re.Match[str], context: RunContext) -> object:

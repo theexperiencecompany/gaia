@@ -12,6 +12,7 @@ through here, and that real call (name, args, result) is the record.
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 import json
 from typing import cast
 
@@ -34,28 +35,37 @@ from shared.py.wide_events import log
 GRAPH_TOOL_CALL_TYPE = "tool_call"
 
 
+@dataclass(frozen=True, slots=True)
+class ViaExecute:
+    """A call the execute proxy dispatched, as the account it named (None: the primary)."""
+
+    account: str | None
+
+
 async def invoke_tool(
     tool: BaseTool,
     tool_input: Mapping[str, object],
     config: RunnableConfig | None = None,
     *,
     call_args: Mapping[str, object] | None = None,
+    via: ViaExecute | None = None,
 ) -> object:
     """Run tool and record the call in the run it belongs to.
 
     call_args is what the model asked for, when tool_input also carries values
     the caller injected (a store, the user id); it defaults to tool_input's own args.
+    via says the execute proxy dispatched it, which a replay must do again.
     """
-    args = _call_args(tool_input) if call_args is None else dict(call_args)
+    pending = _pending(tool, tool_input, config, call_args, via)
     try:
         output = await tool.ainvoke(dict(tool_input), config=config)
     except GraphBubbleUp:
         # A pause for approval, not a finished call: recorded when it resumes and runs.
         raise
     except Exception as exc:
-        await _write(tool, args, config, _error_text(exc), failed=True)
+        await _write(pending, _error_text(exc), failed=True)
         raise
-    await _write(tool, args, config, output)
+    await _write(pending, output)
     return output
 
 
@@ -67,52 +77,42 @@ def invoke_tool_sync(
     call_args: Mapping[str, object] | None = None,
 ) -> object:
     """Sync twin of invoke_tool, for LangGraph's sync node functions."""
-    args = _call_args(tool_input) if call_args is None else dict(call_args)
+    pending = _pending(tool, tool_input, config, call_args, None)
     try:
         output = tool.invoke(dict(tool_input), config=config)
     except GraphBubbleUp:
         raise
     except Exception as exc:
-        _write_sync(tool, args, config, _error_text(exc), failed=True)
+        _write_sync(pending, _error_text(exc), failed=True)
         raise
-    _write_sync(tool, args, config, output)
+    _write_sync(pending, output)
     return output
 
 
 async def _write(
-    tool: BaseTool,
-    args: dict[str, object],
-    config: RunnableConfig | None,
-    output: object,
-    *,
-    failed: bool = False,
+    pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool = False
 ) -> None:
     """Record a finished call in its run; building or writing the record never raises."""
+    if pending is None:
+        return
     try:
-        recorded = _recorded(tool, args, config, output, failed=failed)
-        if recorded is not None:
-            await append_call(*recorded)
+        await append_call(pending[0], _finished(pending[1], output, failed=failed))
     except Exception as exc:
         # The tool already ran: raising would report it failed and invite a repeat.
-        _log_unrecorded(tool.name, exc)
+        _log_unrecorded(pending[1].tool_name, exc)
 
 
 def _write_sync(
-    tool: BaseTool,
-    args: dict[str, object],
-    config: RunnableConfig | None,
-    output: object,
-    *,
-    failed: bool = False,
+    pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool = False
 ) -> None:
     """Sync twin of _write."""
+    if pending is None:
+        return
     try:
-        recorded = _recorded(tool, args, config, output, failed=failed)
-        if recorded is not None:
-            append_call_sync(*recorded)
+        append_call_sync(pending[0], _finished(pending[1], output, failed=failed))
     except Exception as exc:
         # The tool already ran: raising would report it failed and invite a repeat.
-        _log_unrecorded(tool.name, exc)
+        _log_unrecorded(pending[1].tool_name, exc)
 
 
 def _log_unrecorded(tool_name: str, exc: Exception) -> None:
@@ -124,15 +124,14 @@ def _log_unrecorded(tool_name: str, exc: Exception) -> None:
     )
 
 
-def _recorded(
+def _pending(
     tool: BaseTool,
-    args: dict[str, object],
+    tool_input: Mapping[str, object],
     config: RunnableConfig | None,
-    output: object,
-    *,
-    failed: bool,
+    call_args: Mapping[str, object] | None,
+    via: ViaExecute | None,
 ) -> tuple[str, RecordedCall] | None:
-    """Return (stream id, call) for a call that belongs to a workflow run, else None."""
+    """Return (stream id, the call before its result) for a call that belongs to a workflow run, else None."""
     if tool.name == EXECUTE_TOOL_NAME or config is None:
         return None
     configurable: AgentConfigurable = agent_configurable(config)
@@ -140,19 +139,30 @@ def _recorded(
     # Only a workflow run reads its record back; a chat's calls are never kept.
     if not stream_id or not configurable.get("workflow_id"):
         return None
-    digest = build_result_digest(_as_text(_result_payload(output)))
     call = RecordedCall(
         tool_name=tool.name,
         subagent_id=configurable.get("subagent_id"),
-        args=args,
-        result_digest=digest,
-        # A tool that reports its own failure under a normal return failed all the same,
-        # whether it answered with an error envelope or its own handle_tool_error.
-        failed=failed
-        or (isinstance(output, ToolMessage) and output.status == "error")
-        or is_error_envelope(parse_result(digest)),
+        args=_call_args(tool_input) if call_args is None else dict(call_args),
+        proxied=via is not None,
+        account=via.account if via is not None else None,
     )
     return stream_id, call
+
+
+def _finished(call: RecordedCall, output: object, *, failed: bool) -> RecordedCall:
+    """Return the call with what it returned, or the error it raised."""
+    digest = build_result_digest(_as_text(_result_payload(output)))
+    return RecordedCall.model_validate(
+        {
+            **call.model_dump(mode="json"),
+            "result_digest": digest,
+            # A tool that reports its own failure under a normal return failed all the same,
+            # whether it answered with an error envelope or its own handle_tool_error.
+            "failed": failed
+            or (isinstance(output, ToolMessage) and output.status == "error")
+            or is_error_envelope(parse_result(digest)),
+        }
+    )
 
 
 class _GraphToolCall(BaseModel):

@@ -15,9 +15,7 @@ import json
 import re
 
 from app.constants.agents import PLAYBOOK_TOOL_NAMES, AgentTag, wrap_agent_payload
-from app.models.workflow_execution_models import (
-    WorkflowExecution,
-)
+from app.models.workflow_execution_models import WorkflowExecution
 
 #: Bounds on the rendered block. The trace itself is stored whole — this caps only
 #: what a single run pays to read the previous one, so a 300-call run can't
