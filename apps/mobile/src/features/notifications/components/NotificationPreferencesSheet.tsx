@@ -401,26 +401,21 @@ function QuietHoursSection() {
   });
   const disabled = mutation.isPending;
 
-  const handleToggle = useCallback(
-    (enabled: boolean) => quiet && mutation.mutate({ ...quiet, enabled }),
-    [mutation, quiet],
-  );
+  const handleToggle = (enabled: boolean) =>
+    quiet && mutation.mutate({ ...quiet, enabled });
 
-  const handleTimeChange = useCallback(
-    (
-      which: "start_hour" | "end_hour",
-      _evt: DateTimePickerEvent,
-      date?: Date,
-    ) => {
-      if (Platform.OS === "android") {
-        setPicker(null);
-      }
-      if (!date || !quiet) return;
-      const next = { ...quiet, [which]: date.getHours() };
-      if (next.start_hour !== next.end_hour) mutation.mutate(next);
-    },
-    [mutation, quiet],
-  );
+  const handleTimeChange = (
+    which: "start_hour" | "end_hour",
+    _evt: DateTimePickerEvent,
+    date?: Date,
+  ) => {
+    if (Platform.OS === "android") {
+      setPicker(null);
+    }
+    if (!date || !quiet) return;
+    const next = { ...quiet, [which]: date.getHours() };
+    if (next.start_hour !== next.end_hour) mutation.mutate(next);
+  };
 
   if (!quiet) return null;
   const enabled = quiet.enabled;
