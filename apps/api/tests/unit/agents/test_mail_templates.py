@@ -23,6 +23,7 @@ from app.agents.templates.mail_templates import (
     thread_template,
 )
 from app.constants.desk_buckets import DeskBucket
+from app.constants.email import MessageFieldLiteral
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
     GmailMessagePart,
@@ -1140,7 +1141,10 @@ class TestTheBodyIsOnlyFetchedWhenAFieldAsksForIt:
         ],
     )
     def test_the_decision_depends_on_the_field_list_and_the_processing(
-        self, fields: list[str] | None, body_processing: str, expected: bool
+        self,
+        fields: list[MessageFieldLiteral] | None,
+        body_processing: BodyProcessingLiteral,
+        expected: bool,
     ) -> None:
         assert message_view_needs_body(fields, body_processing) is expected
 
