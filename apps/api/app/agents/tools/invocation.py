@@ -228,8 +228,11 @@ def _finished(call: RecordedCall, output: object, *, failed: bool) -> RecordedCa
         {
             **call.model_dump(mode="json"),
             "result_digest": digest,
-            # A tool that reports its own failure under a normal return failed all the same.
-            "failed": failed or is_error_envelope(parse_result(digest)),
+            # A tool that reports its own failure under a normal return failed all the same,
+            # whether it answered with an error envelope or its own handle_tool_error.
+            "failed": failed
+            or (isinstance(output, ToolMessage) and output.status == "error")
+            or is_error_envelope(parse_result(digest)),
         }
     )
 

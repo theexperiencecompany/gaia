@@ -80,6 +80,7 @@ def dispatch_config_for(
     *,
     stream_id: str | None = None,
     workflow_id: str | None = None,
+    subagent_id: str | None = None,
 ) -> RunnableConfig:
     """Run config carrying the caller's identity in configurable AND metadata, which wrappers split.
 
@@ -92,7 +93,11 @@ def dispatch_config_for(
     config: RunnableConfig = run_config.copy() if run_config is not None else {}
     run = {
         key: value
-        for key, value in (("stream_id", stream_id), ("workflow_id", workflow_id))
+        for key, value in (
+            ("stream_id", stream_id),
+            ("workflow_id", workflow_id),
+            ("subagent_id", subagent_id),
+        )
         if value
     }
     config["configurable"] = {**config.get("configurable", {}), "user_id": user_id, **run}
