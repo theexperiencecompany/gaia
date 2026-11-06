@@ -21,6 +21,7 @@ class PreferencePromptFields(BaseModel):
 
     profession: str | None = None
     response_style: str | None = None
+    language: str | None = None
 
 
 class WritingStylePromptFields(BaseModel):
@@ -48,6 +49,7 @@ class OnboardingPreferencesRecord(TypedDict, total=False):
     needs: object
     response_style: str
     other_need: object
+    language: str
 
 
 def onboarding_preferences(
@@ -96,6 +98,7 @@ def build_user_context_parts(preferences: Mapping[str, object]) -> list[str]:
         operation="build_user_context_parts",
         has_profession=bool(fields.profession),
         has_response_style=bool(fields.response_style),
+        has_language=bool(fields.language),
     )
     parts = []
 
@@ -110,6 +113,9 @@ def build_user_context_parts(preferences: Mapping[str, object]) -> list[str]:
         if fields.response_style:
             style_instruction = format_response_style_instruction(fields.response_style)
             parts.append(f"Communication Style: {style_instruction}")
+
+        if fields.language:
+            parts.append(f"Browser Language: {fields.language}")
 
     except Exception as e:
         log.warning(

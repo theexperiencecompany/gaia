@@ -574,7 +574,7 @@ class TestWorkflowExecutionFailurePropagation:
         completed: list[str] = []
         recorded: list[RecordedCall] = []
 
-        async def _run_steps(request, conversation_id, user, options=None):
+        async def _run_steps(request, conversation_id, user, options=None, *, stream_id=None):
             tool_data: list[dict[str, object]] = []
             recorded.clear()
             for step in request.selectedWorkflow.steps:

@@ -1,10 +1,18 @@
 /**
- * Top progress bar plus the floating Restart button. Steps are filled based
- * on `currentStep` (from `getProgress`) and clicking restart confirms via
- * a modal before invoking the caller-supplied `onRestart`.
+ * Top progress bar plus the floating account menu. Steps are filled based
+ * on `currentStep` (from `getProgress`). The menu names the signed-in account
+ * and offers Log out — the way out for someone who signed in with the wrong
+ * one — and Restart, which confirms via a modal before invoking `onRestart`.
  */
 
 import { Button } from "@heroui/button";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownSection,
+  DropdownTrigger,
+} from "@heroui/dropdown";
 import {
   Modal,
   ModalBody,
@@ -12,7 +20,7 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { RedoIcon } from "@icons";
+import { Logout02Icon, RedoIcon, UserCircleIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo, useState } from "react";
 import { useIsMobile } from "@/hooks/ui/useMobile";
@@ -20,9 +28,14 @@ import { useIsMobile } from "@/hooks/ui/useMobile";
 interface OnboardingProgressProps {
   currentStep: number;
   totalSteps: number;
-  onRestart?: () => void;
-  isRestarting?: boolean;
+  onRestart: () => void;
+  isRestarting: boolean;
+  email: string | undefined;
+  onLogout: () => void;
 }
+
+const RESTART_KEY = "restart";
+const LOGOUT_KEY = "logout";
 
 const stepKey = (i: number) => `onboarding-progress-step-${i}`;
 
@@ -30,7 +43,9 @@ function OnboardingProgressImpl({
   currentStep,
   totalSteps,
   onRestart,
-  isRestarting = false,
+  isRestarting,
+  email,
+  onLogout,
 }: OnboardingProgressProps) {
   const isMobile = useIsMobile();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -76,30 +91,57 @@ function OnboardingProgressImpl({
         );
       })}
 
-      {onRestart && currentStep !== 0 && (
-        <Button
-          size="sm"
-          variant="flat"
-          radius="full"
-          onPress={() => setConfirmOpen(true)}
-          isLoading={isRestarting}
-          isDisabled={isRestarting}
-          isIconOnly={isMobile}
-          startContent={!isRestarting && !isMobile && <RedoIcon size={14} />}
-          // A phone has no spare bottom edge (the composer lives there), so
-          // the restart is a small icon in the top-right corner instead.
-          className={
-            isMobile ? "fixed top-3 right-3 z-20" : "fixed right-3 bottom-3"
-          }
-          aria-label="Restart onboarding"
+      <Dropdown placement={isMobile ? "bottom-end" : "top-end"}>
+        <DropdownTrigger>
+          <Button
+            size="sm"
+            variant="flat"
+            radius="full"
+            isLoading={isRestarting}
+            isIconOnly={isMobile}
+            startContent={
+              !isRestarting && !isMobile && <UserCircleIcon size={14} />
+            }
+            // A phone has no spare bottom edge (the composer lives there), so
+            // the menu is a small icon in the top-right corner instead.
+            className={
+              isMobile ? "fixed top-3 right-3 z-20" : "fixed right-3 bottom-3"
+            }
+            aria-label="Account"
+          >
+            {isMobile
+              ? !isRestarting && <UserCircleIcon size={16} />
+              : isRestarting
+                ? "Restarting…"
+                : (email ?? "Account")}
+          </Button>
+        </DropdownTrigger>
+        <DropdownMenu
+          aria-label="Account"
+          disabledKeys={currentStep === 0 || isRestarting ? [RESTART_KEY] : []}
+          onAction={(key) => {
+            if (key === RESTART_KEY) setConfirmOpen(true);
+            if (key === LOGOUT_KEY) onLogout();
+          }}
         >
-          {isMobile
-            ? !isRestarting && <RedoIcon size={16} />
-            : isRestarting
-              ? "Restarting…"
-              : "Restart Onboarding"}
-        </Button>
-      )}
+          <DropdownSection title={email ? `Signed in as ${email}` : undefined}>
+            <DropdownItem
+              key={RESTART_KEY}
+              startContent={<RedoIcon size={16} />}
+            >
+              Restart onboarding
+            </DropdownItem>
+            <DropdownItem
+              key={LOGOUT_KEY}
+              color="danger"
+              className="text-danger"
+              startContent={<Logout02Icon size={16} />}
+            >
+              Log out
+            </DropdownItem>
+          </DropdownSection>
+        </DropdownMenu>
+      </Dropdown>
 
       <Modal
         isOpen={confirmOpen}
@@ -126,7 +168,7 @@ function OnboardingProgressImpl({
                   color="danger"
                   onPress={() => {
                     onClose();
-                    onRestart?.();
+                    onRestart();
                   }}
                 >
                   Restart
