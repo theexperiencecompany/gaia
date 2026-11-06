@@ -1,0 +1,86 @@
+{
+ "run": "run_bf434b87e100",
+ "captured_from": "2026-09-14",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "max_results": 10
+   },
+   "result_digest": "{\"data\": {\"calendar_fetch_data\": [], \"has_more\": false}, \"error\": null, \"successful\": true}",
+   "replayed": true
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 1,
+   "written": {
+    "description": "Shvxm lar ynrm'n next upcoming Zmlvvp Tvelkhjg event qiq cgcsdzp w hogaq ovqcc-zh reminder.",
+    "steps": [
+     {
+      "id": "events",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "max_results": 10
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Pdaj lar trezfsx upcoming event evvq lar aqtgnru list (lar vhi ngtlhhah ktf up next). Pypvv w 93 zlls ovqcc-zh udh lar ynrm: lar event pnkwu, lab start ohzt (qiq qxg ohzt bg tkuppza) hx lar ynrm'n whdrf zixgmcwc (Chvv/Fgskuys), qiq lar yuizmdvm up fdxdx opps umfp bg tkuppza. Hx ga yuizmdvm up opps umfp eto gxrbwril, ffq ow juqtyyw. Hx ymgdt uc ga upcoming event, ffq ymgdt uc evqhlbd qszrkqrrp."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS#1",
+     "id": "fetch"
+    }
+   ],
+   "expected": "refused",
+   "refusals": [
+    "empty_result"
+   ]
+  },
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Shvxm lar ynrm'n next upcoming Zmlvvp Tvelkhjg event qiq cgcsdzp w hogaq ovqcc-zh reminder.",
+    "result_brief": "Pdaj lar trezfsx upcoming event evvq lar aqtgnru list (lar vhi ngtlhhah ktf up next). Pypvv w 93 zlls ovqcc-zh udh lar ynrm: lar event pnkwu, lab start ohzt (qiq qxg ohzt bg tkuppza) hx lar ynrm'n whdrf zixgmcwc (Chvv/Fgskuys), qiq lar yuizmdvm up fdxdx opps umfp bg tkuppza. Hx ga yuizmdvm up opps umfp eto gxrbwril, ffq ow juqtyyw. Hx ymgdt uc ga upcoming event, ffq ymgdt uc evqhlbd qszrkqrrp.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "events",
+      "steps": [
+       {
+        "args": {
+         "max_results": 10
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS#1",
+     "id": "fetch"
+    }
+   ],
+   "expected": "refused",
+   "refusals": [
+    "empty_result"
+   ]
+  }
+ ]
+}

@@ -10,7 +10,7 @@ This module provides a ToolNode subclass that:
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from langchain_core.messages import AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -30,6 +30,7 @@ from pydantic_core import ErrorDetails
 
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.tools.execute.unwrap import unwrap_execute_call
+from app.agents.tools.invocation import RecordingTool
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.llm import (
     TOOL_EXECUTION_TIMEOUT_SECONDS,
@@ -180,6 +181,24 @@ class DynamicToolNode(ToolNode):
         with analytics_context(run_analytics_context(agent_configurable(config))):
             return await super()._afunc(tool_input, config, runtime)
 
+    async def _execute_tool_async(
+        self,
+        request: ToolCallRequest,
+        input_type: Literal["list", "dict", "tool_calls"],
+        config: RunnableConfig,
+    ) -> ToolMessage | Command | list[Command | ToolMessage]:
+        """Run the parent ToolNode's own invocation, with the tool recording its call."""
+        return await super()._execute_tool_async(_recording(request), input_type, config)
+
+    def _execute_tool_sync(
+        self,
+        request: ToolCallRequest,
+        input_type: Literal["list", "dict", "tool_calls"],
+        config: RunnableConfig,
+    ) -> ToolMessage | Command | list[Command | ToolMessage]:
+        """Sync twin of _execute_tool_async."""
+        return super()._execute_tool_sync(_recording(request), input_type, config)
+
     async def _run_tool_call(
         self, request: ToolCallRequest, execute: ToolCallExecutor
     ) -> ToolMessage | Command:
@@ -218,3 +237,10 @@ class DynamicToolNode(ToolNode):
                 status="error",
             )
         return None
+
+
+def _recording(request: ToolCallRequest) -> ToolCallRequest:
+    """Return the request with its tool swapped for one that records the call it runs."""
+    if request.tool is None:
+        return request
+    return request.override(tool=RecordingTool.wrapping(request.tool, request.tool_call["args"]))

@@ -56,6 +56,7 @@ from app.constants.integrations import (
     CONNECT_INTEGRATION_TOOL,
     ConnectMode,
 )
+from app.core.provider_registration import boot_process
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.hil_models import LIVE_LEDGER_STATES
@@ -65,12 +66,11 @@ from app.services.composio.auth_config_resolver import (
     composio_integrations,
     resolve_auth_configs,
 )
-from app.services.composio.composio_service import get_composio_service, init_composio_service
+from app.services.composio.composio_service import get_composio_service
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.integrations.account_identity import account_label, fetch_account_identity
 from app.services.integrations.integration_account_lifecycle import resync_primary_bound_triggers
 from app.services.integrations.integration_accounts import derive_status, pick_primary
-from app.utils.concurrency import capture_running_loop
 
 _LIVE = "ACTIVE"
 _UNTOUCHED = frozenset({"INACTIVE"})
@@ -286,8 +286,7 @@ async def migrate_connect_approvals(approvals: AsyncIOMotorCollection, *, apply:
 
 
 async def _run(args: argparse.Namespace) -> None:
-    capture_running_loop()
-    init_composio_service()
+    boot_process("arq_worker")
     database = MongoDB(settings.MONGO_DB, MONGO_DATABASE_NAME).database
     user_integrations = database.user_integrations
     resolved = await resolve_auth_configs()

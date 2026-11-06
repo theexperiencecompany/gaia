@@ -175,9 +175,6 @@ class AgentConfigurable(TypedDict, total=False):
     #: replay's own record of what already ran, carried verbatim to the
     #: executor since comms can't be trusted to transcribe it into its task.
     playbook_fallback: str | None
-    #: The calls a stopped replay made this fire, as ``RecordedCall`` dumps, so a
-    #: rewrite may freeze them. See ``PLAYBOOK_REPLAYED_CALLS_KEY``.
-    playbook_replayed_calls: list[dict[str, Any]] | None
     #: A pre-taken executor busy-lock the dispatch adopts instead of racing for
     #: a fresh one, so a queued/workflow fire hands its reservation to the run
     #: it starts. Keyed by ``WORKFLOW_LOCK_CONTEXT_KEY``.

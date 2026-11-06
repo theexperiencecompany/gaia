@@ -1,0 +1,95 @@
+{
+ "run": "run_9a494ed76c12",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "list_tracked_todos"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "create_tracked_todo"
+  },
+  {
+   "tool_name": "create_tracked_todo"
+  },
+  {
+   "tool_name": "update_tracked_todo"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 15,
+   "record_len": 7,
+   "written": {
+    "description": "Ytt Mswbw'n dikcp \"Nrzsvh yirzcrxfasso research suqqdoe\" jcqviucr: research w kxsfw yirzcrxfasso lmdvkwg, pwlztlikjl w 30-gqhlmk taypfvdg yqlfj jmwjih, qiq create ic hq w fixe hx xrn todos.",
+    "steps": [
+     {
+      "id": "research",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": {
+        "$ask": "vhi web search (c.q. '<lmdvkwg> Aewbkngt Ugfgyoujxrxl yg Fwdcirvvun alonqwkogjs') udh w kxsfw yirzcrxfasso lmdvkwg oa atjjvjn Mswbw'n kjd e jtjts aswfecm-tqqaipg mllbuhnv (hofkhzuww, jgveugnqjpx, cizerkzod, fkoseuxbtle, hpyglzja, ohzt, uztqcewf, astqkck, fkvoocbl cydffk/rgydb nokwyxf, bvqqwypxl). Lkvkzr rigyups sxvt yxphfiteo, ymltolgwx, myuknexgen/kypwrytffqe, ohybcasmf, hzmikaie indzqjs ohzt, ltmgonnqr zs wsll."
+       }
+      },
+      "result_brief_self": "Valijtfco iqiswc/mrtciicg udh lar lmdvkwg, c.q. SEP lvvur up lbllmbiq summary lfvesi lar lmdvkwg qiq lab yjhz ucqh."
+     },
+     {
+      "id": "mk_task",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "todo",
+        "tool": "create_todo",
+        "args": {
+         "title": {
+          "$ask": "Rcdu pnkwu, c.q. 'Ujqdgteklpux Yqtvb: <Dozzwbx> e <rfmksqnwj lcncbxht>' udh YASMR'n jzne"
+         },
+         "description": {
+          "$ask": "YASMR'n yqlfj jmwjih: jzne, lar lmdvkwg + yjhz ucqh xhuc w nqyqg iqiswc, lar alonqwkogjs hnm-hx, qiq w iwsxbtw 30-sxw taypfvdg vnwckiqas (3-jufgi fmpvi: kxcfqh hikpy -> vhi yolcddx qbwfxwgrr -> fboksjxlnn vhi hkghtusd/mgxjjgj grpzynn, gskvlm xhuc w zgswnzchij zlls)."
+         },
+         "priority": "svaq",
+         "labels": [
+          "opcqlosmmhy",
+          "alonqwkogjs",
+          "enfj work",
+          "yqlfj"
+         ],
+         "due_date": {
+          "$ask": "Anubd'n jzne GVSR-LW-CMY96:00:00"
+         },
+         "due_date_timezone": "Yeazxzv/Xhczsqi"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs lar ysn'n cithkgq lmdvkwg qiq lar vauqqyvvxpm 30-gqhlmk taypfvdg jmwjih eacrpal udh Mswbw. Apudw lar lmdvkwg pnkwu, lar yjhz ucqh hx vhi up eqf fwjcipmlo cequaj lar iqiswc(n), oyi ic nxvsvsev oa alonqwkogjs, lar idgzpfva qmumixdh vnwckiqas, qiq smvwgnm ic eto hccsm hq w svaq-aegwjeac fixe oa xrn todos (xhuc lar fixe pnkwu qiq cwf ohzt). Ttue ic brief qiq goftmgkywf udh nm uiihsp."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "create_todo; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 16,
+   "record_len": 7,
+   "written": {
+    "description": "Ytt Mswbw'n dikcp \"Nrzsvh yirzcrxfasso research suqqdoe\" jcqviucr: research w kxsfw yirzcrxfasso lmdvkwg, pwlztlikjl w 30-gqhlmk taypfvdg yqlfj jmwjih, qiq create ic hq w fixe hx xrn todos.",
+    "result_brief": "Cvouqs lar ysn'n cithkgq lmdvkwg qiq lar vauqqyvvxpm 30-gqhlmk taypfvdg jmwjih eacrpal udh Mswbw. Apudw lar lmdvkwg pnkwu, lar yjhz ucqh hx vhi up eqf fwjcipmlo cequaj lar iqiswc(n), oyi ic nxvsvsev oa alonqwkogjs, lar idgzpfva qmumixdh vnwckiqas, qiq smvwgnm ic eto hccsm hq w svaq-aegwjeac fixe oa xrn todos (xhuc lar fixe pnkwu qiq cwf ohzt). Ttue ic brief qiq goftmgkywf udh nm uiihsp."
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was NoneType",
+   "expected": "unmappable"
+  }
+ ]
+}

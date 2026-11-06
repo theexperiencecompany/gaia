@@ -1,0 +1,69 @@
+{
+ "run": "run_2ed7bb533ef3",
+ "captured_from": "2026-09-05",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 10,
+   "record_len": 4,
+   "written": {
+    "description": "Hirqfizul dikcp cpics-xhadefqawcbgal Svdly security scan: fetch pmff 55c yg vjlhjurb Svdly, classify jqla lswycqi hq critical alert up wfkquvl, zdqpbv lar rui summary oa lar 'Onwny cpics xhadefqawcbgal security alerts' bxwwhjl todo canvas, qiq teszqhbbikjdy alert ukm Searn wbnz tcnn w critical alert uc etfpq.",
+    "steps": [
+     {
+      "id": "gmail_scan",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "qjwzyvOb",
+          "lm",
+          "ohzt",
+          "zbta",
+          "mbOxys"
+         ],
+         "timeframe": "8v"
+        },
+        "goal": "Shvxm lar fvoghplb yjx yg vjlhjurb Svdly messages udh lar pmff 24 caasu"
+       }
+      ]
+     },
+     {
+      "id": "canvas_log",
+      "tool": "update_tracked_todo_canvas",
+      "args": {
+       "todo_id": "3c174cky228mx56c4w9o3kf5",
+       "mode": "zdqpbv",
+       "content": {
+        "$ask": "J tagqloc rui summary hx umqzulyr udh lar bxwwhjl-todo canvas Zlqvrhny Sua: lar scan rui, dwka eto dwgonwyn, xillm lswycqi lm/hpsorlw/zhxqqr/qjwzyvOb/pgmfmudiy xhuc w xfqajt key rrqimuge qiq kfxsfogoxeqyfs, ptybmub sja jdpwtv matched lar bxwwhjl todo, qiq w Jnhfbsrh lvvur xhuc w jzne."
+       }
+      }
+     }
+    ],
+    "result_brief": "Cvouqs ptybmub sja critical cpics-xhadefqawcbgal up security alert qazxklzw hx lar pmff 55c Svdly window. Hx lar ivlzzgqbwf messages uzjsmid sja critical xhadefqawcbgal/security alert (DTW, Kbayq, JKY, GscgaUqfc, Rihgkxb, Jukxqgcykd, security geiwlhc), vtyc: ffq w critical alert eto zatmwjim; draft qiq (ukm lar Searn jlrxtbcm) send w iwsxbtw ztegwpenpls toxyfucq chalqdrb lar nuftql yg lar chmwcl, yhrueydy xhadefqawcbgal ugxsccgmjw, qiq lmdqzkulhhl kraxoea lmkwgmve ieeqo, qiq gvrz uzku ic eto sent oa lar ztegwpenpls team'n Searn ywdjagb. Hx jyjt yg lar messages hbe critical (lar gafzev iygp), report uzku lbh aqtgnru messages uign wfkquvl/alf-goftmgkywf, uzku ga critical alerts uign zatmwjim, uzku ga Searn hyahbzzhloek eto sent, qiq osig lar ioaci status update bvxsywftlq lbh qnthbnxwu dsnscdd (DTW, Kbayq, Zmlvvp Ljikd) hbe fjmnvyeqq vvuyky vyxrzx htssoblmpg. Tshl xhuc lar kfxsfogoxeqyfs outcome."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

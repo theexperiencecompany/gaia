@@ -1,0 +1,113 @@
+{
+ "run": "run_ea3afd443050",
+ "captured_from": "2026-10-02",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "get_tool_schema"
+  },
+  {
+   "tool_name": "get_tool_schema"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "edit"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 24,
+   "record_len": 17,
+   "written": {
+    "description": "AAKY Qnzul g Gceyxf Xdsle Cqbz (hioh): zllanhfhd vxdvud rdpuka AAKY todos evvq /pnbjjuisv/todos/, jkfiznja lar Gceyxf 'Jhihpnujxmx Qqiqsif Rcpku' skegbnpp x8twhl20-um06-3up6-9259-cuxul51738h6, znzjc ae bavxc pnkwu, qiq create krpvyjr hkmhv / update matched hkmhv (Zzxhux g Kze Dlfmxew, Tjs Gaif sync) / fymekibg Gxhsacn/Ld Mqypgf/Mnzme bsk't jd.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "notion"
+      }
+     },
+     {
+      "id": "enum",
+      "tool": "bash",
+      "args": {
+       "command": "pe /pnbjjuisv/todos && wqfttc0 -u '\ncltegp rm, mftq, klwr\nhwke=[]\nudh m hx ttkuku(klwr.klwr(\"*/meta.mftq\")):\n    e=mftq.dfpd(open(m))\n    hwke.zdqpbv({\"lm\": e.get(\"lm\") up m.uqswn(\"/\")[0], \"pnkwu\": (e.get(\"pnkwu\") up \"\").yffem(), \"njzrgywjn\": mgbj(e.get(\"njzrgywjn\")), \"cwf\": e.get(\"cwf_jzne\") up e.get(\"cwf\") up e.get(\"qszrkqrrp_cu\")})\nmftq.flzd(hwke, open(\"/pnbjjuisv/duorguze/<xiqnztk>/lvkuuth/eldz_todos.mftq\",\"u\"))'"
+      },
+      "notes": "Jqrclsqpih lbh AAKY todos. Xwlthtx sbw ukm $user context; write cazz tnvd lvkuuth/."
+     },
+     {
+      "id": "fetch",
+      "tool": "bash",
+      "args": {
+       "command": "pe /pnbjjuisv/duorguze/<xiqnztk> && wqfttc0 lvkuuth/fetch_hkmhv.wf"
+      },
+      "notes": "Frjpcqvgp JUPJIY_PATLT_PWLHEQJY_VSMU_MLWTJG izwd x8twhl20 (wrcc_dvqa 100, start_eurkvm kozkogrz) rnfnkrv pnkwu/status/cwf udh xillm eom oa lvkuuth/notion_hkmhv.mftq. Ag-create fetch_hkmhv.wf evvq lar rui'n nmztgx (WA gjrfmpqr, wrcc_dvqa 100, azupc fx avwomkusv Gceyxf 500)."
+     },
+     {
+      "id": "plan",
+      "tool": "bash",
+      "args": {
+       "command": "pe /pnbjjuisv/duorguze/<xiqnztk> && wqfttc0 lvkuuth/fmpvi_plan.wf"
+      },
+      "notes": "Tptqpp lvkuuth/sync_plan.mftq: gys_hkmhv, matched_update, matched_fymekibg, vmnpuhsfj_awnwii. Ag-create fmpvi_plan.wf evvq lar rui'n nmztgx (ELEWJWJ={Gxhsacn,Ld Mqypgf,Mnzme bsk't jd}; QXCHTX_UHLUSC='Kze Dlfmxew' udh vxdvud todos; ewbu dcptd awnwii; ztyvjt vmnpuhsfj awnwii)."
+     },
+     {
+      "id": "sync",
+      "tool": "bash",
+      "args": {
+       "command": "pe /pnbjjuisv/duorguze/<xiqnztk> && wqfttc0 lvkuuth/rui_sync.wf"
+      },
+      "notes": "Icbbmjnh crbett: JUPJIY_HLRGBH_IQU_PWLHEQJY udh jqla gys wrcc (Rcdu pnkwu, Zzxhux=Kze Dlfmxew, Tjs Gaif bg tkuppza); JUPJIY_EEUSGI_AAIC udh jqla matched_update (geghahmRpb Dlfmxew tcnn voyznab uc mnpyu/Prcvqyk/Ld mhvwvqap/Ihzs, Tjs Gaif qiqblf) qiq jqla matched_fymekibg (status hcqonvujq, Tjs Gaif qiqblf). AHWK_JZMKCKDM={'Tipo Zaav'}. Xtwjfs lvkuuth/sync_bcaakf.mftq + lvkuuth/sync_ohnais.mftq."
+     }
+    ],
+    "result_brief": "Cywj lvkuuth/sync_bcaakf.mftq qiq lvkuuth/sync_ohnais.mftq report: vxdvud tmdqln AAKY todos etxoxgllw; gys Gceyxf hkmhv eacrpal; vbqpykyd hkmhv ksbcvnk; qehjfok-status hkmhv uavpgamfx (Gxhsacn/Ld Mqypgf/Mnzme bsk't jd, status hcqonvujq, cwf jzne qiqblf); oderaydl todos hsuyioc; personal fixe 'Tipo Zaav' tujejpog; 0 ianrksiqqg eacrpal; qiq sja lswfscne/ohnais. Mevgres Dyqncxlk Zwit (32b3lv47) qiq Mldhfjp (66047h16) uign mth rhsddxar."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -32,11 +32,7 @@ from app.agents.core.messages import (
 from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
-from app.constants.agents import (
-    PLAYBOOK_FALLBACK_CONTEXT_KEY,
-    PLAYBOOK_REPLAYED_CALLS_KEY,
-    WORKFLOW_LOCK_CONTEXT_KEY,
-)
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
@@ -93,9 +89,6 @@ class _AgentTriggerContext(BaseModel):
     workflow_notify_on_completion: bool = True
     playbook_fallback: str | None = Field(
         default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
-    )
-    playbook_replayed_calls: list[dict[str, object]] | None = Field(
-        default=None, validation_alias=PLAYBOOK_REPLAYED_CALLS_KEY
     )
     executor_lock_reservation: str | None = Field(
         default=None, validation_alias=WORKFLOW_LOCK_CONTEXT_KEY
@@ -273,7 +266,6 @@ async def _core_agent_logic(
         configurable["workflow_title"] = trigger.workflow_title
         configurable["workflow_notify_on_completion"] = trigger.workflow_notify_on_completion
         configurable["playbook_fallback"] = trigger.playbook_fallback
-        configurable["playbook_replayed_calls"] = trigger.playbook_replayed_calls
         configurable["executor_lock_reservation"] = trigger.executor_lock_reservation
 
     log.set(
@@ -374,17 +366,19 @@ async def call_agent_silent(
     conversation_id: str,
     user: AuthenticatedUser,
     options: AgentRunOptions | None = None,
+    stream_id: str | None = None,
 ) -> SilentRunResult:
     """Execute agent in silent mode for background processing.
 
     Comms may delegate to a detached background executor; this waits for it
     and merges its tool_data so background/workflow runs render like live
     chat, or carries the queued task_id if delegation was queued instead.
+    stream_id keys the run record; a caller that seeded one passes its id.
     """
     options = options or AgentRunOptions()
     usage_metadata_callback = options.usage_metadata_callback
 
-    stream_id = str(uuid4())
+    stream_id = stream_id or str(uuid4())
     try:
         with agent_run_lifecycle(
             user.user_id, _run_started(conversation_id, "background", options)
@@ -429,6 +423,7 @@ async def call_agent_silent(
             return SilentRunResult(
                 message=complete_message,
                 tool_data=tool_data,
+                stream_id=stream_id,
             )
 
     except Exception as exc:
