@@ -60,7 +60,7 @@ export function QuietHoursSettings() {
           <Switch
             size="sm"
             isSelected={hours.enabled}
-            onValueChange={(enabled) => void save({ ...hours, enabled })}
+            onValueChange={(enabled) => save({ ...hours, enabled })}
             aria-label="Use quiet hours"
           />
         </div>
@@ -85,7 +85,7 @@ export function QuietHoursSettings() {
             const next = { ...hours, ...fromAxis([value[0], value[1]]) };
             // Thumbs that meet span no hours; the stored window stays.
             if (next.start_hour === next.end_hour) preview(null);
-            else void save(next);
+            else save(next);
           }}
           marks={QUIET_AXIS_MARKS.map((value) => ({
             value,

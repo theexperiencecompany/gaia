@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchHours = vi.fn();
@@ -24,6 +26,13 @@ import {
 } from "@/features/settings/utils/quietHoursAxis";
 
 const NIGHT = { enabled: true, start_hour: 22, end_hour: 8 };
+
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
 
 describe("the quiet-hours axis", () => {
   it.each([
@@ -52,7 +61,7 @@ describe("the quiet-hours section", () => {
   });
 
   it("shows the stored window, its length and the timezone", async () => {
-    render(<QuietHoursSettings />);
+    render(<QuietHoursSettings />, { wrapper });
 
     expect(
       await screen.findByText(`${formatHour(22)} to ${formatHour(8)}`),
@@ -61,19 +70,30 @@ describe("the quiet-hours section", () => {
   });
 
   it("turns quiet hours off and keeps the window", async () => {
-    render(<QuietHoursSettings />);
+    render(<QuietHoursSettings />, { wrapper });
 
     fireEvent.click(
       await screen.findByRole("switch", { name: "Use quiet hours" }),
     );
 
-    expect(updateHours).toHaveBeenCalledWith({ ...NIGHT, enabled: false });
+    await waitFor(() =>
+      expect(updateHours).toHaveBeenCalledWith({ ...NIGHT, enabled: false }),
+    );
     await waitFor(() => expect(screen.getByText("Off")).toBeTruthy());
+  });
+
+  it("shows nothing, and throws nothing, when the stored window cannot be read", async () => {
+    fetchHours.mockRejectedValue(new Error("500"));
+    const { container } = render(<QuietHoursSettings />, { wrapper });
+
+    await waitFor(() => expect(fetchHours).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(container.innerHTML).toBe("");
   });
 
   it("goes back to the stored window when a save fails", async () => {
     updateHours.mockRejectedValue(new Error("500"));
-    render(<QuietHoursSettings />);
+    render(<QuietHoursSettings />, { wrapper });
 
     fireEvent.click(
       await screen.findByRole("switch", { name: "Use quiet hours" }),
