@@ -7,6 +7,7 @@ reporting the outcome. It deliberately owns neither the onboarding phase
 onboarding:completed analytics event (captured by complete_onboarding).
 """
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,7 +21,7 @@ USER = "user-1"
 
 
 @pytest.fixture
-def pipeline() -> AsyncMock:
+def pipeline() -> Iterator[AsyncMock]:
     with patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock) as mock:
         yield mock
 

@@ -289,7 +289,7 @@ class OnboardingAnswers(BaseModel):
         description="The jobs the user handed GAIA (onboarding Q2, up to three)",
     )
     other_need: str | None = Field(
-        None,
+        default=None,
         max_length=OTHER_NEED_MAX_LENGTH,
         description="What the user typed under 'Something else' in Q2, verbatim",
     )

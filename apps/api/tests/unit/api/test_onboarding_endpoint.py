@@ -28,6 +28,7 @@ from app.models.user_models import (
     AuthenticatedUser,
     OnboardingPreferences,
     OnboardingStatusResponse,
+    OnboardingSubdocument,
     UserDocument,
 )
 from shared.py.analytics import UserId
@@ -641,7 +642,7 @@ class TestGetPersonalization:
         user_doc = UserDocument(
             id="507f1f77bcf86cd799439011",
             name="New User",
-            onboarding={},
+            onboarding=OnboardingSubdocument(),
             created_at=None,
         )
         mock_composio = MagicMock()
@@ -663,7 +664,7 @@ class TestGetPersonalization:
         user_doc = UserDocument(
             id="507f1f77bcf86cd799439011",
             name=None,
-            onboarding={},
+            onboarding=OnboardingSubdocument(),
             created_at=datetime(2025, 1, 1, tzinfo=UTC),
         )
         mock_composio = MagicMock()
@@ -796,7 +797,7 @@ class TestGetPersonalizationPins:
         user_doc = UserDocument(
             id="507f1f77bcf86cd799439011",
             name="New User",
-            onboarding={},
+            onboarding=OnboardingSubdocument(),
             created_at=None,
         )
         mock_composio = MagicMock()
@@ -1008,7 +1009,7 @@ class TestGetPersonalizationFullShape:
         user_doc = UserDocument(
             id="507f1f77bcf86cd799439011",
             name=None,
-            onboarding={},
+            onboarding=OnboardingSubdocument(),
             created_at=None,
         )
         mock_composio = MagicMock()
@@ -1032,7 +1033,7 @@ class TestGetPersonalizationFullShape:
         user_doc = UserDocument(
             id="507f1f77bcf86cd799439011",
             name="New User",
-            onboarding={},
+            onboarding=OnboardingSubdocument(),
             created_at=None,
         )
         mock_composio = MagicMock()

@@ -89,7 +89,7 @@ def sample_user_id() -> str:
 
 @pytest.fixture
 def sample_onboarding_request() -> OnboardingRequest:
-    return OnboardingRequest(profession="Engineer", needs=["inbox"], timezone="UTC")
+    return OnboardingRequest(profession="Engineer", needs=[OnboardingNeed.INBOX], timezone="UTC")
 
 
 @pytest.fixture
@@ -418,7 +418,9 @@ class TestCompleteOnboarding:
     ) -> None:
         """A retried POST never reaches the capture: the atomic gate returns early on it."""
         mock_repo.complete_onboarding.return_value = sample_user
-        request = OnboardingRequest(profession="Engineer", needs=["reminders", "inbox"])
+        request = OnboardingRequest(
+            profession="Engineer", needs=[OnboardingNeed.REMINDERS, OnboardingNeed.INBOX]
+        )
 
         with (
             patch(f"{SERVICE}.capture") as capture,
@@ -445,7 +447,7 @@ class TestCompleteOnboarding:
             update={"platform_links": {"telegram": {"id": "tg-1"}}}
         )
         mock_repo.complete_onboarding.return_value = linked
-        request = OnboardingRequest(profession="Engineer", needs=["inbox"])
+        request = OnboardingRequest(profession="Engineer", needs=[OnboardingNeed.INBOX])
 
         with (
             patch(f"{SERVICE}.capture") as capture,
@@ -466,7 +468,7 @@ class TestCompleteOnboarding:
         mock_repo.complete_onboarding.return_value = _completed_user(
             sample_user_id, preferences={"profession": "Engineer", "language": "de"}
         )
-        request = OnboardingRequest(profession="Engineer", needs=["inbox"])
+        request = OnboardingRequest(profession="Engineer", needs=[OnboardingNeed.INBOX])
 
         with (
             patch(f"{SERVICE}.capture"),
@@ -487,7 +489,7 @@ class TestCompleteOnboarding:
     ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
         request = OnboardingRequest(
-            profession="Engineer", needs=["reminders"], other_need="chase invoices"
+            profession="Engineer", needs=[OnboardingNeed.REMINDERS], other_need="chase invoices"
         )
 
         with (
@@ -553,7 +555,7 @@ class TestCompleteOnboarding:
         sample_user: UserDocument,
     ) -> None:
         request = OnboardingRequest(
-            profession="Engineer", needs=["inbox"], timezone="America/New_York"
+            profession="Engineer", needs=[OnboardingNeed.INBOX], timezone="America/New_York"
         )
         mock_repo.complete_onboarding.return_value = sample_user
 
@@ -568,7 +570,9 @@ class TestCompleteOnboarding:
         sample_user: UserDocument,
     ) -> None:
         request = OnboardingRequest(
-            profession="  Engineer  ", needs=["inbox", "calendar"], timezone=" UTC "
+            profession="  Engineer  ",
+            needs=[OnboardingNeed.INBOX, OnboardingNeed.CALENDAR],
+            timezone=" UTC ",
         )
         mock_repo.complete_onboarding.return_value = sample_user
 
@@ -592,7 +596,7 @@ class TestCompleteOnboarding:
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
-        request = OnboardingRequest(profession="Engineer", needs=["inbox"])
+        request = OnboardingRequest(profession="Engineer", needs=[OnboardingNeed.INBOX])
         mock_repo.complete_onboarding.return_value = sample_user
 
         await complete_onboarding(sample_user_id, request)
@@ -601,7 +605,8 @@ class TestCompleteOnboarding:
 
     async def test_duplicate_needs_are_deduped_in_selection_order(self) -> None:
         request = OnboardingRequest(
-            profession="Engineer", needs=["reminders", "inbox", "reminders"]
+            profession="Engineer",
+            needs=[OnboardingNeed.REMINDERS, OnboardingNeed.INBOX, OnboardingNeed.REMINDERS],
         )
         assert request.needs == [OnboardingNeed.REMINDERS, OnboardingNeed.INBOX]
 
@@ -1546,7 +1551,9 @@ class TestCompleteOnboardingExactKwargs:
         sample_user: UserDocument,
     ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
-        request = OnboardingRequest(profession="  Engineer  ", needs=["mornings"], timezone=" UTC ")
+        request = OnboardingRequest(
+            profession="  Engineer  ", needs=[OnboardingNeed.MORNINGS], timezone=" UTC "
+        )
         await complete_onboarding(sample_user_id, request)
 
         kwargs = mock_repo.complete_onboarding.await_args.kwargs
