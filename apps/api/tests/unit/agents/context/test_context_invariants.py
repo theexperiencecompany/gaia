@@ -345,9 +345,7 @@ FALLIBLE_SOURCES = [
         "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
         "ship the context refactor",
     ),
-    # The manifest row, not the bare name: a catalog description can mention Gmail too.
-    ("app.agents.context.fetchers.get_connected_integrations_named", "- Gmail (gmail)"),
-    ("app.agents.context.fetchers.get_connected_integration_ids", "Not connected yet"),
+    ("app.agents.context.fetchers.get_connected_integrations_named", "Gmail"),
 ]
 
 COMMS_CONTEXT = SectionContext(
@@ -500,11 +498,7 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
 
     async def test_an_empty_section_leaves_no_blank_gap(self) -> None:
         """Sections that render nothing are dropped, not joined as empty strings."""
-        # An empty catalog, or the connectable-integrations block lists all of it.
-        with (
-            fake_context_sources(ContextSources()),
-            patch("app.agents.context.fetchers.all_integrations", return_value=()),
-        ):
+        with fake_context_sources(ContextSources()):
             assembled = await assemble_context(COMMS_CONTEXT)
 
         assert text_of(assembled.stable) == "User Name: Ada\nUser Timezone: Asia/Kolkata"

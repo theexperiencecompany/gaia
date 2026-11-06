@@ -128,12 +128,6 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
                 AsyncMock(return_value=list(sources.connected_integrations)),
             )
         )
-        enter(
-            patch(
-                "app.agents.context.fetchers.get_connected_integration_ids",
-                AsyncMock(return_value={item["id"] for item in sources.connected_integrations}),
-            )
-        )
         # The device manifest is a cached live read (Postgres) behind @Cacheable.
         # The fixture declares no devices, so pin the empty manifest rather than
         # letting the snapshot depend on whatever devices the environment holds.
