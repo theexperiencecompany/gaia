@@ -1305,3 +1305,25 @@ html {
 .chip {
   border-radius: 0.5rem;
 }
+/* v2 parity: v2 chips had fixed heights (sm h-6, md h-7, lg h-8);
+   v3 sizes are padding-only, so short labels render shorter. */
+.chip--sm {
+  min-height: 1.5rem;
+}
+.chip--md {
+  min-height: 1.75rem;
+}
+.chip--lg {
+  min-height: 2rem;
+}
+/* v2 parity: v2 buttons had minimum widths (sm min-w-16, md min-w-20,
+   lg min-w-24); v3 is w-fit, so short labels render narrower. */
+.button--sm {
+  min-width: 4rem;
+}
+.button--md {
+  min-width: 5rem;
+}
+.button--lg {
+  min-width: 6rem;
+}
