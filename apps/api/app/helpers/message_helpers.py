@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER
+from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_NOTE
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
@@ -27,6 +28,7 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.trigger_gate_models import QuietHoursBypass, QuietHoursStamp
 from app.models.webhook_models import TriggerEventAccount
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
@@ -166,6 +168,7 @@ class WorkflowTriggerContext(BaseModel):
     triggered_at: str = "Unknown"
     # Provider payload of a trigger-fired run: open shape, read via _event_accounts.
     trigger_data: dict[str, object] = Field(default_factory=dict)
+    quiet_hours: QuietHoursStamp | None = None
 
 
 async def format_workflow_execution_message(
@@ -245,6 +248,10 @@ async def format_workflow_execution_message(
     accounts = _event_accounts(trigger.trigger_data)
     if accounts:
         fallback_section += TRIGGERED_ACCOUNT_SECTION.format(accounts=", ".join(accounts))
+    if isinstance(trigger.quiet_hours, QuietHoursBypass):
+        fallback_section += "\n\n" + QUIET_HOURS_BYPASS_NOTE.format(
+            reason=trigger.quiet_hours.reason
+        )
 
     # Email-triggered workflows get enhanced context
     if trigger.type == "gmail":

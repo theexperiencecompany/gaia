@@ -29,6 +29,7 @@ from app.services.feature_flags import (
     is_code_mode_enabled,
     is_enabled,
     is_hil_ledger_enabled,
+    is_trigger_gates_enforced,
     set_user_flag,
 )
 from app.utils.errors import AppError
@@ -334,12 +335,25 @@ FLAG_KILL_SWITCHES = {
     FeatureFlag.HIL_JEV_JUDGE: "ENABLE_HIL_JEV_JUDGE",
     FeatureFlag.HIL_JEV_REPLY: "ENABLE_HIL_JEV_REPLY",
     FeatureFlag.AGENT_LAB: "ENABLE_AGENT_LAB",
+    FeatureFlag.TRIGGER_GATES: "ENABLE_TRIGGER_GATES",
 }
 
 
 class TestAgentLab:
     async def test_agent_lab_flag_defaults_off(self, no_client: None) -> None:
         assert await is_agent_lab_enabled(USER_ID) is False
+
+
+class TestTriggerGates:
+    async def test_trigger_gates_ship_enforced(self, no_client: None) -> None:
+        assert await is_trigger_gates_enforced(USER_ID) is True
+
+    async def test_the_rollout_is_read_for_the_user(
+        self, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        _posthog_serves(mock_client, {"TRIGGER_GATES": False})
+
+        assert await is_trigger_gates_enforced(USER_ID) is False
 
 
 class TestShippedDefaults:

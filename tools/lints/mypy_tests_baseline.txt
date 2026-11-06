@@ -497,7 +497,6 @@ apps/api/tests/unit/services/test_social_profile_service.py	arg-type
 apps/api/tests/unit/services/test_startup_validation.py	func-returns-value
 apps/api/tests/unit/services/test_todo_canvas_storage.py	arg-type
 apps/api/tests/unit/services/test_tracked_todo_service.py	arg-type
-apps/api/tests/unit/services/test_trigger_handler_base.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers.py	union-attr
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	attr-defined
@@ -510,11 +509,8 @@ apps/api/tests/unit/services/test_user_todos_fs.py	arg-type
 apps/api/tests/unit/services/test_voice_service.py	arg-type
 apps/api/tests/unit/services/test_workflow_subagent.py	arg-type
 apps/api/tests/unit/services/test_workflow_subagent.py	override
-apps/api/tests/unit/services/todos/test_inbox_desk.py	attr-defined
 apps/api/tests/unit/services/todos/test_signal_context.py	arg-type
-apps/api/tests/unit/services/triggers/test_subscription_dispatch.py	arg-type
 apps/api/tests/unit/services/triggers/test_subscription_service.py	union-attr
-apps/api/tests/unit/services/triggers/test_subscription_validation.py	var-annotated
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	arg-type
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	operator
 apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	attr-defined
@@ -626,14 +622,6 @@ apps/api/tests/unit/workers/test_memory_sweep_tasks.py	func-returns-value
 apps/api/tests/unit/workers/test_paid_person_tasks.py	arg-type
 apps/api/tests/unit/workers/test_reminder_tasks.py	unused-ignore
 apps/api/tests/unit/workers/test_tracked_todo_recurrence.py	arg-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	arg-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	func-returns-value
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	has-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	misc
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	return-value
 apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_coverage.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_onboarding_gate.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	attr-defined
-apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	func-returns-value

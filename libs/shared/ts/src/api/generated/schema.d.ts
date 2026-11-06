@@ -6753,6 +6753,38 @@ export interface components {
             twitter?: string | null;
         };
         /**
+         * AuthoredGate
+         * @description A plain-text condition, shown to the user as "Runs only when: <condition>".
+         */
+        AuthoredGate: {
+            author: components["schemas"]["GateAuthor"];
+            /** Condition */
+            condition: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "authored";
+        };
+        /**
+         * AuthoredGateEdit
+         * @description A condition as a client sends it; the server decides who wrote it.
+         */
+        AuthoredGateEdit: {
+            /** Condition */
+            condition: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+        };
+        /**
          * BatchApprovalDecisionRequest
          * @description Body for deciding several pending approvals in one submission.
          */
@@ -9573,6 +9605,12 @@ export interface components {
              */
             since: string;
         };
+        /**
+         * GateAuthor
+         * @description Who wrote an authored gate's condition; always set by the server.
+         * @enum {string}
+         */
+        GateAuthor: "gaia" | "user";
         /**
          * GenerateWorkflowPromptRequest
          * @description Request model for AI-generated workflow instructions.
@@ -14720,7 +14758,7 @@ export interface components {
             field_name: string;
             operator: components["schemas"]["ConditionOperator"];
             /** Value */
-            value: string | number;
+            value: boolean | string | number;
         };
         /**
          * SubscriptionDocument
@@ -15125,6 +15163,29 @@ export interface components {
          * @enum {string}
          */
         SupportRequestType: "support" | "feature";
+        /**
+         * SystemGate
+         * @description A preset owned by code; its question and wording are read from the preset table.
+         */
+        SystemGate: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "system";
+            preset: components["schemas"]["SystemGatePreset"];
+        };
+        /**
+         * SystemGatePreset
+         * @description A gate whose question, criteria and wording live in code, not on the job.
+         * @enum {string}
+         */
+        SystemGatePreset: "inbox_desk";
         /**
          * SystemPurpose
          * @description Why a system-generated conversation was created.
@@ -15878,6 +15939,11 @@ export interface components {
              * Format: date-time
              */
             created_at?: string;
+            /**
+             * Gate
+             * @description The check a fired event must pass before an EXECUTE subscription runs
+             */
+            gate?: (components["schemas"]["AuthoredGate"] | components["schemas"]["SystemGate"]) | null;
             /** Id */
             id?: string;
             /**
@@ -16221,6 +16287,8 @@ export interface components {
             activated?: boolean | null;
             /** Description */
             description?: string | null;
+            /** @description Absent keeps the gate, null removes it, a value replaces it */
+            gate?: components["schemas"]["AuthoredGateEdit"] | null;
             /** Icon */
             icon?: string | null;
             /** Icon Color */
@@ -16924,6 +16992,11 @@ export interface components {
              */
             execution_logs: string[];
             /**
+             * Gate
+             * @description The check a fired integration event must pass before this workflow runs
+             */
+            gate: (components["schemas"]["AuthoredGate"] | components["schemas"]["SystemGate"]) | null;
+            /**
              * Icon
              * @description User-chosen icon slug (gaia-icons component name) shown when the workflow has no integration icons.
              */
@@ -17148,6 +17221,8 @@ export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
+export type AuthoredGate = components['schemas']['AuthoredGate'];
+export type AuthoredGateEdit = components['schemas']['AuthoredGateEdit'];
 export type BatchApprovalDecisionRequest = components['schemas']['BatchApprovalDecisionRequest'];
 export type BatchApprovalDecisionResponse = components['schemas']['BatchApprovalDecisionResponse'];
 export type BatchDecisionItem = components['schemas']['BatchDecisionItem'];
@@ -17318,6 +17393,7 @@ export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollaps
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
 export type FoldedCards = components['schemas']['FoldedCards'];
+export type GateAuthor = components['schemas']['GateAuthor'];
 export type GenerateWorkflowPromptRequest = components['schemas']['GenerateWorkflowPromptRequest'];
 export type GenerateWorkflowPromptResponse = components['schemas']['GenerateWorkflowPromptResponse'];
 export type GetPlatformLinksResponse = components['schemas']['GetPlatformLinksResponse'];
@@ -17619,6 +17695,8 @@ export type SupportRequestResponse = components['schemas']['SupportRequestRespon
 export type SupportRequestStatus = components['schemas']['SupportRequestStatus'];
 export type SupportRequestSubmissionResponse = components['schemas']['SupportRequestSubmissionResponse'];
 export type SupportRequestType = components['schemas']['SupportRequestType'];
+export type SystemGate = components['schemas']['SystemGate'];
+export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];

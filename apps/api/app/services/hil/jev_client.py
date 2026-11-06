@@ -1,4 +1,4 @@
-"""Transport for the JEV Decisions API, shared by every HIL question asked of it.
+"""Transport for the JEV Decisions API, shared by every question asked of it (HIL, trigger gates).
 
 One POST per call, validated where received. Failure raises — each caller
 decides its own degradation (LLM fallback, ask, leave pending), never this
@@ -15,6 +15,10 @@ from app.models.jev_models import JevDecisionsResponse
 from app.services.providers.provider_credentials_service import ProviderConfig, resolve
 
 
+class JevUnconfiguredError(RuntimeError):
+    """No OpenRouter key is saved or set, so JEV cannot be asked at all (a self-host without one)."""
+
+
 async def post_decisions(
     state: Mapping[str, object], questions: Mapping[str, Mapping[str, object]]
 ) -> JevDecisionsResponse:
@@ -22,7 +26,7 @@ async def post_decisions(
     config: ProviderConfig | None = await resolve(CredentialProviderName.OPENROUTER)
     key = config.api_key if config else None
     if not key:
-        raise RuntimeError("No OpenRouter key saved or set; cannot reach the JEV judge")
+        raise JevUnconfiguredError("No OpenRouter key saved or set; cannot reach the JEV judge")
     async with httpx.AsyncClient(timeout=HIL_JEV_TIMEOUT_SECONDS) as client:
         resp = await client.post(
             HIL_JEV_URL,
