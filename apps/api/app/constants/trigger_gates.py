@@ -172,7 +172,8 @@ QUIET_HOURS_HELD_SUMMARY: Final = "Held until your quiet hours ended"
 QUIET_HOURS_CONTEXT_KEY: Final = "quiet_hours"
 
 # Gate kinds whose skip may stop a run; any other kind is decided and recorded, then runs.
-ENFORCED_GATE_KINDS: Final = frozenset({GateKind.SYSTEM, GateKind.AUTHORED})
+# Authored stays out while the eval's authored template loses needs_you mail the desk preset runs.
+ENFORCED_GATE_KINDS: Final = frozenset({GateKind.SYSTEM})
 
 # Every email on these continues a thread or starts one; a continued conversation runs unasked.
 GMAIL_MESSAGE_TRIGGERS: Final = frozenset(

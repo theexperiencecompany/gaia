@@ -20,22 +20,18 @@ from arq.jobs import JobDef
 import fakeredis.aioredis
 import httpx
 import pytest
-import respx
-import time_machine
 
-from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateAuthor
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.trigger_gate_models import AuthoredGate, TriggerGate
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
-from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.triggers.handlers.gmail import GmailTriggerHandler
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.task_envelope import arq_task
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
-from tests.helpers import captured_wide_event, live_through
+from tests.helpers import captured_wide_event, live_through, trigger_gate_seams
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
@@ -318,17 +314,7 @@ def _live_stack(workflow: Workflow, runs: list[tuple[datetime, int]]) -> Iterato
         return "conv-1", []
 
     with (
-        respx.mock(assert_all_called=False) as jev,
-        patch(
-            "app.services.hil.jev_client.resolve",
-            AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
-        ),
-        patch(f"{_GATE_MODULE}.is_trigger_gates_enforced", AsyncMock(return_value=True)),
-        patch(
-            f"{_GATE_MODULE}.get_profile_timezone",
-            AsyncMock(return_value=Timezone.parse("Asia/Kolkata")),
-        ),
-        patch(f"{_GATE_MODULE}.capture"),
+        trigger_gate_seams(Timezone.parse("Asia/Kolkata")) as gate,
         patch(
             "app.services.triggers.base.TriggerHandler._queue_todo_dispatch",
             AsyncMock(return_value=True),
@@ -347,7 +333,7 @@ def _live_stack(workflow: Workflow, runs: list[tuple[datetime, int]]) -> Iterato
         patch(f"{MODULE}.WorkflowService.increment_execution_count", AsyncMock()),
         patch(f"{MODULE}.capture"),
     ):
-        jev.post(HIL_JEV_URL).mock(return_value=httpx.Response(200, json=_CAN_WAIT))
+        gate.jev.mock(return_value=httpx.Response(200, json=_CAN_WAIT))
         scheduler.get_task = AsyncMock(return_value=workflow)
         scheduler.handle_recurring_task = AsyncMock()
         yield
@@ -473,13 +459,11 @@ class TestADrainDueInsideQuietHours:
             "trigger_type": "integration",
             "trigger_batch_key": f"trigger_batch:{_GATED_ID}",
         }
-        tz = AsyncMock(return_value=Timezone.parse("Asia/Kolkata"))
+        night = _on_kolkata_clock(1, 23, 0)
 
         with (
             patch(f"{MODULE}.workflow_scheduler") as scheduler,
-            patch(f"{_GATE_MODULE}.get_profile_timezone", tz),
-            patch(f"{_GATE_MODULE}.is_trigger_gates_enforced", AsyncMock(return_value=True)),
-            time_machine.travel(_on_kolkata_clock(1, 23, 0), tick=False),
+            trigger_gate_seams(Timezone.parse("Asia/Kolkata"), now=night) as gate,
         ):
             scheduler.get_task = AsyncMock(return_value=workflow)
             async with captured_wide_event() as event:
@@ -488,7 +472,7 @@ class TestADrainDueInsideQuietHours:
 
         assert result == f"Workflow {_GATED_ID} held until the user's quiet hours end"
         scheduler.get_task.assert_awaited_once_with(_GATED_ID)
-        tz.assert_awaited_once_with(_OWNER_ID)
+        gate.tz.assert_awaited_once_with(_OWNER_ID)
         assert job.args == (_GATED_ID, {**context, "quiet_hours": {"kind": "hold"}})
         assert job.score == int(_on_kolkata_clock(2, 8, 0).timestamp() * 1000)
         assert event["workflow_id"] == _GATED_ID

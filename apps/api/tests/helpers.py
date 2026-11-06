@@ -11,7 +11,7 @@ from collections.abc import (
     Mapping,
     Sequence,
 )
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import ExitStack, asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
@@ -26,6 +26,7 @@ import sys
 import time
 from types import ModuleType, SimpleNamespace
 from typing import Any, ClassVar
+from unittest.mock import AsyncMock, MagicMock, patch
 import zoneinfo
 
 from arq.connections import ArqRedis
@@ -44,6 +45,7 @@ from langchain_core.language_models.fake_chat_models import (
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
 from pydantic import Field
 import pytest
+import respx
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.types import ASGIApp
@@ -54,9 +56,12 @@ from workos.session import SessionModule
 from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
+from app.constants.hil import HIL_JEV_URL
+from app.constants.trigger_gates import GateKind
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log, log_context
 
 #: A well-formed user id with no users row behind it.
@@ -165,6 +170,38 @@ def worker_redis_url(base_url: str) -> str:
     if match:
         return re.sub(r"/\d+$", f"/{db}", base_url)
     return base_url.rstrip("/") + f"/{db}"
+
+
+@contextmanager
+def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator[SimpleNamespace]:
+    """Serve JEV at its Decisions URL and pin what decide_gate reads beside it: key, flag, PostHog, clock.
+
+    Every gate kind is enforced, so a verdict is what the gate decided; a shadow test narrows it.
+    Without now, the caller moves the clock.
+    """
+    gate = "app.services.triggers.trigger_gate"
+    with (
+        ExitStack() as clock,
+        respx.mock(assert_all_called=False) as router,
+        patch(
+            "app.services.hil.jev_client.resolve",
+            AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
+        ),
+        patch(f"{gate}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
+        patch(f"{gate}.ENFORCED_GATE_KINDS", frozenset(GateKind)),
+        patch(f"{gate}.capture", MagicMock()) as capture,
+        patch(f"{gate}.get_profile_timezone", AsyncMock(return_value=tz)) as profile_tz,
+        patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
+    ):
+        if now is not None:
+            clock.enter_context(time_machine.travel(now, tick=False))
+        yield SimpleNamespace(
+            jev=router.post(HIL_JEV_URL),
+            enforced=enforced,
+            capture=capture,
+            tz=profile_tz,
+            wrote=wrote,
+        )
 
 
 @contextmanager
