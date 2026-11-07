@@ -50,6 +50,13 @@
 @import "@heroui/styles/components/textfield.css" layer(components);
 @import "@heroui/styles/components/tooltip.css" layer(components);
 
+/* These are ALLOWLISTS: `source(none)` means a directory not named here emits
+   zero CSS, and Tailwind reports nothing. Anything a page imports must be
+   reachable from one of these lines (and the marketing/content bundles use
+   `@source not` so their subtrees are excluded on purpose).
+   scripts/audit-tailwind-classes.mjs is the backstop: it fails the build when
+   a class in src/ has no matching selector, which is how a missed directory
+   surfaces as an error instead of an unstyled page. */
 @source "../[locale]/(main)";
 @source "../[locale]/(desktop)";
 @source "../[locale]/(live)";

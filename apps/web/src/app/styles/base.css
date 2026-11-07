@@ -420,7 +420,6 @@
     list-style-type: disc;
   }
   :root {
-    --border: 1px solid #ccc;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
     --sidebar-primary-foreground: 0 0% 98%;
@@ -444,7 +443,6 @@
   :root {
     /* HeroUI theme variables */
 
-    --background: 0 0% 100%;
     --foreground: 222.2 47.4% 11.2%;
 
     --muted: 210 40% 96.1%;
@@ -453,7 +451,6 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 47.4% 11.2%;
 
-    --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
 
     --card: 0 0% 100%;
@@ -473,13 +470,11 @@
 
     --ring: 215 20.2% 65.1%;
 
-    --radius: 0.5rem;
   }
 
   .dark {
     /* HeroUI theme variables */
 
-    --background: 224 71% 4%;
     --foreground: 213 31% 91%;
 
     --muted: 223 47% 11%;
@@ -491,7 +486,6 @@
     --popover: 224 71% 4%;
     --popover-foreground: 215 20.2% 65.1%;
 
-    --border: 216 34% 17%;
     --input: 216 34% 17%;
 
     --card: 224 71% 4%;
@@ -508,7 +502,6 @@
 
     --ring: 216 34% 17%;
 
-    --radius: 0.5rem;
   }
 
   /* --- Critical global styles (from globals.css) --- */
@@ -1292,39 +1285,30 @@ html {
   background-color: var(--background);
 }
 
-/* v3 ships pill-shaped controls (`.button` is rounded-3xl = 3x --radius).
-   Restore the tighter v2 geometry without forking the component styles. */
-:root {
-  --radius: 0.375rem;
-}
-.button {
-  border-radius: 0.75rem;
-}
-.button--icon-only {
-  border-radius: 0.5rem;
-}
-.chip {
-  border-radius: 0.5rem;
-}
-/* v2 parity: v2 chips had fixed heights (sm h-6, md h-7, lg h-8);
-   v3 sizes are padding-only, so short labels render shorter. */
-.chip--sm {
-  min-height: 1.5rem;
-}
-.chip--md {
-  min-height: 1.75rem;
-}
-.chip--lg {
-  min-height: 2rem;
-}
-/* v2 parity: v2 buttons had minimum widths (sm min-w-16, md min-w-20,
-   lg min-w-24); v3 is w-fit, so short labels render narrower. */
-.button--sm {
-  min-width: 4rem;
-}
-.button--md {
-  min-width: 5rem;
-}
-.button--lg {
-  min-width: 6rem;
+/* GAIA design language: deliberately tighter than v3's defaults, which ship
+   pill controls (`rounded-3xl` buttons, `rounded-2xl` chips) and content-width
+   buttons. This is a brand decision, not v2 parity — state it here once instead
+   of scattering per-component patches. Sizes come from v3's own scale; only the
+   two things the brand overrides are listed. */
+@layer components {
+  .button {
+    border-radius: 0.75rem;
+  }
+  .button--icon-only {
+    border-radius: 0.5rem;
+  }
+  .chip {
+    border-radius: 0.5rem;
+  }
+  /* v3 sizes are padding-only; v2 shipped fixed heights, and the tighter
+     control height is part of the brand's density. */
+  .chip--sm {
+    min-height: 1.5rem;
+  }
+  .chip--md {
+    min-height: 1.75rem;
+  }
+  .chip--lg {
+    min-height: 2rem;
+  }
 }
