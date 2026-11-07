@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.8.0...bots-v1.9.0) (2026-11-07)
+
+
+### Features
+
+* **ci:** nx decides what CI runs; stop the self-made flakes and silent passes ([#1569](https://github.com/theexperiencecompany/gaia/issues/1569)) ([c722c9c](https://github.com/theexperiencecompany/gaia/commit/c722c9c021df2a050773dfe34cb2d9040bed2aeb))
+
+
+### Bug Fixes
+
+* **browser:** serve the live view under /api/v1 so its socket upgrades behind every proxy ([#1578](https://github.com/theexperiencecompany/gaia/issues/1578)) ([35625ca](https://github.com/theexperiencecompany/gaia/commit/35625ca019f70c057165ac0a95d2c26780bacba8))
+* **comms:** one GAIA that reacts instead of replying "on it" and never claims unconfirmed work ([#1669](https://github.com/theexperiencecompany/gaia/issues/1669)) ([254537b](https://github.com/theexperiencecompany/gaia/commit/254537b4982dc1d6b2752516a5a3ba8bfd161407))
+* **deps:** close the open npm Dependabot alerts ([#1630](https://github.com/theexperiencecompany/gaia/issues/1630)) ([7b2c8cd](https://github.com/theexperiencecompany/gaia/commit/7b2c8cdfb6e9b7553ea0d025a139368a46a30b53))
+
 ## [1.8.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.7.0...bots-v1.8.0) (2026-10-26)
 
 

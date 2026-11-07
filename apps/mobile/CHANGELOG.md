@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.10.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.9.0...mobile-v0.10.0) (2026-11-07)
+
+
+### Features
+
+* **delivery:** presence-aware, one-place proactive messaging ([#1523](https://github.com/theexperiencecompany/gaia/issues/1523)) ([39887cf](https://github.com/theexperiencecompany/gaia/commit/39887cfe9e9fe0b6c7a1fe5daa916cf09eac2b2f))
+* **settings:** quiet hours are the user's own, set on a noon-to-noon slider ([#1664](https://github.com/theexperiencecompany/gaia/issues/1664)) ([074b108](https://github.com/theexperiencecompany/gaia/commit/074b1089d6e92d0b64988fbcdbf4b53f13db9939))
+* **todos:** give every tracked todo its own chat, led by what woke each run ([#1561](https://github.com/theexperiencecompany/gaia/issues/1561)) ([7fa8464](https://github.com/theexperiencecompany/gaia/commit/7fa84648be37066f58b4929dc0f8a0c468d8f1f9))
+* **web:** see, edit and turn off a job's Runs only when rule ([#1661](https://github.com/theexperiencecompany/gaia/issues/1661)) ([e89213c](https://github.com/theexperiencecompany/gaia/commit/e89213c039dfe86ae238d1d0bdf0cbc8b896243a))
+* **web:** the visible fixes from the heygaia.io audit ([#1539](https://github.com/theexperiencecompany/gaia/issues/1539)) ([fc67d3d](https://github.com/theexperiencecompany/gaia/commit/fc67d3d8301634b4cd807ab6e3a5ee8c18861bc1))
+
+
+### Bug Fixes
+
+* **comms:** one GAIA that reacts instead of replying "on it" and never claims unconfirmed work ([#1669](https://github.com/theexperiencecompany/gaia/issues/1669)) ([254537b](https://github.com/theexperiencecompany/gaia/commit/254537b4982dc1d6b2752516a5a3ba8bfd161407))
+* **onboarding:** one server event per wizard step, retrying answers save, wait for the bot link, log out ([#1591](https://github.com/theexperiencecompany/gaia/issues/1591)) ([735f860](https://github.com/theexperiencecompany/gaia/commit/735f8606c2cdfcabf67d2ee4470bc7f131d6c23a))
+* **usage:** budget-wall cards name the wall that bound, and bots relay its message ([#1663](https://github.com/theexperiencecompany/gaia/issues/1663)) ([f97cea1](https://github.com/theexperiencecompany/gaia/commit/f97cea101c56c03adb9ec265dffbc6938f9007f3))
+
 ## [0.9.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.8.1...mobile-v0.9.0) (2026-10-26)
 
 
