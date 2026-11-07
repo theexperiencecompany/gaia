@@ -7,6 +7,7 @@
 
 @custom-variant dark (&:is(.dark *));
 @plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
 @import "@heroui/styles/components/accordion.css" layer(components);
 @import "@heroui/styles/components/avatar.css" layer(components);
 @import "@heroui/styles/components/avatar-group.css" layer(components);

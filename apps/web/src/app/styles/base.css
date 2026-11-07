@@ -28,6 +28,7 @@
 @source inline("grid-rows-3 grid-rows-4 grid-cols-3 grid-cols-4");
 @custom-variant dark (&:is(.dark *));
 @plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
 
 /* Global rather than in openui.css: it matches every recharts bar, not only react-ui's. */
 @layer openui {

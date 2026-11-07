@@ -35,7 +35,7 @@ const ALLOW = new Set([
   "bg-custom-gradient2", "mcp-app-surface", "openui-document", "mail-editor",
   "ph-no-capture", "pdf_container", "searchbar_container", "hero-split-word",
   "hero-fade-in", "sbi-anim", "chat-bubble-pop", "chat-demo-tap",
-  "openui-root", "prose-zinc",
+  "openui-root",
 ]);
 
 const CLASS_ATTR = /(?:className|class)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{`([^`]*)`\}|\{"([^"]*)"\})/g;
