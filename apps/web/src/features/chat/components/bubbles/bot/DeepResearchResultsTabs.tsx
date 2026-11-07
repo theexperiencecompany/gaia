@@ -197,7 +197,7 @@ interface SearchMetadataProps {
 function SearchMetadata({ metadata }: SearchMetadataProps) {
   return (
     <div className="rounded-lg bg-zinc-800 p-4">
-      <h3 className="text-md mb-2 font-medium text-primary">
+      <h3 className="text-medium mb-2 font-medium text-primary">
         Search Statistics
       </h3>
       <div className="space-y-2 text-sm">

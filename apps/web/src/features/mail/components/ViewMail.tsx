@@ -492,7 +492,7 @@ export default function ViewEmail({
               ) : mail ? (
                 <>
                   {mail?.snippet && (
-                    <div className="text-md text-muted-foreground">
+                    <div className="text-medium text-muted-foreground">
                       {he.decode(mail.snippet)}
                     </div>
                   )}

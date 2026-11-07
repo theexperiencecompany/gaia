@@ -47,7 +47,7 @@ export function LinkButton({
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className={cn(classes, "text-md font-medium text-zinc-300")}
+        className={cn(classes, "text-medium font-medium text-zinc-300")}
         style={{ padding: "9px", height: "30px", width: "fit-content" }}
         {...props}
       >
@@ -59,7 +59,7 @@ export function LinkButton({
   return (
     <Link
       href={href}
-      className={cn(classes, "text-md text-start font-medium text-zinc-300")}
+      className={cn(classes, "text-medium text-start font-medium text-zinc-300")}
       style={{ padding: "9px", height: "30px", width: "fit-content" }}
       {...props}
     >

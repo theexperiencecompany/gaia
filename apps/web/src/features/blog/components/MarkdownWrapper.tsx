@@ -136,7 +136,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
           ),
           thead: ({ ...props }) => (
             <thead
-              className="bg-opacity-20 border border-zinc-700 bg-zinc-700"
+              className="border border-zinc-700 bg-zinc-700/20"
               {...props}
             />
           ),

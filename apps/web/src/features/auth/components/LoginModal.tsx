@@ -57,7 +57,7 @@ export default function LoginModal() {
             <Modal.Body>
               <div className="mb-3 space-y-3 text-center">
                 <div className="text-5xl font-medium">Login</div>
-                <div className="text-md text-foreground-600">
+                <div className="text-medium text-foreground-600">
                   Please login to continue your journey with GAIA.
                 </div>
               </div>
@@ -122,7 +122,7 @@ function SignInButton({ isLocalAuth, onLocalSignIn }: SignInButtonProps) {
   return (
     <RaisedButton
       color="#00bbff"
-      className="text-md w-full"
+      className="text-medium w-full"
       onClick={() => {
         track("navigation:cta_clicked", {
           location: "login_modal",

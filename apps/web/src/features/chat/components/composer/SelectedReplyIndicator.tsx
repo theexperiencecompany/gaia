@@ -131,7 +131,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
               damping: 20,
               stiffness: 300,
             }}
-            className="relative flex mt-2 w-full items-center cursor-pointer justify-between rounded-2xl px-3 py-2 hover:bg-zinc-700/70 border-dashed border-zinc-500 bg-zinc-700/40 border-1.5 group overflow-hidden"
+            className="relative flex mt-2 w-full items-center cursor-pointer justify-between rounded-2xl px-3 py-2 hover:bg-zinc-700/70 border-dashed border-zinc-500 bg-zinc-700/40 border group overflow-hidden"
             onClick={handleClick}
           >
             <div className="flex items-center gap-2">
