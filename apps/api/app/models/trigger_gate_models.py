@@ -20,7 +20,7 @@ from app.constants.trigger_gates import (
     ENFORCED_GATE_KINDS,
     QUIET_HOURS_BYPASS_SUMMARY,
     QUIET_HOURS_HELD_SUMMARY,
-    SYSTEM_GATE_PRESETS,
+    SYSTEM_GATE_CONDITIONS,
     TRIGGER_GATE_CONDITION_MAX_CHARS,
     GateAuthor,
     GateKind,
@@ -92,7 +92,7 @@ class AuthoredGate(_StoredGate):
 
 
 class SystemGate(_StoredGate):
-    """A preset owned by code; its question and wording are read from the preset table."""
+    """A preset owned by code; INBOX_DESK runs on the email verdict, and its wording is code's."""
 
     kind: Literal[GateKind.SYSTEM] = GateKind.SYSTEM
     preset: SystemGatePreset
@@ -100,7 +100,7 @@ class SystemGate(_StoredGate):
 
     @property
     def display_condition(self) -> str:
-        return SYSTEM_GATE_PRESETS[self.preset].condition
+        return SYSTEM_GATE_CONDITIONS[self.preset]
 
 
 TriggerGate = Annotated[AuthoredGate | SystemGate, Field(discriminator="kind")]

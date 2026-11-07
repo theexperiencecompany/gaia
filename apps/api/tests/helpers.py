@@ -215,6 +215,31 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         )
 
 
+def email_verdict_answers(
+    bucket: str,
+    probabilities: Mapping[str, float] | None = None,
+    *,
+    can_wait: float = 1.0,
+    leaning: str = "meeting",
+) -> dict[str, object]:
+    """Return a Decisions body answering an email verdict: bucket at P 0.99 unless given, and urgency."""
+    urgent = {"can_wait": can_wait, leaning: 1 - can_wait}
+    return {
+        "answers": {
+            "bucket": {
+                "type": "choice",
+                "choice": bucket,
+                "probabilities": dict(probabilities or {bucket: 0.99}),
+            },
+            "urgent": {
+                "type": "choice",
+                "choice": "can_wait" if can_wait >= 0.5 else leaning,
+                "probabilities": urgent,
+            },
+        }
+    }
+
+
 @contextmanager
 def local_timezone(tz_name: str) -> Iterator[None]:
     """Run the body with the process local timezone set, restoring it afterwards.

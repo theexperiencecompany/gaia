@@ -1,7 +1,8 @@
-"""The Inbox desk's mail buckets: one JEV choice per email the desk fetched, saying what it does with it.
+"""The one email classifier: a bucket for what the Inbox desk does with an email, asked once per email.
 
 reply files a sub-todo and a draft, waiting a follow-up sub-todo, act an action sub-todo
-due on the email's deadline, fyi a briefing line, and junk is only counted.
+due on the email's deadline, fyi a briefing line, and junk is only counted. The same call
+asks the quiet-hours urgent question, and its answer is kept by Gmail message id.
 """
 
 from collections.abc import Mapping
@@ -9,6 +10,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
+from app.constants.cache import ONE_DAY_TTL
 from app.constants.trigger_gates import TRIGGER_GATE_SKIP_PROBABILITY
 
 
@@ -26,10 +28,23 @@ DESK_BUCKET_QUESTION_KEY: Final = "bucket"
 # junk hides an email from the desk, so it takes the gate's skip line; a less sure junk goes unbucketed.
 DESK_BUCKET_JUNK_PROBABILITY: Final = TRIGGER_GATE_SKIP_PROBABILITY
 # The gate's measured p95 is 370 ms; a slower answer leaves the email for the desk to judge.
-DESK_BUCKET_JEV_TIMEOUT_SECONDS: Final = 3.0
-# JEV calls in flight at once for the mail desk runs fetched, process-wide.
-DESK_BUCKET_JEV_LIMIT: Final = 8
-DESK_BUCKET_JEV_LIMIT_KEY: Final = "desk_bucket_jev"
+EMAIL_VERDICT_JEV_TIMEOUT_SECONDS: Final = 3.0
+# JEV calls in flight at once for email verdicts, process-wide.
+EMAIL_VERDICT_JEV_LIMIT: Final = 8
+EMAIL_VERDICT_JEV_LIMIT_KEY: Final = "email_verdict_jev"
+EMAIL_VERDICT_KEY_PREFIX: Final = "email_verdict"
+# The sweep after an email's arrival runs within a day; a second day covers one that slips.
+EMAIL_VERDICT_TTL_SECONDS: Final = 2 * ONE_DAY_TTL
+# What an arrival skip names as its reason, ahead of the email's sender and subject.
+DESK_BUCKET_SKIP_REASONS: Final[Mapping[DeskBucket, str]] = MappingProxyType(
+    {DeskBucket.FYI: "FYI", DeskBucket.JUNK: "Junk"}
+)
+
+DESK_AUTOMATION: Final = (
+    "Inbox desk: when new mail reaches the user's inbox, open a todo for every thread that "
+    "needs the user's reply or action, draft replies, and note meetings, bookings and "
+    "deadlines. Mail that needs nothing goes, at most, into the next morning briefing."
+)
 
 DESK_BUCKET_INSTRUCTIONS: Final = (
     "The user's inbox desk fetched the email below. Choose the one bucket that says what the desk "
