@@ -39,18 +39,16 @@ from tests.helpers import email_verdict_answers, trigger_gate_seams
 from .conftest import eval_config
 
 # Each bucket's share of its labelled emails JEV puts back in it, in every recorded pass.
-# junk is low by design: a junk under P 0.95 goes unbucketed and the desk judges it (~60 of 155).
-# waiting has one labelled email. Measured minimums: 0.676, 1.0, 0.95, 0.894, 0.429.
+# junk is low by design: a junk under P 0.95 goes unbucketed and the desk judges it.
+# The corpus labels no waiting email, so waiting has no floor to keep.
 RECALL_FLOORS: Mapping[DeskBucket, float] = {
     DeskBucket.REPLY: 0.67,
-    DeskBucket.WAITING: 1.0,
     DeskBucket.ACT: 0.95,
     DeskBucket.FYI: 0.89,
     DeskBucket.JUNK: 0.42,
 }
-# Needs-you emails some pass buckets junk, so the desk never reads them: the gate's own named
-# false skips.
-RECORDED_LOST_TO_JUNK = frozenset({"mail-048", "mail-353"})
+# Needs-you emails some pass buckets junk, so the desk never reads them.
+RECORDED_LOST_TO_JUNK: frozenset[str] = frozenset()
 # The routine sign-in notices some pass buckets other than fyi.
 RECORDED_SIGN_IN_NOT_FYI: frozenset[str] = frozenset()
 SIGN_IN_NOTICE_TAG = "sign_in_notice"
@@ -129,7 +127,7 @@ def test_the_live_suite_graded_each_bucket_as_production_reads_it(passes: list[_
             assert row["bucket"] == p.bucket(case_id), f"{p.run_id}: {case_id}"
 
 
-@pytest.mark.parametrize("bucket", list(DeskBucket), ids=[b.value for b in DeskBucket])
+@pytest.mark.parametrize("bucket", list(RECALL_FLOORS), ids=[b.value for b in RECALL_FLOORS])
 def test_each_bucket_keeps_its_recall_floor_in_every_pass(
     cases: dict[str, Case], passes: list[_Pass], bucket: DeskBucket
 ) -> None:

@@ -1502,9 +1502,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-048
-  ticket: Inbox desk gate on a needs_you email
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a stranger's first cold pitch for themselves is junk, not reply)
   tags:
-  - needs_you
+  - noise
   - tune
   - new_thread
   setup:
@@ -1523,11 +1523,11 @@
       payload:
         headers: []
   expected:
-    label: needs_you
-    bucket: reply
+    label: noise
+    bucket: junk
     urgent: false
     split: tune
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -2288,9 +2288,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-073
-  ticket: Inbox desk gate on a fyi email
+  ticket: Inbox desk gate on a needs_you email (relabelled from fyi, the application is refused unless the user uploads other ID, so act)
   tags:
-  - fyi
+  - needs_you
   - tune
   - new_thread
   setup:
@@ -2311,11 +2311,11 @@
         - name: Geafruthios
           value: <teciok@graliogior.example>
   expected:
-    label: fyi
-    bucket: fyi
+    label: needs_you
+    bucket: act
     urgent: false
     split: tune
-    outcome: skip
+    outcome: run
     score:
       gates:
       - gate_outcome
@@ -4519,9 +4519,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-142
-  ticket: Inbox desk gate on a fyi email
+  ticket: Inbox desk gate on a needs_you email (relabelled from fyi, a used-up budget is dropping the product's replays now, so act)
   tags:
-  - fyi
+  - needs_you
   - tune
   - new_thread
   setup:
@@ -4540,11 +4540,11 @@
       payload:
         headers: []
   expected:
-    label: fyi
-    bucket: fyi
+    label: needs_you
+    bucket: act
     urgent: false
     split: tune
-    outcome: skip
+    outcome: run
     score:
       gates:
       - gate_outcome
@@ -4736,9 +4736,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-149
-  ticket: Inbox desk gate on a needs_you email
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a stranger following up a listing pitch the user never answered is junk)
   tags:
-  - needs_you
+  - noise
   - tune
   - new_thread
   setup:
@@ -4758,11 +4758,11 @@
       payload:
         headers: []
   expected:
-    label: needs_you
-    bucket: reply
+    label: noise
+    bucket: junk
     urgent: false
     split: tune
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -7639,9 +7639,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-239
-  ticket: Inbox desk gate on a needs_you email
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a stranger's first cold intro pitching their services is junk)
   tags:
-  - needs_you
+  - noise
   - tune
   - new_thread
   setup:
@@ -7661,11 +7661,11 @@
       payload:
         headers: []
   expected:
-    label: needs_you
-    bucket: reply
+    label: noise
+    bucket: junk
     urgent: false
     split: tune
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -10016,9 +10016,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-313
-  ticket: Inbox desk gate on a needs_you email
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a stranger's first cold pitch for a contest entry is junk, not reply)
   tags:
-  - needs_you
+  - noise
   - tune
   - new_thread
   setup:
@@ -10037,11 +10037,11 @@
       payload:
         headers: []
   expected:
-    label: needs_you
-    bucket: reply
+    label: noise
+    bucket: junk
     urgent: false
     split: tune
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -11307,9 +11307,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-353
-  ticket: Inbox desk gate on a needs_you email
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a stranger's first cold pitch for video ads is junk, not reply)
   tags:
-  - needs_you
+  - noise
   - tune
   - new_thread
   setup:
@@ -11330,11 +11330,11 @@
       payload:
         headers: []
   expected:
-    label: needs_you
-    bucket: reply
+    label: noise
+    bucket: junk
     urgent: false
     split: tune
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -12779,7 +12779,7 @@
       - gate_outcome
       - quiet_wake
 - id: mail-398
-  ticket: Inbox desk gate on a fyi email
+  ticket: Inbox desk gate on a fyi email (bucket relabelled from waiting, an automatic application acknowledgement like mail-001, mail-055 and mail-399)
   tags:
   - fyi
   - tune
@@ -12802,7 +12802,7 @@
         headers: []
   expected:
     label: fyi
-    bucket: waiting
+    bucket: fyi
     urgent: false
     split: tune
     outcome: skip
