@@ -1318,7 +1318,7 @@ class TestTheDeskGateReadsTheEmailVerdict:
     @pytest.mark.parametrize(
         ("bucket", "probabilities", "reason"),
         [
-            ("fyi", {"fyi": 0.5, "junk": 0.25, "act": 0.25}, "FYI"),
+            ("fyi", {"fyi": 0.75, "junk": 0.25}, "FYI"),
             ("junk", {"junk": 0.96875, "fyi": 0.03125}, "Junk"),
         ],
     )
@@ -1342,12 +1342,36 @@ class TestTheDeskGateReadsTheEmailVerdict:
             skip=GateSkipRecord(event=line, at=AFTERNOON, certainty=certainty),
         )
 
-    async def test_junk_under_the_line_wakes_the_desk_to_judge_it(
+    async def test_junk_under_its_bucket_line_still_skips_when_nothing_is_asked(
         self, seams: SimpleNamespace
     ) -> None:
-        seams.jev.mock(return_value=_verdict("junk", {"junk": 0.9, "fyi": 0.1}))
+        seams.jev.mock(return_value=_verdict("junk", {"junk": 0.875, "fyi": 0.125}))
+
+        skip = await _skip(DESK)
+
+        assert skip == GateSkip(
+            event="Junk · Acme Billing · Invoice 4021 is past due", certainty=1.0
+        )
+
+    @pytest.mark.parametrize("bucket", ["fyi", "junk"])
+    async def test_fyi_or_junk_under_the_skip_line_wakes_the_desk(
+        self, seams: SimpleNamespace, bucket: str
+    ) -> None:
+        """Only P(fyi) + P(junk) >= 0.95 skips, as the yes/no gate skipped only at P(not_needed) >= 0.95."""
+        probabilities = {
+            bucket: 0.625,
+            "fyi" if bucket == "junk" else "junk": 0.3125,
+            "act": 0.0625,
+        }
+        seams.jev.mock(return_value=_verdict(bucket, probabilities))
 
         assert await _skip(DESK) == GateRun()
+        assert _decided(seams).reason == GateReason.JEV_RUN
+
+    async def test_fyi_under_the_skip_line_is_held_at_night(self, night: SimpleNamespace) -> None:
+        night.jev.mock(return_value=_verdict("fyi", {"fyi": 0.625, "junk": 0.3125, "act": 0.0625}))
+
+        assert await _skip(DESK) == GateHold(until=MORNING)
 
     async def test_by_day_it_asks_the_email_verdict_once_bucket_alone(
         self, seams: SimpleNamespace

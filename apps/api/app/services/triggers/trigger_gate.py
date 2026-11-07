@@ -3,7 +3,7 @@
 Both fan-outs of TriggerHandler.process_event call decide_gate before anything is
 claimed, buffered or queued, so a skipped event leaves nothing behind that marks
 it handled. An authored gate skips by day only at P(skip label) >= 0.95; the desk
-preset reads the email verdict instead and skips fyi and junk. Inside quiet hours
+preset skips at P(fyi) + P(junk) >= 0.95 from the email verdict. Inside quiet hours
 P(urgent) >= 0.80 runs now, then a skip skips, and everything else, every JEV
 failure included, waits for the window to end. A crash outside JEV runs the job.
 """
@@ -18,7 +18,7 @@ from typing import Final
 
 import httpx
 
-from app.constants.desk_buckets import DESK_BUCKET_SKIP_REASONS
+from app.constants.desk_buckets import DESK_BUCKET_SKIP_REASONS, DeskBucket
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
 from app.constants.trigger_gates import (
     AUTHORED_GATE_QUESTION,
@@ -355,7 +355,7 @@ def _answered(answer: JevChoiceAnswer) -> tuple[str, float | None]:
 def _settle_verdict(
     verdict: EmailVerdict, event: _GateEvent, *, hold: GateHold | None
 ) -> _Decision:
-    """Read the email verdict in the settle order: fyi and junk skip, any other bucket wakes the desk."""
+    """Read the email verdict in the settle order: only P(fyi) + P(junk) >= 0.95 skips the desk."""
     bucket = verdict.bucket
     choice = bucket.value if bucket else None
     p_skip = verdict.quiet_probability
@@ -368,8 +368,10 @@ def _settle_verdict(
             return _Decision(GateReason.JEV_URGENT, bypass, choice, None, p_skip, urgent)
         if event.conversation:
             return _Decision(GateReason.JEV_CAN_WAIT, hold, choice, None, p_skip, urgent)
-    if bucket is not None and bucket in QUIET_BUCKETS:
-        reason = DESK_BUCKET_SKIP_REASONS[bucket]
+    if p_skip >= TRIGGER_GATE_SKIP_PROBABILITY:
+        # P(fyi) + P(junk) over the line leaves only fyi, or junk the bucket may leave unnamed.
+        named = bucket if bucket is not None and bucket in QUIET_BUCKETS else DeskBucket.JUNK
+        reason = DESK_BUCKET_SKIP_REASONS[named]
         skip = GateSkip(TRIGGER_GATE_EVENT_LABEL_SEPARATOR.join((reason, event.label)), p_skip)
         return _Decision(GateReason.JEV_SKIP, skip, choice, None, p_skip, urgent)
     if hold is not None:

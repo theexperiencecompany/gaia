@@ -39,7 +39,7 @@ from shared.py.wide_events import log
 
 _BUCKET_LABELS = frozenset(DeskBucket)
 _URGENT_LABELS = frozenset(TRIGGER_GATE_URGENT_CRITERIA)
-# Buckets that ask nothing of the user: the desk gate skips them on arrival.
+# Buckets that ask nothing of the user; the desk gate skips at their summed P >= 0.95.
 QUIET_BUCKETS = frozenset({DeskBucket.FYI, DeskBucket.JUNK})
 
 
