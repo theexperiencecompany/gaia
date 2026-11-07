@@ -200,6 +200,11 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         patch(
             f"{gate}.todo_repository.remember_subscription_gate_skip", AsyncMock()
         ) as watch_skips,
+        # What memory knows about the user, which the email verdict reads; none unless set.
+        patch(
+            "app.services.mail.email_verdict.memory_engine.get_core_context",
+            AsyncMock(return_value=""),
+        ) as core,
     ):
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
@@ -212,7 +217,33 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
             wrote=wrote,
             workflow_skips=workflow_skips,
             watch_skips=watch_skips,
+            core=core,
         )
+
+
+def email_verdict_answers(
+    bucket: str,
+    probabilities: Mapping[str, float] | None = None,
+    *,
+    can_wait: float = 1.0,
+    leaning: str = "meeting",
+) -> dict[str, object]:
+    """Return a Decisions body answering an email verdict: bucket at P 0.99 unless given, and urgency."""
+    urgent = {"can_wait": can_wait, leaning: 1 - can_wait}
+    return {
+        "answers": {
+            "bucket": {
+                "type": "choice",
+                "choice": bucket,
+                "probabilities": dict(probabilities or {bucket: 0.99}),
+            },
+            "urgent": {
+                "type": "choice",
+                "choice": "can_wait" if can_wait >= 0.5 else leaning,
+                "probabilities": urgent,
+            },
+        }
+    }
 
 
 @contextmanager

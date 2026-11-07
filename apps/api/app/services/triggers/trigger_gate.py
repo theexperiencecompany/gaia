@@ -2,11 +2,10 @@
 
 Both fan-outs of TriggerHandler.process_event call decide_gate before anything is
 claimed, buffered or queued, so a skipped event leaves nothing behind that marks
-it handled. By day only P(skip label) >= 0.95 skips, and every other answer or
-failure runs. Inside the user's quiet hours the same call also asks whether the
-event is worth waking them for: P(urgent) >= 0.80 runs now, then a confident
-skip skips, and everything else, every JEV failure included, waits for 08:00.
-A gate that crashes outside its JEV call runs the job now, day or night.
+it handled. An authored gate skips by day only at P(skip label) >= 0.95; the desk
+preset skips at P(fyi) + P(junk) >= 0.95 from the email verdict. Inside quiet hours
+P(urgent) >= 0.80 runs now, then a skip skips, and everything else, every JEV
+failure included, waits for the window to end. A crash outside JEV runs the job.
 """
 
 import asyncio
@@ -19,6 +18,7 @@ from typing import Final
 
 import httpx
 
+from app.constants.desk_buckets import DESK_BUCKET_SKIP_REASONS, DeskBucket
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
 from app.constants.trigger_gates import (
     AUTHORED_GATE_QUESTION,
@@ -26,7 +26,6 @@ from app.constants.trigger_gates import (
     AUTHORED_GATE_SKIP_MEANING,
     GMAIL_MESSAGE_TRIGGERS,
     QUIET_HOURS_BYPASS_REASONS,
-    SYSTEM_GATE_PRESETS,
     TRIGGER_GATE_AUTOMATION_MAX_CHARS,
     TRIGGER_GATE_EVENT_LABEL_MAX_CHARS,
     TRIGGER_GATE_EVENT_LABEL_SEPARATOR,
@@ -45,7 +44,6 @@ from app.constants.trigger_gates import (
     GateOwner,
     GateQuestion,
     GateReason,
-    UrgentChoice,
 )
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -62,6 +60,13 @@ from app.services.analytics_service import capture
 from app.services.feature_flags import is_trigger_gates_enforced
 from app.services.hil.jev_client import JevUnconfiguredError, post_decisions
 from app.services.latency_metrics import observe_trigger_gate_decision
+from app.services.mail.email_verdict import (
+    QUIET_BUCKETS,
+    EmailVerdict,
+    Urgency,
+    email_verdict,
+    urgency,
+)
 from app.services.mail.thread_participation import user_wrote_in_thread
 from app.services.triggers.condition_matching import resolve_payload_value
 from app.services.triggers.gmail_signals import GmailGateView, gmail_gate_view
@@ -151,14 +156,6 @@ class GatedJob:
 
 
 @dataclass(frozen=True, slots=True)
-class Urgency:
-    """How likely an event is worth waking the user for, and the urgent choice JEV leans to."""
-
-    probability: float
-    choice: UrgentChoice
-
-
-@dataclass(frozen=True, slots=True)
 class _GateEvent:
     """The event as JEV reads it, the line a skip names it by, and the thread it continues.
 
@@ -169,6 +166,8 @@ class _GateEvent:
     label: str
     continued_thread: str | None = None
     conversation: bool = False
+    # The Gmail message id an email's verdict is kept under; None for any other event.
+    message_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,7 +176,8 @@ class _Decision:
 
     reason: GateReason
     verdict: GateVerdict
-    answer: JevChoiceAnswer | None = None
+    choice: str | None = None
+    confidence: float | None = None
     skip_probability: float | None = None
     urgency: Urgency | None = None
     latency_ms: int | None = None
@@ -189,9 +189,7 @@ def automation_text(title: str, description: str | None) -> str:
     return clip_text(text, TRIGGER_GATE_AUTOMATION_MAX_CHARS)
 
 
-def _question(gate: TriggerGate) -> GateQuestion:
-    if isinstance(gate, SystemGate):
-        return SYSTEM_GATE_PRESETS[gate.preset].question
+def _question(gate: AuthoredGate) -> GateQuestion:
     return GateQuestion(
         question=AUTHORED_GATE_QUESTION,
         run_label=AUTHORED_GATE_RUN_LABEL,
@@ -202,18 +200,14 @@ def _question(gate: TriggerGate) -> GateQuestion:
 
 
 def gate_request(
-    gate: TriggerGate, event: Mapping[str, object], automation: str, *, quiet: bool
+    gate: AuthoredGate, event: Mapping[str, object], automation: str, *, quiet: bool
 ) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
     """Return the Decisions state and questions for one event; pure, so the eval sends the same bytes.
 
-    A preset sends its own job text; an authored gate sends the owner's automation.
     Inside quiet hours the urgent question rides next to the unchanged gate question.
     """
     question = _question(gate)
-    job = (
-        SYSTEM_GATE_PRESETS[gate.preset].automation if isinstance(gate, SystemGate) else automation
-    )
-    state: dict[str, object] = {"event": dict(event), "automation": job}
+    state: dict[str, object] = {"event": dict(event), "automation": automation}
     questions: dict[str, dict[str, object]] = {
         TRIGGER_GATE_QUESTION_KEY: {
             "type": "choice",
@@ -232,29 +226,13 @@ def gate_request(
     return state, questions
 
 
-def skip_probability(gate: TriggerGate, answer: JevChoiceAnswer) -> float:
+def skip_probability(gate: AuthoredGate, answer: JevChoiceAnswer) -> float:
     """Return P(skip label) from JEV's probabilities; raise ValueError when there are none to trust."""
     question = _question(gate)
     probabilities = answer.probabilities
     if not probabilities or not probabilities.keys() <= question.labels:
         raise ValueError(f"gate answer has no usable probabilities: {probabilities!r}")
     return probabilities.get(question.skip_label, 0.0)
-
-
-def urgency(answer: JevChoiceAnswer) -> Urgency:
-    """Return P(urgent) as 1 - P(can_wait); raise ValueError without a P(can_wait) to trust.
-
-    A missing can_wait would read as certain urgency, so it is malformed, never a wake.
-    """
-    probabilities = answer.probabilities
-    if (
-        not probabilities
-        or not probabilities.keys() <= _URGENT_LABELS
-        or UrgentChoice.CAN_WAIT not in probabilities
-    ):
-        raise ValueError(f"urgent answer has no usable probabilities: {probabilities!r}")
-    leaning = max(QUIET_HOURS_BYPASS_REASONS, key=lambda choice: probabilities.get(choice, 0.0))
-    return Urgency(1 - probabilities[UrgentChoice.CAN_WAIT], leaning)
 
 
 def _clip(value: object) -> object | None:
@@ -292,11 +270,13 @@ def _event(trigger_name: str, payload: Mapping[str, object]) -> _GateEvent | Non
         if view is None:
             return None
         thread = resolve_payload_value(payload, "thread_id") if view.continues_thread else None
+        message_id = resolve_payload_value(payload, "message_id")
         return _GateEvent(
             view.as_event(),
             _gmail_label(view, trigger_name),
             continued_thread=thread if isinstance(thread, str) else None,
             conversation=view.continues_thread is None,
+            message_id=message_id if isinstance(message_id, str) and message_id else None,
         )
     entry = get_matchable_trigger(trigger_name)
     if entry is None:
@@ -346,7 +326,7 @@ async def _in_conversation(job: GatedJob, thread_id: str, payload: Mapping[str, 
 
 
 def _settle(
-    gate: TriggerGate, body: JevDecisionsResponse, event: _GateEvent, *, hold: GateHold | None
+    gate: AuthoredGate, body: JevDecisionsResponse, event: _GateEvent, *, hold: GateHold | None
 ) -> _Decision:
     """Read JEV's answers in the settle order; hold is what quiet hours do, None by day."""
     urgent: Urgency | None = None  # pragma: no mutate — only read as truthy; "" equals None
@@ -362,21 +342,64 @@ def _settle(
     p_skip = skip_probability(gate, answer)
     if p_skip >= TRIGGER_GATE_SKIP_PROBABILITY:
         skip = GateSkip(event.label, p_skip)
-        return _Decision(GateReason.JEV_SKIP, skip, answer, p_skip, urgent)
+        return _Decision(GateReason.JEV_SKIP, skip, *_answered(answer), p_skip, urgent)
     if hold is not None:
-        return _Decision(GateReason.JEV_CAN_WAIT, hold, answer, p_skip, urgent)
-    return _Decision(GateReason.JEV_RUN, GateRun(), answer, p_skip)
+        return _Decision(GateReason.JEV_CAN_WAIT, hold, *_answered(answer), p_skip, urgent)
+    return _Decision(GateReason.JEV_RUN, GateRun(), *_answered(answer), p_skip)
+
+
+def _answered(answer: JevChoiceAnswer) -> tuple[str, float | None]:
+    return answer.choice, answer.confidence
+
+
+def _settle_verdict(
+    verdict: EmailVerdict, event: _GateEvent, *, hold: GateHold | None
+) -> _Decision:
+    """Read the email verdict in the settle order: only P(fyi) + P(junk) >= 0.95 skips the desk."""
+    bucket = verdict.bucket
+    choice = bucket.value if bucket else None
+    p_skip = verdict.quiet_probability
+    urgent = verdict.urgency if hold is not None else None
+    if hold is not None:
+        if urgent is None:
+            raise ValueError("a quiet-hours email verdict carries no urgency")
+        if urgent.probability >= TRIGGER_GATE_URGENT_PROBABILITY:
+            bypass = GateBypass(QUIET_HOURS_BYPASS_REASONS[urgent.choice])
+            return _Decision(GateReason.JEV_URGENT, bypass, choice, None, p_skip, urgent)
+        if event.conversation:
+            return _Decision(GateReason.JEV_CAN_WAIT, hold, choice, None, p_skip, urgent)
+    if p_skip >= TRIGGER_GATE_SKIP_PROBABILITY:
+        # P(fyi) + P(junk) over the line leaves only fyi, or junk the bucket may leave unnamed.
+        named = bucket if bucket is not None and bucket in QUIET_BUCKETS else DeskBucket.JUNK
+        reason = DESK_BUCKET_SKIP_REASONS[named]
+        skip = GateSkip(TRIGGER_GATE_EVENT_LABEL_SEPARATOR.join((reason, event.label)), p_skip)
+        return _Decision(GateReason.JEV_SKIP, skip, choice, None, p_skip, urgent)
+    if hold is not None:
+        return _Decision(GateReason.JEV_CAN_WAIT, hold, choice, None, p_skip, urgent)
+    return _Decision(GateReason.JEV_RUN, GateRun(), choice, None, p_skip)
+
+
+async def _ask_authored(
+    gate: AuthoredGate, event: _GateEvent, automation: str, *, hold: GateHold | None
+) -> _Decision:
+    state, questions = gate_request(gate, event.fields, automation, quiet=hold is not None)
+    async with asyncio.timeout(TRIGGER_GATE_JEV_TIMEOUT_SECONDS):
+        body = await post_decisions(state, questions)
+    return _settle(gate, body, event, hold=hold)
 
 
 async def _ask_jev(
-    gate: TriggerGate, event: _GateEvent, automation: str, *, hold: GateHold | None
+    gate: TriggerGate, event: _GateEvent, job: GatedJob, *, hold: GateHold | None
 ) -> _Decision:
-    state, questions = gate_request(gate, event.fields, automation, quiet=hold is not None)
     started = time.perf_counter()
     try:
-        async with asyncio.timeout(TRIGGER_GATE_JEV_TIMEOUT_SECONDS):
-            body = await post_decisions(state, questions)
-        decision = _settle(gate, body, event, hold=hold)
+        if isinstance(gate, SystemGate):
+            verdict = await email_verdict(
+                job.user_id, event.message_id, event.fields, quiet=hold is not None
+            )
+            decision = _settle_verdict(verdict, event, hold=hold)
+        else:
+            decision = await _ask_authored(gate, event, job.automation, hold=hold)
     except Exception as e:
         # The one degradation a gate has: run as if it were not there, or wait for the morning.
         reason = jev_failure_reason(e)
@@ -404,7 +427,7 @@ def _record(
     observe_trigger_gate_decision(
         owner=job.owner.value, outcome=outcome.value, reason=decision.reason.value
     )
-    answer, urgent = decision.answer, decision.urgency
+    urgent = decision.urgency
     log.set(
         trigger_gate={
             job.id: {
@@ -414,8 +437,8 @@ def _record(
                 "reason": decision.reason.value,
                 "enforced": enforced,
                 "skip_probability": decision.skip_probability,
-                "choice": answer.choice if answer else None,
-                "confidence": answer.confidence if answer else None,
+                "choice": decision.choice,
+                "confidence": decision.confidence,
                 "urgent_probability": urgent.probability if urgent else None,
                 "urgent_choice": urgent.choice.value if urgent else None,
                 "latency_ms": decision.latency_ms,
@@ -493,7 +516,7 @@ async def _decide(
     if event is None or (event.conversation and hold is None):
         decision = _Decision(GateReason.FREE_RUN, hold or GateRun())
     else:
-        decision = await _ask_jev(gate, event, job.automation, hold=hold)
+        decision = await _ask_jev(gate, event, job, hold=hold)
     with analytics_context(worker_context(Trigger.INTEGRATION_TRIGGER)):
         enforced = gate.enforced and await is_trigger_gates_enforced(job.user_id)
         verdict = decision.verdict if enforced else GateRun()

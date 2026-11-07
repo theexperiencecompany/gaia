@@ -277,8 +277,6 @@ apps/api/tests/unit/memory/pg_store/test_memories.py	arg-type
 apps/api/tests/unit/memory/test_chroma_store.py	abstract
 apps/api/tests/unit/memory/test_consolidation.py	attr-defined
 apps/api/tests/unit/memory/test_consolidation.py	misc
-apps/api/tests/unit/memory/test_context.py	attr-defined
-apps/api/tests/unit/memory/test_context.py	list-item
 apps/api/tests/unit/memory/test_embeddings.py	attr-defined
 apps/api/tests/unit/memory/test_embeddings.py	func-returns-value
 apps/api/tests/unit/memory/test_embeddings.py	misc

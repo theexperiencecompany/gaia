@@ -28,9 +28,10 @@ from shared.py.wide_events import log
 # separate the volatile agenda/journal from the cacheable documents.
 AGENDA_HEADING = "## Current agenda"
 RECENT_ACTIVITY_HEADING = "## Recent activity"
+ABOUT_USER_HEADING = "## About the user"
 
 _DOC_SECTIONS: list[tuple[MemoryDocType, str]] = [
-    (MemoryDocType.USER_MD, "## About the user"),
+    (MemoryDocType.USER_MD, ABOUT_USER_HEADING),
     (MemoryDocType.MEMORY_MD, "## Assistant conventions"),
     (MemoryDocType.AGENDA_MD, AGENDA_HEADING),
 ]
@@ -102,6 +103,14 @@ async def get_core_context(user_id: str) -> str:
     context = "\n\n".join(sections)
     await set_cache(cache_key, context, ttl=CORE_CONTEXT_CACHE_TTL)
     return context
+
+
+def about_the_user(core_context: str) -> str:
+    """Return the About-the-user section of an assembled core context, or "" when it has none."""
+    if not core_context.startswith(f"{ABOUT_USER_HEADING}\n"):
+        return ""
+    body = core_context[len(ABOUT_USER_HEADING) + 1 :]
+    return body.split("\n\n## ", 1)[0].strip()
 
 
 async def invalidate_core_context(user_id: str) -> None:

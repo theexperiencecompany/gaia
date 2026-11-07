@@ -14409,7 +14409,7 @@ export interface components {
         SupportRequestType: "support" | "feature";
         /**
          * SystemGatePreset
-         * @description A gate whose question, criteria and wording live in code, not on the job.
+         * @description A gate whose decision and wording live in code, not on the job.
          * @enum {string}
          */
         SystemGatePreset: "inbox_desk";
