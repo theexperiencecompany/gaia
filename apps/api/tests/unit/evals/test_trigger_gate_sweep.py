@@ -20,6 +20,7 @@ from scripts.evals.core.types import Case, CaseRun, ProviderError
 from scripts.evals.suites.trigger_gate import (
     AUTHORED_DESK_GATE,
     DESK_GATE,
+    EVAL_USER_PROFILE,
     EXTRA,
     RECORDED_DIR,
     USER_WROTE_IN_THREAD,
@@ -41,6 +42,7 @@ import time_machine
 from app.constants.desk_buckets import DESK_AUTOMATION
 from app.constants.trigger_gates import ENFORCED_GATE_KINDS, GateKind, GateOwner
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.memory.context import ABOUT_USER_HEADING
 from app.models.jev_models import JevDecisionsResponse
 from app.models.trigger_gate_models import TriggerGate
 from app.services.triggers.trigger_gate import (
@@ -79,9 +81,9 @@ RECORDED_WAKES = frozenset({"mail-094", "mail-151"})
 NOISE_SKIP_FLOOR = 0.70
 SIGN_IN_NOTICE_TAG = "sign_in_notice"
 # needs_you emails the authored template skips by day and the desk gate runs; enforced anyway by
-# founder decision, so a change to this set is a change to what authored gates cost the user.
-# mail-245 the yes/no desk gate skipped too; the email verdict runs it.
-RECORDED_AUTHORED_ONLY_FALSE_SKIPS = frozenset({"mail-245"})
+# founder decision, so a change here changes what authored gates cost the user.
+# mail-458 is a visa centre's notice from the founder's own inbox.
+RECORDED_AUTHORED_ONLY_FALSE_SKIPS = frozenset({"mail-245", "mail-458"})
 
 
 class RecordedRow(GateJournalFields):
@@ -120,10 +122,11 @@ def _replay(asked: AskedRequest, unanswered: list[str], key: str) -> Callable[..
 async def _regrade(cases: Mapping[str, Case]) -> list[_Pass]:
     passes = []
     with trigger_gate_seams(KOLKATA, now=AFTERNOON) as seams:
+        # The desk gate reads the corpus user's profile from memory, as production does.
+        seams.core.return_value = f"{ABOUT_USER_HEADING}\n{EVAL_USER_PROFILE}"
         for kind, directory in _RECORDED.items():
             for path in sorted(directory.glob("*.jsonl")):
-                # A case pending a founder label is not graded, though a pass may hold its answer.
-                rows = {c: row for c, row in read_recorded(path).items() if c in cases}
+                rows = read_recorded(path)
                 verdicts: dict[tuple[str, GateMode], GateVerdict] = {}
                 unanswered: list[str] = []
                 for mode, now in ((GateMode.DAY, AFTERNOON), (GateMode.QUIET, NIGHT)):

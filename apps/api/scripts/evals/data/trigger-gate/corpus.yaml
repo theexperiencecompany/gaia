@@ -1502,10 +1502,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-048
-  ticket: Inbox desk gate on a needs_you email (pending founder label; a cold email is worth answering only if it fits the user's work)
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you by the founder's rule that a cold pitch is junk unless it fits the user's interests; a designer looking for work pitches himself, outside the user's priorities)
   tags:
-  - needs_you
-  - pending_founder_label
+  - noise
   - tune
   - new_thread
   setup:
@@ -1524,11 +1523,11 @@
       payload:
         headers: []
   expected:
-    label: needs_you
-    bucket: reply
+    label: noise
+    bucket: junk
     urgent: false
     split: tune
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -4737,10 +4736,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-149
-  ticket: Inbox desk gate on a needs_you email (pending founder label; a cold email is worth answering only if it fits the user's work)
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you by the founder's rule that a cold pitch is junk unless it fits the user's interests; a directory listing pitch chasing an email the user never answered)
   tags:
-  - needs_you
-  - pending_founder_label
+  - noise
   - tune
   - new_thread
   setup:
@@ -4760,11 +4758,11 @@
       payload:
         headers: []
   expected:
-    label: needs_you
-    bucket: reply
+    label: noise
+    bucket: junk
     urgent: false
     split: tune
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -7641,10 +7639,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-239
-  ticket: Inbox desk gate on a needs_you email (pending founder label; a cold email is worth answering only if it fits the user's work)
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you by the founder's rule that a cold pitch is junk unless it fits the user's interests; an engineer looking for work sends a cold intro, outside the user's priorities)
   tags:
-  - needs_you
-  - pending_founder_label
+  - noise
   - tune
   - new_thread
   setup:
@@ -7664,11 +7661,11 @@
       payload:
         headers: []
   expected:
-    label: needs_you
-    bucket: reply
+    label: noise
+    bucket: junk
     urgent: false
     split: tune
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -10019,10 +10016,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-313
-  ticket: Inbox desk gate on a needs_you email (pending founder label; a cold email is worth answering only if it fits the user's work)
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you by the founder's rule that a cold pitch is junk unless it fits the user's interests; a pitch-video contest invites an entry, outside the user's priorities)
   tags:
-  - needs_you
-  - pending_founder_label
+  - noise
   - tune
   - new_thread
   setup:
@@ -10041,11 +10037,11 @@
       payload:
         headers: []
   expected:
-    label: needs_you
-    bucket: reply
+    label: noise
+    bucket: junk
     urgent: false
     split: tune
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -11311,10 +11307,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-353
-  ticket: Inbox desk gate on a needs_you email (pending founder label; a cold email is worth answering only if it fits the user's work)
+  ticket: Inbox desk gate on a noise email (relabelled from needs_you by the founder's rule that a cold pitch is junk unless it fits the user's interests; an agency selling video ads, a generic vendor pitch)
   tags:
-  - needs_you
-  - pending_founder_label
+  - noise
   - tune
   - new_thread
   setup:
@@ -11335,11 +11330,11 @@
       payload:
         headers: []
   expected:
-    label: needs_you
-    bucket: reply
+    label: noise
+    bucket: junk
     urgent: false
     split: tune
-    outcome: run
+    outcome: skip
     score:
       gates:
       - gate_outcome
@@ -13849,6 +13844,1245 @@
     urgent: false
     split: tune
     outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-431
+  ticket: "Inbox desk gate on a needs_you email the founder labelled reply from the real inbox (an investor/partner the user met follows up in their thread)"
+  tags:
+  - needs_you
+  - tune
+  - continuation
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-431-thread
+      message_id: mail-431
+      label_ids:
+      - UNREAD
+      - CATEGORY_PERSONAL
+      - INBOX
+      attachment_list: []
+      sender: "Sahor Mancrio <sahor@eloria.example>"
+      to: teciok@graliogior.example
+      subject: "Re: Investor / Partner meeting between Teciok and Sahor"
+      message_text: "Hey Teciok, I see you registered on the dashboard. Sent you an invite to our Slack on teciok@graliogior.example; it needs your own workspace, or I can add you as a guest. Lmk. Sahor. On Thu, Oct 22 Teciok wrote: > Investor / Partner meeting between Teciok and Sahor"
+      payload:
+        headers: []
+    user_wrote_in_thread: true
+  expected:
+    label: needs_you
+    bucket: reply
+    urgent: false
+    split: tune
+    outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-432
+  ticket: "Inbox desk gate on a needs_you email the founder labelled reply from the real inbox (a founder in AI assistants asks for a user call, aligned with the user's interests)"
+  tags:
+  - needs_you
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-432
+      message_id: mail-432
+      label_ids:
+      - UNREAD
+      - CATEGORY_PERSONAL
+      - INBOX
+      attachment_list: []
+      sender: "Jaivio Shetrak <jaivio@berkrio.example>"
+      to: teciok@graliogior.example
+      subject: "quick question about contrio"
+      message_text: "hey teciok, i'm jaivio, one of the cofounders of contrio. saw you signed up last week and was curious if you've had a chance to use it yet. we're hopping on calls with our first users to hear what's working. would you be open to a quick 15 min call this week?"
+      payload:
+        headers: []
+  expected:
+    label: needs_you
+    bucket: reply
+    urgent: false
+    split: tune
+    outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-433
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a mass pitch for ad-account data)"
+  tags:
+  - noise
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-433
+      message_id: mail-433
+      label_ids:
+      - UNREAD
+      - CATEGORY_PROMOTIONS
+      - INBOX
+      attachment_list: []
+      sender: "\"fedrio from unfaira.example\" <fedrio@mail.unfaira.example>"
+      to: teciok@graliogior.example
+      subject: "i post-trained a model that beats frontier models on x ads"
+      message_text: "hey hey!! i've been running x ads for unfaira and fell into a rabbit hole: post-trained a model that gets cheaper relevant clicks than every frontier model. open-sourcing it next week. if you're running x ads too, i'd love to look at your ad account data; anyone who helps gets early access"
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+        - name: Precedence
+          value: bulk
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-434
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a mass pitch dressed as a personal note)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-434
+      message_id: mail-434
+      label_ids:
+      - UNREAD
+      - CATEGORY_PERSONAL
+      - INBOX
+      attachment_list: []
+      sender: "\"fedrio from unfaira.example\" <fedrio@mail.unfaira.example>"
+      to: teciok@graliogior.example
+      subject: "email was a mess, then i tried this"
+      message_text: "hi! Fedrio here between all the client convos, my inbox is kinda chaos. i've been using hellorio.example for the past few weeks and finally feel like i'm catching up. it finds the work buried in my inbox and gets it ready for me to review"
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+        - name: Precedence
+          value: bulk
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-435
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a hackathon promotion)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-435
+      message_id: mail-435
+      label_ids:
+      - UNREAD
+      - CATEGORY_PROMOTIONS
+      - INBOX
+      attachment_list: []
+      sender: "Metrio for Developers <update@digital.metriomail.example>"
+      to: teciok@graliogior.example
+      subject: "Still time to apply: $1M in prizes and $150 in credits"
+      message_text: "Hi there, you asked to hear when applications opened for the Metrio Global AI Developer Hackathon. They're open now and thousands have applied. Applications close Sunday. If selected you get $150 in Metrio Model API credits and a chance at a share of $1M in prizes."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-436
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a hackathon promotion)"
+  tags:
+  - noise
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-436
+      message_id: mail-436
+      label_ids:
+      - UNREAD
+      - CATEGORY_PROMOTIONS
+      - INBOX
+      attachment_list: []
+      sender: "Metrio for Developers <update@digital.metriomail.example>"
+      to: teciok@graliogior.example
+      subject: "Build the future of superintelligence with us"
+      message_text: "Metrio is running a virtual 10-day Global AI Developer Hackathon and applications are open now. Build with our newest models on Metrio Model API or open weights. Every selected participant gets $150 in credits and there is a $1M cash prize pool."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-437
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a finish-setup nag from a tool the user never adopted)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-437
+      message_id: mail-437
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Johnny from Hinoka <johnny@hinoka.example>"
+      to: teciok@graliogior.example
+      subject: "Connect HK1 On Your Computer"
+      message_text: "Hi! You signed up for Hinoka on your phone. HK1 does more on a computer, inside the coding agent you already use. Sign in on your computer and run one command to connect it. Your starting credit is already in your account."
+      payload:
+        headers: []
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-438
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (an onboarding blast that asks nothing worth a response)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-438
+      message_id: mail-438
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Jock from Fastrio <hello@send.fastrio.example>"
+      to: teciok@graliogior.example
+      subject: "Welcome to Fastrio"
+      message_text: "WELCOME TO FASTRIO. Hey Teciok, Jock here, one of the cofounders. We are very excited to welcome you and RISTOK. Fastrio helps you create short-form marketing content in seconds: navigate to Blitz mode, approve content you like, schedule to TikTok, Instagram or YouTube."
+      payload:
+        headers: []
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-439
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a trial ending never warrants a response while the user is not paying)"
+  tags:
+  - noise
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-439
+      message_id: mail-439
+      label_ids:
+      - UNREAD
+      - CATEGORY_PROMOTIONS
+      - INBOX
+      attachment_list: []
+      sender: "Jock from Fastrio <hello@send.fastrio.example>"
+      to: teciok@graliogior.example
+      subject: "Your free trial expires in 48 hours. Save 30% today"
+      message_text: "YOUR FREE TRIAL EXPIRES IN 48 HOURS. Hey Teciok, your free trial of Fastrio expires in 48 hours. After that you will lose access to Blitz mode, the content studio, the trending library and one-click scheduling. Here is a two-minute workflow our customers use."
+      payload:
+        headers: []
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-440
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a trial ended never warrants a response while the user is not paying)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-440
+      message_id: mail-440
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Jock from Fastrio <hello@send.fastrio.example>"
+      to: teciok@graliogior.example
+      subject: "Your free trial has ended"
+      message_text: "YOUR FREE TRIAL HAS NOW ENDED. Hey Teciok, your free trial of Fastrio has now ended, so your content growth is on pause. Pick a plan to keep creating; the plans page shows what each includes. If you'd like help choosing, please reply to this email."
+      payload:
+        headers: []
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-441
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a game's support nudge, nothing to do with the user's work)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-441
+      message_id: mail-441
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Gamegrio Studios Support <noreply@gamegrio.example>"
+      to: teciok@graliogior.example
+      subject: "You have an unread message from Gamegrio Studios Support"
+      message_text: "### do not reply to this email ### Hello ARwolf, we're reaching out to follow up on your last message and share what you missed while you were away. If you need further assistance, reach out by clicking the button below."
+      payload:
+        headers: []
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-442
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a game creator programme, nothing to do with the user's work)"
+  tags:
+  - noise
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-442
+      message_id: mail-442
+      label_ids:
+      - UNREAD
+      - CATEGORY_PERSONAL
+      - INBOX
+      attachment_list: []
+      sender: "Reniok Traleo <reniok@stillfrea.example>"
+      to: teciok@graliogior.example
+      subject: "Your Empire Creator Application!"
+      message_text: "Hello, thank you for applying to become a Chronicler in the Creator and Guardian Program. Before we decide we'd like to learn more about your channel. Please reply with your answers to the five questions below; short answers are fine."
+      payload:
+        headers: []
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-443
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a game creator programme, nothing to do with the user's work)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-443
+      message_id: mail-443
+      label_ids:
+      - UNREAD
+      - CATEGORY_PERSONAL
+      - INBOX
+      attachment_list: []
+      sender: "Reniok Traleo <reniok@stillfrea.example>"
+      to: teciok@graliogior.example
+      subject: "Your Empire Creator Application"
+      message_text: "Hello, thank you for applying to the Creator and Guardian Program. As we did not receive answers to our follow-up questions, we are not able to move forward with your application this time. You are welcome to apply again in a future round."
+      payload:
+        headers: []
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-444
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a trial promotion)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-444
+      message_id: mail-444
+      label_ids:
+      - UNREAD
+      - CATEGORY_PROMOTIONS
+      - INBOX
+      attachment_list: []
+      sender: "\"Romiok @Gojibrio\" <hello@gojibrio-news.example>"
+      to: teciok@graliogior.example
+      subject: "Last call: 14 days free ends in a few hours"
+      message_text: "Hey Teciok! Today at midnight our 14-day free trial goes back to 7 days. If you've been meaning to try Gojibrio AI, now's the moment: leads found, campaigns live, replies coming in. Quick win: set up an agent tracking people who engage with your competitors."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+        - name: Precedence
+          value: bulk
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-445
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (the user's own product's re-engagement blast to themselves)"
+  tags:
+  - noise
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-445
+      message_id: mail-445
+      label_ids:
+      - UNREAD
+      - CATEGORY_PROMOTIONS
+      - INBOX
+      attachment_list: []
+      sender: "Teciok from RISTOK <teciok@graliogior.example>"
+      to: teciok@graliogior.example
+      subject: "We miss you at RISTOK"
+      message_text: "Hey Teciok, Teciok here, one of the founders of RISTOK. Noticed you haven't used RISTOK in a bit. No worries at all, just wanted to check in. If it didn't do what you expected, we'd really appreciate hearing about it. You can just reply here."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-446
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a newsletter post)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-446
+      message_id: mail-446
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "OpenRocka MAPRA License <mapralicense@substack.example>"
+      to: teciok@graliogior.example
+      subject: "Arjun Explains: What Is OpenRocka MAPRA and the Upcoming MAPRA Nano Card"
+      message_text: "View this post on the web. OpenRocka MAPRA began with a simple problem. Young people are already writing software, conducting research and designing technology, yet the systems used to license and manage intellectual property were built around adults and organizations."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-447
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a shop promotion)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-447
+      message_id: mail-447
+      label_ids:
+      - UNREAD
+      - CATEGORY_PROMOTIONS
+      - INBOX
+      attachment_list: []
+      sender: "NOVEA <sup@novea.example>"
+      to: teciok@graliogior.example
+      subject: "One gift still missing?"
+      message_text: "One gift still missing? Our holiday edit is live: bestsellers, bundles and gift cards, shipped in two days. Shop the edit."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-448
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a conference promotion, even from a provider the user uses)"
+  tags:
+  - noise
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-448
+      message_id: mail-448
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Clouvra <em@em1.clouvra.example>"
+      to: teciok@graliogior.example
+      subject: "Clouvra Connect is almost sold out. Claim your $100 off."
+      message_text: "Clouvra Connect, San Francisco, is almost sold out. If you have been thinking about joining us, now is the time: we're knocking $100 off your pass. 150 sessions covering production AI, security, performance and resilient infrastructure."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-449
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (pricing news from a provider the user does not actively use)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-449
+      message_id: mail-449
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "DeepSiok <support@sc.mail.deepsiok.example>"
+      to: teciok@graliogior.example
+      subject: "Notice of DeepSiok Search API Pricing of Server-Side Tool Call"
+      message_text: "Dear DeepSiok API user, DeepSiok API now supports web search and fetch, charged at $0.75 per 1000 successful requests. Please check the pricing page. Server-side tool calls through the harness are currently free."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+        - name: Precedence
+          value: bulk
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-450
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a product update from a tool the user does not actively use)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-450
+      message_id: mail-450
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "\"Lingrio Team\" <hi@lingrio.example>"
+      to: teciok@graliogior.example
+      subject: "W42 Product Update: Bring your own model provider keys"
+      message_text: "Bring your own model provider key for localization. Requests go directly to the provider on your key and the provider bills you. Open Settings, BYOK, add your key and choose that provider's models in your localization engine."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+        - name: Precedence
+          value: bulk
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-451
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (pricing news from a provider the user does not actively use)"
+  tags:
+  - noise
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-451
+      message_id: mail-451
+      label_ids:
+      - UNREAD
+      - CATEGORY_PROMOTIONS
+      - INBOX
+      attachment_list: []
+      sender: "Ollavia <hello@ollavia.example>"
+      to: teciok@graliogior.example
+      subject: "Beam's free period on Ollavia ends this weekend"
+      message_text: "Hi there, Beam has been free on Ollavia since launch. Starting Sunday, Beam requires usage credits or a subscription and is priced like our other cloud models: input $0.125 / 1M tokens, output $0.40 / 1M tokens. Free requests will return payment-required errors."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+        - name: Precedence
+          value: bulk
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-452
+  ticket: "Inbox desk gate on a needs_you email the founder labelled act from the real inbox (a browser the user uses shuts down, so the user must migrate)"
+  tags:
+  - needs_you
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-452
+      message_id: mail-452
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "The Arco Company <members@arco.example>"
+      to: teciok@graliogior.example
+      subject: "We've decided to sunset Arco on December 22, 2026"
+      message_text: "We've decided to sunset Arco on December 22, 2026. That's not an easy sentence to write. We spent years building Arco with its community. Our priority is to make the move easy: export your spaces, tabs and passwords before the shutdown."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+  expected:
+    label: needs_you
+    bucket: act
+    urgent: false
+    split: tune
+    outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-453
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a marketing-list opt-in)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-453
+      message_id: mail-453
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "UNO Shields <info@e.unoshields.example>"
+      to: teciok@graliogior.example
+      subject: "Confirm Your Subscription"
+      message_text: "Confirm your sign-up: Yes, I want to receive emails from UNO Shields. If you didn't subscribe to this list or you're not sure why you received this email, you can delete it. You will not be subscribed if you don't click the link."
+      payload:
+        headers: []
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-454
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (an alumni event invitation unrelated to the user's work)"
+  tags:
+  - noise
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-454
+      message_id: mail-454
+      label_ids:
+      - UNREAD
+      - CATEGORY_PERSONAL
+      - INBOX
+      attachment_list: []
+      sender: "Principal TVIA <principal@tvia.example>"
+      to: teciok@graliogior.example
+      subject: "Invitation to Annual Concert 2026-27"
+      message_text: "Dear Alumni, warm greetings from Tapra Valley International School! It gives us immense pleasure to invite you, as a cherished member of our school family, to our Annual Concert 2026-27 across both evenings."
+      payload:
+        headers: []
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-455
+  ticket: "Inbox desk gate on a fyi email the founder labelled fyi from the real inbox (a tool the user uses reports a fixed bug)"
+  tags:
+  - fyi
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-455
+      message_id: mail-455
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Macgrio Davis <macgrio@rizio.example>"
+      to: teciok@graliogior.example
+      subject: "Resolved: Desktop tracking stopped for some users after the October 24 update"
+      message_text: "Restart Rizio to get 3.0.183. After our October 24 desktop update, Rizio stopped recording time on some computers (about 3% of users) until the app was restarted. If you saw Syncing on your dashboard for hours, that was us. We're really sorry."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+  expected:
+    label: fyi
+    bucket: fyi
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-456
+  ticket: "Inbox desk gate on a fyi email the founder labelled fyi from the real inbox (an indexing report on the user's own site, worth knowing)"
+  tags:
+  - fyi
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-456
+      message_id: mail-456
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Stize Search Console Team <sc-noreply@stize.example>"
+      to: teciok@graliogior.example
+      subject: "New reasons prevent pages from being indexed on site teciok.example"
+      message_text: "Search Console has identified that some pages on your site are not being indexed due to the following new reason: Blocked by robots.txt. If this reason is not intentional, we recommend that you fix it so the affected pages are indexed."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+        - name: Precedence
+          value: bulk
+  expected:
+    label: fyi
+    bucket: fyi
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-457
+  ticket: "Inbox desk gate on a fyi email the founder labelled fyi from the real inbox (news about the user's own application, nothing to do yet)"
+  tags:
+  - fyi
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-457
+      message_id: mail-457
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Passport Office <passport.office@notifications.passports.example>"
+      to: teciok@graliogior.example
+      subject: "We have approved your passport application"
+      message_text: "Dear TECIOK, we have approved your passport application. We are now printing your new passport. Our local service partners will be in touch about how you can collect it. Do not reply to this email."
+      payload:
+        headers: []
+  expected:
+    label: fyi
+    bucket: fyi
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-458
+  ticket: "Inbox desk gate on a needs_you email the founder labelled act from the real inbox (the user's visa documents need their attention)"
+  tags:
+  - needs_you
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-458
+      message_id: mail-458
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "VFSA Global <donotreply@vfsahelpline.example>"
+      to: teciok@graliogior.example
+      subject: "Notification from VFSA Global"
+      message_text: "Dear Customer, the passport and/or supporting documents for your reference number were collected from the UK Visa Application Centre on 28/10/2026. This is an auto generated e-mail. Please do NOT reply."
+      payload:
+        headers: []
+  expected:
+    label: needs_you
+    bucket: act
+    urgent: false
+    split: tune
+    outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-459
+  ticket: "Inbox desk gate on a fyi email the founder labelled fyi from the real inbox (an approval the user applied for)"
+  tags:
+  - fyi
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-459
+      message_id: mail-459
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Bayrio Compute <hello@bayrio.example>"
+      to: teciok@graliogior.example
+      subject: "You've been approved to use the Bayrio Compute Platform!"
+      message_text: "You've been approved to use the Bayrio Compute Platform! Please let us know if you have any questions as you begin procuring compute. You can get started reserving compute from the dashboard."
+      payload:
+        headers: []
+  expected:
+    label: fyi
+    bucket: fyi
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-460
+  ticket: "Inbox desk gate on a fyi email the founder labelled fyi from the real inbox (a routine new-sign-in notice for an account the user is recovery email for, so fyi)"
+  tags:
+  - fyi
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-460
+      message_id: mail-460
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Stize <no-reply@accounts.stize.example>"
+      to: teciok@graliogior.example
+      subject: "Security alert for other.account@stize.example"
+      message_text: "This is a copy of a security alert sent to other.account@stize.example; teciok@graliogior.example is the recovery email for this account. A new sign-in on Mac OS. We noticed a new sign-in to your Stize Account on a Mac OS device."
+      payload:
+        headers: []
+  expected:
+    label: fyi
+    bucket: fyi
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-461
+  ticket: "Inbox desk gate on a fyi email the founder labelled fyi from the real inbox (a security event the user caused)"
+  tags:
+  - fyi
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-461
+      message_id: mail-461
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Gitrio <noreply@gitrio.example>"
+      to: teciok@graliogior.example
+      subject: "[Gitrio] A third-party OAuth application has been added to your account"
+      message_text: "Hey teciok! A third-party OAuth application (Mac Setup) with repo scopes was recently authorized to access your account. To see this and other security events for your account, visit your security log."
+      payload:
+        headers: []
+  expected:
+    label: fyi
+    bucket: fyi
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-462
+  ticket: "Inbox desk gate on a needs_you email the founder labelled act from the real inbox (the user's CI provider reports a breach, so the user must rotate secrets)"
+  tags:
+  - needs_you
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-462
+      message_id: mail-462
+      label_ids:
+      - UNREAD
+      - CATEGORY_PERSONAL
+      - INBOX
+      attachment_list: []
+      sender: "Smithrun Security <security@smithrun.example>"
+      to: teciok@graliogior.example
+      subject: "Customer Update: Recent Security Incident"
+      message_text: "On November 5, 2026, our security team detected and contained unauthorized access to the system. As a precaution, rotate any secrets and tokens your CI jobs used on Smithrun, and review recent workflow runs."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+        - name: Precedence
+          value: bulk
+  expected:
+    label: needs_you
+    bucket: act
+    urgent: false
+    split: tune
+    outcome: run
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-463
+  ticket: "Inbox desk gate on a fyi email the founder labelled fyi from the real inbox (a calendar acceptance, nothing to answer)"
+  tags:
+  - fyi
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-463
+      message_id: mail-463
+      label_ids:
+      - UNREAD
+      - CATEGORY_PERSONAL
+      - INBOX
+      attachment_list: []
+      sender: "Sahor Mancrio <sahor@eloria.example>"
+      to: teciok@graliogior.example
+      subject: "Accepted: Investor / Partner meeting between Teciok and Sahor"
+      message_text: "Sahor Mancrio has accepted this invitation. Investor / Partner meeting between Teciok and Sahor, Friday Oct 23, 09:30 - 10:15 India Standard Time. Join with video call."
+      payload:
+        headers:
+        - name: Precedence
+          value: bulk
+  expected:
+    label: fyi
+    bucket: fyi
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-464
+  ticket: "Inbox desk gate on a fyi email the founder labelled fyi from the real inbox (notes from the user's own meeting)"
+  tags:
+  - fyi
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-464
+      message_id: mail-464
+      label_ids:
+      - UNREAD
+      - CATEGORY_PERSONAL
+      - INBOX
+      attachment_list: []
+      sender: "Stize Notes <notes-noreply@stize.example>"
+      to: teciok@graliogior.example
+      subject: "Notes: Investor / Partner meeting between Teciok and Sahor"
+      message_text: "Notes from Investor / Partner meeting between Teciok and Sahor. These notes were sent to the host and can be edited for accuracy. Quick notes: RISTOK product overview and user metrics; RISTOK removed its free tier to manage scaling costs and focus on pro users."
+      payload:
+        headers: []
+  expected:
+    label: fyi
+    bucket: fyi
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-465
+  ticket: "Inbox desk gate on a noise email the founder labelled junk from the real inbox (a review reply unrelated to the user's work)"
+  tags:
+  - noise
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-465
+      message_id: mail-465
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Stize Maps <maps-noreply@stize.example>"
+      to: teciok@graliogior.example
+      subject: "A restaurant replied to your review on Stize"
+      message_text: "A restaurant replied to your review. Thank you for posting a review. You only left a rating. Response from the owner: Apologies, what went wrong Sir? See reply."
+      payload:
+        headers:
+        - name: List-Unsubscribe
+          value: <mailto:unsubscribe@list.example>
+        - name: Precedence
+          value: bulk
+  expected:
+    label: noise
+    bucket: junk
+    urgent: false
+    split: tune
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-466
+  ticket: "Inbox desk gate on a fyi email the founder labelled fyi from the real inbox (an SEO report on the user's own site, worth knowing)"
+  tags:
+  - fyi
+  - holdout
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-466
+      message_id: mail-466
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Bingrio Webmaster Tools <bingwb@bingrio.example>"
+      to: teciok@graliogior.example
+      subject: "Comprehensive Performance Insights from Bingrio Webmaster Tools for site graliogior.example"
+      message_text: "Crawl politeness issues: the current crawl setting for your site is preventing Bingrio from crawling effectively and is affecting your search results. Please adjust the crawl rate setting from your webmaster tools account."
+      payload:
+        headers: []
+  expected:
+    label: fyi
+    bucket: fyi
+    urgent: false
+    split: holdout
+    outcome: skip
+    score:
+      gates:
+      - gate_outcome
+      - quiet_wake
+- id: mail-467
+  ticket: "Inbox desk gate on a fyi email the founder labelled fyi from the real inbox (pricing news from a provider the user uses)"
+  tags:
+  - fyi
+  - tune
+  - new_thread
+  - founder_inbox_2026_11
+  setup:
+    message:
+      thread_id: mail-467
+      message_id: mail-467
+      label_ids:
+      - UNREAD
+      - CATEGORY_UPDATES
+      - INBOX
+      attachment_list: []
+      sender: "Clouvra <noreply@notify.clouvra.example>"
+      to: teciok@graliogior.example
+      subject: "[Notice] Clouvra Observability pricing changes starting December 1, 2026"
+      message_text: "Hello, starting December 1, 2026, Clouvra Observability will use volume-based pricing for logs and traces ingested and stored on Clouvra, as announced earlier this month. This applies to your account."
+      payload:
+        headers: []
+  expected:
+    label: fyi
+    bucket: fyi
+    urgent: false
+    split: tune
+    outcome: skip
     score:
       gates:
       - gate_outcome
