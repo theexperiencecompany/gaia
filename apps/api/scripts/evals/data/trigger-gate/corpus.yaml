@@ -1502,9 +1502,10 @@
       - gate_outcome
       - quiet_wake
 - id: mail-048
-  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a stranger's first cold pitch for themselves is junk, not reply)
+  ticket: Inbox desk gate on a needs_you email (pending founder label; a cold email is worth answering only if it fits the user's work)
   tags:
-  - noise
+  - needs_you
+  - pending_founder_label
   - tune
   - new_thread
   setup:
@@ -1523,11 +1524,11 @@
       payload:
         headers: []
   expected:
-    label: noise
-    bucket: junk
+    label: needs_you
+    bucket: reply
     urgent: false
     split: tune
-    outcome: skip
+    outcome: run
     score:
       gates:
       - gate_outcome
@@ -4736,9 +4737,10 @@
       - gate_outcome
       - quiet_wake
 - id: mail-149
-  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a stranger following up a listing pitch the user never answered is junk)
+  ticket: Inbox desk gate on a needs_you email (pending founder label; a cold email is worth answering only if it fits the user's work)
   tags:
-  - noise
+  - needs_you
+  - pending_founder_label
   - tune
   - new_thread
   setup:
@@ -4758,11 +4760,11 @@
       payload:
         headers: []
   expected:
-    label: noise
-    bucket: junk
+    label: needs_you
+    bucket: reply
     urgent: false
     split: tune
-    outcome: skip
+    outcome: run
     score:
       gates:
       - gate_outcome
@@ -7639,9 +7641,10 @@
       - gate_outcome
       - quiet_wake
 - id: mail-239
-  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a stranger's first cold intro pitching their services is junk)
+  ticket: Inbox desk gate on a needs_you email (pending founder label; a cold email is worth answering only if it fits the user's work)
   tags:
-  - noise
+  - needs_you
+  - pending_founder_label
   - tune
   - new_thread
   setup:
@@ -7661,11 +7664,11 @@
       payload:
         headers: []
   expected:
-    label: noise
-    bucket: junk
+    label: needs_you
+    bucket: reply
     urgent: false
     split: tune
-    outcome: skip
+    outcome: run
     score:
       gates:
       - gate_outcome
@@ -10016,9 +10019,10 @@
       - gate_outcome
       - quiet_wake
 - id: mail-313
-  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a stranger's first cold pitch for a contest entry is junk, not reply)
+  ticket: Inbox desk gate on a needs_you email (pending founder label; a cold email is worth answering only if it fits the user's work)
   tags:
-  - noise
+  - needs_you
+  - pending_founder_label
   - tune
   - new_thread
   setup:
@@ -10037,11 +10041,11 @@
       payload:
         headers: []
   expected:
-    label: noise
-    bucket: junk
+    label: needs_you
+    bucket: reply
     urgent: false
     split: tune
-    outcome: skip
+    outcome: run
     score:
       gates:
       - gate_outcome
@@ -11307,9 +11311,10 @@
       - gate_outcome
       - quiet_wake
 - id: mail-353
-  ticket: Inbox desk gate on a noise email (relabelled from needs_you, a stranger's first cold pitch for video ads is junk, not reply)
+  ticket: Inbox desk gate on a needs_you email (pending founder label; a cold email is worth answering only if it fits the user's work)
   tags:
-  - noise
+  - needs_you
+  - pending_founder_label
   - tune
   - new_thread
   setup:
@@ -11330,11 +11335,11 @@
       payload:
         headers: []
   expected:
-    label: noise
-    bucket: junk
+    label: needs_you
+    bucket: reply
     urgent: false
     split: tune
-    outcome: skip
+    outcome: run
     score:
       gates:
       - gate_outcome

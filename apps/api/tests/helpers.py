@@ -200,6 +200,11 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         patch(
             f"{gate}.todo_repository.remember_subscription_gate_skip", AsyncMock()
         ) as watch_skips,
+        # What memory knows about the user, which the email verdict reads; none unless set.
+        patch(
+            "app.services.mail.email_verdict.memory_engine.get_core_context",
+            AsyncMock(return_value=""),
+        ) as core,
     ):
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
@@ -212,6 +217,7 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
             wrote=wrote,
             workflow_skips=workflow_skips,
             watch_skips=watch_skips,
+            core=core,
         )
 
 

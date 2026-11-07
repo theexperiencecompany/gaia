@@ -1,7 +1,8 @@
 """The one judgment GAIA makes about an email, from one JEV call: its desk bucket, and inside quiet hours its urgency.
 
 The Inbox desk's gate reads it when the email arrives and the desk's own fetch reads it at
-the sweep. Each answer is kept by Gmail message id, so the second reader never asks JEV
+the sweep. JEV judges the email by its value to this user, so memory's About-the-user note
+rides along. Each answer is kept by Gmail message id, so the second reader never asks JEV
 again. Only a quiet-hours arrival needs urgency, so only it asks the urgent question too.
 A JEV failure raises and nothing is kept: each caller degrades its own way.
 """
@@ -21,6 +22,7 @@ from app.constants.desk_buckets import (
     EMAIL_VERDICT_JEV_LIMIT_KEY,
     EMAIL_VERDICT_JEV_TIMEOUT_SECONDS,
     EMAIL_VERDICT_KEY_PREFIX,
+    EMAIL_VERDICT_PROFILE_MAX_CHARS,
     EMAIL_VERDICT_TTL_SECONDS,
     DeskBucket,
 )
@@ -32,9 +34,12 @@ from app.constants.trigger_gates import (
     UrgentChoice,
 )
 from app.db.redis import redis_cache
+from app.memory.context import about_the_user
+from app.memory.engine import memory_engine
 from app.models.jev_models import JevChoiceAnswer, JevDecisionsResponse
 from app.services.hil.jev_client import post_decisions
 from app.utils.concurrency import loop_bound_semaphore
+from app.utils.general_utils import clip_text
 from shared.py.wide_events import log
 
 _BUCKET_LABELS = frozenset(DeskBucket)
@@ -83,13 +88,15 @@ def urgency(answer: JevChoiceAnswer) -> Urgency:
 
 
 def verdict_request(
-    event: Mapping[str, object], *, quiet: bool
+    event: Mapping[str, object], *, quiet: bool, profile: str
 ) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
     """Return the Decisions state and questions for one email; pure, so the eval sends the same bytes.
 
-    Inside quiet hours the urgent question rides next to the unchanged bucket question.
+    An empty profile is left out. Inside quiet hours the urgent question rides next to the
+    unchanged bucket question.
     """
-    state: dict[str, object] = {"event": dict(event), "automation": DESK_AUTOMATION}
+    state: dict[str, object] = {"user": profile} if profile else {}
+    state |= {"event": dict(event), "automation": DESK_AUTOMATION}
     questions: dict[str, dict[str, object]] = {
         DESK_BUCKET_QUESTION_KEY: {
             "type": "choice",
@@ -129,6 +136,20 @@ def read_verdict(body: JevDecisionsResponse, *, quiet: bool) -> EmailVerdict:
     )
 
 
+async def user_profile(user_id: str) -> str:
+    """Return memory's note on who the user is, clipped; "" when there is none or it cannot be read."""
+    try:
+        core = await memory_engine.get_core_context(user_id)
+    except Exception as e:
+        # The verdict is still worth asking without it: JEV then judges the email alone.
+        log.warning(
+            "email_verdict.profile_unreadable", error=str(e)[:300], error_type=type(e).__name__
+        )
+        return ""
+    profile = about_the_user(core)
+    return clip_text(profile, EMAIL_VERDICT_PROFILE_MAX_CHARS) if profile else ""
+
+
 async def email_verdict(
     user_id: str, message_id: str | None, event: Mapping[str, object], *, quiet: bool
 ) -> EmailVerdict:
@@ -141,7 +162,8 @@ async def email_verdict(
     kept = await redis_cache.get(key, EmailVerdict) if key is not None else None
     if kept is not None and (not quiet or kept.urgency is not None):
         return kept
-    state, questions = verdict_request(event, quiet=quiet)
+    profile = await user_profile(user_id)
+    state, questions = verdict_request(event, quiet=quiet, profile=profile)
     # pragma: no mutate start — any key names one process-wide semaphore.
     limit = loop_bound_semaphore(EMAIL_VERDICT_JEV_LIMIT_KEY, EMAIL_VERDICT_JEV_LIMIT)
     # pragma: no mutate end

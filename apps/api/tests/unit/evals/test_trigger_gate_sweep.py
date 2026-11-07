@@ -15,12 +15,10 @@ from pathlib import Path
 
 import httpx
 import pytest
-from scripts.evals.core.cases import load_case_files
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 from scripts.evals.suites.trigger_gate import (
     AUTHORED_DESK_GATE,
-    DATA_DIR,
     DESK_GATE,
     EXTRA,
     RECORDED_DIR,
@@ -124,7 +122,8 @@ async def _regrade(cases: Mapping[str, Case]) -> list[_Pass]:
     with trigger_gate_seams(KOLKATA, now=AFTERNOON) as seams:
         for kind, directory in _RECORDED.items():
             for path in sorted(directory.glob("*.jsonl")):
-                rows = read_recorded(path)
+                # A case pending a founder label is not graded, though a pass may hold its answer.
+                rows = {c: row for c, row in read_recorded(path).items() if c in cases}
                 verdicts: dict[tuple[str, GateMode], GateVerdict] = {}
                 unanswered: list[str] = []
                 for mode, now in ((GateMode.DAY, AFTERNOON), (GateMode.QUIET, NIGHT)):
@@ -146,7 +145,8 @@ async def _regrade(cases: Mapping[str, Case]) -> list[_Pass]:
 
 @pytest.fixture(scope="module")
 def cases() -> dict[str, Case]:
-    return {case.id: case for case in load_case_files(DATA_DIR, TriggerGateSuite.name, EXTRA)}
+    cfg = eval_config()
+    return {case.id: case for case in TriggerGateSuite(cfg).load_cases(cfg)}
 
 
 @pytest.fixture(scope="module")

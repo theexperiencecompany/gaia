@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.memory import context, user_time
+from app.db.repositories.users import user_repository
+from app.memory import context, pg_store, user_time
+from app.models.memory_db_models import MemoryEpisode
 
 USER = "user-1"
 
@@ -20,8 +22,8 @@ def make_episode(
     day: date_type,
     entries: list[dict[str, str]] | None = None,
     summary: str | None = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(date=day, entries=entries or [], summary=summary)
+) -> MemoryEpisode:
+    return MemoryEpisode(user_id=USER, date=day, entries=entries or [], summary=summary)
 
 
 @pytest.fixture
@@ -30,12 +32,10 @@ def seams() -> Any:
     with (
         patch.object(context, "get_cache", AsyncMock(return_value=None)),
         patch.object(context, "set_cache", AsyncMock()) as set_cache,
-        patch.object(context.pg_store, "get_documents", AsyncMock(return_value=[])),
+        patch.object(pg_store, "get_documents", AsyncMock(return_value=[])),
+        patch.object(pg_store, "get_episodes_range", AsyncMock(return_value=[])) as episodes,
         patch.object(
-            context.pg_store, "get_episodes_range", AsyncMock(return_value=[])
-        ) as episodes,
-        patch.object(
-            user_time.user_repository,
+            user_repository,
             "get",
             AsyncMock(return_value=SimpleNamespace(timezone="Asia/Kolkata")),
         ) as get_user,
@@ -110,3 +110,22 @@ class TestFormatRecentActivity:
 
     def test_empty_days_are_omitted(self) -> None:
         assert context._format_recent_activity([make_episode(KOLKATA_TODAY)], KOLKATA_TODAY) == ""
+
+
+@pytest.mark.unit
+class TestAboutTheUser:
+    def test_it_is_the_about_the_user_section_alone(self) -> None:
+        core = (
+            "## About the user\nFounder of Acme.\nShipping v2.\n\n"
+            "## Assistant conventions\nBe brief.\n\n## Recent activity\n- 09:00 one"
+        )
+        assert context.about_the_user(core) == "Founder of Acme.\nShipping v2."
+
+    def test_a_core_that_is_only_the_user_section_returns_all_of_it(self) -> None:
+        assert context.about_the_user("## About the user\nFounder of Acme.") == "Founder of Acme."
+
+    @pytest.mark.parametrize(
+        "core", ["", "## Assistant conventions\nBe brief."], ids=["empty", "no-user-section"]
+    )
+    def test_a_core_without_the_user_section_returns_nothing(self, core: str) -> None:
+        assert context.about_the_user(core) == ""

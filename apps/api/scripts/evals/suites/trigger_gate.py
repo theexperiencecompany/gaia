@@ -67,6 +67,18 @@ AUTHORED_DESK_GATE: Final = AuthoredGate(
 )
 # The setup key that says whether the user sent a message in a continued email's thread.
 USER_WROTE_IN_THREAD: Final = "user_wrote_in_thread"
+# Who the corpus's user is, as memory's About-the-user note would say it, in the corpus's own
+# pseudonyms. Their current priorities are the founder's to fill in with the pending labels.
+EVAL_USER_PROFILE: Final = (
+    "Teciok is a cofounder of RISTOK (graliogior.example), a proactive personal AI assistant."
+)
+# A case whose label waits on the founder: neither suite asks or grades it until it has one.
+PENDING_LABEL_TAG: Final = "pending_founder_label"
+
+
+def labelled(cases: list[Case]) -> list[Case]:
+    """Return the cases whose label is settled, dropping those pending a founder label."""
+    return [case for case in cases if PENDING_LABEL_TAG not in case.tags]
 
 
 class GateMode(StrEnum):
@@ -150,7 +162,10 @@ def verdict_requests(
 ) -> dict[GateMode, tuple[dict[str, object], dict[str, dict[str, object]]]]:
     """Build both modes' verdict requests for one email with the production builder."""
     event = _event(message)
-    return {mode: verdict_request(event, quiet=mode is GateMode.QUIET) for mode in GateMode}
+    return {
+        mode: verdict_request(event, quiet=mode is GateMode.QUIET, profile=EVAL_USER_PROFILE)
+        for mode in GateMode
+    }
 
 
 def graded_bucket(body: JevDecisionsResponse, mode: GateMode = GateMode.DAY) -> str:
@@ -277,6 +292,10 @@ class TriggerGateSuite(TransportSuite):
     extra = EXTRA
     transport_type = GateTransport
 
+    def load_cases(self, cfg: EvalConfig) -> list[Case]:
+        """Return the corpus cases with a settled label."""
+        return labelled(super().load_cases(cfg))
+
 
 class VerdictTransport:
     """One email: both modes' verdict requests through the production client, journaled whole."""
@@ -323,8 +342,8 @@ class EmailVerdictSuite(TransportSuite):
     transport_type = VerdictTransport
 
     def load_cases(self, cfg: EvalConfig) -> list[Case]:
-        """Return the corpus with each case gated on its bucket instead of the gate's outcome."""
+        """Return the labelled corpus with each case gated on its bucket instead of the gate's outcome."""
         return [
             replace(case, expected={**case.expected, "score": {"gates": [BUCKET_GATE]}})
-            for case in super().load_cases(cfg)
+            for case in labelled(super().load_cases(cfg))
         ]

@@ -19,6 +19,7 @@ from scripts.evals.core.types import Case, ProviderError
 from scripts.evals.suites.trigger_gate import (
     BUCKET_GATE,
     DATA_DIR,
+    PENDING_LABEL_TAG,
     UNBUCKETED,
     VERDICTS_RECORDED_DIR,
     EmailVerdictSuite,
@@ -49,6 +50,8 @@ RECALL_FLOORS: Mapping[DeskBucket, float] = {
 }
 # Needs-you emails some pass buckets junk, so the desk never reads them.
 RECORDED_LOST_TO_JUNK: frozenset[str] = frozenset()
+# Cold emails whose value to the user only the founder can say; ungraded until labelled.
+PENDING_FOUNDER_LABELS = frozenset({"mail-048", "mail-149", "mail-239", "mail-313", "mail-353"})
 # The routine sign-in notices some pass buckets other than fyi.
 RECORDED_SIGN_IN_NOT_FYI: frozenset[str] = frozenset()
 SIGN_IN_NOTICE_TAG = "sign_in_notice"
@@ -72,9 +75,10 @@ class _Pass:
         return graded_bucket(JevDecisionsResponse.model_validate(asked["response"]))
 
 
-def _read(path: Path) -> _Pass:
+def _read(path: Path, cases: Mapping[str, Case]) -> _Pass:
+    """Read one pass, keeping only the cases with a settled label."""
     rows: list[RecordedVerdictRow] = [json.loads(line) for line in path.read_text().splitlines()]
-    return _Pass(path.stem, {row["case_id"]: row for row in rows})
+    return _Pass(path.stem, {row["case_id"]: row for row in rows if row["case_id"] in cases})
 
 
 @pytest.fixture(scope="module")
@@ -84,8 +88,8 @@ def cases() -> dict[str, Case]:
 
 
 @pytest.fixture(scope="module")
-def passes() -> list[_Pass]:
-    recorded = [_read(path) for path in sorted(VERDICTS_RECORDED_DIR.glob("*.jsonl"))]
+def passes(cases: dict[str, Case]) -> list[_Pass]:
+    recorded = [_read(path, cases) for path in sorted(VERDICTS_RECORDED_DIR.glob("*.jsonl"))]
     assert len(recorded) >= 3, f"fewer than 3 recorded passes under {VERDICTS_RECORDED_DIR}"
     return recorded
 
@@ -97,6 +101,16 @@ def _labelled(cases: Mapping[str, Case], bucket: DeskBucket) -> set[str]:
 def test_every_email_in_the_corpus_is_labelled_with_a_bucket() -> None:
     for case in load_case_files(DATA_DIR, EmailVerdictSuite.name, EmailVerdictSuite.extra):
         assert DeskBucket(case.expected["bucket"]), case.id
+
+
+def test_a_case_pending_a_founder_label_is_neither_asked_nor_graded(
+    cases: dict[str, Case],
+) -> None:
+    corpus = load_case_files(DATA_DIR, EmailVerdictSuite.name, EmailVerdictSuite.extra)
+    pending = {case.id for case in corpus if PENDING_LABEL_TAG in case.tags}
+    assert pending == PENDING_FOUNDER_LABELS
+    assert pending.isdisjoint(cases)
+    assert {case.id for case in corpus} - pending == set(cases)
 
 
 def test_the_suite_gates_every_case_on_its_bucket_alone(cases: dict[str, Case]) -> None:
