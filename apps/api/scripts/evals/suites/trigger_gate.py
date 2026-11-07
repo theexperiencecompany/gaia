@@ -3,9 +3,7 @@
 email-verdict: each email's verdict request by day (bucket) and inside quiet hours (bucket and
 urgency), built by email_verdict.verdict_request as the desk gate and the desk's sweep send it.
 tests/unit/evals/test_email_verdict_sweep.py regrades its buckets, and
-tests/unit/evals/test_trigger_gate_sweep.py regrades the desk gate through decide_gate. Each
-recorded pass joins a day pass of the unchanged bucket request (asked 2026-11-06) to a quiet
-pass (asked 2026-11-07).
+tests/unit/evals/test_trigger_gate_sweep.py regrades the desk gate through decide_gate.
 
 trigger-gate: the authored gate template with the desk's condition, by day and inside quiet
 hours, built by gate_request; test_trigger_gate_sweep.py regrades it too.
