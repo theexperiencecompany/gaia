@@ -100,7 +100,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="relative z-4 p-2 px-3 pb-3">
+      <SidebarFooter className="relative z-[4] p-2 px-3 pb-3">
         <WhatsNewCard />
         <UserContainer />
         <ContactSupport />

@@ -71,7 +71,7 @@ class ErrorBoundary extends React.Component<
           <div className="flex items-center gap-4 pt-5">
             <button
               type="button"
-              className="flex gap-2 rounded-lg bg-black p-2 px-3 text-white transition-background hover:bg-[#00000086]"
+              className="flex gap-2 rounded-lg bg-black p-2 px-3 text-white transition-colors hover:bg-[#00000086]"
               onClick={() => window.location.replace("/")}
             >
               <Home01Icon width={20} />
@@ -79,7 +79,7 @@ class ErrorBoundary extends React.Component<
             </button>
             <button
               type="button"
-              className="flex gap-2 rounded-lg bg-white p-2 px-3 font-medium text-black transition-background hover:bg-[#ffffff86]"
+              className="flex gap-2 rounded-lg bg-white p-2 px-3 font-medium text-black transition-colors hover:bg-[#ffffff86]"
               onClick={() => window.history.back()}
             >
               <ArrowLeft01Icon width={20} /> Back

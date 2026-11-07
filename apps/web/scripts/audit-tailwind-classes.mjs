@@ -128,6 +128,9 @@ function looksLikeUtility(cls) {
   if (CUSTOM_PREFIX_HINTS.includes(cls)) return false;
   const base = bareClass(cls);
   if (!base || CUSTOM_PREFIX_HINTS.includes(base)) return false;
+  // `gap-${size}` survives interpolation stripping as `gap-`; a dangling
+  // separator is never a class name.
+  if (/[-/]$/.test(base) || /^[-/]/.test(base)) return false;
   if (/^(prose|group|peer|data|aria|has|not|supports|motion)-/.test(base)) {
     return true;
   }
