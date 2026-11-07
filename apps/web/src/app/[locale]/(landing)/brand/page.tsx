@@ -140,7 +140,7 @@ export default function BrandPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-warning-50 p-4 dark:border-warning-900 dark:bg-warning-950">
+                <div className="rounded-2xl bg-warning-50 p-4 dark:border-warning-900 dark:bg-warning-900">
                   <h3 className="mb-2 text-lg font-semibold text-warning">
                     Don'ts
                   </h3>
@@ -163,7 +163,7 @@ export default function BrandPage() {
                   </ul>
                 </div>
 
-                <div className="rounded-3xl bg-zinc-800 p-4 dark:border-foreground-800 dark:bg-foreground-950">
+                <div className="rounded-3xl bg-zinc-800 p-4 dark:border-foreground-800 dark:bg-foreground-900">
                   <p className="mb-3">
                     <strong className="text-zinc-300">Important:</strong> The
                     provided graphics are proprietary and protected under

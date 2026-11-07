@@ -36,11 +36,16 @@
 
 
   /* Foreground scale (v2 parity): light uses the zinc ramp as-is. */
+  --color-foreground-50: var(--color-zinc-50);
+  --color-foreground-100: var(--color-zinc-100);
+  --color-foreground-200: var(--color-zinc-200);
   --color-foreground-300: var(--color-zinc-300);
   --color-foreground-400: var(--color-zinc-400);
   --color-foreground-500: var(--color-zinc-500);
   --color-foreground-600: var(--color-zinc-600);
   --color-foreground-700: var(--color-zinc-700);
+  --color-foreground-800: var(--color-zinc-800);
+  --color-foreground-900: var(--color-zinc-900);
 
   /* v2 semantic scales. v3 renamed the HeroUI token namespace and dropped
      these, so every `text-default-500` / `text-warning-500` / `text-small`
@@ -69,6 +74,7 @@
   --color-warning-800: #62420e;
   --color-warning-900: #312107;
 
+  --color-ring: hsl(var(--ring));
   --color-content1: #ffffff;
   --color-content2: var(--color-zinc-100);
   --color-content3: var(--color-zinc-200);
@@ -115,11 +121,16 @@
    stays grey instead of inheriting white. Matches swapColorValues(zinc):
    300<->600, 400<->500. */
 .dark {
+  --color-foreground-50: var(--color-zinc-900);
+  --color-foreground-100: var(--color-zinc-800);
+  --color-foreground-200: var(--color-zinc-700);
   --color-foreground-300: var(--color-zinc-600);
   --color-foreground-400: var(--color-zinc-500);
   --color-foreground-500: var(--color-zinc-400);
   --color-foreground-600: var(--color-zinc-300);
   --color-foreground-700: var(--color-zinc-200);
+  --color-foreground-800: var(--color-zinc-100);
+  --color-foreground-900: var(--color-zinc-50);
 
   /* v2 dark = swapColorValues(ramp): 50<->900, 100<->800, 200<->700,
      300<->600, with 400/500 held. Same swap for default and warning. */

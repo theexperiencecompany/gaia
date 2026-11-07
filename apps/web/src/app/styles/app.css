@@ -82,8 +82,10 @@
 @source "../../components/layouts";
 @source "../../components/navigation";
 @source "../../components/seo";
+@source "../../components/browser";
 @source "../../components/shared";
 @source "../../components/ui";
 @source "../../hooks";
 @source "../../lib";
 @source "../../stores";
+@source "../../config/openui";
