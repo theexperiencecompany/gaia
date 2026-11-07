@@ -100,7 +100,13 @@ function collectEmittedClasses() {
     root.walkRules((rule) => {
       for (const sel of rule.selectors) {
         for (const m of sel.matchAll(/\.((?:\\.|[^\s.:>+~,[\]()#*])+)/g)) {
-          emitted.add(m[1].replace(UNESCAPE, "$1"));
+          const token = m[1].replace(UNESCAPE, "$1");
+          emitted.add(token);
+          // Tailwind emits `hover:opacity-90` as `.hover\\:opacity-90:hover`.
+          // The source side is compared variant-stripped, so the emitted side
+          // has to offer the bare form too, or every variant looks orphaned.
+          const bare = bareClass(token);
+          if (bare !== token) emitted.add(bare);
         }
       }
     });
