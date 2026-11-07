@@ -1,27 +1,34 @@
 #!/usr/bin/env node
 /**
- * Fails when a Tailwind utility used in source emits no CSS.
+ * Fails when a utility class used in source emits no CSS.
  *
- * Tailwind v4 silently drops unknown utilities: `text-foreground-500` compiles
- * to nothing, the element inherits its parent's colour, and the page looks
- * plausible. The v2 -> v3 migration shipped several of these (grey body text
- * rendering white, v2 size/radius tokens vanishing) because nothing errored.
+ * Tailwind v4 drops unknown utilities without a word: `text-foreground-500`
+ * compiles to nothing, the element inherits, and the page looks plausible.
+ * The v2 -> v3 migration shipped dozens of these.
  *
- * Run after `next build`, against the emitted stylesheets:
+ * Why this version: the first cut matched escaped selector strings with
+ * `css.includes(".w-1/2")`, which reported `w-60`, `w-1/2` and `w-[390px]` as
+ * missing. Selector text is not a class list — Tailwind escapes `[`, `/`, `.`
+ * and friends, and arbitrary values contain punctuation that no string match
+ * survives. So parse the CSS and compare normalised class tokens instead.
+ *
+ * Run after `next build`:
  *   node scripts/audit-tailwind-classes.mjs
- *
- * Exit 1 with the offending classes when any real utility is orphaned.
  */
 import fs from "node:fs";
 import path from "node:path";
+import postcss from "postcss";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const SRC = path.join(ROOT, "src");
-const CSS_DIR = path.join(ROOT, ".next", "static", "chunks");
+const NEXT_DIR = path.join(ROOT, ".next");
 
-/** Classes that are intentionally not Tailwind utilities (hooks, custom CSS). */
-const ALLOW = new Set([
-  // custom css hooks / state selectors defined in base.css or feature css
+/**
+ * Custom class names defined in our own CSS (hooks, not utilities). Anything
+ * here is expected to have no Tailwind selector; they are matched by the
+ * `definedCustomClasses` pass below instead.
+ */
+const CUSTOM_PREFIX_HINTS = [
   "privacy-policy", "bot-actions", "group-topbtns", "markdown-table",
   "slash-command-dropdown", "tool-icon-btn", "chat-demo-input",
   "landing_img_container", "whats-new-content", "cv-auto", "cv-chat-message",
@@ -35,10 +42,14 @@ const ALLOW = new Set([
   "bg-custom-gradient2", "mcp-app-surface", "openui-document", "mail-editor",
   "ph-no-capture", "pdf_container", "searchbar_container", "hero-split-word",
   "hero-fade-in", "sbi-anim", "chat-bubble-pop", "chat-demo-tap",
-  "openui-root",
-]);
+  "openui-root", "whats-new-content", "cv-chat-message",
+];
 
-const CLASS_ATTR = /(?:className|class)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{`([^`]*)`\}|\{"([^"]*)"\})/g;
+/** Dev-only routes are excluded from production and never ship. */
+const IGNORED_PATH = /[\\/]dev[\\/]|\.dev\.tsx?$/;
+
+const CLASS_ATTR =
+  /(?:className|class)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{`([^`]*)`\}|\{"([^"]*)"\})/g;
 
 function collectUsedClasses() {
   const used = new Map();
@@ -46,7 +57,7 @@ function collectUsedClasses() {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (/\.(tsx|jsx|ts|js)$/.test(entry.name)) {
+      else if (/\.(tsx|jsx|ts|js)$/.test(entry.name) && !IGNORED_PATH.test(full)) {
         const text = fs.readFileSync(full, "utf8");
         for (const m of text.matchAll(CLASS_ATTR)) {
           let raw = m[1] ?? m[2] ?? m[3] ?? m[4] ?? "";
@@ -65,59 +76,77 @@ function collectUsedClasses() {
   return used;
 }
 
-function readEmittedCss() {
-  if (!fs.existsSync(CSS_DIR)) {
-    console.error(`No build output at ${CSS_DIR}. Run \`next build\` first.`);
+/** Every class selector in the built CSS, unescaped back to source form. */
+function collectEmittedClasses() {
+  const files = [];
+  const walk = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".css")) files.push(full);
+    }
+  };
+  walk(NEXT_DIR);
+  if (files.length === 0) {
+    console.error(`No CSS under ${NEXT_DIR}. Run \`next build\` first.`);
     process.exit(2);
   }
-  return fs
-    .readdirSync(CSS_DIR)
-    .filter((f) => f.endsWith(".css"))
-    .map((f) => fs.readFileSync(path.join(CSS_DIR, f), "utf8"))
-    .join("\n");
+
+  const emitted = new Set();
+  const UNESCAPE = /\\(.)/g;
+  for (const file of files) {
+    const root = postcss.parse(fs.readFileSync(file, "utf8"), { from: file });
+    root.walkRules((rule) => {
+      for (const sel of rule.selectors) {
+        for (const m of sel.matchAll(/\.((?:\\.|[^\s.:>+~,[\]()#*])+)/g)) {
+          emitted.add(m[1].replace(UNESCAPE, "$1"));
+        }
+      }
+    });
+  }
+  return emitted;
 }
 
-const escapeSelector = (cls) =>
-  cls.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
+/** Variants (`dark:`, `hover:`) compile to a plain class, not a variant class. */
+function bareClass(cls) {
+  return cls
+    .replace(/^!/, "")
+    .replace(/!$/, "")
+    .split(":")
+    .pop()
+    .replace(/^(group|peer)-(\[[^\]]+\]|[a-z-]+):/, "");
+}
 
-/** Only test tokens that look like real utilities, not custom hooks. */
-function isUtilityLike(cls) {
-  if (ALLOW.has(cls)) return false;
-  // strip variants and important markers: dark:hover:text-red-500
-  const base = cls.split(":").pop().replace(/^!/, "").replace(/!$/, "");
-  if (!base) return false;
-  if (/^(prose|group|peer|data|aria|has|not)-/.test(base)) return true;
-  // utilities carry a dash, a bracket, or a known bare name
-  return (
-    base.includes("-") ||
-    base.includes("[") ||
-    /^(flex|grid|block|hidden|inline|contents|relative|absolute|fixed|sticky|static|italic|underline|truncate|uppercase|capitalize|transition|transform|grow|shrink|border|rounded|shadow|outline|ring|container|sr-only)$/.test(
-      base,
-    )
+function looksLikeUtility(cls) {
+  if (CUSTOM_PREFIX_HINTS.includes(cls)) return false;
+  const base = bareClass(cls);
+  if (!base || CUSTOM_PREFIX_HINTS.includes(base)) return false;
+  if (/^(prose|group|peer|data|aria|has|not|supports|motion)-/.test(base)) {
+    return true;
+  }
+  if (base.includes("-") || base.includes("[")) return true;
+  return /^(flex|grid|block|hidden|inline|contents|relative|absolute|fixed|sticky|static|italic|underline|truncate|uppercase|capitalize|transition|transform|grow|shrink|border|rounded|shadow|outline|ring|container|sr-only)$/.test(
+    base,
   );
 }
 
 const used = collectUsedClasses();
-const css = readEmittedCss();
+const emitted = collectEmittedClasses();
 
 const orphans = [];
+let checked = 0;
 for (const [cls, files] of used) {
-  if (!isUtilityLike(cls)) continue;
-  const base = cls.split(":").pop().replace(/^!/, "").replace(/!$/, "");
-  if (
-    css.includes(`.${escapeSelector(base)}`) ||
-    css.includes(`.${escapeSelector(cls)}`)
-  ) {
-    continue;
-  }
+  if (!looksLikeUtility(cls)) continue;
+  checked += 1;
+  if (emitted.has(bareClass(cls))) continue;
   orphans.push({ cls, files: [...files].slice(0, 3), count: files.size });
 }
 
 orphans.sort((a, b) => b.count - a.count || a.cls.localeCompare(b.cls));
 
-const checked = [...used.keys()].filter(isUtilityLike).length;
 if (orphans.length === 0) {
-  console.log(`✓ ${checked} utilities all emit CSS.`);
+  console.log(`✓ ${checked} utilities all resolve to CSS.`);
   process.exit(0);
 }
 

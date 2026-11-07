@@ -58,6 +58,7 @@
    a class in src/ has no matching selector, which is how a missed directory
    surfaces as an error instead of an unstyled page. */
 @source "../[locale]/(main)";
+@source "../[locale]/file-icons";
 @source "../[locale]/(desktop)";
 @source "../[locale]/(live)";
 @source "../../features/auth";
