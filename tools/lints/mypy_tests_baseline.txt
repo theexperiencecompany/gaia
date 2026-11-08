@@ -153,8 +153,6 @@ apps/api/tests/unit/agents/test_llm_runtime_config.py	arg-type
 apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment
-apps/api/tests/unit/agents/test_pause_checkpointing.py	arg-type
-apps/api/tests/unit/agents/test_pause_checkpointing.py	list-item
 apps/api/tests/unit/agents/test_profile_crawler.py	return-value
 apps/api/tests/unit/agents/test_result_delivery.py	arg-type
 apps/api/tests/unit/agents/test_stream_session.py	arg-type

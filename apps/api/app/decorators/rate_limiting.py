@@ -351,16 +351,13 @@ async def enforce_tiered_limit(
     origin = origin or current_limit_origin()
     subscription = await payment_service.get_user_subscription_status(user_id)
     user_plan = subscription.plan_type or PlanType.FREE
-    try:
-        await tiered_limiter.check_and_increment(
-            user_id=user_id,
-            feature_key=feature_key,
-            user_plan=user_plan,
-            origin=origin,
-        )
-    except RateLimitExceededException:
-        # The limiter already recorded the hit (capture_limit_hit) before raising.
-        raise
+    # The limiter records the hit (capture_limit_hit) itself before it raises.
+    await tiered_limiter.check_and_increment(
+        user_id=user_id,
+        feature_key=feature_key,
+        user_plan=user_plan,
+        origin=origin,
+    )
 
 
 def tiered_rate_limit(

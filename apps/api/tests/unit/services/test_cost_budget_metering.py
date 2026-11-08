@@ -99,6 +99,20 @@ class TestChargedSpend:
             USER, UsageDailyIncrement(cost=0.01, input_tokens=300, output_tokens=200), charged=True
         )
 
+    async def test_a_failed_billing_day_lookup_never_fails_the_finished_call(
+        self, rollup: AsyncMock
+    ) -> None:
+        """The month key needs the billing day; its lookup failing is a write failure, so it fails open."""
+        log.reset()
+        lookup = AsyncMock(side_effect=ConnectionError("mongo down"))
+        with patch.object(payment_service, "get_cached_billing_day", lookup):
+            await record_model_call_usage(
+                USER, UsageDailyIncrement(cost=0.01), REQUEST, charge_to_budget=True
+            )
+
+        rollup.assert_awaited_once()
+        assert [w["operation"] for w in log.get()["warnings"]] == ["redis_usage_pipeline"]
+
     async def test_accumulates_across_calls(self) -> None:
         await record_model_call_usage(
             USER,

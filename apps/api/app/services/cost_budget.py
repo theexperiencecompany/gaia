@@ -40,7 +40,7 @@ from app.constants.llm import (
     REQUEST_TOKEN_COUNTER_TTL_SECONDS,
 )
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
+from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
 from app.schemas.usage import BudgetWindow, UsageBudget
@@ -164,6 +164,30 @@ def _is_charged_spend(user_id: str | None, cost_usd: float) -> bool:
     return user_id is not None and cost_usd > 0
 
 
+async def _write_usage_counters(
+    client: AsyncRedisCommands,
+    charged_user_id: str | None,
+    cost: float,
+    token_request_id: str | None,
+    billable_tokens: int,
+) -> None:
+    """Book spend into both budget windows and tokens into the request counter, in one round trip.
+
+    The month key reads the billing day, so resolving it is part of this write and fails open with it.
+    """
+    pipe = client.pipeline(transaction=False)
+    if charged_user_id is not None:
+        for period, ttl in _PERIOD_TTL_SECONDS.items():
+            key = await _budget_key(charged_user_id, period)
+            pipe.incrbyfloat(key, cost)
+            pipe.expire(key, ttl)
+    if token_request_id is not None:
+        key = _REQUEST_TOKENS_KEY.format(root_request_id=token_request_id)
+        pipe.incrby(key, billable_tokens)
+        pipe.expire(key, REQUEST_TOKEN_COUNTER_TTL_SECONDS)
+    await pipe.execute()
+
+
 async def record_model_call_usage(
     user_id: str | None,
     spend: UsageDailyIncrement,
@@ -211,24 +235,20 @@ async def record_model_call_usage(
         )
 
     client = redis_cache.redis
+    charged_user_id = user_id if charge_to_budget and record_spend else None
+    # The flag already encodes "root_request_id present and something billable".
+    token_request_id = root_request_id if record_tokens else None
     if client is None:
         log.warning(f"{LogTag.STORAGE} Redis unavailable — model call usage not recorded.")
-    else:
-        pipe = client.pipeline(transaction=False)
-        if charge_to_budget and record_spend and user_id is not None:
-            for period, ttl in _PERIOD_TTL_SECONDS.items():
-                key = await _budget_key(user_id, period)
-                pipe.incrbyfloat(key, spend.cost)
-                pipe.expire(key, ttl)
-        if record_tokens:
-            # The flag already encodes "root_request_id present and something
-            # billable" — re-checking it here would create a second copy of
-            # the condition that tests cannot distinguish.
-            key = _REQUEST_TOKENS_KEY.format(root_request_id=root_request_id)
-            pipe.incrby(key, billable_tokens)
-            pipe.expire(key, REQUEST_TOKEN_COUNTER_TTL_SECONDS)
-        if pipe.command_stack:
-            labeled.append(("redis_usage_pipeline", pipe.execute()))
+    elif charged_user_id is not None or token_request_id is not None:
+        labeled.append(
+            (
+                "redis_usage_pipeline",
+                _write_usage_counters(
+                    client, charged_user_id, spend.cost, token_request_id, billable_tokens
+                ),
+            )
+        )
 
     # Fail-open per op: a write failure here must never fail the already-completed
     # model call. return_exceptions keeps both writes running to completion and
