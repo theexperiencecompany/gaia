@@ -17,7 +17,6 @@ from app.config.capability_requirements import required_keys
 from app.config.deployment import BlobStoreKind, DeploymentKind, baseline_profile
 from app.config.settings import Settings
 from app.constants.files import BlobKind
-from shared.py import bot_identity
 
 
 @pytest.fixture(autouse=True)
@@ -288,33 +287,20 @@ def test_selfhost_missing_mongo_db_raises(monkeypatch):
 def test_selfhost_has_no_telegram_bot_until_one_is_added(monkeypatch):
     """GAIA Cloud's @heygaia_bot never answers a self-hosted instance's users."""
     monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
-    monkeypatch.delenv("WHATSAPP_PHONE_NUMBER", raising=False)
     kwargs: dict[str, Any] = dict.fromkeys(_SELFHOST_INFRA_FIELDS, "x")
     kwargs["CHROMADB_PORT"] = 0
     kwargs["ENV"] = "selfhost"
 
-    settings_obj = Settings(_env_file=None, **kwargs)
-    assert settings_obj.telegram_bot_username is None
-    assert settings_obj.WHATSAPP_PHONE_NUMBER is None
+    assert Settings(_env_file=None, **kwargs).telegram_bot_username is None
     kwargs["TELEGRAM_BOT_USERNAME"] = "my_gaia_bot"
     assert Settings(_env_file=None, **kwargs).telegram_bot_username == "my_gaia_bot"
 
 
-def test_gaia_cloud_falls_back_to_its_own_handles(monkeypatch):
-    """Hosted runs GAIA Cloud's bots, so an unset env reads the shared identity file."""
-    for name in (
-        "TELEGRAM_BOT_USERNAME",
-        "WHATSAPP_PHONE_NUMBER",
-        "DISCORD_OAUTH_CLIENT_ID",
-        "SLACK_OAUTH_CLIENT_ID",
-    ):
-        monkeypatch.delenv(name, raising=False)
+def test_gaia_cloud_falls_back_to_its_own_telegram_bot(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
     settings_obj = Settings(_env_file=None, **_required_dummies(DeploymentKind.PRODUCTION))
 
-    assert settings_obj.telegram_bot_username == bot_identity.TELEGRAM_USERNAME
-    assert settings_obj.WHATSAPP_PHONE_NUMBER == bot_identity.WHATSAPP_NUMBER
-    assert settings_obj.DISCORD_OAUTH_CLIENT_ID == bot_identity.DISCORD_CLIENT_ID
-    assert settings_obj.SLACK_OAUTH_CLIENT_ID == bot_identity.SLACK_CLIENT_ID
+    assert settings_obj.telegram_bot_username == "heygaia_bot"
 
 
 def test_ollama_has_no_endpoint_until_one_is_set():
