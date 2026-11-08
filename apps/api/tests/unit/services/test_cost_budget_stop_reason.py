@@ -158,7 +158,9 @@ class TestMonthlyWall:
         assert check == BudgetCheck(None, 0.0, PlanType.PRO, 1.5)
 
     def test_the_monthly_stop_text_refuses_to_render_without_its_reset_day(self) -> None:
-        with pytest.raises(ValueError, match="reset"):
+        with pytest.raises(
+            ValueError, match="^The monthly wall's stop text needs the day it resets.$"
+        ):
             BudgetWall.MONTHLY_USAGE.stop_text(PlanType.PRO, None)
 
     async def test_free_has_no_monthly_wall(self) -> None:

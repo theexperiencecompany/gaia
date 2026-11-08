@@ -137,6 +137,7 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
+from shared.py.wide_events import log
 from tests.helpers import (
     UNKNOWN_USER_ID,
     FakeEmailVerdicts,
@@ -950,9 +951,11 @@ class TestTriggeredExecutionGating:
         self, activity: AsyncMock
     ):
         """A capped month refuses every fire until it resets: each must end as a skip, not a failed job."""
+        log.reset()
         _, via_agent = await self._run(self._origin(), AsyncMock(side_effect=_monthly_wall()))
 
         assert self.result == "walled:todo-1"
+        assert log.get()["tracked_todo"] == {"walled": "month"}
         via_agent.assert_not_awaited()
         assert (TodoActivityEvent.RUN_SKIPPED, f"skipped: {_MONTHLY_STOP}") in _recorded(activity)
 
