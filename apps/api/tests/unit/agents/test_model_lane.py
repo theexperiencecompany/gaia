@@ -139,6 +139,36 @@ class TestPlanRouting:
         assert resolved.provider_pin == routing
         assert resolved.binding_keys()["model_kwargs"] == routing
 
+    async def test_a_free_lane_on_a_routed_model_carries_that_models_routing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        routing: OpenRouterModelKwargs = {"provider": {"only": ["vendor"]}}
+        monkeypatch.setitem(OPENROUTER_PROVIDER_ROUTING, DEFAULT_MODEL_NAME, routing)
+
+        resolved = await _resolve(PlanType.FREE)
+
+        assert resolved.provider_pin == routing
+
+    def test_with_no_configured_route_the_default_lane_still_carries_its_models_routing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        routing: OpenRouterModelKwargs = {"provider": {"only": ["vendor"]}}
+        monkeypatch.setitem(OPENROUTER_PROVIDER_ROUTING, DEFAULT_MODEL_NAME, routing)
+
+        with patch.object(lane_module, "chat_route", lambda: None):
+            assert lane_module._default_lane().provider_pin == routing
+
+    def test_a_routed_model_id_on_another_provider_carries_no_routing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OpenRouter's provider block means nothing to another provider's wire."""
+        monkeypatch.setitem(
+            OPENROUTER_PROVIDER_ROUTING, "gemini-x", {"provider": {"only": ["vendor"]}}
+        )
+
+        with patch.object(lane_module, "chat_route", lambda: (LLMProviderName.GEMINI, "gemini-x")):
+            assert lane_module._default_lane().provider_pin is None
+
     async def test_a_paid_lane_routes_each_role_to_its_own_reasoning_knob(self) -> None:
         """Routed to one shared knob, raising comms would silently raise every background turn's spend too."""
         with _distinct_reasoning_knobs():
