@@ -26,6 +26,7 @@ from scripts.evals.suites.trigger_gate import (
     VerdictJournalFields,
     VerdictTransport,
     graded_bucket,
+    in_conversation,
     jev_body,
     request_sha,
     verdict_requests,
@@ -66,15 +67,20 @@ class RecordedVerdictRow(VerdictJournalFields):
 class _Pass:
     run_id: str
     rows: Mapping[str, RecordedVerdictRow]
+    conversations: frozenset[str]
 
     def bucket(self, case_id: str) -> str:
         asked = self.rows[case_id]["requests"][GateMode.DAY]
-        return graded_bucket(JevDecisionsResponse.model_validate(asked["response"]))
+        return graded_bucket(
+            JevDecisionsResponse.model_validate(asked["response"]),
+            conversation=case_id in self.conversations,
+        )
 
 
-def _read(path: Path) -> _Pass:
+def _read(path: Path, cases: Mapping[str, Case]) -> _Pass:
     rows: list[RecordedVerdictRow] = [json.loads(line) for line in path.read_text().splitlines()]
-    return _Pass(path.stem, {row["case_id"]: row for row in rows})
+    conversations = frozenset(c for c, case in cases.items() if in_conversation(case.setup))
+    return _Pass(path.stem, {row["case_id"]: row for row in rows}, conversations)
 
 
 @pytest.fixture(scope="module")
@@ -84,8 +90,8 @@ def cases() -> dict[str, Case]:
 
 
 @pytest.fixture(scope="module")
-def passes() -> list[_Pass]:
-    recorded = [_read(path) for path in sorted(VERDICTS_RECORDED_DIR.glob("*.jsonl"))]
+def passes(cases: dict[str, Case]) -> list[_Pass]:
+    recorded = [_read(path, cases) for path in sorted(VERDICTS_RECORDED_DIR.glob("*.jsonl"))]
     assert len(recorded) >= 3, f"fewer than 3 recorded passes under {VERDICTS_RECORDED_DIR}"
     return recorded
 

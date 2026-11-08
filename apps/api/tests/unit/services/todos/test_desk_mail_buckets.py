@@ -199,6 +199,47 @@ async def test_the_sweep_reads_the_verdict_the_desk_gate_asked_for_on_arrival(
     assert seams.jev.call_count == 1
 
 
+_REPLY_IN_THREAD = {
+    "thread_id": "t1",
+    "message_id": "m2",
+    "sender": "Sam Partner <sam@partner.example>",
+    "subject": "Re: terms",
+    "message_text": "Thanks, here is the revised term sheet.",
+    "label_ids": ["INBOX"],
+    "payload": {"headers": []},
+}
+
+
+@pytest.mark.parametrize(
+    ("arrived_at", "on_arrival_verdict", "jev_calls"),
+    [(AFTERNOON, GateRun(), 0), (NIGHT, GateHold(until=MORNING), 1)],
+    ids=["by-day", "in-quiet-hours"],
+)
+async def test_a_reply_on_a_thread_the_user_wrote_in_is_bucketed_reply_whatever_jev_says(
+    seams: SimpleNamespace,
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    arrived_at: datetime,
+    on_arrival_verdict: GateVerdict,
+    jev_calls: int,
+) -> None:
+    """The founder's rule: the user wrote in the thread and the latest message is someone else's."""
+    del fake_redis
+    seams.jev.mock(return_value=_verdict("fyi", {"fyi": 1.0}))
+
+    with time_machine.travel(arrived_at, tick=False):
+        on_arrival = await decide_gate(
+            SystemGate(preset=SystemGatePreset.INBOX_DESK),
+            GatedJob(GateOwner.TODO, "watch-1", USER_ID, "Inbox desk"),
+            trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+            payload=_REPLY_IN_THREAD,
+        )
+        (at_sweep,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(2, "Re: terms")])
+
+    assert on_arrival == on_arrival_verdict
+    assert at_sweep.bucket is DeskBucket.REPLY
+    assert seams.jev.call_count == jev_calls
+
+
 async def test_verdicts_are_kept_per_user(
     seams: SimpleNamespace, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> None:

@@ -44,7 +44,7 @@ from shared.py.wide_events import log
 
 _BUCKET_LABELS = frozenset(DeskBucket)
 _URGENT_LABELS = frozenset(TRIGGER_GATE_URGENT_CRITERIA)
-# Buckets that ask nothing of the user; the desk gate skips at their summed P >= 0.95.
+# Buckets that ask nothing of the user; the desk gate skips on their summed probability.
 QUIET_BUCKETS = frozenset({DeskBucket.FYI, DeskBucket.JUNK})
 
 
@@ -151,17 +151,37 @@ async def user_profile(user_id: str) -> str:
 
 
 async def email_verdict(
-    user_id: str, message_id: str | None, event: Mapping[str, object], *, quiet: bool
+    user_id: str,
+    message_id: str | None,
+    event: Mapping[str, object],
+    *,
+    quiet: bool,
+    conversation: bool,
 ) -> EmailVerdict:
     """Return the email's kept verdict, or ask JEV once and keep it; raise when JEV gives none.
 
-    A kept verdict without urgency does not answer a quiet-hours ask. An email with no
-    message id is asked every time, since nothing can find its answer again.
+    A conversation (a thread the user wrote in, now someone else's turn) is reply whatever
+    JEV says, and by day JEV is not asked. A kept verdict without urgency does not answer a
+    quiet-hours ask. An email with no message id is asked every time.
     """
     key = f"{EMAIL_VERDICT_KEY_PREFIX}:{user_id}:{message_id}" if message_id else None
     kept = await redis_cache.get(key, EmailVerdict) if key is not None else None
     if kept is not None and (not quiet or kept.urgency is not None):
         return kept
+    if conversation and not quiet:
+        verdict = EmailVerdict(bucket=DeskBucket.REPLY, quiet_probability=0.0, urgency=None)
+    else:
+        verdict = await _ask(user_id, message_id, event, quiet=quiet)
+        if conversation:
+            verdict = verdict.model_copy(update={"bucket": DeskBucket.REPLY})
+    if key is not None:
+        await redis_cache.set(key, verdict, ttl=EMAIL_VERDICT_TTL_SECONDS, model=EmailVerdict)
+    return verdict
+
+
+async def _ask(
+    user_id: str, message_id: str | None, event: Mapping[str, object], *, quiet: bool
+) -> EmailVerdict:
     profile = await user_profile(user_id)
     state, questions = verdict_request(event, quiet=quiet, profile=profile)
     # pragma: no mutate start — any key names one process-wide semaphore.
@@ -176,6 +196,4 @@ async def email_verdict(
         bucket=verdict.bucket.value if verdict.bucket else None,
         quiet=quiet,
     )
-    if key is not None:
-        await redis_cache.set(key, verdict, ttl=EMAIL_VERDICT_TTL_SECONDS, model=EmailVerdict)
     return verdict

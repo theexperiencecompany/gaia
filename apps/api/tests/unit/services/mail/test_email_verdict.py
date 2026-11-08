@@ -35,7 +35,7 @@ def _sent_state(seams: SimpleNamespace) -> dict[str, object]:
 async def test_the_user_jev_judges_for_rides_ahead_of_the_email(seams: SimpleNamespace) -> None:
     seams.core.return_value = f"## About the user\n{ABOUT}\n\n## Assistant conventions\nBe brief."
 
-    await email_verdict(USER_ID, "m1", EVENT, quiet=False)
+    await email_verdict(USER_ID, "m1", EVENT, quiet=False, conversation=False)
 
     state = _sent_state(seams)
     assert state["user"] == ABOUT
@@ -46,7 +46,7 @@ async def test_the_user_jev_judges_for_rides_ahead_of_the_email(seams: SimpleNam
 async def test_a_long_profile_is_clipped(seams: SimpleNamespace) -> None:
     seams.core.return_value = "## About the user\n" + "x" * (EMAIL_VERDICT_PROFILE_MAX_CHARS + 50)
 
-    await email_verdict(USER_ID, "m1", EVENT, quiet=False)
+    await email_verdict(USER_ID, "m1", EVENT, quiet=False, conversation=False)
 
     assert _sent_state(seams)["user"] == "x" * EMAIL_VERDICT_PROFILE_MAX_CHARS + ELLIPSIS
 
@@ -56,7 +56,7 @@ async def test_a_user_memory_knows_nothing_about_is_judged_without_a_profile(
 ) -> None:
     seams.core.return_value = "## Assistant conventions\nBe brief."
 
-    verdict = await email_verdict(USER_ID, "m1", EVENT, quiet=False)
+    verdict = await email_verdict(USER_ID, "m1", EVENT, quiet=False, conversation=False)
 
     assert verdict.bucket == "reply"
     assert list(_sent_state(seams)) == ["event", "automation"]
@@ -66,7 +66,7 @@ async def test_unreadable_memory_still_asks_and_says_why(seams: SimpleNamespace)
     seams.core.side_effect = RuntimeError("postgres down")
 
     async with captured_wide_event() as event:
-        verdict = await email_verdict(USER_ID, "m1", EVENT, quiet=False)
+        verdict = await email_verdict(USER_ID, "m1", EVENT, quiet=False, conversation=False)
 
     assert verdict.bucket == "reply"
     assert "user" not in _sent_state(seams)

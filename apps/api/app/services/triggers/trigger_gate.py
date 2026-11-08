@@ -3,7 +3,7 @@
 Both fan-outs of TriggerHandler.process_event call decide_gate before anything is
 claimed, buffered or queued, so a skipped event leaves nothing behind that marks
 it handled. An authored gate skips by day only at P(skip label) >= 0.95; the desk
-preset skips at P(fyi) + P(junk) >= 0.95 from the email verdict. Inside quiet hours
+preset skips only a sure fyi or junk email verdict. Inside quiet hours
 P(urgent) >= 0.80 runs now, then a skip skips, and everything else, every JEV
 failure included, waits for the window to end. A crash outside JEV runs the job.
 """
@@ -18,7 +18,11 @@ from typing import Final
 
 import httpx
 
-from app.constants.desk_buckets import DESK_BUCKET_SKIP_REASONS, DeskBucket
+from app.constants.desk_buckets import (
+    DESK_BUCKET_SKIP_REASONS,
+    EMAIL_VERDICT_SKIP_PROBABILITY,
+    DeskBucket,
+)
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
 from app.constants.trigger_gates import (
     AUTHORED_GATE_QUESTION,
@@ -355,7 +359,7 @@ def _answered(answer: JevChoiceAnswer) -> tuple[str, float | None]:
 def _settle_verdict(
     verdict: EmailVerdict, event: _GateEvent, *, hold: GateHold | None
 ) -> _Decision:
-    """Read the email verdict in the settle order: only P(fyi) + P(junk) >= 0.95 skips the desk."""
+    """Read the email verdict in the settle order: only a sure fyi or junk skips the desk."""
     bucket = verdict.bucket
     choice = bucket.value if bucket else None
     p_skip = verdict.quiet_probability
@@ -368,7 +372,7 @@ def _settle_verdict(
             return _Decision(GateReason.JEV_URGENT, bypass, choice, None, p_skip, urgent)
         if event.conversation:
             return _Decision(GateReason.JEV_CAN_WAIT, hold, choice, None, p_skip, urgent)
-    if p_skip >= TRIGGER_GATE_SKIP_PROBABILITY:
+    if p_skip >= EMAIL_VERDICT_SKIP_PROBABILITY:
         # P(fyi) + P(junk) over the line leaves only fyi, or junk the bucket may leave unnamed.
         named = bucket if bucket is not None and bucket in QUIET_BUCKETS else DeskBucket.JUNK
         reason = DESK_BUCKET_SKIP_REASONS[named]
@@ -395,7 +399,11 @@ async def _ask_jev(
     try:
         if isinstance(gate, SystemGate):
             verdict = await email_verdict(
-                job.user_id, event.message_id, event.fields, quiet=hold is not None
+                job.user_id,
+                event.message_id,
+                event.fields,
+                quiet=hold is not None,
+                conversation=event.conversation,
             )
             decision = _settle_verdict(verdict, event, hold=hold)
         else:
@@ -514,6 +522,11 @@ async def _decide(
     ):
         event = replace(event, conversation=True)
     if event is None or (event.conversation and hold is None):
+        if event is not None and isinstance(gate, SystemGate):
+            # Kept for the sweep: a thread the user wrote in is reply, and JEV is not asked.
+            await email_verdict(
+                job.user_id, event.message_id, event.fields, quiet=False, conversation=True
+            )
         decision = _Decision(GateReason.FREE_RUN, hold or GateRun())
     else:
         decision = await _ask_jev(gate, event, job, hold=hold)

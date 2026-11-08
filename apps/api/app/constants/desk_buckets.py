@@ -37,6 +37,8 @@ EMAIL_VERDICT_KEY_PREFIX: Final = "email_verdict"
 EMAIL_VERDICT_TTL_SECONDS: Final = 2 * ONE_DAY_TTL
 # Who the user is, as JEV reads it next to every email; a long About-the-user note costs tokens.
 EMAIL_VERDICT_PROFILE_MAX_CHARS: Final = 600
+# The desk gate skips at P(fyi) + P(junk) >= this: 0.95 is the lowest line skipping no needs-you email.
+EMAIL_VERDICT_SKIP_PROBABILITY: Final = 1.0
 # What an arrival skip names as its reason, ahead of the email's sender and subject.
 DESK_BUCKET_SKIP_REASONS: Final[Mapping[DeskBucket, str]] = MappingProxyType(
     {DeskBucket.FYI: "FYI", DeskBucket.JUNK: "Junk"}

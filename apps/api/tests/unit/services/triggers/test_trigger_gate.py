@@ -672,7 +672,7 @@ class TestShadow:
 
     @pytest.mark.parametrize(
         ("gate", "body"),
-        [(AUTHORED, _answer(0.99)), (DESK, email_verdict_answers("fyi"))],
+        [(AUTHORED, _answer(0.99)), (DESK, email_verdict_answers("fyi", {"fyi": 1.0}))],
         ids=["authored", "desk"],
     )
     async def test_a_confident_skip_stops_the_run_for_every_kind_shipped_enforced(
@@ -1390,7 +1390,7 @@ class TestTheDeskGateReadsTheEmailVerdict:
         self, seams: SimpleNamespace, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
         del fake_redis
-        seams.jev.mock(return_value=_verdict("fyi"))
+        seams.jev.mock(return_value=_verdict("fyi", {"fyi": 1.0}))
 
         first = await _skip(DESK)
         second = await _skip(DESK)
@@ -1484,14 +1484,14 @@ class TestTheDeskGateAtNight:
         assert _decided(night).reason == GateReason.JEV_CAN_WAIT
 
     async def test_fyi_is_skipped(self, night: SimpleNamespace) -> None:
-        night.jev.mock(return_value=_verdict("fyi"))
+        night.jev.mock(return_value=_verdict("fyi", {"fyi": 1.0}))
 
         assert isinstance(await _skip(DESK), GateSkip)
 
     async def test_a_reply_on_a_thread_the_user_wrote_in_is_held_never_skipped(
         self, night: SimpleNamespace
     ) -> None:
-        night.jev.mock(return_value=_verdict("fyi"))
+        night.jev.mock(return_value=_verdict("fyi", {"fyi": 1.0}))
 
         assert await _skip(DESK, payload={"message_id": "m2"}) == GateHold(until=MORNING)
 

@@ -30,7 +30,7 @@ from typing import Final, TypedDict
 
 import httpx
 
-from app.constants.desk_buckets import DESK_AUTOMATION
+from app.constants.desk_buckets import DESK_AUTOMATION, DeskBucket
 from app.constants.hil import HIL_JEV_MODEL_NAME
 from app.constants.trigger_gates import (
     SYSTEM_GATE_CONDITIONS,
@@ -164,8 +164,30 @@ def verdict_requests(
     }
 
 
-def graded_bucket(body: JevDecisionsResponse, mode: GateMode = GateMode.DAY) -> str:
-    """Return the bucket production reads from an answer, or UNBUCKETED where it reads none."""
+def in_conversation(setup: Mapping[str, object]) -> bool:
+    """Return whether the gate reads a case as a conversation, as decide_gate does.
+
+    A continuation is one unless setup says the user never wrote in its thread; a message
+    the signals cannot place counts as one.
+    """
+    message = setup["message"]
+    if not isinstance(message, Mapping):
+        raise ValueError("corpus case has no message")
+    view = gmail_gate_view(message)
+    if view is None or view.continues_thread is None:
+        return True
+    return view.continues_thread and setup.get(USER_WROTE_IN_THREAD) is not False
+
+
+def graded_bucket(
+    body: JevDecisionsResponse, mode: GateMode = GateMode.DAY, *, conversation: bool
+) -> str:
+    """Return the bucket production reads from an answer, or UNBUCKETED where it reads none.
+
+    A conversation is reply whatever JEV answered, the founder's thread rule.
+    """
+    if conversation:
+        return DeskBucket.REPLY.value
     try:
         bucket = read_verdict(body, quiet=mode is GateMode.QUIET).bucket
     except ValueError:
@@ -174,17 +196,8 @@ def graded_bucket(body: JevDecisionsResponse, mode: GateMode = GateMode.DAY) -> 
 
 
 def day_outcome(setup: Mapping[str, object], body: JevDecisionsResponse) -> str:
-    """Return the authored gate's "skip" or "run" by day; a conversation always runs.
-
-    A continuation is a conversation when setup says the user wrote in its thread.
-    """
-    message = setup["message"]
-    if not isinstance(message, Mapping):
-        raise ValueError("corpus case has no message")
-    view = gmail_gate_view(message)
-    if view is None or view.continues_thread is None:
-        return "run"
-    if view.continues_thread and setup.get(USER_WROTE_IN_THREAD) is not False:
+    """Return the authored gate's "skip" or "run" by day; a conversation always runs."""
+    if in_conversation(setup):
         return "run"
     answer = body.answers[TRIGGER_GATE_QUESTION_KEY]
     p_skip = skip_probability(AUTHORED_DESK_GATE, answer)
@@ -305,7 +318,7 @@ class VerdictTransport:
         answers: dict[GateMode, JevDecisionsResponse] = {}
         for mode, (state, questions) in verdict_requests(case.setup["message"]).items():
             answers[mode], asked[mode] = await _ask(provider, state, questions, mode)
-        bucket = graded_bucket(answers[GateMode.DAY])
+        bucket = graded_bucket(answers[GateMode.DAY], conversation=in_conversation(case.setup))
         want = str(case.expected.get("bucket"))
         print(f"[{'ok' if bucket == want else 'MISS'}] {case.id}: want={want} got={bucket}")
         fields = VerdictJournalFields(bucket=bucket, requests=asked)

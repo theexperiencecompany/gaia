@@ -5619,9 +5619,9 @@
       - gate_outcome
       - quiet_wake
 - id: mail-176
-  ticket: Inbox desk gate on a fyi email
+  ticket: Inbox desk gate on a needs_you email (relabelled from fyi by the founder's rule that when the user wrote in the thread and the latest message is someone else's, it is reply)
   tags:
-  - fyi
+  - needs_you
   - tune
   - continuation
   setup:
@@ -5646,11 +5646,11 @@
         - name: In-Reply-To
           value: <fibriolishejeanajaivil@mail.example>
   expected:
-    label: fyi
-    bucket: fyi
+    label: needs_you
+    bucket: reply
     urgent: false
     split: tune
-    outcome: skip
+    outcome: run
     score:
       gates:
       - gate_outcome
@@ -8520,7 +8520,7 @@
       - gate_outcome
       - quiet_wake
 - id: mail-266
-  ticket: Inbox desk gate on a needs_you email
+  ticket: Inbox desk gate on a needs_you email (relabelled from fyi by the founder's rule that when the user wrote in the thread and the latest message is someone else's, it is reply)
   tags:
   - needs_you
   - tune
@@ -8547,7 +8547,7 @@
           value: <neadar@mail.example>
   expected:
     label: needs_you
-    bucket: fyi
+    bucket: reply
     urgent: false
     split: tune
     outcome: run
