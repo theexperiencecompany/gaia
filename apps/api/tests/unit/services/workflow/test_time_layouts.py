@@ -112,6 +112,7 @@ class TestRendersInside:
         [
             ("$today", "Run at 2026-01-01 for someone", True),
             ("$now", "Sent 2026-01-01T09:00:00+00:00 by Dana", True),
+            ("$now", "Sent 2026-01-01T09:00:00Z by Dana", True),
             ("$today", "Plan for September 5, 2026", False),
             ("$today", "Due 2026-01-01 09:00:00", False),
             ("$today", "a title with no date", True),
