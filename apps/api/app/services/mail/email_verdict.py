@@ -187,6 +187,26 @@ async def user_profile(user_id: str) -> str:
     return clip_text(profile, EMAIL_VERDICT_PROFILE_MAX_CHARS) if profile else ""
 
 
+async def _keep(user_id: str, message_id: str, verdict: EmailVerdict) -> None:
+    await email_verdict_repository.keep(
+        EmailVerdictDocument(
+            user_id=user_id,
+            message_id=message_id,
+            answers=dict(verdict.answers),
+            bucket=verdict.bucket,
+            urgency=verdict.urgency,
+        )
+    )
+
+
+async def keep_conversation_reply(user_id: str, message_id: str | None) -> EmailVerdict:
+    """Return the reply a by-day conversation is, kept for the sweep; JEV is never asked."""
+    verdict = EmailVerdict(answers={}, bucket=DeskBucket.REPLY)
+    if message_id:
+        await _keep(user_id, message_id, verdict)
+    return verdict
+
+
 async def email_verdict(
     user_id: str,
     message_id: str | None,
@@ -205,19 +225,10 @@ async def email_verdict(
         return EmailVerdict(answers=kept.answers, bucket=kept.bucket, urgency=kept.urgency)
     conversation = thread is not None and thread.conversation
     if conversation and not quiet:
-        verdict = EmailVerdict(answers={}, bucket=DeskBucket.REPLY)
-    else:
-        verdict = await _ask(user_id, message_id, email, thread, quiet=quiet)
+        return await keep_conversation_reply(user_id, message_id)
+    verdict = await _ask(user_id, message_id, email, thread, quiet=quiet)
     if message_id:
-        await email_verdict_repository.keep(
-            EmailVerdictDocument(
-                user_id=user_id,
-                message_id=message_id,
-                answers=dict(verdict.answers),
-                bucket=verdict.bucket,
-                urgency=verdict.urgency,
-            )
-        )
+        await _keep(user_id, message_id, verdict)
     return verdict
 
 

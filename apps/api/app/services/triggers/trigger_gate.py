@@ -60,6 +60,7 @@ from app.services.mail.email_verdict import (
     EmailVerdict,
     ThreadFacts,
     email_verdict,
+    keep_conversation_reply,
 )
 from app.services.mail.thread_participation import user_wrote_in_thread
 from app.services.quiet_hours_urgency import Urgency, read_urgency, urgent_question
@@ -531,13 +532,7 @@ async def _decide(
     if event is None or (event.conversation and hold is None):
         if event is not None and isinstance(gate, SystemGate):
             # Kept for the sweep: a thread the user wrote in is reply, and JEV is not asked.
-            await email_verdict(
-                job.user_id,
-                event.message_id,
-                # By day a conversation is reply, so the verdict never reads the email.
-                _desk_view(event).as_email(),  # pragma: no mutate
-                thread=_thread_facts(event),
-            )
+            await keep_conversation_reply(job.user_id, event.message_id)
         decision = _Decision(GateReason.FREE_RUN, hold or GateRun())
     else:
         decision = await _ask_jev(gate, event, job, hold=hold)
