@@ -76,6 +76,7 @@ import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { runBotHandles } from "./lib/bot-handles.mjs";
 import { checkDocComments } from "./lib/doc-comments.mjs";
 import { explicitFileList } from "./lib/explicit-file-list.mjs";
 import {
@@ -951,6 +952,7 @@ function usage() {
       "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
+      "  bot-handles                            every WhatsApp / Telegram / Discord link matches libs/shared/ts/src/constants/bots.ts",
     ].join("\n"),
   );
 }
@@ -1050,6 +1052,9 @@ function cmdFrameworkPair() {
       break;
     case "api-client-imports":
       cmdApiClientImports(rest);
+      break;
+    case "bot-handles":
+      runBotHandles();
       break;
     case "framework-pair":
       cmdFrameworkPair();

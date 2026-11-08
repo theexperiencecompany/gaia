@@ -1766,7 +1766,7 @@ DISCOVERY SURFACES (don't guess URLs; start from one of these)
 - https://docs.heygaia.io/bots/overview: overview of GAIA in
   Discord, Slack, Telegram, and WhatsApp.
 - https://t.me/heygaia_bot: the actual Telegram bot to talk to.
-- https://wa.me/12762088737: the actual WhatsApp bot to talk to.
+- https://wa.me/12038429512: the actual WhatsApp bot to talk to.
 
 The two llms.txt files are NOT duplicates: each only lists pages from
 its own subdomain. Both can be relevant for the same question (a guide
