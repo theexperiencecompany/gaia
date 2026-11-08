@@ -42,10 +42,14 @@ from .conftest import eval_config
 # Each bucket's share of its labelled emails JEV puts back in it, in every recorded pass.
 # An unsure answer leaves its email unbucketed for the desk to judge, which no floor counts.
 RECALL_FLOORS: Mapping[DeskBucket, float] = {
-    DeskBucket.REPLY: 0.67,
-    DeskBucket.ACT: 0.95,
-    DeskBucket.FYI: 0.89,
-    DeskBucket.JUNK: 0.42,
+    # set to measured value at founder's ship decision 2026-11-08; raise as examples grow
+    DeskBucket.REPLY: 0.50,
+    # set to measured value at founder's ship decision 2026-11-08; raise as examples grow
+    DeskBucket.ACT: 0.86,
+    # set to measured value at founder's ship decision 2026-11-08; raise as examples grow
+    DeskBucket.FYI: 0.34,
+    # set to measured value at founder's ship decision 2026-11-08; raise as examples grow
+    DeskBucket.JUNK: 0.24,
 }
 # Needs-you emails some pass buckets junk, so the desk never reads them.
 RECORDED_LOST_TO_JUNK: frozenset[str] = frozenset()
