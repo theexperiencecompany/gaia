@@ -18,16 +18,20 @@ Tests the real workflow service functions with mocked I/O boundaries
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import NoReturn
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.exceptions import OutputParserException
+from langchain_core.runnables import RunnableLambda
 import pytest
 
+from app.agents.llm.exceptions import MalformedStructuredOutputError
+from app.constants.llm import LLM_RETRY_MAX_ATTEMPTS
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     GeneratedStep,
     TriggerConfig,
+    TriggerType,
     UpdateWorkflowRequest,
     Workflow,
     WorkflowDocument,
@@ -81,7 +85,7 @@ def _owners_are_users():
         yield
 
 
-def _make_trigger_config(trigger_type: str = "manual", **kwargs) -> TriggerConfig:
+def _make_trigger_config(trigger_type: TriggerType = TriggerType.MANUAL, **kwargs) -> TriggerConfig:
     """Build a TriggerConfig with sensible defaults."""
     return TriggerConfig(type=trigger_type, enabled=True, **kwargs)
 
@@ -103,7 +107,7 @@ def _make_create_request(
     title: str = "Test Workflow",
     prompt: str = "Do something useful",
     steps: list[WorkflowStep] | None = None,
-    trigger_type: str = "manual",
+    trigger_type: TriggerType = TriggerType.MANUAL,
     **trigger_kwargs,
 ) -> CreateWorkflowRequest:
     """Build a CreateWorkflowRequest with defaults."""
@@ -122,7 +126,7 @@ def _make_workflow(
     title: str = "Test Workflow",
     activated: bool = True,
     steps: list[WorkflowStep] | None = None,
-    trigger_type: str = "manual",
+    trigger_type: TriggerType = TriggerType.MANUAL,
 ) -> Workflow:
     """Build a Workflow model instance for testing."""
     return Workflow(
@@ -333,7 +337,7 @@ class TestExecutionTracking:
             execution = await create_execution(
                 workflow_id=FAKE_WORKFLOW_ID,
                 user_id=FAKE_USER_ID,
-                trigger_type="manual",
+                trigger_type=TriggerType.MANUAL,
             )
 
         assert execution.status == "running"
@@ -431,7 +435,7 @@ class TestExecutionTracking:
                 user_id=FAKE_USER_ID,
                 status="success",
                 started_at=datetime(2026, 1, 1, 12, i, 0, tzinfo=UTC),
-                trigger_type="manual",
+                trigger_type=TriggerType.MANUAL,
             )
             for i in range(3)
         ]
@@ -466,7 +470,7 @@ class TestTriggerRegistration:
     async def test_register_integration_triggers_calls_trigger_service(self):
         """_register_integration_triggers delegates to TriggerService for integration type."""
         trigger_config = _make_trigger_config(
-            trigger_type="integration",
+            trigger_type=TriggerType.INTEGRATION,
             trigger_name="calendar_event_created",
         )
 
@@ -505,7 +509,7 @@ class TestTriggerRegistration:
 
     async def test_register_skips_non_integration_triggers(self):
         """_register_integration_triggers returns ([], True) for manual triggers."""
-        trigger_config = _make_trigger_config(trigger_type="manual")
+        trigger_config = _make_trigger_config(trigger_type=TriggerType.MANUAL)
 
         result = await WorkflowService._register_integration_triggers(
             workflow_id=FAKE_WORKFLOW_ID,
@@ -520,7 +524,7 @@ class TestTriggerRegistration:
         """_register_integration_triggers raises when integration trigger has no name."""
 
         trigger_config = _make_trigger_config(
-            trigger_type="integration",
+            trigger_type=TriggerType.INTEGRATION,
             trigger_name=None,
         )
 
@@ -535,7 +539,7 @@ class TestTriggerRegistration:
         """If trigger registration fails, the pending workflow is deleted."""
 
         request = _make_create_request(
-            trigger_type="integration",
+            trigger_type=TriggerType.INTEGRATION,
             trigger_name="calendar_event_created",
         )
 
@@ -892,24 +896,32 @@ class TestQueueService:
 
 @pytest.mark.integration
 class TestGenerationServiceRetries:
-    """Test the generation service regeneration logic."""
+    """How many times one generation asks the model, through the real retry stack."""
 
-    async def test_generate_steps_raises_after_retries(self):
-        """generate_steps_with_llm raises a typed generation error after max retries."""
+    async def test_a_draft_cut_at_the_output_cap_is_asked_for_once_per_retry_attempt(self):
+        """Prod: a capped draft was re-asked by ainvoke_llm and again by a service loop, 6 calls and 160s; one layer retries."""
+        model_calls = 0
+
+        def capped_reply(_prompt: object) -> NoReturn:
+            nonlocal model_calls
+            model_calls += 1
+            raise MalformedStructuredOutputError(
+                "GeneratedWorkflow: reply stopped at the output cap"
+            )
+
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
         mock_registry.get_core_tools = MagicMock(return_value=[])
 
         with (
-            # Schema-invalid output on every attempt exhausts the regeneration loop.
             patch(
-                "app.services.workflow.generation_service.ainvoke_structured",
-                new_callable=AsyncMock,
-                side_effect=OutputParserException("bad json"),
+                "app.agents.llm.client._structured_runnable",
+                return_value=RunnableLambda(capped_reply),
             ),
+            patch("app.agents.llm.client.record_failed_llm_call", new_callable=AsyncMock),
+            patch("app.agents.llm.client._record_auxiliary_usage", new_callable=AsyncMock),
             # Patch the local binding in generation_service (where it is imported),
-            # not the source registry module. The `from ... import get_tool_registry`
-            # at the top of generation_service.py creates an independent local name.
+            # not the source registry module.
             patch(
                 "app.services.workflow.generation_service.get_tool_registry",
                 new_callable=AsyncMock,
@@ -919,19 +931,16 @@ class TestGenerationServiceRetries:
                 "app.services.workflow.generation_service.generate_trigger_context",
                 return_value="manual trigger",
             ),
-            patch(
-                "app.services.workflow.generation_service.OAUTH_INTEGRATIONS",
-                [],
-            ),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
         ):
-            with pytest.raises(
-                WorkflowStepGenerationError, match=r"no usable steps after 2 attempts"
-            ):
+            with pytest.raises(WorkflowStepGenerationError, match="output cap"):
                 await WorkflowGenerationService.generate_steps_with_llm(
                     prompt="Test prompt",
                     title="Test Workflow",
                     user_id="test-user",
                 )
+
+        assert model_calls == LLM_RETRY_MAX_ATTEMPTS
 
 
 # ---------------------------------------------------------------------------
@@ -945,8 +954,8 @@ class TestActivateDeactivateLifecycle:
 
     async def test_activate_workflow_enables_and_registers_triggers(self):
         """activate_workflow sets activated=True and registers integration triggers."""
-        pending = _make_workflow(activated=False, trigger_type="manual")
-        activated = _make_workflow(activated=True, trigger_type="manual")
+        pending = _make_workflow(activated=False, trigger_type=TriggerType.MANUAL)
+        activated = _make_workflow(activated=True, trigger_type=TriggerType.MANUAL)
 
         with (
             # get_workflow: first the pending workflow, then the re-read after activation.

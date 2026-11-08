@@ -9,16 +9,18 @@ cd "$(dirname "$0")/.."
 MODELS_DIR="models"
 BASE_URL="https://github.com/dscripka/openWakeWord/releases/download/v0.5.1"
 
-declare -A EXPECTED_SIZE=(
-  [melspectrogram.onnx]=1087958
-  [embedding_model.onnx]=1326578
-  [silero_vad.onnx]=1807522
-  [hey_mycroft_v0.1.onnx]=857691
-)
+# "name size" pairs, not an associative array: macOS ships bash 3.2, where
+# `declare -A` fails and the loop below silently fetched nothing.
+EXPECTED_SIZES="
+melspectrogram.onnx 1087958
+embedding_model.onnx 1326578
+silero_vad.onnx 1807522
+hey_mycroft_v0.1.onnx 857691
+"
 
 mkdir -p "$MODELS_DIR"
-for name in "${!EXPECTED_SIZE[@]}"; do
-  expected="${EXPECTED_SIZE[$name]}"
+while read -r name expected; do
+  [[ -n "$name" ]] || continue
   path="$MODELS_DIR/$name"
   if [[ -f "$path" ]]; then
     size=$(stat -f%z "$path" 2>/dev/null || stat -c%s "$path")
@@ -36,7 +38,7 @@ for name in "${!EXPECTED_SIZE[@]}"; do
     printf '  ERROR: %s downloaded with wrong size (%d ≠ %d)\n' "$name" "$size" "$expected" >&2
     exit 1
   fi
-done
+done <<< "$EXPECTED_SIZES"
 
 echo
 echo "All models present in $MODELS_DIR/"

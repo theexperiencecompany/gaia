@@ -10,6 +10,7 @@ export type { ArgsPreviewRow, FlattenedArgs } from "./argsPreview";
 export { flattenArgsPreview } from "./argsPreview";
 export type { JwtPayload, TokenStorage } from "./auth";
 export { isTokenExpired, parseJwt, shouldRefreshToken } from "./auth";
+export { discordInviteUrl, telegramBotUrl } from "./botLinks";
 export type { DueChipTone } from "./dateUtils";
 export {
   formatDate,
@@ -39,6 +40,12 @@ export {
   getCompleteTimeBasedGreeting,
   getSimpleTimeGreeting,
 } from "./greetingUtils";
+export type {
+  InstructionsDraftView,
+  InstructionsEdit,
+  InstructionsRecordLike,
+} from "./instructionsDraft";
+export { editInstructions, viewInstructionsDraft } from "./instructionsDraft";
 export type {
   ConnectionPromptState,
   IntegrationConnectionState,

@@ -28,7 +28,7 @@ from app.schemas.errors import (
     ValidationIssue,
     error_responses,
 )
-from app.utils.errors import AppError, create_error
+from app.utils.errors import AppError, IntegrationNotConnectedError, create_error
 
 
 @asynccontextmanager
@@ -372,3 +372,37 @@ class TestRouteErrorDeclarations:
             "4XX": json_envelope,
             "5XX": json_envelope,
         } == HTML_ROUTE_ERROR_RESPONSES
+
+
+class TestTheNotConnectedEnvelope:
+    def test_its_reconnect_fields_are_declared_so_the_generated_type_carries_them(self) -> None:
+        """The web read toolkit and integration_id through a hand-written cast while they were extras."""
+        schema = ErrorEnvelope.model_json_schema()["properties"]
+
+        assert schema["toolkit"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+        assert schema["integration_id"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+
+    def test_the_typed_error_renders_them(self) -> None:
+        error = IntegrationNotConnectedError(
+            integration_id="googlecalendar",
+            integration_name="Google Calendar",
+            why="no account",
+            toolkit="GOOGLECALENDAR",
+        )
+
+        envelope = ErrorEnvelope.from_app_error(error)
+
+        # Nothing died unless the raiser says so: a dead grant is expired, a missing one is not.
+        assert error.grant_died is False
+        assert (envelope.code, envelope.toolkit, envelope.integration_id) == (
+            "INTEGRATION_NOT_CONNECTED",
+            "GOOGLECALENDAR",
+            "googlecalendar",
+        )
+
+    def test_a_non_string_integration_id_is_dropped_not_raised(self) -> None:
+        envelope = ErrorEnvelope.from_http_exception(
+            HTTPException(status_code=403, detail={"message": "x", "integration_id": 7})
+        )
+
+        assert envelope.integration_id is None

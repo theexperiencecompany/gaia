@@ -456,9 +456,7 @@ async def enforce_daily_cost_budget(
     MANY). Raises the same RateLimitExceededException (429) as the count
     limiter so the frontend toast/upgrade-modal path renders identically.
     """
-    # Dev-only bypass, mirroring the count-based limiter and the middleware cost
-    # wall: a free-plan dev user / eval harness is never blocked. Refused in prod.
-    if settings.DEV_UNLIMITED_RATE_LIMITS:
+    if not settings.deployment.enforces_usage_limits:
         return
     origin = origin or current_limit_origin()
     plan_type = await payment_service.get_cached_plan_type(user_id)

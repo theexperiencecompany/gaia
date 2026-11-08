@@ -21,7 +21,7 @@ tests:
             exp_annotations:
               description: >-
                 Redis is not a cache here — it is the ARQ job queue, the SSE chat stream channels, the stream-cancellation flags and the rate limiter. While it is unreachable chat responses never reach the browser and nothing scheduled runs: reminders, workflows, tracked todos and Gmail-to-memory ingestion all stop. The Redis memory and eviction rules go silent during this outage because their metrics disappear with it, so this is the only signal. Check the redis container and its logs; a full disk is a common cause.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-down
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-redis-down
 
   - name: gaia-redis-down stays quiet when redis_up reports 1
     interval: 1m

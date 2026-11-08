@@ -2,34 +2,37 @@
 
 from unittest.mock import AsyncMock, patch
 
-from fastapi import HTTPException
 import pytest
 
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.models.user_models import AuthenticatedUser
+from app.schemas.errors import ErrorEnvelope
+from app.utils.errors import IntegrationNotConnectedError
 
 _MODULE = "app.api.v1.dependencies.google_scope_dependencies"
 
 
 class TestRequireIntegration:
-    async def test_a_missing_connection_is_a_403_with_the_envelope_fields(self) -> None:
-        """The web narrows on code and toolkit to offer the connect card."""
+    async def test_a_missing_connection_is_the_one_typed_not_connected_error(self) -> None:
+        """The web reads code, toolkit and integration_id off the envelope it renders to."""
         dependency = require_integration("gmail")
 
         with (
             patch(f"{_MODULE}.check_integration_status", AsyncMock(return_value=False)),
-            pytest.raises(HTTPException) as raised,
+            pytest.raises(IntegrationNotConnectedError) as raised,
         ):
             await dependency(user=AuthenticatedUser(user_id="user_1"))
 
+        envelope = ErrorEnvelope.from_app_error(raised.value)
         assert raised.value.status_code == 403
-        assert raised.value.detail == {
-            "type": "integration",
-            "code": INTEGRATION_NOT_CONNECTED,
-            "toolkit": "gmail",
-            "message": "Missing connection: Gmail. Please connect integrations in settings.",
-        }
+        assert (envelope.code, envelope.toolkit, envelope.integration_id) == (
+            INTEGRATION_NOT_CONNECTED,
+            "gmail",
+            "gmail",
+        )
+        assert envelope.message == "Gmail is not connected. Reconnect it to continue."
+        assert envelope.why == "The integration has no connected account"
 
     async def test_a_connected_integration_passes_the_user_through(self) -> None:
         dependency = require_integration("gmail")

@@ -1,0 +1,74 @@
+{
+  "competitorAdvantages": [
+    "Always with you, hears your day as it happens",
+    "Feels personal: texts you like a friend, not an app"
+  ],
+  "description": "Friend is a paid pendant for company. GAIA is the full assistant that clears your inbox and runs your schedule.",
+  "domain": "",
+  "faqs": [
+    {
+      "answer": "No. Friend listens and chats over text. It does not connect to email, calendar, or task tools, so nothing gets done without you.",
+      "question": "Does Friend handle tasks or email?"
+    },
+    {
+      "answer": "The Friend pendant is paid hardware. GAIA's hosted plan is a flat ${{PRO_MONTHLY_PRICE}}/month with no hardware to buy, and self-hosting is free for non-commercial use (plus your own model API costs).",
+      "question": "How much does Friend cost?"
+    }
+  ],
+  "gaiaAdvantages": [
+    "Clears your inbox instead of just chatting about your day",
+    "Manages calendar, tasks, and follow-ups end to end",
+    "Deep integrations with the tools you already use",
+    "Source-available, no paid hardware needed",
+    "Proactive: acts on context without being asked twice"
+  ],
+  "intro": "Friend keeps you company. The paid pendant listens through your day and texts you like someone who was there. That is a real comfort, and it is also the whole product. When an email needs a reply, a meeting needs moving, or a task needs doing, Friend watches you do it. GAIA is the other half: an assistant that reads your inbox, manages your calendar, and follows through across your tools. Company is nice. Cleared plates are nicer.",
+  "keywords": [
+    "GAIA vs Friend",
+    "Friend vs GAIA",
+    "Friend pendant comparison",
+    "Friend AI review"
+  ],
+  "metaDescription": "Compare GAIA and Friend pendant. Friend is a paid companion for your day while GAIA is a source-available assistant that does the work.",
+  "metaTitle": "GAIA vs Friend: Full Assistant vs Pendant",
+  "name": "Friend",
+  "rows": [
+    {
+      "competitor": "Paid pendant that listens and texts you back",
+      "feature": "Core approach",
+      "gaia": "Full productivity OS that acts across your digital life"
+    },
+    {
+      "competitor": "Companionship and conversation over text",
+      "feature": "What it does",
+      "gaia": "Email triage, calendar management, tasks, and workflows"
+    },
+    {
+      "competitor": "Knows your day because it heard it",
+      "feature": "Context",
+      "gaia": "Graph-based memory across email, calendar, tasks, and chats"
+    },
+    {
+      "competitor": "No tool connections, you do the doing",
+      "feature": "Integrations",
+      "gaia": "Deep integrations including Gmail, Slack, Notion, Linear"
+    },
+    {
+      "competitor": "Closed hardware and software",
+      "feature": "Openness",
+      "gaia": "Source-available (PolyForm Noncommercial) and self-hostable for non-commercial use"
+    },
+    {
+      "competitor": "Buy the pendant, wear it, text it",
+      "feature": "Setup",
+      "gaia": "Sign up, connect your tools, start delegating"
+    }
+  ],
+  "slug": "friend-pendant",
+  "tagline": "Company for your day",
+  "verdict": "Choose Friend if you want an always-on companion that listens and chats. Choose GAIA if you want the work itself handled: inbox triaged, calendar managed, tasks done.",
+  "relatedPersonas": [
+    "remote-workers",
+    "solopreneurs"
+  ]
+}

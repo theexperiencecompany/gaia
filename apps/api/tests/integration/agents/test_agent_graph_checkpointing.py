@@ -263,7 +263,7 @@ async def pg_checkpointer():
     if os.environ.get("USE_REAL_SERVICES") != "1":
         # Not opted in: skip without ever dialing localhost (hermetic run).
         pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
-    # Opted in (e.g., the Dagger CI container): a missing Postgres propagates
+    # Opted in (e.g., CI): a missing Postgres propagates
     # as a loud failure instead of a skip.
     await pool.open(wait=True, timeout=10)
 

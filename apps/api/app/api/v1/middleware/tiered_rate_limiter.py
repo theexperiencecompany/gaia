@@ -164,8 +164,15 @@ class TieredRateLimiter:
         feature_key: str,
         user_plan: PlanType,
         current_limits: RateLimitConfig,
+        *,
+        enforce: bool,
     ) -> dict[str, UsageInfo]:
-        """Read current counters; raise when any non-zero window is exhausted."""
+        """Read current counters; raise when any non-zero window is exhausted.
+
+        enforce=False (a deployment without usage limits) reads and returns
+        the same counters but never raises: usage stays tracked while limits
+        stop applying.
+        """
         usage_info: dict[str, UsageInfo] = {}
         for period in [RateLimitPeriod.DAY, RateLimitPeriod.MONTH]:
             limit = getattr(current_limits, period.value)
@@ -179,7 +186,7 @@ class TieredRateLimiter:
 
             usage_info[period.value] = UsageInfo(used=used, limit=limit, reset_time=reset_time)
 
-            if used >= limit:
+            if enforce and used >= limit:
                 # No plan_required: an exhausted window is a spent budget, not a
                 # paywall — both are only reachable when the caller's own limit for
                 # this period is non-zero, so the two never coincide.
@@ -194,13 +201,17 @@ class TieredRateLimiter:
         feature_key: str,
         user_plan: PlanType,
     ) -> dict[str, UsageInfo]:
+        # Without enforcement every raise below is skipped while counters and
+        # rollups continue, so usage charts still read true.
+        enforce = settings.deployment.enforces_usage_limits
+
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}
 
         # Plan gate: a plan with day and month both 0 has no access at all —
         # the per-period loop in _snapshot_usage skips 0 limits, so without this
         # a fully-zeroed plan would be unlimited instead of blocked.
-        if current_limits.day <= 0 and current_limits.month <= 0:
+        if enforce and current_limits.day <= 0 and current_limits.month <= 0:
             raise RateLimitExceededException(
                 feature_key,
                 self._plan_required(feature_key, user_plan),
@@ -208,7 +219,9 @@ class TieredRateLimiter:
             )
 
         usage_info.update(
-            await self._snapshot_usage(user_id, feature_key, user_plan, current_limits)
+            await self._snapshot_usage(
+                user_id, feature_key, user_plan, current_limits, enforce=enforce
+            )
         )
 
         # Increment usage atomically. Unlimited periods (limit 0) are still
@@ -240,7 +253,7 @@ class TieredRateLimiter:
                         current_val = int(current_val) if current_val else 0
 
                         # Double-check limit hasn't been exceeded by concurrent requests
-                        if current_val >= limit:
+                        if enforce and current_val >= limit:
                             await pipe.unwatch()
                             # No plan_required, for the same reason as in
                             # _snapshot_usage: this branch needs limit > 0.

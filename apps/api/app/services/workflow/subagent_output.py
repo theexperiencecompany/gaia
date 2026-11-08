@@ -6,16 +6,16 @@ The workflow subagent can respond in two modes:
 2. Finalized workflow - ready to create the workflow draft
 
 The expected JSON block format lives in the subagent prompt
-(app/agents/prompts/workflow_prompts.py); this module validates it.
+(app/agents/prompts/subagent_prompts.py); this module validates it.
 """
 
-import json
 import re
-from typing import Any, Literal
+from typing import Literal, Self, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.constants.log_tags import LogTag
+from app.models.trigger_gate_models import GateCondition
 from app.models.workflow_models import TriggerType
 from shared.py.wide_events import log
 
@@ -33,11 +33,31 @@ TRIGGER_TYPE_BY_DRAFT_TYPE: dict[str, TriggerType] = {
 # =============================================================================
 
 
+class _TaggedOutput(BaseModel):
+    """The kind a structured reply names, read before the model that kind selects."""
+
+    type: str
+
+
 class ClarifyingOutput(BaseModel):
     """Output when subagent needs to ask clarifying questions."""
 
     type: Literal["clarifying"] = Field(description="Must be 'clarifying' when asking questions")
     message: str = Field(description="The clarifying question to ask the user")
+
+
+class WorkflowDraftPayload(TypedDict):
+    """The workflow_draft stream frame the chat's draft card renders."""
+
+    suggested_title: str
+    suggested_description: str
+    prompt: str
+    trigger_type: str
+    trigger_slug: str | None
+    integration_ids: list[str]
+    cron_expression: str | None
+    runs_only_when: str | None
+    direct_create: bool
 
 
 class FinalizedOutput(BaseModel):
@@ -61,6 +81,10 @@ class FinalizedOutput(BaseModel):
     trigger_slug: str | None = Field(
         default=None, description="Trigger slug for integration triggers"
     )
+    runs_only_when: GateCondition | None = Field(
+        default=None,
+        description="Integration triggers only: which events are worth a run; None when every event is",
+    )
     integration_ids: list[str] = Field(
         default_factory=list,
         description=(
@@ -74,12 +98,21 @@ class FinalizedOutput(BaseModel):
         description="True only for simple, unambiguous workflows where no user feedback is needed",
     )
 
+    @model_validator(mode="after")
+    def _runs_only_when_needs_an_event(self) -> Self:
+        if self.runs_only_when is not None and self.trigger_type != "integration":
+            raise ValueError(
+                "runs_only_when is only for integration triggers; omit it for "
+                f"a {self.trigger_type} workflow"
+            )
+        return self
+
     @property
     def backend_trigger_type(self) -> TriggerType:
         """Return this draft's trigger in the vocabulary the rest of the system uses."""
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
-    def to_stream_payload(self) -> dict[str, Any]:
+    def to_stream_payload(self) -> dict[Literal["workflow_draft"], WorkflowDraftPayload]:
         """Convert to the format expected by frontend stream handler."""
         return {
             "workflow_draft": {
@@ -90,6 +123,7 @@ class FinalizedOutput(BaseModel):
                 "trigger_slug": self.trigger_slug,
                 "integration_ids": self.integration_ids,
                 "cron_expression": self.cron_expression,
+                "runs_only_when": self.runs_only_when,
                 "direct_create": self.direct_create,
             }
         }
@@ -123,14 +157,17 @@ class ParseResult:
 # =============================================================================
 
 
-def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | None:
-    """Turn one decoded JSON object into a ParseResult, or None if it isn't ours."""
-    output_type = data.get("type")
+def _result_from_payload(candidate: str, response: str) -> ParseResult | None:
+    """Turn one JSON candidate into a ParseResult, or None if it isn't ours."""
+    try:
+        output_type = _TaggedOutput.model_validate_json(candidate).type
+    except ValidationError:
+        return None
 
     if output_type == "finalized":
         try:
-            draft = FinalizedOutput(**data)
-        except Exception as e:
+            draft = FinalizedOutput.model_validate_json(candidate)
+        except ValidationError as e:
             log.warning(
                 f"{LogTag.WORKFLOW} Failed to parse finalized output",
                 error=str(e),
@@ -161,13 +198,13 @@ def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | N
 
     if output_type == "clarifying":
         try:
-            clarifying = ClarifyingOutput(**data)
+            clarifying = ClarifyingOutput.model_validate_json(candidate)
             log.info(f"{LogTag.WORKFLOW} Successfully parsed clarifying response")
             return ParseResult(mode="clarifying", message=clarifying.message, raw_response=response)
-        except Exception:
+        except ValidationError:
             return ParseResult(
                 mode="clarifying",
-                message=data.get("message", response),
+                message=response,
                 raw_response=response,
             )
 
@@ -192,16 +229,7 @@ def parse_subagent_response(response: str) -> ParseResult:
     carries no recognizable JSON payload.
     """
     for candidate in _json_candidates(response):
-        candidate = candidate.strip()
-        if not candidate:
-            continue
-        try:
-            data = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(data, dict) or "type" not in data:
-            continue
-        result = _result_from_payload(data, response)
+        result = _result_from_payload(candidate, response)
         if result is not None:
             return result
 
@@ -213,8 +241,3 @@ def parse_subagent_response(response: str) -> ParseResult:
         message=response,
         raw_response=response,
     )
-
-
-# Legacy aliases for backwards compatibility
-WorkflowDraft = FinalizedOutput
-WorkflowSubagentOutput = ParseResult

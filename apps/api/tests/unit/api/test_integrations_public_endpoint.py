@@ -77,7 +77,7 @@ class TestGetPublicIntegration:
 
         with (
             patch(
-                "app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [fake_native],
             ),
             patch(
@@ -116,7 +116,7 @@ class TestGetPublicIntegration:
 
         with (
             patch(
-                "app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [fake_native],
             ),
             patch(
@@ -138,7 +138,7 @@ class TestGetPublicIntegration:
         fake_native.managed_by = "internal"
 
         with (
-            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", [fake_native]),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [fake_native]),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
             patch(f"{_PUBLIC}.parse_integration_slug", return_value=_NO_SLUG),
         ):
@@ -155,7 +155,7 @@ class TestGetPublicIntegration:
         )
 
         with (
-            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=integration)
@@ -175,7 +175,7 @@ class TestGetPublicIntegration:
         integration = _with_creator("abc123", "Legacy Tool")
 
         with (
-            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
             patch(f"{_PUBLIC}.parse_integration_slug", return_value=_LEGACY_SLUG),
         ):
@@ -190,7 +190,7 @@ class TestGetPublicIntegration:
     async def test_not_found(self, client: AsyncClient) -> None:
         """Return 404 when no integration matches."""
         with (
-            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
             patch(f"{_PUBLIC}.parse_integration_slug", return_value=_NO_SLUG),
         ):
@@ -203,7 +203,7 @@ class TestGetPublicIntegration:
     async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
         """Unexpected exception maps to 500."""
         with (
-            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", new=[]),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", new=[]),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
         ):
             mock_repo.get_public_by_slug = AsyncMock(side_effect=TypeError("boom"))
@@ -348,7 +348,7 @@ class TestAddPublicIntegration:
                 "app.api.v1.endpoints.integrations.public.connect_mcp_integration",
                 new_callable=AsyncMock,
                 return_value=connect_result,
-            ),
+            ) as mock_connect,
             patch("app.api.v1.endpoints.integrations.public.capture") as mock_capture,
         ):
             mock_repo.get_public = AsyncMock(
@@ -367,13 +367,23 @@ class TestAddPublicIntegration:
 
             resp = await client.post(
                 f"{BASE}/public/integ3/add",
-                json={"redirect_path": "/integrations"},
+                json={"redirect_path": "/settings", "bearer_token": "tok-1"},
             )
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "connected"
         assert body["toolsCount"] == 5
+        mock_connect.assert_awaited_once_with(
+            user_id=FAKE_USER.user_id,
+            integration_id="integ3",
+            integration_name="New Integ",
+            requires_auth=False,
+            redirect_path="/settings",
+            server_url="https://mcp.example.com",
+            is_platform=False,
+            bearer_token="tok-1",
+        )
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             IntegrationConnected(integration_id="integ3", source="marketplace"),

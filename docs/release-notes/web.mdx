@@ -4,6 +4,48 @@ description: "Version history and changelog for the GAIA web application, includ
 icon: "browser"
 ---
 
+<Update label="Oct 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [Web v0.26.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.26.0)
+
+### Features
+- **Pay-First Onboarding**: Onboarding is a short chat: your role, what you want off your plate, a plan, then where GAIA should text you. A receipt printer prints your itemized receipt once the payment is confirmed.
+- **Where GAIA Texts You**: A new setting orders your linked platforms; proactive messages go to the first one instead of every platform at once.
+- **Browser Tasks in Chat**: A browser card shows each step's photo, the live view and any handoff, and Browser settings hold your task history and saved logins.
+- **Standing Instructions in Settings**: Edit your instructions directly; if GAIA changed them while you were editing, you get a conflict prompt instead of a silent overwrite.
+- **Manage Several Accounts**: The integration sidebar has an Accounts section to add another account, set the primary, rename one or disconnect just that one.
+- **Tapback Reactions**: GAIA's reactions to your messages appear as an iMessage-style badge on your bubble.
+- **First-Steps Checklist**: A card on your dashboard and a small widget elsewhere track your first four steps.
+- **Self-Host Admin Settings**: On a self-hosted instance the admin sees Members, AI Providers and Integrations setup.
+- **Several Approvals at Once**: Three or more pending approvals open in one review sheet.
+
+### Bug Fixes
+- **One Broken Card, Not a Blank Chat**: A tool card that fails to render shows "This part couldn't be displayed" instead of replacing the whole conversation with an error page.
+- **Reaction Turns Keep Their Cards**: When GAIA answered with only a reaction, the turn's tool cards vanished; they stay now.
+- **Dollar Signs**: A single `$` renders as a dollar sign, not math.
+- **Connect Links From Chat Apps**: A connect link opened from Telegram reaches a Continue step, so a link preview can no longer use it up.
+- **Onboarding Errors**: A failed submit shows an inline error with a Try again button instead of retrying in the background.
+- **Custom Schedules**: A workflow with a cron the presets can't express opens in Custom mode showing the exact schedule, instead of "Every Day at 9:00 AM".
+- **Todos Page**: The todos list loads faster and no longer starts blank.
+
+</Update>
+
+<Update label="Sep 13, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [Web v0.24.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.24.0)
+
+### Features
+- **Google Drive**: Connect Google Drive from the integrations page.
+- **Both Todo Notes in the Sidebar**: The todo sidebar shows canvas.md and activity.md.
+- **Connect MCP Servers Inline**: The connect card in chat collects a server's token and shows it going from connecting to connected, with a live tool count.
+
+### Bug Fixes
+- **Missing Styles**: Buttons, the sidebar, dropdowns, modals and switches had lost much of their styling in production; it's back.
+- **Notifications Page**: Fixed the empty-state scrollbar, a banner you couldn't dismiss, mismatched tabs, the flicker on marking one read, and "mark all as read" only covering what was loaded.
+- **Canvas Viewer**: Opening a second todo's canvas.md no longer shows the previous todo's.
+
+</Update>
+
 <Update label="Aug 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
 
 ## [Web v0.23.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.23.0)

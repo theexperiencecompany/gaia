@@ -1,8 +1,16 @@
 """Search engine waterfall behaviour: failover, budget gating, and selection."""
 
+import httpx
+import pytest
+import respx
+
+from app.config.settings import settings
+from app.services.providers.provider_credentials_service import resolve
 from app.utils.search.engine import SearchEngine
 from app.utils.search.models import SearchResponse, SearchResultItem
+from app.utils.search.providers import default_providers
 from app.utils.search.providers.base import SearchProvider
+from tests.helpers import InMemoryCredentialStore
 
 
 def _response(provider: str) -> SearchResponse:
@@ -123,3 +131,42 @@ async def test_returns_empty_response_when_all_exhausted() -> None:
 
     assert response.is_empty
     assert response.provider is None
+
+
+@pytest.mark.parametrize(
+    ("env", "auth_mode", "order"),
+    [
+        ("production", "workos", ["exa", "tavily", "brave", "duckduckgo", "searxng"]),
+        ("development", "workos", ["exa", "tavily", "brave", "duckduckgo", "searxng"]),
+        ("selfhost", "local", ["exa", "tavily", "brave", "searxng", "duckduckgo"]),
+    ],
+)
+def test_waterfall_order_per_deployment(
+    monkeypatch: pytest.MonkeyPatch, env: str, auth_mode: str, order: list[str]
+) -> None:
+    monkeypatch.setattr(settings, "ENV", env)
+    monkeypatch.setattr(settings, "AUTH_MODE", auth_mode)
+
+    assert [p.name for p in default_providers()] == order
+
+
+@respx.mock
+async def test_selfhost_with_searxng_never_sends_the_query_to_duckduckgo(
+    selfhost_credential_store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for field in ("EXA_API_KEY", "TAVILY_API_KEY", "BRAVE_API_KEY", "SEARXNG_BASE_URL"):
+        monkeypatch.setattr(settings, field, None)
+    selfhost_credential_store.save("searxng", base_url="http://searxng.lan:8080")
+    await resolve("searxng")
+    searxng = respx.get("http://searxng.lan:8080/search").mock(
+        return_value=httpx.Response(200, json={"results": [{"url": "https://example.com/s"}]})
+    )
+    duckduckgo = respx.post("https://lite.duckduckgo.com/lite/").mock(
+        return_value=httpx.Response(200, text="<html></html>")
+    )
+
+    response = await SearchEngine(budget=FakeBudget()).search("private query", 5)
+
+    assert response.provider == "searxng"
+    assert searxng.called
+    assert not duckduckgo.called

@@ -1,0 +1,122 @@
+{
+ "run": "run_5d966f15492f",
+ "captured_from": "2026-10-22",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 17,
+   "record_len": 8,
+   "written": {
+    "description": "Vqdkscj w meeting toxyfucq udh lar cwzwcxyyna calendar event: gather qwatdybzz, context, research, qiq vyxqdlz.",
+    "steps": [
+     {
+      "id": "cal",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "events",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg upcoming calendar events",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+       "data": {
+        "time_min": "$today",
+        "time_max": "$today + 3d",
+        "max_results": 50
+       }
+      }
+     },
+     {
+      "id": "context",
+      "tool": "execute",
+      "args": {
+       "task_description": "Moyfzqpdy calendar context",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
+       "data": {}
+      }
+     },
+     {
+      "id": "gm",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "gmail"
+      }
+     },
+     {
+      "id": "ws",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": {
+        "$ask": "vhi up eqf web bqbkvbuu xutlil duilvcbnuh fx lar meeting'n tscekmvq qwatdybzz qiq ohjwd zzmcdad, evvq lar ckyxiautz event loqce"
+       }
+      }
+     },
+     {
+      "id": "mem",
+      "tool": "search_memory",
+      "args": {
+       "query": {
+        "$ask": "sja lliv uqerxgvbeeow up context xhuc lar meeting'n attendee(n) up ohjwd zzmcdad, evvq lar event loqce"
+       }
+      }
+     },
+     {
+      "id": "mail",
+      "tool": "execute",
+      "args": {
+       "task_description": "Zwhekgrgv Svdly udh attendee/zzmcdad threads",
+       "tool_name": "GMAIL_FETCH_MESSAGES",
+       "data": {
+        "fields": [
+         "evvq",
+         "hpsorlw",
+         "nclzdvv",
+         "ohzt"
+        ],
+        "max_messages": 30,
+        "query": {
+         "$ask": "w Svdly aixkw ymbncago lar attendee'n emdibg/gfqp up lar meeting topic evvq lar event loqce (eogm doxy oa w yadcg gfqp/zzmcdad search)"
+        },
+        "timeframe": "8i"
+       }
+      }
+     }
+    ],
+    "result_brief": "Aqhx gdks personal events (glg, qooxs, agpit ohzt, ewr.) xhuc ga cxdspf. Qhjewpvnp vyxqdlz w hjujzutryf brief evvq lar event (pnkwu/pnkwu uvstqfniqxq/qwatdybzz/opps umfp) gtrz lar web, memory, qiq Svdly research: (1) izb lar ynrm aivzz qiq key zzmcdad/attendee context, (2) sjznoqgpq rgupyck juqeqf xzjt oa Mmpjp'n bqzcdit context (kshruapptuoy, tzvknndtwvg, up xagbte pffkygmvo), (3) open rxrpqy emrwk (evvq Svdly/memory, up jyjt bg ga mpqzq aqxwmrf), (4) bgchvcmk lliv-smffcdphllb duilvcbnuh, (5) opps umfp tcnn tkuppza. Goul rui w jdpwtv znzjc fxbllck lar DTW Daysfykb pwwwn oa Tdiqbls L bxwwhjl todo (Tdiqbls L &cn;user@example.com&vi;, DTW Txuouaht, tbyrfw 6c071972423h3ds1): bg qwatdybzz/topic/event HW gfaiob oa ic, zdqpbv w dyjzy activity.ve lvvur qiq update canvas.ve Uzwtyhm Apudw; nfosudwsn muzxz ic hcqonvujq. Indqt create w gys bxwwhjl todo (read-wbnz toxyfucq)."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -13,6 +13,8 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { useLogout } from "@/features/auth/hooks/useLogout";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { getProgress, PROGRESS_TOTAL_STEPS } from "../state/derive";
 import type { OnboardingState, Stage } from "../state/types";
@@ -64,6 +66,8 @@ export function OnboardingShell({
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const progressStep = getProgress(state, stage);
+  const { email } = useCurrentUser();
+  const { logout } = useLogout();
   const fingerprint = useMemo(
     () => getContentFingerprint(state, stage),
     [state, stage],
@@ -114,6 +118,8 @@ export function OnboardingShell({
         totalSteps={PROGRESS_TOTAL_STEPS}
         onRestart={onRestart}
         isRestarting={state.isRestarting}
+        email={email || undefined}
+        onLogout={logout}
       />
 
       <div

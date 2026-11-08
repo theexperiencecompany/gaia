@@ -25,11 +25,10 @@ const { posthogMock, fetchUserInfo } = vi.hoisted(() => ({
     _isIdentified: vi.fn(),
     get_distinct_id: vi.fn(),
     get_session_id: vi.fn(),
+    captureException: vi.fn(),
   },
   fetchUserInfo: vi.fn(),
 }));
-
-vi.mock("posthog-js", () => ({ default: posthogMock }));
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
@@ -46,10 +45,11 @@ vi.mock("@/features/auth/api/authApi", () => ({
 import { CURRENT_USER_QUERY_KEY } from "@/features/auth/hooks/useCurrentUser";
 import useFetchUser from "@/features/auth/hooks/useFetchUser";
 import {
-  analyticsRequestHeaders,
+  connectPostHog,
   flushPendingAnalytics,
   resetLegacyEmailIdentity,
 } from "@/lib/analytics";
+import { analyticsRequestHeaders } from "@/lib/analytics-headers";
 import { apiauth } from "@/lib/api/client";
 
 const SIGNED_IN_USER = {
@@ -67,6 +67,8 @@ function renderFetchUser(cachedUser: typeof SIGNED_IN_USER | null) {
   );
   return renderHook(() => useFetchUser(), { wrapper });
 }
+
+connectPostHog(posthogMock);
 
 beforeEach(() => {
   posthogMock.__loaded = true;

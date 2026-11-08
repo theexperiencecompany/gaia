@@ -1,86 +1,55 @@
 import { LOG_BUFFER_LINES } from "../ui/constants.js";
 import type { CLIStore } from "../ui/store.js";
+import { runCommand } from "./child-process.js";
+import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
+import { resolvePortConflicts } from "./port-conflicts.js";
+import type { PortPlan } from "./port-conflicts.types.js";
+import { ensurePrerequisites } from "./prerequisite-install.js";
 import * as prereqs from "./prerequisites.js";
-import { runCommand } from "./service-starter.js";
+import type { StartProgress } from "./service-starter.js";
 
 export const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
 
-export const createLogHandler =
-  (store: CLIStore, dataKey = "dependencyLogs") =>
-  (chunk: string) => {
-    const currentLogs: string[] = store.currentState.data[dataKey] || [];
-    const lines = chunk
-      .split("\n")
-      .filter((line: string) => line.trim() !== "");
-    store.updateData(
-      dataKey,
-      [...currentLogs, ...lines].slice(-LOG_BUFFER_LINES),
-    );
+export const createLogHandler = (store: CLIStore) => (chunk: string) => {
+  const currentLogs = store.currentState.data.dependencyLogs ?? [];
+  const lines = chunk.split("\n").filter((line) => line.trim() !== "");
+  store.updateData(
+    "dependencyLogs",
+    [...currentLogs, ...lines].slice(-LOG_BUFFER_LINES),
+  );
+};
+
+/** A compose progress callback driving the dependency step's phase line, bar and finished list. */
+export function dependencyStepProgress(store: CLIStore): StartProgress {
+  return (phase, finished) => {
+    store.updateData("dependencyPhase", phase.label);
+    store.updateData("dependencyProgress", phase.percent);
+    store.updateData("dependencyLogs", finished.slice(-LOG_BUFFER_LINES));
   };
+}
 
 /**
- * Runs git and docker prerequisite checks.
- * Sets store error and returns null on hard failure (git or docker missing).
+ * Ensures git and Docker, each with an install offer on apt-based Linux.
+ * Sets the store error and returns false when setup cannot continue (or
+ * stops for a docker-group relaunch).
  */
-export async function runBasePrerequisiteChecks(store: CLIStore): Promise<{
-  gitStatus: string;
-  dockerStatus: string;
-  dockerInfo: Awaited<ReturnType<typeof prereqs.checkDockerDetailed>>;
-} | null> {
-  store.updateData("checks", {
-    git: "pending",
-    docker: "pending",
-  });
+export async function runBasePrerequisiteChecks(
+  store: CLIStore,
+): Promise<boolean> {
+  store.updateData("checks", { git: "pending" });
 
   await delay(500);
 
-  const gitStatus = await prereqs.checkGit();
-  store.updateData("checks", {
-    ...store.currentState.data.checks,
-    git: gitStatus,
-  });
-
-  const dockerInfo = await prereqs.checkDockerDetailed();
-  const dockerStatus = dockerInfo.working ? "success" : "error";
-  store.updateData("checks", {
-    ...store.currentState.data.checks,
-    docker: dockerStatus,
-  });
-  if (!dockerInfo.working) {
-    store.updateData("dockerError", dockerInfo.errorMessage);
+  try {
+    // "relaunch": the command runner restarts this command with the docker
+    // group active, so this run stops here without an error.
+    return (await ensurePrerequisites(store, { needGit: true })) === "ready";
+  } catch (e) {
+    store.setError(e as Error);
+    return false;
   }
-
-  const failedChecks: Array<{ name: string; message?: string }> = [];
-  if (gitStatus === "error") failedChecks.push({ name: "Git" });
-  if (dockerStatus === "error")
-    failedChecks.push({ name: "Docker", message: dockerInfo.errorMessage });
-
-  if (failedChecks.length > 0) {
-    const errorLines: string[] = ["Prerequisites failed:"];
-    for (const check of failedChecks) {
-      errorLines.push(
-        `  • ${check.name}: ${check.message || "Not installed or not working"}`,
-      );
-    }
-    errorLines.push("\nInstallation guides:");
-    if (gitStatus === "error")
-      errorLines.push(`  • Git: ${prereqs.PREREQUISITE_URLS.git}`);
-    if (dockerStatus === "error") {
-      if (dockerInfo.installed) {
-        errorLines.push(
-          `  • Docker: Start Docker Desktop or run 'sudo systemctl start docker'`,
-        );
-      } else {
-        errorLines.push(`  • Docker: ${prereqs.PREREQUISITE_URLS.docker}`);
-      }
-    }
-    store.setError(new Error(errorLines.join("\n")));
-    return null;
-  }
-
-  return { gitStatus, dockerStatus, dockerInfo };
 }
 
 /**
@@ -102,7 +71,7 @@ export async function runDeveloperPrerequisiteChecks(
   });
 
   if (miseStatus === "missing") {
-    store.setStatus("Installing Mise...");
+    store.setStatus("Installing Mise…");
     const installed = await prereqs.installMise();
     miseStatus = installed ? "success" : "error";
     store.updateData("checks", {
@@ -123,36 +92,35 @@ export async function runDeveloperPrerequisiteChecks(
   return "success";
 }
 
+/** The host ports to bind, and one line per port moved off a taken one. */
+export interface PortChecks {
+  overrides: Record<number, number>;
+  moved: string[];
+}
+
+const ASK_ABOUT_CONFLICTS: PortPlan = { planned: {}, fixed: {}, policy: "ask" };
+
 /**
- * Runs port conflict checks. Updates the store and returns portOverrides.
- * Sets store error and returns null on unresolvable conflicts or user abort.
+ * Check the ports the plan will bind and settle conflicts by its policy.
+ * Sets the store error and returns null when a port can't be settled or the user aborts.
  */
 export async function runPortChecks(
   store: CLIStore,
-): Promise<Record<number, number> | null> {
-  store.setStatus("Checking Ports...");
-  const requiredPorts = [8000, 5432, 6379, 27017, 5672, 3000, 8080, 8083];
-  const portResults = await prereqs.checkPortsWithFallback(requiredPorts);
-  const portOverrides: Record<number, number> = {};
-  const conflicts = portResults.filter((r) => !r.available);
+  mode: SetupMode,
+  plan: PortPlan = ASK_ABOUT_CONFLICTS,
+): Promise<PortChecks | null> {
+  store.setStatus("Checking ports…");
+  const portResults = await prereqs.checkModePorts(mode, plan.planned);
+  const resolution = resolvePortConflicts(portResults, plan);
+  if ("error" in resolution) {
+    store.setError(new Error(resolution.error));
+    return null;
+  }
 
-  if (conflicts.length > 0) {
-    const unresolvable = conflicts.filter((r) => !r.alternative);
-    if (unresolvable.length > 0) {
-      store.setError(
-        new Error(
-          `Cannot find free alternative ports for: ${unresolvable.map((r) => `${r.port} (${r.service})`).join(", ")}. Free these ports and try again.`,
-        ),
-      );
-      return null;
-    }
-
+  if (plan.policy === "ask" && resolution.moved.length > 0) {
     store.updateData("portConflicts", portResults);
-    const resolution = (await store.waitForInput("port_conflicts")) as
-      | "accept"
-      | "abort";
-
-    if (resolution === "abort") {
+    const answer = await store.waitForInput("port_conflicts");
+    if (answer === "abort") {
       store.setError(
         new Error(
           "Port conflicts not resolved. Please free the ports and try again.",
@@ -160,23 +128,14 @@ export async function runPortChecks(
       );
       return null;
     }
-
-    for (const result of portResults) {
-      if (!result.available && result.alternative) {
-        portOverrides[result.port] = result.alternative;
-      }
-    }
   }
 
-  store.updateData("portOverrides", portOverrides);
-  store.setStatus("Prerequisites check complete!");
-  await delay(1000);
-
-  return portOverrides;
+  store.updateData("portOverrides", resolution.overrides);
+  return resolution;
 }
 
 /**
- * Runs mise trust + install + setup for developer mode.
+ * Runs mise trust + install + the bootstrap task for developer mode.
  * Returns true on success, false on failure (store error is set).
  */
 export async function runMiseDeveloperSetup(
@@ -186,46 +145,42 @@ export async function runMiseDeveloperSetup(
   logHandler: (chunk: string) => void,
 ): Promise<boolean> {
   store.setStep("Project Setup");
-  store.updateData("dependencyPhase", "Setting up project...");
+  store.updateData("dependencyPhase", "Setting up project…");
   store.updateData("dependencyProgress", 0);
   store.updateData("dependencyComplete", false);
   store.updateData("dependencyLogs", []);
 
   try {
-    store.updateData("dependencyPhase", "Trusting mise configuration...");
-    await runCommand("mise", ["trust"], repoPath, undefined, logHandler);
+    store.updateData("dependencyPhase", "Trusting mise configuration…");
+    await runCommand("mise", ["trust"], { cwd: repoPath, onLog: logHandler });
     store.updateData("dependencyProgress", 20);
 
-    store.updateData("dependencyPhase", "Installing tools...");
-    await runCommand(
-      "mise",
-      ["install"],
-      repoPath,
-      (progress) => {
+    store.updateData("dependencyPhase", "Installing tools…");
+    await runCommand("mise", ["install"], {
+      cwd: repoPath,
+      onProgress: (progress) => {
         store.updateData("dependencyProgress", 20 + progress * 0.3);
       },
-      logHandler,
-    );
+      onLog: logHandler,
+    });
 
-    store.updateData("dependencyPhase", "Running mise setup...");
+    store.updateData("dependencyPhase", "Running mise run bootstrap…");
     const dockerEnv =
       Object.keys(portOverrides).length > 0
         ? portOverridesToDockerEnv(portOverrides)
         : undefined;
 
-    await runCommand(
-      "mise",
-      ["setup"],
-      repoPath,
-      (progress) => {
+    await runCommand("mise", ["run", "bootstrap"], {
+      cwd: repoPath,
+      onProgress: (progress) => {
         store.updateData("dependencyProgress", 50 + progress * 0.5);
       },
-      logHandler,
-      dockerEnv,
-    );
+      onLog: logHandler,
+      env: dockerEnv,
+    });
 
     store.updateData("dependencyProgress", 100);
-    store.updateData("dependencyPhase", "Setup complete!");
+    store.updateData("dependencyPhase", "Set up");
     store.updateData("dependencyComplete", true);
     return true;
   } catch (e) {

@@ -35,7 +35,10 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.execute.execute_tool import build_execute_tool
 from app.agents.tools.execute.schema_tool import get_tool_schema
 from app.agents.tools.finish_task_tool import finish_task
-from app.agents.tools.integration_instructions_tools import update_integration_instructions
+from app.agents.tools.instructions_tools import (
+    get_user_instructions,
+    update_integration_instructions,
+)
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
@@ -80,7 +83,6 @@ def resolve_declared_tools(
 def build_scoped_tool_dict(
     tool_registry: ToolRegistry,
     tool_space: str,
-    mcp_tools: list[BaseTool] | None,
     include_finish_task: bool,
     authoring_only: bool = False,
 ) -> tuple[dict[str, BaseTool], list[str]]:
@@ -94,20 +96,11 @@ def build_scoped_tool_dict(
     scoped_tool_dict: dict[str, BaseTool] = {}
     initial_tool_ids: list[str] = []
 
-    if mcp_tools is not None:
-        # Live MCP tools passed in by provider_subagents — source of truth is
-        # MCPClient, not the global registry. Used for per-user MCP integrations.
-        for tool in mcp_tools:
-            scoped_tool_dict[tool.name] = tool
-            initial_tool_ids.append(tool.name)
-    else:
-        # Fallback path for non-MCP subagents (Composio, shared/_system MCPs):
-        # look up the registry category that matches this tool_space.
-        category = tool_registry.get_category_by_space(tool_space)
-        if category is not None:
-            for t in category.tools:
-                scoped_tool_dict[t.name] = t.tool
-                initial_tool_ids.append(t.name)
+    category = tool_registry.get_category_by_space(tool_space)
+    if category is not None:
+        for t in category.tools:
+            scoped_tool_dict[t.name] = t.tool
+            initial_tool_ids.append(t.name)
 
     if not authoring_only:
         # Always-available tools (memory, coding/FS, search). This branch uses the
@@ -121,17 +114,19 @@ def build_scoped_tool_dict(
         scoped_bash = build_bash_tool(scoped_tool_dict)
         scoped_tool_dict[scoped_bash.name] = scoped_bash
         # Resolvable for every subagent (retrieve-on-demand); gmail additionally
-        # binds these two into its initial set below, since it always offloads
-        # large inboxes and must mine them sandbox-free.
+        # binds these two into its initial set below, since compaction files its
+        # large inboxes and it must mine them sandbox-free.
         scoped_tool_dict[query_json.name] = query_json
         scoped_tool_dict[grep.name] = grep
         scoped_tool_dict[web_search_tool.name] = web_search_tool
         scoped_tool_dict[fetch_webpages.name] = fetch_webpages
         scoped_tool_dict[deep_research.name] = deep_research
-        # Always-on so a subagent can persist a user's durable preference for its
-        # own integration the moment it hears one (its instructions are already in
-        # context, so it can rewrite the full block without a separate read).
+        # Always-on so a subagent can persist a durable preference for its own
+        # integration the moment it hears one. The integration-only variant: a
+        # subagent reads untrusted data, so it never writes the global scope.
         scoped_tool_dict[update_integration_instructions.name] = update_integration_instructions
+        # The read that hands over the revision a save must build on.
+        scoped_tool_dict[get_user_instructions.name] = get_user_instructions
         # The execute proxy runs integration tools retrieve_tools returned as
         # schema docs. Built against THIS dict so it honors the same tool space
         # retrieve_tools binds against — otherwise a subagent runs any tool by name.
@@ -156,12 +151,10 @@ class SubAgentToolConfig:
     use_direct_tools: bool = False
     disable_retrieve_tools: bool = False
     # Startup tools: internal names bind into the initial set; integration
-    # names preload as schema docs in the run's context (see
-    # ``preloaded_startup_docs``, injected at handoff) and run via execute.
+    # names preload as schema docs in the run's context and run via execute.
     auto_bind_tools: list[str] | None = None
     extra_initial_tools: list[str] | None = None
     include_finish_task: bool = True
-    mcp_tools: list[BaseTool] | None = None
     source_label: str | None = None
     authoring_only: bool = False
 
@@ -199,7 +192,6 @@ class SubAgentFactory:
         scoped_tool_dict, initial_tool_ids = build_scoped_tool_dict(
             tool_registry=tool_registry,
             tool_space=tool_space,
-            mcp_tools=cfg.mcp_tools,
             include_finish_task=cfg.include_finish_task,
             authoring_only=cfg.authoring_only,
         )
@@ -252,13 +244,7 @@ class SubAgentFactory:
             ),
         ]
         if declared_startup:
-            # Per-user MCP tools live in cfg.mcp_tools, not in any registry the
-            # classifier sees — name them explicitly so they classify as preloaded
-            # rather than falling through to binding.
-            mcp_names = {t.name for t in cfg.mcp_tools} if cfg.mcp_tools else set()
-            bind_now, preload_names = partition_startup_tools(
-                tool_registry, declared_startup, mcp_names
-            )
+            bind_now, preload_names = partition_startup_tools(tool_registry, declared_startup)
             valid_auto_bind = bind_now or None
             if preload_names:
                 log.info(

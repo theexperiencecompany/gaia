@@ -12,6 +12,7 @@ from app.models.agent_config import (
     AgentConfigurableView,
     RunUserMissingError,
     agent_configurable,
+    get_session_id,
     get_user_id,
     read_agent_configurable,
     read_run_metadata,
@@ -128,3 +129,45 @@ class TestGetUserId:
 
     def test_the_refusal_is_a_value_error_the_coding_tools_already_catch(self) -> None:
         assert issubclass(RunUserMissingError, ValueError)
+
+
+class TestGetSessionId:
+    """The parent conversation's session must win over the executor's own thread."""
+
+    @pytest.mark.parametrize(
+        ("config", "session_id"),
+        [
+            (
+                {
+                    CONFIGURABLE_KEY: {
+                        "vfs_session_id": "vfs",
+                        "conversation_id": "conv",
+                        "thread_id": "thread",
+                    },
+                    "metadata": {"conversation_id": "meta-conv"},
+                },
+                "vfs",
+            ),
+            (
+                {
+                    CONFIGURABLE_KEY: {"conversation_id": "conv", "thread_id": "thread"},
+                    "metadata": {"conversation_id": "meta-conv"},
+                },
+                "conv",
+            ),
+            (
+                {
+                    CONFIGURABLE_KEY: {"thread_id": "thread"},
+                    "metadata": {"conversation_id": "meta-conv"},
+                },
+                "meta-conv",
+            ),
+            ({CONFIGURABLE_KEY: {"thread_id": "thread"}}, "thread"),
+            ({CONFIGURABLE_KEY: {}}, None),
+        ],
+        ids=["vfs-session", "conversation", "metadata-conversation", "thread", "none"],
+    )
+    def test_the_session_is_read_in_precedence_order(
+        self, config: dict[str, dict[str, str]], session_id: str | None
+    ) -> None:
+        assert get_session_id(config) == session_id

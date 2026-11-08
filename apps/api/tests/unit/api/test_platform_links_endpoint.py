@@ -29,6 +29,8 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected, IntegrationDisconnected
 from tests.conftest import FAKE_USER
 
+pytestmark = pytest.mark.usefixtures("onboarding_finish_on_link")
+
 BASE = "/api/v1/platform-links"
 FAKE_USER_ID = FAKE_USER.user_id
 
@@ -747,7 +749,7 @@ class TestInitiatePlatformConnect:
         with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
-            mock_settings.TELEGRAM_BOT_USERNAME = "my_gaia_bot"
+            mock_settings.telegram_bot_username = "my_gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
         assert resp.status_code == 200
@@ -757,15 +759,14 @@ class TestInitiatePlatformConnect:
         assert body["action_link"] == "https://t.me/my_gaia_bot"
 
     @pytest.mark.asyncio
-    async def test_telegram_default_bot_username(self, client: AsyncClient) -> None:
+    async def test_telegram_without_a_bot_is_501(self, client: AsyncClient) -> None:
         with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
-            mock_settings.TELEGRAM_BOT_USERNAME = None
+            mock_settings.telegram_bot_username = None
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
-        assert resp.status_code == 200
-        assert "gaia_bot" in resp.json()["instructions"]
+        assert resp.status_code == 501
 
     @pytest.mark.asyncio
     async def test_whatsapp_manual(self, client: AsyncClient) -> None:
@@ -792,7 +793,7 @@ class TestInitiatePlatformConnect:
         ):
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
-            mock_settings.TELEGRAM_BOT_USERNAME = "gaia_bot"
+            mock_settings.telegram_bot_username = "gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
         assert resp.status_code == 200
@@ -1053,7 +1054,7 @@ class TestImessagePremiumGate:
         ):
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
-            mock_settings.TELEGRAM_BOT_USERNAME = "gaia_bot"
+            mock_settings.telegram_bot_username = "gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
         assert resp.status_code == 200
@@ -1067,7 +1068,62 @@ class TestImessagePremiumGate:
         ):
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
-            mock_settings.TELEGRAM_BOT_USERNAME = "gaia_bot"
+            mock_settings.telegram_bot_username = "gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# POST /platform-links/{platform}/conversation
+# ---------------------------------------------------------------------------
+
+
+class TestOpenPlatformChat:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("platform", ["telegram", "whatsapp", "imessage"])
+    async def test_returns_the_linked_platform_conversation(
+        self, client: AsyncClient, platform: str
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.open_platform_chat",
+                new_callable=AsyncMock,
+                return_value=f"conv-{platform}",
+            ) as mock_open,
+            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
+        ):
+            resp = await client.post(f"{BASE}/{platform}/conversation")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"conversation_id": f"conv-{platform}"}
+        mock_open.assert_awaited_once_with(FAKE_USER_ID, platform, FAKE_USER)
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER_ID}, operation="open_platform_chat", platform=platform
+        )
+        mock_log.set_ns.assert_any_call(
+            "platform", conversation_id=f"conv-{platform}", outcome="success"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("platform", ["slack", "discord"])
+    async def test_rejects_a_platform_without_a_chat(
+        self, client: AsyncClient, platform: str
+    ) -> None:
+        with patch(
+            "app.api.v1.endpoints.platform_links.open_platform_chat",
+            new_callable=AsyncMock,
+        ) as mock_open:
+            resp = await client.post(f"{BASE}/{platform}/conversation")
+
+        assert resp.status_code == 404
+        assert resp.json() == {
+            "message": f"{platform} has no chat to open",
+            "fix": "Open chats for Telegram, WhatsApp or iMessage only",
+        }
+        mock_open.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated(self, unauthed_client: AsyncClient) -> None:
+        resp = await unauthed_client.post(f"{BASE}/telegram/conversation")
+        assert resp.status_code == 401

@@ -1,0 +1,73 @@
+{
+ "run": "run_9ad3e85ad5eb",
+ "captured_from": "2026-09-17",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "SLACK_OPEN_DM"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 10,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle rxrpqy emrwk summary: fetch unread Svdly evvq lar pmff 55c, znkiciio rxrpqy emrwk, qiq send w ixdaqkma Searn summary oa Fjuuow Johel.",
+    "steps": [
+     {
+      "id": "unread",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "lm",
+          "qjwzyvOb"
+         ],
+         "query": "uc:unread wfjho_wqbg:8v"
+        }
+       }
+      ]
+     },
+     {
+      "id": "slack_msg",
+      "handoff": "slack",
+      "steps": [
+       {
+        "id": "dm",
+        "tool": "SLACK_OPEN_DM",
+        "args": {
+         "users": "P96K8837DX1"
+        }
+       },
+       {
+        "id": "send",
+        "tool": "SLACK_SEND_MESSAGE",
+        "args": {
+         "channel": "O69EITL51GK",
+         "markdown_text": {
+          "$ask": "lar dikcp rxrpqy emrwk summary hq w ixdaqkma list, vhi svnuuf vls rxrpqy item xhuc zhxqqr qiq hpsorlw, gwcuarkdbm awkkhyx inn sja snxardawb qiq gglajvty emrwk xhuc snxardawb vvuyky lar next 24 caasu hq QWVWZE; bg jyjt etfpq, w obvuob iwsxbtw 'ga xenivee rxrpqy emrwk' lswycqi"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs lar vireyo yg rxrpqy emrwk etfpq evvq lar unread emails qiq list jqla vhi (zhxqqr, hpsorlw, khicceebb rxrpqy, mxiqhhbd). Hx w mxiqhhbd uc vvuyky lar next 24 caasu, vqpa ic QWVWZE. Hx jyjt etfpq, kfhta ymgdt hbe ga xenivee rxrpqy emrwk. Dqhi ptybmub lar Searn lswycqi eto islvirquwihe vhoddpjyu; bg lar Searn send aclrlesq llkngupa uzku sjuyg mth ku viqwbte hx duilvcbnuh, kfhta uzku lar summary fqqibmc uc uwsmq yoo lar Searn swanmrqe uc xenivee llkngupa."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "SLACK_SEND_MESSAGE",
+   "expected": "unmappable"
+  }
+ ]
+}

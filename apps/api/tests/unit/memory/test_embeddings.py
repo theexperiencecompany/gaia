@@ -14,10 +14,19 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
+from pydantic import BaseModel
 import pytest
 
 from app.memory import embeddings
 from app.memory.embeddings import chunk_texts
+from app.models.embedding_sidecar_models import (
+    EmbedQueryRequest,
+    EmbedQueryResponse,
+    EmbedRequest,
+    EmbedResponse,
+    RerankRequest,
+    RerankResponse,
+)
 from tests.helpers import captured_wide_event
 
 
@@ -79,26 +88,38 @@ class TestEmbedBatchSplitsRequests:
         observed: list[tuple[str, str, int]] = []
 
         async def fake_observed(
-            operation: str, backend: str, count: int, awaitable: Awaitable[Any]
+            operation: str,
+            backend: str,
+            count: int,
+            awaitable: Awaitable[Any],
+            *,
+            interactive: bool = False,
         ) -> Any:
             observed.append((operation, backend, count))
             return await awaitable
 
-        async def fake_post(path: str, payload: dict, *, interactive: bool = False) -> dict:
+        async def fake_post(
+            path: str,
+            request: BaseModel,
+            response_model: type[BaseModel],
+            *,
+            interactive: bool = False,
+        ) -> BaseModel:
             if path == "/embed_query":
-                assert set(payload) == {"text"}
-                calls.append({"path": path, "text": payload["text"]})
-                return {"vector": [0.0]}
+                assert isinstance(request, EmbedQueryRequest)
+                assert response_model is EmbedQueryResponse
+                calls.append({"path": path, "text": request.text})
+                return EmbedQueryResponse(vector=[0.0])
             if path == "/embed":
-                assert set(payload) == {"texts"}
-                calls.append({"path": path, "n": len(payload["texts"])})
-                return {"vectors": [[0.0]] * len(payload["texts"])}
+                assert isinstance(request, EmbedRequest)
+                assert response_model is EmbedResponse
+                calls.append({"path": path, "n": len(request.texts)})
+                return EmbedResponse(vectors=[[0.0]] * len(request.texts))
             if path == "/rerank":
-                assert set(payload) == {"query", "documents"}
-                calls.append(
-                    {"path": path, "query": payload["query"], "n": len(payload["documents"])}
-                )
-                return {"scores": [0.5 * len(calls)] * len(payload["documents"])}
+                assert isinstance(request, RerankRequest)
+                assert response_model is RerankResponse
+                calls.append({"path": path, "query": request.query, "n": len(request.documents)})
+                return RerankResponse(scores=[0.5 * len(calls)] * len(request.documents))
             raise AssertionError(f"unexpected sidecar path: {path}")
 
         monkeypatch.setattr(embeddings, "_observed", fake_observed)
@@ -250,13 +271,13 @@ class TestTransientRetry:
             monkeypatch,
             [
                 httpx.Response(503),
-                httpx.Response(200, json={"ok": True}),
+                httpx.Response(200, json={"vectors": [[1.0]]}),
             ],
         )
 
-        result = await embeddings._sidecar_post("/embed", {"texts": ["a"]})
+        result = await embeddings._sidecar_post("/embed", EmbedRequest(texts=["a"]), EmbedResponse)
 
-        assert result == {"ok": True}
+        assert result == EmbedResponse(vectors=[[1.0]])
         assert len(attempts) == 2
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
@@ -270,7 +291,7 @@ class TestTransientRetry:
         attempts = self._client(monkeypatch, [httpx.Response(503)])
 
         with pytest.raises(httpx.HTTPStatusError):
-            await embeddings._sidecar_post("/embed", {"texts": ["a"]})
+            await embeddings._sidecar_post("/embed", EmbedRequest(texts=["a"]), EmbedResponse)
 
         assert len(attempts) == embeddings.EMBEDDING_SIDECAR_RETRIES + 1
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS] * (
@@ -282,7 +303,7 @@ class TestTransientRetry:
             monkeypatch,
             [
                 httpx.Response(429),
-                httpx.Response(200, json={"ok": True}),
+                httpx.Response(200, json={"vectors": [[1.0]]}),
             ],
         )
         sleeps: list[float] = []
@@ -292,9 +313,9 @@ class TestTransientRetry:
 
         monkeypatch.setattr(asyncio, "sleep", fake_sleep)
 
-        result = await embeddings._sidecar_post("/embed", {"texts": ["a"]})
+        result = await embeddings._sidecar_post("/embed", EmbedRequest(texts=["a"]), EmbedResponse)
 
-        assert result == {"ok": True}
+        assert result == EmbedResponse(vectors=[[1.0]])
         assert len(attempts) == 2
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
@@ -310,7 +331,7 @@ class TestTransientRetry:
             if failures_left > 0:
                 failures_left -= 1
                 raise httpx.ConnectError("sidecar restarting", request=request)
-            return httpx.Response(200, json={"ok": True})
+            return httpx.Response(200, json={"vector": [1.0]})
 
         monkeypatch.setattr(asyncio, "sleep", fake_sleep)
         monkeypatch.setattr(
@@ -320,9 +341,11 @@ class TestTransientRetry:
         )
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
 
-        result = await embeddings._sidecar_post("/embed_query", {"text": "q"})
+        result = await embeddings._sidecar_post(
+            "/embed_query", EmbedQueryRequest(text="q"), EmbedQueryResponse
+        )
 
-        assert result == {"ok": True}
+        assert result == EmbedQueryResponse(vector=[1.0])
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
     async def test_transport_budget_is_consumed_per_failure(
@@ -340,7 +363,7 @@ class TestTransientRetry:
             if failures_left > 0:
                 failures_left -= 1
                 raise httpx.ConnectError("sidecar restarting", request=request)
-            return httpx.Response(200, json={"ok": True})
+            return httpx.Response(200, json={"vector": [1.0]})
 
         monkeypatch.setattr(asyncio, "sleep", fake_sleep)
         monkeypatch.setattr(
@@ -350,9 +373,11 @@ class TestTransientRetry:
         )
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
 
-        result = await embeddings._sidecar_post("/embed_query", {"text": "q"})
+        result = await embeddings._sidecar_post(
+            "/embed_query", EmbedQueryRequest(text="q"), EmbedQueryResponse
+        )
 
-        assert result == {"ok": True}
+        assert result == EmbedQueryResponse(vector=[1.0])
         assert sleeps == [
             embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
             embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
@@ -372,7 +397,7 @@ class TestTransientRetry:
             if failures_left > 0:
                 failures_left -= 1
                 raise httpx.ConnectError("sidecar restarting", request=request)
-            return httpx.Response(200, json={"ok": True})
+            return httpx.Response(200, json={"vector": [1.0]})
 
         monkeypatch.setattr(asyncio, "sleep", fake_sleep)
         monkeypatch.setattr(
@@ -383,7 +408,9 @@ class TestTransientRetry:
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
 
         with pytest.raises(httpx.ConnectError):
-            await embeddings._sidecar_post("/embed_query", {"text": "q"})
+            await embeddings._sidecar_post(
+                "/embed_query", EmbedQueryRequest(text="q"), EmbedQueryResponse
+            )
 
 
 class TestPooledClientThroughPublicApi:
@@ -496,9 +523,15 @@ class TestInteractiveBudget:
         monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_MAX_BATCH_TEXTS", 1)
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
 
-        async def slow_post(path: str, payload: dict, *, interactive: bool = False) -> dict:
+        async def slow_post(
+            path: str,
+            request: RerankRequest,
+            response_model: type[RerankResponse],
+            *,
+            interactive: bool = False,
+        ) -> RerankResponse:
             await asyncio.sleep(0.06)
-            return {"scores": [0.0] * len(payload["documents"])}
+            return RerankResponse(scores=[0.0] * len(request.documents))
 
         monkeypatch.setattr(embeddings, "_sidecar_post", slow_post)
 
@@ -574,3 +607,91 @@ class TestInteractiveBudget:
         assert error["operation"] == "embed_query"
         assert error["backend"] == "local"
         assert error["batch_size"] == 1
+
+
+class TestBakedModels:
+    @pytest.fixture
+    def loader_kwargs(self, monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+        """Record what the embedding loader hands fastembed, without loading ONNX."""
+        calls: list[dict[str, Any]] = []
+        monkeypatch.setattr(embeddings, "_embedding_model", None)
+        monkeypatch.setattr(
+            embeddings, "TextEmbedding", lambda **kwargs: calls.append(kwargs) or MagicMock()
+        )
+        return calls
+
+    def test_baked_model_loads_from_the_image_without_the_cache(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, loader_kwargs: list[dict[str, Any]]
+    ) -> None:
+        (tmp_path / embeddings.EMBEDDING_MODEL_NAME).mkdir(parents=True)
+        monkeypatch.setattr(embeddings, "BAKED_MODELS_DIR", str(tmp_path))
+
+        embeddings._get_embedding_model()
+
+        (call,) = loader_kwargs
+        assert call["specific_model_path"] == str(tmp_path / embeddings.EMBEDDING_MODEL_NAME)
+
+    def test_model_missing_from_the_baked_dir_comes_from_the_cache(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, loader_kwargs: list[dict[str, Any]]
+    ) -> None:
+        (tmp_path / "some-org" / "other-model").mkdir(parents=True)
+        monkeypatch.setattr(embeddings, "BAKED_MODELS_DIR", str(tmp_path))
+
+        embeddings._get_embedding_model()
+
+        (call,) = loader_kwargs
+        assert call["specific_model_path"] is None
+        assert call["cache_dir"] == embeddings.MODEL_CACHE_DIR
+
+    def test_no_baked_dir_comes_from_the_cache(
+        self, monkeypatch: pytest.MonkeyPatch, loader_kwargs: list[dict[str, Any]]
+    ) -> None:
+        monkeypatch.setattr(embeddings, "BAKED_MODELS_DIR", None)
+
+        embeddings._get_embedding_model()
+
+        (call,) = loader_kwargs
+        assert call["specific_model_path"] is None
+
+
+@pytest.mark.regression
+async def test_an_interactive_fail_fast_error_is_not_recorded_as_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recall's handled timeout is a warning; a save's failure is still an error."""
+    recorded: list[str] = []
+    monkeypatch.setattr(embeddings.log, "error", lambda *a, **k: recorded.append("error"))
+
+    async def times_out() -> list[float]:
+        raise TimeoutError("sidecar busy")
+
+    with pytest.raises(TimeoutError):
+        await embeddings._observed("embed_query", "sidecar", 1, times_out(), interactive=True)
+    assert recorded == []
+
+    with pytest.raises(TimeoutError):
+        await embeddings._observed("embed_query", "sidecar", 1, times_out())
+    assert recorded == ["error"]
+
+
+@pytest.mark.regression
+async def test_the_real_embed_query_path_does_not_log_a_handled_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The flag has to reach _observed from embed_query, not only to the transport."""
+    recorded: list[str] = []
+    monkeypatch.setattr(embeddings.log, "error", lambda *a, **k: recorded.append("error"))
+    monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar")
+
+    async def unreachable(*args: object, **kwargs: object) -> None:
+        raise httpx.ConnectError("sidecar down")
+
+    monkeypatch.setattr(embeddings, "_sidecar_post", unreachable)
+
+    with pytest.raises(httpx.ConnectError):
+        await embeddings.embed_query("q", interactive=True)
+    assert recorded == []
+
+    with pytest.raises(httpx.ConnectError):
+        await embeddings.embed_query("q")
+    assert recorded == ["error"]

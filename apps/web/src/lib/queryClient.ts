@@ -11,7 +11,10 @@ const MAX_QUERY_RETRIES = 2;
  * again client-side, so one blocked screen used to cost three rounds of that
  * per gated query.
  */
-const shouldRetryQuery = (failureCount: number, error: Error): boolean => {
+export const shouldRetryQuery = (
+  failureCount: number,
+  error: unknown,
+): boolean => {
   const status = isAxiosError(error) ? error.response?.status : undefined;
   if (status !== undefined && status >= 400 && status < 500) return false;
   return failureCount < MAX_QUERY_RETRIES;

@@ -16,7 +16,6 @@ import pytest
 from redis.exceptions import DataError
 
 from app.agents.llm import client as client_module, dev_lane as dev_lane_module, lane as lane_module
-from app.agents.llm.client import PROVIDER_MODELS
 from app.agents.llm.lane import (
     AgentRole,
     ModelLane,
@@ -37,6 +36,7 @@ from app.constants.llm import (
     DEFAULT_MODEL_NAME,
     DEV_MODEL_OPTIONS,
     MONTHLY_BUDGET_TTL_SECONDS,
+    OPENROUTER_PROVIDER_ROUTING,
     OPENROUTER_REASONING,
     PAID_COMMS_REASONING,
     PAID_MODEL_NAME,
@@ -46,11 +46,24 @@ from app.constants.llm import (
     OpenRouterModelKwargs,
 )
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
+from app.db.redis import redis_cache
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
 from app.models.payment_models import PlanType
+from app.services.notification_service import notification_service
+from app.services.payments.payment_service import payment_service
+from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
+
+
+def _custom_config(model: str | None) -> ProviderConfig:
+    """Return a stored custom-endpoint credential, as the resolver returns it."""
+    return ProviderConfig(
+        api_key="sk-custom", base_url="https://llm.example.com/v1", model=model, preset=None
+    )
+
 
 #: The user every test resolves for; fakes below are keyed on it and raise on anything else.
 USER = "u1"
@@ -69,7 +82,7 @@ def _plan(plan: PlanType, *, over_budget: bool = False) -> Any:
         return {USER: over_budget}[user_id]
 
     return (
-        patch.object(lane_module.payment_service, "get_cached_plan_type", _cached_plan_type),
+        patch.object(payment_service, "get_cached_plan_type", _cached_plan_type),
         patch.object(lane_module, "_pro_monthly_budget_exhausted", _exhausted),
         patch.object(lane_module, "spawn_background_task", lambda coro: coro.close()),
     )
@@ -115,6 +128,47 @@ class TestPlanRouting:
         assert resolved.provider_pin is None
         assert "model_kwargs" not in resolved.binding_keys()
 
+    async def test_a_plan_lane_on_a_routed_model_carries_that_models_routing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        routing: OpenRouterModelKwargs = {"provider": {"only": ["vendor"]}}
+        monkeypatch.setitem(OPENROUTER_PROVIDER_ROUTING, PAID_MODEL_NAME, routing)
+
+        resolved = await _resolve(PlanType.PRO)
+
+        assert resolved.provider_pin == routing
+        assert resolved.binding_keys()["model_kwargs"] == routing
+
+    def test_the_configured_route_carries_its_own_models_routing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        routing: OpenRouterModelKwargs = {"provider": {"only": ["vendor"]}}
+        monkeypatch.setitem(OPENROUTER_PROVIDER_ROUTING, "vendor/routed", routing)
+        route = (LLMProviderName.OPENROUTER, "vendor/routed")
+
+        with patch.object(lane_module, "chat_route", lambda: route):
+            assert lane_module._default_lane().provider_pin == routing
+
+    def test_with_no_configured_route_the_default_lane_still_carries_its_models_routing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        routing: OpenRouterModelKwargs = {"provider": {"only": ["vendor"]}}
+        monkeypatch.setitem(OPENROUTER_PROVIDER_ROUTING, DEFAULT_MODEL_NAME, routing)
+
+        with patch.object(lane_module, "chat_route", lambda: None):
+            assert lane_module._default_lane().provider_pin == routing
+
+    def test_a_routed_model_id_on_another_provider_carries_no_routing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OpenRouter's provider block means nothing to another provider's wire."""
+        monkeypatch.setitem(
+            OPENROUTER_PROVIDER_ROUTING, "gemini-x", {"provider": {"only": ["vendor"]}}
+        )
+
+        with patch.object(lane_module, "chat_route", lambda: (LLMProviderName.GEMINI, "gemini-x")):
+            assert lane_module._default_lane().provider_pin is None
+
     async def test_a_paid_lane_routes_each_role_to_its_own_reasoning_knob(self) -> None:
         """Routed to one shared knob, raising comms would silently raise every background turn's spend too."""
         with _distinct_reasoning_knobs():
@@ -129,6 +183,18 @@ class TestPlanRouting:
         for plan in (PlanType.FREE, PlanType.PRO):
             assert (await _resolve(plan)).max_input_tokens == DEFAULT_MAX_TOKENS
 
+    async def test_self_host_serves_its_configured_lane_not_the_hosted_paid_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Every self-host user resolves to Pro; that must not route them to the hosted paid model."""
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        unreachable = AsyncMock(side_effect=AssertionError("no economic guard without plans"))
+        with patch.object(lane_module, "_pro_monthly_budget_exhausted", unreachable):
+            resolved, plan = await resolve_lane(USER, AgentRole.EXECUTOR)
+
+        assert plan is PlanType.PRO
+        assert resolved == lane_module._default_lane()
+
     async def test_no_user_id_resolves_the_default_lane_and_no_plan(self) -> None:
         resolved, plan = await resolve_lane(None, AgentRole.COMMS)
 
@@ -139,7 +205,7 @@ class TestPlanRouting:
     async def test_a_plan_lookup_failure_keeps_the_default_lane(self) -> None:
         """A Redis hiccup must not fail the user's turn."""
         with patch.object(
-            lane_module.payment_service,
+            payment_service,
             "get_cached_plan_type",
             AsyncMock(side_effect=ConnectionError("redis down")),
         ):
@@ -152,7 +218,7 @@ class TestPlanRouting:
         """Degrading a paying user to the free model must be visible in the event, with the cause attached."""
         with (
             patch.object(
-                lane_module.payment_service,
+                payment_service,
                 "get_cached_plan_type",
                 AsyncMock(side_effect=ConnectionError("redis down")),
             ),
@@ -313,8 +379,8 @@ class _Notice:
         self.client = _FakeRedisSetNX() if client is None else client
         self.created = AsyncMock() if notify is None else notify
         self._patches = [
-            patch.object(lane_module.redis_cache, "redis", self.client),
-            patch.object(lane_module.notification_service, "create_notification", self.created),
+            patch.object(redis_cache, "redis", self.client),
+            patch.object(notification_service, "create_notification", self.created),
             *_month_window(),
         ]
 
@@ -388,7 +454,7 @@ class TestDegradeNotice:
 
     async def test_no_redis_client_sends_nothing(self) -> None:
         """Without the SET NX gate, the notice is skipped rather than sent on every degraded turn."""
-        with _Notice() as notice, patch.object(lane_module.redis_cache, "redis", None):
+        with _Notice() as notice, patch.object(redis_cache, "redis", None):
             await _notify_degrade_once(USER)
 
         notice.created.assert_not_awaited()
@@ -492,14 +558,19 @@ class TestDevOverride:
 
         resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
 
-        assert resolved.provider_pin == option.provider_pin
+        assert resolved.provider_pin == OPENROUTER_PROVIDER_ROUTING[option.model]
         assert resolved.max_input_tokens == DEFAULT_MAX_TOKENS
 
+    @pytest.mark.usefixtures("stored_credentials")
     async def test_the_custom_endpoint_resolves_the_model_the_client_would_serve(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Leaving the lane's model None left LLMAccountingMiddleware pricing against DEFAULT_PRICING, ~11x the real rate."""
-        monkeypatch.setitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, "nous/deepseek-v4-flash-cheap")
+        monkeypatch.setitem(
+            resolved_configs,
+            CredentialProviderName.CUSTOM,
+            _custom_config(model="nous/deepseek-v4-flash-cheap"),
+        )
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 
@@ -508,24 +579,14 @@ class TestDevOverride:
         assert resolved.provider == LLMProviderName.CUSTOM
         assert resolved.model == "nous/deepseek-v4-flash-cheap"
 
-    async def test_the_custom_endpoint_pins_no_model_when_dev_llm_model_is_unset(
+    @pytest.mark.usefixtures("stored_credentials")
+    async def test_the_custom_endpoint_pins_no_model_when_none_is_configured(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """None is still right; the client raises its own unconfigured-endpoint error rather than being priced against a made-up name."""
-        monkeypatch.setitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, "")
-        option = dev_option_for("custom", use_defaults=False)
-        assert option is not None
-
-        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
-
-        assert resolved.provider == LLMProviderName.CUSTOM
-        assert resolved.model is None
-
-    async def test_a_lane_missing_from_provider_models_pins_no_model(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Here the lane is absent from the map entirely; the lookup's fallback still has to stay falsy."""
-        monkeypatch.delitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, raising=False)
+        monkeypatch.setitem(
+            resolved_configs, CredentialProviderName.CUSTOM, _custom_config(model=None)
+        )
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 
@@ -646,7 +707,7 @@ class TestFallback:
 
         with patch.object(
             lane_module,
-            "next_fallback_provider",
+            "chat_route",
             lambda _current: (LLMProviderName.GEMINI, "gemini-x"),
         ):
             fallback = paid.fallback()
@@ -668,7 +729,7 @@ class TestFallback:
             max_input_tokens=DEFAULT_MAX_TOKENS,
         )
 
-        with patch.object(lane_module, "next_fallback_provider", lambda _current: None):
+        with patch.object(lane_module, "chat_route", lambda _current: None):
             assert only.fallback() is None
 
 
@@ -729,7 +790,11 @@ class TestRebindOntoAFallbackLane:
 @contextmanager
 def _openai_configured(available: bool = True) -> Iterator[None]:
     """Switch the comms lane on or off: it exists only with an OpenAI key, and tests blank every key."""
-    with patch.object(lane_module, "openai_lane_available", lambda: available):
+    with patch.object(
+        lane_module,
+        "provider_configured",
+        lambda provider: available and provider is LLMProviderName.OPENAI,
+    ):
         yield
 
 

@@ -9,7 +9,7 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm tsc",
+        "command": "pnpm build",
         "cwd": "{projectRoot}"
       },
       "cache": true

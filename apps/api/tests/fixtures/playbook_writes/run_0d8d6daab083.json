@@ -1,0 +1,61 @@
+{
+ "run": "run_0d8d6daab083",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Cbswsimi udh Idem Mcpeumwt: read-wbnz ycsxrnd summary yg open todos. Zdrqbl/calendar exngwoqghii (Svdly qiq Zmlvvp Tvelkhjg mth qtlgdynes) qiq hbe jkjkej yejmeeuqou qvpuz xhuc ga fetch xtdwb.",
+    "steps": [
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list_open",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        },
+        "goal": "Mopl lbh open todos qiq vqpa overdue/svaq-aegwjeac emrwk"
+       },
+       {
+        "id": "search_website",
+        "tool": "search_todos",
+        "args": {
+         "query": "xjehwbr zbsrmj gyhhhmbpvf xnvjzdq"
+        },
+        "goal": "Renu sja todo ddjvfsf oa agswqfcier lar xjehwbr zbsrmj"
+       },
+       {
+        "id": "search_sarah",
+        "tool": "search_todos",
+        "args": {
+         "query": "pwwwn oa Oxljq tzvknndtwvg mfhhcheu"
+        },
+        "goal": "Renu sja todo udh ksimazfz oa Oxljq ez lar tzvknndtwvg mfhhcheu"
+       },
+       {
+        "id": "search_q3",
+        "tool": "search_todos",
+        "args": {
+         "query": "bjwple R0 dskkfr draft"
+        },
+        "goal": "Renu sja todo udh okwsvxthq lar R0 dskkfr draft"
+       }
+      ]
+     }
+    ],
+    "result_brief": "Friday, September 04, 2026 (JGKF) Xdsle Cbswsimi udh Idem Mcpeumwt. Tshl xhuc lar caojidex hx agkgy qiq vqpa xtwyuay tcnn w iqiswc uc exngwoqghii: (1) VYNBIF MRSHOV e Svdly uc mth qtlgdynes oa AAKY, ow emails sjuyg mth ku aqtgnru (jd mth qcgqho sja); (2) YASMR'L IVHFLAEZ e Zmlvvp Tvelkhjg uc mth qtlgdynes, ow meetings sjuyg mth ku aqtgnru (jd mth qcgqho sja); (3) DNMN CIGYE e list xillm open todo evvq lar list_open qjjnea xhuc lab pnkwu, cwf jzne, aegwjeac qiq HW, awkkhyx inn lar overdue svaq-aegwjeac 'Ndxvlzi oa Qnzul! Tmndiuj lbh lar yezjkacu y' (0m651s45881d98698h159399). Dqhi rfroc xenivee emrwk evvq lar bbtwvv (xjehwbr gyhhhmbpvf xnvjzdq, pwwwn oa Oxljq ez tzvknndtwvg mfhhcheu, bjwple R0 dskkfr draft) jd zs jd mth zlfwz hq ujxirq todos hx lar xdewfl e search nnbmddb uzku lrqvtv evqhlbd wtap lar item uc wbnz bxwwhjl hx memory/bbtwvv, mth hq w fixe. (4) UFVYNUT RLICS e vrvmrmnm fx beekaymqu lar xjehwbr zbsrmj (iobvyuytcx gyhhhmbpvf xnvjzdq); kfhta ptybmub sja open todo tvevbwq oa ic, qiq bg mth, ffq ow xtwyuay. Ttue ic w rzmez read-wbnz summary; lbtekq evqhlbd."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

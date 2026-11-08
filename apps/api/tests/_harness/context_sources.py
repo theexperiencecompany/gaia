@@ -13,9 +13,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
-from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
+from app.models.integration_models import UserIntegrationDocument
 from app.models.memory_models import MemoryEntry, MemorySearchResult
+from app.models.presence_models import PresenceSnapshot
 from app.models.todo_models import TodoDocument
+from app.services.delivery.chat_channel import InApp, ProactiveTarget
 from app.services.gaia_knowledge_service import KnowledgeResult
 
 
@@ -42,19 +44,21 @@ class ContextSources:
     skills: str = ""
     #: ``get_connected_integrations_named`` shape: ``[{"id": ..., "name": ...}]``.
     connected_integrations: list[dict[str, str]] = field(default_factory=list)
-    #: Identity of the user's one connected account on the integration in context.
-    account_identity: dict[str, str] = field(default_factory=dict)
     #: Integrations holding several accounts, for the manifest's account lists.
     multi_account_records: list[UserIntegrationDocument] = field(default_factory=list)
-    custom_instructions: str = ""
+    #: The user's "global" standing instructions, the only scope a context section reads.
+    global_instructions: str = ""
     active_todo: TodoDocument | None = None
     #: Ground-truth block the workflow authoring tier folds into its human turn.
     workflow_integrations_hint: str = ""
     #: Task id of a live background executor run, or ``None`` for "not busy".
     executor_busy_task_id: str | None = None
-    #: Comms-only: the onboarding system prompt for this turn, or ``None`` when
-    #: the conversation is not an onboarding one.
-    onboarding_prompt: str | None = None
+    #: What the root's presence read returns; the default is a user never seen anywhere.
+    presence: PresenceSnapshot = field(
+        default_factory=lambda: PresenceSnapshot(captured_at=0, last_seen={})
+    )
+    #: The one place a proactive message would land on.
+    proactive_target: ProactiveTarget = field(default_factory=lambda: InApp(reason="no_chat_app"))
 
 
 #: The real clients underneath the faked edges, reachable from some context
@@ -135,12 +139,6 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         )
         enter(
             patch(
-                "app.agents.context.fetchers.get_account_record",
-                AsyncMock(return_value=_single_account_record(sources.account_identity)),
-            )
-        )
-        enter(
-            patch(
                 "app.agents.context.fetchers.list_account_records",
                 AsyncMock(return_value=list(sources.multi_account_records)),
             )
@@ -148,7 +146,7 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         enter(
             patch(
                 "app.agents.context.sections.get_instructions",
-                AsyncMock(return_value=sources.custom_instructions),
+                AsyncMock(return_value=sources.global_instructions),
             )
         )
         enter(
@@ -163,33 +161,24 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
                 AsyncMock(return_value=sources.workflow_integrations_hint),
             )
         )
-        # Whether a turn is an onboarding turn is decided by a Mongo probe plus
-        # the user document. That resolution is its own subject with its own
-        # tests; here only its answer matters, so the answer is what is pinned.
+        # Roots with no presence read it (comms in _core_agent_logic, others in
+        # build_agent_config); a background note reads it live with its target.
+        for reader in (
+            "app.agents.core.agent.read_presence",
+            "app.helpers.agent_helpers.read_presence",
+            "app.agents.context.presence_note.read_presence",
+        ):
+            enter(patch(reader, AsyncMock(return_value=sources.presence)))
         enter(
             patch(
-                "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-                AsyncMock(return_value=sources.onboarding_prompt),
+                "app.agents.context.presence_note.resolve_proactive_target",
+                AsyncMock(return_value=sources.proactive_target),
             )
         )
         enter(_patch_executor_lock(sources.executor_busy_task_id))
         for target in _FENCED_CLIENTS:
             enter(patch(target, _fence(target)))
         yield
-
-
-def _single_account_record(identity: dict[str, str]) -> UserIntegrationDocument | None:
-    if not identity:
-        return None
-    return UserIntegrationDocument(
-        user_id="user-1",
-        integration_id="gmail",
-        status="connected",
-        accounts=[
-            IntegrationAccount(id="ca_1", connected_account_id="ca_1", identity=identity, label="x")
-        ],
-        primary_account_id="ca_1",
-    )
 
 
 @contextmanager

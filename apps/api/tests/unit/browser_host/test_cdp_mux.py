@@ -663,8 +663,8 @@ async def test_starting_an_already_open_connection_is_refused_without_dialing_ag
 
 
 @pytest.mark.unit
-async def test_the_connection_is_dialed_with_no_frame_cap_no_pings_and_a_short_close() -> None:
-    """A screencast frame dwarfs the default cap, this engine answers no ping, and a dead one no close."""
+async def test_the_connection_is_dialed_with_no_frame_cap_no_pings_and_short_waits() -> None:
+    """A screencast frame dwarfs the default cap, this engine answers no ping, and a dead one no close or upgrade."""
     ws = _FakeWebSocket()
     mux = CdpMux(_URL)
     connect = AsyncMock(return_value=ws)
@@ -676,6 +676,7 @@ async def test_the_connection_is_dialed_with_no_frame_cap_no_pings_and_a_short_c
     assert connect.await_args.kwargs == {
         "max_size": None,
         "ping_interval": None,
+        "open_timeout": 10.0,
         "close_timeout": 2.0,
     }
     await mux.close()

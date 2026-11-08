@@ -16,6 +16,7 @@ fails hard in production).
 
 import asyncio
 from collections.abc import Awaitable
+from enum import StrEnum
 from typing import Any, NamedTuple
 
 from redis.exceptions import RedisError
@@ -82,15 +83,38 @@ BUDGET_WRAPUP_NOTICE = (
 )
 
 
+class BudgetWall(StrEnum):
+    """Which budget wall stopped a run; the value is the rate-limit card's feature."""
+
+    DAILY_USAGE = "daily_usage"
+    TASK_SIZE = "task_size"
+
+    def stop_text(self, plan_type: PlanType | None) -> str:
+        """Return this wall's user-facing stop text, worded for the plan."""
+        free_text, paid_text = _STOP_TEXTS[self]
+        return free_text if plan_type == PlanType.FREE else paid_text
+
+
+_STOP_TEXTS: dict[BudgetWall, tuple[str, str]] = {
+    BudgetWall.DAILY_USAGE: (DAILY_BUDGET_STOP_FREE, DAILY_BUDGET_STOP_PRO),
+    BudgetWall.TASK_SIZE: (REQUEST_CEILING_STOP_FREE, REQUEST_CEILING_STOP_PRO),
+}
+
+
 class BudgetCheck(NamedTuple):
-    """Stop text (if bound) plus the daily spend read used to decide it.
+    """The wall that binds (if any) plus the daily spend read used to decide it.
 
     Lets callers test the wrap-up threshold without a second Redis round trip.
     """
 
-    stop_reason: str | None
+    wall: BudgetWall | None
     spent_usd: float | None
     plan_type: PlanType | None
+
+    @property
+    def stop_reason(self) -> str | None:
+        """The user-facing stop text for the bound wall, worded for the plan."""
+        return self.wall.stop_text(self.plan_type) if self.wall is not None else None
 
 
 def _budget_key(user_id: str, period: RateLimitPeriod) -> str:
@@ -237,17 +261,15 @@ async def get_budget_stop_reason(
     plan_type: PlanType | None,
     root_request_id: str | None,
 ) -> BudgetCheck:
-    """Return the budget read: stop_reason is the user-facing stop text when a wall binds, else None.
+    """Return the budget read: wall names the limit that binds, else None.
 
     Self-sufficient: derives plan_type from the Redis-cached tier when never
     stamped onto the configurable. Checks a daily cost budget and a
     per-request token ceiling, and returns the spend/plan read so callers can
     test the wrap-up threshold for free. Fails open only when nothing can be enforced.
     """
-    # Dev-only: the same flag that lifts the count-based tiered limits also lifts
-    # the cost wall, so an eval harness / local dev user on the free plan isn't
-    # blocked mid-run. get_settings() refuses production boot when it is set.
-    if settings.DEV_UNLIMITED_RATE_LIMITS:
+    # Cost is still recorded where limits are off; only the wall stands down.
+    if not settings.deployment.enforces_usage_limits:
         return BudgetCheck(None, None, None)
 
     if user_id is None:
@@ -283,8 +305,7 @@ async def get_budget_stop_reason(
     if root_request_id is None:
         spent = await get_cost(user_id, RateLimitPeriod.DAY)
         if is_daily_budget_exhausted(spent, plan_type):
-            stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
-            return BudgetCheck(stop, spent, plan_type)
+            return BudgetCheck(BudgetWall.DAILY_USAGE, spent, plan_type)
         log.warning(
             f"{LogTag.AGENT} Per-request ceiling skipped — missing root_request_id "
             "in configurable (threading gap?)."
@@ -299,11 +320,9 @@ async def get_budget_stop_reason(
         get_request_tokens(root_request_id),
     )
     if is_daily_budget_exhausted(spent, plan_type):
-        stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
-        return BudgetCheck(stop, spent, plan_type)
+        return BudgetCheck(BudgetWall.DAILY_USAGE, spent, plan_type)
     if used >= get_per_request_token_ceiling(plan_type):
-        stop = REQUEST_CEILING_STOP_FREE if plan_type == PlanType.FREE else REQUEST_CEILING_STOP_PRO
-        return BudgetCheck(stop, spent, plan_type)
+        return BudgetCheck(BudgetWall.TASK_SIZE, spent, plan_type)
 
     return BudgetCheck(None, spent, plan_type)
 

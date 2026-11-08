@@ -6,12 +6,17 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from fastapi import HTTPException
 import pytest
 
-from app.constants.chat import ConversationSource
-from app.models.bot_models import BotSessionDocument
+from app.constants.chat import MAX_MESSAGE_LENGTH, ConversationSource
+from app.models.bot_models import BotChatRequest, BotSessionDocument
 from app.models.conversation_models import ConversationDocument
 from app.models.user_models import AuthenticatedUser
 from app.services import bot_service as bot_service_mod
-from app.services.bot_service import BOT_RATE_LIMIT, BOT_RATE_WINDOW, BotService
+from app.services.bot_service import (
+    BOT_RATE_LIMIT,
+    BOT_RATE_WINDOW,
+    BotService,
+    build_bot_message_request,
+)
 from app.services.browser.job_stop import RequesterChat
 
 
@@ -648,6 +653,24 @@ class TestLoadConversationHistory:
 
         assert len(result) == 1
         assert result[0]["content"] == ""
+
+    @pytest.mark.regression
+    async def test_a_stored_reply_longer_than_an_inbound_message_still_builds_the_turn(
+        self, mock_conversations: MagicMock
+    ) -> None:
+        """Regression: one stored reply over MAX_MESSAGE_LENGTH 500'd every later bot turn in that chat."""
+        long_reply = "x" * (MAX_MESSAGE_LENGTH + 1)
+        mock_conversations.get = AsyncMock(
+            return_value=_conv([{"type": "bot", "response": long_reply}])
+        )
+        body = BotChatRequest(message="hello?", platform="telegram", platform_user_id="1685738115")
+
+        request = await build_bot_message_request(body, "conv1", "user1")
+
+        assert request.messages == [
+            {"role": "assistant", "content": long_reply},
+            {"role": "user", "content": "hello?"},
+        ]
 
     async def test_handles_empty_bot_response_field(self, mock_conversations: MagicMock) -> None:
         mock_conversations.get = AsyncMock(return_value=_conv([{"type": "bot", "response": ""}]))

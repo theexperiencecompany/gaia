@@ -24,3 +24,5 @@ class Subagent:
     config: SubAgentConfig
     short_name: str | None = None
     mcp_config: MCPConfig | None = None
+    # False when the integration is listed but cannot be reached (dead endpoint).
+    available: bool = True

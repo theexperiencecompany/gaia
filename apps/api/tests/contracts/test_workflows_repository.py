@@ -16,12 +16,14 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.trigger_gates import SystemGatePreset
 from app.db.repositories.workflows import WorkflowsRepository
 from app.models.scheduler_models import (
     DeactivationReason,
     ScheduledTaskStatus,
     TaskRearm,
 )
+from app.models.trigger_gate_models import GateSkipRecord, SystemGate
 from app.models.workflow_models import (
     SystemWorkflowDefinition,
     TriggerConfig,
@@ -47,7 +49,7 @@ def _workflow(**overrides: object) -> WorkflowDocument:
         "trigger_config": TriggerConfig(type=TriggerType.MANUAL),
     }
     data.update(overrides)
-    return WorkflowDocument(**data)
+    return WorkflowDocument.model_validate(data)
 
 
 @pytest.fixture
@@ -76,6 +78,36 @@ class TestWorkflowsCore:
 
     async def test_get_missing_returns_none(self, repo):
         assert await repo.get(_uid("missing")) is None
+
+    async def test_a_skip_is_kept_on_the_gates_recent_five_only_and_counted(self, repo):
+        integration = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message")
+        gated, ungated = (
+            await repo.create(
+                _workflow(
+                    trigger_config=integration,
+                    gate=SystemGate(preset=SystemGatePreset.INBOX_DESK),
+                )
+            ),
+            await repo.create(_workflow(trigger_config=integration)),
+        )
+        skips = [
+            GateSkipRecord(event=f"mail {n}", at=datetime(2026, 11, 5, n, tzinfo=UTC))
+            for n in range(6)
+        ]
+        warmed = await repo.get(gated.id)
+        assert warmed is not None and warmed.gate is not None
+        assert warmed.gate.recent_skips == []
+
+        for skip in skips:
+            await repo.remember_gate_skip(gated.id, gated.user_id, skip)
+        await repo.remember_gate_skip(gated.id, _uid("intruder"), skips[0])
+        await repo.remember_gate_skip(ungated.id, ungated.user_id, skips[0])
+
+        stored, untouched = await repo.get(gated.id), await repo.get(ungated.id)
+        assert stored is not None and stored.gate is not None
+        assert stored.gate.recent_skips == skips[1:]
+        assert stored.gate.skipped_count == len(skips)
+        assert untouched is not None and untouched.gate is None
 
     async def test_reads_legacy_iso_string_datetimes_as_tz_aware(self, repo, raw_collection):
         # A handful of legacy rows persist created_at/scheduled_at as ISO strings.
@@ -564,54 +596,6 @@ class TestWorkflowsTriggersAndSystem:
         raw = await raw_collection.find_one({"_id": wf.id})
         assert raw["scheduled_at"] == next_run
         assert raw["repeat"] == "0 9 * * *"
-
-
-class TestPlaybookDeclineTally:
-    """count_playbook_decline: once per run, atomically, a fresh tally per hash."""
-
-    async def test_a_run_counts_once_however_many_times_it_declines(self, repo) -> None:
-        created = await repo.create(_workflow())
-        first = await repo.count_playbook_decline(
-            created.id, created.user_id, run_id="run_a", workflow_hash="h1"
-        )
-        again = await repo.count_playbook_decline(
-            created.id, created.user_id, run_id="run_a", workflow_hash="h1"
-        )
-        next_run = await repo.count_playbook_decline(
-            created.id, created.user_id, run_id="run_b", workflow_hash="h1"
-        )
-
-        assert (first, again, next_run) == (1, None, 2)
-        stored = await repo.get_for_user(created.id, created.user_id)
-        assert stored is not None
-        assert stored.playbook_declined_run == "run_b"
-
-    async def test_an_edited_workflow_starts_a_fresh_tally(self, repo) -> None:
-        created = await repo.create(_workflow())
-        await repo.count_playbook_decline(
-            created.id, created.user_id, run_id="r1", workflow_hash="h1"
-        )
-        await repo.count_playbook_decline(
-            created.id, created.user_id, run_id="r2", workflow_hash="h1"
-        )
-
-        fresh = await repo.count_playbook_decline(
-            created.id, created.user_id, run_id="r3", workflow_hash="h2"
-        )
-
-        assert fresh == 1
-        stored = await repo.get_for_user(created.id, created.user_id)
-        assert stored is not None
-        assert (stored.playbook_declines, stored.playbook_declined_hash) == (1, "h2")
-
-    async def test_another_users_workflow_is_not_counted(self, repo) -> None:
-        created = await repo.create(_workflow())
-        assert (
-            await repo.count_playbook_decline(
-                created.id, _uid("stranger"), run_id="r1", workflow_hash="h1"
-            )
-            is None
-        )
 
 
 class TestWorkflowsPublishAndWrites:

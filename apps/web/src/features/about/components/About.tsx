@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import JsonLd from "@/components/seo/JsonLd";
 import { AuthorTooltip } from "@/features/blog/components/AuthorTooltip";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
+import { getImageDimensions } from "@/lib/imageDimensions";
 import { generateAboutPageSchema } from "@/lib/seo";
 import type { AboutData, Author } from "@/types/api/aboutApiTypes";
 
@@ -16,7 +17,7 @@ const ABOUT_DATA: AboutData = {
   authors: [
     {
       name: "Aryan Randeriya",
-      avatar: "https://github.com/aryanranderiya.png",
+      avatar: "https://avatars.githubusercontent.com/u/64796509?v=4",
       role: "Founder & CEO",
       linkedin: "https://www.linkedin.com/in/aryanranderiya/",
       twitter: "https://twitter.com/aryanranderiya",
@@ -24,7 +25,7 @@ const ABOUT_DATA: AboutData = {
     },
     {
       name: "Dhruv Maradiya",
-      avatar: "https://github.com/dhruv-maradiya.png",
+      avatar: "https://avatars.githubusercontent.com/u/87976750?v=4",
       role: "Founder & CTO",
       linkedin: "https://www.linkedin.com/in/dhruvmaradiya/",
       twitter: "https://twitter.com/dhruvmaradiya",
@@ -35,6 +36,7 @@ const ABOUT_DATA: AboutData = {
 
 export default async function About() {
   const aboutPageSchema = generateAboutPageSchema();
+  const logo = getImageDimensions("/images/logos/logo.webp");
 
   return (
     <>
@@ -43,10 +45,11 @@ export default async function About() {
         <div className="fixed top-0 left-0 z-0 flex h-screen w-full items-center justify-center opacity-5">
           <Image
             src="/images/logos/logo.webp"
-            alt="GAIA Logo"
-            className="scale-110 object-contain grayscale"
+            alt=""
+            width={logo.width}
+            height={logo.height}
+            className="absolute inset-0 h-full w-full scale-110 object-contain grayscale"
             sizes="100vw"
-            fill
           />
         </div>
 
