@@ -11,11 +11,14 @@ from email.utils import parseaddr
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.constants.desk_buckets import EMAIL_VERDICT_BODY_MAX_CHARS
 from app.constants.log_tags import LogTag
 from app.constants.todos import INBOX_DESK_AUTOMATED_SENDERS
 from app.constants.trigger_gates import TRIGGER_GATE_FIELD_MAX_CHARS
 from app.models.composio_schemas.gmail import GmailHeader, GmailMessageView
 from app.services.composio.custom_tools.gmail_constants import GMAIL_SENT_LABEL
+from app.utils.email_body_normalizer import normalize_email_body
+from app.utils.general_utils import clip_text
 from shared.py.wide_events import log
 
 _GMAIL_CATEGORY_PREFIX = "CATEGORY_"
@@ -84,6 +87,8 @@ class GmailGateView(BaseModel):
     bulk_or_auto_submitted: bool | None
     sender_looks_automated: bool | None
     continues_thread: bool | None = Field(exclude=True)
+    # The cleaned body, clipped, that the email verdict reads; the event keeps the snippet.
+    body: str = Field(default="", exclude=True)
     # Gmail's own id for the message, the key its verdict is kept under: id first, then message_id.
     gmail_id: str | None = Field(default=None, exclude=True)
     precedence: str = Field(default="", exclude=True)
@@ -104,7 +109,8 @@ class GmailGateView(BaseModel):
         sender = {"name": name, "address": address or self.sender}
         email: dict[str, object] = {"from": {k: v for k, v in sender.items() if v}}
         fields = (("to", self.to), ("cc", self.cc), ("subject", self.subject))
-        email |= {k: v for k, v in (*fields, ("snippet", self.snippet)) if v}
+        # Keyed "body", JEV read the same text as less decisive: act recall 20/25 in 3 of 3 passes.
+        email |= {k: v for k, v in (*fields, ("snippet", self.body)) if v}
         if self.attachments:
             email["attachments"] = self.attachments
         headers: dict[str, object] = {}
@@ -192,6 +198,10 @@ def gmail_gate_view(data: Mapping[str, object]) -> GmailGateView | None:
         bulk_or_auto_submitted=signals.bulk_or_auto_submitted,
         sender_looks_automated=signals.sender_looks_automated,
         continues_thread=signals.continues_thread,
+        body=clip_text(
+            " ".join(normalize_email_body(message.message_text or "").split()),
+            EMAIL_VERDICT_BODY_MAX_CHARS,
+        ),
         gmail_id=message.id or message.message_id or None,
         precedence=message.header("precedence"),
         auto_submitted=message.header("auto-submitted"),

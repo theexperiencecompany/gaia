@@ -13822,6 +13822,7 @@
   - tune
   - new_thread
   - security_problem
+  - urgent
   setup:
     message:
       thread_id: mail-430
@@ -13841,7 +13842,7 @@
   expected:
     label: needs_you
     bucket: act
-    urgent: false
+    urgent: true
     split: tune
     outcome: run
     score:

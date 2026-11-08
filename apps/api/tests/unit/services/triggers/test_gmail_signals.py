@@ -12,6 +12,7 @@ from typing import ClassVar
 import pytest
 
 from app.agents.templates.mail_templates import build_message_view, project_message_view
+from app.constants.desk_buckets import EMAIL_VERDICT_BODY_MAX_CHARS
 from app.models.composio_schemas.gmail import GmailMessageView
 from app.models.integrations.gmail_messages import RelayedGmailMessage
 from app.services.triggers.gmail_signals import (
@@ -20,6 +21,7 @@ from app.services.triggers.gmail_signals import (
     gmail_message_signals,
 )
 from app.services.triggers.handlers.gmail import gmail_trigger_handler
+from app.utils.general_utils import ELLIPSIS
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -351,6 +353,24 @@ class TestTheEmailAsAPersonSeesIt:
             "attachments": 1,
             "headers": {"list_unsubscribe": True},
         }
+
+    def test_the_body_reads_past_the_events_snippet_to_what_happened(self) -> None:
+        preamble = "A new sign-in on Mac. " * 20
+        decision = "If this was you, you don't need to do anything."
+        view = gmail_gate_view({"message_text": preamble + decision})
+
+        assert view is not None
+        assert decision not in view.as_event()["snippet"]
+        assert str(view.as_email()["snippet"]).endswith(decision)
+
+    def test_the_body_is_cleaned_and_bounded(self) -> None:
+        html = "<p>Your   code is ready.</p><p>" + "word " * 1000 + "</p>"
+        view = gmail_gate_view({"message_text": html})
+
+        assert view is not None
+        body = str(view.as_email()["snippet"])
+        assert body.startswith("Your code is ready. word")
+        assert len(body) == EMAIL_VERDICT_BODY_MAX_CHARS + len(ELLIPSIS)
 
     @pytest.mark.parametrize(("labels", "other"), [(["INBOX"], True), (["SENT", "INBOX"], False)])
     def test_a_message_the_user_sent_is_not_someone_elses(

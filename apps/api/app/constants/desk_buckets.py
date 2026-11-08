@@ -62,6 +62,9 @@ EMAIL_VERDICT_JEV_LIMIT_KEY: Final = "email_verdict_jev"
 EMAIL_VERDICT_TTL_SECONDS: Final = 2 * ONE_DAY_TTL
 # Who the user is, as JEV reads it next to every email; a long About-the-user note costs tokens.
 EMAIL_VERDICT_PROFILE_MAX_CHARS: Final = 600
+# How much of the cleaned body the verdict reads: a notice's deciding sentence (was it the user,
+# what to do) often falls past the 300-character event snippet.
+EMAIL_VERDICT_BODY_MAX_CHARS: Final = 1_000
 # What an arrival skip names as its reason, ahead of the email's sender and subject.
 DESK_BUCKET_SKIP_REASONS: Final[Mapping[DeskBucket, str]] = MappingProxyType(
     {DeskBucket.FYI: "FYI", DeskBucket.JUNK: "Junk"}

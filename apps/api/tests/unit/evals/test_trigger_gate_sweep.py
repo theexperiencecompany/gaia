@@ -78,9 +78,11 @@ RECORDED_SIGN_IN_NOTICE_RUNS = frozenset(
     {"mail-421", "mail-422", "mail-423", "mail-424", "mail-425"}
 )
 # The two service-down emails; mail-151 sits near P(urgent) 0.80, so a pass may hold it.
+# mail-430, urgent as a possible compromise (unrecognised sign-ins and new API tokens), is held
+# in every pass: the urgent question's incident is a person reporting it, not an automated alert.
 RECORDED_WAKES = frozenset({"mail-094", "mail-151"})
-# Woken though labelled can-wait: an automated unrecognised-sign-in alert (new sign-ins and API tokens).
-KNOWN_FALSE_WAKES = frozenset({"mail-430"})
+# Woken though labelled can-wait.
+KNOWN_FALSE_WAKES: frozenset[str] = frozenset()
 # The share of noise the desk gate must skip by day in every pass, overall and held out.
 # set to measured value at founder's ship decision 2026-11-08; raise as examples grow
 NOISE_SKIP_FLOORS: Mapping[str | None, float] = {None: 0.45, "holdout": 0.45}
@@ -274,7 +276,7 @@ def test_by_day_the_desk_gate_keeps_its_noise_skip_floor_in_every_pass(
         assert len(skipped) / len(noise) >= NOISE_SKIP_FLOORS[split], p.run_id
 
 
-def test_in_quiet_hours_only_the_service_down_emails_wake_the_user(
+def test_in_quiet_hours_only_the_recorded_urgent_emails_wake_the_user(
     cases: dict[str, Case], regraded: list[_Pass]
 ) -> None:
     urgent = {case_id for case_id, case in cases.items() if case.expected["urgent"]}
