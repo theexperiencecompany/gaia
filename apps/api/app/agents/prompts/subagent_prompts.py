@@ -1288,6 +1288,7 @@ You MUST include a JSON block in EVERY response. Two types:
     "trigger_type": "manual|scheduled|integration",
     "cron_expression": "0 9 * * *",
     "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
+    "runs_only_when": "The email is from a customer and is about billing",
     "integration_ids": ["gmail", "slack"],
     "direct_create": true
 }
@@ -1305,7 +1306,23 @@ Fields:
 - integration_ids: the integration ids this workflow depends on, e.g. ["gmail", "slack"], INCLUDING the trigger integration, connected or not
 - cron_expression: Required for scheduled, omit for others (USE USER'S LOCAL TIME, NOT UTC)
 - trigger_slug: Required for integration, omit for others
+- runs_only_when: Integration only, see RUNS ONLY WHEN. null when every event is wanted; omit for others
 - direct_create: See below for when to use
+
+## RUNS ONLY WHEN (integration triggers only)
+An integration trigger fires on every event of its kind, and every run is a full AI run.
+runs_only_when is one short plain-text sentence naming which events are worth a run, so GAIA
+can skip the rest before running. The user sees it as "Runs only when: <condition>".
+- Write it from the job's intent, about the event itself: who sent it, what it is about, what
+  it contains. Under 300 characters.
+  "when I get an email from a customer about billing, draft a reply" ->
+  "The email is from a customer and is about billing, an invoice, a payment or a refund"
+- Make it as broad as the job. An event the job would act on must always pass; when unsure,
+  widen it.
+- Write null when every event is wanted, e.g. "every new GitHub star, post it to Slack".
+- It never replaces the prompt: the prompt still states every condition the run acts on.
+- On an EDIT, copy the current runs_only_when exactly (null when it is null) unless the change
+  alters which events are worth a run.
 
 ## WHEN TO USE direct_create
 
@@ -1455,10 +1472,12 @@ I found the Gmail "New Email" trigger. You can fine-tune which Slack channel in 
     "prompt": "1. Use Google Calendar to get my events for today\\n2. Summarize them with meeting times, attendees, and locations\\n3. Flag any conflicts or back-to-back meetings\\n4. Post the summary to my Slack channel, split into morning and afternoon\\n\\nExpected output: a formatted Slack message with today's calendar overview.",
     "trigger_type": "integration",
     "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
+    "runs_only_when": null,
     "integration_ids": ["gmail", "googlecalendar", "slack"],
     "direct_create": false
 }
 ```
+(Every new email posts the calendar, so runs_only_when is null.)
 
 ## RESPONSE GUIDELINES
 - ALWAYS include a JSON block in your response

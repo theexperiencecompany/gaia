@@ -51,10 +51,12 @@ import sys
 from typing import Any, TypeAlias
 
 import chromadb
+from chromadb.api.types import GetResult
 from composio_client import Composio
 from e2b import AsyncSandbox
 import gridfs
 import psycopg
+from psycopg.rows import TupleRow
 from pymongo import MongoClient
 from pymongo.database import Database
 import redis as redislib
@@ -63,6 +65,10 @@ from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, object_id_filter
+from app.db.repositories.users import user_repository
+from app.models.platform_models import PlatformLinkEntry
+from app.models.user_models import UserDocument
+from app.services.platform_link_service import linked_platforms_of
 
 UID_RE = re.compile(r"^[0-9a-f]{24}$")
 JFS_USERS_ROOT = Path("/mnt/jfs/users")
@@ -96,10 +102,8 @@ def _fail(name: str, err: Exception) -> None:
     print(f"[{name}] FAILED: {type(err).__name__}: {err}", flush=True)
 
 
-def _resolve_user(db: MongoDatabase, email: str) -> dict[str, Any]:
-    matches: list[dict[str, Any]] = list(
-        db.users.find({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
-    )
+async def _resolve_user(email: str) -> UserDocument:
+    matches = await user_repository.find_by_email_ignoring_case(email)
     if len(matches) != 1:
         sys.exit(f"ABORT: email resolved to {len(matches)} users, need exactly 1")
     return matches[0]
@@ -117,13 +121,13 @@ def _mongo_inventory(db: MongoDatabase, uid: str, email: str) -> dict[str, int]:
             n = db[name].count_documents({"$or": [{"user_id": uid}, {"user_email": email}]})
         if n:
             counts[name] = n
-    gridfs_count = db["fs.files"].count_documents({"metadata.user_id": uid})
+    gridfs_count = sum(1 for _ in gridfs.GridFSBucket(db).find({"metadata.user_id": uid}))
     if gridfs_count:
         counts["fs.files(gridfs)"] = gridfs_count
     return counts
 
 
-def _pg_inventory(conn: psycopg.Connection[Any], uid: str) -> dict[str, int]:
+def _pg_inventory(conn: psycopg.Connection[TupleRow], uid: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     with conn.cursor() as cur:
         for table in PG_USER_TABLES:
@@ -140,7 +144,9 @@ def _chroma_inventory(client: chromadb.api.ClientAPI, uid: str) -> dict[str, int
     for col in client.list_collections():
         # chromadb >= 0.6.3 returns Collection objects (never bare names).
         name = col.name
-        got = client.get_collection(name).get(where={"user_id": uid}, limit=200_000, include=[])
+        got: GetResult = client.get_collection(name).get(
+            where={"user_id": uid}, limit=200_000, include=[]
+        )
         n = len(got.get("ids") or [])
         if n:
             counts[name] = n
@@ -160,14 +166,14 @@ class _Footprint:
     """Open clients plus everything teardown and verification need for one user."""
 
     db: MongoDatabase
-    pg: psycopg.Connection[Any]
+    pg: psycopg.Connection[TupleRow]
     chroma: chromadb.api.ClientAPI
     redis_client: redislib.Redis
     composio: Composio
     workos: AsyncWorkOSClient
     uid: str
     email: str
-    platform_links: dict[str, Any]
+    platform_links: dict[str, PlatformLinkEntry]
     conversation_ids: list[str]
     composio_accounts: list[Any]
     sandbox_ids: list[str]
@@ -178,7 +184,7 @@ class _Footprint:
 
 
 async def _build_footprint(
-    args: argparse.Namespace, db: MongoDatabase, user: dict[str, Any], uid: str
+    args: argparse.Namespace, db: MongoDatabase, user: UserDocument, uid: str
 ) -> _Footprint:
     """Open clients, gather the per-user inventory, and print it."""
     pg = psycopg.connect(settings.POSTGRES_URL)
@@ -195,14 +201,11 @@ async def _build_footprint(
         sys.exit(f"ABORT: refusing to touch path {jfs_path}")
 
     composio_accounts = list(getattr(composio.connected_accounts.list(user_ids=[uid]), "items", []))
-    sandbox_ids = [
-        doc["sandbox_id"] for doc in db.e2b_sandboxes.find({"user_id": uid}, {"sandbox_id": 1})
-    ]
+    sandbox_ids = [str(i) for i in db.e2b_sandboxes.distinct("sandbox_id", {"user_id": uid})]
     conversation_ids = [
-        doc["conversation_id"]
-        for doc in db.conversations.find({"user_id": uid}, {"conversation_id": 1})
+        str(i) for i in db.conversations.distinct("conversation_id", {"user_id": uid})
     ]
-    platform_links: dict[str, Any] = user.get("platform_links") or {}
+    platform_links = linked_platforms_of(user)
     workos_users = (await workos.user_management.list_users(email=args.email)).data
 
     print("mongo:", mongo_counts or "none")
@@ -255,28 +258,31 @@ async def _revoke_external_access(d: _Footprint) -> None:
             _fail(f"e2b:{sandbox_id}", e)
 
 
+def _platform_session_filters(
+    platform_links: dict[str, PlatformLinkEntry],
+) -> list[dict[str, str]]:
+    """Match the bot sessions of each platform account the user has linked."""
+    return [
+        {"platform": platform, "platform_user_id": entry["platformUserId"]}
+        for platform, entry in platform_links.items()
+    ]
+
+
 def _delete_mongo_data(d: _Footprint) -> None:
     """Delete Mongo collections and GridFS; users doc last so a partial failure leaves the account findable."""
     try:
         bucket = gridfs.GridFSBucket(d.db)
-        for file_doc in d.db["fs.files"].find({"metadata.user_id": d.uid}, {"_id": 1}):
-            bucket.delete(file_doc["_id"])
+        for grid_file in bucket.find({"metadata.user_id": d.uid}):
+            bucket.delete(grid_file._id)
         for name in sorted(d.db.list_collection_names()):
             if name == "users" or name.startswith("fs."):
                 continue
             n = d.db[name].delete_many({"user_id": d.uid}).deleted_count
             if name == "support_requests":
                 n += d.db[name].delete_many({"user_email": d.email}).deleted_count
-            if name == "bot_sessions" and d.platform_links:
-                platform_ids = [
-                    str(link.get("platform_user_id", link)) if isinstance(link, dict) else str(link)
-                    for link in d.platform_links.values()
-                ]
-                n += (
-                    d.db[name]
-                    .delete_many({"platform_user_id": {"$in": platform_ids}})
-                    .deleted_count
-                )
+            sessions = _platform_session_filters(d.platform_links)
+            if name == "bot_sessions" and sessions:
+                n += d.db[name].delete_many({"$or": sessions}).deleted_count
             if n:
                 _step("mongo", f"{name}: deleted {n}")
         deleted = d.db.users.delete_one(object_id_filter(d.uid)).deleted_count
@@ -395,11 +401,11 @@ async def _run(args: argparse.Namespace) -> int:
     email = args.email.strip().lower()
 
     db: MongoDatabase = MongoClient(settings.MONGO_DB)[MONGO_DATABASE_NAME]
-    user = _resolve_user(db, email)
-    uid = str(user["_id"])
+    user = await _resolve_user(email)
+    uid = user.id
     if not UID_RE.match(uid):
         sys.exit(f"ABORT: uid {uid!r} is not a 24-hex ObjectId")
-    print(f"user: {user['email']}  uid={uid}  name={user.get('name')}\n")
+    print(f"user: {user.email}  uid={uid}  name={user.name}\n")
 
     if args.execute:
         if args.uid != uid:

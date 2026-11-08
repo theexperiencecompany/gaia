@@ -75,6 +75,9 @@ async def choose_account(
         display_name=chosen.display_name,
         is_primary=chosen.id == record.primary_account_id,
         account_count=len(record.accounts),
+        # Only a call that named an account is pinned to it; the primary is
+        # re-resolved at replay, so it records nothing.
+        account_id=chosen.id if account else None,
     )
 
 

@@ -30,6 +30,7 @@ from app.agents.core.background.session import (
     teardown_session,
 )
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK, TURN_REPLY_NOT_SAVED
+from app.core.stream_manager import stream_manager as _stream_manager
 from app.models.chat_models import ConversationModel, MessageKind
 from app.models.message_models import MessageRequestWithHistory, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser
@@ -38,6 +39,7 @@ from app.services.chat.chunks import (
     extract_tool_data,
 )
 from app.services.chat.persistence import (
+    BotReply,
     initialize_new_conversation as _initialize_new_conversation,
     save_bot_reply,
     save_user_message,
@@ -52,7 +54,6 @@ from app.services.chat.stream import (
     _stamp_turn_latencies,
     _StreamState,
     run_chat_stream_background,
-    stream_manager as _stream_manager,
 )
 from app.utils.stream_publishers import ExtractedToolData
 from shared.py.analytics import UserId
@@ -373,21 +374,13 @@ async def _saved_user_message(body: MessageRequestWithHistory, user: Authenticat
 
 async def _saved_bot_reply(user: AuthenticatedUser, body: MessageRequestWithHistory, **overrides):
     mock_update = AsyncMock()
-    kwargs = {
-        "body": body,
-        "user": user,
-        "conversation_id": "conv_123",
-        "complete_message": "ok",
-        "tool_data": {},
-        "metadata": {},
-        "bot_message_id": "bmsg_1",
-        **overrides,
-    }
+    conversation_id = overrides.pop("conversation_id", "conv_123")
+    reply = BotReply(**{"complete_message": "ok", "bot_message_id": "bmsg_1", **overrides})
     with patch("app.services.chat.persistence.update_messages", new=mock_update):
-        await save_bot_reply(**kwargs)
+        await save_bot_reply(body, user, conversation_id, reply)
     assert mock_update.call_args.kwargs == {"user": user}
     request_arg = mock_update.call_args.args[0]
-    assert request_arg.conversation_id == kwargs["conversation_id"]
+    assert request_arg.conversation_id == conversation_id
     (bot_msg,) = request_arg.messages
     assert datetime.fromisoformat(bot_msg.date).utcoffset() == timedelta(0)
     return bot_msg
@@ -1083,7 +1076,7 @@ class TestRunChatStreamBackground:
             )
 
         save_kwargs = mock_save.call_args.kwargs
-        assert save_kwargs["complete_message"] == complete_text
+        assert save_kwargs["reply"].complete_message == complete_text
 
     async def test_nostream_chunk_not_forwarded_to_client(self, test_user, existing_conv_body):
         """The nostream: prefix is internal — must never be published to Redis."""
@@ -1193,7 +1186,7 @@ class TestRunChatStreamBackground:
             )
 
         save_kwargs = mock_save.call_args.kwargs
-        saved_tool_data = save_kwargs["tool_data"]
+        saved_tool_data = save_kwargs["reply"].tool_data
         assert "tool_data" in saved_tool_data
         assert len(saved_tool_data["tool_data"]) >= 1
         assert saved_tool_data["tool_data"][0]["tool_name"] == "search_results"
@@ -1242,7 +1235,7 @@ class TestRunChatStreamBackground:
             )
 
         save_kwargs = mock_save.call_args.kwargs
-        tool_entries = save_kwargs["tool_data"].get("tool_data", [])
+        tool_entries = save_kwargs["reply"].tool_data.get("tool_data", [])
         calls_entry = next(
             (e for e in tool_entries if e.get("tool_name") == "tool_calls_data"), None
         )
@@ -1328,7 +1321,7 @@ class TestRunChatStreamBackground:
             )
 
         save_kwargs = mock_save.call_args.kwargs
-        assert save_kwargs["complete_message"] == "recovered text"
+        assert save_kwargs["reply"].complete_message == "recovered text"
 
     @pytest.mark.parametrize(
         ("selected_tool", "selected_workflow"),
@@ -1721,7 +1714,7 @@ class TestRunChatStreamBackground:
             save,
         )
 
-        assert save.call_args.kwargs["error"] == "model unavailable"
+        assert save.call_args.kwargs["reply"].error == "model unavailable"
 
     async def test_a_data_frame_without_an_error_leaves_the_turn_unmarked(self, test_user) -> None:
         save = AsyncMock()
@@ -1732,7 +1725,7 @@ class TestRunChatStreamBackground:
             save,
         )
 
-        assert save.call_args.kwargs["error"] is None
+        assert save.call_args.kwargs["reply"].error is None
 
     async def test_comms_thinking_is_folded_into_the_persisted_tool_data(self, test_user) -> None:
         """Fold comms's plain-frame reasoning into tool_data the same way the executor's is, so a reload keeps it."""
@@ -1747,7 +1740,7 @@ class TestRunChatStreamBackground:
             save,
         )
 
-        assert save.call_args.kwargs["tool_data"]["tool_data"] == [
+        assert save.call_args.kwargs["reply"].tool_data["tool_data"] == [
             {
                 "tool_name": "tool_calls_data",
                 "tool_category": "reasoning",
@@ -1774,7 +1767,7 @@ class TestRunChatStreamBackground:
             save,
         )
 
-        [step] = save.call_args.kwargs["tool_data"]["tool_data"]
+        [step] = save.call_args.kwargs["reply"].tool_data["tool_data"]
         assert step["data"]["reasoning"] == "weighing it up"
 
     async def test_a_turn_that_only_thought_still_answers(self, test_user) -> None:
@@ -1791,8 +1784,8 @@ class TestRunChatStreamBackground:
             save,
         )
 
-        assert save.call_args.kwargs["complete_message"] == EMPTY_RESPONSE_FALLBACK
-        [step] = save.call_args.kwargs["tool_data"]["tool_data"]
+        assert save.call_args.kwargs["reply"].complete_message == EMPTY_RESPONSE_FALLBACK
+        [step] = save.call_args.kwargs["reply"].tool_data["tool_data"]
         assert step["tool_category"] == "reasoning"
 
     async def test_a_frame_with_no_reasoning_adds_no_thinking_entry(self, test_user) -> None:
@@ -1804,7 +1797,7 @@ class TestRunChatStreamBackground:
             save,
         )
 
-        assert save.call_args.kwargs["tool_data"]["tool_data"] == []
+        assert save.call_args.kwargs["reply"].tool_data["tool_data"] == []
 
     async def test_a_frame_the_processor_chokes_on_still_reaches_the_client(
         self, test_user
@@ -1839,8 +1832,8 @@ class TestRunChatStreamBackground:
         await self._drive([f"{frame}\n\n", "data: [DONE]\n\n"], sm, save)
 
         save.assert_awaited()
-        assert save.call_args.kwargs["error"] is None
-        assert save.call_args.kwargs["tool_data"]["tool_data"] == []
+        assert save.call_args.kwargs["reply"].error is None
+        assert save.call_args.kwargs["reply"].tool_data["tool_data"] == []
 
     async def test_a_parsed_data_frame_reaches_the_client_on_its_own_stream(
         self, test_user
@@ -1866,7 +1859,7 @@ class TestRunChatStreamBackground:
             save,
         )
 
-        entries = save.call_args.kwargs["tool_data"]["tool_data"]
+        entries = save.call_args.kwargs["reply"].tool_data["tool_data"]
         assert [e["data"] for e in entries if e["tool_name"] == "todo_progress"] == [
             {"executor": snapshot}
         ]
@@ -1941,7 +1934,7 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        assert save.call_args.kwargs["complete_message"] == "recovered"
+        assert save.call_args.kwargs["reply"].complete_message == "recovered"
         assert save.call_args.kwargs["body"] is existing_conv_body
         assert save.call_args.kwargs["user"] == test_user
         assert save.call_args.kwargs["conversation_id"] == "conv_existing_123"
@@ -2001,7 +1994,10 @@ class TestRunChatStreamBackground:
         }
 
     async def _run_turn(
-        self, user: AuthenticatedUser, *reply_pieces: str
+        self,
+        user: AuthenticatedUser,
+        *reply_pieces: str,
+        stream_manager: MagicMock | None = None,
     ) -> tuple[list[tuple[str, dict[str, Any]]], AsyncMock, MagicMock]:
         """Run one turn whose comms reply streams as reply_pieces; return the JSON frames published, the save and the capture.
 
@@ -2019,7 +2015,7 @@ class TestRunChatStreamBackground:
                 agent_update_event(AIMessage(id="m1", content="".join(reply_pieces))),
             ]
         )
-        sm = _make_stream_manager_mock()
+        sm = stream_manager or _make_stream_manager_mock()
         save = AsyncMock()
         with (
             _patch_stream_manager(sm),
@@ -2061,15 +2057,34 @@ class TestRunChatStreamBackground:
         order = [next(iter(frame)) for _, frame in frames]
         assert order.index("emoji_ack") < order.index("main_response_complete")
 
+    @pytest.mark.regression
+    async def test_a_reaction_acknowledging_a_hand_off_lands_before_the_work_finishes(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """The ack once waited out the executor, so the reaction arrived with the result, not the ask."""
+        published_before_the_wait: list[bool] = []
+        sm = _make_stream_manager_mock()
+
+        async def the_executor_wait(stream_id: str, timeout: float) -> bool:
+            published_before_the_wait.append(
+                any("emoji_ack" in call.args[1] for call in sm.publish_chunk.call_args_list)
+            )
+            return True
+
+        with patch("app.services.chat.stream.await_executor_done", new=the_executor_wait):
+            await self._run_turn(test_user, "REACT: 😎", stream_manager=sm)
+
+        assert published_before_the_wait == [True]
+
     async def test_a_react_turn_is_saved_and_counted_as_a_reaction_to_the_users_message(
         self, test_user: AuthenticatedUser
     ) -> None:
         _, save, capture = await self._run_turn(test_user, "REACT: 😎")
 
-        saved = save.await_args.kwargs
-        assert saved["complete_message"] == "😎"
-        assert saved["kind"] is MessageKind.EMOJI_ACK
-        assert saved["reacts_to_message_id"] == "umsg_1"
+        saved = save.await_args.kwargs["reply"]
+        assert saved.complete_message == "😎"
+        assert saved.kind is MessageKind.EMOJI_ACK
+        assert saved.reacts_to_message_id == "umsg_1"
         capture.assert_any_call(UserId(USER_ID), ChatTurnReacted(emoji="😎"))
 
     async def test_a_plain_reply_is_neither_folded_nor_counted_as_a_reaction(
@@ -2078,7 +2093,7 @@ class TestRunChatStreamBackground:
         frames, save, capture = await self._run_turn(test_user, "Booked your 9am flight.")
 
         assert not [frame for _, frame in frames if "emoji_ack" in frame]
-        assert save.await_args.kwargs["kind"] is MessageKind.TEXT
+        assert save.await_args.kwargs["reply"].kind is MessageKind.TEXT
         assert ChatTurnReacted not in [type(c.args[1]) for c in capture.call_args_list]
 
     @pytest.mark.regression
@@ -2103,7 +2118,10 @@ class TestRunChatStreamBackground:
         streamed = "".join(frame["response"] for _, frame in frames if "response" in frame)
         assert streamed == "and more"
         assert not [frame for _, frame in frames if "emoji_ack" in frame]
-        assert (save.await_args.kwargs["complete_message"], save.await_args.kwargs["kind"]) == (
+        assert (
+            save.await_args.kwargs["reply"].complete_message,
+            save.await_args.kwargs["reply"].kind,
+        ) == (
             "and more",
             MessageKind.TEXT,
         )
@@ -2118,7 +2136,7 @@ class TestRunChatStreamBackground:
 
         streamed = [frame["response"] for _, frame in frames if "response" in frame]
         assert "".join(streamed) == "Hello there."
-        assert save.await_args.kwargs["complete_message"] == "Hello there."
+        assert save.await_args.kwargs["reply"].complete_message == "Hello there."
 
     @pytest.mark.regression
     async def test_a_live_silence_is_never_streamed_and_the_turn_still_answers(
@@ -2129,7 +2147,7 @@ class TestRunChatStreamBackground:
 
         streamed = [frame["response"] for _, frame in frames if "response" in frame]
         assert streamed == [EMPTY_RESPONSE_FALLBACK]
-        assert save.await_args.kwargs["complete_message"] == EMPTY_RESPONSE_FALLBACK
+        assert save.await_args.kwargs["reply"].complete_message == EMPTY_RESPONSE_FALLBACK
 
 
 def _hist_count(name: str, labels: dict[str, str]) -> float:

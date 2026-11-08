@@ -13,7 +13,10 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
+from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.models.todo_models import TodoDocument
+from app.models.trigger_configs import CalendarEventStartingSoonConfig
+from app.models.trigger_gate_models import AuthoredGate, SystemGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
@@ -152,6 +155,65 @@ class TestRegisterSubscription:
         assert subscription.resolution is SubscriptionResolution.ACCOUNT
         assert subscription.composio_trigger_ids == []
         assert h.added == subscription
+
+    @pytest.mark.parametrize(
+        "gate", [SystemGate(preset=SystemGatePreset.INBOX_DESK), None], ids=["gated", "ungated"]
+    )
+    async def test_the_watch_is_stored_with_the_gate_it_was_given(
+        self, gate: SystemGate | None
+    ) -> None:
+        with _Harness(_todo(), []) as h:
+            subscription, _, _ = await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name=ACCOUNT_TRIGGER,
+                conditions=[],
+                action=SubscriptionAction.EXECUTE,
+                gate=gate,
+            )
+
+        assert h.added.gate == gate
+        assert subscription.gate == gate
+
+    async def test_a_watch_on_one_account_is_stored_on_that_account(self) -> None:
+        with _Harness(_todo(), []) as h:
+            await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name=ACCOUNT_TRIGGER,
+                conditions=[],
+                action=SubscriptionAction.EXECUTE,
+                account_id="acct_work",
+            )
+
+        assert h.added.account_id == "acct_work"
+
+    @pytest.mark.parametrize(
+        "action",
+        [SubscriptionAction.NOTIFY, SubscriptionAction.COMPLETE, SubscriptionAction.UNBLOCK],
+    )
+    async def test_a_gate_on_a_watch_that_starts_no_run_is_refused_before_composio(
+        self, action: SubscriptionAction
+    ) -> None:
+        with _Harness(_todo(), ["ti_9"]) as h:
+            with pytest.raises(SubscriptionError, match="a gate needs action execute"):
+                await register_subscription(
+                    todo_id=TODO_ID,
+                    user_id=USER_ID,
+                    trigger_name=INSTANCE_TRIGGER,
+                    conditions=[],
+                    action=action,
+                    gate=AuthoredGate(
+                        condition="the message asks me something", author=GateAuthor.GAIA
+                    ),
+                )
+
+        h.register.assert_not_awaited()
+        h.add.assert_not_awaited()
+        h.capture.assert_called_once_with(
+            UserId(USER_ID),
+            TodosSubscriptionFailed(trigger_name=INSTANCE_TRIGGER, reason="invalid_subscription"),
+        )
 
     async def test_a_new_watch_is_on_the_todos_timeline(self, activity: AsyncMock) -> None:
         with _Harness(_todo(), []):
@@ -725,7 +787,7 @@ class TestBuildTriggerConfig:
         config = build_trigger_config("calendar_event_starting_soon", {"minutes_before_start": 60})
 
         assert config.trigger_name == "calendar_event_starting_soon"
-        assert config.trigger_data is not None
+        assert isinstance(config.trigger_data, CalendarEventStartingSoonConfig)
         assert config.trigger_data.minutes_before_start == 60
 
     def test_absent_trigger_data_still_builds_a_valid_config(self) -> None:
@@ -737,7 +799,7 @@ class TestBuildTriggerConfig:
     def test_an_omitted_window_falls_back_to_the_trigger_default(self) -> None:
         config = build_trigger_config("calendar_event_starting_soon", None)
 
-        assert config.trigger_data is not None
+        assert isinstance(config.trigger_data, CalendarEventStartingSoonConfig)
         assert config.trigger_data.minutes_before_start == 10
 
 

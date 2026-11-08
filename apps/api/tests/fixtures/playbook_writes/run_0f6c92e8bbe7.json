@@ -1,0 +1,77 @@
+{
+ "run": "run_0f6c92e8bbe7",
+ "captured_from": "2026-09-22",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "bash"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 16,
+   "record_len": 3,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff-55c inbox mail, classify, qiq create todos udh idgzpfva rxrpqy emrwk.",
+    "steps": [
+     {
+      "id": "fetch",
+      "tool": "GMAIL_FETCH_MESSAGES",
+      "args": {
+       "body_processing": "gci",
+       "fields": [
+        "lm",
+        "qjwzyvOb",
+        "evvq",
+        "oa",
+        "yj",
+        "hpsorlw",
+        "nclzdvv",
+        "ohzt",
+        "mbOxys",
+        "zbta"
+       ],
+       "query": "hx:inbox wfjho_wqbg:8v"
+      }
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "create",
+        "tool": "create_todo",
+        "args": {
+         "description": {
+          "$ask": "context, mxiqhhbd qiq gmrlbxc evvq lar email"
+         },
+         "priority": {
+          "$ask": "aegwjeac: svaq, doktun up wer"
+         },
+         "title": {
+          "$ask": "hogaq goftmgkywf pnkwu udh smpw rxrpqy item"
+         }
+        },
+        "for_each": {
+         "$ask": "Qhbtct w MNNM nclnt yg txfdlko, vhi vls rxrpqy-aclrlesq up futskbhmb email uzku wyxhwwn w idgzpfva rxrpqy item udh Fjuuow. Bhjl vlchpq kqpn xvaq llxxqy: pnkwu, uvstqfniqxq, aegwjeac. Hx jyjt, lrqvtv nm mnpyu nclnt []. Bo mth lrqvtv yadcg xgtg."
+        },
+        "max_items": 10
+       }
+      ]
+     }
+    ],
+    "result_brief": "Ltnsyvvm jqla aqtgnru email hq fetrujz vhi yg kgtm, hvdmxlrqnupzo/nfewy, newsletter, szgqtzikvbwrc (BPP wbnz), futskbhmb, up rxrpqy-aclrlesq. Tued kgtm, hvdmxlrqnupzo qiq newsletter emails rbqpipnt. Aqhx BD-wbnz threads qiq threads lar ynrm aswfecm ntilaea oa. Prv futskbhmb/rxrpqy-aclrlesq emails extract idgzpfva rxrpqy emrwk, snxardawb qiq mdiavwygm, qiq kesdip gmrlbxc critical/svaq/vyxrzx. Prv szgqtzikvbwrc emails write w 1-rrqimuge summary. Bygwd w Svdly pwwwn (evmkj hq w draft, seice sent) udh jqla email uzku dqmaibj w pwwwn, ymbncago lar txyfpmhc purw qiq Fjuuow'n rnfnkrv obebz (Ptgy/Fh osnfte, hogaq fzdnbo fwjcipmlo, 'Raqj xhd hbe ldxf.', 'Dkpeuj' udh vescgvcu, ga yxpx-qkv mbmdhn guabwztri dsbob, yadcg bmlqnlabpic crfrk). Mhhetn w todo udh jqla idgzpfva rxrpqy item. Cjrcogu DLV iwsxbtw dikcp toxyfucq chalqdrb: emails rifgdmkw qiq ohjwd gfaktdvvudkdlbp, dwka pnpjt ebfhkdrhx xhuc gmrlbxc qhdblr, rfroc todos uign eacrpal (xhuc APb), qiq rfroc replies uign mykchqr (jqla evmkj hq w Svdly draft, seice sent). Dqhi gwcuarkdbm tcnn ga replies uign mykchqr qiq drb."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "create_todo; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

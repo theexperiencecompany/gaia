@@ -1,7 +1,7 @@
 "use client";
 
 import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@icons";
-import { formatDate, formatPlanName } from "@shared/utils";
+import { formatPlanName, rateLimitResetInfo } from "@shared/utils";
 import type { ReactNode } from "react";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -31,20 +31,7 @@ function minutesUntil(resetTime: string): number {
 }
 
 function resetsIn(resetTime: string): string {
-  const minutes = minutesUntil(resetTime);
-
-  // A monthly pause is days away: name the day instead of counting hours.
-  if (minutes > MINUTES_PER_DAY) {
-    return `Resets on ${formatDate(resetTime)}.`;
-  }
-  if (minutes > 60) {
-    const hours = Math.ceil(minutes / 60);
-    return `Resets in ${hours} hour${hours > 1 ? "s" : ""}.`;
-  }
-  if (minutes > 0) {
-    return `Resets in ${minutes} minute${minutes > 1 ? "s" : ""}.`;
-  }
-  return "Resets very soon.";
+  return `${rateLimitResetInfo(resetTime)?.label}.`;
 }
 
 function buildRateLimitMessage({

@@ -5,9 +5,26 @@ interface PendingCheckout {
   ts: number;
 }
 
+const listeners = new Set<() => void>();
+
+const notifyListeners = (): void => {
+  for (const listener of listeners) listener();
+};
+
+/** Subscribe to this tab's writes and clears; returns the unsubscribe. */
+export const subscribePendingCheckout = (
+  listener: () => void,
+): (() => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+
 export const writePendingCheckout = (planId: string): void => {
   const value: PendingCheckout = { planId, ts: Date.now() };
   localStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(value));
+  notifyListeners();
 };
 
 /**
@@ -34,4 +51,5 @@ export const readPendingCheckout = (): string | null => {
 
 export const clearPendingCheckout = (): void => {
   localStorage.removeItem(PENDING_CHECKOUT_KEY);
+  notifyListeners();
 };

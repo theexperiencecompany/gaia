@@ -511,7 +511,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_svLPDmjcTVMX",
             toolkit="GMAIL",
-            toolkit_version="20260107_00",
+            toolkit_version="20261105_00",
         ),
         destructive_tools=GMAIL_DESTRUCTIVE_TOOLS,
         associated_triggers=[
@@ -585,7 +585,15 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "GMAIL_GET_CONTACT_LIST",
             ],
             extra_initial_tools=["query_json", "grep"],
-            exclude_tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
+            exclude_tools=[
+                "GMAIL_FETCH_EMAILS",
+                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+                # Filters need gmail.settings.basic, which the Gmail connection does not grant: 403.
+                "GMAIL_CREATE_FILTER",
+                "GMAIL_DELETE_FILTER",
+                "GMAIL_GET_FILTER",
+                "GMAIL_LIST_FILTERS",
+            ],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
         metadata_config=ProviderMetadataConfig(
@@ -2097,8 +2105,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             domain="library documentation and code examples",
             capabilities="resolving library identifiers, fetching up-to-date documentation, providing version-specific code examples, eliminating hallucinated APIs",
             use_cases="getting accurate documentation, finding code examples, checking API references, learning about libraries",
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
             system_prompt=CONTEXT7_AGENT_SYSTEM_PROMPT,
             memory_prompt=CONTEXT7_MEMORY_PROMPT,
         ),
@@ -2128,8 +2134,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             capabilities="performing comprehensive web searches, providing contextually relevant results with citations, filtering by recency",
             use_cases="web searches, research, finding current information, fact-checking, getting cited answers",
             system_prompt=PERPLEXITY_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
             memory_prompt=PERPLEXITY_MEMORY_PROMPT,
         ),
         content=PERPLEXITY_CONTENT,
@@ -2158,8 +2162,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             capabilities="sending emails, receiving emails, managing inboxes, email automation, programmatic email handling",
             use_cases="sending automated emails, managing email workflows, email integration, inbox management",
             system_prompt=AGENTMAIL_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
             memory_prompt=AGENTMAIL_MEMORY_PROMPT,
         ),
         content=AGENTMAIL_CONTENT,
@@ -2188,7 +2190,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             capabilities="tracking events, analyzing funnels, running A/B tests, managing feature flags, querying session recordings, creating dashboards",
             use_cases="product analytics, user behavior analysis, A/B testing, feature flag management, session replay analysis",
             system_prompt=POSTHOG_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=False,
             # PostHog's MCP runs in CLI mode: one `exec` tool wraps every
             # PostHog tool, reached via search/info/schema/call subcommands.
             auto_bind_tools=["exec"],

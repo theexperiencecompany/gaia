@@ -10,6 +10,7 @@ from pymongo.errors import OperationFailure
 
 from app.constants.auth import InstanceRole
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
+from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.constants.payments import CLAIMED_STATUS
 from app.db.mongodb.collections import get_async_collection
@@ -92,7 +93,6 @@ async def create_all_indexes() -> None:
             create_project_indexes(),
             create_note_indexes(),
             create_file_indexes(),
-            create_mail_indexes(),
             create_calendar_indexes(),
             create_blog_indexes(),
             create_notification_indexes(),
@@ -124,6 +124,7 @@ async def create_all_indexes() -> None:
             create_llm_call_indexes(),
             create_playbook_indexes(),
             create_tool_output_shapes_indexes(),
+            create_email_verdict_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -136,7 +137,6 @@ async def create_all_indexes() -> None:
             "projects",
             "notes",
             "files",
-            "mail",
             "calendar",
             "blog",
             "notifications",
@@ -165,6 +165,7 @@ async def create_all_indexes() -> None:
             "llm_calls",
             "playbooks",
             "tool_output_shapes",
+            "email_verdicts",
         ]
 
         index_results = {}
@@ -470,25 +471,6 @@ async def create_file_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating file indexes", error=str(e), error_type=type(e).__name__
-        )
-        raise
-
-
-async def create_mail_indexes() -> None:
-    """Create indexes for mail collection."""
-    mail_collection = get_async_collection("mail")
-    try:
-        # Create all mail indexes concurrently
-        await asyncio.gather(
-            # Unique index for email IDs
-            mail_collection.create_index([("user_id", 1)]),
-            # For thread-based queries
-            mail_collection.create_index([("message_id", 1)]),
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.MONGO} Error creating mail indexes", error=str(e), error_type=type(e).__name__
         )
         raise
 
@@ -877,6 +859,31 @@ async def create_tool_output_shapes_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating tool_output_shapes indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_email_verdict_indexes() -> None:
+    """Create indexes for the email_verdicts collection.
+
+    Unique on (user_id, message_id), the key every read and keep uses; a TTL on
+    created_at drops a verdict once the sweep after its email can no longer need it.
+    """
+    email_verdicts_collection = get_async_collection("email_verdicts")
+    try:
+        await asyncio.gather(
+            email_verdicts_collection.create_index(
+                [("user_id", 1), ("message_id", 1)], unique=True
+            ),
+            email_verdicts_collection.create_index(
+                "created_at", expireAfterSeconds=EMAIL_VERDICT_TTL_SECONDS
+            ),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating email_verdicts indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

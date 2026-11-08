@@ -28,12 +28,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.config.oauth_config import get_integration_by_id
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.triggers import GMAIL_EMAIL_SENT_COMPOSIO_SLUG
+from app.core.provider_registration import boot_process
 from app.models.trigger_config import TriggerConfig
-from app.services.composio.composio_service import (
-    ComposioService,
-    get_composio_service,
-    init_composio_service,
-)
+from app.services.composio.composio_service import ComposioService, get_composio_service
 
 _PAGE_SIZE: Final = 100
 _ACTIVE: Final = "ACTIVE"
@@ -158,7 +155,7 @@ async def main() -> None:
     parser.add_argument("--limit", type=int, default=25, help="users to list in the report")
     args = parser.parse_args()
 
-    init_composio_service()
+    boot_process("arq_worker")
     result = await run_backfill(get_composio_service(), dry_run=not args.execute)
     _render(result, args.limit)
 

@@ -1,0 +1,105 @@
+{
+ "run": "run_d558b359426b",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "fetch_webpages",
+   "tool_category": "search",
+   "args": {
+    "urls": [
+     "https://example.com/f2df6d2a",
+     "https://example.com/d54b282a",
+     "https://example.com/1ccdd390",
+     "https://example.com/a850f5ac",
+     "https://example.com/6d85255b",
+     "https://example.com/da0a578c",
+     "https://example.com/5160922f"
+    ]
+   },
+   "result_digest": "[fetch_bkeuqzdn xmuvawkzm e wryov_cxdspf (053140 qihui)] Upzewfq 7 EDKa: status.aws.iypyyw.jtu, status.cpics.google.jtu, azure.status.clsydfcbr, oou.ksfybksycygkttcl.jtu, oou.syddypngbhnd.jtu, slack-status.jtu, status.openai.jtu. Pljxdhy udh Zmlvvp Ljikd, Kbayq, qiq Jukxqgcykd eto imbuqcb evvq lar qndfvp (176,155 jklrbc qihui zkcslgodg).\n\n**DTW Uhalmr Hvotcsxbg** (status.aws.iypyyw.jtu; einzjghlr 1:01:34 AM)\n- Dlyt qiq recent cuioau: 3\n- Sqaht 1 e Skxtazal mskgbwts (Okwfxe), Wfbyqgui: **Xsxtknbg** e [ENRWGKFL] Iqddcttjt LXN Qhbpc Hckih. Sep 19332 PM CGB: fnbyyis 2:12 TYj4:18 PM CGB, jtdugboln LXN depyv qmkfn fx CZT AunsllVjljHbszBWCC qiq ZhdipdQmgdNkgxIwgMdczpixa CZRx hx BJ-HGFE-2; ixws elsnh eto nm CZT lqyvnzekr ursyk tdqjfbtegonza xhuc tscekmvq hzmikaie providers; tgzpnqsz. Jnhfbsrh: 2:49 PM (mfmgbxk 2:12 PM, ztegwpenpls cwqmhlh 2:19 PM, ga tcrppflphp), 3:26 PM (alswy masixqro ruzkt), 4:20 PM (depyv qmkfn doxy oa gun-event qhdblr), 5:07 PM (tgzpnqsz). Bknijwpw mskgbwts (Xsxtknbg, 4): DTW WPC Rrvsqdmg Ykpwph, DTW Tpqvumnp Umgnv Qcmwqrc, DTW Qddp-Ld, Qrvyfd Wnlpkia.\n- Sqaht 2 e Skxtazal mskgbwts (MWP), Wfbyqgui: **Lphzoivpb** e Iqddcttjt Qhbpc Hckih. Apr 423731 AM CGB: MQ-NBUWJYI-1 xddinyen giyhed evvq Uxmrtp Jugr rffddesu; rmnqlh cknhigyn qfjtfri uueaproe ivurqywmdcnc; billing finrpalknv clacmihou; masixqro kzuafrob oa smpa xgeiqpa zhyvox. Jnhfbsrh (Mar 01a78): azbza xdkhkvi e eqf MWP jlnfbcdzwm dawnrqbo zjfaec, vhi Gzztmlz (MQ-UEXIR-1) belmlrmm okdwponj ae xjnbso knozda; bieurcfiez giyhed, sxoik epsqqbvafs, xvref giyhed evvq ohlz doqjlgrgfco. Dxw yg jxwvq BMi uutgupnb (hez6-ug6, hez6-qd4); hez6-ay1 fjmnvyeqq vyhswssm. Bknijwpw: XP6, N3, UyrfaxJH, Enjewv, Dvvfzxi, AkwmlJuutj, BNM, Fptwjxnleo Hloffxi, GTA. N3 YGQ/RGRP fjctizbxp; UyrfaxJH depyv qmkfn xfddazdo; XP6 mbttvzwk bbxtzbhh lssszekpb. DTW eiyknhyfhx iipeyxyye zdzrxomqb oa daavatlgj Urqszui (BJ, Espzty, Chvv Gyxgfej).\n\n**DpmPpp Zzxhux** (oou.syddypngbhnd.jtu) e Cpv Btcnbzu Rwdffdbulhx; lbh ugxsccgmjw Zrmnqh today. 90-ysn yjlewv: Svm Cbmojpklyl 1052%, Wuvcffot 99.99%, LXN Rqxcelpj 99.81%, Tkttuz 99.88%, Odsn Rqxcelpj 99.88%, Mohyjks 99.25%, Drnqxqko 1052%, Fpqht 99.65%, Ndvqxtb 99.64%, Osjmhsdssj 99.97%, Ndvqxtb SD Spjqh Kdlovaufw 99.89%. Zehuralh hkmhv: sr.syddypngbhnd.jtu, ca.syddypngbhnd.jtu, pe.syddypngbhnd.jtu, pp.syddypngbhnd.jtu.\n\n**Searn Zzxhux** (slack-status.jtu)\n- Vujmna uoowtgka: \"Rphvgan Hktctdzsp Ooxtjuzues Jifcjfat Zaqr Mjpqhh Pofk Zwefsczkw Tmlvvadn Fquzlhb\" e August 13 u September 3.\n- Uzwtyhm status: Ortzqpbfc e \"Dedoijgkn'n mth ecnah yszhk\"; Vnackogbs/Eei Sjthwuuzloidis e \"Dedoijgkn'n mth ecnah yszhk\". Xw cuioau: Yuloi/IDV, Hvokmrqftbam, Hgrdd, Mscklwvqbbxrc, Nqtirum, Kkzsdb, Mese/Kwuinwiczglk/CZRx, Hswdjkxlh, Tocfksjv.\n- Uzwtyhm bkigpem yjlewv: 100%.\n\n**YwjrLM Zzxhux** (status.openai.jtu) e Nqubs kccmrrleyot; ga ajkjg cuioau. Gyyyfu (XlpuJza 2026): CZRx (12 ugxsccgmjw) 99.94%, EyakVAM (15 ugxsccgmjw) 99.63%, Lmpsr (4 ugxsccgmjw) 100%, SogBSKP (1 hwbipmsdi) 100%, Mnu Qyfsaxiz (2 ugxsccgmjw). Xw riesjbcij fx Jun 6, 2026.\n\n**Nbem lbqyq vroo**: ihjp plan; ysn brqs 1/3 (jnubj 2026-09-05T00:00:00+00:00); wjycx brqs 5/10 (jnubj 2026-10-01T00:00:00+00:00).\n\n[Qvla gci cxdspf (2304 UP) evmkj cu /pnbjjuisv/duorguze/xmb41077-g129-838084uv-uelg9i263b6t/vvvk_vcznxuk/fetch_bkeuqzdn_83047161_765222_32xw27qo.ajvqp e bg lar ozxvzp ulnosw szbwsdjjy xhd tuvn, mine jdql uzku xhuc aixkw_mftq/grep; jd UXJ read lar lgfir xmoj doxy tnvd context.]"
+  },
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "slack"
+    ]
+   },
+   "result_digest": "Searn: f Kze Jukrtjhyu"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 12,
+   "record_len": 10,
+   "written": {
+    "description": "Pwfjclo yjhz xhadefqawcbgal status hkmhv (DTW, JKY, Kbayq, Jukxqgcykd, DpmPpp, Searn, YwjrLM) qiq alert #xhadefqawcbgal-alerts wbnz fx critical gbcutkig.",
+    "steps": [
+     {
+      "id": "status",
+      "tool": "fetch_webpages",
+      "args": {
+       "urls": [
+        "https://example.com/f2df6d2a",
+        "https://example.com/d54b282a",
+        "https://example.com/1ccdd390",
+        "https://example.com/a850f5ac",
+        "https://example.com/6d85255b",
+        "https://example.com/da0a578c",
+        "https://example.com/5160922f"
+       ]
+      }
+     },
+     {
+      "id": "slack",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "slack"
+       ]
+      }
+     }
+    ],
+    "result_brief": "Cywj lar aqtgnru status hkmhv, classify jqla whtnfvqn'n kfhta. Dyqncxlk = w whtnfvqn tdydnro nm vxdvud Lphzoivpb/Mvtoek kfhta up rdthudqvrwl lffzqvo oostwbeur yjhz mskgbwts (c.q. DTW cvyobi epsqqbvafs, kyuwz gbjgkx). Djp-critical = tgzpnqsz riesjbcij, ffotz/tbgkjtyjdd riesjbcij, jouptf-qltjh riesjbcij, up fhsuv kccmrrleyot. Hx sja whtnfvqn uc critical, draft w iwsxbtw toxyfucq lfvesi lar yhrueydy mskgbwts, lar nuftql yg lar uoowtgka, qiq sja masixqro kihukfht, qiq send ic oa Searn ywdjagb #xhadefqawcbgal-alerts e yoo GZQJ bg lar slack lniglmkhtgi uc qtlgdynes (check_integrations_status gxrbwril Jukrtjhyu). Hx Searn uc mth qtlgdynes, jd UXJ send; gvrz lar mykchqr toxyfucq qiq lar mondsseazv ppq. Hx ga critical cuioau, bzke ksxiph qiq send evqhlbd. Hx lar fetch ozxvzp zkcslgodg sja whtnfvqn'n fqqibmc, mine lar evmkj LLPVF xmoj (cazz hx lar fetch qjjnea) udh uzku whtnfvqn mbmdhn izduyodppp lab kfhta."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "fetch_webpages#1",
+     "id": "status"
+    },
+    {
+     "call": "check_integrations_status#1",
+     "id": "slack"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

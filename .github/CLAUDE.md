@@ -168,7 +168,7 @@ Four layers, from cheap to precise, all decided in the one `detect` job:
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
    scan), nothing (no relevant changes → skip & pass), or one path per line.
    With `--task`, the paths are the ones nx matched to that task's inputs
-   (`detect`'s `task_files`; ci:local passes the same), so a check is never
+   (`detect`'s `task-files` artifact, read through the `task-files` composite as `$TASK_FILES_PATH`; ci:local writes the same file), so a check is never
    handed a file outside what it reads, and `__FULL__` when nx reached the
    task through its config or the CI harness.
    The base is `detect`'s `base_ref`: the PR's real parent, or on a merge
@@ -216,7 +216,9 @@ native lanes on both the GitHub runners and a Mac, and removed. `mise ci:local`
 is the one local gate; locally, run test files with `mise test:one`, the
 real-infra tier with `mise test:python:real` and the browser stack with
 `mise test:python:browser`. The browser slice (`engines: true` in
-`test-slices.json`) needs Chromium and an Obscura build. In CI the engine
+`test-slices.json`) needs Chromium and an Obscura build, and on Linux the
+Fortress release the gaia image pins (`FORTRESS_BIN`), which only Fortress's own
+identity test launches. In CI the engine
 slices run as their own job, `test-python-engines` (test-python's steps by YAML
 alias), which needs `obscura-bin`: that job builds Obscura through
 `.github/actions/build-obscura` (the composite obscura-compat uses, one GHA cache

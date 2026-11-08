@@ -218,9 +218,10 @@ cmd_slice() {
 cmd_shared_suite() {
   cd "$REPO_ROOT/apps/api"
   # libs/ has no pytest config of its own: -c gives the suite apps/api's
-  # markers, --strict-markers, timeout and warning filters.
+  # markers, --strict-markers, timeout and warning filters. The catalog file is
+  # the ci:analytics-contract check, whose inputs include every emitter source.
   uv run --frozen pytest -c pytest.ini ../../libs/shared/py/tests \
-    --tb=short -q
+    --ignore=../../libs/shared/py/tests/test_analytics_catalog.py --tb=short -q
   ci_ok "gaia-shared tests: OK"
 }
 
@@ -245,7 +246,9 @@ cmd_flake_gate() {
   # push that still fails the lane (--fail-on-flaky, exit 7), since a human is
   # there to stabilise it. In the merge queue and on master it warns, because
   # failing costs a whole group run and ejects a PR that just proved itself.
-  local flaky=(--reruns 1) rc out
+  # --rerun-show-tracebacks prints each first attempt's failure: without it only the
+  # rerun's is shown, and a rerun that fails differently hides why the test failed.
+  local flaky=(--reruns 1 --rerun-show-tracebacks) rc out
   case "${GITHUB_EVENT_NAME:-}" in
     merge_group | push) ;;
     *) flaky+=(--fail-on-flaky) ;;

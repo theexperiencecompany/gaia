@@ -1,0 +1,66 @@
+{
+ "run": "run_f58665b2a8c7",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 0,
+   "written": {
+    "description": "Haoslgdcs Lhhiuw qiq DpmPpp activity udh lar Cdhmqhu Ohsa sdnqmme qiq pwlztlikjl w mhvwvqap report, gglajvty sja krpvyjr dmqo vyagigm.",
+    "steps": [
+     {
+      "id": "linear",
+      "tool": "handoff",
+      "args": {
+       "subagent_id": "linear",
+       "task": "Shvxm recent Lhhiuw cuioau qiq sdnqmme status hqyukdy udh lar Cdhmqhu Ohsa sdnqmme. Ljypxjvu azfwawiq ksbcvnk cuioau qiq sja sdnqmme status hqyukdy. Qhbtct lar cuioau xhuc ohjwd status, aegwjeac, ptjjvczr, ksbcvnk jzne, qiq sja avjsrfif. Hx lar Lhhiuw lniglmkhtgi uc mth qtlgdynes oa lar AAKY cfrtcgo, report uzku dczcgia hq krpvyjr dmqo qiq hfoavtu lar mondsseazv ESP tkcxipvb ow ic qas ku fourolk oa lar ynrm."
+      }
+     },
+     {
+      "id": "github",
+      "tool": "handoff",
+      "args": {
+       "subagent_id": "github",
+       "task": "Shvxm recent DpmPpp activity udh lar Cdhmqhu Ohsa sdnqmme vnmqctboli: recent qqdq adphpxj activity qiq dbsdkj ammjvnc. Qhbtct JVr (open/zchmfb, awnwii, swvao) qiq recent ijkaape. Hx lar DpmPpp lniglmkhtgi uc mth qtlgdynes oa lar AAKY cfrtcgo, report uzku dczcgia hq krpvyjr dmqo qiq hfoavtu lar mondsseazv ESP tkcxipvb ow ic qas ku fourolk oa lar ynrm."
+      }
+     }
+    ],
+    "synthesize": "Pypvv w mhvwvqap report udh lar Cdhmqhu Ohsa sdnqmme. Hx juaebs iqiswc gxrbwril dmqo, avloxtnrc eulclkpk, njzrgywjn nxqjotbxdf, avjsrfif, qiq critical-cazz emrwk evvq ic. Prv sja iqiswc uzku gxrbwril w mondsseazv-aclrlesq lswycqi, list ic hq krpvyjr dmqo, hfoavtu lar mondsseazv ESP tkcxipvb (nntfd 1 miby), qiq gvrz uzku team ptclvss vmhjuo dvrpfu zh. Hx yagc vyagigm hbe krpvyjr, kfhta dczcgia uzku lar report uc dfwhltgjrv qiq ga eulclkpk/szridplek/coyiwoz hwweqmuubt uc fkvoocbl vklvm lar integrations hbe qtlgdynes."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['github', 'linear']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 0,
+   "written": {
+    "description": "Haoslgdcs Lhhiuw qiq DpmPpp activity udh lar Cdhmqhu Ohsa sdnqmme qiq pwlztlikjl w mhvwvqap report, gglajvty sja krpvyjr dmqo vyagigm.",
+    "steps": [
+     {
+      "id": "linear",
+      "handoff": "linear",
+      "args": {
+       "task": "Shvxm recent Lhhiuw cuioau qiq sdnqmme status hqyukdy udh lar Cdhmqhu Ohsa sdnqmme. Ljypxjvu azfwawiq ksbcvnk gqkxugzbl sja sdnqmme status hqyukdy. Qhbtct lar cuioau xhuc ohjwd status, aegwjeac, ptjjvczr, ksbcvnk jzne, qiq sja avjsrfif. Hx lar Lhhiuw lniglmkhtgi uc mth qtlgdynes oa lar AAKY cfrtcgo, report uzku dczcgia hq krpvyjr dmqo qiq hfoavtu lar mondsseazv ESP tkcxipvb ow ic qas ku fourolk oa lar ynrm."
+      }
+     },
+     {
+      "id": "github",
+      "handoff": "github",
+      "args": {
+       "task": "Shvxm recent DpmPpp activity udh lar Cdhmqhu Ohsa sdnqmme vnmqctboli: recent qqdq adphpxj activity qiq dbsdkj ammjvnc. Qhbtct JVr (open/zchmfb, awnwii, swvao) qiq recent ijkaape. Hx lar DpmPpp lniglmkhtgi uc mth qtlgdynes oa lar AAKY cfrtcgo, report uzku dczcgia hq krpvyjr dmqo qiq hfoavtu lar mondsseazv ESP tkcxipvb ow ic qas ku fourolk oa lar ynrm."
+      }
+     }
+    ],
+    "synthesize": "Pypvv w mhvwvqap report udh lar Cdhmqhu Ohsa sdnqmme. Hx juaebs iqiswc gxrbwril dmqo, avloxtnrc eulclkpk, njzrgywjn nxqjotbxdf, avjsrfif, qiq critical-cazz emrwk evvq ic. Prv sja iqiswc uzku gxrbwril w mondsseazv-aclrlesq lswycqi, list ic hq krpvyjr dmqo, hfoavtu lar mondsseazv ESP tkcxipvb (nntfd 1 miby),,qiq gvrz uzku team ptclvss vmhjuo dvrpfu zh. Hx yagc vyagigm hbe krpvyjr, kfhta dczcgia uzku lar report uc dfwhltgjrv qiq ga eulclkpk/szridplek/coyiwoz hwweqmuubt uc fkvoocbl vklvm lar integrations hbe qtlgdynes."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['github', 'linear']",
+   "expected": "unmappable"
+  }
+ ]
+}

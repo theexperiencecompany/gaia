@@ -18,7 +18,7 @@ from app.services.agent_lab.agents_home import (
     write_file_step,
 )
 from app.services.agent_lab.lab_runs import run_dir
-from app.services.sandbox.execute_token import mint_execute_token
+from app.services.sandbox.execute_token import ExecuteGrant, mint_execute_token
 from app.services.sandbox.local_sandbox import LocalDockerSandbox
 from app.utils.errors import AppError
 
@@ -59,9 +59,7 @@ def lab_events_url(sbx: object) -> str:
 def mint_lab_hooks_token(user_id: str, run_id: str) -> str:
     """Per-run hooks token; empty tool scope keeps it off /sandbox/execute."""
     return mint_execute_token(
-        user_id,
-        run_id,
-        scoped_tool_names=[],
+        ExecuteGrant(user_id=user_id, run_id=run_id, scoped_tool_names=[]),
         ttl_seconds=SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS,
     )
 

@@ -56,12 +56,14 @@ from app.helpers.lifespan_helpers import (
 )
 from app.services.blob_store import ensure_blob_store_ready
 from app.services.composio.composio_service import init_composio_service
+from app.services.composio.custom_tools.fetched_mail_buckets import install_fetched_mail_bucketer
 from app.services.composio.instance_toolkits import load_instance_toolkits
 from app.services.delivery_alerts.slack import init_delivery_alerts_slack
 from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.sandbox.pool import init_sandbox_pool
 from app.services.startup_validation import validate_startup_requirements
 from app.services.storage.bootstrap import init_juicefs_mount
+from app.services.todos.desk_mail_buckets import desk_bucketed_views
 from app.services.tools.tools_warmup import warmup_tools_cache
 from app.services.workspace_sync import init_system_subtree, resync_stale_user_workspaces
 from app.utils.concurrency import capture_running_loop
@@ -185,6 +187,18 @@ def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
     log.info(f"{LogTag.STARTUP} All lazy providers registered successfully for", context=context)
 
 
+def boot_process(context: Literal["main_app", "arq_worker"]) -> None:
+    """Capture the running loop, install the desk mail bucketer, register the lazy providers: any process's boot.
+
+    The loop is captured first, on the loop the async clients are built on, so a
+    worker thread (a sync Composio custom tool) dispatches back onto it instead of
+    stranding a Motor or Redis client on a fresh loop.
+    """
+    capture_running_loop()
+    install_fetched_mail_bucketer(desk_bucketed_views)
+    register_lazy_providers(context)
+
+
 async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     """Run the unified startup flow for FastAPI and the ARQ worker.
 
@@ -196,17 +210,12 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # docker sets it via env, but native dev does not — leaving it "unknown".
     settings.WORKER_TYPE = context
 
-    # Record this loop before any async client is built on it, so worker threads
-    # (sync Composio custom tools) can dispatch coroutines back onto the loop the
-    # Motor/Redis clients are bound to instead of spinning a fresh one.
-    capture_running_loop()
+    log.info(f"{LogTag.STARTUP} Starting with unified provider system...", context=context)
+
+    boot_process(context)
 
     # Before anything serves: a blob volume or bucket that cannot take writes stops the boot.
     await ensure_blob_store_ready()
-
-    log.info(f"{LogTag.STARTUP} Starting with unified provider system...", context=context)
-
-    register_lazy_providers(context)
 
     # In development and in the ARQ worker these initialize during startup;
     # in production FastAPI they're scheduled to initialize in the background.

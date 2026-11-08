@@ -13,7 +13,7 @@ from app.constants.log_tags import LogTag
 from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from app.db.chroma.public_integrations_store import remove_public_integration
 from app.db.postgresql import get_db_session
-from app.db.redis import delete_cache, delete_cache_by_pattern
+from app.db.redis import delete_cache_by_pattern
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.integration_helpers import dedup_server_url_key
@@ -37,12 +37,11 @@ from app.services.integrations.user_integrations import (
     invalidate_user_integration_caches,
     remove_user_integration,
 )
-from app.services.mcp.mcp_client import (
-    DCRNotSupportedError,
-    DCRRegistrationError,
-    MCPClient,
-)
+from app.services.mcp.mcp_client import MCPClient, drop_local_sessions
+from app.services.mcp.mcp_errors import DCRNotSupportedError, DCRRegistrationError
+from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.services.mcp.mcp_tools_service import invalidate_mcp_tools_cache
 from app.utils.favicon_utils import fetch_favicon_from_url
 from app.utils.mcp_oauth_utils import OAuthDiscoveryError, OAuthSecurityError
 from shared.py.wide_events import log
@@ -249,6 +248,9 @@ async def _delete_owned_integration(doc: Integration, user_id: str, integration_
                 error_type=type(e).__name__,
             )
 
+    # Live sessions outlive the rows above and would keep forcing the deleted server's tool-name prefix.
+    await drop_local_sessions(integration_id, affected_user_ids)
+
     try:
         async with get_db_session() as session:
             await session.execute(
@@ -265,12 +267,13 @@ async def _delete_owned_integration(doc: Integration, user_id: str, integration_
         )
 
     try:
-        await delete_cache("mcp:tools:all")
+        await invalidate_mcp_tools_cache()
     except Exception as e:
-        log.debug(
-            f"{LogTag.INTEGRATION} Cache deletion for mcp:tools:all failed",
+        log.warning(
+            f"{LogTag.INTEGRATION} Failed to invalidate the MCP tools cache",
             error=str(e),
             error_type=type(e).__name__,
+            integration_id=integration_id,
         )
 
     try:
@@ -368,7 +371,7 @@ async def create_and_connect_custom_integration(
     # Probe for auth requirements
     probe_result: McpProbeResult = await _probe_connection_safely(mcp_client, request.server_url)
     if probe_result.get("error"):
-        return integration, {"status": "failed", "error": probe_result["error"]}
+        return integration, _connect_failed(integration_id, probe_result["error"])
 
     if probe_result.get("requires_auth"):
         await mcp_client.update_integration_auth_status(
@@ -413,10 +416,9 @@ async def _connect_with_bearer_token(
             "tools_count": len(tools) if tools else 0,
         }
     except Exception as e:
-        return await _get_integration(integration_id), {
-            "status": "failed",
-            "error": str(e),
-        }
+        return await _get_integration(integration_id), _connect_failed(
+            integration_id, str(e), type(e).__name__
+        )
 
 
 async def _connect_without_auth(
@@ -435,7 +437,21 @@ async def _connect_without_auth(
         )
         return integration, await _build_oauth_result(mcp_client, integration.integration_id)
     except Exception as e:
-        return integration, {"status": "failed", "error": str(e)}
+        return integration, _connect_failed(integration.integration_id, str(e), type(e).__name__)
+
+
+def _connect_failed(
+    integration_id: str, error: str, error_type: str | None = None
+) -> CustomConnectionResult:
+    """Warn a custom server's connect failure and answer it to its owner, who added that server."""
+    log.warning(
+        f"{LogTag.INTEGRATION} Custom integration connect failed",
+        error=error,
+        error_type=error_type,
+        integration_id=integration_id,
+    )
+    log.set(integration={"id": integration_id, "status": "error"})
+    return {"status": "failed", "error": error}
 
 
 async def _get_integration(integration_id: str) -> Integration | None:
@@ -446,7 +462,8 @@ async def _get_integration(integration_id: str) -> Integration | None:
 async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> CustomConnectionResult:
     """Build OAuth redirect result."""
     try:
-        auth_url = await mcp_client.build_oauth_auth_url(
+        auth_url = await build_oauth_auth_url(
+            mcp_client.token_store,
             integration_id=integration_id,
             redirect_uri=get_mcp_oauth_redirect_uri(),
             redirect_path="/integrations",

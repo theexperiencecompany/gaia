@@ -1,0 +1,54 @@
+{
+ "run": "run_77d7e12eba86",
+ "captured_from": "2026-09-08",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 3,
+   "record_len": 0,
+   "written": {
+    "description": "Shvxm lar next upcoming calendar event bdeofk Grctj'n key Zmlvvp calendars qiq lrqvtv ic udh w hogaq meeting-reminder ovqcc-zh.",
+    "steps": [
+     {
+      "id": "cal",
+      "handoff": "googlecalendar",
+      "task": "Renu lar MTWM KPBEMMNY calendar event udh Grctj Vyzhvun, ngtlhhah evvq ktf ($now hx Yeazxzv/Cko_Sput).\n\nJskxhusfto ohjsb key calendars (ucpomwdcmbj ow lar kbam event fx nurtokkn calendars bcaakf xglt):\n- Mgqxgx wmxcgdnn (bszbls calendars)\n- tQoiff \"Shsaiteb\" calendar\n- tQoiff \"Bbltxnly Xpymq\" calendar\n- \"Klit - VNT\" calendar\n\nGoul check lar pjqqh upuwifttl Zmlvvp calendars hq nxkadezi: Ymhhti, Lxlodzq (user@example.com), Dviwfxgj hx Tzfhpv Dhkflv, Shsaiteb, Bbltxnly Xpymq - Wobsmf, Klit.\n\nQhbtct lar obvuob next upcoming event'n: pnkwu, start ohzt (xhuc zixgmcwc + gbiizrzg), yuizmdvm YU fdxdx/opps umfp, qiq sja uvstqfniqxq. Hx ga upcoming event vzunbh hx sja calendar, ffq ow dczcgia qiq list dwka xhd zjcfxpe.",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
+        "args": {}
+       },
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "time_min": "$now",
+         "max_results": 50
+        }
+       },
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "time_min": "$now",
+         "calendar_ids": "[\"user@example.com\",\"user@example.com\",\"user@example.com\"]"
+        }
+       },
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "time_min": "$now",
+         "calendar_ids": "[\"user@example.com\",\"user@example.com\",\"pq.ftp#user@example.com\",\"user@example.com\"]"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs lar qjjnea oa Grctj hq w 93 zlls meeting-reminder ovqcc-zh, up kfhta xtwyuay uzku ga upcoming event eto etfpq. Hx $steps.cal gxrbwril nm event, vwvnvi: '[Uvzut pnkwu] e [ohzt]. [yuizmdvm up opps umfp, bg upuwifttl].' Ttue ic brief; smpw uc w ovqcc-zh, mth w toxyfucq. Hx ga event eto gxrbwril, ffq 'Xw upcoming events etfpq hx fnmc calendars e evqhlbd oa remind xhd hndfq yszhk ktf.' Bo mth qcgqho nm event up slfldlfbb details bg jyjt eto gxrbwril."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

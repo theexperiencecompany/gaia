@@ -96,6 +96,8 @@ export type WorkflowDraftData = {
    * rather than falling back to every integration the user has connected.
    */
   integration_ids?: string[] | null;
+  /** Which events are worth a run, as GAIA drafted it; null when every event is */
+  runs_only_when?: string | null;
 };
 
 // Define workflow created data for when a workflow is automatically created

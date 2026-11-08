@@ -374,7 +374,6 @@ _INDEX_CREATORS = [
     "create_project_indexes",
     "create_note_indexes",
     "create_file_indexes",
-    "create_mail_indexes",
     "create_calendar_indexes",
     "create_blog_indexes",
     "create_notification_indexes",
@@ -403,6 +402,7 @@ _INDEX_CREATORS = [
     "create_playbook_indexes",
     "create_provider_credential_indexes",
     "create_tool_output_shapes_indexes",
+    "create_email_verdict_indexes",
 ]
 
 

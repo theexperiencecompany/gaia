@@ -17,6 +17,7 @@ fails hard in production).
 import asyncio
 from collections.abc import Awaitable
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, NamedTuple
 
 from redis.exceptions import RedisError
@@ -86,18 +87,57 @@ BUDGET_WRAPUP_NOTICE = (
 )
 
 
+class BudgetWall(StrEnum):
+    """Which budget wall stopped a run; the value is the rate-limit card's feature."""
+
+    DAILY_USAGE = "daily_usage"
+    MONTHLY_USAGE = "monthly_usage"
+    TASK_SIZE = "task_size"
+
+    @property
+    def limit_window(self) -> LimitWindow:
+        """The rate_limit:hit window this wall reports."""
+        return _LIMIT_WINDOWS[self]
+
+    def stop_text(self, plan_type: PlanType | None, reset_at: datetime | None) -> str:
+        """Return this wall's user-facing stop text, worded for the plan; the monthly one names its reset day."""
+        if self is BudgetWall.MONTHLY_USAGE:
+            if reset_at is None:
+                raise ValueError("The monthly wall's stop text needs the day it resets.")
+            return monthly_budget_stop_text(reset_at)
+        free_text, paid_text = _STOP_TEXTS[self]
+        return free_text if plan_type == PlanType.FREE else paid_text
+
+
+_STOP_TEXTS: dict[BudgetWall, tuple[str, str]] = {
+    BudgetWall.DAILY_USAGE: (DAILY_BUDGET_STOP_FREE, DAILY_BUDGET_STOP_PRO),
+    BudgetWall.TASK_SIZE: (REQUEST_CEILING_STOP_FREE, REQUEST_CEILING_STOP_PRO),
+}
+
+_LIMIT_WINDOWS: dict[BudgetWall, LimitWindow] = {
+    BudgetWall.DAILY_USAGE: "day",
+    BudgetWall.MONTHLY_USAGE: "month",
+    BudgetWall.TASK_SIZE: "request",
+}
+
+
 class BudgetCheck(NamedTuple):
-    """Stop text (if bound) plus the daily spend read used to decide it.
+    """The wall that binds (if any) plus the daily spend read used to decide it.
 
     Lets callers test the wrap-up threshold without a second Redis round trip.
     """
 
-    stop_reason: str | None
+    wall: BudgetWall | None
     spent_usd: float | None
     plan_type: PlanType | None
     month_spent_usd: float | None = None
-    #: Which wall set stop_reason; None while nothing binds.
-    wall: LimitWindow | None = None
+    #: When the bound wall lifts; None while nothing binds and for the task-size ceiling.
+    reset_at: datetime | None = None
+
+    @property
+    def stop_reason(self) -> str | None:
+        """The user-facing stop text for the bound wall, worded for the plan."""
+        return self.wall.stop_text(self.plan_type, self.reset_at) if self.wall is not None else None
 
 
 async def monthly_allowance_window(user_id: str) -> tuple[str, datetime]:
@@ -252,7 +292,7 @@ async def get_budget_stop_reason(
     plan_type: PlanType | None,
     root_request_id: str | None,
 ) -> BudgetCheck:
-    """Return the budget read: stop_reason is the user-facing stop text when a wall binds, else None.
+    """Return the budget read: wall names the limit that binds, else None.
 
     Self-sufficient: derives plan_type from the Redis-cached tier when never
     stamped onto the configurable. Checks a daily cost budget and a
@@ -307,8 +347,8 @@ async def get_budget_stop_reason(
 
     bound = await _bound_wall(user_id, spent, month_spent, used, plan_type)
     if bound is not None:
-        stop, wall = bound
-        return BudgetCheck(stop, spent, plan_type, wall=wall)
+        wall, reset_at = bound
+        return BudgetCheck(wall, spent, plan_type, month_spent, reset_at)
     if root_request_id is None:
         log.warning(
             f"{LogTag.AGENT} Per-request ceiling skipped — missing root_request_id "
@@ -319,16 +359,15 @@ async def get_budget_stop_reason(
 
 async def _bound_wall(
     user_id: str, spent: float, month_spent: float, used: int | None, plan_type: PlanType
-) -> tuple[str, LimitWindow] | None:
-    """Return the stop text and window of the first wall that binds (day, month, then request)."""
-    is_free = plan_type == PlanType.FREE
+) -> tuple[BudgetWall, datetime | None] | None:
+    """Return the first wall that binds (day, month, then request) and when it lifts."""
     if is_daily_budget_exhausted(spent, plan_type):
-        return (DAILY_BUDGET_STOP_FREE if is_free else DAILY_BUDGET_STOP_PRO), "day"
+        return BudgetWall.DAILY_USAGE, get_reset_time(RateLimitPeriod.DAY)
     if is_monthly_budget_exhausted(month_spent, plan_type):
         _, reset = await monthly_allowance_window(user_id)
-        return monthly_budget_stop_text(reset), "month"
+        return BudgetWall.MONTHLY_USAGE, reset
     if used is not None and used >= get_per_request_token_ceiling(plan_type):
-        return (REQUEST_CEILING_STOP_FREE if is_free else REQUEST_CEILING_STOP_PRO), "request"
+        return BudgetWall.TASK_SIZE, None
     return None
 
 

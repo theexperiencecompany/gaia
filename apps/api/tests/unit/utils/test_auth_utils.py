@@ -15,6 +15,7 @@ from app.config.settings import settings
 from app.constants.auth import DEV_USER_HEADER, WOS_SESSION_COOKIE, InstanceRole
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.first_steps_models import FirstStepsState
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import OnboardingPhase, OnboardingSubdocument, UserDocument
 from app.utils import auth_utils
 from app.utils.auth_utils import (
@@ -793,6 +794,7 @@ _STAMP = datetime(2024, 5, 1, tzinfo=UTC)
 _SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
     ("OnboardingSubdocument", OnboardingSubdocument(focus="ops")),
     ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_STAMP)),
+    ("QuietHours", QuietHours(enabled=False, start_hour=23, end_hour=6)),
     ("FeatureFlag", {FeatureFlag.BROWSER_OBSCURA: True}),
     ("InstanceRole", InstanceRole.ADMIN),
     ("datetime", _STAMP),
@@ -818,7 +820,7 @@ def _sample_values() -> dict[str, object]:
 def _every_field_document() -> tuple[UserDocument, dict[str, object]]:
     """Return a document with a distinct non-default value in every declared field."""
     values = _sample_values()
-    return UserDocument(id="64abc123def4567890abcdef", **values), values
+    return UserDocument.model_validate({"id": "64abc123def4567890abcdef", **values}), values
 
 
 class TestBuildUserContext:

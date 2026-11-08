@@ -20,9 +20,7 @@ from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
-    INBOX_DESK_WATCH_WINDOW_SECONDS,
 )
-from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.todo_models import TodoDocument
 from app.services.todos.inbox_desk import INBOX_DESK_REF, provision_inbox_desk
 from app.utils.redis_utils import RedisPoolManager
@@ -69,11 +67,8 @@ async def test_connecting_gmail_twice_at_once_makes_one_armed_desk(
     assert desk.recurrence == INBOX_DESK_RECURRENCE
     assert desk.scheduled_at is not None
     assert before < desk.scheduled_at.replace(tzinfo=UTC) <= before + timedelta(days=1)
-    # The desk also watches the mailbox: one hourly mail-wake subscription, not two.
-    assert len(desk.trigger_subscriptions) == 1
-    (watch,) = desk.trigger_subscriptions
-    assert watch.trigger_name == GMAIL_NEW_MESSAGE_TRIGGER_NAME
-    assert watch.cooldown_seconds == INBOX_DESK_WATCH_WINDOW_SECONDS
+    # New mail never wakes the desk: it runs on its schedule, its thread todos watch their threads.
+    assert desk.trigger_subscriptions == []
     _offline_seams.assert_called_once()
 
 

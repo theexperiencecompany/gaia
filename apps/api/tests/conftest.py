@@ -362,6 +362,15 @@ def _no_captured_loop_carryover() -> Iterator[None]:
 
 
 @pytest.fixture
+def onboarding_finish_on_link() -> Iterator[AsyncMock]:
+    """Double the onboarding finish a new platform link runs, for link tests that double the user DB."""
+    with patch(
+        "app.services.platform_link_completion.complete_onboarding_on_platform_link", AsyncMock()
+    ) as finish:
+        yield finish
+
+
+@pytest.fixture
 async def fake_redis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
@@ -760,7 +769,7 @@ def core_tool_registry() -> Iterator[None]:
     registry = ToolRegistry()
     registry.setup()
     with patch(
-        "app.services.mcp.mcp_client.get_tool_registry",
+        "app.services.mcp.tool_naming.get_tool_registry",
         new_callable=AsyncMock,
         return_value=registry,
     ):

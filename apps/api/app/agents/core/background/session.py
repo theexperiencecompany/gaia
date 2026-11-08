@@ -306,9 +306,9 @@ def teardown_session(stream_id: str) -> None:
 
 # ── Executor lifecycle helpers ───────────────────────────────────────
 
-#: Streams whose waiter gave up on the executor, oldest first. Bounded because
-#: nothing else ever forgets a stream id; a finalize for one of these skips
-#: delivery instead of answering a run that was already closed as failed.
+#: Streams whose todo run gave up on the executor and stopped it, oldest first.
+#: Bounded because nothing else forgets a stream id; a finalize for one of these
+#: skips delivery, since the worker retries the todo and a late answer would double it.
 _ABANDONED_REMEMBERED = 1024
 _abandoned: deque[str] = deque(maxlen=_ABANDONED_REMEMBERED)
 
@@ -332,7 +332,7 @@ def signal_executor_done(
 
 
 def mark_executor_failed(stream_id: str, reason: str) -> None:
-    """Record that the executor failed without finishing (the waiter gave up).
+    """Record that the executor failed without finishing (a todo run gave up and stopped it).
 
     The stream is also marked abandoned, outside the session: the waiter tears
     the session down right after, and the executor's own finalize, whenever it

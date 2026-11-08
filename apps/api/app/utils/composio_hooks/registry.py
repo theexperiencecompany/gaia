@@ -26,8 +26,8 @@ from app.services.composio.account_scope import pin_connected_account
 from shared.py.wide_events import log
 
 # An after-hook returns the call's new `data`, which the registry wraps back in
-# the envelope; gmail_attachment_after_hook can pass a non-dict value through,
-# so the honest type is "whatever the payload is".
+# the envelope; a hook can pass a non-dict value through, so the honest type is
+# "whatever the payload is".
 AfterHookResponse = object
 BeforeHookFn = Callable[[str, str, ToolExecuteParams], ToolExecuteParams]
 AfterHookFn = Callable[[str, str, ToolExecutionResponse], AfterHookResponse]

@@ -21,6 +21,7 @@ __all__ = [
     "SettingsDesktopPreferenceChanged",
     "SettingsNotificationsToggled",
     "SettingsPreferencesChanged",
+    "SettingsQuietHoursUpdated",
 ]
 
 #: Which kind of scope a set of standing instructions covers; never the integration's own id.
@@ -39,6 +40,17 @@ class SettingsChatChannelPriorityUpdated(ServerEvent):
 
     first: Identifier
     count: int
+
+
+class SettingsQuietHoursUpdated(ServerEvent):
+    """A user changed their quiet hours: whether they are on and the local hours they span."""
+
+    event: ClassVar[str] = "settings:quiet_hours_updated"
+    budget_per_user_day: ClassVar[int] = 50
+
+    enabled: bool
+    start_hour: int
+    end_hour: int
 
 
 class SettingsNotificationsToggled(ServerEvent):

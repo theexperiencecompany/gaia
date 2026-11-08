@@ -1,11 +1,13 @@
 """Unit tests for app.services.mcp.oauth_callback.
 
-The MCPClient is the seam: every test hands the service a mock client and
-asserts what it did with it and what it handed back to the route.
+The MCPClient and the OAuth flow functions are the seam: every test hands the
+service a mock client, patches the flow, and asserts what it did with them and
+what it handed back to the route.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pymongo.errors import PyMongoError
@@ -34,13 +36,25 @@ REDIRECT_PATH = "/integrations"
 USER_ID = "507f1f77bcf86cd799439011"
 
 
-def _client(*, retry_url: str | None = None) -> MagicMock:
+def _client() -> MagicMock:
     client = MagicMock()
-    client.build_scope_retry_url = AsyncMock(return_value=retry_url)
-    client.handle_oauth_callback = AsyncMock()
     client.token_store = MagicMock()
     client.token_store.clear_excluded_scopes = AsyncMock()
     return client
+
+
+@pytest.fixture(autouse=True)
+def build_scope_retry_url() -> Iterator[AsyncMock]:
+    with patch(
+        f"{MODULE}.build_scope_retry_url", new_callable=AsyncMock, return_value=None
+    ) as mock:
+        yield mock
+
+
+@pytest.fixture(autouse=True)
+def handle_oauth_callback() -> Iterator[AsyncMock]:
+    with patch(f"{MODULE}.handle_oauth_callback", new_callable=AsyncMock) as mock:
+        yield mock
 
 
 async def _resolve(
@@ -57,29 +71,38 @@ async def _resolve(
 
 
 class TestResolveProviderError:
-    async def test_invalid_scope_with_a_retry_url_sends_the_browser_back_through_auth(self):
-        client = _client(retry_url="https://provider/authorize?scope=less")
+    async def test_invalid_scope_with_a_retry_url_sends_the_browser_back_through_auth(
+        self, build_scope_retry_url: AsyncMock
+    ):
+        client = _client()
+        build_scope_retry_url.return_value = "https://provider/authorize?scope=less"
 
         outcome = await _resolve(client, "invalid_scope", "scope user:org:read rejected")
 
         assert outcome == ScopeRetry(url="https://provider/authorize?scope=less")
-        client.build_scope_retry_url.assert_awaited_once_with(
-            INTEGRATION_ID, "scope user:org:read rejected", REDIRECT_URI, REDIRECT_PATH
+        build_scope_retry_url.assert_awaited_once_with(
+            client.token_store,
+            INTEGRATION_ID,
+            "scope user:org:read rejected",
+            REDIRECT_URI,
+            REDIRECT_PATH,
         )
         # The exclusions are what the retry relies on — they must survive it.
         client.token_store.clear_excluded_scopes.assert_not_awaited()
 
     async def test_invalid_scope_without_a_retry_url_falls_through_to_the_error(self):
-        client = _client(retry_url=None)
+        client = _client()
 
         outcome = await _resolve(client, "invalid_scope")
 
         assert outcome == ProviderError(code="invalid_scope")
         client.token_store.clear_excluded_scopes.assert_awaited_once_with(INTEGRATION_ID)
 
-    async def test_retry_build_failure_falls_through_and_is_recorded(self):
+    async def test_retry_build_failure_falls_through_and_is_recorded(
+        self, build_scope_retry_url: AsyncMock
+    ):
         client = _client()
-        client.build_scope_retry_url = AsyncMock(side_effect=RuntimeError("redis down"))
+        build_scope_retry_url.side_effect = RuntimeError("redis down")
 
         async with captured_wide_event() as event:
             outcome = await _resolve(client, "invalid_scope", "scope rejected")
@@ -133,13 +156,15 @@ class TestResolveProviderError:
     @pytest.mark.parametrize(
         "error", sorted(KNOWN_OAUTH_ERRORS - {"server_error", "invalid_scope"})
     )
-    async def test_known_provider_errors_pass_through_unchanged(self, error: str):
+    async def test_known_provider_errors_pass_through_unchanged(
+        self, error: str, build_scope_retry_url: AsyncMock
+    ):
         client = _client()
 
         outcome = await _resolve(client, error)
 
         assert outcome == ProviderError(code=error)
-        client.build_scope_retry_url.assert_not_awaited()
+        build_scope_retry_url.assert_not_awaited()
         client.token_store.clear_excluded_scopes.assert_awaited_once_with(INTEGRATION_ID)
 
     def test_the_known_error_set_is_the_oauth_spec_list(self):
@@ -153,13 +178,15 @@ class TestResolveProviderError:
             "temporarily_unavailable",
         } == KNOWN_OAUTH_ERRORS
 
-    async def test_unknown_provider_error_becomes_authorization_failed(self):
+    async def test_unknown_provider_error_becomes_authorization_failed(
+        self, build_scope_retry_url: AsyncMock
+    ):
         client = _client()
 
         outcome = await _resolve(client, "some_vendor_specific_code")
 
         assert outcome == ProviderError(code="authorization_failed")
-        client.build_scope_retry_url.assert_not_awaited()
+        build_scope_retry_url.assert_not_awaited()
 
     async def test_the_provider_error_is_recorded_on_the_wide_event(self):
         client = _client()
@@ -220,7 +247,9 @@ class TestCompleteOauth:
             redirect_uri=REDIRECT_URI,
         )
 
-    async def test_exchanges_the_code_with_the_client(self):
+    async def test_exchanges_the_code_with_the_clients_store_and_connect(
+        self, handle_oauth_callback: AsyncMock
+    ):
         client = _client()
 
         with (
@@ -229,11 +258,13 @@ class TestCompleteOauth:
         ):
             await self._complete(client)
 
-        client.handle_oauth_callback.assert_awaited_once_with(
+        handle_oauth_callback.assert_awaited_once_with(
+            client.token_store,
             integration_id=INTEGRATION_ID,
             code="auth-code",
             state="state-token",
             redirect_uri=REDIRECT_URI,
+            connect_after_oauth=client.connect_after_oauth,
         )
         client.token_store.clear_excluded_scopes.assert_awaited_once_with(INTEGRATION_ID)
 
@@ -270,7 +301,7 @@ class TestCompleteOauth:
         assert capture.call_args.args[1].is_reconnect is True
 
     async def test_an_unreadable_connection_history_does_not_fail_the_connect(
-        self, connected_before
+        self, connected_before, handle_oauth_callback: AsyncMock
     ):
         """Whether it is a reconnect is analytics; the user's connect must not hinge on it."""
         connected_before.side_effect = PyMongoError("mongo down")
@@ -283,7 +314,7 @@ class TestCompleteOauth:
         ):
             await self._complete(client)
 
-        client.handle_oauth_callback.assert_awaited_once()
+        handle_oauth_callback.assert_awaited_once()
         capture.assert_called_once_with(
             UserId(USER_ID),
             IntegrationConnected(
@@ -320,9 +351,11 @@ class TestCompleteOauth:
             }
         ]
 
-    async def test_a_failed_exchange_propagates_before_any_bookkeeping(self):
+    async def test_a_failed_exchange_propagates_before_any_bookkeeping(
+        self, handle_oauth_callback: AsyncMock
+    ):
         client = _client()
-        client.handle_oauth_callback = AsyncMock(side_effect=ValueError("Invalid state token"))
+        handle_oauth_callback.side_effect = ValueError("Invalid state token")
 
         with (
             patch(

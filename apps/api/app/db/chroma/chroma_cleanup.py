@@ -1,6 +1,6 @@
 """ChromaDB cleanup utilities for integration lifecycle management."""
 
-from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX, SUBAGENT_CACHE_PREFIX
+from app.constants.cache import SUBAGENT_CACHE_PREFIX
 from app.constants.chroma import CHROMA_TOOLS_STORE_COLLECTION
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
@@ -54,12 +54,11 @@ async def cleanup_integration_chroma_data(
             integration_id=integration_id,
         )
 
-    # 3. Invalidate caches: namespace hash + the per-integration name caches
-    # (subagent_info and handoff_name both embed the display name).
+    # 3. Invalidate caches: namespace hash + the per-integration subagent_info
+    # cache, which embeds the display name.
     try:
         await delete_cache(f"chroma:indexed:{namespace}")
         await delete_cache(f"{SUBAGENT_CACHE_PREFIX}:{integration_id}")
-        await delete_cache(f"{HANDOFF_NAME_CACHE_PREFIX}:{integration_id}")
         results["cache"] = True
     except Exception as e:
         log.warning(

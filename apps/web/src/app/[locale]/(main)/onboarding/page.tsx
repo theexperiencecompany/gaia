@@ -48,13 +48,20 @@ export default function Onboarding() {
     markIntroSeen,
     restart,
     submission,
+    answersSave,
   } = useOnboarding();
   const introDone = introSeen === true;
 
   const stageContent = (() => {
     switch (stage) {
       case "questions":
-        return <QuestionsReply state={state} dispatch={dispatch} />;
+        return (
+          <QuestionsReply
+            state={state}
+            dispatch={dispatch}
+            answersSave={answersSave}
+          />
+        );
       case "payment":
         return <Payment />;
       case "paidReveal":

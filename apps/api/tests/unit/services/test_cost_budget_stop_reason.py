@@ -24,6 +24,7 @@ from app.config.rate_limits import (
     RateLimitPeriod,
     get_daily_cost_budget_usd,
     get_per_request_token_ceiling,
+    get_reset_time,
 )
 from app.config.settings import settings
 from app.constants.llm import (
@@ -41,6 +42,7 @@ from app.services.cost_budget import (
     REQUEST_CEILING_STOP_FREE,
     REQUEST_CEILING_STOP_PRO,
     BudgetCheck,
+    BudgetWall,
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
     is_daily_budget_exhausted,
@@ -93,6 +95,7 @@ async def _spend_earlier_this_month(amount: float) -> None:
 #: The user bills on the 15th, and today is mid-cycle, so the allowance resets on the next 15th.
 BILLING_DAY = 15
 TODAY = datetime(2099, 1, 20, 9, tzinfo=UTC)
+MONTH_RESET = datetime(2099, 2, 15, tzinfo=UTC)
 STOP_TEXT = (
     "You've used this month's AI usage allowance, so chat, workflows and tracked "
     "todos are paused until February 15, when it resets."
@@ -125,14 +128,20 @@ class TestMonthlyWall:
 
         check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
 
-        assert check == BudgetCheck(STOP_TEXT, 0.0, PlanType.PRO, wall="month")
+        assert check == BudgetCheck(
+            BudgetWall.MONTHLY_USAGE, 0.0, PlanType.PRO, PRO_MONTHLY_COST_BUDGET_USD, MONTH_RESET
+        )
+        assert check.stop_reason == STOP_TEXT
 
     async def test_binds_without_a_request_id_too(self) -> None:
         await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
 
         check = await get_budget_stop_reason(USER, PlanType.PRO, None)
 
-        assert check == BudgetCheck(STOP_TEXT, 0.0, PlanType.PRO, wall="month")
+        assert check == BudgetCheck(
+            BudgetWall.MONTHLY_USAGE, 0.0, PlanType.PRO, PRO_MONTHLY_COST_BUDGET_USD, MONTH_RESET
+        )
+        assert check.stop_reason == STOP_TEXT
 
     async def test_lets_a_pro_run_through_one_cent_short_and_reports_the_month(self) -> None:
         await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD - 0.01)
@@ -147,6 +156,10 @@ class TestMonthlyWall:
         check = await get_budget_stop_reason(USER, PlanType.PRO, None)
 
         assert check == BudgetCheck(None, 0.0, PlanType.PRO, 1.5)
+
+    def test_the_monthly_stop_text_refuses_to_render_without_its_reset_day(self) -> None:
+        with pytest.raises(ValueError, match="reset"):
+            BudgetWall.MONTHLY_USAGE.stop_text(PlanType.PRO, None)
 
     async def test_free_has_no_monthly_wall(self) -> None:
         await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD * 10)
@@ -176,10 +189,11 @@ class TestDailyWall:
 
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
 
+        assert check.wall == BudgetWall.DAILY_USAGE
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
         assert check.spent_usd == pytest.approx(get_daily_cost_budget_usd(PlanType.FREE))
         assert check.plan_type == PlanType.FREE
-        assert check.wall == "day"
+        assert check.reset_at == get_reset_time(RateLimitPeriod.DAY)
 
     async def test_the_dev_unlimited_flag_lifts_a_bound_wall(
         self, monkeypatch: pytest.MonkeyPatch
@@ -229,8 +243,9 @@ class TestRequestCeiling:
 
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
 
+        assert check.wall == BudgetWall.TASK_SIZE
         assert check.stop_reason == REQUEST_CEILING_STOP_FREE
-        assert check.wall == "request"
+        assert check.reset_at is None
 
     async def test_still_reports_the_daily_spend_it_read(self) -> None:
         # The wrap-up nudge is decided from this number; a None here would mean
@@ -261,6 +276,7 @@ class TestRequestCeiling:
 
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
 
+        assert check.wall == BudgetWall.DAILY_USAGE
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
 
     async def test_a_free_users_token_burn_does_not_bind_the_pro_ceiling(self) -> None:

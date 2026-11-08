@@ -30,6 +30,7 @@ def _make_workflow(user_id: str = "6812f0b3c9a14e2b7d5a9100") -> MagicMock:
     wf.steps = [MagicMock(id="s1", title="Step 1", description="do it", category="general")]
     wf.repeat = None
     wf.activated = True
+    wf.gate = None
     return wf
 
 

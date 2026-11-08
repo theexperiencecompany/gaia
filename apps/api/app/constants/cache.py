@@ -107,9 +107,6 @@ USER_PRESENCE_PREFIX = "user_presence"
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
-HANDOFF_METADATA_CACHE_PREFIX = "handoff_metadata"
-# Custom-MCP display name resolved for handoff (keyed by integration id).
-HANDOFF_NAME_CACHE_PREFIX = "handoff_name"
 SUBAGENT_CACHE_PREFIX = "subagent_info"
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
 OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
@@ -205,6 +202,13 @@ WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
 BOT_UPGRADE_LINK_PREFIX = "bot:upgrade-link:"
 BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
 
+# Every tool call one run made, in order, keyed by the run's stream id. Outlives
+# the longest run (a parked approval) so the trace and a playbook write read it whole.
+RUN_RECORD_PREFIX = "run_record:"
+RUN_RECORD_TTL = ONE_DAY_TTL * 2
+# The integrations a run already showed a connect card for; calls to them are refused.
+RUN_BLOCKED_INTEGRATIONS_PREFIX = "run_blocked_integrations:"
+
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 # Keyed by holder: whatever holds the busy lock renews this while its process lives (a parked
@@ -266,11 +270,6 @@ VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 # the month, so a pro user is told once per month, not once per request.
 COST_BUDGET_NEAR_NOTIFIED_KEY = "cost_budget_near_notified:{user_id}:{window}"
 
-# Keyed by user plus a hash of the answers it was written from, so a changed
-# Q1/Q2 answer reads a never-written key rather than a stale question. Two
-# hours covers a wizard someone walked away from before pressing completion.
-FIRST_QUESTION_CACHE_PREFIX = "onboarding:first_question:"
-FIRST_QUESTION_CACHE_TTL = 2 * ONE_HOUR_TTL
 #: Prefix of the tiered rate limiter's per-user counters: ``{prefix}:{user_id}:{feature}:{period}:{window}``.
 #: Named so a dev tool can clear one user's counters without knowing the rest of the key.
 RATE_LIMIT_KEY_PREFIX = "rate_limit"

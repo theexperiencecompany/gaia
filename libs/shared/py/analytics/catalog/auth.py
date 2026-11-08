@@ -63,10 +63,10 @@ class InstanceMemberJoined(ServerEvent):
 
 
 class UserActive(ServerEvent):
-    """A user did something themselves today, on any surface: the one definition of an active user.
+    """A user used GAIA today, on any surface: the one definition of an active user.
 
-    Emitted by the server capture function on a user's first actor=user event of
-    the IST day, never by a call site.
+    Emitted by the server capture function on a user's first event of the IST day
+    that shared.py.analytics.activity counts as use, never by a call site.
     """
 
     event: ClassVar[str] = "user:active"

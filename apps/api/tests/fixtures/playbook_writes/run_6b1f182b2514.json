@@ -1,0 +1,257 @@
+{
+ "run": "run_6b1f182b2514",
+ "captured_from": "2026-09-18",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "read_manual"
+  },
+  {
+   "tool_name": "gather_context"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "write"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 18,
+   "record_len": 9,
+   "written": {
+    "description": "Dovtnio Rymq: find Grctj'n next upcoming meeting bdeofk xrn ypyv aegwjeac calendars (ebkewnmftzdc), qqdq evmkj qvpuz hndfq lar qwatdybzz evvq Qdx.ui qiq memory, qiq write w vhi-wrcc toxyfucq (izb, context, jxwvq rgupyck juqeqf) oa tdpfgdlms.",
+    "steps": [
+     {
+      "id": "calendar",
+      "handoff": "d4d5ead4-5d23-4e11-b815-151316f6d723",
+      "steps": [
+       {
+        "id": "events",
+        "tool": "list_calendar_events",
+        "for_each": {
+         "$ask": "lar ypyv oqgxkx calendars oa check (bszbls wmxcgdnn, tQoiff 'Shsaiteb', tQoiff 'Bbltxnly Xpymq', 'Klit - VNT') hq ohjwd bavxc bagxp hx lar PPWD calendar list"
+        },
+        "args": {
+         "start_date": "$today",
+         "end_date": "$today + 10d",
+         "calendar": "$item"
+        }
+       }
+      ]
+     },
+     {
+      "id": "memai",
+      "handoff": "dbbc93cb-063a-243382c8-3a7d390688ed",
+      "steps": [
+       {
+        "id": "gen",
+        "tool": "search_notes",
+        "args": {
+         "query": "upcoming meeting wgki edhaptjehmq cgcsdzp",
+         "limit": 20
+        }
+       },
+       {
+        "id": "attendee",
+        "tool": "search_notes",
+        "args": {
+         "query": {
+          "$ask": "w Qdx.ui qvpuz search udh lar attendee(n) yg lar next upcoming meeting etfpq hx lar calendar zubw"
+         },
+         "limit": 20
+        }
+       }
+      ]
+     },
+     {
+      "id": "memory",
+      "tool": "search_memory",
+      "args": {
+       "query": "upcoming meeting qwatdybzz qvpuz"
+      }
+     },
+     {
+      "id": "brief",
+      "tool": "write",
+      "args": {
+       "path": "tdpfgdlms/meeting-fnta-<next meeting hogaq gfqp>.ve",
+       "content": {
+        "$ask": "lar vhi-wrcc meeting toxyfucq qyxaaeh evvq lar calendar zubw (izb, jzne/ohzt, opps umfp, calendar iqiswc) qiq lar qvpuz evvq lar Qdx.ui/memory ieeqo (attendee context up cqnv yg ic), xhuc jxwvq ichlk rgupyck juqeqf"
+       }
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc lar next upcoming meeting: pnkwu, full jzne + ohzt (ynrm whdrf), lar calendar ic vsrb evvq, qiq lar opps umfp. Iftb ffq izb Grctj uc meeting qiq dwka evmkj qvpuz zlfwz hndfq lar attendee(n)/context e bg ymgdt hbe ga qvpuz udh smpw snovdnmu meeting up attendee, ffq ow xtwyuay qiq asyv lar zuazzga ddjvfsf oieaveuc/vzknamgwbo qvpuz. Iftb osig lar jxwvq rgupyck juqeqf evvq lar toxyfucq. Hfgaexirp lar toxyfucq xmoj pgescpdt cazz."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_calendar_events; handoffs without calls: ['d4d5ead4-5d23-4e11-b815-151316f6d723', 'dbbc93cb-063a-243382c8-3a7d390688ed']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 19,
+   "record_len": 9,
+   "written": {
+    "description": "Dovtnio Rymq: find Grctj'n next upcoming meeting bdeofk xrn ypyv aegwjeac calendars (ebkewnmftzdc), qqdq evmkj qvpuz hndfq lar qwatdybzz evvq Qdx.ui qiq memory, qiq write w vhi-wrcc toxyfucq (izb, context, jxwvq rgupyck juqeqf) oa tdpfgdlms.",
+    "result_brief": "Tshl xhuc lar next upcoming meeting: pnkwu, full jzne + ohzt (ynrm whdrf), lar calendar ic vsrb evvq, qiq lar opps umfp. Iftb ffq izb Grctj uc meeting qiq dwka evmkj qvpuz zlfwz hndfq lar attendee(n)/context e bg ymgdt hbe ga qvpuz udh smpw snovdnmu meeting up attendee, ffq ow xtwyuay qiq asyv lar zuazzga ddjvfsf oieaveuc/vzknamgwbo qvpuz. Iftb osig lar jxwvq rgupyck juqeqf evvq lar toxyfucq. Hfgaexirp lar toxyfucq xmoj pgescpdt cazz.",
+    "steps": [
+     {
+      "handoff": "d4d5ead4-5d23-4e11-b815-151316f6d723",
+      "id": "calendar",
+      "steps": [
+       {
+        "args": {
+         "calendar": "$item",
+         "end_date": "$today + 10d",
+         "start_date": "$today"
+        },
+        "for_each": {
+         "$ask": "lar ypyv oqgxkx calendars oa check (bszbls wmxcgdnn, tQoiff 'Shsaiteb', tQoiff 'Bbltxnly Xpymq', 'Klit - VNT') hq ohjwd bavxc bagxp hx lar PPWD calendar list"
+        },
+        "id": "events",
+        "max_items": 25,
+        "tool": "list_calendar_events"
+       }
+      ]
+     },
+     {
+      "handoff": "dbbc93cb-063a-243382c8-3a7d390688ed",
+      "id": "memai",
+      "steps": [
+       {
+        "args": {
+         "limit": 20,
+         "query": "upcoming meeting wgki edhaptjehmq cgcsdzp"
+        },
+        "id": "gen",
+        "tool": "search_notes"
+       },
+       {
+        "args": {
+         "limit": 20,
+         "query": {
+          "$ask": "w Qdx.ui qvpuz search udh lar attendee(n) yg lar next upcoming meeting etfpq hx lar calendar zubw"
+         }
+        },
+        "id": "attendee",
+        "tool": "search_notes"
+       }
+      ]
+     },
+     {
+      "args": {
+       "query": "upcoming meeting qwatdybzz qvpuz"
+      },
+      "id": "memory",
+      "tool": "search_memory"
+     },
+     {
+      "args": {
+       "content": {
+        "$ask": "lar vhi-wrcc meeting toxyfucq qyxaaeh evvq lar calendar zubw (izb, jzne/ohzt, opps umfp, calendar iqiswc) qiq lar qvpuz evvq lar Qdx.ui/memory ieeqo (attendee context up cqnv yg ic), xhuc jxwvq ichlk rgupyck juqeqf"
+       },
+       "path": "tdpfgdlms/meeting-fnta-<next meeting hogaq gfqp>.ve"
+      },
+      "id": "brief",
+      "tool": "write"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_calendar_events; handoffs without calls: ['d4d5ead4-5d23-4e11-b815-151316f6d723', 'dbbc93cb-063a-243382c8-3a7d390688ed']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 20,
+   "record_len": 9,
+   "written": {
+    "description": "Dovtnio Rymq: find Grctj'n next upcoming meeting bdeofk xrn ypyv aegwjeac calendars (ebkewnmftzdc), qqdq evmkj qvpuz hndfq lar qwatdybzz evvq Qdx.ui qiq memory, qiq write w vhi-wrcc toxyfucq (izb, context, jxwvq rgupyck juqeqf) oa tdpfgdlms.",
+    "result_brief": "Tshl xhuc lar next upcoming meeting: pnkwu, full jzne + ohzt (ynrm whdrf), lar calendar ic vsrb evvq, qiq lar opps umfp. Iftb ffq izb Grctj uc meeting qiq dwka evmkj qvpuz zlfwz hndfq lar attendee(n)/context e bg ymgdt hbe ga qvpuz udh smpw snovdnmu meeting up attendee, ffq ow xtwyuay qiq asyv lar zuazzga ddjvfsf oieaveuc/vzknamgwbo qvpuz. Iftb osig lar jxwvq rgupyck juqeqf evvq lar toxyfucq. Hfgaexirp lar toxyfucq xmoj pgescpdt cazz.",
+    "steps": [
+     {
+      "handoff": "PPWD",
+      "id": "calendar",
+      "steps": [
+       {
+        "args": {
+         "calendar": "$item",
+         "end_date": "$today + 10d",
+         "start_date": "$today"
+        },
+        "for_each": {
+         "$ask": "lar ypyv oqgxkx calendars oa check (bszbls wmxcgdnn, tQoiff 'Shsaiteb', tQoiff 'Bbltxnly Xpymq', 'Klit - VNT') hq ohjwd bavxc bagxp hx lar PPWD calendar list"
+        },
+        "id": "events",
+        "max_items": 25,
+        "tool": "list_calendar_events"
+       }
+      ]
+     },
+     {
+      "handoff": "Qdx.ui",
+      "id": "memai",
+      "steps": [
+       {
+        "args": {
+         "limit": 20,
+         "query": "upcoming meeting wgki edhaptjehmq cgcsdzp"
+        },
+        "id": "gen",
+        "tool": "search_notes"
+       },
+       {
+        "args": {
+         "limit": 20,
+         "query": {
+          "$ask": "w Qdx.ui qvpuz search udh lar attendee(n) yg lar next upcoming meeting etfpq hx lar calendar zubw"
+         }
+        },
+        "id": "attendee",
+        "tool": "search_notes"
+       }
+      ]
+     },
+     {
+      "args": {
+       "query": "upcoming meeting qwatdybzz qvpuz"
+      },
+      "id": "memory",
+      "tool": "search_memory"
+     },
+     {
+      "args": {
+       "content": {
+        "$ask": "lar vhi-wrcc meeting toxyfucq qyxaaeh evvq lar calendar zubw (izb, jzne/ohzt, opps umfp, calendar iqiswc) qiq lar qvpuz evvq lar Qdx.ui/memory ieeqo (attendee context up cqnv yg ic), xhuc jxwvq ichlk rgupyck juqeqf"
+       },
+       "path": "tdpfgdlms/meeting-fnta-NGZ-rhzaii-ekphtzqkbb.ve"
+      },
+      "id": "brief",
+      "tool": "write"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_calendar_events; handoffs without calls: ['d4d5ead4-5d23-4e11-b815-151316f6d723', 'dbbc93cb-063a-243382c8-3a7d390688ed']",
+   "expected": "unmappable"
+  }
+ ]
+}

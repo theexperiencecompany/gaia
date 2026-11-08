@@ -138,3 +138,6 @@ export const questions: Question[] = [
     fieldName: FIELD_NAMES.NEEDS,
   },
 ];
+
+/** How often the platform step checks whether the bot link has landed. */
+export const PLATFORM_LINK_POLL_MS = 2000;

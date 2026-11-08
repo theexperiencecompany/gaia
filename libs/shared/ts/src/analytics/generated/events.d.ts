@@ -8,6 +8,7 @@ export type ServerEventName =
   | "ai:llm_call_completed"
   | "approval:decided"
   | "bot:audio_transcribed"
+  | "bot:chat_opened"
   | "bot:session_reset"
   | "browser:engine_switched"
   | "browser:handoff_resolved"
@@ -36,25 +37,8 @@ export type ServerEventName =
   | "device:approved"
   | "device:revoked"
   | "device:self_paired"
-  | "email:archived"
-  | "email:draft_composed"
-  | "email:draft_created"
-  | "email:draft_deleted"
-  | "email:draft_updated"
-  | "email:label_applied"
-  | "email:label_created"
-  | "email:label_deleted"
-  | "email:label_removed"
-  | "email:label_updated"
-  | "email:marked_read"
-  | "email:marked_unread"
-  | "email:moved_to_inbox"
   | "email:replied"
   | "email:sent"
-  | "email:starred"
-  | "email:trashed"
-  | "email:unstarred"
-  | "email:untrashed"
   | "feature:toggled"
   | "feature_flag:evaluated"
   | "feedback:message_submitted"
@@ -102,6 +86,7 @@ export type ServerEventName =
   | "onboarding:phase_completed"
   | "onboarding:reset"
   | "onboarding:social_profiles_confirmed"
+  | "onboarding:started"
   | "onboarding:writing_style_example_regenerated"
   | "onboarding:writing_style_saved"
   | "payment:checkout_started"
@@ -124,6 +109,7 @@ export type ServerEventName =
   | "settings:chat_channel_priority_updated"
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
+  | "settings:quiet_hours_updated"
   | "skill:disabled"
   | "skill:enabled"
   | "skill:installed"
@@ -148,6 +134,8 @@ export type ServerEventName =
   | "todos:updated"
   | "tool:execute_failed"
   | "tool:used"
+  | "trigger:gate_decided"
+  | "trigger:gate_edited"
   | "usage:queried"
   | "user:active"
   | "user:logged_in"
@@ -177,8 +165,6 @@ export type WebEventName =
   | "cta:get_started_clicked"
   | "desktop_popup:dismissed"
   | "desktop_popup:opened"
-  | "email:compose_opened"
-  | "email:opened"
   | "error:occurred"
   | "error:route_error_shown"
   | "feature:discovered"
@@ -199,7 +185,7 @@ export type WebEventName =
   | "onboarding:checkout_retried"
   | "onboarding:restarted"
   | "onboarding:skipped"
-  | "onboarding:started"
+  | "payment:checkout_abandoned"
   | "paywall:modal_viewed"
   | "pin:viewed"
   | "profile:link_copied"
@@ -232,8 +218,6 @@ export type WebEventName =
 
 export type BotEventName =
   | "bot:auth_initiated"
-  | "bot:chat_completed"
-  | "bot:chat_started"
   | "bot:command_executed"
   | "bot:error"
   | "bot:file_delivered"
@@ -354,14 +338,11 @@ export interface EventProperties {
     "transcript_length": number;
   };
   "bot:auth_initiated": Record<string, never>;
-  "bot:chat_completed": {
-    "duration_ms": number;
-    "response_length": number;
-    "streaming_enabled": boolean;
-  };
-  "bot:chat_started": {
-    "message_length": number;
-    "streaming_enabled": boolean;
+  "bot:chat_opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "platform": string;
   };
   "bot:command_executed": {
     "command": string;
@@ -654,81 +635,6 @@ export interface EventProperties {
     "client": string;
     "platform": string;
   };
-  "email:archived": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:compose_opened": Record<string, never>;
-  "email:draft_composed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:draft_created": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:draft_deleted": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:draft_updated": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:label_applied": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:label_created": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:label_deleted": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:label_removed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:label_updated": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:marked_read": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:marked_unread": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:moved_to_inbox": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:opened": {
-    "mail_id": string;
-  };
   "email:replied": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -742,31 +648,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "has_attachments"?: boolean;
     "attachment_count"?: number;
-    "recipient_count"?: number;
-  };
-  "email:starred": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:trashed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:unstarred": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:untrashed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
   };
   "error:occurred": {
     "error_type": "global_error" | "react_error_boundary" | "chunk_load";
@@ -1135,12 +1016,15 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "needs": (string)[];
     "has_other_need": boolean;
+    "linked_platform"?: string;
   };
   "onboarding:phase_completed": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "phase": string;
+    "phase": "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
+    "needs"?: (string)[];
+    "has_other_need"?: boolean;
   };
   "onboarding:reset": {
     "actor": "user" | "agent";
@@ -1161,7 +1045,9 @@ export interface EventProperties {
     "platforms": (string)[];
   };
   "onboarding:started": {
-    "has_saved_state": boolean;
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
   "onboarding:writing_style_example_regenerated": {
     "actor": "user" | "agent";
@@ -1173,6 +1059,11 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "summary_length": number;
+  };
+  "payment:checkout_abandoned": {
+    "source": "paywall_modal" | "pricing_card" | "payment_retry" | "checkout_resume" | "onboarding";
+    "billing_cycle": "monthly" | "yearly";
+    "furthest_step": "not_loaded" | "opened" | "details_submitted" | "payment_page" | "pay_pressed";
   };
   "payment:checkout_started": {
     "actor": "user" | "agent";
@@ -1347,6 +1238,14 @@ export interface EventProperties {
     "tool_name"?: string;
     "require_approval"?: boolean;
   };
+  "settings:quiet_hours_updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "enabled": boolean;
+    "start_hour": number;
+    "end_hour": number;
+  };
   "skill:disabled": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1388,6 +1287,8 @@ export interface EventProperties {
     "subscription_id": string;
     "plan_name": "Pro";
     "currency": string;
+    "product_id"?: string;
+    "billing_interval"?: string;
     "amount"?: number;
     "amount_charged_pre_tax"?: number;
     "currency_charged"?: string;
@@ -1411,6 +1312,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "subscription_id": string;
+    "product_id": string;
+    "billing_interval": string;
   };
   "subscription:failed": {
     "source": "onboarding" | "payment_success_page";
@@ -1422,6 +1325,8 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "subscription_id": string;
     "status": "failed" | "on_hold";
+    "product_id": string;
+    "billing_interval": string;
   };
   "subscription:page_viewed": {
     "source": "landing_pricing";
@@ -1437,6 +1342,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "subscription_id": string;
+    "product_id": string;
+    "billing_interval": string;
     "currency": string;
     "amount_charged_pre_tax"?: number;
     "currency_charged"?: string;
@@ -1498,7 +1405,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "trigger_name": string;
-    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "registration_failed" | "no_trigger_instance";
+    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "invalid_subscription" | "registration_failed" | "no_trigger_instance";
   };
   "todos:subscription_registered": {
     "actor": "user" | "agent";
@@ -1565,6 +1472,28 @@ export interface EventProperties {
     "source"?: "mcp_app";
     "account_count"?: number;
     "account_is_primary"?: boolean;
+  };
+  "trigger:gate_decided": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "owner_type": "workflow" | "todo";
+    "trigger_name": string;
+    "gate_kind": "authored" | "system";
+    "author"?: "gaia" | "user";
+    "outcome": "run" | "skip" | "hold" | "bypass";
+    "reason": "jev_run" | "jev_skip" | "jev_urgent" | "jev_can_wait" | "free_run" | "jev_error" | "jev_timeout" | "jev_malformed" | "jev_unconfigured";
+    "urgent_choice"?: "incident" | "service_down" | "meeting";
+    "enforced": boolean;
+    "latency_ms"?: number;
+  };
+  "trigger:gate_edited": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "owner_type": "workflow" | "todo";
+    "action": "added" | "edited" | "disabled" | "enabled" | "removed";
+    "gate_kind": "authored" | "system";
   };
   "ui:sidebar_collapsed": Record<string, never>;
   "ui:sidebar_expanded": Record<string, never>;
@@ -1661,11 +1590,11 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "origin": "user_created" | "chat_agent" | "todo_converted" | "todo_requested";
     "workflow_id"?: string;
     "trigger_type"?: string;
     "steps_count"?: number;
     "generated_immediately"?: boolean;
-    "from_todo"?: boolean;
     "is_todo_workflow"?: boolean;
   };
   "workflow:deactivated": {

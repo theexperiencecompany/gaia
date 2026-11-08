@@ -29,6 +29,7 @@ from app.constants.llm import (
     DEV_MODEL_OPTIONS,
     MODEL_FIELD_ID,
     MODEL_KWARGS_FIELD_ID,
+    OPENROUTER_PROVIDER_ROUTING,
     OPENROUTER_REASONING,
     PAID_COMMS_REASONING,
     PAID_MODEL_NAME,
@@ -86,8 +87,8 @@ class ModelLane:
     #: env-defined custom dev endpoint serves ``DEV_LLM_MODEL`` this way.
     model: str | None
     reasoning: OpenRouterReasoning | None
-    #: OpenRouter provider-routing pin. Provider-specific by definition, so it
-    #: never survives :meth:`fallback`.
+    #: The model's own OpenRouter routing, from OPENROUTER_PROVIDER_ROUTING via
+    #: _provider_pin wherever a lane picks its model.
     provider_pin: OpenRouterModelKwargs | None
     max_input_tokens: int
 
@@ -154,15 +155,28 @@ class ModelLane:
     def fallback(self) -> "ModelLane | None":
         """Return the same run on the next configured provider, or None when there is no other one.
 
-        The pin AND the reasoning config are dropped: both are OpenRouter-wire
-        concepts, so carrying either onto a different provider is how a
-        fallback turns one failure into two.
+        The reasoning config is dropped and the pin re-derived for the new model:
+        carrying either onto a different provider is how a fallback turns one
+        failure into two.
         """
         nxt = chat_route(self.provider)
         if nxt is None:
             return None
         provider, model = nxt
-        return replace(self, provider=provider, model=model, provider_pin=None, reasoning=None)
+        return replace(
+            self,
+            provider=provider,
+            model=model,
+            provider_pin=_provider_pin(provider, model),
+            reasoning=None,
+        )
+
+
+def _provider_pin(provider: LLMProviderName, model: str | None) -> OpenRouterModelKwargs | None:
+    """Return model's routing pin on OpenRouter; any other provider takes none."""
+    if provider is not LLMProviderName.OPENROUTER or model is None:
+        return None
+    return OPENROUTER_PROVIDER_ROUTING.get(model)
 
 
 def _reasoning_for(role: AgentRole) -> OpenRouterReasoning:
@@ -194,14 +208,14 @@ def _default_lane() -> ModelLane:
             model=model,
             # A reasoning pin is OpenRouter-wire only.
             reasoning=OPENROUTER_REASONING if is_openrouter else None,
-            provider_pin=None,
+            provider_pin=_provider_pin(provider, model),
             max_input_tokens=DEFAULT_MAX_TOKENS,
         )
     return ModelLane(
         provider=LLMProviderName(DEFAULT_LLM_PROVIDER),
         model=DEFAULT_MODEL_NAME,
         reasoning=OPENROUTER_REASONING,
-        provider_pin=None,
+        provider_pin=_provider_pin(LLMProviderName(DEFAULT_LLM_PROVIDER), DEFAULT_MODEL_NAME),
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 
@@ -233,11 +247,12 @@ def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
     accounting sees the real name instead of metering as "unknown". None
     survives only when no model is configured at all.
     """
+    model = option.model or chat_model(option.provider)
     return ModelLane(
         provider=option.provider,
-        model=option.model or chat_model(option.provider),
+        model=model,
         reasoning=_reasoning_for(role) if option.reasoning else None,
-        provider_pin=option.provider_pin,
+        provider_pin=_provider_pin(option.provider, model),
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 
@@ -276,7 +291,7 @@ async def resolve_lane(
     """Choose the single model. Returns the lane and the plan tier it was resolved from.
 
     Comms runs its own lane on every plan, otherwise free runs the default model
-    and paid the paid model; a paid user past the monthly guard degrades to free.
+    and paid the paid model.
     In development an explicit dev_option, else DEV_DEFAULT_MODEL, wins over all
     of it: every top-level run, not only chat, starts on it.
     """
@@ -308,10 +323,7 @@ async def resolve_lane(
             provider=LLMProviderName(PAID_MODEL_PROVIDER),
             model=PAID_MODEL_NAME,
             reasoning=_reasoning_for(role),
-            # No per-lane `only` pin: it conflicts with session_id sticky
-            # routing and measured WORSE (64% cache hits vs 83-91% without it).
-            # The soft `order` preference is set on the client instead.
-            provider_pin=None,
+            provider_pin=_provider_pin(LLMProviderName(PAID_MODEL_PROVIDER), PAID_MODEL_NAME),
             max_input_tokens=DEFAULT_MAX_TOKENS,
         ),
         plan,

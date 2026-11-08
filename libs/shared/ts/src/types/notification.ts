@@ -73,8 +73,3 @@ export interface PlatformLinksResponse {
 }
 
 export type ChannelPlatform = "telegram" | "discord" | "whatsapp" | "slack";
-
-export interface QuietHours {
-  from: string;
-  to: string;
-}

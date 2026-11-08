@@ -5,7 +5,7 @@ utilities behind it, the AUTH_MODE local branch of WorkOSAuthMiddleware, and
 the local branch of the WebSocket auth dependency.
 
 Repositories and the instance-secret store are mocked at their seams; bcrypt,
-the jose JWT encode and verify path, the middleware dispatch order, and the
+the JWT encode and verify path, the middleware dispatch order, and the
 cookie contract all run for real.
 """
 
@@ -13,6 +13,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 import hashlib
 from http.cookies import Morsel, SimpleCookie
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -22,7 +23,6 @@ from bson import ObjectId
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import JSONResponse
 import httpx
-from jose import jwt
 import pytest
 
 from app.config.settings import settings
@@ -33,6 +33,8 @@ from app.constants.auth import (
     InstanceRole,
 )
 from app.constants.error_codes import INVALID_CREDENTIALS
+from app.db.repositories.instance_settings import instance_settings_repository
+from app.db.repositories.local_invites import local_invites_repository
 from app.models.auth_models import (
     ADMIN_CREDENTIAL_SLOT,
     LocalCredentialDocument,
@@ -41,6 +43,7 @@ from app.models.auth_models import (
 )
 from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import UserDocument
+from app.utils import local_auth_utils
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
     SESSION_TTL_SECONDS,
@@ -49,7 +52,7 @@ from app.utils.local_auth_utils import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import InstanceMemberJoined
-from tests.helpers import captured_wide_event, session_set_cookie
+from tests.helpers import captured_wide_event, forge_jwt, hostile_jwts, session_set_cookie
 
 TEST_SECRET = "test-instance-secret-" + "x" * 16
 TEST_PASSWORD = "correct-horse-battery"
@@ -76,8 +79,6 @@ def _instance_secret(monkeypatch):
     verify path requires the resolved secret; cold-start behavior is pinned
     by the TestSessionTokens tests below.
     """
-    from app.utils import local_auth_utils
-
     monkeypatch.setattr(
         local_auth_utils, "get_instance_secret", AsyncMock(return_value=TEST_SECRET)
     )
@@ -268,24 +269,16 @@ class SettingsStore:
 
 @pytest.fixture
 def invite_store(monkeypatch) -> InviteStore:
-    from app.services import members_service
-
     store = InviteStore()
-    monkeypatch.setattr(
-        members_service.local_invites_repository, "find_redeemable", store.find_redeemable
-    )
-    monkeypatch.setattr(members_service.local_invites_repository, "redeem", store.redeem)
+    monkeypatch.setattr(local_invites_repository, "find_redeemable", store.find_redeemable)
+    monkeypatch.setattr(local_invites_repository, "redeem", store.redeem)
     return store
 
 
 @pytest.fixture
 def settings_store(monkeypatch) -> SettingsStore:
-    from app.services import members_service
-
     store = SettingsStore()
-    monkeypatch.setattr(
-        members_service.instance_settings_repository, "find_by_key", store.find_by_key
-    )
+    monkeypatch.setattr(instance_settings_repository, "find_by_key", store.find_by_key)
     return store
 
 
@@ -309,7 +302,6 @@ def patched_repos(directory, credential_store, monkeypatch):
     import app.api.v1.endpoints.auth_local as auth_local_module
     import app.db.repositories.local_credentials as creds_mod
     from app.db.repositories.users import user_repository as users_singleton
-    from app.utils import local_auth_utils
 
     real_creds = creds_mod.LocalCredentialsRepository()
     monkeypatch.setattr(creds_mod, "local_credentials_repository", real_creds)
@@ -1293,10 +1285,10 @@ class TestSessionTokens:
         assert await resolve_session_token(token) == user_id
 
     async def test_expired_token_rejected(self, _instance_secret):
-        expired = jwt.encode(
-            {"sub": "u1", "exp": datetime.now(UTC) - timedelta(seconds=1)},
+        expired = forge_jwt(
+            {"sub": "u1", "exp": int((datetime.now(UTC) - timedelta(seconds=1)).timestamp())},
             TEST_SECRET,
-            algorithm=JWT_ALGORITHM,
+            alg=JWT_ALGORITHM,
         )
         assert await resolve_session_token(expired) is None
 
@@ -1307,16 +1299,14 @@ class TestSessionTokens:
         assert await resolve_session_token(tampered) is None
 
     async def test_wrong_key_rejected(self, _instance_secret):
-        foreign = jwt.encode(
-            {"sub": "u1", "exp": datetime.now(UTC) + timedelta(days=1)},
+        foreign = forge_jwt(
+            {"sub": "u1", "exp": int((datetime.now(UTC) + timedelta(days=1)).timestamp())},
             "a-completely-different-secret",
-            algorithm=JWT_ALGORITHM,
+            alg=JWT_ALGORITHM,
         )
         assert await resolve_session_token(foreign) is None
 
     async def test_resolving_a_session_decodes_the_token_once(self, _instance_secret, monkeypatch):
-        from app.utils import local_auth_utils
-
         token = await issue_session_token("u-once", 0)
         real_decode = local_auth_utils.jwt.decode
         decodes: list[str] = []
@@ -1333,8 +1323,6 @@ class TestSessionTokens:
     async def test_resolve_session_token_warms_secret_then_verifies(
         self, _instance_secret, monkeypatch
     ):
-        from app.utils import local_auth_utils
-
         token = await issue_session_token("u-warm", 0)
 
         # Simulate a fresh process: cache empty even though issue just ran.
@@ -1393,14 +1381,31 @@ class TestLocalMiddlewareDispatch:
             response = await client.get("/probe")
         assert response.status_code == 401
 
+    @pytest.mark.parametrize("kind", sorted(hostile_jwts({}, "s")))
+    async def test_a_hostile_session_cookie_is_401(
+        self, patched_repos, credential_store, _instance_secret, monkeypatch, kind
+    ):
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        admin = seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+        claims = {"sub": admin.id, "ver": 0, "exp": int(time.time()) + 3600}
+        app = _build_middleware_app()
+        client = await _client(app)
+        async with client:
+            client.cookies.set("gaia_session", hostile_jwts(claims, TEST_SECRET)[kind])
+            response = await client.get("/probe")
+        assert response.status_code == 401
+
     async def test_expired_cookie_passes_through_anonymous(
         self, patched_repos, _instance_secret, monkeypatch
     ):
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
-        expired = jwt.encode(
-            {"sub": str(ObjectId()), "exp": datetime.now(UTC) - timedelta(minutes=1)},
+        expired = forge_jwt(
+            {
+                "sub": str(ObjectId()),
+                "exp": int((datetime.now(UTC) - timedelta(minutes=1)).timestamp()),
+            },
             TEST_SECRET,
-            algorithm=JWT_ALGORITHM,
+            alg=JWT_ALGORITHM,
         )
         app = _build_middleware_app()
         client = await _client(app)
@@ -1546,7 +1551,9 @@ def _session_cookie(response: httpx.Response) -> Morsel[str]:
 
 
 def _token_version(token: str) -> int:
-    return int(jwt.decode(token, TEST_SECRET, algorithms=[JWT_ALGORITHM])["ver"])
+    session = local_auth_utils._decode_session(token, TEST_SECRET)
+    assert session is not None, "the endpoint issued a token that does not verify"
+    return session.version
 
 
 @pytest.mark.integration

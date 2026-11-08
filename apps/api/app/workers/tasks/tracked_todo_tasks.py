@@ -31,6 +31,7 @@ from app.agents.core.background.todo_run_delivery import (
     hand_unfinished_run_to_job,
     report_unfinished_run,
 )
+from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
@@ -53,6 +54,7 @@ from app.constants.todos import (
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
+from app.models.agent_models import SpawnJob
 from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -75,12 +77,16 @@ from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.triggers.todo_trigger_window import (
     buffer_todo_trigger_event,
     drain_todo_trigger_events,
+    held_todo_trigger_events,
     hold_trigger_event_while_paused,
     open_trigger_window,
     reschedule_todo_trigger_drain,
+    stretch_trigger_window,
     trigger_window,
     trigger_window_end,
 )
+from app.services.triggers.trigger_gate import GateHold, quiet_hours_hold
+from app.services.user_service import get_quiet_hours
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
@@ -144,13 +150,8 @@ async def execute_tracked_todo(
     )
     log.info("tracked_todo.execute_started", todo_id=todo_id)
 
-    if trigger_window is not None:
-        log.set(trigger_window=trigger_window)
-        later_window = await trigger_window_end(todo_id)
-        if later_window is not None and later_window > trigger_window:
-            # A run since opened a later window; the held events wait for its end.
-            await reschedule_todo_trigger_drain(todo_id)
-            return f"deferred:{todo_id} (trigger window open until {later_window})"
+    if trigger_window is not None and (deferred := await _defer_drain(todo_id, trigger_window)):
+        return deferred
 
     pool = await RedisPoolManager.get_pool()
     acquired = await pool.set(
@@ -176,6 +177,55 @@ async def execute_tracked_todo(
             return await _execute_todo_with_retry(todo_id, first, coalesced=rest)
     finally:
         await _release_run_lock(pool, todo_id)
+
+
+async def _defer_drain(todo_id: str, trigger_window: int) -> str | None:
+    """Return why the drain of the window ending at trigger_window does not run now, or None.
+
+    A desk's due briefing answers what it holds. Otherwise it waits for a later
+    window a run has opened, which quiet hours stretch to their end when the
+    todo's gate holds every event it carries.
+    """
+    log.set(trigger_window=trigger_window)
+    if (doc := await todo_repository.get_by_id(todo_id)) is not None:
+        due = doc.scheduled_at is not None and doc.scheduled_at <= datetime.now(UTC)
+        if due and _answers_held_events(doc):
+            return f"deferred:{todo_id} (its scheduled run answers the held events)"
+        if (hold := await _quiet_hours_hold(doc)) is not None:
+            await stretch_trigger_window(todo_id, hold.until)
+    later_window = await trigger_window_end(todo_id)
+    if later_window is not None and later_window > trigger_window:
+        await reschedule_todo_trigger_drain(todo_id)
+        return f"deferred:{todo_id} (trigger window open until {later_window})"
+    return None
+
+
+def _spawn_job(doc: TodoDocument) -> SpawnJob:
+    """Name what the run's spawns do: an Inbox desk spawns only its per-account mail passes."""
+    if doc.external_ref is not None and doc.external_ref.source is ExternalRefSource.INBOX_DESK:
+        return SpawnJob.INBOX_MAIL
+    return SpawnJob.FOCUSED
+
+
+def _answers_held_events(doc: TodoDocument) -> bool:
+    """Whether the todo's scheduled run answers its held events, as a desk reads what changed."""
+    return doc.external_ref is not None and doc.external_ref.source is ExternalRefSource.INBOX_DESK
+
+
+async def _quiet_hours_hold(doc: TodoDocument) -> GateHold | None:
+    """Return the hold every event held for the todo waits on, or None when any may run now.
+
+    An urgent event, or one from a watch with no gate, may; a run that carries it carries all.
+    """
+    events = await held_todo_trigger_events(doc.id)
+    if not events or any(event.quiet_hours_bypass for event in events):
+        return None
+    gates = {subscription.id: subscription.gate for subscription in doc.trigger_subscriptions}
+    holds = [
+        await quiet_hours_hold(gates.get(subscription_id), doc.user_id)
+        for subscription_id in {event.subscription_id for event in events}
+    ]
+    return None if None in holds else holds[0]
 
 
 async def _release_run_lock(pool: ArqRedis, todo_id: str) -> None:
@@ -287,12 +337,8 @@ async def _execute_todo_with_retry(
         return owner
     user_data, user_tz = owner
 
-    # Cost wall before any LLM work: a trigger fire is not a user action. The
-    # window opens first, so a walled run still counts as its window's one run.
-    if origin is not None:
-        log.set(trigger_events=1 + len(coalesced))
-        await open_trigger_window(trigger_window(doc))
-        await enforce_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+    if walled := await _begin_run(doc, origin, coalesced):
+        return walled
 
     outcome = "success"
     try:
@@ -327,6 +373,37 @@ async def _execute_todo_with_retry(
             todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
         )
     return f"{outcome}:{todo_id}"
+
+
+async def _begin_run(
+    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> str | None:
+    """Settle what a run answers for before any LLM work; return the result of a walled run.
+
+    A trigger run opens its window, then meets the cost wall, so a walled run still
+    counts as its window's one run: a trigger fire is not a user action. A desk's
+    scheduled run answers every wake-up held for it, since its steps read what changed.
+    """
+    if origin is not None:
+        log.set(trigger_events=1 + len(coalesced))
+        await open_trigger_window(trigger_window(doc))
+        try:
+            await enforce_cost_budget(doc.user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+        except CostBudgetExceededException as walled:
+            return await _walled_result(doc.id, doc.user_id, walled)
+    elif _answers_held_events(doc):
+        answered = await drain_todo_trigger_events(doc.id)
+        log.set(trigger_events_answered=len(answered or []))
+    return None
+
+
+async def _walled_result(todo_id: str, user_id: str, walled: CostBudgetExceededException) -> str:
+    """Skip a run the cost wall refused, naming when it lifts: expected while spent, never a failed job."""
+    await record_activity(
+        todo_id, user_id, TodoActivityEvent.RUN_SKIPPED, f"skipped: {walled.message}"
+    )
+    log.set(tracked_todo={"walled": walled.period.value})
+    return f"walled:{todo_id}"
 
 
 async def _schedule_retry(
@@ -644,10 +721,11 @@ async def _execute_on_executor(
     user_id = doc.user_id
     prompt = build_execution_prompt(
         doc,
-        context=await collect_run_context(doc),
+        context=await collect_run_context(doc, user_tz),
         origin=origin,
         coalesced=coalesced,
         local_now=datetime.now(user_tz.tzinfo),
+        quiet_hours=await get_quiet_hours(user_id),
     )
 
     # The todo's own chat, reused by every run so the user can follow them in one
@@ -664,6 +742,7 @@ async def _execute_on_executor(
                 conversation_id=conversation_id,
                 fresh_thread=True,
                 wake=_wake(origin, coalesced),
+                spawn_job=_spawn_job(doc),
                 on_started=partial(
                     record_activity,
                     todo_id,
@@ -805,12 +884,15 @@ async def _resume_holding_lock(
                     trigger_names=[],
                     approval_summary=receipt,
                 ),
+                spawn_job=_spawn_job(doc),
             )
         )
         return f"resumed:{todo_id}"
     except ExecutorBusyError:
         # Never started, so nothing failed: the caller defers the resume.
         raise
+    except CostBudgetExceededException as walled:
+        return await _walled_result(todo_id, user_id, walled)
     except TodoRunCancelledError:
         await record_activity(
             todo_id, user_id, TodoActivityEvent.RUN_CANCELLED, "approval resume stopped by the user"

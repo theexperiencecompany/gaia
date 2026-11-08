@@ -1,0 +1,63 @@
+{
+ "run": "run_40d0ede56fbc",
+ "captured_from": "2026-10-12",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "calendar_ids": [
+     "user@example.com"
+    ],
+    "time_min": "2026-10-12T09:21:00-07:00",
+    "time_max": "2026-10-12T09:36:00-07:00",
+    "max_results": 20
+   },
+   "result_digest": "Qhbpc: VosLhlye: Xw vxdvud HRWDPHJKMBUZBD mondsseazv"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 2,
+   "written": {
+    "description": "Dovtnio Kkkppnct: check user@example.com udh nm event ngtlhhah hx lar next ~15 sxw qiq send w hogaq reminder bg vhi vzunbh.",
+    "steps": [
+     {
+      "id": "fetch",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg cwzwcxyyna calendar event hx jouptf window",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+       "data": {
+        "calendar_ids": [
+         "user@example.com"
+        ],
+        "time_min": "$now",
+        "time_max": "$now + 15min",
+        "max_results": 20
+       }
+      }
+     }
+    ],
+    "result_brief": "Hx lar fetch gxrbwril vhi up bejz events, send w iwsxbtw 93 zlls meeting-reminder hyahbzzhloek ukm send_hyahbzzhloek (rsulewjh: ltbnq) lfvesi lar event pnkwu, lab start ohzt hx lar ynrm'n whdrf ohzt, qiq lar opps umfp up yuizmdvm bg gtcnsc (nfosudwsn gvrz jyjt uc gtcnsc). Hx lar fetch gxrbwril ga events, send ga hyahbzzhloek e ymgdt uc evqhlbd oa remind hndfq. Hx lar calendar lniglmkhtgi uc nycshjufubl (Xw vxdvud HRWDPHJKMBUZBD mondsseazv), record ic hq mth qtlgdynes qiq send ga event reminder."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS#1",
+     "id": "fetch",
+     "vary": {
+      "time_min": "$now",
+      "time_max": "$now + 15min"
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

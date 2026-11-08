@@ -116,6 +116,7 @@ class CostBudgetExceededException(RateLimitExceededException):
         if plan_required:
             budget_message += f" Upgrade to {plan_required.capitalize()} for higher limits."
         self.period = period
+        self.message = budget_message
         super().__init__(
             feature, plan_required, reset_time, message=budget_message, current_plan=current_plan
         )

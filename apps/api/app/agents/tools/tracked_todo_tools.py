@@ -29,10 +29,13 @@ from app.agents.tools.tracked_todo_formatting import (
     parse_match,
     render_catalog,
 )
+from app.config.oauth_config import get_integration_by_id
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     LIST_TRACKED_TODOS_LIMIT,
 )
+from app.constants.trigger_gates import GateAuthor
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import get_user_id, read_agent_configurable
 from app.models.todo_models import (
@@ -42,11 +45,14 @@ from app.models.todo_models import (
     TodoDocument,
     TodoUpdate,
     UpdateFieldInputs,
+    default_notify_on_run,
 )
+from app.models.trigger_gate_models import AuthoredGate, GateCondition
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
 )
+from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.todo_activity import agent_actor, record_field_changes
 from app.services.todos.account_refs import owned_gmail_thread_ref, watched_account_id
 from app.services.todos.errors import (
@@ -131,6 +137,42 @@ async def _references_refusal(
         f"Error: no other tracked todo of this user has the id {', '.join(unknown)}. "
         "Nothing was saved; pass ids from list_tracked_todos or search_todo_context."
     )
+
+
+async def _unconnected_refusal(user_id: str, needs_integrations: list[str]) -> str | None:
+    """Refuse a todo whose later runs need a service that is not connected; None when all are."""
+    connected = await get_connected_integration_ids(user_id)
+    missing = [iid for iid in needs_integrations if iid not in connected]
+    if not missing:
+        return None
+    names = ", ".join(
+        integration.name if (integration := get_integration_by_id(iid)) else iid for iid in missing
+    )
+    return (
+        f"Error: {names} is not connected, so no later run of this todo could do its work. "
+        "Nothing was saved. Activate it first (activation brings the user its connect card) "
+        "and create the todo once it is connected."
+    )
+
+
+async def _creation_refusal(
+    user_id: str,
+    references: list[str] | None,
+    needs_integrations: list[str] | None,
+    gmail_thread_id: str | None,
+) -> str | None:
+    """Refuse a new todo whose references or needed services cannot hold; None when both do.
+
+    A thread watch needs Gmail whether or not the caller listed it.
+    """
+    if references and (refusal := await _references_refusal(user_id, references)):
+        return refusal
+    needed = list(needs_integrations or [])
+    if gmail_thread_id and GMAIL_INTEGRATION_ID not in needed:
+        needed.append(GMAIL_INTEGRATION_ID)
+    if needed:
+        return await _unconnected_refusal(user_id, needed)
+    return None
 
 
 async def _link_refusal(
@@ -220,6 +262,11 @@ async def create_tracked_todo(
         "ones found with search_todo_context. Every run of this todo reads their Learnings.",
     ] = None,
     parent_todo_id: Annotated[str | None, _PARENT_TODO_DESC] = None,
+    needs_integrations: Annotated[
+        list[str] | None,
+        "Integration ids its later runs depend on (e.g. ['gmail'] to watch for replies). "
+        "Nothing is created while one is not connected.",
+    ] = None,
 ) -> str:
     """
     Create a tracked todo: a GAIA-managed todo with a working-memory canvas.
@@ -270,6 +317,8 @@ async def create_tracked_todo(
                 Learnings. An id that is not one of the user's todos creates nothing.
     parent_todo_id: The open tracked todo this one is a sub-todo of; a parent that is not
                 usable creates nothing and says why.
+    needs_integrations: Integration ids its later runs depend on; a promise to watch or act
+                later needs the means, so nothing is created while one is not connected.
     """
     user_id = get_user_id(config)
     # conversation_id lives in `configurable`, not `metadata` (matching
@@ -290,7 +339,7 @@ async def create_tracked_todo(
     if error:
         return error
 
-    if references and (refusal := await _references_refusal(user_id, references)):
+    if refusal := await _creation_refusal(user_id, references, needs_integrations, gmail_thread_id):
         return refusal
     if gives_sub_todo_rules(config, parent_todo_id, initial_canvas):
         return SUB_TODO_STANDING_RULES_REFUSAL
@@ -527,10 +576,8 @@ async def update_tracked_todo(
     )
     if error := await apply_field_updates(inputs, user_id, update_fields, notes):
         return error
-    # Moved under a parent, a todo reports to it like a new sub-todo unless told otherwise.
-    moved_default = False if parent_todo_id else None
     plain_fields = {
-        "notify_on_run": moved_default if notify_on_run is None else notify_on_run,
+        "notify_on_run": notify_on_run,
         "parent_todo_id": parent_todo_id or None,
     }
     update_fields.update({name: value for name, value in plain_fields.items() if value is not None})
@@ -545,6 +592,11 @@ async def update_tracked_todo(
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
     if refusal := await _link_refusal(user_id, todo_id, references, parent_todo_id):
         return refusal
+    if parent_todo_id and notify_on_run is None:
+        # Moved under a parent, a todo reports like a new sub-todo of its kind unless told otherwise.
+        update_fields["notify_on_run"] = default_notify_on_run(
+            parent_todo_id=parent_todo_id, external_ref=existing.external_ref
+        )
 
     if update_fields:
         actor = agent_actor(read_agent_configurable(config).conversation_id)
@@ -676,6 +728,15 @@ async def subscribe_todo_to_trigger(
         "Only events on this one connected account, by its listed name or id (e.g. the "
         "user's work inbox). Omit to watch every account on the integration.",
     ] = None,
+    runs_only_when: Annotated[
+        GateCondition | None,
+        "Only with action 'execute': one short plain-text sentence, written from the "
+        "todo's intent and about the event itself, naming which events are worth running "
+        "the todo for, e.g. 'The reply confirms the invoice is paid or asks about it.' "
+        "GAIA checks it before each run and skips an event that clearly fails it, so make "
+        "it as broad as the todo needs: an event the todo would act on must pass. Omit it "
+        "when every event that passes the conditions should run.",
+    ] = None,
 ) -> str:
     """Make a tracked todo react to an integration event instead of only a schedule.
 
@@ -721,7 +782,12 @@ async def subscribe_todo_to_trigger(
         return f"Error: no connected account for {trigger_name} is named {account!r}."
 
     try:
-        subscription, outcome, _created = await register_subscription(
+        gate = (
+            None
+            if runs_only_when is None
+            else AuthoredGate(condition=runs_only_when, author=GateAuthor.GAIA)
+        )
+        subscription, outcome, created = await register_subscription(
             todo_id=todo_id,
             user_id=user_id,
             trigger_name=trigger_name,
@@ -731,10 +797,23 @@ async def subscribe_todo_to_trigger(
             cooldown_seconds=cooldown_seconds,
             trigger_data=trigger_data,
             account_id=account_id,
+            gate=gate,
         )
     except SubscriptionError as e:
         # The catalog rides along on failure so the retry has what it needs.
         return f"Could not subscribe: {e}\n\n{render_catalog(trigger_name)}"
+
+    if not created and subscription.gate != gate:
+        runs_on = (
+            f"runs only when: {subscription.gate.display_condition}"
+            if subscription.gate
+            else "runs on every event"
+        )
+        return (
+            f"Todo {todo_id} already watches {trigger_name} with these settings "
+            f"(subscription id: {subscription.id}), so nothing new was stored and it still "
+            f"{runs_on}. To change its runs_only_when, unsubscribe it and subscribe again."
+        )
 
     lines = [
         f"Todo {todo_id} is now watching {trigger_name} and will {parsed_action} when it fires.",

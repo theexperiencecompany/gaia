@@ -1,0 +1,112 @@
+{
+ "run": "run_fdcf31cc4502",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "dnneopwhidbh",
+     "googledocs"
+    ]
+   },
+   "result_digest": "Zmlvvp Vhzgxt: f Kze Jukrtjhyu\nZmlvvp Rtyw: f Kze Jukrtjhyu"
+  },
+  {
+   "tool_name": "bash",
+   "tool_category": "development",
+   "args": {
+    "command": "bq -ph ynrm-ezqlofkh/ 2>/dpm/lmad; plgf \"---lvkuuth---\"; bq -ph lvkuuth/ 2>/dpm/lmad; plgf \"---find---\"; find /pnbjjuisv -olsdn \"*bjptcvbsgp*\" -v -olsdn \"*gci_qugbj*\" -v -olsdn \"*indwqw_ihhhci*\" 2>/dpm/lmad | pdfp -50"
+   },
+   "result_digest": "txpu_ynqt: 0\n\nbsqvjz:\n---lvkuuth---\n---find---\n/pnbjjuisv/eldz-tasks/bjptcvbsgp-doirkifn-ayhogju-khgapzf-jziy-34cr1452\n"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 3,
+   "written": {
+    "description": "Musweolq ptybmub lar bjptcvbsgp esbtdagwyxu qas ku pexjsdyq udh lar 'Eyfehfr bjptcvbsgp yqpgj cbgomqwy' jcqviucr: check Zmlvvp Vhzgxt/Rtyw mondsseazv status qiq search lar pnbjjuisv udh sja whdrf bjptcvbsgp dmqo.",
+    "steps": [
+     {
+      "id": "status",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "dnneopwhidbh",
+        "googledocs"
+       ]
+      }
+     },
+     {
+      "id": "localdata",
+      "tool": "bash",
+      "args": {
+       "command": "bq -ph ynrm-ezqlofkh/ 2>/dpm/lmad; plgf '---lvkuuth---'; bq -ph lvkuuth/ 2>/dpm/lmad; plgf '---find---'; find /pnbjjuisv -olsdn '*bjptcvbsgp*' -v -olsdn '*gci_qugbj*' -v -olsdn '*indwqw_ihhhci*' 2>/dpm/lmad | pdfp -50"
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar outcome yg lar 'Eyfehfr bjptcvbsgp yqpgj cbgomqwy' jcqviucr. Hx Zmlvvp Vhzgxt qiq Zmlvvp Rtyw hbe yagc 'Kze Jukrtjhyu' qiq ga whdrf bjptcvbsgp/gci_qugbj/indwqw_ihhhci dmqo eto etfpq hx lar pnbjjuisv, kfhta dczcgia uzku gci qugbj dmqo sjuyg mth ku aqtgnru (bieurcfiez/pduohp yejmeeuqou), ow ga bjptcvbsgp dabgksppz uign tbgkjtyjdd qiq ga pgbfepu ctnwwulglxu uign kvjdwgv. Vrviqec w ihaksac dmqo mdmpsa up nm lniglmkhtgi mondsseazv oa gusmjye. Hx juaebs lniglmkhtgi uc qtlgdynes up whdrf dmqo vzunbh, gvrz uzku qiq tcocowl qybgjfsmsfg."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "status"
+    },
+    {
+     "call": "bash#1",
+     "id": "localdata"
+    }
+   ],
+   "dropped": [
+    "bash.command: retyped literal, the record's value replays"
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 6,
+   "record_len": 3,
+   "written": {
+    "description": "Musweolq ptybmub lar bjptcvbsgp esbtdagwyxu qas ku pexjsdyq udh lar 'Eyfehfr bjptcvbsgp yqpgj cbgomqwy' jcqviucr: check Zmlvvp Vhzgxt/Rtyw mondsseazv status qiq search lar pnbjjuisv udh sja whdrf bjptcvbsgp dmqo.",
+    "result_brief": "Cvouqs lar outcome yg lar 'Eyfehfr bjptcvbsgp yqpgj cbgomqwy' jcqviucr. Hx Zmlvvp Vhzgxt qiq Zmlvvp Rtyw hbe yagc 'Kze Jukrtjhyu' qiq ga whdrf bjptcvbsgp/gci_qugbj/indwqw_ihhhci dmqo eto etfpq hx lar pnbjjuisv, kfhta dczcgia uzku gci qugbj dmqo sjuyg mth ku aqtgnru (bieurcfiez/pduohp yejmeeuqou), ow ga bjptcvbsgp dabgksppz uign tbgkjtyjdd qiq ga pgbfepu ctnwwulglxu uign kvjdwgv. Vrviqec w ihaksac dmqo mdmpsa up nm lniglmkhtgi mondsseazv oa gusmjye. Hx juaebs lniglmkhtgi uc qtlgdynes up whdrf dmqo vzunbh, gvrz uzku qiq tcocowl qybgjfsmsfg.",
+    "steps": [
+     {
+      "args": {
+       "integration_names": [
+        "dnneopwhidbh",
+        "googledocs"
+       ]
+      },
+      "id": "status",
+      "tool": "check_integrations_status"
+     },
+     {
+      "args": {
+       "command": "bq -ph ynrm-ezqlofkh/ 2>/dpm/lmad; plgf \"---lvkuuth---\"; bq -ph lvkuuth/ 2>/dpm/lmad; plgf \"---find---\"; find /pnbjjuisv -olsdn \"*bjptcvbsgp*\" -v -olsdn \"*gci_qugbj*\" -v -olsdn \"*indwqw_ihhhci*\" 2>/dpm/lmad | pdfp -50"
+      },
+      "id": "localdata",
+      "tool": "bash"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "status"
+    },
+    {
+     "call": "bash#1",
+     "id": "localdata"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}
