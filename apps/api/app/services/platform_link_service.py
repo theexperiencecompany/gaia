@@ -278,7 +278,7 @@ async def start_platform_connect(
     await require_platform_plan(user_id, platform)
 
     # Discord OAuth flow
-    if platform == Platform.DISCORD.value and settings.discord_oauth_client_id:
+    if platform == Platform.DISCORD.value and settings.DISCORD_OAUTH_CLIENT_ID:
         state = await create_oauth_state(
             user_id=user_id,
             redirect_path="/settings?section=linked-accounts",
@@ -286,7 +286,7 @@ async def start_platform_connect(
         )
         auth_url = (
             f"https://discord.com/api/oauth2/authorize"
-            f"?client_id={settings.discord_oauth_client_id}"
+            f"?client_id={settings.DISCORD_OAUTH_CLIENT_ID}"
             f"&redirect_uri={quote(settings.DISCORD_OAUTH_REDIRECT_URI)}"
             f"&response_type=code"
             f"&scope=identify"
@@ -297,7 +297,7 @@ async def start_platform_connect(
         )
 
     # Slack OAuth flow
-    if platform == Platform.SLACK.value and settings.slack_oauth_client_id:
+    if platform == Platform.SLACK.value and settings.SLACK_OAUTH_CLIENT_ID:
         state = await create_oauth_state(
             user_id=user_id,
             redirect_path="/settings?section=linked-accounts",
@@ -305,7 +305,7 @@ async def start_platform_connect(
         )
         auth_url = (
             f"https://slack.com/oauth/v2/authorize"
-            f"?client_id={settings.slack_oauth_client_id}"
+            f"?client_id={settings.SLACK_OAUTH_CLIENT_ID}"
             f"&redirect_uri={quote(settings.SLACK_OAUTH_REDIRECT_URI)}"
             f"&user_scope=identity.basic"
             f"&state={state}"
@@ -334,7 +334,7 @@ async def start_platform_connect(
 
     # WhatsApp manual flow (no OAuth)
     if platform == Platform.WHATSAPP.value:
-        whatsapp_number = settings.whatsapp_phone_number
+        whatsapp_number = settings.WHATSAPP_PHONE_NUMBER
         return InitiatePlatformConnectResponse(
             auth_url=None,
             auth_type="manual",

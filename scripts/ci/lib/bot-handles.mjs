@@ -7,7 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-export const BOT_HANDLES_SOURCE = "libs/shared/bot-identity.json";
+const BOT_HANDLES_SOURCE = "libs/shared/bot-identity.json";
 
 // Fixtures mint links from stand-in handles on purpose: the API suite and this
 // gate's own tests write links that must not be held to the real handles.
@@ -59,9 +59,10 @@ function readHandles() {
     discordCode: identity.discordInviteCode,
     discordCommunity: identity.discordCommunityUrl,
   };
-  const missing = Object.entries(handles)
-    .filter(([, value]) => !value)
-    .map(([name]) => name);
+  const missing = [];
+  for (const [name, value] of Object.entries(handles)) {
+    if (!value) missing.push(name);
+  }
   if (missing.length > 0) {
     console.error(
       `❌ bot-handles gate FAILED — ${BOT_HANDLES_SOURCE} no longer exports: ${missing.join(", ")}.`,

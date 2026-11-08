@@ -714,7 +714,7 @@ class TestInitiatePlatformConnect:
                 return_value="state123",
             ),
         ):
-            mock_settings.discord_oauth_client_id = "discord_client_id"
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = "discord_client_id"
             mock_settings.DISCORD_OAUTH_REDIRECT_URI = "http://localhost/callback"
             resp = await client.post(f"{BASE}/discord/connect", json={})
 
@@ -734,8 +734,8 @@ class TestInitiatePlatformConnect:
                 return_value="slack_state",
             ),
         ):
-            mock_settings.discord_oauth_client_id = None
-            mock_settings.slack_oauth_client_id = "slack_client_id"
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
+            mock_settings.SLACK_OAUTH_CLIENT_ID = "slack_client_id"
             mock_settings.SLACK_OAUTH_REDIRECT_URI = "http://localhost/slack/callback"
             resp = await client.post(f"{BASE}/slack/connect", json={})
 
@@ -747,8 +747,8 @@ class TestInitiatePlatformConnect:
     @pytest.mark.asyncio
     async def test_telegram_manual(self, client: AsyncClient) -> None:
         with patch("app.services.platform_link_service.settings") as mock_settings:
-            mock_settings.discord_oauth_client_id = None
-            mock_settings.slack_oauth_client_id = None
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
+            mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.telegram_bot_username = "my_gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
@@ -761,8 +761,8 @@ class TestInitiatePlatformConnect:
     @pytest.mark.asyncio
     async def test_telegram_without_a_bot_is_501(self, client: AsyncClient) -> None:
         with patch("app.services.platform_link_service.settings") as mock_settings:
-            mock_settings.discord_oauth_client_id = None
-            mock_settings.slack_oauth_client_id = None
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
+            mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.telegram_bot_username = None
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
@@ -772,9 +772,9 @@ class TestInitiatePlatformConnect:
     async def test_whatsapp_manual(self, client: AsyncClient) -> None:
         """WhatsApp uses manual flow (no OAuth) -> 200 with instructions."""
         with patch("app.services.platform_link_service.settings") as mock_settings:
-            mock_settings.discord_oauth_client_id = None
-            mock_settings.slack_oauth_client_id = None
-            mock_settings.whatsapp_phone_number = "15551234567"
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
+            mock_settings.SLACK_OAUTH_CLIENT_ID = None
+            mock_settings.WHATSAPP_PHONE_NUMBER = "15551234567"
             resp = await client.post(f"{BASE}/whatsapp/connect", json={})
 
         assert resp.status_code == 200
@@ -791,8 +791,8 @@ class TestInitiatePlatformConnect:
             patch("app.services.platform_link_service.settings") as mock_settings,
             patch("app.api.v1.endpoints.platform_links.log") as mock_log,
         ):
-            mock_settings.discord_oauth_client_id = None
-            mock_settings.slack_oauth_client_id = None
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
+            mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.telegram_bot_username = "gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
@@ -1052,8 +1052,8 @@ class TestImessagePremiumGate:
             ) as mock_limit,
             patch("app.services.platform_link_service.settings") as mock_settings,
         ):
-            mock_settings.discord_oauth_client_id = None
-            mock_settings.slack_oauth_client_id = None
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
+            mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.telegram_bot_username = "gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
@@ -1066,8 +1066,8 @@ class TestImessagePremiumGate:
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
             patch("app.services.platform_link_service.settings") as mock_settings,
         ):
-            mock_settings.discord_oauth_client_id = None
-            mock_settings.slack_oauth_client_id = None
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
+            mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.telegram_bot_username = "gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 

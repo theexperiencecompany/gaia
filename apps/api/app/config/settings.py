@@ -192,31 +192,8 @@ class Settings(BrowserHostSettings):
 
     @property
     def telegram_bot_username(self) -> str | None:
-        """The Telegram bot for this instance; hosted falls back to the shared identity file."""
-        if self.TELEGRAM_BOT_USERNAME:
-            return self.TELEGRAM_BOT_USERNAME
-        return GAIA_CLOUD_TELEGRAM_BOT_USERNAME if self.deployment.hosted_bots else None
-
-    @property
-    def whatsapp_phone_number(self) -> str | None:
-        """E.164 without the plus, for wa.me links; hosted falls back to the shared file."""
-        if self.WHATSAPP_PHONE_NUMBER:
-            return self.WHATSAPP_PHONE_NUMBER
-        return GAIA_CLOUD_WHATSAPP_NUMBER if self.deployment.hosted_bots else None
-
-    @property
-    def discord_oauth_client_id(self) -> str | None:
-        """Discord's public application id; hosted falls back to the shared file."""
-        if self.DISCORD_OAUTH_CLIENT_ID:
-            return self.DISCORD_OAUTH_CLIENT_ID
-        return GAIA_CLOUD_DISCORD_CLIENT_ID if self.deployment.hosted_bots else None
-
-    @property
-    def slack_oauth_client_id(self) -> str | None:
-        """Slack's public client id; hosted falls back to the shared file."""
-        if self.SLACK_OAUTH_CLIENT_ID:
-            return self.SLACK_OAUTH_CLIENT_ID
-        return GAIA_CLOUD_SLACK_CLIENT_ID if self.deployment.hosted_bots else None
+        """The Telegram bot for this instance, from env or the shared identity file."""
+        return self.TELEGRAM_BOT_USERNAME
 
     # Outbound Email. EMAIL_PROVIDER keys the registry in
     # app/services/email/providers.
@@ -667,6 +644,17 @@ class Settings(BrowserHostSettings):
     # ----------------------------------------------
     BOT_SESSION_TOKEN_SECRET: str | None = None  # min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
+
+    @model_validator(mode="after")
+    def _default_hosted_bot_identity(self) -> Self:
+        """Fill the hosted handles from the shared identity file when env leaves them unset."""
+        if not self.deployment.hosted_bots:
+            return self
+        self.WHATSAPP_PHONE_NUMBER = self.WHATSAPP_PHONE_NUMBER or GAIA_CLOUD_WHATSAPP_NUMBER
+        self.DISCORD_OAUTH_CLIENT_ID = self.DISCORD_OAUTH_CLIENT_ID or GAIA_CLOUD_DISCORD_CLIENT_ID
+        self.SLACK_OAUTH_CLIENT_ID = self.SLACK_OAUTH_CLIENT_ID or GAIA_CLOUD_SLACK_CLIENT_ID
+        self.TELEGRAM_BOT_USERNAME = self.TELEGRAM_BOT_USERNAME or GAIA_CLOUD_TELEGRAM_BOT_USERNAME
+        return self
 
     @model_validator(mode="before")
     @classmethod

@@ -11,10 +11,10 @@ from shared.py.bot_identity import (
 
 # The handles hosted GAIA runs its bots on, read from libs/shared/bot-identity.json
 # so the API, the web build and the upstream check share one copy.
-GAIA_CLOUD_TELEGRAM_BOT_USERNAME = TELEGRAM_USERNAME
-GAIA_CLOUD_WHATSAPP_NUMBER = WHATSAPP_NUMBER
-GAIA_CLOUD_DISCORD_CLIENT_ID = DISCORD_CLIENT_ID
-GAIA_CLOUD_SLACK_CLIENT_ID = SLACK_CLIENT_ID
+GAIA_CLOUD_TELEGRAM_BOT_USERNAME: str = TELEGRAM_USERNAME
+GAIA_CLOUD_WHATSAPP_NUMBER: str = WHATSAPP_NUMBER
+GAIA_CLOUD_DISCORD_CLIENT_ID: str = DISCORD_CLIENT_ID
+GAIA_CLOUD_SLACK_CLIENT_ID: str = SLACK_CLIENT_ID
 
 
 class BotRequestFailure(StrEnum):
