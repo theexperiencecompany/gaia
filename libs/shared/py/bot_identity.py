@@ -5,8 +5,8 @@ its Python face, so the hosted defaults the API serves cannot drift from the
 ones the website links to. Self-hosted instances still override with env.
 """
 
-import json
 from importlib.resources import files
+import json
 
 _IDENTITY = json.loads((files("shared") / "bot-identity.json").read_text(encoding="utf-8"))
 
