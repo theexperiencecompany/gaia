@@ -40,7 +40,7 @@ from app.agents.core.subagents.subagent_runner import (
 from app.agents.llm.lane import AgentRole
 from app.constants.agents import NO_ANSWER_NOTICE, AgentTag, wrap_agent_payload
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
-from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
+from app.constants.llm import BUDGET_STOP_METADATA_KEY, DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
@@ -800,6 +800,20 @@ class TestProcessUpdatesPayload:
             await _process_updates_payload(run, {"agent": {"todos": []}})
 
         assert run.run_messages == []
+
+    @pytest.mark.asyncio
+    async def test_a_budget_stop_is_the_runs_answer_not_a_silent_end(self):
+        """The wall answers without a model, so no token streams: its stop text must still be the result."""
+        stop = "You've used this month's AI usage allowance, so chat, workflows and tracked todos are paused until December 8, when it resets."
+        wall = AIMessage(content=stop, response_metadata={BUDGET_STOP_METADATA_KEY: True})
+        run = _make_run()
+
+        with patch("app.agents.core.subagents.subagent_runner.log"), self._entries([]):
+            await _process_updates_payload(run, {"agent": {"messages": [wall]}})
+            outcome = _finalize_run(run)
+
+        assert outcome.text == stop
+        assert outcome.answered
 
     @pytest.mark.asyncio
     async def test_only_tool_bearing_messages_are_captured(self):
