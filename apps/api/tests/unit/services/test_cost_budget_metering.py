@@ -113,6 +113,11 @@ class TestChargedSpend:
         rollup.assert_awaited_once()
         assert [w["operation"] for w in log.get()["warnings"]] == ["redis_usage_pipeline"]
 
+    async def test_a_missing_redis_reads_no_spend(self) -> None:
+        """Enforcement fails open without Redis: every window reads empty, never a phantom spend."""
+        with patch.object(redis_cache, "redis", None):
+            assert await get_cost(USER, RateLimitPeriod.MONTH) == 0.0
+
     async def test_accumulates_across_calls(self) -> None:
         await record_model_call_usage(
             USER,

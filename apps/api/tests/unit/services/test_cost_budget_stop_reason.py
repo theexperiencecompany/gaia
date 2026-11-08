@@ -151,11 +151,16 @@ class TestMonthlyWall:
         assert check == BudgetCheck(None, 0.0, PlanType.PRO, PRO_MONTHLY_COST_BUDGET_USD - 0.01)
 
     async def test_reports_the_month_without_a_request_id_too(self) -> None:
+        log.reset()
         await _spend_earlier_this_month(1.5)
 
         check = await get_budget_stop_reason(USER, PlanType.PRO, None)
 
         assert check == BudgetCheck(None, 0.0, PlanType.PRO, 1.5)
+        assert [w["msg"] for w in log.get().get("warnings", [])] == [
+            "[AGENT] Per-request ceiling skipped — missing root_request_id "
+            "in configurable (threading gap?)."
+        ]
 
     def test_the_monthly_stop_text_refuses_to_render_without_its_reset_day(self) -> None:
         with pytest.raises(

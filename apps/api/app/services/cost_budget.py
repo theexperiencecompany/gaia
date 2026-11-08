@@ -175,7 +175,9 @@ async def _write_usage_counters(
 
     The month key reads the billing day, so resolving it is part of this write and fails open with it.
     """
+    # pragma: no mutate start — MULTI/EXEC lands the same writes, so transaction is unobservable.
     pipe = client.pipeline(transaction=False)
+    # pragma: no mutate end
     if charged_user_id is not None:
         for period, ttl in _PERIOD_TTL_SECONDS.items():
             key = await _budget_key(charged_user_id, period)
