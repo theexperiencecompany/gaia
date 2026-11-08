@@ -402,6 +402,7 @@ _INDEX_CREATORS = [
     "create_playbook_indexes",
     "create_provider_credential_indexes",
     "create_tool_output_shapes_indexes",
+    "create_email_verdict_indexes",
 ]
 
 

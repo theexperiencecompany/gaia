@@ -112,7 +112,7 @@ def about_the_user(core_context: str) -> str:
     if not core_context.startswith(f"{ABOUT_USER_HEADING}\n"):
         return ""
     body = core_context[len(ABOUT_USER_HEADING) + 1 :]
-    return body.split("\n\n## ", 1)[0].strip()
+    return body.split("\n\n## ", 1)[0].strip()  # pragma: no mutate — only [0] is read
 
 
 async def invalidate_core_context(user_id: str) -> None:

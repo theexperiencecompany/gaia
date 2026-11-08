@@ -111,6 +111,11 @@ class TestFormatRecentActivity:
     def test_empty_days_are_omitted(self) -> None:
         assert context._format_recent_activity([make_episode(KOLKATA_TODAY)], KOLKATA_TODAY) == ""
 
+    def test_an_entrys_trailing_space_is_dropped(self) -> None:
+        episode = make_episode(KOLKATA_TODAY, entries=[{"time": "09:00", "text": "one  "}])
+        out = context._format_recent_activity([episode], KOLKATA_TODAY)
+        assert out == "### Today (2026-07-01)\n- 09:00 one"
+
 
 @pytest.mark.unit
 class TestAboutTheUser:

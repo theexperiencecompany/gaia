@@ -534,9 +534,9 @@ async def _decide(
             await email_verdict(
                 job.user_id,
                 event.message_id,
-                _desk_view(event).as_email(),
+                # By day a conversation is reply, so the verdict never reads the email.
+                _desk_view(event).as_email(),  # pragma: no mutate
                 thread=_thread_facts(event),
-                quiet=False,
             )
         decision = _Decision(GateReason.FREE_RUN, hold or GateRun())
     else:

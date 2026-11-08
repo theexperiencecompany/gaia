@@ -34,6 +34,7 @@ from app.constants.trigger_gates import (
 )
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.trigger_gate_models import AuthoredGate, GateSkipRecord, SystemGate, TriggerGate
+from app.services.mail.email_verdict import EmailVerdict
 from app.services.triggers.trigger_gate import (
     GateBypass,
     GatedJob,
@@ -41,6 +42,9 @@ from app.services.triggers.trigger_gate import (
     GateRun,
     GateSkip,
     GateVerdict,
+    _desk_view,
+    _GateEvent,
+    _settle_verdict,
     decide_gate,
     quiet_hours_hold,
 )
@@ -1463,6 +1467,39 @@ class TestTheDeskGateReadsTheEmailVerdict:
         assert await _skip(DESK) == GateRun()
         assert _decided(seams).reason == GateReason.JEV_MALFORMED
 
+    async def test_a_conversation_by_day_is_kept_as_reply_without_asking_jev(
+        self, seams: SimpleNamespace
+    ) -> None:
+        assert await _skip(DESK, payload={"message_id": "m2"}) == GateRun()
+
+        assert seams.jev.call_count == 0
+        assert seams.verdicts.kept[USER_ID, "m2"].bucket == "reply"
+
+    async def test_an_authored_gate_by_day_decides_a_conversation_without_a_desk_call(
+        self, seams: SimpleNamespace
+    ) -> None:
+        async with captured_wide_event() as event:
+            assert await _skip(payload={"message_id": "m2"}) == GateRun()
+
+        assert seams.verdicts.kept == {}
+        assert event.get("errors", []) == []
+
+
+def test_a_quiet_hours_verdict_without_urgency_is_refused_by_name() -> None:
+    with pytest.raises(ValueError) as caught:
+        _settle_verdict(
+            EmailVerdict(answers={}, bucket=None),
+            _GateEvent(fields={}, label="x"),
+            hold=GateHold(until=MORNING),
+        )
+    assert str(caught.value) == "a quiet-hours email verdict carries no urgency"
+
+
+def test_a_desk_view_of_an_event_that_is_no_email_is_refused_by_name() -> None:
+    with pytest.raises(ValueError) as caught:
+        _desk_view(_GateEvent(fields={}, label="x"))
+    assert str(caught.value) == "the Inbox desk gate fired on an event that is not a Gmail message"
+
 
 class TestTheDeskGateAtNight:
     async def test_it_asks_the_authored_gates_urgent_question_next_to_the_judgments_in_one_call(
@@ -1512,12 +1549,20 @@ class TestTheDeskGateAtNight:
     ) -> None:
         night.jev.mock(return_value=_verdict("reply", can_wait=0.2))
 
-        verdict = await _skip(DESK)
+        async with captured_wide_event() as event:
+            verdict = await _skip(DESK)
 
         assert verdict == GateBypass(
             reason="someone is waiting on you for a meeting happening soon"
         )
         assert _decided(night).urgent_choice == "meeting"
+
+        recorded = _recorded(event)
+        assert isinstance(recorded, dict)
+        assert recorded["choice"] == "reply"
+        assert recorded["skip_probability"] == pytest.approx(0.05)
+        assert recorded["urgent_probability"] == pytest.approx(0.8)
+        assert recorded["urgent_choice"] == "meeting"
 
     @pytest.mark.parametrize("bucket", ["reply", "act"])
     async def test_mail_just_under_the_wake_line_is_held(
@@ -1525,25 +1570,46 @@ class TestTheDeskGateAtNight:
     ) -> None:
         night.jev.mock(return_value=_verdict(bucket, can_wait=0.201))
 
-        assert await _skip(DESK) == GateHold(until=MORNING)
+        async with captured_wide_event() as event:
+            assert await _skip(DESK) == GateHold(until=MORNING)
         assert _decided(night).reason == GateReason.JEV_CAN_WAIT
+
+        recorded = _recorded(event)
+        assert isinstance(recorded, dict)
+        assert recorded["choice"] == bucket
+        assert recorded["skip_probability"] == pytest.approx(0.05)
+        assert recorded["urgent_probability"] == pytest.approx(0.799)
 
     async def test_fyi_is_skipped(self, night: SimpleNamespace) -> None:
         night.jev.mock(return_value=_verdict("fyi"))
 
-        assert isinstance(await _skip(DESK), GateSkip)
+        async with captured_wide_event() as event:
+            assert isinstance(await _skip(DESK), GateSkip)
+
+        recorded = _recorded(event)
+        assert isinstance(recorded, dict)
+        assert recorded["choice"] == "fyi"
+        assert recorded["skip_probability"] == pytest.approx(0.95)
+        assert recorded["urgent_probability"] == 0.0
 
     async def test_a_reply_on_a_thread_the_user_wrote_in_is_held_never_skipped(
         self, night: SimpleNamespace
     ) -> None:
         night.jev.mock(return_value=_verdict("fyi"))
 
-        assert await _skip(DESK, payload={"message_id": "m2"}) == GateHold(until=MORNING)
+        async with captured_wide_event() as event:
+            assert await _skip(DESK, payload={"message_id": "m2"}) == GateHold(until=MORNING)
         assert night.verdicts.kept[USER_ID, "m2"].bucket == "reply"
         assert _sent(night)["state"]["thread"] == {
             "user_wrote_in_thread": True,
             "latest_from_other": True,
         }
+
+        recorded = _recorded(event)
+        assert isinstance(recorded, dict)
+        assert recorded["choice"] == "reply"
+        assert recorded["skip_probability"] == pytest.approx(0.95)
+        assert recorded["urgent_probability"] == 0.0
 
     async def test_a_jev_failure_is_held(self, night: SimpleNamespace) -> None:
         night.jev.mock(return_value=httpx.Response(500))

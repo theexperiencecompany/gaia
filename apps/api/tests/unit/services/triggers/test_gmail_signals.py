@@ -227,6 +227,14 @@ class TestGateView:
     def test_an_unreadable_payload_has_no_view(self) -> None:
         assert gmail_gate_view({"label_ids": "INBOX"}) is None
 
+    def test_the_verdict_key_is_the_gmail_id_then_the_message_id(self) -> None:
+        only_message_id = gmail_gate_view({"thread_id": "a1", "message_id": "b2"})
+        both = gmail_gate_view({"message_id": "b2", "id": "m2"})
+        neither = gmail_gate_view({"thread_id": "a1"})
+
+        assert only_message_id is not None and both is not None and neither is not None
+        assert (only_message_id.gmail_id, both.gmail_id, neither.gmail_id) == ("b2", "m2", None)
+
 
 class TestAFetchedMessage:
     """A message a run fetched itself reads to the gate as the same mail's webhook would."""
@@ -319,6 +327,30 @@ class TestTheEmailAsAPersonSeesIt:
 
     def test_a_bare_address_sender_has_no_name(self) -> None:
         assert self._email(sender="ops@vendor.example")["from"] == {"address": "ops@vendor.example"}
+
+    def test_the_addresses_body_attachments_and_unsubscribe_header_are_named(self) -> None:
+        email = self._email(
+            to="user@acme.example",
+            subject="Re: pilot",
+            message_text="Hi,\n\n  are we   still on?",
+            attachment_list=[{"filename": "a.pdf"}],
+            payload={
+                "headers": [
+                    {"name": "Cc", "value": "sam@northwind.dev"},
+                    {"name": "List-Unsubscribe", "value": "<mailto:u@vendor.example>"},
+                ]
+            },
+        )
+
+        assert email == {
+            "from": {"name": "Ops", "address": "ops@vendor.example"},
+            "to": "user@acme.example",
+            "cc": "sam@northwind.dev",
+            "subject": "Re: pilot",
+            "snippet": "Hi, are we still on?",
+            "attachments": 1,
+            "headers": {"list_unsubscribe": True},
+        }
 
     @pytest.mark.parametrize(("labels", "other"), [(["INBOX"], True), (["SENT", "INBOX"], False)])
     def test_a_message_the_user_sent_is_not_someone_elses(

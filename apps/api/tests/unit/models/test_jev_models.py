@@ -65,6 +65,13 @@ class TestNoul:
         with pytest.raises(ValueError, match="no JEV noul answer for question 'other'"):
             body.noul("other")
 
+    def test_a_non_noul_answer_is_refused_in_at_most_300_characters(self) -> None:
+        body = _body({"type": "score", "choice": "x" * 400})
+        with pytest.raises(ValueError) as caught:
+            body.noul("q")
+        assert str(caught.value).startswith("no JEV noul answer for question 'q': ")
+        assert len(str(caught.value)) == 300
+
     def test_a_noul_answer_is_no_choice(self) -> None:
         with pytest.raises(ValueError, match="non-choice"):
             _body({"type": "noul", "noul": 0.5}).choice("q", ("yes",))
