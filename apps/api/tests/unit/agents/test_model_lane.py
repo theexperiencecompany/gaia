@@ -139,15 +139,15 @@ class TestPlanRouting:
         assert resolved.provider_pin == routing
         assert resolved.binding_keys()["model_kwargs"] == routing
 
-    async def test_a_free_lane_on_a_routed_model_carries_that_models_routing(
+    def test_the_configured_route_carries_its_own_models_routing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         routing: OpenRouterModelKwargs = {"provider": {"only": ["vendor"]}}
-        monkeypatch.setitem(OPENROUTER_PROVIDER_ROUTING, DEFAULT_MODEL_NAME, routing)
+        monkeypatch.setitem(OPENROUTER_PROVIDER_ROUTING, "vendor/routed", routing)
+        route = (LLMProviderName.OPENROUTER, "vendor/routed")
 
-        resolved = await _resolve(PlanType.FREE)
-
-        assert resolved.provider_pin == routing
+        with patch.object(lane_module, "chat_route", lambda: route):
+            assert lane_module._default_lane().provider_pin == routing
 
     def test_with_no_configured_route_the_default_lane_still_carries_its_models_routing(
         self, monkeypatch: pytest.MonkeyPatch
