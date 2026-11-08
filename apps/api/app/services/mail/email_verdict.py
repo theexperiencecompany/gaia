@@ -1,139 +1,172 @@
-"""The one judgment GAIA makes about an email, from one JEV call: its desk bucket, and inside quiet hours its urgency.
+"""The one judgment GAIA makes about an email: JEV's yes/no answers from one call, and the bucket code derives.
 
 The Inbox desk's gate reads it when the email arrives and the desk's own fetch reads it at
-the sweep. JEV judges the email by its value to this user, so memory's About-the-user note
-rides along. Each answer is kept by Gmail message id, so the second reader never asks JEV
-again. Only a quiet-hours arrival needs urgency, so only it asks the urgent question too.
-A JEV failure raises and nothing is kept: each caller degrades its own way.
+the sweep. JEV answers each judgment in desk_buckets.JUDGMENT_QUESTIONS as P(true); the
+decision table here turns their bands into a bucket and a skip. Each verdict is kept by Gmail
+message id, so the second reader never asks again. A JEV failure raises and nothing is kept.
 """
 
 import asyncio
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict
 
 from app.constants.desk_buckets import (
-    DESK_AUTOMATION,
-    DESK_BUCKET_CRITERIA,
-    DESK_BUCKET_INSTRUCTIONS,
-    DESK_BUCKET_JUNK_PROBABILITY,
-    DESK_BUCKET_QUESTION_KEY,
     EMAIL_VERDICT_JEV_LIMIT,
     EMAIL_VERDICT_JEV_LIMIT_KEY,
     EMAIL_VERDICT_JEV_TIMEOUT_SECONDS,
-    EMAIL_VERDICT_KEY_PREFIX,
     EMAIL_VERDICT_PROFILE_MAX_CHARS,
-    EMAIL_VERDICT_TTL_SECONDS,
+    JUDGMENT_NO_UNDER,
+    JUDGMENT_QUESTIONS,
+    JUDGMENT_YES_OVER,
+    Band,
     DeskBucket,
+    Judgment,
 )
-from app.constants.trigger_gates import (
-    QUIET_HOURS_BYPASS_REASONS,
-    TRIGGER_GATE_URGENT_CRITERIA,
-    TRIGGER_GATE_URGENT_INSTRUCTIONS,
-    TRIGGER_GATE_URGENT_QUESTION_KEY,
-    UrgentChoice,
-)
-from app.db.redis import redis_cache
+from app.db.repositories.email_verdicts import email_verdict_repository
 from app.memory.context import about_the_user
 from app.memory.engine import memory_engine
-from app.models.jev_models import JevChoiceAnswer, JevDecisionsResponse
+from app.models.email_verdict_models import EmailVerdictDocument
+from app.models.jev_models import JevDecisionsResponse
 from app.services.hil.jev_client import post_decisions
 from app.utils.concurrency import loop_bound_semaphore
 from app.utils.general_utils import clip_text
 from shared.py.wide_events import log
 
-_BUCKET_LABELS = frozenset(DeskBucket)
-_URGENT_LABELS = frozenset(TRIGGER_GATE_URGENT_CRITERIA)
-# Buckets that ask nothing of the user; the desk gate skips on their summed probability.
-QUIET_BUCKETS = frozenset({DeskBucket.FYI, DeskBucket.JUNK})
+# Answered every time; URGENT joins them inside quiet hours.
+_DAY_JUDGMENTS = (
+    Judgment.IS_PERSON,
+    Judgment.ASKS_USER,
+    Judgment.REPORTS_ISSUE,
+    Judgment.OFFICIAL,
+    Judgment.RELEVANT,
+)
+# All of these settled no is the one answer the desk gate skips on.
+_SKIP_JUDGMENTS = (
+    Judgment.IS_PERSON,
+    Judgment.ASKS_USER,
+    Judgment.REPORTS_ISSUE,
+    Judgment.OFFICIAL,
+)
 
 
-class Urgency(BaseModel):
-    """How likely an email is worth waking the user for, and the urgent choice JEV leans to."""
+@dataclass(frozen=True, slots=True)
+class ThreadFacts:
+    """What code knows about the email's thread, read off Gmail before JEV is asked."""
 
-    model_config = ConfigDict(frozen=True)
+    user_wrote_in_thread: bool
+    latest_from_other: bool
 
-    probability: float
-    choice: UrgentChoice
+    @property
+    def conversation(self) -> bool:
+        """The user wrote in the thread and it is now someone else's turn: reply, unasked."""
+        return self.user_wrote_in_thread and self.latest_from_other
+
+
+def band(probability: float) -> Band:
+    """Read a P(true) on Typesafe's starting bands."""
+    if probability > JUDGMENT_YES_OVER:
+        return Band.YES
+    if probability < JUDGMENT_NO_UNDER:
+        return Band.NO
+    return Band.UNSURE
+
+
+def desk_bucket(answers: Mapping[Judgment, float], *, conversation: bool) -> DeskBucket | None:
+    """Return the bucket the decision table gives; None when an unsure answer leaves the desk to judge.
+
+    conversation is reply; a reported issue or an official notice is act; a person asking a
+    relevant ask is reply; once every skip judgment is settled, the rest is fyi, or junk when
+    nobody wrote it and it is irrelevant.
+    """
+    if conversation:
+        return DeskBucket.REPLY
+    bands = {judgment: band(p) for judgment, p in answers.items()}
+    if Band.YES in (bands[Judgment.REPORTS_ISSUE], bands[Judgment.OFFICIAL]):
+        return DeskBucket.ACT
+    if (
+        bands[Judgment.IS_PERSON] is Band.YES
+        and bands[Judgment.ASKS_USER] is Band.YES
+        and bands[Judgment.RELEVANT] is not Band.NO
+    ):
+        return DeskBucket.REPLY
+    if any(bands[judgment] is Band.UNSURE for judgment in _SKIP_JUDGMENTS):
+        return None
+    nobody = bands[Judgment.IS_PERSON] is Band.NO
+    return DeskBucket.JUNK if nobody and bands[Judgment.RELEVANT] is Band.NO else DeskBucket.FYI
 
 
 class EmailVerdict(BaseModel):
-    """One email's bucket, None for a junk under the line the desk judges itself, and its urgency.
-
-    urgency is None on a verdict asked outside quiet hours.
-    """
+    """One email's answers, P(true) per judgment asked, and the bucket derived from them."""
 
     model_config = ConfigDict(frozen=True)
 
+    answers: Mapping[Judgment, float]
     bucket: DeskBucket | None
-    # P(fyi) + P(junk): how sure JEV is that nothing is asked of the user.
-    quiet_probability: float
-    urgency: Urgency | None
 
+    @property
+    def skips(self) -> bool:
+        """Whether the desk gate skips the email: fyi or junk with every skip judgment settled no."""
+        return self.bucket in (DeskBucket.FYI, DeskBucket.JUNK) and all(
+            band(self.answers[judgment]) is Band.NO for judgment in _SKIP_JUDGMENTS
+        )
 
-def urgency(answer: JevChoiceAnswer) -> Urgency:
-    """Return P(urgent) as 1 - P(can_wait); raise ValueError without a P(can_wait) to trust.
+    @property
+    def skip_certainty(self) -> float | None:
+        """How sure JEV is that nothing is asked of the user: 1 - the highest skip judgment."""
+        if not all(judgment in self.answers for judgment in _SKIP_JUDGMENTS):
+            return None
+        return 1 - max(self.answers[judgment] for judgment in _SKIP_JUDGMENTS)
 
-    A missing can_wait would read as certain urgency, so it is malformed, never a wake.
-    """
-    probabilities = answer.probabilities
-    if (
-        not probabilities
-        or not probabilities.keys() <= _URGENT_LABELS
-        or UrgentChoice.CAN_WAIT not in probabilities
-    ):
-        raise ValueError(f"urgent answer has no usable probabilities: {probabilities!r}")
-    leaning = max(QUIET_HOURS_BYPASS_REASONS, key=lambda choice: probabilities.get(choice, 0.0))
-    return Urgency(probability=1 - probabilities[UrgentChoice.CAN_WAIT], choice=leaning)
+    @property
+    def urgent_probability(self) -> float | None:
+        """P(worth waking the user for); None on a verdict asked outside quiet hours."""
+        return self.answers.get(Judgment.URGENT)
+
+    @property
+    def wakes(self) -> bool:
+        """Whether it wakes the user: only a settled yes does, so an unsure one is held."""
+        urgent = self.urgent_probability
+        return urgent is not None and band(urgent) is Band.YES
 
 
 def verdict_request(
-    event: Mapping[str, object], *, quiet: bool, profile: str
+    email: Mapping[str, object], *, thread: ThreadFacts | None, quiet: bool, profile: str
 ) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
     """Return the Decisions state and questions for one email; pure, so the eval sends the same bytes.
 
-    An empty profile is left out. Inside quiet hours the urgent question rides next to the
-    unchanged bucket question.
+    An empty profile and unknown thread facts are left out; inside quiet hours URGENT is asked too.
     """
-    state: dict[str, object] = {"user": profile} if profile else {}
-    state |= {"event": dict(event), "automation": DESK_AUTOMATION}
-    questions: dict[str, dict[str, object]] = {
-        DESK_BUCKET_QUESTION_KEY: {
-            "type": "choice",
-            "instructions": DESK_BUCKET_INSTRUCTIONS,
-            "criteria": {bucket.value: text for bucket, text in DESK_BUCKET_CRITERIA.items()},
+    state: dict[str, object] = {"user": {"profile": profile}} if profile else {}
+    state["email"] = dict(email)
+    if thread is not None:
+        state["thread"] = {
+            "user_wrote_in_thread": thread.user_wrote_in_thread,
+            "latest_from_other": thread.latest_from_other,
         }
-    }
-    if quiet:
-        questions[TRIGGER_GATE_URGENT_QUESTION_KEY] = {
-            "type": "choice",
-            "instructions": TRIGGER_GATE_URGENT_INSTRUCTIONS,
+    judgments = (*_DAY_JUDGMENTS, Judgment.URGENT) if quiet else _DAY_JUDGMENTS
+    questions: dict[str, dict[str, object]] = {
+        judgment.value: {
+            "type": "noul",
+            "instructions": JUDGMENT_QUESTIONS[judgment].instructions,
             "criteria": {
-                choice.value: text for choice, text in TRIGGER_GATE_URGENT_CRITERIA.items()
+                "true": JUDGMENT_QUESTIONS[judgment].true,
+                "false": JUDGMENT_QUESTIONS[judgment].false,
             },
         }
+        for judgment in judgments
+    }
     return state, questions
 
 
-def read_verdict(body: JevDecisionsResponse, *, quiet: bool) -> EmailVerdict:
-    """Return the verdict JEV gave; raise ValueError for a choice never offered or no probabilities."""
-    answer = body.choice(DESK_BUCKET_QUESTION_KEY, _BUCKET_LABELS, label="bucket ")
-    probabilities = answer.probabilities
-    if not probabilities or not probabilities.keys() <= _BUCKET_LABELS:
-        raise ValueError(f"bucket answer has no usable probabilities: {probabilities!r}")
-    bucket = DeskBucket(answer.choice)
-    if bucket is DeskBucket.JUNK and probabilities.get(bucket, 0.0) < DESK_BUCKET_JUNK_PROBABILITY:
-        bucket = None
-    urgent = (
-        urgency(body.choice(TRIGGER_GATE_URGENT_QUESTION_KEY, _URGENT_LABELS, label="urgent "))
-        if quiet
-        else None
-    )
-    return EmailVerdict(
-        bucket=bucket,
-        quiet_probability=sum(probabilities.get(b, 0.0) for b in QUIET_BUCKETS),
-        urgency=urgent,
-    )
+def read_verdict(
+    body: JevDecisionsResponse, *, quiet: bool, conversation: bool = False
+) -> EmailVerdict:
+    """Return the verdict JEV's answers give; raise ValueError for an answer missing or not a noul."""
+    judgments = (*_DAY_JUDGMENTS, Judgment.URGENT) if quiet else _DAY_JUDGMENTS
+    answers = {judgment: body.noul(judgment.value) for judgment in judgments}
+    return EmailVerdict(answers=answers, bucket=desk_bucket(answers, conversation=conversation))
 
 
 async def user_profile(user_id: str) -> str:
@@ -153,47 +186,58 @@ async def user_profile(user_id: str) -> str:
 async def email_verdict(
     user_id: str,
     message_id: str | None,
-    event: Mapping[str, object],
+    email: Mapping[str, object],
     *,
+    thread: ThreadFacts | None,
     quiet: bool,
-    conversation: bool,
 ) -> EmailVerdict:
     """Return the email's kept verdict, or ask JEV once and keep it; raise when JEV gives none.
 
-    A conversation (a thread the user wrote in, now someone else's turn) is reply whatever
-    JEV says, and by day JEV is not asked. A kept verdict without urgency does not answer a
-    quiet-hours ask. An email with no message id is asked every time.
+    A conversation is reply, and by day JEV is not asked. A kept verdict without URGENT does
+    not answer a quiet-hours ask. An email with no message id is asked every time.
     """
-    key = f"{EMAIL_VERDICT_KEY_PREFIX}:{user_id}:{message_id}" if message_id else None
-    kept = await redis_cache.get(key, EmailVerdict) if key is not None else None
-    if kept is not None and (not quiet or kept.urgency is not None):
-        return kept
+    kept = await email_verdict_repository.get(message_id, user_id=user_id) if message_id else None
+    if kept is not None and (not quiet or Judgment.URGENT in kept.answers):
+        return EmailVerdict(answers=kept.answers, bucket=kept.bucket)
+    conversation = thread is not None and thread.conversation
     if conversation and not quiet:
-        verdict = EmailVerdict(bucket=DeskBucket.REPLY, quiet_probability=0.0, urgency=None)
+        verdict = EmailVerdict(answers={}, bucket=DeskBucket.REPLY)
     else:
-        verdict = await _ask(user_id, message_id, event, quiet=quiet)
-        if conversation:
-            verdict = verdict.model_copy(update={"bucket": DeskBucket.REPLY})
-    if key is not None:
-        await redis_cache.set(key, verdict, ttl=EMAIL_VERDICT_TTL_SECONDS, model=EmailVerdict)
+        verdict = await _ask(user_id, message_id, email, thread, quiet=quiet)
+    if message_id:
+        await email_verdict_repository.keep(
+            EmailVerdictDocument(
+                user_id=user_id,
+                message_id=message_id,
+                answers=dict(verdict.answers),
+                bucket=verdict.bucket,
+            )
+        )
     return verdict
 
 
 async def _ask(
-    user_id: str, message_id: str | None, event: Mapping[str, object], *, quiet: bool
+    user_id: str,
+    message_id: str | None,
+    email: Mapping[str, object],
+    thread: ThreadFacts | None,
+    *,
+    quiet: bool,
 ) -> EmailVerdict:
     profile = await user_profile(user_id)
-    state, questions = verdict_request(event, quiet=quiet, profile=profile)
+    state, questions = verdict_request(email, thread=thread, quiet=quiet, profile=profile)
     # pragma: no mutate start — any key names one process-wide semaphore.
     limit = loop_bound_semaphore(EMAIL_VERDICT_JEV_LIMIT_KEY, EMAIL_VERDICT_JEV_LIMIT)
     # pragma: no mutate end
     async with limit, asyncio.timeout(EMAIL_VERDICT_JEV_TIMEOUT_SECONDS):
         body = await post_decisions(state, questions)
-    verdict = read_verdict(body, quiet=quiet)
+    conversation = thread is not None and thread.conversation
+    verdict = read_verdict(body, quiet=quiet, conversation=conversation)
     log.info(
         "email_verdict.judged",
         message_id=message_id,
         bucket=verdict.bucket.value if verdict.bucket else None,
+        bands={judgment.value: band(p).value for judgment, p in verdict.answers.items()},
         quiet=quiet,
     )
     return verdict

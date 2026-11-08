@@ -1,7 +1,7 @@
 """The trigger-gate corpus, 420 founder emails, anonymised, and 10 synthetic, asked two ways.
 
-email-verdict: each email's verdict request by day (bucket) and inside quiet hours (bucket and
-urgency), built by email_verdict.verdict_request as the desk gate and the desk's sweep send it.
+email-verdict: each email's verdict request by day (the yes/no judgments) and inside quiet hours
+(those and urgent), built by email_verdict.verdict_request as the desk gate and the desk's sweep send it.
 tests/unit/evals/test_email_verdict_sweep.py regrades its buckets, and
 tests/unit/evals/test_trigger_gate_sweep.py regrades the desk gate through decide_gate.
 
@@ -19,7 +19,7 @@ Record: uv run --group backend python -m scripts.evals.record_trigger_gate <run-
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from enum import StrEnum
 import hashlib
@@ -33,9 +33,12 @@ import httpx
 from app.constants.desk_buckets import DESK_AUTOMATION, DeskBucket
 from app.constants.hil import HIL_JEV_MODEL_NAME
 from app.constants.trigger_gates import (
+    AUTHORED_GATE_RUN_LABEL,
     SYSTEM_GATE_CONDITIONS,
     TRIGGER_GATE_QUESTION_KEY,
+    TRIGGER_GATE_SKIP_LABEL,
     TRIGGER_GATE_SKIP_PROBABILITY,
+    TRIGGER_GATE_URGENT_CRITERIA,
     TRIGGER_GATE_URGENT_PROBABILITY,
     TRIGGER_GATE_URGENT_QUESTION_KEY,
     GateAuthor,
@@ -44,8 +47,12 @@ from app.constants.trigger_gates import (
 from app.models.jev_models import JevDecisionsResponse
 from app.models.trigger_gate_models import AuthoredGate, SystemGate
 from app.services.hil.jev_client import JevUnconfiguredError, post_decisions
-from app.services.mail.email_verdict import read_verdict, verdict_request
-from app.services.triggers.gmail_signals import gmail_gate_view
+from app.services.mail.email_verdict import (
+    ThreadFacts,
+    read_verdict,
+    verdict_request,
+)
+from app.services.triggers.gmail_signals import GmailGateView, gmail_gate_view
 from app.services.triggers.trigger_gate import gate_request, skip_probability, urgency
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.journal import RunJournal
@@ -57,7 +64,7 @@ from scripts.evals.core.types import Case, CaseRun, ProviderError
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "trigger-gate"
 RECORDED_DIR = DATA_DIR / "recorded"
 VERDICTS_RECORDED_DIR = DATA_DIR / "recorded-verdicts"
-# Journaled where production leaves an email unbucketed: no verdict, or junk under the line.
+# Journaled where production leaves an email unbucketed: no verdict, or an unsure answer.
 UNBUCKETED: Final = "unbucketed"
 
 DESK_GATE: Final = SystemGate(preset=SystemGatePreset.INBOX_DESK)
@@ -65,6 +72,7 @@ DESK_GATE: Final = SystemGate(preset=SystemGatePreset.INBOX_DESK)
 AUTHORED_DESK_GATE: Final = AuthoredGate(
     condition=SYSTEM_GATE_CONDITIONS[SystemGatePreset.INBOX_DESK], author=GateAuthor.GAIA
 )
+AUTHORED_DESK_GATE_LABELS: Final = frozenset({AUTHORED_GATE_RUN_LABEL, TRIGGER_GATE_SKIP_LABEL})
 # The setup key that says whether the user sent a message in a continued email's thread.
 USER_WROTE_IN_THREAD: Final = "user_wrote_in_thread"
 # Who the corpus's user is, as memory's About-the-user note says it, in the corpus's pseudonyms:
@@ -135,48 +143,53 @@ def jev_body(state: Mapping[str, object], questions: Mapping[str, object]) -> di
     return {"model": HIL_JEV_MODEL_NAME, "state": state, "questions": questions}
 
 
-def _event(message: Mapping[str, object]) -> dict[str, object]:
-    view = gmail_gate_view(message)
+def _view(setup: Mapping[str, object]) -> GmailGateView:
+    message = setup["message"]
+    view = gmail_gate_view(message) if isinstance(message, Mapping) else None
     if view is None:
         raise ValueError("corpus message is not a readable Gmail payload")
-    return view.as_event()
+    return view
 
 
 def gate_requests(
-    message: Mapping[str, object],
+    setup: Mapping[str, object],
 ) -> dict[GateMode, tuple[dict[str, object], dict[str, dict[str, object]]]]:
     """Build both modes' authored-gate requests for one email with the production builder."""
-    event = _event(message)
+    event = _view(setup).as_event()
     return {
         mode: gate_request(AUTHORED_DESK_GATE, event, DESK_AUTOMATION, quiet=mode is GateMode.QUIET)
         for mode in GateMode
     }
 
 
-def verdict_requests(
-    message: Mapping[str, object],
-) -> dict[GateMode, tuple[dict[str, object], dict[str, dict[str, object]]]]:
-    """Build both modes' verdict requests for one email with the production builder."""
-    event = _event(message)
-    return {
-        mode: verdict_request(event, quiet=mode is GateMode.QUIET, profile=EVAL_USER_PROFILE)
-        for mode in GateMode
-    }
+def thread_facts(setup: Mapping[str, object]) -> ThreadFacts:
+    """Return the thread facts decide_gate reads for a case.
+
+    The user wrote in a continuation unless setup says they never did; a message the
+    signals cannot place counts as one they wrote in, and a new thread as one they did not.
+    """
+    view = _view(setup)
+    placed = view.continues_thread
+    wrote = placed is None or (placed and setup.get(USER_WROTE_IN_THREAD) is not False)
+    return ThreadFacts(user_wrote_in_thread=wrote, latest_from_other=view.latest_from_other)
 
 
 def in_conversation(setup: Mapping[str, object]) -> bool:
-    """Return whether the gate reads a case as a conversation, as decide_gate does.
+    """Return whether the gate reads a case as a conversation, as decide_gate does."""
+    return thread_facts(setup).conversation
 
-    A continuation is one unless setup says the user never wrote in its thread; a message
-    the signals cannot place counts as one.
-    """
-    message = setup["message"]
-    if not isinstance(message, Mapping):
-        raise ValueError("corpus case has no message")
-    view = gmail_gate_view(message)
-    if view is None or view.continues_thread is None:
-        return True
-    return view.continues_thread and setup.get(USER_WROTE_IN_THREAD) is not False
+
+def verdict_requests(
+    setup: Mapping[str, object],
+) -> dict[GateMode, tuple[dict[str, object], dict[str, dict[str, object]]]]:
+    """Build both modes' verdict requests for one email with the production builder."""
+    view, thread = _view(setup), thread_facts(setup)
+    return {
+        mode: verdict_request(
+            view.as_email(), thread=thread, quiet=mode is GateMode.QUIET, profile=EVAL_USER_PROFILE
+        )
+        for mode in GateMode
+    }
 
 
 def graded_bucket(
@@ -199,31 +212,39 @@ def day_outcome(setup: Mapping[str, object], body: JevDecisionsResponse) -> str:
     """Return the authored gate's "skip" or "run" by day; a conversation always runs."""
     if in_conversation(setup):
         return "run"
-    answer = body.answers[TRIGGER_GATE_QUESTION_KEY]
+    answer = body.choice(TRIGGER_GATE_QUESTION_KEY, AUTHORED_DESK_GATE_LABELS)
     p_skip = skip_probability(AUTHORED_DESK_GATE, answer)
     return "skip" if p_skip >= TRIGGER_GATE_SKIP_PROBABILITY else "run"
 
 
 def quiet_wakes(body: JevDecisionsResponse) -> bool:
-    """Return whether an answer's urgency wakes the user. The sweep checks decide_gate agrees."""
-    answer = body.answers[TRIGGER_GATE_URGENT_QUESTION_KEY]
+    """Return whether an authored gate's answer wakes the user. The sweep checks decide_gate agrees."""
+    answer = body.choice(TRIGGER_GATE_URGENT_QUESTION_KEY, TRIGGER_GATE_URGENT_CRITERIA)
     return urgency(answer).probability >= TRIGGER_GATE_URGENT_PROBABILITY
 
 
-def quiet_wake(case: Case, run: CaseRun) -> float:
-    """Fail a run whose quiet-hours answer wakes the user for mail that can wait, or that has none."""
-    asked = (run.end_state or {}).get("requests", {}).get(GateMode.QUIET)
-    if asked is None:
-        return 0.0
-    woke = quiet_wakes(JevDecisionsResponse.model_validate(asked["response"]))
-    return 0.0 if woke and not case.expected["urgent"] else 1.0
+def verdict_wakes(body: JevDecisionsResponse) -> bool:
+    """Return whether an email verdict's quiet-hours answer wakes the user."""
+    return read_verdict(body, quiet=True).wakes
+
+
+def _quiet_wake(wakes: Callable[[JevDecisionsResponse], bool]) -> Callable[[Case, CaseRun], float]:
+    def score(case: Case, run: CaseRun) -> float:
+        """Fail a run that wakes the user for mail that can wait, or has no quiet-hours answer."""
+        asked = (run.end_state or {}).get("requests", {}).get(GateMode.QUIET)
+        if asked is None:
+            return 0.0
+        woke = wakes(JevDecisionsResponse.model_validate(asked["response"]))
+        return 0.0 if woke and not case.expected["urgent"] else 1.0
+
+    return score
 
 
 EXTRA = {
     "gate_outcome": lambda case, run: (
         1.0 if (run.end_state or {}).get("outcome") == case.expected.get("outcome") else 0.0
     ),
-    "quiet_wake": quiet_wake,
+    "quiet_wake": _quiet_wake(quiet_wakes),
 }
 
 
@@ -283,7 +304,7 @@ class GateTransport:
         started = time.monotonic()
         asked: dict[str, AskedRequest] = {}
         answers: dict[GateMode, JevDecisionsResponse] = {}
-        for mode, (state, questions) in gate_requests(case.setup["message"]).items():
+        for mode, (state, questions) in gate_requests(case.setup).items():
             answers[mode], asked[mode] = await _ask(provider, state, questions, mode)
         outcome = day_outcome(case.setup, answers[GateMode.DAY])
         want = str(case.expected.get("outcome"))
@@ -316,7 +337,7 @@ class VerdictTransport:
         started = time.monotonic()
         asked: dict[str, AskedRequest] = {}
         answers: dict[GateMode, JevDecisionsResponse] = {}
-        for mode, (state, questions) in verdict_requests(case.setup["message"]).items():
+        for mode, (state, questions) in verdict_requests(case.setup).items():
             answers[mode], asked[mode] = await _ask(provider, state, questions, mode)
         bucket = graded_bucket(answers[GateMode.DAY], conversation=in_conversation(case.setup))
         want = str(case.expected.get("bucket"))
@@ -329,6 +350,7 @@ BUCKET_GATE: Final = "email_bucket"
 # The corpus declares the gate's scorers, so the verdict suite still implements them.
 VERDICT_EXTRA = {
     **EXTRA,
+    "quiet_wake": _quiet_wake(verdict_wakes),
     BUCKET_GATE: lambda case, run: (
         1.0 if (run.end_state or {}).get("bucket") == case.expected["bucket"] else 0.0
     ),

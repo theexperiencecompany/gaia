@@ -40,8 +40,7 @@ from tests.helpers import email_verdict_answers, trigger_gate_seams
 from .conftest import eval_config
 
 # Each bucket's share of its labelled emails JEV puts back in it, in every recorded pass.
-# junk is low by design: a junk under P 0.95 goes unbucketed and the desk judges it.
-# The corpus labels no waiting email, so waiting has no floor to keep.
+# An unsure answer leaves its email unbucketed for the desk to judge, which no floor counts.
 RECALL_FLOORS: Mapping[DeskBucket, float] = {
     DeskBucket.REPLY: 0.67,
     DeskBucket.ACT: 0.95,
@@ -50,11 +49,11 @@ RECALL_FLOORS: Mapping[DeskBucket, float] = {
 }
 # Needs-you emails some pass buckets junk, so the desk never reads them.
 RECORDED_LOST_TO_JUNK: frozenset[str] = frozenset()
-# The routine sign-in notices some pass buckets other than fyi.
-RECORDED_SIGN_IN_NOT_FYI: frozenset[str] = frozenset()
+# The routine sign-in notices some pass buckets other than fyi: unsure, so the desk judges them.
+RECORDED_SIGN_IN_NOT_FYI = frozenset({"mail-421", "mail-422", "mail-423", "mail-425"})
 SIGN_IN_NOTICE_TAG = "sign_in_notice"
 SECURITY_PROBLEM_TAG = "security_problem"
-_NEEDS_THE_USER = frozenset({DeskBucket.REPLY, DeskBucket.WAITING, DeskBucket.ACT})
+_NEEDS_THE_USER = frozenset({DeskBucket.REPLY, DeskBucket.ACT})
 
 
 class RecordedVerdictRow(VerdictJournalFields):
@@ -121,7 +120,7 @@ def test_the_recorded_answers_are_to_the_requests_production_sends_today(
 ) -> None:
     for p in passes:
         for case_id, row in p.rows.items():
-            built = verdict_requests(cases[case_id].setup["message"])
+            built = verdict_requests(cases[case_id].setup)
             for mode, (state, questions) in built.items():
                 sha = request_sha(jev_body(state, questions))
                 assert sha == row["requests"][mode]["request_sha"], f"{p.run_id}: {case_id}/{mode}"
@@ -172,8 +171,8 @@ def test_a_security_problem_is_act_in_every_pass(
         assert {c for c in problems if p.bucket(c) != DeskBucket.ACT} == set(), p.run_id
 
 
-def _answer(choice: str) -> httpx.Response:
-    return httpx.Response(200, json=email_verdict_answers(choice))
+def _answer(bucket: str, **overrides: float) -> httpx.Response:
+    return httpx.Response(200, json=email_verdict_answers(bucket, **overrides))
 
 
 async def test_the_live_suite_journals_the_request_it_sent_and_the_bucket_it_read(
@@ -190,18 +189,25 @@ async def test_the_live_suite_journals_the_request_it_sent_and_the_bucket_it_rea
     end_state = run.end_state or {}
     assert end_state["bucket"] == "junk"
     assert end_state["requests"][GateMode.QUIET]["request_sha"] == request_sha(sent)
-    assert list(sent["questions"]) == ["bucket", "urgent"]
+    assert list(sent["questions"]) == [
+        "is_person",
+        "asks_user",
+        "reports_issue",
+        "official",
+        "relevant",
+        "urgent",
+    ]
     assert EmailVerdictSuite.extra[BUCKET_GATE](cases["mail-001"], run) == (
         1.0 if cases["mail-001"].expected["bucket"] == "junk" else 0.0
     )
 
 
-async def test_an_answer_naming_no_bucket_is_journaled_unbucketed(
+async def test_an_answer_out_of_range_is_journaled_unbucketed(
     cases: dict[str, Case],
 ) -> None:
     cfg = eval_config()
     with trigger_gate_seams(Timezone.parse("Asia/Kolkata")) as seams:
-        seams.jev.mock(return_value=_answer("not_a_bucket"))
+        seams.jev.mock(return_value=_answer("junk", relevant=1.5))
         run = await VerdictTransport().run(
             cases["mail-001"], cfg, EvalCostTracker(cfg.providers, 1.0), cfg.providers["fake"]
         )

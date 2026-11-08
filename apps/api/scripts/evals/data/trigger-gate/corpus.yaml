@@ -53,7 +53,7 @@
       message_text: A practical walkthrough using coziro MCP to automate checks and draft updates for review. TEDIOSTEA Episode 004 (https://stodu.heafearis.puveachas.example/ce70cc900877
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.thefriok.example>
         - name: Precedence
           value: bulk
@@ -90,7 +90,7 @@
         headers:
         - name: In-Reply-To
           value: <degrior@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -255,7 +255,7 @@
         headers:
         - name: In-Reply-To
           value: <tribio@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -351,7 +351,7 @@
       message_text: '_This is Pebol Geceden, a newsletter created by Nolache Fund, where we weigh in (with our pebol geceden) and give tactical advice on founder situations._ ——————————————————————————— # **Today’s Edition** Welcome back to Pebol Geceden! We launched this thing in late 2023, and in that time we’ve cre'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@reasho.example>
   expected:
     label: noise
@@ -512,7 +512,7 @@
         headers:
         - name: In-Reply-To
           value: <frekeprior@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -825,7 +825,7 @@
       message_text: Thiohar Hi Teciok, You can now run unlimited Thiohar CLI reviews with usage-based credits. Use it however you work - local loops with Trunicion Code or Trudrio, or CI pipelines that need to keep moving. Your options * One-time purchase - Buy credits when you need them. * Monthly subscription - Set a
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@jokrupeas.example>
   expected:
     label: noise
@@ -1198,7 +1198,7 @@
       message_text: Your October performance on Stize Search graliogior.example 1.28K Clicks (web) 219K Impressions (web) 122 Pages with first impressions (estimated) Your content achievements Top growing pages Compared to previous month Thikathair Clicks (web) https://graliogior.example/3ba79ea8b68d +67 https://graliogior.example/b31001d3ae84 +14 https
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@deathemair.example>
         - name: Precedence
           value: bulk
@@ -1267,7 +1267,7 @@
       message_text: '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional //EN"><html><head><title>Poses</title><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style nonce="Gailiodak">@media all and (max-width: 772xv){*[class].ib_t{min-width:100%!important}*[class].ib_row{display:block!impor'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.taigubrean.example>
   expected:
     label: noise
@@ -1924,7 +1924,7 @@
       message_text: 'Live at 8:45 AM PT: how Gopre is using AI to move upmarket. Hi Teciok, At Gopre, agents handle design triage, event RSVPs, and inbound leads. Today at 8:45 AM PT (https://pegrudrio.example/ddb2e592bef9'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@contact.pegrudrio.example>
         - name: Precedence
           value: bulk
@@ -1959,7 +1959,7 @@
       message_text: Product update · November 2026 Your first emails now get up to 50% more interested replies, and you can run Tihude right from Faishaisto and Trunicion. Here's two weeks of updates. 01 ✉️ First emails that get up to 50% more interested replies We tested many versions of the first email and kept the one tha
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@guveal.example>
   expected:
     label: noise
@@ -1992,7 +1992,7 @@
       message_text: 'Funding opportunity Active angel investors are writing cheques, and Traibriol Funded has them filtered by country, stage, cheque size and sector. See who they are: https://www.kiodrusteak.example/06a2f150da5a'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@news.kiodrusteak.example>
         - name: Precedence
           value: bulk
@@ -2027,7 +2027,7 @@
       message_text: '@media only screen and (max-width: 772xv) { body, table, td, p, a, li, blockquote { -webkit-text-size-adjust: none !important; } td{ margin:0; padding:0; } body { width: 100% !important; min-width: 100% !important; } #tdEmailContent { padding-top: 10px !important; } tdConatiner { max-width: 100% !im'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@partners.predios.example>
   expected:
     label: noise
@@ -2344,7 +2344,7 @@
         headers:
         - name: In-Reply-To
           value: <FEGRAITRIK1KOKRIOBRAI3180G@@mail.example>
-        - name: Auto-Draigihail
+        - name: Auto-Submitted
           value: auto-generated
   expected:
     label: fyi
@@ -2379,7 +2379,7 @@
         headers:
         - name: In-Reply-To
           value: <PIOJAK9SIBRAI5396V@@mail.example>
-        - name: Auto-Draigihail
+        - name: Auto-Submitted
           value: auto-generated
   expected:
     label: fyi
@@ -2571,7 +2571,7 @@
         headers:
         - name: In-Reply-To
           value: <trioca@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -2980,7 +2980,7 @@
       message_text: 'Your free credits are used up Project: RISTOK Severity: Critical This project used its free credits. Paused until you add credits: AI agent replies and Chodre messages. Add credits: https://app.behi.example/f851f36bbe73 View in Piorail: https://app.behi.example/cc8aa20926a6'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@email.behi.example>
   expected:
     label: needs_you
@@ -3231,7 +3231,7 @@
         headers:
         - name: Geafruthios
           value: ''
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tailu.example>
         - name: Precedence
           value: Bulk
@@ -3361,7 +3361,7 @@
         headers:
         - name: In-Reply-To
           value: <jifruk@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -3551,7 +3551,7 @@
         headers:
         - name: In-Reply-To
           value: <shiona@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -3615,7 +3615,7 @@
       message_text: WHAT CHANGED ON graliogior.example 80 ↑ 32 health score 60 new 0 fixed 0 worse What showed up new 1 known social account(s) not linked on this page (+86 more pages) /about https://graliogior.example/006c9356a928 new 1 known social account(s) not linked on this page (+86 more pages) /ai-assistant-like-jarvis https://zemuprik.example
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.kaitrigrio.example>
   expected:
     label: noise
@@ -3648,7 +3648,7 @@
       message_text: Teciok Ronu YOU'RE RUNNING LOW ON CREDITS 98 credits remaining about 1 more audit Your balance refills on November 26. If you need more before then, you can upgrade for a larger monthly allowance. See plans https://app.kaitrigrio.example/08f609fc2665 -------------------------------------
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.kaitrigrio.example>
   expected:
     label: noise
@@ -3745,7 +3745,7 @@
       message_text: 'Agent News #035 Every Gilaipre inbox now comes with its own calendar → ( https://docs.thocehai.example/5e5e2769ce12 ) Agent News Issue 035 · October 2026 ************************************* Agents should have their own '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@newsletter.thocehai.example>
   expected:
     label: noise
@@ -3811,7 +3811,7 @@
         headers:
         - name: Geafruthios
           value: ''
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.fiotri.example>
         - name: Precedence
           value: Bulk
@@ -3847,7 +3847,7 @@
       message_text: Hey, it's Fraichak. This month, we launched Inboxes for agents and teams https://vatisa.example/26f71ef5df47 a faster sending infrastructure https://vatisa.example/0a4bbf00a289
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@updates.vatisa.example>
         - name: Precedence
           value: bulk
@@ -3882,7 +3882,7 @@
       message_text: Beariol (https://kruna.mail.briorol.example/26a95921c954
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.briorol.example>
   expected:
     label: noise
@@ -3915,7 +3915,7 @@
       message_text: Discover our latest product updates, try our new AI tool and take the survey coziro journal newsletter image. Orange background filled with darker orange shapes, (https://stodu.heafearis.puveachas.example/c06ad25a1f37
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.thefriok.example>
         - name: Precedence
           value: bulk
@@ -3984,7 +3984,7 @@
       message_text: '$6.75 of your free credits left Project: RISTOK Severity: Warning This project has $6.75 left of its free credits. When credits reach $8, AI agent replies and Chodre messages pause. Add credits: https://app.behi.example/f851f36bbe73 View in Piorail: https://thanaivul.example'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@email.behi.example>
   expected:
     label: fyi
@@ -4017,7 +4017,7 @@
       message_text: Join Gopre’s CMO live to see where agents do the work and what stays human Leading with AI - STIODRIO - Teathas CMO of Gopre (https://pegrudrio.example/938a28eb85d6
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@contact.pegrudrio.example>
         - name: Precedence
           value: bulk
@@ -4053,7 +4053,7 @@
       message_text: '---------- View image: (https://media.krasior.example/c1ee434b9256) Caption: ——————————————————————————— -------------------- ## 📆** Upcoming Even'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@reasho.example>
   expected:
     label: noise
@@ -4086,7 +4086,7 @@
       message_text: Hi there, Earlier today we detected and stopped a security incident linked to a large-scale distillation attack targeting Fraijos and Theza models. As a precaution, we’ve revoked all Cadugrio Hiobeva API keys while we investigate. To keep using Cadugrio Hiobeva, log in to Studio again to generate a new k
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.driotrai.example>
         - name: Precedence
           value: Bulk
@@ -4122,7 +4122,7 @@
       message_text: <html><head></head><body><!--[if mso]> <img width="1" height="1" src="https://libio.geario.shituk.brithe.cheagrerion.example/d2e1b00934ac
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@haidraiki.example>
   expected:
     label: noise
@@ -4184,7 +4184,7 @@
       message_text: 'Funding opportunity Active angel investors are writing cheques, and Traibriol Funded has them filtered by country, stage, cheque size and sector. See who they are: https://www.kiodrusteak.example/322547d3ea08'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@news.kiodrusteak.example>
         - name: Precedence
           value: bulk
@@ -4250,7 +4250,7 @@
       message_text: '@media only screen and (max-width: 772xv) { body, table, td, p, a, li, blockquote { -webkit-text-size-adjust: none !important; } td{ margin:0; padding:0; } body { width: 100% !important; min-width: 100% !important; } #tdEmailContent { padding-top: 10px !important; } tdConatiner { max-width: 100% !im'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@partners.predios.example>
   expected:
     label: noise
@@ -4410,7 +4410,7 @@
       message_text: '**In this update** 1. Add Nacuprio voice notes in your own voice to sequences 2. Add Personalized AI videos and website screenshots 3. Auto-reply to leads in minutes 4. Meeting tracking for your campaigns 5. Find buyers posting about your topic 6. A clearer Inbox and more campaign control 🚀 **A lot '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@www.community.jepiomea.example>
   expected:
     label: noise
@@ -4474,7 +4474,7 @@
       message_text: 'Reports got a redesign, and they now tell you what to fix first. REDESIGNED REPORTS * scores up top, colored by grade * every finding by severity, filterable by group, and by page * site profile, tech stack and entity map in one place * the same page locally: squirrel report -f html writes one self-'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.kaitrigrio.example>
   expected:
     label: noise
@@ -4506,7 +4506,7 @@
       message_text: Hey Teciok, I'm looking for the best founders in the world and I need your help. Over the next week, I'm asking everyone in my network to vote for their favourite founders. Could be someone you know or someone you admire. I want to find more undiscovered talent vs. run a popularity contest, so I'm ke
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@lacofrean.example>
   expected:
     label: noise
@@ -4600,7 +4600,7 @@
       message_text: Trofreado Workload management Keep support moving as your queue grows. Baifru new Workload management (https://pricolea.gaifobul.example/677f8c432cd2
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@neakrea.example>
   expected:
     label: noise
@@ -4851,7 +4851,7 @@
       message_text: At Pioneer, we launched Fin 4, with upgrades to every part of Fin.‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ R Traibriol Funded Partner spotlight FIN JUST LAUNCHED FIN 4 https://vioru.example/49f0d8b12025
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@news.kiodrusteak.example>
         - name: Precedence
           value: bulk
@@ -4888,7 +4888,7 @@
         headers:
         - name: In-Reply-To
           value: <fraipro@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -4921,7 +4921,7 @@
       message_text: 'Learn how Gopre’s team builds with agents, from content to events. Hi Teciok, Gopre’s marketing team has a role most companies haven’t created yet: Content Engineer. They build agentic pipelines that research, draft, and ship. A “product marketing brain” keeps every rep, agent, and new hire on the '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@contact.pegrudrio.example>
         - name: Precedence
           value: bulk
@@ -4988,7 +4988,7 @@
         headers:
         - name: In-Reply-To
           value: <jidipean@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -5023,7 +5023,7 @@
         headers:
         - name: In-Reply-To
           value: <brutro@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -5117,7 +5117,7 @@
       message_text: 'Start using the verification layer in your agentic SDLC in just a few minutes. Thiohar [https://litrai.triomefri.example/a65787096745)_01DUFRUS9W6921KRUGOSHAIS.png] It looks like you didn’t finish setting up your Thiohar account. Here’s a '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@jokrupeas.example>
   expected:
     label: noise
@@ -5149,7 +5149,7 @@
       message_text: 'Thiohar Hi there, You knew Thiohar for code reviews. Now we’re the governance and control layer for agentic software development, helping your team prioritize work, understand changes, and address security risks. Triage: Rank PRs by value. Put your engineers on the work worth shipping. Explain'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@jokrupeas.example>
   expected:
     label: noise
@@ -5243,7 +5243,7 @@
       message_text: '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional //EN"><html><head><title>Poses</title><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style nonce="northspring">@media all and (max-width: 772xv){*[class].ib_t{min-width:100%!important}*[class].ib_row{display:block!impor'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.taigubrean.example>
   expected:
     label: noise
@@ -5338,7 +5338,7 @@
       message_text: Investigate security risks across files and infrastructure configuration before attackers exploit them. $2,361,275 — Security [https://litrai.triomefri.example/31d6e5721ad9] Hi Teciok, This week’s critical PHP vulnerabilities are a reminder that cod
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@jokrupeas.example>
   expected:
     label: noise
@@ -5371,7 +5371,7 @@
       message_text: 'Two weeks in Hello there, Most people who stall here tell me they wanted to see the prospects and the messages before paying. Reply and tell me what you''d need to see first. I read every reply. Finish setup: https://app.gruzer.example/025c0f09875b'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@gruzer.example>
   expected:
     label: noise
@@ -5404,7 +5404,7 @@
       message_text: <html><head></head><body><!--[if mso]> <img width="1" height="1" src="https://geario.mail.driolifreak.example/4f8b886a8802
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@driolifreak.example>
   expected:
     label: noise
@@ -5440,7 +5440,7 @@
         headers:
         - name: In-Reply-To
           value: <nefrabaisstegrai@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@sejeak.example>
   expected:
     label: noise
@@ -5473,7 +5473,7 @@
       message_text: Do designers, especially designers on design systems, need to know how to code? Or at least know enough to be dangerous and understand what they're looking at? Design Systems WTF illustration banner with cartoon versions of Shebeadre and Saizio on a blue and yellow background. (https://stodu.kreabri.example
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.thefriok.example>
         - name: Precedence
           value: bulk
@@ -5509,7 +5509,7 @@
       message_text: 'Hi Teciok, We came across Ristok and wanted to invite you to list it on Tradro (https://krezai.example). Tradro reaches over 100,000 monthly founders, builders, and early adopters discovering new software products, with a DR 73 domain rating. You can submit Ristok in about 60 seconds at: https://'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@krezai.example>
   expected:
     label: noise
@@ -5571,7 +5571,7 @@
       message_text: Hi there, We came across 10915-ummj and wanted to invite you to list it on Tradro, our curated launch and discovery directory for software founders (over 100,000 monthly visitors and Domain Rating 73). We are currently finalizing our November homepage launch schedule and weekly founder digest. Y
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@krezai.example>
   expected:
     label: noise
@@ -5604,7 +5604,7 @@
       message_text: 'From: Stize Search Console Subject: New reasons preventing your pages from being indexed Search Console has identified that some pages on your site are not being indexed due to the following new reasons: * Alternate page with proper canonical tag * Server error (5xx) If any of these reasons are not'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@deathemair.example>
         - name: Precedence
           value: bulk
@@ -5777,7 +5777,7 @@
       message_text: graliogior.example AUDIT COMPLETE 48 health score 67 errors 729 warnings 6520 passed graliogior.example is re-audited automatically every week, and each run costs credits. Turn recurring audits off https://api.kaitrigrio.example/2131a48cb711
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.kaitrigrio.example>
   expected:
     label: noise
@@ -5810,9 +5810,9 @@
       message_text: 'Error tracking weekly digest for ristok organization RISTOK Total exceptions: 118 (Up 281% from previous week) Total sessions: 4.28K (Up 94%) Crash free sessions: 99.91% Top issues (sorted by occurrence count this week): * AttributeError - 54 occurrences * ConnectionError - 39 occurrences * DOMException'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@steshal.example>
-        - name: Auto-Draigihail
+        - name: Auto-Submitted
           value: auto-generated
   expected:
     label: noise
@@ -5846,7 +5846,7 @@
       message_text: Hi Teciok, Baifru category of template ristok_notification under the Chodre Business account RISTOK has been updated from UTILITY to MARKETING. If you believe that a template's new category is inconsistent with our guidelines, you may request a review using our current in-product path in Business support.
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@email.daitunu.example>
   expected:
     label: noise
@@ -5878,7 +5878,7 @@
       message_text: '@media only screen and (max-width: 772xv) { body, table, td, p, a, li, blockquote { -webkit-text-size-adjust: none !important; } td{ margin:0; padding:0; } body { width: 100% !important; min-width: 100% !important; } #tdEmailContent { padding-top: 10px !important; } tdConatiner { max-width: 100% !im'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@partners.predios.example>
   expected:
     label: noise
@@ -5912,7 +5912,7 @@
       message_text: 'This invite expires in 11 days Zaizapu Drefre from Jegre invited you to work together You’ll be working in #ristok-jegre Invited by zaizapu@chukair.example from ristek.pojiosok.example [https://ristek.pojiosok.example] ACCEPT INVITATION [https://hozaitrul.pojiosok.example/291b420ff31a'
       payload:
         headers:
-        - name: Auto-Draigihail
+        - name: Auto-Submitted
           value: auto-generated
   expected:
     label: needs_you
@@ -5945,7 +5945,7 @@
       message_text: 'Last chance to register for Intelligence at Work: APAC Webinar on Wednesday, 28 October 2026.‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@email.vaidro.example>
   expected:
     label: noise
@@ -5978,7 +5978,7 @@
       message_text: 'From: Stize Search Console Subject: New reasons preventing your pages from being indexed Search Console has identified that some pages on your site are not being indexed due to the following new reasons: * Not found (404) * Soft 404 * Duplicate, Stize chose different canonical than user If any of '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@deathemair.example>
         - name: Precedence
           value: bulk
@@ -6139,7 +6139,7 @@
         headers:
         - name: Geafruthios
           value: ''
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.fiotri.example>
         - name: Precedence
           value: Bulk
@@ -6363,7 +6363,7 @@
         headers:
         - name: In-Reply-To
           value: <gulul@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -6427,7 +6427,7 @@
       message_text: 'Hi, Came across RISTOK : Reviews, Neashaifear, Info &amp; Alternatives Tools (https://graliogior.example). Would this be a fit for you? — Heataik Griliovio''t want emails like this? Unsubscribe: mailto:support@bapugios.example?subject=unsubscribe'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@bapugios.example>
   expected:
     label: noise
@@ -6552,7 +6552,7 @@
       message_text: '[Theathar] https://info-link.heata.example/eb2abf58d9e2 How product leaders at Fraijos, Gopre and more approach pricing [Pricing AI products: Lessons from leading AI companies] https://info-link.heata.example/1439991ebf88'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@e.heata.example>
   expected:
     label: noise
@@ -6616,7 +6616,7 @@
       message_text: 'Hi, Saw brutru-retry-forever on Caraipea. Since you build with AI coding agents, we thought breatasiok.example might be useful to you. Hosi is a marketplace for AI agent skills that install straight into Trunicion Code, Cursor, Trudrio and 20+ other agents. Have a look if there are skills that save you time in '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@bregreabriol.example>
   expected:
     label: noise
@@ -6711,7 +6711,7 @@
       message_text: 'what sucks about agents? Gilaipre ( https://thocehai.example ) Hey Teciok, You signed up a while back but didn''t end up building anything. Jogror worries either way. Before I stop bugging you though, one real question: what''s the most frustrating thing about building agents right now? Chavu''t have to be abo'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@welcome.faijel.example>
   expected:
     label: noise
@@ -6964,7 +6964,7 @@
         headers:
         - name: Geafruthios
           value: ''
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tailu.example>
         - name: Precedence
           value: Bulk
@@ -6999,7 +6999,7 @@
       message_text: 'Thanks for your interest in early access to Sheaza. We’re ready to welcome you into the test program. Baifru name of our product is Vudraga, so you’ll see us use “Vudraga” from here on out. Join our private Grogra community for access and installation instructions: https://www.kruta.example/83881d2eca3f'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@updates.kruta.example>
         - name: Precedence
           value: bulk
@@ -7063,7 +7063,7 @@
       message_text: Beariol (https://kruna.mail.briorol.example/732882502f03
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.briorol.example>
   expected:
     label: noise
@@ -7191,7 +7191,7 @@
         headers:
         - name: In-Reply-To
           value: <frotre@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -7410,7 +7410,7 @@
         headers:
         - name: In-Reply-To
           value: <heafrak@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -7626,7 +7626,7 @@
       message_text: Uncover security risks before you merge. Your next two weeks of Advanced are on us. More help with the work around every merge. Another two weeks to see the difference. Thiohar [https://litrai.triomefri.example/a65787096745)_01DUFRUS9W6921THILE
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@jokrupeas.example>
   expected:
     label: noise
@@ -7723,7 +7723,7 @@
       message_text: 'Zaizapu Drefre from Jegre invited you to work together You’ll be working in #ristok-jegre Invited by zaizapu@chukair.example from ristek.pojiosok.example [https://ristek.pojiosok.example] ACCEPT INVITATION [https://hozaitrul.pojiosok.example/0d8906130f69'
       payload:
         headers:
-        - name: Auto-Draigihail
+        - name: Auto-Submitted
           value: auto-generated
   expected:
     label: needs_you
@@ -7827,7 +7827,7 @@
           value: <gradren@mail.example>
         - name: Precedence
           value: bulk
-        - name: Auto-Draigihail
+        - name: Auto-Submitted
           value: auto-generated
   expected:
     label: noise
@@ -7862,7 +7862,7 @@
         headers:
         - name: In-Reply-To
           value: <shiogrimai@mail.example>
-        - name: Auto-Draigihail
+        - name: Auto-Submitted
           value: auto-replied
   expected:
     label: needs_you
@@ -7895,7 +7895,7 @@
       message_text: <!DOCTYPE html> <html xmlns="https://www.bigain.example/c7bd067d048c"><head><title></title><meta content="text/html; charset=utf-8" http-equiv="Content-Type"/><meta content="width=device-width,initial-scale=1" name="viewport"/><link href="https://rivea.rufea.example/9354f6b0407f" rel="s
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@info.praliovak.example>
   expected:
     label: needs_you
@@ -8056,7 +8056,7 @@
       message_text: 'Teciok shared a calendar  Teciok <keakruri@trogakrean.example> has invited you to make changes and manage sharing on the calendar: "General".  Accept the invite to join this shared calendar. You can still choose to hide or remove the calendar whenever you want.  To join shared calendar click ht'
       payload:
         headers:
-        - name: Auto-Draigihail
+        - name: Auto-Submitted
           value: auto-generated
   expected:
     label: noise
@@ -8123,7 +8123,7 @@
       message_text: hey there! Juchizun here, one of the co founders of hoplite. I noticed you signed up for hoplite but never completed onboarding. I’d love to know why, did something break, was it confusing, or is it just not for you? We are always trying to improve so any feedback is greatly appreciated :) Best, Juchizun --
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@fikricio.example>
         - name: Precedence
           value: bulk
@@ -8189,7 +8189,7 @@
       message_text: 'Trunicion came last in our evals. Its security defaults are why. Agent News #034 We just shipped a new website. Come see it → ( https://siocithio.example ) Agent News Issue #034 · Oct 2026 + + + + + + + + + + + + + + + + + + + + + '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@newsletter.thocehai.example>
   expected:
     label: noise
@@ -8222,7 +8222,7 @@
       message_text: cedarline They say success is all about the room you’re in. ...and we're putting that room together. On Friday, November 5 from 2:00 to 3:00 pm ET, Dothiora's SaaS Institute are holding a call just for founders running 7-figure ARR SaaS companies. I’ve served as Advisory In Residence at Dothiora for j
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@grekea.example>
   expected:
     label: noise
@@ -8255,7 +8255,7 @@
       message_text: https://www.kaigrais.example https://www.kaigrais.example https://www.kaigrais.example We really appreciate you being part of the early testing cohort for PAIDREKO. Your feedback has been immensely helpful and we want to thank you by continuing to provide free PAIDREKO runs until October‌ 31‌ 2026. Starting November‌ 1
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@kaigrais.example>
         - name: Precedence
           value: bulk
@@ -8324,7 +8324,7 @@
       message_text: 14 anonymous confessions, plus how to get a lot more from it. Haidrain logo Community Welcome to the October edition of Haidrain's community newsletter, where we share insights and happenings from across the founder and startup universe. ----------------------------------------------------------------
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@jiochashai.example>
   expected:
     label: noise
@@ -8700,7 +8700,7 @@
       message_text: <!DOCTYPE html> <html dir="ltr" lang="en"><head></head><body style="background-color:rgb(255,255,255);margin-top:auto;margin-bottom:auto;margin-left:auto;margin-right:auto;font-family:ui-sans-serif, system-ui, sans-serif, &quot;Gefrio Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symb
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@ship.freagriostain.example>
   expected:
     label: noise
@@ -8865,7 +8865,7 @@
       message_text: '---------- View image: (https://media.krasior.example/c1ee434b9256) Caption: ——————————————————————————— -------------------- ## 📆** Upcoming Even'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@reasho.example>
   expected:
     label: noise
@@ -8898,7 +8898,7 @@
       message_text: Hey Teciok, We are so excited to officially announce Fufizi 2.0! It is the first AI that actually runs your ads and content end to end. Introducing Traijion, the intelligent marketing agent trained on $566B+ in ad data. It knows what’s winning, creates thousands of new creatives, and learns from the r
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@fruka.example>
         - name: Precedence
           value: bulk
@@ -9492,7 +9492,7 @@
       message_text: Hey Teciok, Curating an event takes work, but whether guests actually connect is left to chance. Two people who could build together might stand five feet apart and leave without knowing they were in the same room. I want to help fix that. I’ve privately co-hosted 70+ dinners, meetups, and conference
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@lacofrean.example>
   expected:
     label: noise
@@ -9525,7 +9525,7 @@
       message_text: 'October 21, 2026 Fintech & AI Insights This newsletter is where we''ll share what''s actually happening across financial services - including product launches, partnerships going live, startup wins, and the shifts we''re watching in fintech and AI. In Today''s Fintech & AI Insights: 1. Rehearsals, Googl'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@cijios.example>
         - name: Precedence
           value: bulk
@@ -9722,7 +9722,7 @@
       message_text: 'Trofreado Product Tours: Guide users through your product Outbound (https://pricolea.gaifobul.example/02df829b9955'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@neakrea.example>
   expected:
     label: noise
@@ -9941,7 +9941,7 @@
       message_text: Hi, I know inboxes get busy, so I just wanted to gently bump my note from earlier. *It was about a possible content proposal *— nothing long or complicated, I promise. Thanks a lot *Licin Fiotra *Partnerships Manager Marketing Insanely Thupadean | licin@chitur.example | 122 Delaware St, Nekroku E2, New Castle,
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@chitur.example>
   expected:
     label: noise
@@ -10195,7 +10195,7 @@
         headers:
         - name: In-Reply-To
           value: <brabrefra@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -10231,7 +10231,7 @@
         headers:
         - name: In-Reply-To
           value: <jilokaigriofel-haigaivio@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@sejeak.example>
   expected:
     label: needs_you
@@ -10266,7 +10266,7 @@
         headers:
         - name: In-Reply-To
           value: <hukea@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -10301,7 +10301,7 @@
         headers:
         - name: In-Reply-To
           value: <cailus@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -10335,7 +10335,7 @@
       message_text: '_This is Pebol Geceden, a newsletter created by Nolache Fund, where we weigh in (with our pebol geceden) and give tactical advice on founder situations._ ——————————————————————————— ## **Today’s Edition** Big numbers don’t get you the meeting. Investors want to know what you sell, who’s buying it, '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.krasior.example>
   expected:
     label: noise
@@ -10370,7 +10370,7 @@
         headers:
         - name: In-Reply-To
           value: <thishatrai@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -10434,7 +10434,7 @@
       message_text: Want to see how AI can support more of the work your team does?‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@email.vaidro.example>
   expected:
     label: noise
@@ -10686,7 +10686,7 @@
       message_text: 'Hey Teciok, Two years ago, I ran an experiment called 30 Days of Pugaiker. Baifru premise was simple: pick one meaningful goal and talk to me every day for a month. Hundreds of people did it and transformed their lives, finding cofounders, investors, and new jobs. Today, my network is 10x larger and my ju'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@lacofrean.example>
   expected:
     label: noise
@@ -10874,7 +10874,7 @@
       message_text: Still here, nothing sent Hello there, You signed up a week ago and the first batch of prospects is still sitting there, because billing was never finished. Reply with what got in the way. If it was the price, the setup, or you just weren't sure it would work, I'd rather hear it than guess. Finish se
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@gruzer.example>
   expected:
     label: noise
@@ -10907,7 +10907,7 @@
       message_text: 'Your outreach is paused until payment is restored Hello there, We could not complete your latest subscription payment. Update your payment method to restore your GTM automation. Fix payment: https://app.gruzer.example/253b09696cbf'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@gruzer.example>
   expected:
     label: noise
@@ -10941,7 +10941,7 @@
       message_text: 'Your payment needs confirmation Hello there, Your bank requires an extra confirmation step before we can complete your subscription payment. Confirm payment: https://app.gruzer.example/0aebb25bbd72'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@gruzer.example>
   expected:
     label: noise
@@ -11070,9 +11070,9 @@
       message_text: 'Error tracking weekly digest for ristok organization RISTOK Total exceptions: 31 (Down 93% from previous week) Total sessions: 2.21K (Up 20%) Crash free sessions: 99.77% Top issues (sorted by occurrence count this week): * ClientDisconnect - 17 occurrences * DOMException - 6 occurrences * DOMException -'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@steshal.example>
-        - name: Auto-Draigihail
+        - name: Auto-Submitted
           value: auto-generated
   expected:
     label: noise
@@ -11105,7 +11105,7 @@
       message_text: 'Product update · Monthly recap · October 2026 Everything we shipped in Tihude over the last month, in one email. Baifru big five first, then the rest in a list. 01 🌐 Send from your own domains Order domains in your brand''s name right in the cabinet: $28 a month per domain with 5 mailboxes, paid by card'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@guveal.example>
   expected:
     label: noise
@@ -11138,7 +11138,7 @@
       message_text: Beariol (https://kruna.mail.briorol.example/6962b424d0a7
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.briorol.example>
   expected:
     label: noise
@@ -11579,7 +11579,7 @@
         headers:
         - name: In-Reply-To
           value: <thaivofil@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -11644,7 +11644,7 @@
       message_text: '[Bekiok logo] [1] Hi! You''re among the very first we''re reaching out to try Bekiok. We started working on Bekiok because we felt strongly that Draipresa has the potential to become the ideal personal computer for everyone. After an extended period of (solitary) hard work, we finally think that it''s at a place'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@jiopaik.example>
   expected:
     label: noise
@@ -11707,7 +11707,7 @@
       message_text: ● LIMITED-TIME OFFER Save 10% on SMS/call credits. Hi Teciok, Just a friendly reminder that you can receive incident notifications via SMS or voice calls. And the best part? You can save 10% on all credits if you purchase now! 10% OFF Save 10% on all SMS/Voice call credits. Receive incident notificat
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.drochoprion.example>
   expected:
     label: noise
@@ -11771,7 +11771,7 @@
       message_text: 'Had to send an email after this dropped into the Gruha group Skim it: ​ How did this happen? I’d like to take all the credit (Lol) But… Griko is a good writer. She did need some coaching on “social media writing” which is an entirely different approach than your traditional writing. She’s a good cli'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@bograi.example>
         - name: Precedence
           value: bulk
@@ -11806,7 +11806,7 @@
       message_text: 'View in browser https://newsletter.tocuk.example/6db3d038bcb5 October 2026 ---------------------------------------- In the last issue https://newsletter.tocuk.example/1a9cde49ad34 we gave you an early look at Instant. Now Feapro Instant https://tocuk.example/3736dccdb97a is live for everyone. FEAPRO INSTANT:'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@cafrithio.example>
         - name: Precedence
           value: bulk
@@ -11874,7 +11874,7 @@
       message_text: Hi, Shaisejair Inc. may already have potential users on Pivi (Xiaohongshu), including for software, AI tools, apps, services, and education. We help overseas teams test demand in China through localized content and paid distribution. I can put together a short, free scan covering how people discu
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@theribriok.example>
   expected:
     label: noise
@@ -11941,7 +11941,7 @@
       message_text: '---------- Hey Hey! Thank you so much for signing up for Founder Friends last night! We''re so glad we had the opportunity to connect with so many founders and investors in San Chaisigrea! And we couldn''t have done it without our amazing partners: Lucio from Fremiochair. If you’re looking for… * expert boo'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@reasho.example>
   expected:
     label: noise
@@ -12074,7 +12074,7 @@
         headers:
         - name: In-Reply-To
           value: <dioprio@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -12106,7 +12106,7 @@
       message_text: <html><head></head><body><!--[if mso]> <img width="1" height="1" src="https://friosutre.geario.capek.example/d4c10cbd3a4f
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@keasheafu.example>
   expected:
     label: noise
@@ -12139,7 +12139,7 @@
       message_text: '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "https://www.bigain.example/b9627c7d886b"> <html xmlns="https://www.bigain.example/c7bd067d048c" xmlns:v="urn:schemas-theceadrais-com:vml" xmlns:o="urn:schemas-theceadrais-com:office:office"> <head> <!-- Drudron: email_digest '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@catreges.example>
   expected:
     label: noise
@@ -12172,7 +12172,7 @@
       message_text: 'Get a machine-readability score, real agent transcripts and fixes you can act on BRIMOCHU ARC: Baifru agent readiness checker for your design system (https://stodu.heafearis.puveachas.example/6183a4682720'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.thefriok.example>
         - name: Precedence
           value: bulk
@@ -12273,7 +12273,7 @@
         headers:
         - name: In-Reply-To
           value: <demer@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -12305,7 +12305,7 @@
       message_text: 'Recently, there was a funny moment during the Fearless Money Makers workshop. Baifru workshop topic was... Ascending Clients. What does that mean in simple terms? It means: * Your $566 customer becomes a $7,420 customer * Your $7,420 customer becomes a $7,845 customer * Your $7,845 customer becomes a $'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@bograi.example>
         - name: Precedence
           value: bulk
@@ -12341,7 +12341,7 @@
       message_text: Hi, could you please connect me with the person who deals with press/advertising matters on your website? My projects are in the data recovery niche and AI, the main one is https://www.leafrai.example Thank you *Licin Fiotra *Partnerships Manager Marketing Insanely Thupadean | licin@chitur.example | 122 D
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@chitur.example>
   expected:
     label: noise
@@ -12437,7 +12437,7 @@
       message_text: "Explore GPT-6\uFEFF.1 Sol and Decisions API,\uFEFF try dots on a developer task,\uFEFF and see what founders are sharing\uFEFF. [ Theza ] [ Heshi Drop — Vol. 12 ] https://em.vaidro.example/7befdca83d88 Hi founders, For a small engineering te"
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@vaidro.example>
   expected:
     label: noise
@@ -12535,7 +12535,7 @@
       message_text: ● ALERT CHANNELS Stay updated anytime, anywhere. Hi Teciok, Did you know we can notify you about incidents via SMS or voice calls? WHY USE SMS/VOICE ALERTS ✓ SMS/Voice calls work without an internet connection ✓ They won't get lost in tons of emails or push notifications ✓ Try it out with our special
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.drochoprion.example>
   expected:
     label: noise
@@ -12570,7 +12570,7 @@
         headers:
         - name: In-Reply-To
           value: <statroro@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -12602,7 +12602,7 @@
       message_text: '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "https://www.bigain.example/b9627c7d886b"> <html xmlns="https://www.bigain.example/c7bd067d048c" xmlns:v="urn:schemas-theceadrais-com:vml" xmlns:o="urn:schemas-theceadrais-com:office:office"> <head> <!-- Drudron: email_digest '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@catreges.example>
   expected:
     label: noise
@@ -12696,7 +12696,7 @@
       message_text: '---------- View image: (https://media.krasior.example/c1ee434b9256) Caption: ——————————————————————————— -------------------- ## 📆** Upcoming Even'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@reasho.example>
   expected:
     label: noise
@@ -12729,7 +12729,7 @@
       message_text: Awkward truth from Cagraico coming up And look You may know I have a love/hate relationship with Cagraico. Love — the honesty. Hate — the community of people devoted to calling me ugly. Baifru phrase “Chaipronuk definitely eats babies” was thrown around in that one Cagraico hate group. Another story for another chaipronuk
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@bograi.example>
         - name: Precedence
           value: bulk
@@ -12766,7 +12766,7 @@
         headers:
         - name: In-Reply-To
           value: <staishudos@mail.example>
-        - name: Auto-Draigihail
+        - name: Auto-Submitted
           value: auto-generated
   expected:
     label: needs_you
@@ -12895,7 +12895,7 @@
       message_text: 'Hi Teciok, Your submitted display name RISTOK for your Chodre Business account RISTOK has been approved. View in Chodre Manager Thanks, Baifru Poses team ======================================== This message was sent to teciok@graliogior.example at your request. Laipris Platforms, Inc., Attention: Community Supp'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@keabra.example>
   expected:
     label: fyi
@@ -12928,7 +12928,7 @@
       message_text: 'Join us on Wednesday, 28 October for Intelligence at Work: APAC Webinar - a simu-live virtual program with Theza experts exploring the latest AI developments and practical ways to put AI to work. Theza ( https://vaidro.example ) [ Theza ] [[https://vaidro.example]] Intelligence at Work: APAC Webinar — '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@email.vaidro.example>
   expected:
     label: noise
@@ -12994,7 +12994,7 @@
         headers:
         - name: Geafruthios
           value: ''
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@updates.griovikrio.example>
         - name: Precedence
           value: Bulk
@@ -13029,7 +13029,7 @@
       message_text: Beariol (https://kruna.mail.briorol.example/13be44142c72
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@mail.briorol.example>
   expected:
     label: noise
@@ -13092,7 +13092,7 @@
       message_text: Hey Teciok, I referred more teams into TRIOKRIDAIR’s current batch than anyone else, human or not. So Chastai Dotriothe (TRIOKRIDAIR’s founder) just put me in charge of who gets a seat at Demo Day on December 1. I’m in this batch myself, so I know how incredible the teams are. 7 teams in this batch have already passed $
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@lacofrean.example>
   expected:
     label: noise
@@ -13155,7 +13155,7 @@
       message_text: View in browser https://newsletter.tocuk.example/2d8a35e6bfec Product announcement ---------------------------------------- Introducing Feapro Instant YOUR USER'S AGENT JUST GOT A CREDIT CARD. Give the agents you're building for your users access to paid tools. With Compo
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@cafrithio.example>
         - name: Precedence
           value: bulk
@@ -13190,7 +13190,7 @@
       message_text: 'We tested 25 model/harness combinations. Here is what we found. Agent News #033 Gilaipre Evals is live. See how your model and harness scored → ( https://thocehai.example/28ba0b99613d ) Agent News Issue #033 · Oct 2026 + + + + + + + '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@newsletter.thocehai.example>
   expected:
     label: noise
@@ -13223,7 +13223,7 @@
       message_text: 'ironcove one today: What''s the single biggest challenge in your business right now? Hit reply, and tell me all about it. I''ll record a personalized Loom response to you, drawing from my 12+ years as a founder. Onward! ~ Kriba Geradiol, Advisor-In-Residence at Dothiora To make sure you keep getting th'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@grekea.example>
   expected:
     label: noise
@@ -13321,7 +13321,7 @@
         headers:
         - name: In-Reply-To
           value: <thugol@mail.example>
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@tadru.example>
   expected:
     label: noise
@@ -13415,7 +13415,7 @@
       message_text: '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "https://www.bigain.example/b9627c7d886b"> <html xmlns="https://www.bigain.example/c7bd067d048c" xmlns:v="urn:schemas-theceadrais-com:vml" xmlns:o="urn:schemas-theceadrais-com:office:office"> <head> <!-- Drudron: email_digest '
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@catreges.example>
   expected:
     label: noise
@@ -13479,7 +13479,7 @@
       message_text: 'A quick reminder of what your 2026 could look like I’ll let you read it: ​ Summary in case you skimmed. (It happens) She pitched a client. They said: “We’d like to negotiate.” She said: “Jogror.” They caved and paid her full fee. I’m not at liberty to say how much that was. But uh. She’s had a jolly Chr'
       payload:
         headers:
-        - name: Chaitail-Unsubscribe
+        - name: List-Unsubscribe
           value: <mailto:gruraikrar@bograi.example>
         - name: Precedence
           value: bulk

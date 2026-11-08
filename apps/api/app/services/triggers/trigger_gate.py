@@ -17,12 +17,9 @@ import time
 from typing import Final
 
 import httpx
+from pydantic import BaseModel, ConfigDict
 
-from app.constants.desk_buckets import (
-    DESK_BUCKET_SKIP_REASONS,
-    EMAIL_VERDICT_SKIP_PROBABILITY,
-    DeskBucket,
-)
+from app.constants.desk_buckets import DESK_BUCKET_SKIP_REASONS, EMAIL_URGENT_BYPASS_REASON
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
 from app.constants.trigger_gates import (
     AUTHORED_GATE_QUESTION,
@@ -48,6 +45,7 @@ from app.constants.trigger_gates import (
     GateOwner,
     GateQuestion,
     GateReason,
+    UrgentChoice,
 )
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -65,11 +63,9 @@ from app.services.feature_flags import is_trigger_gates_enforced
 from app.services.hil.jev_client import JevUnconfiguredError, post_decisions
 from app.services.latency_metrics import observe_trigger_gate_decision
 from app.services.mail.email_verdict import (
-    QUIET_BUCKETS,
     EmailVerdict,
-    Urgency,
+    ThreadFacts,
     email_verdict,
-    urgency,
 )
 from app.services.mail.thread_participation import user_wrote_in_thread
 from app.services.triggers.condition_matching import resolve_payload_value
@@ -147,6 +143,37 @@ _OUTCOMES: Final[Mapping[type[GateVerdict], GateOutcome]] = {
 _URGENT_LABELS: Final = frozenset(TRIGGER_GATE_URGENT_CRITERIA)
 
 
+class Urgency(BaseModel):
+    """How likely an event is worth waking the user for; choice is the authored gate's urgent leaning."""
+
+    model_config = ConfigDict(frozen=True)
+
+    probability: float
+    # Why a wake interrupts quiet hours, as the run says it.
+    reason: str
+    choice: UrgentChoice | None = None
+
+
+def urgency(answer: JevChoiceAnswer) -> Urgency:
+    """Return P(urgent) as 1 - P(can_wait); raise ValueError without a P(can_wait) to trust.
+
+    A missing can_wait would read as certain urgency, so it is malformed, never a wake.
+    """
+    probabilities = answer.probabilities
+    if (
+        not probabilities
+        or not probabilities.keys() <= _URGENT_LABELS
+        or UrgentChoice.CAN_WAIT not in probabilities
+    ):
+        raise ValueError(f"urgent answer has no usable probabilities: {probabilities!r}")
+    leaning = max(QUIET_HOURS_BYPASS_REASONS, key=lambda choice: probabilities.get(choice, 0.0))
+    return Urgency(
+        probability=1 - probabilities[UrgentChoice.CAN_WAIT],
+        reason=QUIET_HOURS_BYPASS_REASONS[leaning],
+        choice=leaning,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class GatedJob:
     """The job a gate stands in front of: a workflow or one todo subscription, and what it does."""
@@ -169,9 +196,17 @@ class _GateEvent:
     fields: dict[str, object]
     label: str
     continued_thread: str | None = None
-    conversation: bool = False
+    # The user wrote in the thread, or the job follows it; True for a message the signals cannot place.
+    user_wrote: bool = False
     # The Gmail message id an email's verdict is kept under; None for any other event.
     message_id: str | None = None
+    # The email as the desk's verdict reads it; None for any other event.
+    view: GmailGateView | None = None
+
+    @property
+    def conversation(self) -> bool:
+        """A thread the user is in whose latest message is someone else's: their turn to answer."""
+        return self.user_wrote and (self.view is None or self.view.latest_from_other)
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,8 +314,9 @@ def _event(trigger_name: str, payload: Mapping[str, object]) -> _GateEvent | Non
             view.as_event(),
             _gmail_label(view, trigger_name),
             continued_thread=thread if isinstance(thread, str) else None,
-            conversation=view.continues_thread is None,
+            user_wrote=view.continues_thread is None,
             message_id=message_id if isinstance(message_id, str) and message_id else None,
+            view=view,
         )
     entry = get_matchable_trigger(trigger_name)
     if entry is None:
@@ -338,7 +374,7 @@ def _settle(
         labels = _URGENT_LABELS
         urgent = urgency(body.choice(TRIGGER_GATE_URGENT_QUESTION_KEY, labels, label="urgent "))
         if urgent.probability >= TRIGGER_GATE_URGENT_PROBABILITY:
-            bypass = GateBypass(QUIET_HOURS_BYPASS_REASONS[urgent.choice])
+            bypass = GateBypass(urgent.reason)
             return _Decision(GateReason.JEV_URGENT, bypass, urgency=urgent)
         if event.conversation:
             return _Decision(GateReason.JEV_CAN_WAIT, hold, urgency=urgent)
@@ -359,28 +395,45 @@ def _answered(answer: JevChoiceAnswer) -> tuple[str, float | None]:
 def _settle_verdict(
     verdict: EmailVerdict, event: _GateEvent, *, hold: GateHold | None
 ) -> _Decision:
-    """Read the email verdict in the settle order: only a sure fyi or junk skips the desk."""
+    """Read the email verdict in the settle order: only all three asks settled no skips the desk.
+
+    Inside quiet hours only a settled-yes URGENT wakes the user; unsure is held, as a P(urgent)
+    under the authored gate's 0.80 line is.
+    """
     bucket = verdict.bucket
     choice = bucket.value if bucket else None
-    p_skip = verdict.quiet_probability
-    urgent = verdict.urgency if hold is not None else None
+    p_skip = verdict.skip_certainty
+    urgent: Urgency | None = None  # pragma: no mutate — only read as truthy; "" equals None
     if hold is not None:
-        if urgent is None:
+        if verdict.urgent_probability is None:
             raise ValueError("a quiet-hours email verdict carries no urgency")
-        if urgent.probability >= TRIGGER_GATE_URGENT_PROBABILITY:
-            bypass = GateBypass(QUIET_HOURS_BYPASS_REASONS[urgent.choice])
+        urgent = Urgency(probability=verdict.urgent_probability, reason=EMAIL_URGENT_BYPASS_REASON)
+        if verdict.wakes:
+            bypass = GateBypass(urgent.reason)
             return _Decision(GateReason.JEV_URGENT, bypass, choice, None, p_skip, urgent)
         if event.conversation:
             return _Decision(GateReason.JEV_CAN_WAIT, hold, choice, None, p_skip, urgent)
-    if p_skip >= EMAIL_VERDICT_SKIP_PROBABILITY:
-        # P(fyi) + P(junk) over the line leaves only fyi, or junk the bucket may leave unnamed.
-        named = bucket if bucket is not None and bucket in QUIET_BUCKETS else DeskBucket.JUNK
-        reason = DESK_BUCKET_SKIP_REASONS[named]
+    if verdict.skips and bucket is not None and p_skip is not None:
+        reason = DESK_BUCKET_SKIP_REASONS[bucket]
         skip = GateSkip(TRIGGER_GATE_EVENT_LABEL_SEPARATOR.join((reason, event.label)), p_skip)
         return _Decision(GateReason.JEV_SKIP, skip, choice, None, p_skip, urgent)
     if hold is not None:
         return _Decision(GateReason.JEV_CAN_WAIT, hold, choice, None, p_skip, urgent)
     return _Decision(GateReason.JEV_RUN, GateRun(), choice, None, p_skip)
+
+
+def _desk_view(event: _GateEvent) -> GmailGateView:
+    """Return the email the desk's verdict reads; raise ValueError for an event that is no email."""
+    if event.view is None:
+        raise ValueError("the Inbox desk gate fired on an event that is not a Gmail message")
+    return event.view
+
+
+def _thread_facts(event: _GateEvent) -> ThreadFacts:
+    view = _desk_view(event)
+    return ThreadFacts(
+        user_wrote_in_thread=event.user_wrote, latest_from_other=view.latest_from_other
+    )
 
 
 async def _ask_authored(
@@ -401,9 +454,9 @@ async def _ask_jev(
             verdict = await email_verdict(
                 job.user_id,
                 event.message_id,
-                event.fields,
+                _desk_view(event).as_email(),
+                thread=_thread_facts(event),
                 quiet=hold is not None,
-                conversation=event.conversation,
             )
             decision = _settle_verdict(verdict, event, hold=hold)
         else:
@@ -448,7 +501,7 @@ def _record(
                 "choice": decision.choice,
                 "confidence": decision.confidence,
                 "urgent_probability": urgent.probability if urgent else None,
-                "urgent_choice": urgent.choice.value if urgent else None,
+                "urgent_choice": urgent.choice.value if urgent and urgent.choice else None,
                 "latency_ms": decision.latency_ms,
             }
         }
@@ -463,7 +516,9 @@ def _record(
             outcome=outcome.value,
             reason=decision.reason.value,
             urgent_choice=(
-                urgent.choice.value if urgent and decision.reason is GateReason.JEV_URGENT else None
+                urgent.choice.value
+                if urgent and urgent.choice and decision.reason is GateReason.JEV_URGENT
+                else None
             ),
             enforced=enforced,
             latency_ms=decision.latency_ms,
@@ -520,12 +575,16 @@ async def _decide(
         and event.continued_thread is not None
         and await _in_conversation(job, event.continued_thread, payload)
     ):
-        event = replace(event, conversation=True)
+        event = replace(event, user_wrote=True)
     if event is None or (event.conversation and hold is None):
         if event is not None and isinstance(gate, SystemGate):
             # Kept for the sweep: a thread the user wrote in is reply, and JEV is not asked.
             await email_verdict(
-                job.user_id, event.message_id, event.fields, quiet=False, conversation=True
+                job.user_id,
+                event.message_id,
+                _desk_view(event).as_email(),
+                thread=_thread_facts(event),
+                quiet=False,
             )
         decision = _Decision(GateReason.FREE_RUN, hold or GateRun())
     else:

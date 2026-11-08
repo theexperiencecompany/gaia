@@ -56,8 +56,10 @@ from workos.session import SessionModule
 from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
+from app.constants.desk_buckets import Judgment
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.providers.provider_credentials_service import ProviderConfig
@@ -205,6 +207,9 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
             "app.services.mail.email_verdict.memory_engine.get_core_context",
             AsyncMock(return_value=""),
         ) as core,
+        patch(
+            "app.services.mail.email_verdict.email_verdict_repository", FakeEmailVerdicts()
+        ) as verdicts,
     ):
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
@@ -218,32 +223,70 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
             workflow_skips=workflow_skips,
             watch_skips=watch_skips,
             core=core,
+            verdicts=verdicts,
         )
 
 
+class FakeEmailVerdicts:
+    """email_verdict_repository in memory, keyed as its unique index is: (user_id, message_id)."""
+
+    def __init__(self) -> None:
+        self.kept: dict[tuple[str, str], EmailVerdictDocument] = {}
+
+    async def get(self, message_id: str, *, user_id: str) -> EmailVerdictDocument | None:
+        return self.kept.get((user_id, message_id))
+
+    async def keep(self, verdict: EmailVerdictDocument) -> None:
+        self.kept[verdict.user_id, verdict.message_id] = verdict
+
+
+# JEV answers, as P(true) per judgment, that the decision table reads as each bucket.
+_BUCKET_ANSWERS: Mapping[str, Mapping[Judgment, float]] = {
+    "reply": {
+        Judgment.IS_PERSON: 0.95,
+        Judgment.ASKS_USER: 0.9,
+        Judgment.REPORTS_ISSUE: 0.1,
+        Judgment.OFFICIAL: 0.05,
+        Judgment.RELEVANT: 0.8,
+    },
+    "act": {
+        Judgment.IS_PERSON: 0.05,
+        Judgment.ASKS_USER: 0.6,
+        Judgment.REPORTS_ISSUE: 0.95,
+        Judgment.OFFICIAL: 0.05,
+        Judgment.RELEVANT: 0.6,
+    },
+    "fyi": {
+        Judgment.IS_PERSON: 0.05,
+        Judgment.ASKS_USER: 0.05,
+        Judgment.REPORTS_ISSUE: 0.05,
+        Judgment.OFFICIAL: 0.05,
+        Judgment.RELEVANT: 0.9,
+    },
+    "junk": {
+        Judgment.IS_PERSON: 0.05,
+        Judgment.ASKS_USER: 0.05,
+        Judgment.REPORTS_ISSUE: 0.05,
+        Judgment.OFFICIAL: 0.05,
+        Judgment.RELEVANT: 0.05,
+    },
+    "unsure": {
+        Judgment.IS_PERSON: 0.05,
+        Judgment.ASKS_USER: 0.5,
+        Judgment.REPORTS_ISSUE: 0.05,
+        Judgment.OFFICIAL: 0.05,
+        Judgment.RELEVANT: 0.5,
+    },
+}
+
+
 def email_verdict_answers(
-    bucket: str,
-    probabilities: Mapping[str, float] | None = None,
-    *,
-    can_wait: float = 1.0,
-    leaning: str = "meeting",
+    bucket: str, *, urgent: float = 0.0, **overrides: float
 ) -> dict[str, object]:
-    """Return a Decisions body answering an email verdict: bucket at P 0.99 unless given, and urgency."""
-    urgent = {"can_wait": can_wait, leaning: 1 - can_wait}
-    return {
-        "answers": {
-            "bucket": {
-                "type": "choice",
-                "choice": bucket,
-                "probabilities": dict(probabilities or {bucket: 0.99}),
-            },
-            "urgent": {
-                "type": "choice",
-                "choice": "can_wait" if can_wait >= 0.5 else leaning,
-                "probabilities": urgent,
-            },
-        }
-    }
+    """Return a Decisions body of noul answers the email verdict reads as bucket; overrides win."""
+    answers = {judgment.value: p for judgment, p in _BUCKET_ANSWERS[bucket].items()}
+    answers |= {Judgment.URGENT.value: urgent, **overrides}
+    return {"answers": {name: {"type": "noul", "noul": p} for name, p in answers.items()}}
 
 
 @contextmanager

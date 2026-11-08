@@ -36,6 +36,7 @@ from scripts.evals.suites.trigger_gate import (
     record,
     request_sha,
     verdict_requests,
+    verdict_wakes,
 )
 import time_machine
 
@@ -68,6 +69,7 @@ _GATES: Mapping[GateKind, TriggerGate] = {
 }
 _RECORDED = {GateKind.SYSTEM: VERDICTS_RECORDED_DIR, GateKind.AUTHORED: RECORDED_DIR}
 _BUILDERS = {GateKind.SYSTEM: verdict_requests, GateKind.AUTHORED: gate_requests}
+_WAKES = {GateKind.SYSTEM: verdict_wakes, GateKind.AUTHORED: quiet_wakes}
 # The needs_you emails the desk gate skips by day in some pass. The yes/no gate it replaced
 # skipped mail-245 and mail-353; mail-353 is relabelled junk since.
 RECORDED_DAY_FALSE_SKIPS: frozenset[str] = frozenset()
@@ -79,8 +81,8 @@ RECORDED_SIGN_IN_NOTICE_RUNS = frozenset(
 )
 # The two service-down emails; mail-151 sits near P(urgent) 0.80, so a pass may hold it.
 RECORDED_WAKES = frozenset({"mail-094", "mail-151"})
-# Founder-accepted: the measured worst pass at the 1.0 skip line (0.091 all, 0.062 held-out) less 0.02.
-NOISE_SKIP_FLOORS: Mapping[str | None, float] = {None: 0.07, "holdout": 0.04}
+# The share of noise the desk gate must skip by day in every pass, overall and held out.
+NOISE_SKIP_FLOORS: Mapping[str | None, float] = {None: 0.70, "holdout": 0.70}
 SIGN_IN_NOTICE_TAG = "sign_in_notice"
 # needs_you emails the authored template skips by day and the desk gate runs; enforced anyway by
 # founder decision, so a change here changes what authored gates cost the user.
@@ -129,6 +131,8 @@ async def _regrade(cases: Mapping[str, Case]) -> list[_Pass]:
         for kind, directory in _RECORDED.items():
             for path in sorted(directory.glob("*.jsonl")):
                 rows = read_recorded(path)
+                # Each pass answers the same message ids: it must not read another pass's verdicts.
+                seams.verdicts.kept.clear()
                 verdicts: dict[tuple[str, GateMode], GateVerdict] = {}
                 unanswered: list[str] = []
                 for mode, now in ((GateMode.DAY, AFTERNOON), (GateMode.QUIET, NIGHT)):
@@ -207,7 +211,7 @@ def test_the_recorded_answers_are_to_the_requests_production_sends_today(
     for p in regraded:
         assert p.unanswered == (), f"{p.run_id}: production now sends other requests; re-record"
         for case_id, row in p.rows.items():
-            built = _BUILDERS[p.kind](cases[case_id].setup["message"])
+            built = _BUILDERS[p.kind](cases[case_id].setup)
             for mode, (state, questions) in built.items():
                 sha = request_sha(jev_body(state, questions))
                 assert sha == row["requests"][mode]["request_sha"], f"{case_id}/{mode}"
@@ -228,7 +232,7 @@ def test_the_live_suite_graded_each_quiet_hours_wake_as_decide_gate_does(
         woken = _decided(cases, p, GateMode.QUIET, GateBypass)
         answers = {c: row["requests"][GateMode.QUIET]["response"] for c, row in p.rows.items()}
         graded = {
-            c for c, a in answers.items() if quiet_wakes(JevDecisionsResponse.model_validate(a))
+            c for c, a in answers.items() if _WAKES[p.kind](JevDecisionsResponse.model_validate(a))
         }
         assert graded == woken, p.run_id
 

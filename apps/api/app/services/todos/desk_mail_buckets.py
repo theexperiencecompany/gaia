@@ -26,7 +26,7 @@ async def _ask_bucket(user_id: str, view: GmailMessageView) -> DeskBucket | None
     try:
         # A conversation the gate saw on arrival is kept as reply; the sweep cannot tell one.
         verdict = await email_verdict(
-            user_id, view.id, gate_view.as_event(), quiet=False, conversation=False
+            user_id, view.id, gate_view.as_email(), thread=None, quiet=False
         )
     except Exception as e:
         # The one degradation a bucket has: the desk's own prompt judges the email.

@@ -824,7 +824,7 @@ def test_a_bucket_is_its_messages_class_so_the_desk_never_classifies_it() -> Non
 
     assert read.startswith(
         f"A bucketed message's class is its bucket: {DeskBucket.REPLY} is TO_REPLY, "
-        f"{DeskBucket.WAITING} AWAITING_REPLY, {DeskBucket.ACT} ACTION_NEEDED, "
+        f"{DeskBucket.ACT} ACTION_NEEDED, "
         f"and {DeskBucket.FYI} is FYI, its thread never read."
     )
     assert "a thread with no bucket is classified" in read

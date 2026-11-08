@@ -286,3 +286,43 @@ class TestHandler:
             "GMAIL_EMAIL_SENT_TRIGGER", {"thread_id": "a1", "message_id": "b2"}
         )
         assert signals == {}
+
+
+class TestTheEmailAsAPersonSeesIt:
+    def _email(self, **message: object) -> dict[str, object]:
+        view = gmail_gate_view({"sender": "Ops <ops@vendor.example>", **message})
+        assert view is not None
+        return view.as_email()
+
+    def test_bulk_headers_are_named_and_an_empty_field_is_left_out(self) -> None:
+        email = self._email(
+            subject="Weekly digest",
+            label_ids=["INBOX", "CATEGORY_PROMOTIONS"],
+            payload={
+                "headers": [
+                    {"name": "Precedence", "value": "bulk"},
+                    {"name": "Auto-Submitted", "value": "auto-generated"},
+                ]
+            },
+        )
+        assert email == {
+            "from": {"name": "Ops", "address": "ops@vendor.example"},
+            "subject": "Weekly digest",
+            "headers": {"precedence": "bulk", "auto_submitted": "auto-generated"},
+            "gmail_category": "promotions",
+        }
+
+    @pytest.mark.parametrize("value", ["no", "No"])
+    def test_auto_submitted_no_is_a_person_and_is_not_sent(self, value: str) -> None:
+        email = self._email(payload={"headers": [{"name": "Auto-Submitted", "value": value}]})
+        assert "headers" not in email
+
+    def test_a_bare_address_sender_has_no_name(self) -> None:
+        assert self._email(sender="ops@vendor.example")["from"] == {"address": "ops@vendor.example"}
+
+    @pytest.mark.parametrize(("labels", "other"), [(["INBOX"], True), (["SENT", "INBOX"], False)])
+    def test_a_message_the_user_sent_is_not_someone_elses(
+        self, labels: list[str], other: bool
+    ) -> None:
+        view = gmail_gate_view({"sender": "a@b.example", "label_ids": labels})
+        assert view is not None and view.latest_from_other is other

@@ -13,17 +13,15 @@ from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
-from typing import TypedDict, get_args
+from typing import NotRequired, TypedDict, get_args
 from unittest.mock import AsyncMock, patch
 
-import fakeredis.aioredis
 import httpx
 from prometheus_client import REGISTRY
 import pytest
 from sentry_sdk.types import Event
 import time_machine
 
-from app.constants.desk_buckets import DESK_AUTOMATION
 from app.constants.trigger_gates import (
     ENFORCED_GATE_KINDS,
     GateAuthor,
@@ -200,8 +198,12 @@ class _SentQuestion(TypedDict):
 
 
 class _SentState(TypedDict):
-    event: dict[str, object]
-    automation: str
+    """An authored gate sends event and automation; the desk's email verdict sends email and thread."""
+
+    event: NotRequired[dict[str, object]]
+    automation: NotRequired[str]
+    email: NotRequired[dict[str, object]]
+    thread: NotRequired[dict[str, bool]]
 
 
 class _SentRequest(TypedDict):
@@ -672,7 +674,7 @@ class TestShadow:
 
     @pytest.mark.parametrize(
         ("gate", "body"),
-        [(AUTHORED, _answer(0.99)), (DESK, email_verdict_answers("fyi", {"fyi": 1.0}))],
+        [(AUTHORED, _answer(0.99)), (DESK, email_verdict_answers("fyi"))],
         ids=["authored", "desk"],
     )
     async def test_a_confident_skip_stops_the_run_for_every_kind_shipped_enforced(
@@ -1297,17 +1299,15 @@ class TestQuietHoursHold:
             assert await quiet_hours_hold(AUTHORED, USER_ID) is None
 
 
-def _verdict(
-    bucket: str, probabilities: Mapping[str, float] | None = None, *, can_wait: float = 1.0
-) -> httpx.Response:
-    return httpx.Response(200, json=email_verdict_answers(bucket, probabilities, can_wait=can_wait))
+def _verdict(bucket: str, *, urgent: float = 0.0, **overrides: float) -> httpx.Response:
+    return httpx.Response(200, json=email_verdict_answers(bucket, urgent=urgent, **overrides))
 
 
 class TestTheDeskGateReadsTheEmailVerdict:
-    """The Inbox desk's system gate asks nothing of its own: it wakes on the email verdict's bucket."""
+    """The Inbox desk's system gate asks nothing of its own: it reads the email verdict's judgments."""
 
-    @pytest.mark.parametrize("bucket", ["reply", "waiting", "act"])
-    async def test_mail_that_needs_the_user_wakes_the_desk(
+    @pytest.mark.parametrize("bucket", ["reply", "act", "unsure"])
+    async def test_mail_that_may_need_the_user_wakes_the_desk(
         self, seams: SimpleNamespace, bucket: str
     ) -> None:
         seams.jev.mock(return_value=_verdict(bucket))
@@ -1315,65 +1315,46 @@ class TestTheDeskGateReadsTheEmailVerdict:
         assert await _skip(DESK) == GateRun()
         assert _decided(seams).reason == GateReason.JEV_RUN
 
-    @pytest.mark.parametrize(
-        ("bucket", "probabilities", "reason"),
-        [
-            ("fyi", {"fyi": 0.75, "junk": 0.25}, "FYI"),
-            ("junk", {"junk": 0.96875, "fyi": 0.03125}, "Junk"),
-        ],
-    )
+    @pytest.mark.parametrize(("bucket", "reason"), [("fyi", "FYI"), ("junk", "Junk")])
     async def test_fyi_and_junk_are_skipped_and_kept_with_their_bucket_as_the_reason(
-        self,
-        seams: SimpleNamespace,
-        bucket: str,
-        probabilities: dict[str, float],
-        reason: str,
+        self, seams: SimpleNamespace, bucket: str, reason: str
     ) -> None:
-        seams.jev.mock(return_value=_verdict(bucket, probabilities))
+        seams.jev.mock(return_value=_verdict(bucket, asks_user=0.25))
 
         skip = await _skip(DESK, owner=GateOwner.TODO)
 
-        certainty = probabilities["fyi"] + probabilities["junk"]
         line = f"{reason} · Acme Billing · Invoice 4021 is past due"
-        assert skip == GateSkip(event=line, certainty=certainty)
+        assert skip == GateSkip(event=line, certainty=0.75)
         seams.watch_skips.assert_awaited_once_with(
             user_id=USER_ID,
             subscription_id=OWNER_ID,
-            skip=GateSkipRecord(event=line, at=AFTERNOON, certainty=certainty),
+            skip=GateSkipRecord(event=line, at=AFTERNOON, certainty=0.75),
         )
 
-    async def test_junk_under_its_bucket_line_still_skips_when_nothing_is_asked(
-        self, seams: SimpleNamespace
+    @pytest.mark.parametrize("judgment", ["is_person", "asks_user", "reports_issue"])
+    async def test_one_ask_at_the_no_line_wakes_the_desk(
+        self, seams: SimpleNamespace, judgment: str
     ) -> None:
-        seams.jev.mock(return_value=_verdict("junk", {"junk": 0.875, "fyi": 0.125}))
-
-        skip = await _skip(DESK)
-
-        assert skip == GateSkip(
-            event="Junk · Acme Billing · Invoice 4021 is past due", certainty=1.0
-        )
-
-    @pytest.mark.parametrize("bucket", ["fyi", "junk"])
-    async def test_fyi_or_junk_under_the_skip_line_wakes_the_desk(
-        self, seams: SimpleNamespace, bucket: str
-    ) -> None:
-        """Only P(fyi) + P(junk) >= 0.95 skips, as the yes/no gate skipped only at P(not_needed) >= 0.95."""
-        probabilities = {
-            bucket: 0.625,
-            "fyi" if bucket == "junk" else "junk": 0.3125,
-            "act": 0.0625,
-        }
-        seams.jev.mock(return_value=_verdict(bucket, probabilities))
+        """Only an answer under 0.3 is a settled no; 0.3 itself is unsure, and unsure never skips."""
+        seams.jev.mock(return_value=_verdict("fyi", **{judgment: 0.3}))
 
         assert await _skip(DESK) == GateRun()
         assert _decided(seams).reason == GateReason.JEV_RUN
 
+    async def test_an_unsure_relevance_still_skips_as_fyi(self, seams: SimpleNamespace) -> None:
+        seams.jev.mock(return_value=_verdict("junk", relevant=0.5))
+
+        skip = await _skip(DESK)
+
+        assert isinstance(skip, GateSkip)
+        assert skip.event.startswith("FYI · ")
+
     async def test_fyi_under_the_skip_line_is_held_at_night(self, night: SimpleNamespace) -> None:
-        night.jev.mock(return_value=_verdict("fyi", {"fyi": 0.625, "junk": 0.3125, "act": 0.0625}))
+        night.jev.mock(return_value=_verdict("fyi", asks_user=0.5))
 
         assert await _skip(DESK) == GateHold(until=MORNING)
 
-    async def test_by_day_it_asks_the_email_verdict_once_bucket_alone(
+    async def test_by_day_it_asks_the_four_judgments_once_about_the_email_as_a_person_sees_it(
         self, seams: SimpleNamespace
     ) -> None:
         seams.jev.mock(return_value=_verdict("act"))
@@ -1382,15 +1363,32 @@ class TestTheDeskGateReadsTheEmailVerdict:
 
         assert seams.jev.call_count == 1
         sent = _sent(seams)
-        assert list(sent["questions"]) == ["bucket"]
-        assert sent["state"]["automation"] == DESK_AUTOMATION
-        assert list(sent["state"]["event"]) == V4_EVENT_KEYS
+        assert list(sent["questions"]) == [
+            "is_person",
+            "asks_user",
+            "reports_issue",
+            "official",
+            "relevant",
+        ]
+        assert {q["type"] for q in sent["questions"].values()} == {"noul"}
+        assert sent["state"] == {
+            "email": {
+                "from": {"name": "Acme Billing", "address": "billing@acme.com"},
+                "to": "aryan@heygaia.io",
+                "cc": "finance@acme.com",
+                "subject": "Invoice 4021 is past due",
+                "snippet": "Hi, your invoice is overdue.",
+                "attachments": 1,
+                "headers": {"list_unsubscribe": True},
+                "gmail_category": "updates",
+            },
+            "thread": {"user_wrote_in_thread": False, "latest_from_other": True},
+        }
 
     async def test_a_verdict_kept_for_the_message_is_read_without_asking_jev(
-        self, seams: SimpleNamespace, fake_redis: fakeredis.aioredis.FakeRedis
+        self, seams: SimpleNamespace
     ) -> None:
-        del fake_redis
-        seams.jev.mock(return_value=_verdict("fyi", {"fyi": 1.0}))
+        seams.jev.mock(return_value=_verdict("fyi"))
 
         first = await _skip(DESK)
         second = await _skip(DESK)
@@ -1398,11 +1396,12 @@ class TestTheDeskGateReadsTheEmailVerdict:
         assert isinstance(first, GateSkip)
         assert second == first
         assert seams.jev.call_count == 1
+        assert seams.verdicts.kept[USER_ID, "m1"].bucket == "fyi"
 
     async def test_the_wide_event_records_the_bucket_and_how_sure_jev_was_nothing_is_asked(
         self, seams: SimpleNamespace
     ) -> None:
-        seams.jev.mock(return_value=_verdict("act", {"act": 0.75, "fyi": 0.25}))
+        seams.jev.mock(return_value=_verdict("act"))
 
         async with captured_wide_event() as event:
             await _skip(DESK)
@@ -1413,7 +1412,7 @@ class TestTheDeskGateReadsTheEmailVerdict:
             "kind": "system",
             "reason": "jev_run",
             "choice": "act",
-            "skip_probability": 0.25,
+            "skip_probability": pytest.approx(0.05),
         }
 
     async def test_a_jev_failure_wakes_the_desk_and_says_why(self, seams: SimpleNamespace) -> None:
@@ -1421,19 +1420,23 @@ class TestTheDeskGateReadsTheEmailVerdict:
 
         assert await _skip(DESK) == GateRun()
         assert _decided(seams).reason == GateReason.JEV_ERROR
+        assert seams.verdicts.kept == {}
 
-    async def test_an_answer_with_no_bucket_probabilities_is_malformed_and_wakes_the_desk(
+    async def test_an_answer_missing_a_judgment_is_malformed_and_wakes_the_desk(
         self, seams: SimpleNamespace
     ) -> None:
-        bucket = {"type": "choice", "choice": "fyi"}
-        seams.jev.mock(return_value=httpx.Response(200, json={"answers": {"bucket": bucket}}))
+        body = email_verdict_answers("junk")
+        answers = body["answers"]
+        assert isinstance(answers, dict)
+        del answers["reports_issue"]
+        seams.jev.mock(return_value=httpx.Response(200, json=body))
 
         assert await _skip(DESK) == GateRun()
         assert _decided(seams).reason == GateReason.JEV_MALFORMED
 
 
 class TestTheDeskGateAtNight:
-    async def test_it_asks_the_urgent_question_next_to_the_bucket_in_one_call(
+    async def test_it_asks_the_urgent_judgment_next_to_the_four_in_one_call(
         self, night: SimpleNamespace
     ) -> None:
         night.jev.mock(return_value=_verdict("act"))
@@ -1442,58 +1445,74 @@ class TestTheDeskGateAtNight:
 
         assert night.jev.call_count == 1
         sent = _sent(night)
-        assert list(sent["questions"]) == ["bucket", "urgent"]
-        assert sent["questions"]["urgent"] == Q3_URGENT_QUESTION
+        assert list(sent["questions"]) == [
+            "is_person",
+            "asks_user",
+            "reports_issue",
+            "official",
+            "relevant",
+            "urgent",
+        ]
+        assert sent["questions"]["urgent"]["type"] == "noul"
 
     async def test_a_verdict_kept_from_the_day_is_asked_again_for_its_urgency(
-        self, night: SimpleNamespace, fake_redis: fakeredis.aioredis.FakeRedis
+        self, night: SimpleNamespace
     ) -> None:
-        del fake_redis
-        night.jev.mock(return_value=_verdict("act", can_wait=0.0))
+        night.jev.mock(return_value=_verdict("act", urgent=0.9))
         with time_machine.travel(AFTERNOON, tick=False):
             assert await _skip(DESK) == GateRun()
 
         assert isinstance(await _skip(DESK), GateBypass)
         assert night.jev.call_count == 2
 
-    async def test_an_answer_with_no_urgent_question_is_malformed_and_held(
+    async def test_an_answer_with_no_urgent_judgment_is_malformed_and_held(
         self, night: SimpleNamespace
     ) -> None:
-        answers = email_verdict_answers("fyi")["answers"]
+        body = email_verdict_answers("fyi")
+        answers = body["answers"]
         assert isinstance(answers, dict)
-        body = {"answers": {"bucket": answers["bucket"]}}
+        del answers["urgent"]
         night.jev.mock(return_value=httpx.Response(200, json=body))
 
         assert await _skip(DESK) == GateHold(until=MORNING)
         assert _decided(night).reason == GateReason.JEV_MALFORMED
 
-    async def test_urgent_mail_wakes_the_user(self, night: SimpleNamespace) -> None:
-        night.jev.mock(return_value=_verdict("reply", can_wait=0.2))
+    async def test_a_settled_yes_on_urgent_wakes_the_user_and_says_why(
+        self, night: SimpleNamespace
+    ) -> None:
+        night.jev.mock(return_value=_verdict("reply", urgent=0.71))
 
-        assert await _skip(DESK) == GateBypass(
-            reason="someone is waiting on you for a meeting happening soon"
-        )
+        verdict = await _skip(DESK)
 
-    @pytest.mark.parametrize("bucket", ["reply", "waiting", "act"])
-    async def test_mail_that_needs_the_user_but_can_wait_is_held(
+        assert verdict == GateBypass(reason="an email that cannot wait until morning")
+        assert _decided(night).urgent_choice is None
+
+    @pytest.mark.parametrize("bucket", ["reply", "act"])
+    async def test_an_urgent_answer_at_the_yes_line_is_held(
         self, night: SimpleNamespace, bucket: str
     ) -> None:
-        night.jev.mock(return_value=_verdict(bucket, can_wait=0.201))
+        """Unsure urgency is not a wake: only P(urgent) over 0.7 is a settled yes."""
+        night.jev.mock(return_value=_verdict(bucket, urgent=0.7))
 
         assert await _skip(DESK) == GateHold(until=MORNING)
         assert _decided(night).reason == GateReason.JEV_CAN_WAIT
 
     async def test_fyi_is_skipped(self, night: SimpleNamespace) -> None:
-        night.jev.mock(return_value=_verdict("fyi", {"fyi": 1.0}))
+        night.jev.mock(return_value=_verdict("fyi"))
 
         assert isinstance(await _skip(DESK), GateSkip)
 
     async def test_a_reply_on_a_thread_the_user_wrote_in_is_held_never_skipped(
         self, night: SimpleNamespace
     ) -> None:
-        night.jev.mock(return_value=_verdict("fyi", {"fyi": 1.0}))
+        night.jev.mock(return_value=_verdict("fyi"))
 
         assert await _skip(DESK, payload={"message_id": "m2"}) == GateHold(until=MORNING)
+        assert night.verdicts.kept[USER_ID, "m2"].bucket == "reply"
+        assert _sent(night)["state"]["thread"] == {
+            "user_wrote_in_thread": True,
+            "latest_from_other": True,
+        }
 
     async def test_a_jev_failure_is_held(self, night: SimpleNamespace) -> None:
         night.jev.mock(return_value=httpx.Response(500))

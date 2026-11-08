@@ -7,19 +7,11 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-import fakeredis.aioredis
 import httpx
 import pytest
 import time_machine
 
-from app.constants.desk_buckets import (
-    DESK_AUTOMATION,
-    DESK_BUCKET_CRITERIA,
-    DESK_BUCKET_INSTRUCTIONS,
-    DESK_BUCKET_QUESTION_KEY,
-    EMAIL_VERDICT_TTL_SECONDS,
-    DeskBucket,
-)
+from app.constants.desk_buckets import JUDGMENT_QUESTIONS, DeskBucket, Judgment
 from app.constants.trigger_gates import (
     GateOwner,
     SystemGatePreset,
@@ -86,15 +78,15 @@ def _todo(
     return TodoDocument.model_validate(fields)
 
 
-def _verdict(bucket: str, probabilities: Mapping[str, float] | None = None) -> httpx.Response:
-    return httpx.Response(200, json=email_verdict_answers(bucket, probabilities))
+def _verdict(bucket: str, **overrides: float) -> httpx.Response:
+    return httpx.Response(200, json=email_verdict_answers(bucket, **overrides))
 
 
 def _by_subject(
     answers: Mapping[str, httpx.Response | Exception],
 ) -> Callable[[httpx.Request], httpx.Response]:
     def answer(request: httpx.Request) -> httpx.Response:
-        given = answers[json.loads(request.content)["state"]["event"]["subject"]]
+        given = answers[json.loads(request.content)["state"]["email"]["subject"]]
         if isinstance(given, Exception):
             raise given
         return given
@@ -108,7 +100,7 @@ def seams() -> Iterator[SimpleNamespace]:
         trigger_gate_seams(Timezone.parse("Asia/Kolkata")) as gate_seams,
         patch(f"{MODULE}.todo_repository.get", AsyncMock(return_value=_todo())) as get,
     ):
-        yield SimpleNamespace(jev=gate_seams.jev, get=get)
+        yield SimpleNamespace(jev=gate_seams.jev, get=get, verdicts=gate_seams.verdicts)
 
 
 async def test_each_email_comes_back_in_order_carrying_the_bucket_jev_chose(
@@ -132,24 +124,43 @@ async def test_each_email_comes_back_in_order_carrying_the_bucket_jev_chose(
     seams.get.assert_awaited_once_with(DESK_ID, user_id=USER_ID)
 
 
-async def test_jev_is_asked_one_choice_among_the_five_buckets(seams: SimpleNamespace) -> None:
+async def test_jev_is_asked_the_four_day_judgments_and_no_thread_facts_it_cannot_know(
+    seams: SimpleNamespace,
+) -> None:
     seams.jev.mock(return_value=_verdict("reply"))
 
     await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, DECLINED)])
 
     sent = json.loads(seams.jev.calls.last.request.content)
-    assert list(sent["questions"]) == [DESK_BUCKET_QUESTION_KEY]
-    question = sent["questions"][DESK_BUCKET_QUESTION_KEY]
-    assert question["type"] == "choice"
-    assert question["instructions"] == DESK_BUCKET_INSTRUCTIONS
-    assert sent["state"]["automation"] == DESK_AUTOMATION
-    assert question["criteria"] == {b.value: t for b, t in DESK_BUCKET_CRITERIA.items()}
-    assert list(question["criteria"]) == [bucket.value for bucket in DeskBucket]
-    assert sent["state"]["event"]["subject"] == DECLINED
+    day = [
+        Judgment.IS_PERSON,
+        Judgment.ASKS_USER,
+        Judgment.REPORTS_ISSUE,
+        Judgment.OFFICIAL,
+        Judgment.RELEVANT,
+    ]
+    assert sent["questions"] == {
+        judgment.value: {
+            "type": "noul",
+            "instructions": JUDGMENT_QUESTIONS[judgment].instructions,
+            "criteria": {
+                "true": JUDGMENT_QUESTIONS[judgment].true,
+                "false": JUDGMENT_QUESTIONS[judgment].false,
+            },
+        }
+        for judgment in day
+    }
+    assert sent["state"] == {
+        "email": {
+            "from": {"name": "Sender 0", "address": "s0@example.com"},
+            "to": "aryan@heygaia.io",
+            "subject": DECLINED,
+        }
+    }
 
 
 async def test_a_verdict_is_kept_by_message_id_so_a_second_fetch_asks_nothing(
-    seams: SimpleNamespace, fake_redis: fakeredis.aioredis.FakeRedis
+    seams: SimpleNamespace,
 ) -> None:
     seams.jev.mock(return_value=_verdict("act"))
 
@@ -158,7 +169,8 @@ async def test_a_verdict_is_kept_by_message_id_so_a_second_fetch_asks_nothing(
 
     assert view.bucket is DeskBucket.ACT
     assert seams.jev.call_count == 1
-    assert 0 < await fake_redis.ttl(f"email_verdict:{USER_ID}:m1") <= EMAIL_VERDICT_TTL_SECONDS
+    kept = seams.verdicts.kept[USER_ID, "m1"]
+    assert (kept.bucket, kept.answers[Judgment.REPORTS_ISSUE]) == (DeskBucket.ACT, 0.95)
 
 
 @pytest.mark.parametrize(
@@ -168,12 +180,10 @@ async def test_a_verdict_is_kept_by_message_id_so_a_second_fetch_asks_nothing(
 )
 async def test_the_sweep_reads_the_verdict_the_desk_gate_asked_for_on_arrival(
     seams: SimpleNamespace,
-    fake_redis: fakeredis.aioredis.FakeRedis,
     arrived_at: datetime,
     on_arrival_verdict: GateVerdict,
 ) -> None:
     """Regression: a bounce of the user's own mail was skipped on arrival and act at the sweep."""
-    del fake_redis
     seams.jev.mock(return_value=_verdict("act"))
     arrival = {
         "thread_id": "m1",
@@ -217,14 +227,12 @@ _REPLY_IN_THREAD = {
 )
 async def test_a_reply_on_a_thread_the_user_wrote_in_is_bucketed_reply_whatever_jev_says(
     seams: SimpleNamespace,
-    fake_redis: fakeredis.aioredis.FakeRedis,
     arrived_at: datetime,
     on_arrival_verdict: GateVerdict,
     jev_calls: int,
 ) -> None:
     """The founder's rule: the user wrote in the thread and the latest message is someone else's."""
-    del fake_redis
-    seams.jev.mock(return_value=_verdict("fyi", {"fyi": 1.0}))
+    seams.jev.mock(return_value=_verdict("fyi"))
 
     with time_machine.travel(arrived_at, tick=False):
         on_arrival = await decide_gate(
@@ -240,10 +248,7 @@ async def test_a_reply_on_a_thread_the_user_wrote_in_is_bucketed_reply_whatever_
     assert seams.jev.call_count == jev_calls
 
 
-async def test_verdicts_are_kept_per_user(
-    seams: SimpleNamespace, fake_redis: fakeredis.aioredis.FakeRedis
-) -> None:
-    del fake_redis
+async def test_verdicts_are_kept_per_user(seams: SimpleNamespace) -> None:
     seams.jev.mock(return_value=_verdict("act"))
     other = "507f1f77bcf86cd799439012"
     seams.get.side_effect = [_todo(), _todo(user_id=other)]
@@ -259,11 +264,11 @@ async def test_verdicts_are_kept_per_user(
     [
         httpx.Response(500),
         httpx.Response(200, json={"answers": {}}),
-        _verdict("not_a_bucket"),
-        httpx.Response(200, json={"answers": {"bucket": {"type": "choice", "choice": "act"}}}),
+        _verdict("act", relevant=1.5),
+        httpx.Response(200, json={"answers": {"is_person": {"type": "choice", "choice": "no"}}}),
         httpx.ConnectTimeout("slow"),
     ],
-    ids=["http-error", "no-answer", "unknown-choice", "no-probabilities", "timeout"],
+    ids=["http-error", "no-answer", "out-of-range", "not-a-noul", "timeout"],
 )
 async def test_an_email_jev_fails_on_reaches_the_desk_unbucketed_and_the_rest_keep_theirs(
     seams: SimpleNamespace, failure: httpx.Response | Exception
@@ -276,7 +281,7 @@ async def test_an_email_jev_fails_on_reaches_the_desk_unbucketed_and_the_rest_ke
 
 
 async def test_a_failed_verdict_is_not_kept_so_the_next_fetch_asks_again(
-    seams: SimpleNamespace, fake_redis: fakeredis.aioredis.FakeRedis
+    seams: SimpleNamespace,
 ) -> None:
     seams.jev.mock(side_effect=[httpx.Response(500), _verdict("act")])
 
@@ -284,7 +289,8 @@ async def test_a_failed_verdict_is_not_kept_so_the_next_fetch_asks_again(
     (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(1, DECLINED)])
 
     assert view.bucket is DeskBucket.ACT
-    assert await fake_redis.exists(f"email_verdict:{USER_ID}:m1") == 1
+    assert seams.jev.call_count == 2
+    assert seams.verdicts.kept[USER_ID, "m1"].bucket is DeskBucket.ACT
 
 
 @pytest.mark.parametrize(
@@ -303,42 +309,44 @@ async def test_mail_outside_a_desk_is_returned_unasked(
 
 
 @pytest.mark.parametrize(
-    ("probability", "bucket"),
-    [(0.95, DeskBucket.JUNK), (0.949, None)],
-    ids=["at-the-line", "just-under"],
+    ("overrides", "bucket"),
+    [
+        ({}, DeskBucket.JUNK),
+        ({"relevant": 0.3}, DeskBucket.FYI),
+        ({"is_person": 0.95, "asks_user": 0.05}, DeskBucket.FYI),
+        ({"asks_user": 0.3}, None),
+        ({"reports_issue": 0.7}, None),
+        ({"reports_issue": 0.71}, DeskBucket.ACT),
+        ({"official": 0.71}, DeskBucket.ACT),
+        ({"official": 0.3}, None),
+        ({"is_person": 0.71, "asks_user": 0.71, "relevant": 0.3}, DeskBucket.REPLY),
+        ({"is_person": 0.71, "asks_user": 0.71, "relevant": 0.29}, DeskBucket.FYI),
+    ],
+    ids=[
+        "nothing-asked-irrelevant",
+        "relevance-not-settled-no",
+        "a-person-asking-nothing",
+        "an-unsure-ask",
+        "an-issue-at-the-yes-line",
+        "an-issue-over-it",
+        "an-official-notice",
+        "an-unsure-official-notice",
+        "a-person-asking-something-relevant",
+        "a-person-asking-something-irrelevant",
+    ],
 )
-async def test_junk_hides_an_email_only_at_the_gates_skip_line(
-    seams: SimpleNamespace, probability: float, bucket: DeskBucket | None
+async def test_the_decision_table_reads_each_answer_on_its_band(
+    seams: SimpleNamespace, overrides: dict[str, float], bucket: DeskBucket | None
 ) -> None:
-    seams.jev.mock(return_value=_verdict("junk", {"junk": probability}))
+    seams.jev.mock(return_value=_verdict("junk", **overrides))
 
     (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, NEWSLETTER)])
 
     assert view.bucket is bucket
 
 
-async def test_a_less_sure_answer_of_any_other_bucket_still_stands(
-    seams: SimpleNamespace,
-) -> None:
-    seams.jev.mock(return_value=_verdict("act", {"act": 0.4, "fyi": 0.35}))
-
-    (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, DECLINED)])
-
-    assert view.bucket is DeskBucket.ACT
-
-
-async def test_a_junk_answer_without_its_own_probability_is_left_unbucketed(
-    seams: SimpleNamespace,
-) -> None:
-    seams.jev.mock(return_value=_verdict("junk", {"fyi": 0.6}))
-
-    (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, NEWSLETTER)])
-
-    assert view.bucket is None
-
-
 async def test_a_failed_verdict_is_logged_with_why(seams: SimpleNamespace) -> None:
-    seams.jev.mock(return_value=_verdict("not_a_bucket"))
+    seams.jev.mock(return_value=_verdict("act", relevant=1.5))
 
     with patch(f"{MODULE}.log") as log:
         (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_view(0, DECLINED)])
@@ -347,7 +355,7 @@ async def test_a_failed_verdict_is_logged_with_why(seams: SimpleNamespace) -> No
     log.warning.assert_called_once_with(
         "desk_bucket.jev_failed",
         reason="jev_malformed",
-        error="unknown JEV bucket choice: 'not_a_bucket'",
+        error="JEV noul for 'relevant' is out of range: 1.5",
         error_type="ValueError",
     )
 

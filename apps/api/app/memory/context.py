@@ -10,6 +10,8 @@ only a backstop.
 import asyncio
 from datetime import date as date_type, timedelta
 
+from pydantic import BaseModel, ConfigDict
+
 from app.constants.memory import (
     CORE_CONTEXT_CACHE_KEY,
     CORE_CONTEXT_CACHE_TTL,
@@ -128,6 +130,15 @@ async def invalidate_user_memory_caches(user_id: str) -> None:
     await invalidate_core_context(user_id)
 
 
+class _JournalLine(BaseModel):
+    """One journal entry as the recent-activity block reads it; an old row may carry only its text."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    time: str = ""
+    text: str = ""
+
+
 def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> str:
     """Compact journal rendering, bounded so it never dumps a whole day.
 
@@ -146,7 +157,8 @@ def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> 
         # Emit the NEWEST entries (last-2), not an anchored-at-start window, and
         # no numbered counter — the omitted-note is byte-identical across turns.
         recent = episode.entries[-2:] if len(episode.entries) > 2 else episode.entries
-        lines = [f"- {entry.get('time', '')} {entry.get('text', '')}".rstrip() for entry in recent]
+        journal = [_JournalLine.model_validate(entry) for entry in recent]
+        lines = [f"- {line.time} {line.text}".rstrip() for line in journal]
         if len(episode.entries) > 2:
             lines.append("- (earlier entries omitted)")
         blocks.append(f"### {label} ({episode.date.isoformat()})\n" + "\n".join(lines))
