@@ -15,12 +15,12 @@ from app.constants.log_tags import LogTag
 from app.constants.todos import INBOX_DESK_AUTOMATED_SENDERS
 from app.constants.trigger_gates import TRIGGER_GATE_FIELD_MAX_CHARS
 from app.models.composio_schemas.gmail import GmailHeader, GmailMessageView
+from app.services.composio.custom_tools.gmail_constants import GMAIL_SENT_LABEL
 from shared.py.wide_events import log
 
 _GMAIL_CATEGORY_PREFIX = "CATEGORY_"
 _BULK_PRECEDENCE = frozenset({"bulk", "list", "junk"})
 _NOT_AUTO_SUBMITTED = frozenset({"", "no"})
-_GMAIL_SENT_LABEL = "SENT"
 
 
 class _MessagePart(BaseModel):
@@ -96,7 +96,7 @@ class GmailGateView(BaseModel):
     @property
     def latest_from_other(self) -> bool:
         """Whether the message is someone else's, not one the user sent."""
-        return _GMAIL_SENT_LABEL not in self.gmail_labels
+        return GMAIL_SENT_LABEL not in self.gmail_labels
 
     def as_email(self) -> dict[str, object]:
         """Return the message as a person sees it in their inbox, for the email verdict; no empty field."""

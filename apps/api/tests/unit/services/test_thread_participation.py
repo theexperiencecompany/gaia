@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.composio.account_scope import current_selection
+from app.models.agent_config import ComposioAccountSelection
+from app.services.composio.account_scope import account_scope, current_selection
 from app.services.mail.thread_participation import user_wrote_in_thread
 from app.utils.errors import AppError
 from tests.integration_account_factories import (
@@ -116,3 +117,16 @@ async def test_a_gmail_error_raises_rather_than_reading_as_no(composio: SimpleNa
 
     with pytest.raises(AppError):
         await _wrote()
+
+
+async def test_no_account_inside_a_run_reads_the_account_the_run_scoped(
+    composio: SimpleNamespace,
+) -> None:
+    """The desk's sweep reads a thread on the account its fetch is scoped to, not the primary."""
+    composio.proxy.return_value = _thread(["SENT"])
+
+    with account_scope(ComposioAccountSelection(toolkit="GMAIL", connected_account_id="ca_9")):
+        assert await _wrote(account_id=None) is True
+
+    composio.lookup.assert_not_awaited()
+    assert composio.proxy.call_args.kwargs["connected_account_id"] == "ca_9"

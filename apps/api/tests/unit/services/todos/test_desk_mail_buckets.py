@@ -124,7 +124,7 @@ async def test_each_email_comes_back_in_order_carrying_the_bucket_jev_chose(
     seams.get.assert_awaited_once_with(DESK_ID, user_id=USER_ID)
 
 
-async def test_jev_is_asked_the_judgments_and_no_thread_facts_it_cannot_know(
+async def test_jev_is_asked_the_judgments_about_the_email_and_its_thread(
     seams: SimpleNamespace,
 ) -> None:
     seams.jev.mock(return_value=_verdict("reply"))
@@ -156,8 +156,37 @@ async def test_jev_is_asked_the_judgments_and_no_thread_facts_it_cannot_know(
             "from": {"name": "Sender 0", "address": "s0@example.com"},
             "to": "aryan@heygaia.io",
             "subject": DECLINED,
-        }
+        },
+        "thread": {"user_wrote_in_thread": False, "latest_from_other": True},
     }
+
+
+def _continuation(n: int, subject: str) -> GmailMessageView:
+    return _view(n, subject).model_copy(update={"thread_id": "t1"})
+
+
+async def test_a_sweep_miss_on_a_thread_the_user_wrote_in_is_reply_unasked(
+    seams: SimpleNamespace,
+) -> None:
+    with patch(f"{MODULE}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote:
+        (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_continuation(3, "Re: terms")])
+
+    assert view.bucket is DeskBucket.REPLY
+    assert seams.jev.call_count == 0
+    wrote.assert_awaited_once_with(USER_ID, "t1", message_id="m3", account_id=None)
+
+
+async def test_a_thread_the_sweep_cannot_read_leaves_the_email_unbucketed(
+    seams: SimpleNamespace,
+) -> None:
+    seams.jev.mock(return_value=_verdict("junk"))
+    failing = AsyncMock(side_effect=LookupError("Gmail account gone"))
+
+    with patch(f"{MODULE}.user_wrote_in_thread", failing):
+        (view,) = await desk_bucketed_views(USER_ID, DESK_ID, [_continuation(3, "Re: terms")])
+
+    assert view.bucket is None
+    assert seams.jev.call_count == 0
 
 
 async def test_a_verdict_is_kept_by_message_id_so_a_second_fetch_asks_nothing(
