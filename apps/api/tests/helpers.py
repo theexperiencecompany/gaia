@@ -58,6 +58,7 @@ from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.providers.provider_credentials_service import ProviderConfig
@@ -200,6 +201,14 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         patch(
             f"{gate}.todo_repository.remember_subscription_gate_skip", AsyncMock()
         ) as watch_skips,
+        # What memory knows about the user, which the email verdict reads; none unless set.
+        patch(
+            "app.services.mail.email_verdict.memory_engine.get_core_context",
+            AsyncMock(return_value=""),
+        ) as core,
+        patch(
+            "app.services.mail.email_verdict.email_verdict_repository", FakeEmailVerdicts()
+        ) as verdicts,
     ):
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
@@ -212,7 +221,87 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
             wrote=wrote,
             workflow_skips=workflow_skips,
             watch_skips=watch_skips,
+            core=core,
+            verdicts=verdicts,
         )
+
+
+class FakeEmailVerdicts:
+    """email_verdict_repository in memory, keyed as its unique index is: (user_id, message_id)."""
+
+    def __init__(self) -> None:
+        self.kept: dict[tuple[str, str], EmailVerdictDocument] = {}
+
+    async def get(self, message_id: str, *, user_id: str) -> EmailVerdictDocument | None:
+        return self.kept.get((user_id, message_id))
+
+    async def keep(self, verdict: EmailVerdictDocument) -> None:
+        self.kept[verdict.user_id, verdict.message_id] = verdict
+
+
+# JEV answers, as P(true) per judgment, that the decision table reads as each bucket.
+_BUCKET_ANSWERS: Mapping[str, Mapping[str, float]] = {
+    "reply": {
+        "is_person": 0.95,
+        "asks_user": 0.9,
+        "reports_issue": 0.1,
+        "official": 0.05,
+        "relevant": 0.8,
+        "bulk": 0.05,
+    },
+    "act": {
+        "is_person": 0.05,
+        "asks_user": 0.6,
+        "reports_issue": 0.95,
+        "official": 0.05,
+        "relevant": 0.6,
+        "bulk": 0.1,
+    },
+    "fyi": {
+        "is_person": 0.05,
+        "asks_user": 0.05,
+        "reports_issue": 0.05,
+        "official": 0.05,
+        "relevant": 0.9,
+        "bulk": 0.05,
+    },
+    "junk": {
+        "is_person": 0.05,
+        "asks_user": 0.05,
+        "reports_issue": 0.05,
+        "official": 0.05,
+        "relevant": 0.05,
+        "bulk": 0.05,
+    },
+    "unsure": {
+        "is_person": 0.05,
+        "asks_user": 0.5,
+        "reports_issue": 0.05,
+        "official": 0.05,
+        "relevant": 0.5,
+        "bulk": 0.5,
+    },
+}
+
+
+def email_verdict_answers(
+    bucket: str,
+    overrides: Mapping[str, float] | None = None,
+    *,
+    can_wait: float = 1.0,
+    leaning: str = "meeting",
+) -> dict[str, object]:
+    """Return a Decisions body the email verdict reads as bucket, and its urgent answer; overrides win."""
+    answers: dict[str, object] = {
+        judgment: {"type": "noul", "noul": p}
+        for judgment, p in {**_BUCKET_ANSWERS[bucket], **(overrides or {})}.items()
+    }
+    answers["urgent"] = {
+        "type": "choice",
+        "choice": "can_wait" if can_wait >= 0.5 else leaning,
+        "probabilities": {"can_wait": can_wait, leaning: 1 - can_wait},
+    }
+    return {"answers": answers}
 
 
 @contextmanager

@@ -1,20 +1,19 @@
-"""trigger-gate suite: the Inbox desk gate's JEV answers on 420 founder emails, anonymised, and 10 synthetic.
+"""The trigger-gate corpus, 420 founder emails, anonymised, and 10 synthetic, asked two ways.
 
-Each email's request is built by the production builder (gmail_gate_view, gate_request) and
-sent through the production client (post_decisions), once by day and once inside quiet
-hours. The journal keeps every request's hash and JEV's answers, so the CI sweep
-(tests/unit/evals/test_trigger_gate_sweep.py) regrades it through decide_gate itself, and a
-prompt edit that is not re-recorded fails there. Every address and link is on a reserved
-.example domain; the recorded answers were given on an earlier pseudonymisation of the same
-emails and re-keyed to this one, so a re-record is what refreshes them. mail-421 to mail-430
-(sign-in and security notices) were asked later, one --only run per pass, joined to it.
+email-verdict: each email's verdict request by day (the yes/no judgments) and inside quiet hours
+(those and urgent), built by email_verdict.verdict_request as the desk gate and the desk's sweep send it.
+tests/unit/evals/test_email_verdict_sweep.py regrades its buckets, and
+tests/unit/evals/test_trigger_gate_sweep.py regrades the desk gate through decide_gate.
 
-The desk-bucket suite asks the same emails the Inbox desk's bucket question, built by
-desk_mail_buckets.bucket_request; tests/unit/evals/test_desk_bucket_sweep.py regrades it.
+trigger-gate: the authored gate template with the desk's condition, by day and inside quiet
+hours, built by gate_request; test_trigger_gate_sweep.py regrades it too.
 
-Run:  uv run --group backend python -m scripts.evals run --suite trigger-gate --concurrency 6
-  TRIGGER_GATE_EVAL_GATE=system|authored (default system)
-      uv run --group backend python -m scripts.evals run --suite desk-bucket --concurrency 6
+Each request goes through the production client (post_decisions), and the journal keeps its
+hash and JEV's answer, so an edit that is not re-recorded fails the sweep. Every address and
+link is on a reserved .example domain.
+
+Run:  uv run --group backend python -m scripts.evals run --suite email-verdict --concurrency 6
+      uv run --group backend python -m scripts.evals run --suite trigger-gate --concurrency 6
 Record: uv run --group backend python -m scripts.evals.record_trigger_gate <run-id> [...]
 """
 
@@ -25,30 +24,34 @@ from dataclasses import replace
 from enum import StrEnum
 import hashlib
 import json
-import os
 from pathlib import Path
 import time
-from types import MappingProxyType
 from typing import Final, TypedDict
 
 import httpx
 
+from app.constants.desk_buckets import DESK_AUTOMATION, DeskBucket
 from app.constants.hil import HIL_JEV_MODEL_NAME
 from app.constants.trigger_gates import (
-    SYSTEM_GATE_PRESETS,
+    AUTHORED_GATE_RUN_LABEL,
+    SYSTEM_GATE_CONDITIONS,
     TRIGGER_GATE_QUESTION_KEY,
+    TRIGGER_GATE_SKIP_LABEL,
     TRIGGER_GATE_SKIP_PROBABILITY,
-    TRIGGER_GATE_URGENT_PROBABILITY,
-    TRIGGER_GATE_URGENT_QUESTION_KEY,
     GateAuthor,
     SystemGatePreset,
 )
 from app.models.jev_models import JevDecisionsResponse
-from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
+from app.models.trigger_gate_models import AuthoredGate, SystemGate
 from app.services.hil.jev_client import JevUnconfiguredError, post_decisions
-from app.services.todos.desk_mail_buckets import bucket_request, read_bucket
-from app.services.triggers.gmail_signals import gmail_gate_view
-from app.services.triggers.trigger_gate import gate_request, skip_probability, urgency
+from app.services.mail.email_verdict import (
+    ThreadFacts,
+    read_verdict,
+    verdict_request,
+)
+from app.services.quiet_hours_urgency import read_urgency
+from app.services.triggers.gmail_signals import GmailGateView, gmail_gate_view
+from app.services.triggers.trigger_gate import gate_request, skip_probability
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.journal import RunJournal
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
@@ -58,16 +61,26 @@ from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "trigger-gate"
 RECORDED_DIR = DATA_DIR / "recorded"
-BUCKETS_RECORDED_DIR = DATA_DIR / "recorded-buckets"
-# Journaled where production leaves an email unbucketed: no bucket named, or junk under the line.
+VERDICTS_RECORDED_DIR = DATA_DIR / "recorded-verdicts"
+# Journaled where production leaves an email unbucketed: no verdict, or an unsure answer.
 UNBUCKETED: Final = "unbucketed"
 
-
-class EvalGate(StrEnum):
-    """Which gate a run asked about, TRIGGER_GATE_EVAL_GATE; journaled on every row."""
-
-    SYSTEM = "system"
-    AUTHORED = "authored"
+DESK_GATE: Final = SystemGate(preset=SystemGatePreset.INBOX_DESK)
+# The authored template with the desk's own intent as its condition, asked of the desk's job text.
+AUTHORED_DESK_GATE: Final = AuthoredGate(
+    condition=SYSTEM_GATE_CONDITIONS[SystemGatePreset.INBOX_DESK], author=GateAuthor.GAIA
+)
+AUTHORED_DESK_GATE_LABELS: Final = frozenset({AUTHORED_GATE_RUN_LABEL, TRIGGER_GATE_SKIP_LABEL})
+# The setup key that says whether the user sent a message in a continued email's thread.
+USER_WROTE_IN_THREAD: Final = "user_wrote_in_thread"
+# Who the corpus's user is, as memory's About-the-user note says it, in the corpus's pseudonyms:
+# the founder's own profile, each name and tool swapped for the one the corpus uses.
+EVAL_USER_PROFILE: Final = (
+    "Teciok is the cofounder of RISTOK (graliogior.example), a proactive personal AI assistant. "
+    "Priorities: fundraising and investor relationships, converting and retaining paying users, "
+    "SEO and growth, keeping infra costs down. Interests: AI assistants, agents, productivity and "
+    "developer tools. Uses Smithrun CI, Clouvra, Gitrio, Routrio, Fastrio, Arco."
+)
 
 
 class GateMode(StrEnum):
@@ -75,19 +88,6 @@ class GateMode(StrEnum):
 
     DAY = "day"
     QUIET = "quiet"
-
-
-_DESK = SYSTEM_GATE_PRESETS[SystemGatePreset.INBOX_DESK]
-# The authored template with the desk's own intent as its condition; both send the desk's job text.
-EVAL_GATES: Final[Mapping[EvalGate, TriggerGate]] = MappingProxyType(
-    {
-        EvalGate.SYSTEM: SystemGate(preset=SystemGatePreset.INBOX_DESK),
-        EvalGate.AUTHORED: AuthoredGate(condition=_DESK.condition, author=GateAuthor.GAIA),
-    }
-)
-DESK_AUTOMATION: Final = _DESK.automation
-# The setup key that says whether the user sent a message in a continued email's thread.
-USER_WROTE_IN_THREAD: Final = "user_wrote_in_thread"
 
 
 class AskedRequest(TypedDict):
@@ -98,18 +98,17 @@ class AskedRequest(TypedDict):
 
 
 class GateJournalFields(TypedDict):
-    """What a row is regraded from: the gate asked, and each mode's request and answer."""
+    """What an authored-gate row is regraded from: each mode's request and answer."""
 
-    gate: str
     outcome: str
     requests: dict[str, AskedRequest]
 
 
-class BucketJournalFields(TypedDict):
-    """What a bucket row is regraded from: the request JEV answered and the bucket it read as."""
+class VerdictJournalFields(TypedDict):
+    """What a verdict row is regraded from: each mode's request and answer, and the day bucket."""
 
     bucket: str
-    request: AskedRequest
+    requests: dict[str, AskedRequest]
 
 
 def record(run_dir: Path, out_dir: Path = RECORDED_DIR) -> Path:
@@ -124,7 +123,12 @@ def record(run_dir: Path, out_dir: Path = RECORDED_DIR) -> Path:
     out = out_dir / f"{run_dir.name}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
     lines = (
-        json.dumps({"case_id": case_id, **rows[case_id]["end_state"]}, ensure_ascii=False)
+        # Compact separators keep a five-judgment pass under the repo's 500 KB file cap.
+        json.dumps(
+            {"case_id": case_id, **rows[case_id]["end_state"]},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         for case_id in sorted(rows)
     )
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -142,63 +146,87 @@ def jev_body(state: Mapping[str, object], questions: Mapping[str, object]) -> di
     return {"model": HIL_JEV_MODEL_NAME, "state": state, "questions": questions}
 
 
-def gate_requests(
-    gate: TriggerGate, message: Mapping[str, object]
-) -> dict[GateMode, tuple[dict[str, object], dict[str, dict[str, object]]]]:
-    """Build both modes' requests for one email with the production gate view and builder."""
-    view = gmail_gate_view(message)
+def _view(setup: Mapping[str, object]) -> GmailGateView:
+    message = setup["message"]
+    view = gmail_gate_view(message) if isinstance(message, Mapping) else None
     if view is None:
         raise ValueError("corpus message is not a readable Gmail payload")
+    return view
+
+
+def gate_requests(
+    setup: Mapping[str, object],
+) -> dict[GateMode, tuple[dict[str, object], dict[str, dict[str, object]]]]:
+    """Build both modes' authored-gate requests for one email with the production builder."""
+    event = _view(setup).as_event()
     return {
-        mode: gate_request(gate, view.as_event(), DESK_AUTOMATION, quiet=mode is GateMode.QUIET)
+        mode: gate_request(AUTHORED_DESK_GATE, event, DESK_AUTOMATION, quiet=mode is GateMode.QUIET)
         for mode in GateMode
     }
 
 
-def bucket_requests(
-    message: Mapping[str, object],
-) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
-    """Build an email's bucket request with the production gate view and bucket builder."""
-    view = gmail_gate_view(message)
-    if view is None:
-        raise ValueError("corpus message is not a readable Gmail payload")
-    return bucket_request(view.as_event())
+def thread_facts(setup: Mapping[str, object]) -> ThreadFacts:
+    """Return the thread facts decide_gate reads for a case.
+
+    The user wrote in a continuation unless setup says they never did; a message the
+    signals cannot place counts as one they wrote in, and a new thread as one they did not.
+    """
+    view = _view(setup)
+    placed = view.continues_thread
+    wrote = placed is None or (placed and setup.get(USER_WROTE_IN_THREAD) is not False)
+    return ThreadFacts(user_wrote_in_thread=wrote, latest_from_other=view.latest_from_other)
 
 
-def graded_bucket(body: JevDecisionsResponse) -> str:
-    """Return the bucket production reads from an answer, or UNBUCKETED where it reads none."""
+def in_conversation(setup: Mapping[str, object]) -> bool:
+    """Return whether the gate reads a case as a conversation, as decide_gate does."""
+    return thread_facts(setup).conversation
+
+
+def verdict_requests(
+    setup: Mapping[str, object],
+) -> dict[GateMode, tuple[dict[str, object], dict[str, dict[str, object]]]]:
+    """Build both modes' verdict requests for one email with the production builder."""
+    view, thread = _view(setup), thread_facts(setup)
+    return {
+        mode: verdict_request(
+            view.as_email(), thread=thread, quiet=mode is GateMode.QUIET, profile=EVAL_USER_PROFILE
+        )
+        for mode in GateMode
+    }
+
+
+def graded_bucket(
+    body: JevDecisionsResponse, mode: GateMode = GateMode.DAY, *, conversation: bool
+) -> str:
+    """Return the bucket production reads from an answer, or UNBUCKETED where it reads none.
+
+    A conversation is reply whatever JEV answered, the founder's thread rule.
+    """
+    if conversation:
+        return DeskBucket.REPLY.value
     try:
-        bucket = read_bucket(body)
+        bucket = read_verdict(body, quiet=mode is GateMode.QUIET).bucket
     except ValueError:
         return UNBUCKETED
     return bucket.value if bucket else UNBUCKETED
 
 
-def day_outcome(gate: TriggerGate, setup: Mapping[str, object], body: JevDecisionsResponse) -> str:
-    """Return "skip" or "run" by day; a conversation always runs. The sweep checks decide_gate agrees.
-
-    A continuation is a conversation when setup says the user wrote in its thread.
-    """
-    message = setup["message"]
-    if not isinstance(message, Mapping):
-        raise ValueError("corpus case has no message")
-    view = gmail_gate_view(message)
-    if view is None or view.continues_thread is None:
+def day_outcome(setup: Mapping[str, object], body: JevDecisionsResponse) -> str:
+    """Return the authored gate's "skip" or "run" by day; a conversation always runs."""
+    if in_conversation(setup):
         return "run"
-    if view.continues_thread and setup.get(USER_WROTE_IN_THREAD) is not False:
-        return "run"
-    answer = body.answers[TRIGGER_GATE_QUESTION_KEY]
-    return "skip" if skip_probability(gate, answer) >= TRIGGER_GATE_SKIP_PROBABILITY else "run"
+    answer = body.choice(TRIGGER_GATE_QUESTION_KEY, AUTHORED_DESK_GATE_LABELS)
+    p_skip = skip_probability(AUTHORED_DESK_GATE, answer)
+    return "skip" if p_skip >= TRIGGER_GATE_SKIP_PROBABILITY else "run"
 
 
 def quiet_wakes(body: JevDecisionsResponse) -> bool:
-    """Return whether the quiet-hours answer wakes the user. The sweep checks decide_gate agrees."""
-    answer = body.answers[TRIGGER_GATE_URGENT_QUESTION_KEY]
-    return urgency(answer).probability >= TRIGGER_GATE_URGENT_PROBABILITY
+    """Return whether a quiet-hours answer wakes the user. The sweep checks decide_gate agrees."""
+    return read_urgency(body).wakes
 
 
 def quiet_wake(case: Case, run: CaseRun) -> float:
-    """Fail a run whose quiet-hours answer wakes the user for mail that can wait, or that has none."""
+    """Fail a run that wakes the user for mail that can wait, or has no quiet-hours answer."""
     asked = (run.end_state or {}).get("requests", {}).get(GateMode.QUIET)
     if asked is None:
         return 0.0
@@ -214,11 +242,50 @@ EXTRA = {
 }
 
 
-class GateTransport:
-    """One email: both modes' requests through the production client, journaled whole."""
+async def _ask(
+    provider: ProviderConfig,
+    state: dict[str, object],
+    questions: dict[str, dict[str, object]],
+    what: str,
+) -> tuple[JevDecisionsResponse, AskedRequest]:
+    try:
+        body = await post_decisions(state, questions)
+    except (JevUnconfiguredError, httpx.HTTPError, ValueError) as e:
+        raise ProviderError(provider.name, f"decisions API failed ({what}): {e}") from e
+    asked = AskedRequest(
+        request_sha=request_sha(jev_body(state, questions)),
+        response=body.model_dump(mode="json", exclude_none=True),
+    )
+    return body, asked
 
-    def __init__(self) -> None:
-        self._gate = EvalGate(os.environ.get("TRIGGER_GATE_EVAL_GATE", EvalGate.SYSTEM))
+
+def _case_run(
+    case: Case,
+    provider: ProviderConfig,
+    graded: str,
+    end_state: Mapping[str, object],
+    bodies: list[JevDecisionsResponse],
+    started: float,
+) -> CaseRun:
+    tokens = [body.tokens() for body in bodies]
+    return CaseRun(
+        case_id=case.id,
+        provider=provider.name,
+        model=HIL_JEV_MODEL_NAME,
+        messages=[
+            {"role": "user", "content": str(case.setup["message"].get("subject") or "")},
+            {"role": "assistant", "content": graded},
+        ],
+        end_state=dict(end_state),
+        text=graded,
+        tokens_in=sum(t[0] for t in tokens),
+        tokens_out=sum(t[1] for t in tokens),
+        duration_s=time.monotonic() - started,
+    )
+
+
+class GateTransport:
+    """One email: both modes' authored-gate requests through the production client, journaled whole."""
 
     async def run(
         self,
@@ -228,55 +295,30 @@ class GateTransport:
         provider: ProviderConfig,
     ) -> CaseRun:
         del cfg, tracker
-        start = time.monotonic()
-        gate = EVAL_GATES[self._gate]
-        message = case.setup["message"]
+        started = time.monotonic()
         asked: dict[str, AskedRequest] = {}
         answers: dict[GateMode, JevDecisionsResponse] = {}
-        for mode, (state, questions) in gate_requests(gate, message).items():
-            try:
-                body = await post_decisions(state, questions)
-            except (JevUnconfiguredError, httpx.HTTPError, ValueError) as e:
-                raise ProviderError(provider.name, f"decisions API failed ({mode}): {e}") from e
-            answers[mode] = body
-            asked[mode] = AskedRequest(
-                request_sha=request_sha(jev_body(state, questions)),
-                response=body.model_dump(mode="json", exclude_none=True),
-            )
-        outcome = day_outcome(gate, case.setup, answers[GateMode.DAY])
-        duration_s = time.monotonic() - start
+        for mode, (state, questions) in gate_requests(case.setup).items():
+            answers[mode], asked[mode] = await _ask(provider, state, questions, mode)
+        outcome = day_outcome(case.setup, answers[GateMode.DAY])
         want = str(case.expected.get("outcome"))
         print(f"[{'ok' if outcome == want else 'MISS'}] {case.id}: want={want} got={outcome}")
-        fields = GateJournalFields(gate=self._gate.value, outcome=outcome, requests=asked)
-        tokens = [body.tokens() for body in answers.values()]
-        return CaseRun(
-            case_id=case.id,
-            provider=provider.name,
-            model=HIL_JEV_MODEL_NAME,
-            messages=[
-                {"role": "user", "content": str(message.get("subject") or "")},
-                {"role": "assistant", "content": outcome},
-            ],
-            end_state=dict(fields),
-            text=outcome,
-            tokens_in=sum(t[0] for t in tokens),
-            tokens_out=sum(t[1] for t in tokens),
-            duration_s=duration_s,
-        )
+        fields = GateJournalFields(outcome=outcome, requests=asked)
+        return _case_run(case, provider, outcome, fields, list(answers.values()), started)
 
 
 @register_suite("trigger-gate")
 class TriggerGateSuite(TransportSuite):
     name = "trigger-gate"
     project = "gaia-trigger-gate"
-    label = "Trigger gate (Inbox desk)"
+    label = "Trigger gate (authored template)"
     data_dir = DATA_DIR
     extra = EXTRA
     transport_type = GateTransport
 
 
-class BucketTransport:
-    """One email: the desk's bucket request through the production client, journaled whole."""
+class VerdictTransport:
+    """One email: both modes' verdict requests through the production client, journaled whole."""
 
     async def run(
         self,
@@ -286,43 +328,21 @@ class BucketTransport:
         provider: ProviderConfig,
     ) -> CaseRun:
         del cfg, tracker
-        start = time.monotonic()
-        message = case.setup["message"]
-        state, questions = bucket_requests(message)
-        try:
-            body = await post_decisions(state, questions)
-        except (JevUnconfiguredError, httpx.HTTPError, ValueError) as e:
-            raise ProviderError(provider.name, f"decisions API failed (bucket): {e}") from e
-        bucket = graded_bucket(body)
+        started = time.monotonic()
+        asked: dict[str, AskedRequest] = {}
+        answers: dict[GateMode, JevDecisionsResponse] = {}
+        for mode, (state, questions) in verdict_requests(case.setup).items():
+            answers[mode], asked[mode] = await _ask(provider, state, questions, mode)
+        bucket = graded_bucket(answers[GateMode.DAY], conversation=in_conversation(case.setup))
         want = str(case.expected.get("bucket"))
         print(f"[{'ok' if bucket == want else 'MISS'}] {case.id}: want={want} got={bucket}")
-        fields = BucketJournalFields(
-            bucket=bucket,
-            request=AskedRequest(
-                request_sha=request_sha(jev_body(state, questions)),
-                response=body.model_dump(mode="json", exclude_none=True),
-            ),
-        )
-        tokens_in, tokens_out = body.tokens()
-        return CaseRun(
-            case_id=case.id,
-            provider=provider.name,
-            model=HIL_JEV_MODEL_NAME,
-            messages=[
-                {"role": "user", "content": str(message.get("subject") or "")},
-                {"role": "assistant", "content": bucket},
-            ],
-            end_state=dict(fields),
-            text=bucket,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            duration_s=time.monotonic() - start,
-        )
+        fields = VerdictJournalFields(bucket=bucket, requests=asked)
+        return _case_run(case, provider, bucket, fields, list(answers.values()), started)
 
 
-BUCKET_GATE: Final = "desk_bucket"
-# The corpus declares the gate's scorers, so the bucket suite still implements them.
-BUCKET_EXTRA = {
+BUCKET_GATE: Final = "email_bucket"
+# The corpus declares the gate's scorers, so the verdict suite still implements them.
+VERDICT_EXTRA = {
     **EXTRA,
     BUCKET_GATE: lambda case, run: (
         1.0 if (run.end_state or {}).get("bucket") == case.expected["bucket"] else 0.0
@@ -330,16 +350,16 @@ BUCKET_EXTRA = {
 }
 
 
-@register_suite("desk-bucket")
-class DeskBucketSuite(TransportSuite):
-    """The trigger-gate corpus asked the desk's bucket question, graded by the bucket alone."""
+@register_suite("email-verdict")
+class EmailVerdictSuite(TransportSuite):
+    """The trigger-gate corpus asked the one email verdict, graded by its bucket alone."""
 
-    name = "desk-bucket"
-    project = "gaia-desk-bucket"
-    label = "Inbox desk mail buckets"
+    name = "email-verdict"
+    project = "gaia-email-verdict"
+    label = "Email verdict (desk bucket and urgency)"
     data_dir = DATA_DIR
-    extra = BUCKET_EXTRA
-    transport_type = BucketTransport
+    extra = VERDICT_EXTRA
+    transport_type = VerdictTransport
 
     def load_cases(self, cfg: EvalConfig) -> list[Case]:
         """Return the corpus with each case gated on its bucket instead of the gate's outcome."""

@@ -137,7 +137,9 @@ from shared.py.analytics.context import (
 )
 from tests.helpers import (
     UNKNOWN_USER_ID,
+    FakeEmailVerdicts,
     captured_wide_event,
+    email_verdict_answers,
     live_through,
     trigger_gate_seams,
     users_get,
@@ -2444,19 +2446,10 @@ class TestOneRunPerOccurrence:
                 trigger_subscriptions=[watch],
             )
         )
-        urgent = {"incident": 0.0, "service_down": 0.0, "meeting": 0.0, "can_wait": 1.0}
-        can_wait = {
-            "answers": {
-                "gate": {
-                    "type": "choice",
-                    "choice": "needs_you",
-                    "probabilities": {"needs_you": 0.9, "not_needed": 0.1},
-                },
-                "urgent": {"type": "choice", "choice": "can_wait", "probabilities": urgent},
-            }
-        }
+        can_wait = email_verdict_answers("reply")
         with (
             respx.mock() as jev,
+            patch("app.services.mail.email_verdict.email_verdict_repository", FakeEmailVerdicts()),
             patch(
                 "app.services.hil.jev_client.resolve",
                 AsyncMock(

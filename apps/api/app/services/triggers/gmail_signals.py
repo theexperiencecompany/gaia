@@ -15,6 +15,7 @@ from app.constants.log_tags import LogTag
 from app.constants.todos import INBOX_DESK_AUTOMATED_SENDERS
 from app.constants.trigger_gates import TRIGGER_GATE_FIELD_MAX_CHARS
 from app.models.composio_schemas.gmail import GmailHeader, GmailMessageView
+from app.services.composio.custom_tools.gmail_constants import GMAIL_SENT_LABEL
 from shared.py.wide_events import log
 
 _GMAIL_CATEGORY_PREFIX = "CATEGORY_"
@@ -64,7 +65,8 @@ class _Signals:
 class GmailGateView(BaseModel):
     """A new message as a trigger gate's JEV request reads it: the eval's V4 event, field for field.
 
-    continues_thread drives the free run rule by day and is never sent.
+    continues_thread drives the free run rule by day; it and the raw header values feed
+    the email verdict's own state and are never sent here.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -82,10 +84,43 @@ class GmailGateView(BaseModel):
     bulk_or_auto_submitted: bool | None
     sender_looks_automated: bool | None
     continues_thread: bool | None = Field(exclude=True)
+    # Gmail's own id for the message, the key its verdict is kept under: id first, then message_id.
+    gmail_id: str | None = Field(default=None, exclude=True)
+    precedence: str = Field(default="", exclude=True)
+    auto_submitted: str = Field(default="", exclude=True)
 
     def as_event(self) -> dict[str, object]:
         """Return the event JEV reads, keyed and ordered as the eval sent it."""
         return self.model_dump(by_alias=True)
+
+    @property
+    def latest_from_other(self) -> bool:
+        """Whether the message is someone else's, not one the user sent."""
+        return GMAIL_SENT_LABEL not in self.gmail_labels
+
+    def as_email(self) -> dict[str, object]:
+        """Return the message as a person sees it in their inbox, for the email verdict; no empty field."""
+        name, address = parseaddr(self.sender)
+        sender = {"name": name, "address": address or self.sender}
+        email: dict[str, object] = {"from": {k: v for k, v in sender.items() if v}}
+        fields = (("to", self.to), ("cc", self.cc), ("subject", self.subject))
+        email |= {k: v for k, v in (*fields, ("snippet", self.snippet)) if v}
+        if self.attachments:
+            email["attachments"] = self.attachments
+        headers: dict[str, object] = {}
+        if self.has_list_unsubscribe:
+            headers["list_unsubscribe"] = True
+        if self.precedence:
+            headers["precedence"] = self.precedence
+        if self.auto_submitted.lower() not in _NOT_AUTO_SUBMITTED:
+            headers["auto_submitted"] = self.auto_submitted
+        if headers:
+            email["headers"] = headers
+        if self.gmail_category:
+            email["gmail_category"] = self.gmail_category.removeprefix(
+                _GMAIL_CATEGORY_PREFIX
+            ).lower()
+        return email
 
 
 def _read(data: Mapping[str, object]) -> _GmailMessage | None:
@@ -157,6 +192,9 @@ def gmail_gate_view(data: Mapping[str, object]) -> GmailGateView | None:
         bulk_or_auto_submitted=signals.bulk_or_auto_submitted,
         sender_looks_automated=signals.sender_looks_automated,
         continues_thread=signals.continues_thread,
+        gmail_id=message.id or message.message_id or None,
+        precedence=message.header("precedence"),
+        auto_submitted=message.header("auto-submitted"),
     )
 
 

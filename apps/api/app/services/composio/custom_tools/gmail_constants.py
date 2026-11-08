@@ -7,6 +7,8 @@ operations, not a wall of magic numbers.
 # Gmail REST base + toolkit slug passed to ``proxy_request_sync``.
 GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1"
 GMAIL_TOOLKIT = "GMAIL"
+# The label Gmail puts on every message the account itself sent.
+GMAIL_SENT_LABEL = "SENT"
 
 # Per-page cap Gmail actually accepts for ``users.me.messages``.
 GMAIL_MAX_PAGE_SIZE = 500
