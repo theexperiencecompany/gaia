@@ -1299,8 +1299,8 @@ class TestQuietHoursHold:
             assert await quiet_hours_hold(AUTHORED, USER_ID) is None
 
 
-def _verdict(bucket: str, *, urgent: float = 0.0, **overrides: float) -> httpx.Response:
-    return httpx.Response(200, json=email_verdict_answers(bucket, urgent=urgent, **overrides))
+def _verdict(bucket: str, *, can_wait: float = 1.0, **overrides: float) -> httpx.Response:
+    return httpx.Response(200, json=email_verdict_answers(bucket, overrides, can_wait=can_wait))
 
 
 class TestTheDeskGateReadsTheEmailVerdict:
@@ -1354,7 +1354,7 @@ class TestTheDeskGateReadsTheEmailVerdict:
 
         assert await _skip(DESK) == GateHold(until=MORNING)
 
-    async def test_by_day_it_asks_the_four_judgments_once_about_the_email_as_a_person_sees_it(
+    async def test_by_day_it_asks_the_judgments_once_about_the_email_as_a_person_sees_it(
         self, seams: SimpleNamespace
     ) -> None:
         seams.jev.mock(return_value=_verdict("act"))
@@ -1369,6 +1369,7 @@ class TestTheDeskGateReadsTheEmailVerdict:
             "reports_issue",
             "official",
             "relevant",
+            "bulk",
         ]
         assert {q["type"] for q in sent["questions"].values()} == {"noul"}
         assert sent["state"] == {
@@ -1384,6 +1385,34 @@ class TestTheDeskGateReadsTheEmailVerdict:
             },
             "thread": {"user_wrote_in_thread": False, "latest_from_other": True},
         }
+
+    async def test_bulk_mail_asking_something_is_skipped_as_junk(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=_verdict("junk", bulk=0.9, asks_user=0.9))
+
+        skip = await _skip(DESK)
+
+        assert isinstance(skip, GateSkip)
+        assert skip.event.startswith("Junk · ")
+
+    async def test_a_person_writing_about_the_users_work_is_never_skipped_as_bulk(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(
+            return_value=_verdict("junk", bulk=0.9, asks_user=0.5, is_person=0.8, relevant=0.8)
+        )
+
+        assert await _skip(DESK) == GateRun()
+
+    async def test_the_verdict_is_kept_under_gmails_own_message_id(
+        self, seams: SimpleNamespace
+    ) -> None:
+        seams.jev.mock(return_value=_verdict("fyi"))
+
+        await _skip(DESK, payload={"id": "g1", "message_id": "rfc-1@mail.example"})
+
+        assert list(seams.verdicts.kept) == [(USER_ID, "g1")]
 
     async def test_a_verdict_kept_for_the_message_is_read_without_asking_jev(
         self, seams: SimpleNamespace
@@ -1436,7 +1465,7 @@ class TestTheDeskGateReadsTheEmailVerdict:
 
 
 class TestTheDeskGateAtNight:
-    async def test_it_asks_the_urgent_judgment_next_to_the_four_in_one_call(
+    async def test_it_asks_the_authored_gates_urgent_question_next_to_the_judgments_in_one_call(
         self, night: SimpleNamespace
     ) -> None:
         night.jev.mock(return_value=_verdict("act"))
@@ -1451,14 +1480,15 @@ class TestTheDeskGateAtNight:
             "reports_issue",
             "official",
             "relevant",
+            "bulk",
             "urgent",
         ]
-        assert sent["questions"]["urgent"]["type"] == "noul"
+        assert sent["questions"]["urgent"] == Q3_URGENT_QUESTION
 
     async def test_a_verdict_kept_from_the_day_is_asked_again_for_its_urgency(
         self, night: SimpleNamespace
     ) -> None:
-        night.jev.mock(return_value=_verdict("act", urgent=0.9))
+        night.jev.mock(return_value=_verdict("act", can_wait=0.1))
         with time_machine.travel(AFTERNOON, tick=False):
             assert await _skip(DESK) == GateRun()
 
@@ -1477,22 +1507,23 @@ class TestTheDeskGateAtNight:
         assert await _skip(DESK) == GateHold(until=MORNING)
         assert _decided(night).reason == GateReason.JEV_MALFORMED
 
-    async def test_a_settled_yes_on_urgent_wakes_the_user_and_says_why(
+    async def test_urgent_mail_at_the_wake_line_wakes_the_user_and_says_why(
         self, night: SimpleNamespace
     ) -> None:
-        night.jev.mock(return_value=_verdict("reply", urgent=0.71))
+        night.jev.mock(return_value=_verdict("reply", can_wait=0.2))
 
         verdict = await _skip(DESK)
 
-        assert verdict == GateBypass(reason="an email that cannot wait until morning")
-        assert _decided(night).urgent_choice is None
+        assert verdict == GateBypass(
+            reason="someone is waiting on you for a meeting happening soon"
+        )
+        assert _decided(night).urgent_choice == "meeting"
 
     @pytest.mark.parametrize("bucket", ["reply", "act"])
-    async def test_an_urgent_answer_at_the_yes_line_is_held(
+    async def test_mail_just_under_the_wake_line_is_held(
         self, night: SimpleNamespace, bucket: str
     ) -> None:
-        """Unsure urgency is not a wake: only P(urgent) over 0.7 is a settled yes."""
-        night.jev.mock(return_value=_verdict(bucket, urgent=0.7))
+        night.jev.mock(return_value=_verdict(bucket, can_wait=0.201))
 
         assert await _skip(DESK) == GateHold(until=MORNING)
         assert _decided(night).reason == GateReason.JEV_CAN_WAIT

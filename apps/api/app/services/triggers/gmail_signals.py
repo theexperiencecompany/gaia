@@ -84,6 +84,8 @@ class GmailGateView(BaseModel):
     bulk_or_auto_submitted: bool | None
     sender_looks_automated: bool | None
     continues_thread: bool | None = Field(exclude=True)
+    # Gmail's own id for the message, the key its verdict is kept under: id first, then message_id.
+    gmail_id: str | None = Field(default=None, exclude=True)
     precedence: str = Field(default="", exclude=True)
     auto_submitted: str = Field(default="", exclude=True)
 
@@ -190,6 +192,7 @@ def gmail_gate_view(data: Mapping[str, object]) -> GmailGateView | None:
         bulk_or_auto_submitted=signals.bulk_or_auto_submitted,
         sender_looks_automated=signals.sender_looks_automated,
         continues_thread=signals.continues_thread,
+        gmail_id=message.id or message.message_id or None,
         precedence=message.header("precedence"),
         auto_submitted=message.header("auto-submitted"),
     )

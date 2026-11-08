@@ -56,7 +56,6 @@ from workos.session import SessionModule
 from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
-from app.constants.desk_buckets import Judgment
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
 from app.models.email_verdict_models import EmailVerdictDocument
@@ -241,52 +240,68 @@ class FakeEmailVerdicts:
 
 
 # JEV answers, as P(true) per judgment, that the decision table reads as each bucket.
-_BUCKET_ANSWERS: Mapping[str, Mapping[Judgment, float]] = {
+_BUCKET_ANSWERS: Mapping[str, Mapping[str, float]] = {
     "reply": {
-        Judgment.IS_PERSON: 0.95,
-        Judgment.ASKS_USER: 0.9,
-        Judgment.REPORTS_ISSUE: 0.1,
-        Judgment.OFFICIAL: 0.05,
-        Judgment.RELEVANT: 0.8,
+        "is_person": 0.95,
+        "asks_user": 0.9,
+        "reports_issue": 0.1,
+        "official": 0.05,
+        "relevant": 0.8,
+        "bulk": 0.05,
     },
     "act": {
-        Judgment.IS_PERSON: 0.05,
-        Judgment.ASKS_USER: 0.6,
-        Judgment.REPORTS_ISSUE: 0.95,
-        Judgment.OFFICIAL: 0.05,
-        Judgment.RELEVANT: 0.6,
+        "is_person": 0.05,
+        "asks_user": 0.6,
+        "reports_issue": 0.95,
+        "official": 0.05,
+        "relevant": 0.6,
+        "bulk": 0.1,
     },
     "fyi": {
-        Judgment.IS_PERSON: 0.05,
-        Judgment.ASKS_USER: 0.05,
-        Judgment.REPORTS_ISSUE: 0.05,
-        Judgment.OFFICIAL: 0.05,
-        Judgment.RELEVANT: 0.9,
+        "is_person": 0.05,
+        "asks_user": 0.05,
+        "reports_issue": 0.05,
+        "official": 0.05,
+        "relevant": 0.9,
+        "bulk": 0.05,
     },
     "junk": {
-        Judgment.IS_PERSON: 0.05,
-        Judgment.ASKS_USER: 0.05,
-        Judgment.REPORTS_ISSUE: 0.05,
-        Judgment.OFFICIAL: 0.05,
-        Judgment.RELEVANT: 0.05,
+        "is_person": 0.05,
+        "asks_user": 0.05,
+        "reports_issue": 0.05,
+        "official": 0.05,
+        "relevant": 0.05,
+        "bulk": 0.05,
     },
     "unsure": {
-        Judgment.IS_PERSON: 0.05,
-        Judgment.ASKS_USER: 0.5,
-        Judgment.REPORTS_ISSUE: 0.05,
-        Judgment.OFFICIAL: 0.05,
-        Judgment.RELEVANT: 0.5,
+        "is_person": 0.05,
+        "asks_user": 0.5,
+        "reports_issue": 0.05,
+        "official": 0.05,
+        "relevant": 0.5,
+        "bulk": 0.5,
     },
 }
 
 
 def email_verdict_answers(
-    bucket: str, *, urgent: float = 0.0, **overrides: float
+    bucket: str,
+    overrides: Mapping[str, float] | None = None,
+    *,
+    can_wait: float = 1.0,
+    leaning: str = "meeting",
 ) -> dict[str, object]:
-    """Return a Decisions body of noul answers the email verdict reads as bucket; overrides win."""
-    answers = {judgment.value: p for judgment, p in _BUCKET_ANSWERS[bucket].items()}
-    answers |= {Judgment.URGENT.value: urgent, **overrides}
-    return {"answers": {name: {"type": "noul", "noul": p} for name, p in answers.items()}}
+    """Return a Decisions body the email verdict reads as bucket, and its urgent answer; overrides win."""
+    answers: dict[str, object] = {
+        judgment: {"type": "noul", "noul": p}
+        for judgment, p in {**_BUCKET_ANSWERS[bucket], **(overrides or {})}.items()
+    }
+    answers["urgent"] = {
+        "type": "choice",
+        "choice": "can_wait" if can_wait >= 0.5 else leaning,
+        "probabilities": {"can_wait": can_wait, leaning: 1 - can_wait},
+    }
+    return {"answers": answers}
 
 
 @contextmanager

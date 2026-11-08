@@ -27,7 +27,9 @@ class EmailVerdictsRepository(UserScopedRepository[EmailVerdictDocument, EmailVe
         the loser, and its retry overwrites the winner.
         """
         key = {"user_id": verdict.user_id, "message_id": verdict.message_id}
-        fields = EmailVerdictUpdate(answers=verdict.answers, bucket=verdict.bucket)
+        fields = EmailVerdictUpdate(
+            answers=verdict.answers, bucket=verdict.bucket, urgency=verdict.urgency
+        )
         update = {"$set": {**fields.model_dump(mode="json"), "created_at": datetime.now(UTC)}}
         try:
             await self._apply_raw_update(key, update, scope=None, upsert=True)

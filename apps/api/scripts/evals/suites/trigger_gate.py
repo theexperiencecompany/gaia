@@ -19,7 +19,7 @@ Record: uv run --group backend python -m scripts.evals.record_trigger_gate <run-
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import replace
 from enum import StrEnum
 import hashlib
@@ -38,9 +38,6 @@ from app.constants.trigger_gates import (
     TRIGGER_GATE_QUESTION_KEY,
     TRIGGER_GATE_SKIP_LABEL,
     TRIGGER_GATE_SKIP_PROBABILITY,
-    TRIGGER_GATE_URGENT_CRITERIA,
-    TRIGGER_GATE_URGENT_PROBABILITY,
-    TRIGGER_GATE_URGENT_QUESTION_KEY,
     GateAuthor,
     SystemGatePreset,
 )
@@ -52,8 +49,9 @@ from app.services.mail.email_verdict import (
     read_verdict,
     verdict_request,
 )
+from app.services.quiet_hours_urgency import read_urgency
 from app.services.triggers.gmail_signals import GmailGateView, gmail_gate_view
-from app.services.triggers.trigger_gate import gate_request, skip_probability, urgency
+from app.services.triggers.trigger_gate import gate_request, skip_probability
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.journal import RunJournal
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
@@ -125,7 +123,12 @@ def record(run_dir: Path, out_dir: Path = RECORDED_DIR) -> Path:
     out = out_dir / f"{run_dir.name}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
     lines = (
-        json.dumps({"case_id": case_id, **rows[case_id]["end_state"]}, ensure_ascii=False)
+        # Compact separators keep a five-judgment pass under the repo's 500 KB file cap.
+        json.dumps(
+            {"case_id": case_id, **rows[case_id]["end_state"]},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         for case_id in sorted(rows)
     )
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -218,33 +221,24 @@ def day_outcome(setup: Mapping[str, object], body: JevDecisionsResponse) -> str:
 
 
 def quiet_wakes(body: JevDecisionsResponse) -> bool:
-    """Return whether an authored gate's answer wakes the user. The sweep checks decide_gate agrees."""
-    answer = body.choice(TRIGGER_GATE_URGENT_QUESTION_KEY, TRIGGER_GATE_URGENT_CRITERIA)
-    return urgency(answer).probability >= TRIGGER_GATE_URGENT_PROBABILITY
+    """Return whether a quiet-hours answer wakes the user. The sweep checks decide_gate agrees."""
+    return read_urgency(body).wakes
 
 
-def verdict_wakes(body: JevDecisionsResponse) -> bool:
-    """Return whether an email verdict's quiet-hours answer wakes the user."""
-    return read_verdict(body, quiet=True).wakes
-
-
-def _quiet_wake(wakes: Callable[[JevDecisionsResponse], bool]) -> Callable[[Case, CaseRun], float]:
-    def score(case: Case, run: CaseRun) -> float:
-        """Fail a run that wakes the user for mail that can wait, or has no quiet-hours answer."""
-        asked = (run.end_state or {}).get("requests", {}).get(GateMode.QUIET)
-        if asked is None:
-            return 0.0
-        woke = wakes(JevDecisionsResponse.model_validate(asked["response"]))
-        return 0.0 if woke and not case.expected["urgent"] else 1.0
-
-    return score
+def quiet_wake(case: Case, run: CaseRun) -> float:
+    """Fail a run that wakes the user for mail that can wait, or has no quiet-hours answer."""
+    asked = (run.end_state or {}).get("requests", {}).get(GateMode.QUIET)
+    if asked is None:
+        return 0.0
+    woke = quiet_wakes(JevDecisionsResponse.model_validate(asked["response"]))
+    return 0.0 if woke and not case.expected["urgent"] else 1.0
 
 
 EXTRA = {
     "gate_outcome": lambda case, run: (
         1.0 if (run.end_state or {}).get("outcome") == case.expected.get("outcome") else 0.0
     ),
-    "quiet_wake": _quiet_wake(quiet_wakes),
+    "quiet_wake": quiet_wake,
 }
 
 
@@ -350,7 +344,6 @@ BUCKET_GATE: Final = "email_bucket"
 # The corpus declares the gate's scorers, so the verdict suite still implements them.
 VERDICT_EXTRA = {
     **EXTRA,
-    "quiet_wake": _quiet_wake(verdict_wakes),
     BUCKET_GATE: lambda case, run: (
         1.0 if (run.end_state or {}).get("bucket") == case.expected["bucket"] else 0.0
     ),

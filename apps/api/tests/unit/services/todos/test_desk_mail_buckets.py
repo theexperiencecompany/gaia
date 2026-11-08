@@ -79,7 +79,7 @@ def _todo(
 
 
 def _verdict(bucket: str, **overrides: float) -> httpx.Response:
-    return httpx.Response(200, json=email_verdict_answers(bucket, **overrides))
+    return httpx.Response(200, json=email_verdict_answers(bucket, overrides))
 
 
 def _by_subject(
@@ -124,7 +124,7 @@ async def test_each_email_comes_back_in_order_carrying_the_bucket_jev_chose(
     seams.get.assert_awaited_once_with(DESK_ID, user_id=USER_ID)
 
 
-async def test_jev_is_asked_the_four_day_judgments_and_no_thread_facts_it_cannot_know(
+async def test_jev_is_asked_the_judgments_and_no_thread_facts_it_cannot_know(
     seams: SimpleNamespace,
 ) -> None:
     seams.jev.mock(return_value=_verdict("reply"))
@@ -138,6 +138,7 @@ async def test_jev_is_asked_the_four_day_judgments_and_no_thread_facts_it_cannot
         Judgment.REPORTS_ISSUE,
         Judgment.OFFICIAL,
         Judgment.RELEVANT,
+        Judgment.BULK,
     ]
     assert sent["questions"] == {
         judgment.value: {
@@ -319,6 +320,12 @@ async def test_mail_outside_a_desk_is_returned_unasked(
         ({"reports_issue": 0.71}, DeskBucket.ACT),
         ({"official": 0.71}, DeskBucket.ACT),
         ({"official": 0.3}, None),
+        ({"bulk": 0.71, "asks_user": 0.9}, DeskBucket.JUNK),
+        ({"bulk": 0.71, "asks_user": 0.9, "relevant": 0.71}, DeskBucket.FYI),
+        ({"bulk": 0.7, "asks_user": 0.5}, None),
+        ({"bulk": 0.71, "asks_user": 0.9, "reports_issue": 0.3}, None),
+        ({"bulk": 0.71, "is_person": 0.71, "asks_user": 0.71, "relevant": 0.71}, DeskBucket.REPLY),
+        ({"bulk": 0.71, "is_person": 0.71, "relevant": 0.71, "asks_user": 0.05}, DeskBucket.FYI),
         ({"is_person": 0.71, "asks_user": 0.71, "relevant": 0.3}, DeskBucket.REPLY),
         ({"is_person": 0.71, "asks_user": 0.71, "relevant": 0.29}, DeskBucket.FYI),
     ],
@@ -331,6 +338,12 @@ async def test_mail_outside_a_desk_is_returned_unasked(
         "an-issue-over-it",
         "an-official-notice",
         "an-unsure-official-notice",
+        "bulk-noise-asking-something",
+        "relevant-bulk-noise",
+        "bulk-at-the-yes-line",
+        "bulk-with-an-unsure-issue",
+        "a-person-writing-about-the-users-work",
+        "a-person-sending-relevant-news",
         "a-person-asking-something-relevant",
         "a-person-asking-something-irrelevant",
     ],

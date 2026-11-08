@@ -31,8 +31,7 @@ class Judgment(StrEnum):
     REPORTS_ISSUE = "reports_issue"
     OFFICIAL = "official"
     RELEVANT = "relevant"
-    # Asked only inside the user's quiet hours.
-    URGENT = "urgent"
+    BULK = "bulk"
 
 
 class NoulQuestion(NamedTuple):
@@ -67,8 +66,6 @@ EMAIL_VERDICT_PROFILE_MAX_CHARS: Final = 600
 DESK_BUCKET_SKIP_REASONS: Final[Mapping[DeskBucket, str]] = MappingProxyType(
     {DeskBucket.FYI: "FYI", DeskBucket.JUNK: "Junk"}
 )
-# Why a desk run interrupts quiet hours: JEV judged the email cannot wait for the morning.
-EMAIL_URGENT_BYPASS_REASON: Final = "an email that cannot wait until morning"
 
 DESK_AUTOMATION: Final = (
     "Inbox desk: when new mail reaches the user's inbox, open a todo for every thread that "
@@ -96,7 +93,8 @@ JUDGMENT_QUESTIONS: Final[Mapping[Judgment, NoulQuestion]] = MappingProxyType(
             "It reports a problem, decision or deadline the user must deal with, e.g. a payment "
             "failed, a card declined, a security problem, an application decision, expiring "
             "access.",
-            "A routine receipt, statement, sign-in notice or product update; an alert from the "
+            "A routine receipt, statement or product update; a sign-in or verification code the "
+            "user requested, a new sign-in notice; an alert from the "
             "user's own monitoring; a usage, budget or account-hygiene notice before anything is "
             "cut off; an acknowledgement that something was received.",
         ),
@@ -111,14 +109,12 @@ JUDGMENT_QUESTIONS: Final[Mapping[Judgment, NoulQuestion]] = MappingProxyType(
             "It concerns the user's work or interests in user.profile.",
             "It is unrelated to the user's work and interests in user.profile.",
         ),
-        Judgment.URGENT: NoulQuestion(
-            "It is the middle of the night for the user. Is this email worth waking them for now?",
-            "Waking the user now is clearly worth it: a person reports the user's product is down "
-            "or an account they use was breached; a provider their live product runs on is "
-            "cutting it off right now; or a person is waiting on them for a meeting happening "
-            "now or within a few hours.",
-            "It can wait until the morning, including mail that needs the user but not tonight, "
-            "and automated monitoring, uptime or error alerts.",
+        Judgment.BULK: NoulQuestion(
+            "Is this email bulk mail?",
+            "It is a newsletter, marketing or promotional email, mass outreach, or a routine "
+            "automated notification.",
+            "A message written for this user specifically, or a notice about their own account "
+            "that needs attention.",
         ),
     }
 )

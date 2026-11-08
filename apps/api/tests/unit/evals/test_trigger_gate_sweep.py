@@ -36,7 +36,6 @@ from scripts.evals.suites.trigger_gate import (
     record,
     request_sha,
     verdict_requests,
-    verdict_wakes,
 )
 import time_machine
 
@@ -69,7 +68,6 @@ _GATES: Mapping[GateKind, TriggerGate] = {
 }
 _RECORDED = {GateKind.SYSTEM: VERDICTS_RECORDED_DIR, GateKind.AUTHORED: RECORDED_DIR}
 _BUILDERS = {GateKind.SYSTEM: verdict_requests, GateKind.AUTHORED: gate_requests}
-_WAKES = {GateKind.SYSTEM: verdict_wakes, GateKind.AUTHORED: quiet_wakes}
 # The needs_you emails the desk gate skips by day in some pass. The yes/no gate it replaced
 # skipped mail-245 and mail-353; mail-353 is relabelled junk since.
 RECORDED_DAY_FALSE_SKIPS: frozenset[str] = frozenset()
@@ -232,7 +230,7 @@ def test_the_live_suite_graded_each_quiet_hours_wake_as_decide_gate_does(
         woken = _decided(cases, p, GateMode.QUIET, GateBypass)
         answers = {c: row["requests"][GateMode.QUIET]["response"] for c, row in p.rows.items()}
         graded = {
-            c for c, a in answers.items() if _WAKES[p.kind](JevDecisionsResponse.model_validate(a))
+            c for c, a in answers.items() if quiet_wakes(JevDecisionsResponse.model_validate(a))
         }
         assert graded == woken, p.run_id
 

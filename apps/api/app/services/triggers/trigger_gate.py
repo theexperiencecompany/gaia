@@ -17,16 +17,14 @@ import time
 from typing import Final
 
 import httpx
-from pydantic import BaseModel, ConfigDict
 
-from app.constants.desk_buckets import DESK_BUCKET_SKIP_REASONS, EMAIL_URGENT_BYPASS_REASON
+from app.constants.desk_buckets import DESK_BUCKET_SKIP_REASONS
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
 from app.constants.trigger_gates import (
     AUTHORED_GATE_QUESTION,
     AUTHORED_GATE_RUN_LABEL,
     AUTHORED_GATE_SKIP_MEANING,
     GMAIL_MESSAGE_TRIGGERS,
-    QUIET_HOURS_BYPASS_REASONS,
     TRIGGER_GATE_AUTOMATION_MAX_CHARS,
     TRIGGER_GATE_EVENT_LABEL_MAX_CHARS,
     TRIGGER_GATE_EVENT_LABEL_SEPARATOR,
@@ -37,15 +35,11 @@ from app.constants.trigger_gates import (
     TRIGGER_GATE_SKIP_LABEL,
     TRIGGER_GATE_SKIP_PROBABILITY,
     TRIGGER_GATE_UNTITLED_EVENT,
-    TRIGGER_GATE_URGENT_CRITERIA,
-    TRIGGER_GATE_URGENT_INSTRUCTIONS,
-    TRIGGER_GATE_URGENT_PROBABILITY,
     TRIGGER_GATE_URGENT_QUESTION_KEY,
     GateOutcome,
     GateOwner,
     GateQuestion,
     GateReason,
-    UrgentChoice,
 )
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -68,6 +62,7 @@ from app.services.mail.email_verdict import (
     email_verdict,
 )
 from app.services.mail.thread_participation import user_wrote_in_thread
+from app.services.quiet_hours_urgency import Urgency, read_urgency, urgent_question
 from app.services.triggers.condition_matching import resolve_payload_value
 from app.services.triggers.gmail_signals import GmailGateView, gmail_gate_view
 from app.services.triggers.matchable_fields import get_matchable_trigger
@@ -140,38 +135,6 @@ _OUTCOMES: Final[Mapping[type[GateVerdict], GateOutcome]] = {
     GateHold: GateOutcome.HOLD,
     GateBypass: GateOutcome.BYPASS,
 }
-_URGENT_LABELS: Final = frozenset(TRIGGER_GATE_URGENT_CRITERIA)
-
-
-class Urgency(BaseModel):
-    """How likely an event is worth waking the user for; choice is the authored gate's urgent leaning."""
-
-    model_config = ConfigDict(frozen=True)
-
-    probability: float
-    # Why a wake interrupts quiet hours, as the run says it.
-    reason: str
-    choice: UrgentChoice | None = None
-
-
-def urgency(answer: JevChoiceAnswer) -> Urgency:
-    """Return P(urgent) as 1 - P(can_wait); raise ValueError without a P(can_wait) to trust.
-
-    A missing can_wait would read as certain urgency, so it is malformed, never a wake.
-    """
-    probabilities = answer.probabilities
-    if (
-        not probabilities
-        or not probabilities.keys() <= _URGENT_LABELS
-        or UrgentChoice.CAN_WAIT not in probabilities
-    ):
-        raise ValueError(f"urgent answer has no usable probabilities: {probabilities!r}")
-    leaning = max(QUIET_HOURS_BYPASS_REASONS, key=lambda choice: probabilities.get(choice, 0.0))
-    return Urgency(
-        probability=1 - probabilities[UrgentChoice.CAN_WAIT],
-        reason=QUIET_HOURS_BYPASS_REASONS[leaning],
-        choice=leaning,
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,13 +218,7 @@ def gate_request(
         }
     }
     if quiet:
-        questions[TRIGGER_GATE_URGENT_QUESTION_KEY] = {
-            "type": "choice",
-            "instructions": TRIGGER_GATE_URGENT_INSTRUCTIONS,
-            "criteria": {
-                choice.value: text for choice, text in TRIGGER_GATE_URGENT_CRITERIA.items()
-            },
-        }
+        questions[TRIGGER_GATE_URGENT_QUESTION_KEY] = urgent_question()
     return state, questions
 
 
@@ -309,13 +266,12 @@ def _event(trigger_name: str, payload: Mapping[str, object]) -> _GateEvent | Non
         if view is None:
             return None
         thread = resolve_payload_value(payload, "thread_id") if view.continues_thread else None
-        message_id = resolve_payload_value(payload, "message_id")
         return _GateEvent(
             view.as_event(),
             _gmail_label(view, trigger_name),
             continued_thread=thread if isinstance(thread, str) else None,
             user_wrote=view.continues_thread is None,
-            message_id=message_id if isinstance(message_id, str) and message_id else None,
+            message_id=view.gmail_id,
             view=view,
         )
     entry = get_matchable_trigger(trigger_name)
@@ -371,9 +327,8 @@ def _settle(
     """Read JEV's answers in the settle order; hold is what quiet hours do, None by day."""
     urgent: Urgency | None = None  # pragma: no mutate — only read as truthy; "" equals None
     if hold is not None:
-        labels = _URGENT_LABELS
-        urgent = urgency(body.choice(TRIGGER_GATE_URGENT_QUESTION_KEY, labels, label="urgent "))
-        if urgent.probability >= TRIGGER_GATE_URGENT_PROBABILITY:
+        urgent = read_urgency(body)
+        if urgent.wakes:
             bypass = GateBypass(urgent.reason)
             return _Decision(GateReason.JEV_URGENT, bypass, urgency=urgent)
         if event.conversation:
@@ -397,18 +352,17 @@ def _settle_verdict(
 ) -> _Decision:
     """Read the email verdict in the settle order: only all three asks settled no skips the desk.
 
-    Inside quiet hours only a settled-yes URGENT wakes the user; unsure is held, as a P(urgent)
-    under the authored gate's 0.80 line is.
+    Inside quiet hours it wakes the user on the same urgent line an authored gate does.
     """
     bucket = verdict.bucket
     choice = bucket.value if bucket else None
     p_skip = verdict.skip_certainty
     urgent: Urgency | None = None  # pragma: no mutate — only read as truthy; "" equals None
     if hold is not None:
-        if verdict.urgent_probability is None:
+        urgent = verdict.urgency
+        if urgent is None:
             raise ValueError("a quiet-hours email verdict carries no urgency")
-        urgent = Urgency(probability=verdict.urgent_probability, reason=EMAIL_URGENT_BYPASS_REASON)
-        if verdict.wakes:
+        if urgent.wakes:
             bypass = GateBypass(urgent.reason)
             return _Decision(GateReason.JEV_URGENT, bypass, choice, None, p_skip, urgent)
         if event.conversation:
@@ -501,7 +455,7 @@ def _record(
                 "choice": decision.choice,
                 "confidence": decision.confidence,
                 "urgent_probability": urgent.probability if urgent else None,
-                "urgent_choice": urgent.choice.value if urgent and urgent.choice else None,
+                "urgent_choice": urgent.choice.value if urgent else None,
                 "latency_ms": decision.latency_ms,
             }
         }
@@ -516,9 +470,7 @@ def _record(
             outcome=outcome.value,
             reason=decision.reason.value,
             urgent_choice=(
-                urgent.choice.value
-                if urgent and urgent.choice and decision.reason is GateReason.JEV_URGENT
-                else None
+                urgent.choice.value if urgent and decision.reason is GateReason.JEV_URGENT else None
             ),
             enforced=enforced,
             latency_ms=decision.latency_ms,

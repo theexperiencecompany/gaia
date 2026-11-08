@@ -172,7 +172,7 @@ def test_a_security_problem_is_act_in_every_pass(
 
 
 def _answer(bucket: str, **overrides: float) -> httpx.Response:
-    return httpx.Response(200, json=email_verdict_answers(bucket, **overrides))
+    return httpx.Response(200, json=email_verdict_answers(bucket, overrides))
 
 
 async def test_the_live_suite_journals_the_request_it_sent_and_the_bucket_it_read(
@@ -195,6 +195,7 @@ async def test_the_live_suite_journals_the_request_it_sent_and_the_bucket_it_rea
         "reports_issue",
         "official",
         "relevant",
+        "bulk",
         "urgent",
     ]
     assert EmailVerdictSuite.extra[BUCKET_GATE](cases["mail-001"], run) == (

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.constants.desk_buckets import DeskBucket, Judgment
 from app.db.repositories.base import UserScopedDocument
+from app.services.quiet_hours_urgency import Urgency
 
 
 class EmailVerdictDocument(UserScopedDocument):
@@ -17,6 +18,8 @@ class EmailVerdictDocument(UserScopedDocument):
     message_id: str
     answers: dict[Judgment, float]
     bucket: DeskBucket | None = None
+    # Asked only inside quiet hours.
+    urgency: Urgency | None = None
     created_at: datetime | None = None
 
 
@@ -27,3 +30,4 @@ class EmailVerdictUpdate(BaseModel):
 
     answers: dict[Judgment, float]
     bucket: DeskBucket | None
+    urgency: Urgency | None
