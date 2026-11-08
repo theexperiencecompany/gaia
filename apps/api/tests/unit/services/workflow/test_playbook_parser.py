@@ -2242,6 +2242,14 @@ result_brief: x
         assert dated.issues == []
         assert timed.issues == []
 
+    async def test_a_utc_timestamp_written_with_z_is_the_iso_layout(self) -> None:
+        """2026-09-06T10:00:00Z and 2026-09-06T10:00:00+00:00 are one ISO 8601 moment and layout."""
+        bare = await self._validate(self._body('"$now + 1h"'), "2026-09-06T10:00:00Z")
+        inside = await self._validate(self._body('"Sent $now"'), "Sent 2026-09-06T10:00:00Z")
+
+        assert bare.issues == []
+        assert inside.issues == []
+
     async def test_a_time_slot_in_the_tools_layout_is_accepted_and_a_wrong_one_refused(
         self,
     ) -> None:

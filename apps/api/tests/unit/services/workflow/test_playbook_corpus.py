@@ -16,11 +16,13 @@ from pathlib import Path
 import re
 
 import pytest
+from scripts.playbook_corpus.__main__ import _tally_key
 from scripts.playbook_corpus.fixture import (
     AUTHOR_CHOICE_REFUSALS,
     CORPUS_DIR,
     CorpusAttempt,
     CorpusRun,
+    OldOutcome,
     Origin,
     Verdict,
 )
@@ -121,6 +123,20 @@ def test_no_prod_attempt_is_refused_for_anything_but_the_authors_own_choice() ->
     }
 
     assert not_chosen == {}
+
+
+def test_a_time_layout_refusal_is_tallied_as_the_authors_choice() -> None:
+    """It names the {"$time", "format"} slot to write, so the author sent the wrong layout."""
+    attempt = CorpusAttempt(
+        position=0,
+        record_len=1,
+        written={},
+        old_outcome=OldOutcome.REFUSED,
+        expected=Verdict.REFUSED,
+        refusals=[PlaybookRefusal.TIME_LAYOUT],
+    )
+
+    assert _tally_key(attempt) == "refused:time_layout"
 
 
 def test_every_unexpressible_attempt_says_why() -> None:
