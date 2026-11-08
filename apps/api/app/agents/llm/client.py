@@ -67,6 +67,7 @@ from app.constants.llm import (
     OPENROUTER_DEV_APP_TITLE,
     OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
+    OPENROUTER_PROVIDER_ROUTING,
     OPENROUTER_REASONING,
     OPENROUTER_REASONING_EFFORT,
     REASONING_FIELD_ID,
@@ -77,7 +78,6 @@ from app.constants.llm import (
     LLMProviderKey,
     LLMProviderName,
     ModelUse,
-    OpenRouterModelKwargs,
     ReasoningLevel,
 )
 from app.constants.log_tags import LogTag
@@ -378,10 +378,6 @@ def init_openrouter_llm() -> LanguageModelLike:
             # these as dedicated params (NOT `default_headers`, which it forwards to
             # send_async and crashes on). https://openrouter.ai/docs/app-attribution
             **_app_attribution(),
-            # Without it this lane drew twelve different upstreams in a month, at
-            # rates 10x apart. session_id sticky routing composes with `order`
-            # (measured: order + session lands on the ordered upstream every time).
-            **_provider_order_kwargs(),
             # Unpacked: ChatOpenRouter declares reasoning as a plain dict.
             reasoning={**OPENROUTER_REASONING},
         )
@@ -662,33 +658,6 @@ def register_llm_providers() -> None:
     _schedule_runtime_config_refresh()
 
 
-class _ProviderOrderKwargs(TypedDict, total=False):
-    """Constructor kwargs for a routed client; empty when no order is configured.
-
-    model_kwargs is the shape ChatOpenRouter declares (dict[str, Any]); the
-    routing block it carries is OpenRouterModelKwargs, built below.
-    """
-
-    model_kwargs: dict[str, Any]
-
-
-def _provider_order_kwargs() -> _ProviderOrderKwargs:
-    """OpenRouter provider-routing preference, from OPENROUTER_PROVIDER_ORDER.
-
-    allow_fallbacks=False binds the order, so OpenRouter raises for with_llm_retry rather than
-    switch to an UNLISTED upstream. That pins the cache to the LISTED providers, NOT to exactly
-    one: calls do split across members, each warming its own chain, so a split costs one cold
-    read per member, once. Measured: 90-99% cached unsplit, 49 of 114 prod threads split."""
-    raw = settings.OPENROUTER_PROVIDER_ORDER
-    if not raw:
-        return {}
-    order = [slug.strip() for slug in raw.split(",") if slug.strip()]
-    if not order:
-        return {}
-    routing: OpenRouterModelKwargs = {"provider": {"order": order, "allow_fallbacks": False}}
-    return {"model_kwargs": dict(routing)}
-
-
 @cache
 def _build_default_llm(
     temperature: float, api_key: str, base_url: str | None = None
@@ -711,7 +680,6 @@ def _build_default_llm(
             api_key=SecretStr(api_key),
             **_app_attribution(),
             **kwargs,
-            **_provider_order_kwargs(),
         )
     )
     # LangChain's curated profile registry lags new model releases; the
@@ -832,18 +800,18 @@ def _openrouter_one_shot(
     model_copy, not .bind(): bind_tools rebuilds the binding and drops a bound
     model or cap (measured: every aux call served DEFAULT_MODEL_NAME).
     fallback_model_names ride OpenRouter's models array, tried in order on
-    transport errors only, with the provider order the client already carries.
+    transport errors only, under model_name's own provider routing.
     """
     config: ProviderConfig = _require_provider_config(LLMProviderName.OPENROUTER)
     base = _build_default_llm(temperature, api_key=str(config.api_key), base_url=config.base_url)
     update: dict[str, object] = {"max_tokens": HELPER_MAX_OUTPUT_TOKENS, "model_name": model_name}
     if reasoning is not None:
         update["reasoning"] = {"effort": OPENROUTER_REASONING_EFFORT[reasoning]}
+    model_kwargs: dict[str, object] = {**OPENROUTER_PROVIDER_ROUTING.get(model_name, {})}
     if fallback_model_names:
-        update["model_kwargs"] = {
-            **(base.model_kwargs or {}),
-            "models": [model_name, *fallback_model_names],
-        }
+        model_kwargs["models"] = [model_name, *fallback_model_names]
+    if model_kwargs:
+        update["model_kwargs"] = model_kwargs
     return base.model_copy(update=update)
 
 

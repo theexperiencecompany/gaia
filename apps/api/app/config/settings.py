@@ -67,10 +67,6 @@ class Settings(BrowserHostSettings):
     OPENROUTER_BASE_URL: str | None = None
     # Every request authenticates as this Mongo user with no WorkOS session.
     DEV_AUTH_BYPASS_EMAIL: str | None = None
-    # Comma-separated OpenRouter provider slugs to PREFER for the default-model
-    # lane — fallbacks stay enabled. Set from the per-provider cache-hit table;
-    # see _provider_order_kwargs in agents/llm/client.py.
-    OPENROUTER_PROVIDER_ORDER: str | None = None
     # Dev-only: lift every per-user rate limit. Eval harnesses drive thousands
     # of requests/day against a free-plan dev user, which 429s at 200/day
     # otherwise. get_settings() refuses production boot when set.

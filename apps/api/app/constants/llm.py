@@ -78,17 +78,10 @@ class OpenRouterReasoning(TypedDict):
     effort: OpenRouterEffort
 
 
-class OpenRouterProviderRouting(TypedDict, total=False):
-    """OpenRouter's provider-routing block: a soft order, or a hard only-these pin.
+class OpenRouterProviderRouting(TypedDict):
+    """OpenRouter's provider-routing block, as GAIA sends it: a hard only-these pin."""
 
-    total=False because the two uses set different keys: the client's
-    OPENROUTER_PROVIDER_ORDER writes order + allow_fallbacks, a dev-menu pin
-    writes only.
-    """
-
-    order: list[str]
     only: list[str]
-    allow_fallbacks: bool
 
 
 class OpenRouterModelKwargs(TypedDict):
@@ -110,8 +103,6 @@ class DevModelOption:
     provider: LLMProviderName
     #: None = pin no model; the client's own default serves the request.
     model: str | None
-    #: The OpenRouter provider-routing pin the lane carries as model_kwargs.
-    provider_pin: OpenRouterModelKwargs | None
     reasoning: bool
 
 
@@ -309,6 +300,12 @@ AUX_MODEL_NAME = DEFAULT_MODEL_NAME
 OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT: dict[str, bool] = {
     DEFAULT_MODEL_NAME: False,
 }
+# Provider routing belongs to the model it was chosen for: a pin naming providers that
+# do not serve a model fails every call to it. A model absent here gets no provider block.
+OPENROUTER_PROVIDER_ROUTING: dict[str, OpenRouterModelKwargs] = {
+    "minimax/minimax-m3": {"provider": {"only": ["minimax"]}},
+    "z-ai/glm-5.2": {"provider": {"only": ["z-ai"]}},
+}
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
@@ -443,25 +440,21 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "minimax-m3": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="minimax/minimax-m3",
-        provider_pin={"provider": {"only": ["minimax"]}},
         reasoning=True,
     ),
     "glm-5.2": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="z-ai/glm-5.2",
-        provider_pin={"provider": {"only": ["z-ai"]}},
         reasoning=True,
     ),
     "gemini-3.5-flash": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="google/gemini-3.5-flash",
-        provider_pin=None,
         reasoning=False,
     ),
     "deepseek-v4": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="deepseek/deepseek-v4-pro",
-        provider_pin=None,
         reasoning=False,
     ),
     "deepseek-v4-flash": DevModelOption(
@@ -470,9 +463,6 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # identical model for A/B-ing routes.
         provider=LLMProviderName.OPENROUTER,
         model="deepseek/deepseek-v4-flash-0731",
-        # Deliberately unpinned — the pin measured worse on the real graph
-        # (see the paid-lane rationale above).
-        provider_pin=None,
         reasoning=False,
     ),
     DEV_CUSTOM_MODEL_OPTION: DevModelOption(
@@ -480,13 +470,11 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # one here; the client's own default (DEV_LLM_MODEL) serves the request.
         provider=LLMProviderName.CUSTOM,
         model=None,
-        provider_pin=None,
         reasoning=False,
     ),
     "gemini-3.1-flash-lite": DevModelOption(
         provider=LLMProviderName.GEMINI,
         model="gemini-3.1-flash-lite",
-        provider_pin=None,
         reasoning=False,
     ),
 }
