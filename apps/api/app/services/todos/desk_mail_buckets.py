@@ -34,7 +34,6 @@ async def _ask_bucket(user_id: str, view: GmailMessageView) -> DeskBucket | None
             view.id,
             gate_view.as_email(),
             thread=await _thread_facts(user_id, view, gate_view),
-            quiet=False,
         )
     except Exception as e:
         # The one degradation a bucket has: the desk's own prompt judges the email.

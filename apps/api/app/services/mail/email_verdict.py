@@ -193,7 +193,7 @@ async def email_verdict(
     email: Mapping[str, object],
     *,
     thread: ThreadFacts | None,
-    quiet: bool,
+    quiet: bool = False,
 ) -> EmailVerdict:
     """Return the email's kept verdict, or ask JEV once and keep it; raise when JEV gives none.
 
