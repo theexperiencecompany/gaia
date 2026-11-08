@@ -337,9 +337,6 @@ async def _execute_todo_with_retry(
         return owner
     user_data, user_tz = owner
 
-    if walled := await _begin_run(doc, origin, coalesced):
-        return walled
-
     outcome = "success"
     try:
         await _execute_on_executor(
@@ -478,6 +475,8 @@ async def _owner_ready_to_run(
         return withheld
     if paused := await _paused_result(doc, user_tz, origin, coalesced):
         return paused
+    if walled := await _begin_run(doc, origin, coalesced):
+        return walled
     return user_data, user_tz
 
 
