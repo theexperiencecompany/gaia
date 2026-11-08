@@ -24,7 +24,12 @@ from app.config.deployment import (
 )
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
-from app.constants.bot import GAIA_CLOUD_TELEGRAM_BOT_USERNAME
+from app.constants.bot import (
+    GAIA_CLOUD_DISCORD_CLIENT_ID,
+    GAIA_CLOUD_SLACK_CLIENT_ID,
+    GAIA_CLOUD_TELEGRAM_BOT_USERNAME,
+    GAIA_CLOUD_WHATSAPP_NUMBER,
+)
 from app.constants.browser import BrowserAgentEffort
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.files import S3AddressingStyle
@@ -187,10 +192,31 @@ class Settings(BrowserHostSettings):
 
     @property
     def telegram_bot_username(self) -> str | None:
-        """Return this instance's Telegram bot, GAIA Cloud's own when the deployment runs on it."""
+        """The Telegram bot for this instance; hosted falls back to the shared identity file."""
         if self.TELEGRAM_BOT_USERNAME:
             return self.TELEGRAM_BOT_USERNAME
         return GAIA_CLOUD_TELEGRAM_BOT_USERNAME if self.deployment.hosted_bots else None
+
+    @property
+    def whatsapp_phone_number(self) -> str | None:
+        """E.164 without the plus, for wa.me links; hosted falls back to the shared file."""
+        if self.WHATSAPP_PHONE_NUMBER:
+            return self.WHATSAPP_PHONE_NUMBER
+        return GAIA_CLOUD_WHATSAPP_NUMBER if self.deployment.hosted_bots else None
+
+    @property
+    def discord_oauth_client_id(self) -> str | None:
+        """Discord's public application id; hosted falls back to the shared file."""
+        if self.DISCORD_OAUTH_CLIENT_ID:
+            return self.DISCORD_OAUTH_CLIENT_ID
+        return GAIA_CLOUD_DISCORD_CLIENT_ID if self.deployment.hosted_bots else None
+
+    @property
+    def slack_oauth_client_id(self) -> str | None:
+        """Slack's public client id; hosted falls back to the shared file."""
+        if self.SLACK_OAUTH_CLIENT_ID:
+            return self.SLACK_OAUTH_CLIENT_ID
+        return GAIA_CLOUD_SLACK_CLIENT_ID if self.deployment.hosted_bots else None
 
     # Outbound Email. EMAIL_PROVIDER keys the registry in
     # app/services/email/providers.

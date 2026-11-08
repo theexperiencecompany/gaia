@@ -7,7 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-export const BOT_HANDLES_SOURCE = "libs/shared/ts/src/constants/bots.ts";
+export const BOT_HANDLES_SOURCE = "libs/shared/bot-identity.json";
 
 // Fixtures mint links from stand-in handles on purpose: the API suite and this
 // gate's own tests write links that must not be held to the real handles.
@@ -45,19 +45,19 @@ const LINK_PATTERNS = [
 ];
 
 function readHandles() {
-  let source = "";
+  let source = "{}";
   try {
     source = readFileSync(BOT_HANDLES_SOURCE, "utf8");
   } catch {
-    // Missing file is the same failure as a missing constant: the gate has no
-    // canonical handle to compare against, so it must fail, not pass silently.
+    // Missing file is the same failure as a missing handle: the gate has no
+    // canonical value to compare against, so it must fail, not pass silently.
   }
-  const pick = (name) => source.match(new RegExp(`${name}\\s*=\\s*"([^"]+)"`))?.[1];
+  const identity = JSON.parse(source);
   const handles = {
-    whatsappNumber: pick("WHATSAPP_BOT_NUMBER"),
-    telegramUsername: pick("TELEGRAM_BOT_USERNAME"),
-    discordCode: pick("DISCORD_INVITE_CODE"),
-    discordCommunity: pick("DISCORD_COMMUNITY_URL"),
+    whatsappNumber: identity.whatsappNumber,
+    telegramUsername: identity.telegramUsername,
+    discordCode: identity.discordInviteCode,
+    discordCommunity: identity.discordCommunityUrl,
   };
   const missing = Object.entries(handles)
     .filter(([, value]) => !value)

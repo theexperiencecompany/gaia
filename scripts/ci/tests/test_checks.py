@@ -10,6 +10,7 @@ file list with `git ls-files` relative to the working directory, so pointing it
 at a sandbox repo scopes the whole gate without stubbing anything.
 """
 
+import json
 import os
 from pathlib import Path
 import shutil
@@ -744,7 +745,7 @@ def test_a_baselined_raw_client_import_does_not_fail(tmp_path: Path) -> None:
 # bot-handles: one canonical handle per platform, every spoken-of link agrees
 # ---------------------------------------------------------------------------
 
-BOT_HANDLES_SOURCE = "libs/shared/ts/src/constants/bots.ts"
+BOT_HANDLES_SOURCE = "libs/shared/bot-identity.json"
 WHATSAPP = "12038429512"
 TELEGRAM = "heygaia_bot"
 DISCORD = "puRWnQ7hV5"
@@ -760,10 +761,14 @@ def _handles_repo(
     _add_text(
         repo,
         BOT_HANDLES_SOURCE,
-        f'export const WHATSAPP_BOT_NUMBER = "{whatsapp}";\n'
-        f'export const TELEGRAM_BOT_USERNAME = "{telegram}";\n'
-        f'export const DISCORD_INVITE_CODE = "{discord}";\n'
-        'export const DISCORD_COMMUNITY_URL = "https://discord.heygaia.io";\n',
+        json.dumps(
+            {
+                "whatsappNumber": whatsapp,
+                "telegramUsername": telegram,
+                "discordInviteCode": discord,
+                "discordCommunityUrl": "https://discord.heygaia.io",
+            }
+        ),
     )
     return repo
 
@@ -825,10 +830,14 @@ def test_changing_a_canonical_handle_flags_every_copy(tmp_path: Path) -> None:
     _add_text(
         repo,
         BOT_HANDLES_SOURCE,
-        f'export const WHATSAPP_BOT_NUMBER = "{WHATSAPP}";\n'
-        'export const TELEGRAM_BOT_USERNAME = "other_bot";\n'
-        f'export const DISCORD_INVITE_CODE = "{DISCORD}";\n'
-        'export const DISCORD_COMMUNITY_URL = "https://discord.heygaia.io";\n',
+        json.dumps(
+            {
+                "whatsappNumber": WHATSAPP,
+                "telegramUsername": "other_bot",
+                "discordInviteCode": DISCORD,
+                "discordCommunityUrl": "https://discord.heygaia.io",
+            }
+        ),
     )
 
     process = _run(repo, "bot-handles")

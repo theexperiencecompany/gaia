@@ -864,7 +864,7 @@ class TestStartPlatformConnect:
                 return_value="state123",
             ) as mock_state,
         ):
-            mock_settings.DISCORD_OAUTH_CLIENT_ID = "client_123"
+            mock_settings.discord_oauth_client_id = "client_123"
             mock_settings.DISCORD_OAUTH_REDIRECT_URI = "http://localhost/callback"
 
             result = await start_platform_connect("user-1", "discord")
@@ -898,8 +898,8 @@ class TestStartPlatformConnect:
                 return_value="slack_state",
             ) as mock_state,
         ):
-            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
-            mock_settings.SLACK_OAUTH_CLIENT_ID = "client_slack"
+            mock_settings.discord_oauth_client_id = None
+            mock_settings.slack_oauth_client_id = "client_slack"
             mock_settings.SLACK_OAUTH_REDIRECT_URI = "http://localhost/slack/cb"
 
             result = await start_platform_connect("user-1", "slack")
@@ -923,8 +923,8 @@ class TestStartPlatformConnect:
     async def test_unconfigured_discord_is_501_even_when_slack_oauth_exists(self):
         """An unconfigured platform must raise, not fall into the other platform's OAuth branch."""
         with patch("app.services.platform_link_service.settings") as mock_settings:
-            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
-            mock_settings.SLACK_OAUTH_CLIENT_ID = "client_slack"
+            mock_settings.discord_oauth_client_id = None
+            mock_settings.slack_oauth_client_id = "client_slack"
 
             with pytest.raises(AppError) as exc_info:
                 await start_platform_connect("user-1", "discord")
@@ -938,8 +938,8 @@ class TestStartPlatformConnect:
 
     async def test_unconfigured_slack_is_501_even_when_discord_oauth_exists(self):
         with patch("app.services.platform_link_service.settings") as mock_settings:
-            mock_settings.DISCORD_OAUTH_CLIENT_ID = "client_123"
-            mock_settings.SLACK_OAUTH_CLIENT_ID = None
+            mock_settings.discord_oauth_client_id = "client_123"
+            mock_settings.slack_oauth_client_id = None
 
             with pytest.raises(AppError) as exc_info:
                 await start_platform_connect("user-1", "slack")
@@ -977,7 +977,7 @@ class TestStartPlatformConnect:
 
     async def test_whatsapp_manual_flow_builds_the_wa_me_link(self):
         with patch("app.services.platform_link_service.settings") as mock_settings:
-            mock_settings.WHATSAPP_PHONE_NUMBER = "15551234567"
+            mock_settings.whatsapp_phone_number = "15551234567"
 
             result = await start_platform_connect("user-1", "whatsapp")
 

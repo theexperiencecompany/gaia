@@ -96,9 +96,9 @@ def build_handoff_links(code: str, first_message: str) -> dict[str, str]:
         links[Platform.TELEGRAM.value] = (
             f"https://t.me/{settings.telegram_bot_username}?start={code}"
         )
-    if settings.WHATSAPP_PHONE_NUMBER:
+    if settings.whatsapp_phone_number:
         links[Platform.WHATSAPP.value] = (
-            f"https://wa.me/{settings.WHATSAPP_PHONE_NUMBER}?text={handoff}"
+            f"https://wa.me/{settings.whatsapp_phone_number}?text={handoff}"
         )
     return links
 

@@ -952,7 +952,7 @@ function usage() {
       "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
-      "  bot-handles                            every WhatsApp / Telegram / Discord link matches libs/shared/ts/src/constants/bots.ts",
+      "  bot-handles                            every WhatsApp / Telegram / Discord link matches libs/shared/bot-identity.json",
     ].join("\n"),
   );
 }

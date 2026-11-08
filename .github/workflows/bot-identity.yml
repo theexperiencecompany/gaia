@@ -1,0 +1,70 @@
+# Compares the handles we publish (libs/shared/bot-identity.json) against the
+# systems that actually answer for them. The PR gates prove our copies agree
+# with each other; only this proves the number and usernames still exist and
+# still say GAIA. A handle that moved — or resolves to a different bot — is
+# invisible to every other check, and that is exactly how it broke before.
+name: Bot identity
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - libs/shared/bot-identity.json
+      - scripts/ci/check-bot-identity.mjs
+      - .github/workflows/bot-identity.yml
+  pull_request:
+    paths:
+      - libs/shared/bot-identity.json
+      - scripts/ci/check-bot-identity.mjs
+      - .github/workflows/bot-identity.yml
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Published handles answer as GAIA
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Ask Kapso, Telegram, WhatsApp and Discord what they answer
+        env:
+          KAPSO_API_KEY: ${{ secrets.KAPSO_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: node scripts/ci/check-bot-identity.mjs
+
+      # The delivery channel the deploy pipeline and Grafana already post to,
+      # so a failure reaches people without anyone watching the Actions tab.
+      - name: Alert the delivery channel
+        if: failure()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          text=":rotating_light: Bot identity check failed — a published WhatsApp/Telegram/Discord handle no longer answers as GAIA. Run: ${RUN_URL}"
+          if [ -n "${SLACK_WEBHOOK}" ]; then
+            jq -n --arg text "$text" '{text: $text}' \
+              | curl -sS -X POST -H "Content-Type: application/json" --data @- "$SLACK_WEBHOOK"
+          else
+            echo "::warning::SLACK_WEBHOOK is unset; no Slack alert sent"
+          fi
+          if [ -n "${DISCORD_WEBHOOK}" ]; then
+            jq -n --arg content "$text" '{content: $content}' \
+              | curl -sS -X POST -H "Content-Type: application/json" --data @- "$DISCORD_WEBHOOK"
+          fi
+
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: bot-identity

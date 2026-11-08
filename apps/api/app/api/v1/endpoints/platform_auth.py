@@ -56,7 +56,7 @@ PLATFORM_CONFIGS = {
     "discord": PlatformOAuthConfig(
         platform="discord",
         token_url="https://discord.com/api/oauth2/token",  # nosec B106 - OAuth token URL, not a password
-        get_client_id=lambda: settings.DISCORD_OAUTH_CLIENT_ID,
+        get_client_id=lambda: settings.discord_oauth_client_id,
         get_client_secret=lambda: settings.DISCORD_OAUTH_CLIENT_SECRET,
         get_redirect_uri=lambda: settings.DISCORD_OAUTH_REDIRECT_URI,
         user_info_url="https://discord.com/api/users/@me",
@@ -66,7 +66,7 @@ PLATFORM_CONFIGS = {
     "slack": PlatformOAuthConfig(
         platform="slack",
         token_url="https://slack.com/api/oauth.v2.access",  # nosec B106 - OAuth token URL, not a password
-        get_client_id=lambda: settings.SLACK_OAUTH_CLIENT_ID,
+        get_client_id=lambda: settings.slack_oauth_client_id,
         get_client_secret=lambda: settings.SLACK_OAUTH_CLIENT_SECRET,
         get_redirect_uri=lambda: settings.SLACK_OAUTH_REDIRECT_URI,
         user_info_url="https://slack.com/api/users.identity",
