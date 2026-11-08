@@ -12,6 +12,7 @@ from typing import ClassVar
 import pytest
 
 from app.agents.templates.mail_templates import build_message_view, project_message_view
+from app.constants.desk_buckets import EMAIL_VERDICT_BODY_MAX_CHARS
 from app.models.composio_schemas.gmail import GmailMessageView
 from app.models.integrations.gmail_messages import RelayedGmailMessage
 from app.services.triggers.gmail_signals import (
@@ -363,7 +364,7 @@ class TestTheEmailAsAPersonSeesIt:
         assert str(view.as_email()["snippet"]).endswith(decision)
 
     def test_the_body_is_cleaned_and_bounded_at_a_thousand_characters(self) -> None:
-        html = "<p>Your   code is ready.</p><p>" + "word " * 1000 + "</p>"
+        html = "<p>Your   code is ready.</p><p>" + "word " * EMAIL_VERDICT_BODY_MAX_CHARS + "</p>"
         view = gmail_gate_view({"message_text": html})
 
         assert view is not None
