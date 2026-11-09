@@ -35,6 +35,11 @@ from app.config.rate_limits import (
 from app.models.payment_models import PlanType
 from tests.helpers import effective_limit
 
+#: The limiter records each refusal against a GAIA user id, which is a Mongo ObjectId.
+USER_1 = "6812f0b3c9a14e2b7d5a9101"
+USER_2 = "6812f0b3c9a14e2b7d5a9102"
+PRO_USER = "6812f0b3c9a14e2b7d5a9103"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -203,7 +208,7 @@ class TestTieredRateLimiterCheckAndIncrement:
             patch.object(self.limiter, "_sync_usage_real_time", new_callable=AsyncMock),
         ):
             usage = await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
@@ -221,12 +226,12 @@ class TestTieredRateLimiterCheckAndIncrement:
             patch.object(self.limiter, "_sync_usage_real_time", new_callable=AsyncMock),
         ):
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="web_search",
                 user_plan=PlanType.FREE,
             )
             usage = await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="web_search",
                 user_plan=PlanType.FREE,
             )
@@ -242,7 +247,7 @@ class TestTieredRateLimiterCheckAndIncrement:
         ):
             # First call succeeds (uses the one allowed request)
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
@@ -250,7 +255,7 @@ class TestTieredRateLimiterCheckAndIncrement:
             # Second call should raise
             with pytest.raises(RateLimitExceededException) as exc_info:
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
@@ -267,20 +272,20 @@ class TestTieredRateLimiterCheckAndIncrement:
         ):
             # Free limit for generate_image is 1/day. Pro is 45/day.
             await self.limiter.check_and_increment(
-                user_id="pro_user",
+                user_id=PRO_USER,
                 feature_key="generate_image",
                 user_plan=PlanType.PRO,
             )
             # A second call should succeed for pro (limit is 45)
             await self.limiter.check_and_increment(
-                user_id="pro_user",
+                user_id=PRO_USER,
                 feature_key="generate_image",
                 user_plan=PlanType.PRO,
             )
 
             # Verify the counter is at 2 for the day key (must read inside frozen_time
             # so the time window key matches what was written)
-            day_key = self.limiter._get_redis_key("pro_user", "generate_image", RateLimitPeriod.DAY)
+            day_key = self.limiter._get_redis_key(PRO_USER, "generate_image", RateLimitPeriod.DAY)
             counter = await self.fake_redis.get(day_key)
             assert int(counter) == 2
 
@@ -292,28 +297,26 @@ class TestTieredRateLimiterCheckAndIncrement:
         ):
             # generate_image free: day=1, month=2
             # Manually set the monthly counter close to the limit.
-            month_key = self.limiter._get_redis_key(
-                "user1", "generate_image", RateLimitPeriod.MONTH
-            )
+            month_key = self.limiter._get_redis_key(USER_1, "generate_image", RateLimitPeriod.MONTH)
             # Set monthly usage to 1 (one away from limit of 2)
             await self.fake_redis.set(month_key, "1")
 
             # Day counter is 0 so daily check passes, but after increment
             # monthly will be at 2. Next call hits the limit.
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
 
             # Reset the day counter so the daily check passes again
-            day_key = self.limiter._get_redis_key("user1", "generate_image", RateLimitPeriod.DAY)
+            day_key = self.limiter._get_redis_key(USER_1, "generate_image", RateLimitPeriod.DAY)
             await self.fake_redis.set(day_key, "0")
 
             # Monthly is now at 2 (the limit), so next call should fail
             with pytest.raises(RateLimitExceededException) as exc_info:
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
@@ -340,13 +343,13 @@ class TestRateLimitRecovery:
             # Day 1: exhaust the limit (generate_image free = 1/day)
             with frozen_time("2026-04-01T12:00:00"):
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
                 with pytest.raises(RateLimitExceededException):
                     await self.limiter.check_and_increment(
-                        user_id="user1",
+                        user_id=USER_1,
                         feature_key="generate_image",
                         user_plan=PlanType.FREE,
                     )
@@ -355,7 +358,7 @@ class TestRateLimitRecovery:
             with frozen_time("2026-04-02T00:01:00"):
                 # Should succeed because the day key is now "20260402"
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
@@ -365,19 +368,17 @@ class TestRateLimitRecovery:
         with patch.object(self.limiter, "_sync_usage_real_time", new_callable=AsyncMock):
             with frozen_time("2026-04-30T23:00:00"):
                 month_key = self.limiter._get_redis_key(
-                    "user1", "generate_image", RateLimitPeriod.MONTH
+                    USER_1, "generate_image", RateLimitPeriod.MONTH
                 )
                 await self.fake_redis.set(month_key, "2")  # at the limit (free=2/month)
 
                 # Reset the day key so day check passes
-                day_key = self.limiter._get_redis_key(
-                    "user1", "generate_image", RateLimitPeriod.DAY
-                )
+                day_key = self.limiter._get_redis_key(USER_1, "generate_image", RateLimitPeriod.DAY)
                 await self.fake_redis.set(day_key, "0")
 
                 with pytest.raises(RateLimitExceededException):
                     await self.limiter.check_and_increment(
-                        user_id="user1",
+                        user_id=USER_1,
                         feature_key="generate_image",
                         user_plan=PlanType.FREE,
                     )
@@ -385,7 +386,7 @@ class TestRateLimitRecovery:
             # May 1: month window key changes to "202605"
             with frozen_time("2026-05-01T00:01:00"):
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
@@ -411,20 +412,20 @@ class TestPerFeatureIndependence:
         ):
             # Exhaust generate_image (free = 1/day)
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
             with pytest.raises(RateLimitExceededException):
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
 
             # web_search (free = 10/day) should still work
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="web_search",
                 user_plan=PlanType.FREE,
             )
@@ -436,20 +437,20 @@ class TestPerFeatureIndependence:
         ):
             # Exhaust generate_image for user1
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
             with pytest.raises(RateLimitExceededException):
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
 
             # user2 should still be able to use generate_image
             await self.limiter.check_and_increment(
-                user_id="user2",
+                user_id=USER_2,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
@@ -508,7 +509,7 @@ class TestConcurrentRequests:
         ):
             tasks = [
                 self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key=feature,
                     user_plan=PlanType.FREE,
                 )
@@ -516,7 +517,7 @@ class TestConcurrentRequests:
             ]
             await asyncio.gather(*tasks)
 
-            day_key = self.limiter._get_redis_key("user1", feature, RateLimitPeriod.DAY)
+            day_key = self.limiter._get_redis_key(USER_1, feature, RateLimitPeriod.DAY)
             counter = await self.fake_redis.get(day_key)
             assert int(counter) == num_requests
 
@@ -534,7 +535,7 @@ class TestConcurrentRequests:
             async def _attempt() -> bool:
                 try:
                     await self.limiter.check_and_increment(
-                        user_id="user1",
+                        user_id=USER_1,
                         feature_key="deep_research",
                         user_plan=PlanType.FREE,
                     )
@@ -605,13 +606,13 @@ class TestPlanGatedFeatures:
         ):
             # Exhaust generate_image (free day=1)
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
             with pytest.raises(RateLimitExceededException) as exc_info:
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )

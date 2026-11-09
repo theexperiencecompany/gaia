@@ -21,7 +21,7 @@ import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import fakeredis.aioredis
@@ -35,7 +35,7 @@ from app.api.v1.endpoints import chat as chat_endpoint
 from app.constants.cache import STREAM_EVENTS_PREFIX, STREAM_TURN_DEDUP_PREFIX
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.models.payment_models import PlanType
+from app.models.payment_models import PlanType, UserSubscriptionStatus
 from app.models.user_models import AuthenticatedUser
 from app.utils.agent_utils import format_sse_data
 from tests.conftest import FAKE_USER, FAKE_USER_2
@@ -62,8 +62,9 @@ _ASGI_SPEC_VERSION = "2.3"  # what uvicorn advertises (uvicorn/protocols/http/h1
 @pytest.fixture(autouse=True)
 def _pro_subscription() -> Iterator[None]:
     """Bypass the entitlement gate so POST /chat-stream doesn't 402 before the transport under test runs (same pattern as test_chat_endpoints.py)."""
-    subscription = MagicMock()
-    subscription.plan_type = PlanType.PRO
+    subscription = UserSubscriptionStatus(
+        user_id=OWNER_ID, plan_type=PlanType.PRO, is_subscribed=True
+    )
     with patch(
         "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
         new_callable=AsyncMock,
