@@ -19,6 +19,7 @@ from app.constants import todos as todo_constants
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
+from app.db.repositories.workflows import workflow_repository
 from app.models import todo_models
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import NotificationType
@@ -71,6 +72,7 @@ class _Seams:
     in_app: AsyncMock
     target: AsyncMock
     report: AsyncMock
+    daily_brief: AsyncMock
 
     def entry(self) -> str:
         return self.activity.await_args.args[3]
@@ -91,6 +93,8 @@ def _seams(
         in_app=AsyncMock(),
         target=AsyncMock(return_value=InApp(reason="no_chat_app")),
         report=AsyncMock(),
+        # No daily brief unless a test turns one on, so nothing is held for it.
+        daily_brief=AsyncMock(return_value=None),
     )
     repo = MagicMock()
     repo.get_by_id = AsyncMock(return_value=todo)
@@ -100,6 +104,7 @@ def _seams(
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", repo),
+        patch.object(workflow_repository, "find_system_workflow", seams.daily_brief),
         patch.object(trd, "record_run_finished", seams.activity),
         patch.object(trd, "capture", seams.capture),
         patch.object(notification_service, "create_notification", seams.in_app),
@@ -458,6 +463,7 @@ class TestTheDecisionSeesTheStandingRules:
             "- thread abc",
             runs_once=True,
             run_history=(),
+            may_wait=False,
         )
 
     async def test_key_details_reach_the_write_up_as_details_not_rules(self) -> None:
@@ -466,11 +472,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy",
-            None,
-            "- thread abc",
-            runs_once=True,
-            run_history=(),
+            "Watch the deploy", None, "- thread abc", runs_once=True, run_history=(), may_wait=False
         )
 
     @pytest.mark.regression
@@ -488,6 +490,7 @@ class TestTheDecisionSeesTheStandingRules:
             details[: todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS],
             runs_once=True,
             run_history=(),
+            may_wait=False,
         )
 
     @pytest.mark.regression
@@ -497,11 +500,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy",
-            None,
-            None,
-            runs_once=True,
-            run_history=(),
+            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
         )
 
     @pytest.mark.regression
@@ -516,6 +515,7 @@ class TestTheDecisionSeesTheStandingRules:
             None,
             runs_once=True,
             run_history=(),
+            may_wait=False,
         )
 
     async def test_a_todo_without_standing_rules_gets_the_defaults_alone(self) -> None:
@@ -523,11 +523,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy",
-            None,
-            None,
-            runs_once=True,
-            run_history=(),
+            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
         )
 
     async def test_a_todo_with_no_canvas_gets_the_defaults_alone(self) -> None:
@@ -535,11 +531,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy",
-            None,
-            None,
-            runs_once=True,
-            run_history=(),
+            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
         )
 
 

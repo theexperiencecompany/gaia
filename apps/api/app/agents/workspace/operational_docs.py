@@ -410,8 +410,9 @@ to announce one of them sends it to the user twice:
 - A finished **workflow** run delivers its result to the user's linked platforms
   plus in-app, unless the workflow is silent. See the `workflows` doc.
 - A finished **tracked todo** run is reported to the user's chat app when it
-  found something that matters, unless that todo has `notify_on_run` off. See
-  the `tracked-todos` doc.
+  found something that matters and cannot wait, or held for their next morning
+  brief when it can, unless that todo has `notify_on_run` off. See the
+  `tracked-todos` doc.
 
 When one of these delivers the result, do not announce it again. A silent
 workflow, or a todo with `notify_on_run` off, delivers nothing, so there a

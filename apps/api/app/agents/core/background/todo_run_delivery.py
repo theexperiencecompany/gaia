@@ -1,13 +1,15 @@
 """Terminal delivery for a tracked todo's own background run.
 
 The run executes in its todo's chat, which result_delivery has already given the
-executor's report. What reaches the user's chat app is decided here: comms decides
-whether it is worth a message at all, and the chat app gets it only if so.
-activity.md records what happened either way. A step the todo store fails is
+executor's report. What reaches the user is decided here, by one rule: what can
+wait until tomorrow morning goes into the next brief, the rest is sent now. Code
+decides what may wait at all; comms decides whether a result is worth anything,
+and for one that may wait, whether it can. activity.md records what happened either way. A step the todo store fails is
 finished by a durable job, keyed by the run, never by running the todo again.
 """
 
 import asyncio
+from collections.abc import Iterable
 from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
@@ -25,7 +27,7 @@ from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefItemSource
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
-from app.constants.notifications import ProactiveMessageClass
+from app.constants.notifications import QUIET_HOURS_EXEMPT, ProactiveMessageClass
 from app.constants.todos import (
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
@@ -257,6 +259,21 @@ def _is_desk_sweep(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
     )
 
 
+def _can_wait(todo: TodoDocument, finished: FinishedTodoRun, *, runs_once: bool) -> bool:
+    """Whether code lets this result wait for the brief; comms still decides if it can.
+
+    Never a one-time todo's answer, a watch the user set, a reminder they timed, a reply
+    to what they just did, or a run the trigger gate let through as urgent. A thread
+    the inbox desk opened alerts only when the user cannot wait, so comms judges it.
+    """
+    if runs_once or finished.message_class in QUIET_HOURS_EXEMPT:
+        return False
+    desk_thread = (
+        todo.external_ref is not None and todo.external_ref.source is ExternalRefSource.GMAIL_THREAD
+    )
+    return desk_thread or finished.trigger_type is TriggerType.SCHEDULED_TODO
+
+
 async def _has_live_daily_brief(user_id: str) -> bool:
     """Whether a daily brief will run for the user: its workflow exists and is switched on.
 
@@ -311,13 +328,13 @@ async def _lookup_target(todo: TodoDocument) -> ProactiveTarget | None:
 
 
 async def _hold_for_brief(
-    finished: FinishedTodoRun, todo: TodoDocument, findings: str
+    finished: FinishedTodoRun, todo: TodoDocument, lines: Iterable[str]
 ) -> _Resolution:
-    """Hold each line of the result as one item of the user's next brief.
+    """Hold each line as one item of the user's next brief.
 
     A retry that writes a line twice is harmless: the brief carries one item per text.
     """
-    for line in findings.splitlines():
+    for line in lines:
         if text := line.strip().removeprefix("- ").strip():
             await pending_brief_items_repository.create(
                 PendingBriefItemDocument(
@@ -340,6 +357,11 @@ async def _narrate_and_deliver(
     A report whose form its todo's guidance sets is delivered as written: comms decides
     only whether. The inbox desk's scheduled findings go into the next brief, never a message.
     """
+    runs_once = not (todo.recurrence or todo.trigger_subscriptions)
+    desk_sweep = _is_desk_sweep(todo, finished)
+    may_wait = (
+        desk_sweep or _can_wait(todo, finished, runs_once=runs_once)
+    ) and await _has_live_daily_brief(todo.user_id)
     # Where it goes is looked up while comms writes it up: neither waits on the other.
     text, target = await asyncio.gather(
         narrate_executor_result(
@@ -351,8 +373,9 @@ async def _narrate_and_deliver(
                 todo.title,
                 _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
                 _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
-                runs_once=not (todo.recurrence or todo.trigger_subscriptions),
+                runs_once=runs_once,
                 run_history=recent_run_outcomes(todo.activity_content, DELIVERY_RUN_HISTORY_LINES),
+                may_wait=may_wait and not desk_sweep,
             ),
         ),
         _lookup_target(todo),
@@ -377,8 +400,15 @@ async def _narrate_and_deliver(
     # comms' retelling dropped the headings a report-form owner's guidance requires.
     owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
     message = finished.result_text if owns_form else directive.payload
-    if _is_desk_sweep(todo, finished) and await _has_live_daily_brief(todo.user_id):
-        return await _hold_for_brief(finished, todo, message)
+    if desk_sweep and may_wait:
+        return await _hold_for_brief(finished, todo, message.splitlines())
+    if directive.kind is CommsDirectiveKind.BRIEF:
+        if may_wait:
+            return await _hold_for_brief(finished, todo, [directive.payload])
+        log.warning(
+            f"{LogTag.AGENT} comms held a result that must go now; it is sent",
+            todo_id=todo.id,
+        )
     platform = (
         await deliver_result_to_platforms(
             user=user,

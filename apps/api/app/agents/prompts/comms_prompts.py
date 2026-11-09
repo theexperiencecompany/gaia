@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
-from app.constants.comms import EMOJI_DIRECTIVE, SILENCE_DIRECTIVE
+from app.constants.comms import BRIEF_DIRECTIVE, EMOJI_DIRECTIVE, SILENCE_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
 
@@ -617,6 +617,13 @@ def _run_record(run_history: Sequence[str]) -> str:
 
 #: A reaction is not a delivery for a todo run: it is dropped and nothing is sent.
 _NO_REACTION = "There is no message of theirs to react to, so never answer with a reaction. "
+#: Offered only when code allows the result to wait: never a one-time answer, a watch
+#: the user set, a reminder they timed, or what the trigger gate let through as urgent.
+_MAY_WAIT = (
+    "Can it wait until tomorrow morning? Unless the user must know or act on it before "
+    f"then, it can: instead of a message, answer with {BRIEF_DIRECTIVE} alone, its line "
+    "the update in one short line, as their morning brief should list it. "
+)
 _HOW_IT_READS = (
     "it reaches their chat app as plain text with no cards: lead with what "
     "changed or what they must decide, give the concrete details they need, keep it "
@@ -632,18 +639,19 @@ def tracked_todo_delivery_note(
     *,
     runs_once: bool,
     run_history: Sequence[str],
+    may_wait: bool,
 ) -> str:
     """Build the delivery instructions for a tracked todo's own background run.
 
-    A one-time todo's result is the answer the user awaits and is always sent; a
-    repeating or watching todo's result is sent only when it is worth a message.
-    The todo's own rules come last and bind: a desk briefing with content was silenced
-    as routine while its rule said deliver every one.
+    A one-time todo's answer is always sent; a repeating or watching todo's only when
+    worth a message, and with may_wait one that can wait is held for the morning brief.
+    The todo's own rules come last and bind, above the silence default.
     """
     when_to_send = (
         f"{_ONE_RUN_ANSWERS}{_NO_REACTION}Write it up: "
         if runs_once
-        else f"{_RUNS_ON_ITS_OWN}{_WHEN_TO_MESSAGE}{_NO_REACTION}When you do write, "
+        else f"{_RUNS_ON_ITS_OWN}{_WHEN_TO_MESSAGE}{_MAY_WAIT if may_wait else ''}"
+        f"{_NO_REACTION}When you do write, "
     )
     rules = (
         "Its Standing rules, the user's own instructions for this todo. They bind this "
