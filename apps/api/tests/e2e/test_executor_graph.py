@@ -27,6 +27,7 @@ from app.agents.core.background import executor_runner
 from app.agents.core.background.executor_runner import _ExecutorResult
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext
+from app.agents.prompts import todo_prompts
 from app.agents.tools import manual_tool
 from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE
 from app.constants.general import EXECUTOR_INTEGRATION_ID
@@ -258,12 +259,13 @@ class TestTodoContextHook:
 class TestTermination:
     async def test_finish_task_ends_the_run_with_its_own_result(self):
         """finish_task's result becomes the message the parent reads, not the model's trailing prose."""
+        finish = {"result": "Which night works, Tuesday or Wednesday?", "outcome": "ask"}
         async with executor_graph(
-            [call("finish_task", {"result": "Booked for Tuesday."}, call_id="f1"), "unreachable"]
+            [call("finish_task", finish, call_id="f1"), "unreachable"]
         ) as graph:
             run = await run_graph(graph, "book me a table")
 
-        assert run.results_from(FINISH_NODE) == ["Booked for Tuesday."]
+        assert run.results_from(FINISH_NODE) == ["Which night works, Tuesday or Wednesday?"]
         assert "unreachable" not in run.final_text()
 
     async def test_finish_task_wins_over_other_calls_in_the_same_turn(self):
@@ -532,6 +534,32 @@ class TestTheCompletionGuardIsPerDelegation:
         assert NUDGE_NODE in second.nodes(), (
             "the second delegation cleared the floor on the first one's tool calls"
         )
+
+
+class TestARecurringTodoRunIsNotSentBack:
+    """Seen live: an hourly todo's run sent its reminder, declared schedule, was sent back, and sent it again."""
+
+    SCRIPT = (
+        plan("remind the user to call mom"),
+        call("finish_task", {"result": "Reminded.", "outcome": "schedule"}, call_id="f1"),
+        call("finish_task", {"result": "Reminded again.", "outcome": "schedule"}, call_id="f2"),
+    )
+
+    async def test_its_schedule_outcome_ends_the_run_on_the_first_finish(self):
+        brief = f"Execute the scheduled task: call mom\n\n{todo_prompts.TODO_WAKES_AGAIN_BRIEF}"
+        async with executor_graph(self.SCRIPT) as graph:
+            run = await run_graph(graph, brief)
+
+        assert NUDGE_NODE not in run.nodes(), (
+            "the run was sent back to redo work its todo already covers"
+        )
+        assert run.results_from(FINISH_NODE) == ["Reminded."]
+
+    async def test_a_schedule_with_nothing_to_wake_gaia_is_still_sent_back(self):
+        async with executor_graph(self.SCRIPT) as graph:
+            run = await run_graph(graph, "check on me later about calling mom")
+
+        assert NUDGE_NODE in run.nodes()
 
 
 class TestThreadContinuity:

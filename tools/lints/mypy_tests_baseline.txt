@@ -104,7 +104,6 @@ apps/api/tests/stress/test_link_code_race.py	call-arg
 apps/api/tests/unit/agents/context/test_context_harness.py	attr-defined
 apps/api/tests/unit/agents/context/test_todo_delivery_context.py	attr-defined
 apps/api/tests/unit/agents/context/test_todo_feedback_context.py	arg-type
-apps/api/tests/unit/agents/middleware/test_completion.py	arg-type
 apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	arg-type
 apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	attr-defined
 apps/api/tests/unit/agents/nodes/test_manage_system_prompts.py	arg-type
@@ -114,8 +113,6 @@ apps/api/tests/unit/agents/nodes/test_pre_model_hooks.py	arg-type
 apps/api/tests/unit/agents/test_active_integrations.py	misc
 apps/api/tests/unit/agents/test_browser_task_status_hook.py	arg-type
 apps/api/tests/unit/agents/test_call_record.py	arg-type
-apps/api/tests/unit/agents/test_comms_narrator.py	attr-defined
-apps/api/tests/unit/agents/test_comms_narrator.py	return-value
 apps/api/tests/unit/agents/test_delegation.py	arg-type
 apps/api/tests/unit/agents/test_delegation.py	assignment
 apps/api/tests/unit/agents/test_delegation.py	attr-defined
@@ -149,7 +146,6 @@ apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment
 apps/api/tests/unit/agents/test_profile_crawler.py	return-value
-apps/api/tests/unit/agents/test_result_delivery.py	arg-type
 apps/api/tests/unit/agents/test_stream_session.py	arg-type
 apps/api/tests/unit/agents/test_subagent_channel.py	arg-type
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	arg-type
@@ -394,7 +390,6 @@ apps/api/tests/unit/services/test_device_server_lifecycle.py	misc
 apps/api/tests/unit/services/test_device_server_lifecycle.py	valid-type
 apps/api/tests/unit/services/test_email_delivery.py	arg-type
 apps/api/tests/unit/services/test_file_service.py	list-item
-apps/api/tests/unit/services/test_gaia_task_files.py	arg-type
 apps/api/tests/unit/services/test_integration_inference_service.py	misc
 apps/api/tests/unit/services/test_lab_hooks.py	attr-defined
 apps/api/tests/unit/services/test_lab_hooks.py	list-item
@@ -454,7 +449,6 @@ apps/api/tests/unit/tools/coding/test_bash_execute_env.py	attr-defined
 apps/api/tests/unit/tools/coding/test_bash_exit.py	attr-defined
 apps/api/tests/unit/tools/coding/test_bash_lab_run.py	arg-type
 apps/api/tests/unit/tools/coding/test_bash_lab_run.py	attr-defined
-apps/api/tests/unit/tools/coding/test_gaia_tasks_routing.py	arg-type
 apps/api/tests/unit/tools/coding/test_grep_filter_tools.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	index

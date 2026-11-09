@@ -6970,6 +6970,44 @@
       }
     },
     {
+      "event": "todos:open_state_repaired",
+      "class": "TodosOpenStateRepaired",
+      "owner": "server",
+      "domain": "todos",
+      "description": "A tracked todo run ended with no next step even after being sent back, so code set one.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A tracked todo run ended with no next step even after being sent back, so code set one.",
+        "properties": {
+          "todo_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Todo Id",
+            "type": "string"
+          },
+          "waiting_on": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Waiting On"
+          }
+        },
+        "required": ["todo_id"],
+        "title": "TodosOpenStateRepaired",
+        "type": "object"
+      }
+    },
+    {
       "event": "todos:run_result_delivered",
       "class": "TodosRunResultDelivered",
       "owner": "server",
