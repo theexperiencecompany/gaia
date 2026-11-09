@@ -562,7 +562,6 @@ async def test_the_summary_call_streams_silent_and_the_reply_does_not() -> None:
     async for chunk, metadata in agent.astream({"messages": [*_humans(6)]}, stream_mode="messages"):
         assert isinstance(metadata, dict)
         if isinstance(chunk, AIMessageChunk) and chunk.text in streamed:
-            assert isinstance(metadata, dict)
             streamed[chunk.text].append(bool(metadata.get("silent")))
 
     assert streamed["SUMMARY"] and all(streamed["SUMMARY"])

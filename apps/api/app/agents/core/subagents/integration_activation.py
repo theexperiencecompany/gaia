@@ -413,6 +413,7 @@ def _still_active(messages: Sequence[AnyMessage], integration_id: str) -> bool:
     """
     return any(
         isinstance(message, ToolMessage)
+        and message.name == ACTIVATE_INTEGRATION_TOOL_NAME
         and isinstance(message.artifact, dict)
         and ActivationRecord.model_validate(message.artifact).activated_integration
         == integration_id

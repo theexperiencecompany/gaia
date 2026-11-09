@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, AnyMessage, ToolCall
+from langchain_core.messages import AIMessage, AnyMessage, ToolCall, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool as langchain_tool
 from langgraph.types import Command
@@ -1107,3 +1107,14 @@ class TestActivateIntegrationTool:
 
 def test_tool_exports() -> None:
     assert integration_activation.tools == [integration_activation.activate_integration]
+
+
+def test_another_tools_artifact_never_reads_as_an_activation() -> None:
+    foreign = ToolMessage(
+        content="offloaded",
+        tool_call_id="c1",
+        name="query_json",
+        artifact={"activated_integration": ["not", "a", "string"]},
+    )
+
+    assert integration_activation._still_active([foreign], "gmail") is False

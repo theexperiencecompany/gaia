@@ -294,9 +294,14 @@ def _format_read(
     footer = ""
     if capped:
         last = start + len(shown) - 1
+        more = (
+            f"call again with offset={last + 1} for more"
+            if last < total_lines
+            else "no lines follow"
+        )
         footer = (
             f"\n\n... [showing lines {start}-{last} of {total_lines}, output capped at "
-            f"{MAX_READ_OUTPUT_CHARS} characters; call again with offset={last + 1} for more]"
+            f"{MAX_READ_OUTPUT_CHARS} characters; {more}]"
         )
     elif total_lines > end:
         footer = (

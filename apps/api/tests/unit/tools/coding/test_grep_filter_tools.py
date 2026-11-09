@@ -321,6 +321,7 @@ async def test_grep_tool_pattern_dash_is_literal_not_flag(tmp_path: Path) -> Non
     assert "value -i is here" in out  # -e keeps a flag-looking pattern literal
 
 
+@pytest.mark.regression
 async def test_grep_tool_alternation_matches_any_branch(tmp_path: Path) -> None:
     # Regression: the tool ran basic regex, where `|` is a literal character, so
     # `job|recruit|hiring` matched nothing in a mailbox full of job alerts.
@@ -341,6 +342,7 @@ async def test_grep_tool_alternation_matches_any_branch(tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.regression
 async def test_grep_tool_alternation_also_works_case_sensitively(tmp_path: Path) -> None:
     f = tmp_path / "mail.jsonl"
     f.write_text('{"subject": "New job"}\n{"subject": "digest"}\n{"subject": "recruit now"}\n')

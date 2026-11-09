@@ -143,3 +143,13 @@ def test_a_page_ending_on_the_last_line_offers_no_more() -> None:
 
     assert len(_numbered_lines(out)) == 3
     assert "offset=" not in out
+
+
+def test_a_cut_last_line_offers_no_page_past_the_end() -> None:
+    text = "z" * (read_tool.MAX_READ_OUTPUT_CHARS * 2)
+
+    out = read_tool._format_text_read("/workspace/one.jsonl", text, 0, 10, None)
+
+    assert "showing lines 1-1 of 1" in out
+    assert "no lines follow" in out
+    assert "offset=" not in out
