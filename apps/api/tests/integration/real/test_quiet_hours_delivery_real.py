@@ -21,8 +21,10 @@ from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.bot_service import BotService
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
+from app.utils.redis_utils import RedisPoolManager
 from app.worker import WorkerSettings
 from tests.helpers import worker_redis_url
 
@@ -61,10 +63,8 @@ async def test_a_message_held_overnight_is_posted_when_the_window_ends(arq_pool:
     publish = AsyncMock(return_value=OutboundResult.PUBLISHED)
     with (
         patch.object(user_repository, "get", AsyncMock(return_value=OWNER)),
-        patch.object(platform_chat.RedisPoolManager, "get_pool", AsyncMock(return_value=arq_pool)),
-        patch.object(
-            platform_chat.BotService, "get_or_create_session", AsyncMock(return_value="dm-conv")
-        ),
+        patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=arq_pool)),
+        patch.object(BotService, "get_or_create_session", AsyncMock(return_value="dm-conv")),
         patch.object(platform_chat, "update_messages", AsyncMock()),
         patch.object(platform_chat, "publish_outbound_message", publish),
         patch.object(platform_chat, "record_platform_delivery", AsyncMock()),

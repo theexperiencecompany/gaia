@@ -178,6 +178,9 @@ _refresh_delivery_incident = func(
     arq_task(refresh_delivery_incident_task), name=REFRESH_DELIVERY_INCIDENT_TASK
 )
 
+# The arq entry point (arq app.worker.WorkerSettings) and the task list it registers.
+__all__ = ["TASK_FUNCTIONS", "WorkerSettings"]
+
 # Every job on the default queue. Browser jobs have their own worker
 # (app.workers.browser_worker), started from the worker lifecycle.
 TASK_FUNCTIONS: list[WorkerFunction] = [

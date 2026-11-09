@@ -30,9 +30,9 @@ from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.wide_events import log
 
 
-def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
+def _user_context(email: str | None = None) -> Callable[[str], AuthenticatedUser]:
     """Fake load_user_context: answer for whichever user id it is asked for."""
-    return lambda user_id: AuthenticatedUser(user_id=user_id, **fields)
+    return lambda user_id: AuthenticatedUser(user_id=user_id, email=email)
 
 
 MODULE = "app.tasks.reminder_tasks"
@@ -63,9 +63,9 @@ def target() -> Iterator[AsyncMock]:
 def _reminder(**overrides) -> ReminderModel:
     payload = overrides.pop("payload", StaticReminderPayload(title="Water the plants", body="Now"))
     return ReminderModel(
-        id=REMINDER_ID,
+        _id=REMINDER_ID,
         user_id=USER_ID,
-        agent="static",
+        agent=AgentType.STATIC,
         payload=payload,
         **overrides,
     )

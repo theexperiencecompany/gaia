@@ -31,17 +31,29 @@ USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 
-def _step(**overrides) -> NurtureStep:
-    fields = dict(
-        key="first_win",
-        day_offset=1,
+def _step(
+    *,
+    key: str = "first_win",
+    day_offset: int = 1,
+    skip_predicate: str | None = None,
+    context_builder: str | None = None,
+    cta_path: str | None = None,
+    cta_label: str | None = None,
+    requires_onboarding: bool = False,
+    enabled: bool = True,
+) -> NurtureStep:
+    return NurtureStep(
+        key=key,
+        day_offset=day_offset,
         template="nurture_first_win.html",
         subject="Subject",
-        enabled=True,
-        requires_onboarding=False,
+        skip_predicate=skip_predicate,
+        context_builder=context_builder,
+        cta_path=cta_path,
+        cta_label=cta_label,
+        requires_onboarding=requires_onboarding,
+        enabled=enabled,
     )
-    fields.update(overrides)
-    return NurtureStep(**fields)
 
 
 def _entry(status: NurtureStepStatus, at: datetime) -> NurtureHistoryEntry:
@@ -239,15 +251,16 @@ class TestSendStep:
 
 
 class TestProcessUser:
-    def _user(self, **overrides) -> UserDocument:
-        fields = dict(
-            id=USER_ID,
-            email="u@example.com",
-            created_at="2026-05-30T12:00:00Z",
-            notification_channel_prefs={},
+    def _user(self, **overrides: object) -> UserDocument:
+        return UserDocument.model_validate(
+            {
+                "id": USER_ID,
+                "email": "u@example.com",
+                "created_at": "2026-05-30T12:00:00Z",
+                "notification_channel_prefs": {},
+                **overrides,
+            }
         )
-        fields.update(overrides)
-        return UserDocument(**fields)
 
     async def test_returns_false_outside_send_hour(self) -> None:
         with patch("app.services.nurture.service.is_within_local_daytime", return_value=False):

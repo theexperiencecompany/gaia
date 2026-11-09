@@ -21,8 +21,10 @@ from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.bot_service import BotService
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
+from app.utils.redis_utils import RedisPoolManager
 
 USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
 CHANNEL = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-7", basis="priority")
@@ -51,7 +53,7 @@ async def _post(result: OutboundResult) -> _Posted:
     publish = AsyncMock(return_value=result)
     record = AsyncMock()
     with (
-        patch.object(platform_chat.BotService, "get_or_create_session", session),
+        patch.object(BotService, "get_or_create_session", session),
         patch.object(platform_chat, "update_messages", save),
         patch.object(platform_chat, "publish_outbound_message", publish),
         patch.object(platform_chat, "record_platform_delivery", record),
@@ -156,10 +158,8 @@ class TestQuietHours:
         with (
             patch.object(user_repository, "get", get_user),
             patch.object(platform_chat, "enqueue_worker_job", enqueue),
-            patch.object(platform_chat.RedisPoolManager, "get_pool", AsyncMock(return_value=POOL)),
-            patch.object(
-                platform_chat.BotService, "get_or_create_session", AsyncMock(return_value="dm")
-            ),
+            patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=POOL)),
+            patch.object(BotService, "get_or_create_session", AsyncMock(return_value="dm")),
             patch.object(platform_chat, "update_messages", AsyncMock()),
             patch.object(platform_chat, "publish_outbound_message", publish),
             patch.object(platform_chat, "record_platform_delivery", AsyncMock()),

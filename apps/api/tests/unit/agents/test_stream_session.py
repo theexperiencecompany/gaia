@@ -118,7 +118,7 @@ class TestOwnershipRule:
         run = ExecutorRun(
             stream_id="s1",
             conversation_id="conv-1",
-            user={"user_id": "u1"},
+            user=AuthenticatedUser(user_id="u1"),
             kind=kind,
             task_id="t1",
             user_message_id=None,
@@ -134,7 +134,7 @@ class TestOwnershipRule:
         run = ExecutorRun(
             stream_id="s1",
             conversation_id="todo-chat",
-            user={"user_id": "u1"},
+            user=AuthenticatedUser(user_id="u1"),
             kind=RunKind.LIVE,
             task_id="t1",
             user_message_id=None,
@@ -149,7 +149,7 @@ class TestOwnershipRule:
         run = ExecutorRun(
             stream_id="queued_looking_but_live",
             conversation_id="c",
-            user={},
+            user=AuthenticatedUser(user_id="u1"),
             kind=RunKind.LIVE,
             task_id=None,
             user_message_id=None,

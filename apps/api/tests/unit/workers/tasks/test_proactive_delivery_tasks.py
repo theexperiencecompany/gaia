@@ -5,7 +5,9 @@ from unittest.mock import AsyncMock, patch
 from arq.worker import Retry
 import pytest
 
+from app.agents.core.background.platform_chat import DeferredChatMessage
 from app.constants.notifications import PROACTIVE_RECORD_RETRY_DELAY, ProactiveMessageClass
+from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.user_models import UserDocument
 from app.services.delivery.chat_channel import ChatChannel
@@ -13,7 +15,7 @@ from app.services.outbound_delivery import OutboundResult
 from app.workers.tasks import proactive_delivery_tasks
 from tests.helpers import captured_wide_event
 
-MESSAGE = proactive_delivery_tasks.DeferredChatMessage(
+MESSAGE = DeferredChatMessage(
     user_id="user-1",
     source=ConversationSource.TELEGRAM,
     platform_user_id="tg-7",
@@ -29,7 +31,7 @@ class TestDeliverDeferredChatMessage:
         get_user = AsyncMock(return_value=user)
         post = AsyncMock(return_value=OutboundResult.PUBLISHED)
         with (
-            patch.object(proactive_delivery_tasks.user_repository, "get", get_user),
+            patch.object(user_repository, "get", get_user),
             patch.object(proactive_delivery_tasks, "post_to_platform_chat", post),
         ):
             outcome = await proactive_delivery_tasks.deliver_deferred_chat_message({}, MESSAGE)
