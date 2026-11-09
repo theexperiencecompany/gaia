@@ -148,10 +148,9 @@ def _apply_updates(updates: list[TaskUpdate], todos: list[Todo]) -> tuple[list[T
         task_id = update.get("task_id")
         content = update.get("content")
         status = update.get("status")
-        if task_id:
-            if task_id in todo_map and status:
-                todo_map[task_id]["status"] = status
-                summary_parts.append(f"{task_id}→{status}")
+        if task_id and status:
+            todo_map[task_id]["status"] = status
+            summary_parts.append(f"{task_id}→{status}")
         elif content:
             new_todo: Todo = Todo(
                 id=str(uuid4())[:8], content=content, status="pending", created_at=now
