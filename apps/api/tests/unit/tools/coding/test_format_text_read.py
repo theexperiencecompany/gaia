@@ -150,6 +150,8 @@ def test_a_cut_last_line_offers_no_page_past_the_end() -> None:
 
     out = read_tool._format_text_read("/workspace/one.jsonl", text, 0, 10, None)
 
-    assert "showing lines 1-1 of 1" in out
-    assert "no lines follow" in out
+    assert out.endswith(
+        f"[showing lines 1-1 of 1, output capped at {read_tool.MAX_READ_OUTPUT_CHARS} "
+        "characters; no lines follow]"
+    )
     assert "offset=" not in out
