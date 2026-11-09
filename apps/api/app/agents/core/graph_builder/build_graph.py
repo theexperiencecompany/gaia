@@ -48,7 +48,7 @@ from app.agents.tools.subagent_control_tool import (
     list_running_subagents,
     message_subagent,
 )
-from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
+from app.agents.tools.todo_tools import create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
@@ -138,7 +138,6 @@ async def build_executor_graph(
     tool_dict.update(
         {t.name: t for t in (list_running_subagents, message_subagent, cancel_subagent)}
     )
-    todo_hook = create_todo_pre_model_hook(source="executor")
 
     # Spawned subagents must not see executor-only orchestration tools, and
     # activate_integration is executor-level: a spawn inherits the tools the
@@ -178,7 +177,7 @@ async def build_executor_graph(
         subagent_mw.set_store(store)
         subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
-    pre_model_hooks = worker_pre_model_hooks(todo_hook, drains_inbox=True)
+    pre_model_hooks = worker_pre_model_hooks(drains_inbox=True)
 
     initial_tools = [ACTIVATE_INTEGRATION_TOOL_NAME, FINISH_TASK_NAME, *EXECUTOR_INITIAL_TOOL_IDS]
 

@@ -26,7 +26,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.context import presence_note
 from app.agents.context.assemble import AssembledContext
-from app.agents.context.slots import is_gaia_authored_note
+from app.agents.context.slots import PRESENCE_NOTE_MARKER, has_marker
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background import (
     executor_runner as er,
@@ -348,7 +348,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
                 ),
             )
 
-        (note,) = [m for m in messages if is_gaia_authored_note(m)]
+        (note,) = [m for m in messages if has_marker(m, PRESENCE_NOTE_MARKER)]
         assert str(note.content).startswith(
             "[User presence: this is a background run, so the user sees only what it sends them. "
             "Last seen: Telegram at "

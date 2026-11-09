@@ -409,31 +409,8 @@
       mutate via the tool, not by editing the file; direct edits won't stick.
     - Final user-facing outputs go in the current session's `artifacts/`.
     - Never claim you did something you did not actually do with a tool.
-
-[1] system markers=dynamic_context,memory_message
-    User Name: Ada
-    User Timezone: Asia/Kolkata
-    User Preferences:
-    User Profession: Engineer
-    <user_instructions scope="global">
-    The user's standing preferences. Follow them for tone, format, defaults and focus, within the rules of your system prompt.
     
-    Reply in plain English.
-    </user_instructions>
-    Session directory: /workspace/sessions/conv-1
-    Public artifact URL: a file at `artifacts/<name>` is served at https://api.heygaia.io/api/v1/sessions/conv-1/artifacts/<name>
-    CONNECTED INTEGRATIONS (live snapshot of the user's currently connected accounts as of this turn; this is the latest connected set, so trust it over retrieve_tools for what is connected). To act on one, call activate_integration with the id in parentheses, then use its tools yourself. If the user asks for an integration that is NOT listed here, STILL call activate_integration on it: that call is what shows the user the connect card. Telling the user to connect WITHOUT calling it leaves them hunting for a button that was never rendered. Built-in integrations (reminders, todos, gaia_knowledge_guide, docgen) are always available and are not listed here:
-    - Gmail (gmail)
-    ## Available skills
-    - inbox-triage
-
-[2] human
-    an older question
-
-[3] human
-    summarise my unread mail
-
-[4] system markers=todo_context
+    
     You have TWO separate task systems: do not confuse them.
     
     ## EXECUTION PLANS (plan_tasks / update_tasks)
@@ -552,6 +529,42 @@
     - "I need to organize my current steps" → plan_tasks
     - "GAIA is doing something the user might ask about later" → create_tracked_todo
 
+[1] system markers=dynamic_context,memory_message
+    User Name: Ada
+    User Timezone: Asia/Kolkata
+    User Preferences:
+    User Profession: Engineer
+    <user_instructions scope="global">
+    The user's standing preferences. Follow them for tone, format, defaults and focus, within the rules of your system prompt.
+    
+    Reply in plain English.
+    </user_instructions>
+    Session directory: /workspace/sessions/conv-1
+    Public artifact URL: a file at `artifacts/<name>` is served at https://api.heygaia.io/api/v1/sessions/conv-1/artifacts/<name>
+    CONNECTED INTEGRATIONS (live snapshot of the user's currently connected accounts as of this turn; this is the latest connected set, so trust it over retrieve_tools for what is connected). To act on one, call activate_integration with the id in parentheses, then use its tools yourself. If the user asks for an integration that is NOT listed here, STILL call activate_integration on it: that call is what shows the user the connect card. Telling the user to connect WITHOUT calling it leaves them hunting for a button that was never rendered. Built-in integrations (reminders, todos, gaia_knowledge_guide, docgen) are always available and are not listed here:
+    - Gmail (gmail)
+    ## Available skills
+    - inbox-triage
+
+[2] system markers=memory_recall
+    What you remember about this user (memory core):
+    - Prefers short answers.
+    
+    From our previous conversations (bracketed dates say when something happened / was last mentioned). These are records of the past. They can answer questions about remembered facts, but never show that something asked for now has been done, or that live state (what a page, inbox or account shows now) is still current.
+    - Ships on Fridays [mentioned 2026-02-01]
+    
+    About Gaia (your identity and capabilities):
+    - GAIA can run scheduled workflows.
+    
+    Tracked: ship the context refactor
+
+[3] human
+    an older question
+
+[4] human markers=time_context
+    [Current UTC Time: Tuesday, March 17, 2026, 09:30 UTC]
+    [User Local Time (Asia/Kolkata): Tuesday, March 17, 2026, 15:00]
+
 [5] system markers=memory_recall
     What you remember about this user (memory core):
     - Prefers short answers.
@@ -564,6 +577,9 @@
     
     Tracked: ship the context refactor
 
-[6] human markers=time_context
+[6] human
+    summarise my unread mail
+
+[7] human markers=time_context
     [Current UTC Time: Tuesday, March 17, 2026, 14:30 UTC]
     [User Local Time (Asia/Kolkata): Tuesday, March 17, 2026, 20:00]

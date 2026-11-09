@@ -124,12 +124,9 @@ async def construct_langchain_messages(
         ),
     )
 
-    # Current time lives in a HumanMessage in ``contents`` (not
-    # ``system_instruction``) so minute ticks never invalidate the cache
-    # prefix. See ``build_current_time_message``.
+    # The recall block and the clock are written into the thread with this turn and
+    # stay where they are, so the next turn's request begins with this one.
     time_msg = build_current_time_message(user_timezone=user_timezone)
-    # Emitted in canonical slot order, so the hook chain's reordering is a
-    # normalisation of correct input rather than a correction this tier relies on.
     chain_msgs: list[AnyMessage] = [system_msg, assembled.stable]
     if assembled.volatile is not None:
         chain_msgs.append(assembled.volatile)

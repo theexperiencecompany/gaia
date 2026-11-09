@@ -72,7 +72,7 @@ async def narrate_executor_result(
             ),
         )
         # This turn's only job is to re-voice result_text. Stamp it so
-        # call_executor refuses and executor_status_hook stays quiet.
+        # call_executor refuses to dispatch from it.
         config["configurable"]["is_result_narration"] = True
         initial_state = {
             "messages": [

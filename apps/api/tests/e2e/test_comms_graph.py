@@ -29,7 +29,10 @@ from langchain_core.messages import (
 from langgraph.graph.state import CompiledStateGraph
 import pytest
 
-from app.agents.context.slots import BROWSER_TASK_MARKER
+from app.agents.context.live_work import build_browser_task_block
+from app.agents.context.section_context import SectionContext
+from app.agents.context.slots import MEMORY_RECALL_MARKER, mark
+from app.agents.context.tiers import AgentTier
 from app.constants.browser import HandoffStatus
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.schemas.browser import NewHandoff
@@ -152,7 +155,8 @@ class TestCommsToolSurface:
 
 class TestBrowserTaskReply:
     async def test_a_done_reaches_the_paused_step_comms_was_shown(self):
-        """The frame tells the model what the task waits on, and its tool settles that very step."""
+        # The real browser-task section, seeded as the turn's recall block the way the
+        # chat service writes it; the rest of turn assembly is not run here.
         async with comms_graph(
             [call("browser_step_done", {}, call_id="b1"), "Carrying on."]
         ) as graph:
@@ -172,14 +176,28 @@ class TestBrowserTaskReply:
                     reply_to="conv-browser",
                 ),
             )
-            run = await run_graph(graph, "done, signed in", thread_id="conv-browser")
+            turn_context = await build_browser_task_block(
+                SectionContext(tier=AgentTier.COMMS, user_id="u-1", conversation_id="conv-browser")
+            )
+            run = await run_graph(
+                graph,
+                "done, signed in",
+                thread_id="conv-browser",
+                state={
+                    "messages": [
+                        mark(SystemMessage(content=turn_context), MEMORY_RECALL_MARKER),
+                        HumanMessage(content="done, signed in"),
+                    ],
+                    "todos": [],
+                },
+            )
             record = await get_handoff("h1")
 
         [frame] = [
             message
             for message in run.prompts[0]
             if isinstance(message, SystemMessage)
-            and message.additional_kwargs.get(BROWSER_TASK_MARKER)
+            and message.additional_kwargs.get(MEMORY_RECALL_MARKER)
         ]
         assert "Sign in to opentable.com" in str(frame.content)
         assert record is not None

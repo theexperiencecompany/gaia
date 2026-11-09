@@ -368,15 +368,7 @@
     ## Available skills
     - inbox-triage
 
-[2] human
-    # Connected integrations
-    Gmail (`gmail`)
-    
-    ---
-    
-    Request: summarise my unread mail
-
-[3] system markers=memory_recall
+[2] system markers=memory_recall
     What you remember about this user (memory core):
     - Prefers short answers.
     
@@ -387,6 +379,14 @@
     - GAIA can run scheduled workflows.
     
     Tracked: ship the context refactor
+
+[3] human
+    # Connected integrations
+    Gmail (`gmail`)
+    
+    ---
+    
+    Request: summarise my unread mail
 
 [4] human markers=time_context
     [Current UTC Time: Tuesday, March 17, 2026, 14:30 UTC]

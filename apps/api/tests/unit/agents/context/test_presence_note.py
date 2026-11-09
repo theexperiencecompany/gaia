@@ -12,7 +12,7 @@ from app.agents.context import presence_note as presence_note_module
 from app.agents.context.assemble import AssembledContext
 from app.agents.context.presence_note import presence_note
 from app.agents.context.section_context import ExecutionMode
-from app.agents.context.slots import PromptSlot, is_gaia_authored_note, slot_of
+from app.agents.context.slots import PRESENCE_NOTE_MARKER, PromptSlot, has_marker, slot_of
 from app.agents.context.tiers import AgentTier
 from app.agents.core import messages as messages_module
 from app.models.agent_models import AgentConfigurable
@@ -232,7 +232,7 @@ class TestTheNote:
 
 
 def _notes(messages: list[AnyMessage]) -> list[AnyMessage]:
-    return [message for message in messages if is_gaia_authored_note(message)]
+    return [message for message in messages if has_marker(message, PRESENCE_NOTE_MARKER)]
 
 
 def _seed(
