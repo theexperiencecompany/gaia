@@ -309,11 +309,17 @@ class ContextSeed:
 
 
 async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) -> list[AnyMessage]:
+    """Seed tier and return the request its real pre-model hooks build — see hooked_state."""
+    return list((await hooked_state(tier, seed))["messages"])
+
+
+async def hooked_state(tier: AgentTier, seed: ContextSeed | None = None) -> State:
     """Seed tier and run it through that tier's real pre-model hooks.
 
     ContextSeed.prior_messages are prepended to the seed to model a checkpointed
     thread, where stale slot copies accumulate; run_messages are appended to it
-    to model a later model call of the same run, after its own tool turns.
+    to model a later model call of the same run, after its own tool turns. The
+    whole state comes back, so a test can read what the model node would commit.
     """
     spec = seed or ContextSeed()
     resolved_user = spec.user or HarnessUser()
@@ -341,8 +347,7 @@ async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) ->
                 "todos": [],
             },
         )
-        result = await execute_hooks(hooks_for(tier), state, config, InMemoryStore())
-    return list(result["messages"])
+        return await execute_hooks(hooks_for(tier), state, config, InMemoryStore())
 
 
 async def seed_only(

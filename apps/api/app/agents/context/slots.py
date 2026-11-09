@@ -7,11 +7,13 @@ The order below is the whole cache contract in one place. Three constraints fix 
 * Gemini and OpenRouter cache the longest common prefix, so byte-stable slots
   sort ahead of per-turn churn, with the clock last so it never moves the boundary.
 * OpenAI reuses an earlier request only whole, so each call must begin with the
-  previous one byte for byte: nothing may trail the conversation there.
+  previous one byte for byte: the request there is an append-only log.
 
-request_slot_order picks the layout per provider: OpenRouter-wire providers move
-their per-turn slots BEHIND the conversation, OpenAI puts every singleton slot
-ahead of it.
+request_slot_order picks the slot layout for the slot-ordered providers:
+OpenRouter-wire providers move their per-turn slots BEHIND the conversation,
+Gemini keeps them in the leading block. OpenAI (is_append_only) is not
+slot-ordered at all: only LEADING_SLOTS lead, everything else stays where it
+happened in the thread.
 """
 
 from enum import IntEnum
@@ -108,18 +110,38 @@ TAIL_VOLATILE_PROVIDERS: frozenset[LLMProviderName] = frozenset(
 
 #: Providers whose cache reuses an earlier request only whole: with anything trailing the
 #: conversation OpenAI cached 23,814 of 37,708 tokens per call, with nothing 37,641.
+#: Leading per-turn slots fail the same way one turn later — the swapped recall and
+#: clock moved the boundary to the static prompt, re-billing the whole history (30%).
 WHOLE_REQUEST_CACHE_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
+
+#: Slots an append-only request lifts to the front, latest copy only. They change
+#: only when the user edits a setting, so leading costs one cold call per edit.
+LEADING_SLOTS: frozenset[PromptSlot] = frozenset(
+    {PromptSlot.STATIC, PromptSlot.DYNAMIC_STABLE, PromptSlot.ONBOARDING}
+)
+
+#: Slots a pre-model hook rebuilds before every call instead of the turn writing them
+#: into the thread. On an append-only request a frame is committed to the thread when
+#: its text changes, so the next call still begins with this one.
+PER_CALL_SLOTS: frozenset[PromptSlot] = frozenset(
+    {PromptSlot.TODO_CONTEXT, PromptSlot.EXECUTOR_STATUS, PromptSlot.BROWSER_TASK}
+)
+
+
+def is_append_only(provider: str | None) -> bool:
+    """Whether a request bound for provider must extend the previous one byte for byte."""
+    return provider in WHOLE_REQUEST_CACHE_PROVIDERS
 
 
 def request_slot_order(provider: str | None) -> tuple[PromptSlot, ...]:
-    """Return the slot order a request bound for provider is emitted in.
+    """Return the slot order a request bound for a slot-ordered provider is emitted in.
 
     Gemini gets the declaration order; OpenRouter-wire providers move per-turn slots
-    behind the conversation (35.2% -> 94.9% cached, docs/llm-cache-measurements.md);
-    OpenAI leads with every singleton slot, so each call extends the previous request.
+    behind the conversation (35.2% -> 94.9% cached, docs/llm-cache-measurements.md).
+    Append-only providers have no slot order; asking for one is a caller bug.
     """
-    if provider in WHOLE_REQUEST_CACHE_PROVIDERS:
-        return (*(slot for slot in PromptSlot if slot in SINGLETON_SLOTS), PromptSlot.CONVERSATION)
+    if is_append_only(provider):
+        raise ValueError(f"{provider} requests are append-only, not slot-ordered")
     if provider not in TAIL_VOLATILE_PROVIDERS:
         return tuple(PromptSlot)
     return (

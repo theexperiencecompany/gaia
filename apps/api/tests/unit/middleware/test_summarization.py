@@ -24,6 +24,7 @@ from langchain_core.messages import (
     AnyMessage,
     BaseMessage,
     HumanMessage,
+    SystemMessage,
     ToolMessage,
     get_buffer_string,
 )
@@ -1137,3 +1138,35 @@ async def test_the_budget_is_measured_on_the_xml_and_a_full_budget_still_fits(
 
     assert result is not None
     assert 1 + len(result["messages"][1:]) == folded
+
+
+async def test_folding_removes_the_per_turn_copies_the_folded_turns_superseded() -> None:
+    # On an append-only (OpenAI) request every turn's recall and clock stay inline, so
+    # the copies belonging to folded turns would otherwise outlive the history they
+    # described. Only the latest copy of a slot is ever current; it stays.
+    mw = _middleware(trigger=("messages", 4), keep=("messages", 1), archive=None)
+    recall = {"memory_recall": True}
+    clock = {"time_context": True}
+    state = {
+        "messages": [
+            SystemMessage("static prompt", id="s"),
+            SystemMessage("recall 1", additional_kwargs=recall, id="r1"),
+            HumanMessage("question 1", id="h1"),
+            HumanMessage("clock 1", additional_kwargs=clock, id="t1"),
+            AIMessage("answer 1", id="a1"),
+            SystemMessage("recall 2", additional_kwargs=recall, id="r2"),
+            HumanMessage("question 2", id="h2"),
+            HumanMessage("clock 2", additional_kwargs=clock, id="t2"),
+            AIMessage("answer 2", id="a2"),
+            SystemMessage("recall 3", additional_kwargs=recall, id="r3"),
+            HumanMessage("question 3", id="h3"),
+            HumanMessage("clock 3", additional_kwargs=clock, id="t3"),
+        ]
+    }
+
+    result = await mw.abefore_model(state, _runtime())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "h1"
+    assert {r.id for r in removals} == {"a1", "h2", "a2", "r1", "t1", "r2", "t2"}

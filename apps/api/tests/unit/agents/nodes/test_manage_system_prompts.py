@@ -173,8 +173,8 @@ class TestManageSystemPrompts:
             ("human", "time"),
         ]
 
-    def test_nothing_trails_the_conversation_for_openai(self) -> None:
-        """OpenAI reuses only a whole earlier request, so the clock and per-turn slots lead the conversation."""
+    def test_openai_keeps_per_turn_slots_where_the_thread_wrote_them(self) -> None:
+        """OpenAI reuses only a whole earlier request, so only the leading slots move; the rest stays in thread order."""
         msgs = [
             _static("prompt"),
             _dynamic("ctx"),
@@ -193,9 +193,9 @@ class TestManageSystemPrompts:
             ("system", "ctx"),
             ("system", "todo"),
             ("system", "mem"),
-            ("human", "time"),
             ("human", "hello"),
             ("ai", "reply"),
+            ("human", "time"),
         ]
 
     def test_the_order_follows_the_lane_not_langchains_binding_key(self) -> None:
@@ -209,7 +209,7 @@ class TestManageSystemPrompts:
 
         result = manage_system_prompts_node(cast(State, {"messages": msgs}), lane_only, _store())
 
-        assert [m.content for m in result["messages"]] == ["prompt", "time", "hello", "reply"]
+        assert [m.content for m in result["messages"]] == ["prompt", "hello", "reply", "time"]
 
     def test_leading_layout_preserved_for_gemini(self) -> None:
         """Gemini only promotes a leading contiguous run of SystemMessages, so volatile slots must stay in that leading block."""

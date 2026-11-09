@@ -8,6 +8,7 @@ and they hold across every tier.
 
 from contextlib import AbstractContextManager
 from dataclasses import replace
+from itertools import takewhile
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
@@ -39,6 +40,7 @@ from app.agents.context.assemble import (
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import (
     DYNAMIC_CONTEXT_MARKER,
+    LEADING_SLOTS,
     LEGACY_DYNAMIC_MARKER,
     MEMORY_RECALL_MARKER,
     PromptSlot,
@@ -248,9 +250,26 @@ class TestOneMessagePerSlot:
                     f"a stale {message.content!r} outlived the current turn's copy"
                 )
 
-    @pytest.mark.parametrize(
-        "provider", [LLMProviderName.OPENROUTER, LLMProviderName.OPENAI, LLMProviderName.GEMINI]
-    )
+    @pytest.mark.parametrize("tier", list(AgentTier))
+    async def test_an_append_only_request_leads_with_the_leading_slots_alone(
+        self, tier: AgentTier
+    ) -> None:
+        """OpenAI keeps per-turn slots where the thread wrote them; only settings-driven slots lead."""
+        messages = await effective_context(
+            tier,
+            ContextSeed(
+                sources=RICH_SOURCES,
+                prior_messages=list(STALE_THREAD),
+                configurable_overrides=bound_for(LLMProviderName.OPENAI),
+            ),
+        )
+
+        slots = slots_of(messages)
+        lead = sum(1 for _ in takewhile(lambda slot: slot in LEADING_SLOTS, slots))
+        assert lead > 0
+        assert LEADING_SLOTS.isdisjoint(slots[lead:])
+
+    @pytest.mark.parametrize("provider", [LLMProviderName.OPENROUTER, LLMProviderName.GEMINI])
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_slots_appear_in_canonical_order(
         self, tier: AgentTier, provider: LLMProviderName

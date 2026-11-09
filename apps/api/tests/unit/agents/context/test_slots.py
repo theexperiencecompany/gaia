@@ -6,10 +6,13 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemM
 import pytest
 
 from app.agents.context.slots import (
+    LEADING_SLOTS,
+    PER_CALL_SLOTS,
     SINGLETON_SLOTS,
     TAIL_VOLATILE_SLOTS,
     PromptSlot,
     has_marker,
+    is_append_only,
     mark,
     request_slot_order,
     slot_of,
@@ -120,20 +123,25 @@ class TestRequestSlotOrder:
             PromptSlot.TIME,
         )
 
-    def test_openai_puts_every_singleton_slot_ahead_of_the_conversation(self) -> None:
-        """OpenAI reuses only a whole earlier request, so nothing may trail the conversation, the clock included."""
-        assert request_slot_order("openai") == (
+    def test_openai_is_append_only_and_has_no_slot_order(self) -> None:
+        """OpenAI reuses only a whole earlier request; a slot order there re-bills the history every turn."""
+        assert is_append_only("openai")
+        with pytest.raises(ValueError, match="append-only"):
+            request_slot_order("openai")
+
+    @pytest.mark.parametrize("provider", ["openrouter", "custom", "gemini", None])
+    def test_slot_ordered_providers_are_not_append_only(self, provider: str | None) -> None:
+        assert not is_append_only(provider)
+
+    def test_only_settings_driven_slots_lead_an_append_only_request(self) -> None:
+        """A slot that changes per turn or per call must never lead, or every turn re-bills the history."""
+        assert {
             PromptSlot.STATIC,
             PromptSlot.DYNAMIC_STABLE,
             PromptSlot.ONBOARDING,
-            PromptSlot.TODO_CONTEXT,
-            PromptSlot.BACKGROUND_EXECUTOR,
-            PromptSlot.EXECUTOR_STATUS,
-            PromptSlot.BROWSER_TASK,
-            PromptSlot.MEMORY_RECALL,
-            PromptSlot.TIME,
-            PromptSlot.CONVERSATION,
-        )
+        } == LEADING_SLOTS
+        assert LEADING_SLOTS.isdisjoint(PER_CALL_SLOTS)
+        assert PromptSlot.CONVERSATION not in LEADING_SLOTS | PER_CALL_SLOTS
 
     def test_gemini_keeps_the_leading_block_layout(self) -> None:
         """A tail slot on Gemini is not a colder cache — it is content the model never sees."""
@@ -146,7 +154,7 @@ class TestRequestSlotOrder:
 
     def test_no_slot_is_lost_or_duplicated_by_the_reorder(self) -> None:
         """A layout that silently dropped a slot would delete that content from the request."""
-        for provider in ("openrouter", "openai", "gemini", None):
+        for provider in ("openrouter", "gemini", None):
             order = request_slot_order(provider)
             assert sorted(order) == sorted(PromptSlot)
 

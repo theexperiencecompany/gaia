@@ -12,6 +12,8 @@ says exactly what the design requires: no byte at or before the end of the
 stable block may move between turns.
 """
 
+from datetime import timedelta
+
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 import pytest
 from tests._harness.context_chain import (
@@ -21,7 +23,9 @@ from tests._harness.context_chain import (
     bound_for,
     common_prefix_len,
     effective_context,
+    hooked_state,
     request_bytes,
+    seed_only,
     text_of,
 )
 from tests._harness.context_sources import ContextSources, memory
@@ -29,6 +33,7 @@ from tests._harness.context_sources import ContextSources, memory
 from app.agents.context.slots import PromptSlot, slot_of
 from app.agents.context.tiers import AgentTier
 from app.constants.llm import LLMProviderName
+from app.override.langgraph_bigtool.utils import pop_injected_messages
 
 SOURCES = ContextSources(
     core_memory="- Prefers short answers.",
@@ -195,16 +200,60 @@ class TestAModelCallExtendsThePreviousOneOnOpenAI:
         self, tier: AgentTier
     ) -> None:
         on_openai = bound_for(LLMProviderName.OPENAI)
-        first = await effective_context(
+        first_state = await hooked_state(
             tier, ContextSeed(sources=SOURCES, configurable_overrides=on_openai)
         )
+        first = list(first_state["messages"])
+        # The model node commits the frames the first call introduced ahead of its reply.
+        committed = pop_injected_messages(first_state)
         next_call = await effective_context(
             tier,
-            ContextSeed(sources=SOURCES, configurable_overrides=on_openai, run_messages=TOOL_TURN),
+            ContextSeed(
+                sources=SOURCES,
+                configurable_overrides=on_openai,
+                run_messages=[*committed, *TOOL_TURN],
+            ),
         )
 
         assert request_bytes(next_call).startswith(request_bytes(first)), (
             f"{tier.value}: the next call diverges at byte "
             f"{common_prefix_len(request_bytes(first), request_bytes(next_call))} of "
             f"{len(request_bytes(first))}, so OpenAI caches none of the run's own history"
+        )
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("tier", list(AgentTier))
+    async def test_the_next_turn_begins_with_the_whole_previous_request(
+        self, tier: AgentTier
+    ) -> None:
+        """A new turn writes a fresh recall and clock; they must extend the thread, not lead it.
+
+        Leading, they moved the cache boundary to the static prompt every turn and
+        production read 30% cached on OpenAI.
+        """
+        on_openai = bound_for(LLMProviderName.OPENAI)
+        first_state = await hooked_state(
+            tier, ContextSeed(sources=SOURCES, configurable_overrides=on_openai)
+        )
+        first = list(first_state["messages"])
+        turn_one = [
+            *await seed_only(tier, sources=SOURCES, configurable_overrides=on_openai),
+            *pop_injected_messages(first_state),
+            AIMessage(content="Nothing pressing today."),
+        ]
+        next_turn = await effective_context(
+            tier,
+            ContextSeed(
+                sources=SOURCES,
+                configurable_overrides=on_openai,
+                query="and tomorrow?",
+                now=FIXED_NOW + timedelta(hours=2),
+                prior_messages=turn_one,
+            ),
+        )
+
+        assert request_bytes(next_turn).startswith(request_bytes(first)), (
+            f"{tier.value}: the next turn diverges at byte "
+            f"{common_prefix_len(request_bytes(first), request_bytes(next_turn))} of "
+            f"{len(request_bytes(first))}, so OpenAI re-bills the whole history"
         )

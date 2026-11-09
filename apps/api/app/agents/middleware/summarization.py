@@ -180,10 +180,11 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             archive_path = await self._archive_or_none(state)
             if archive_path:
                 _inject_archive_path(summary_message, archive_path, self.archive)
+        superseded = _superseded_slot_copies(state["messages"], summarized[-1])
         return {
             "messages": [
                 summary_message,
-                *(RemoveMessage(id=cast("str", m.id)) for m in summarized[1:]),
+                *(RemoveMessage(id=cast("str", m.id)) for m in (*summarized[1:], *superseded)),
             ]
         }
 
@@ -364,6 +365,26 @@ def _foldable(conversation: list[AnyMessage], cutoff: int) -> list[AnyMessage]:
     if not steps:
         return []
     return [*before, *steps]
+
+
+def _superseded_slot_copies(
+    messages: list[AnyMessage], last_folded: AnyMessage
+) -> list[AnyMessage]:
+    """Return the prompt-slot copies ahead of last_folded that a later copy of their slot replaced.
+
+    An append-only request keeps every turn's recall and clock where the turn wrote
+    them; once that turn is folded its copies describe nothing still in the request.
+    The latest copy of each slot is current and is never returned.
+    """
+    boundary = next(index for index, m in enumerate(messages) if m is last_folded)
+    latest_index = {slot_of(m): index for index, m in enumerate(messages)}
+    return [
+        m
+        for index, m in enumerate(messages[:boundary])
+        if m.id is not None
+        and (slot := slot_of(m)) is not PromptSlot.CONVERSATION
+        and latest_index[slot] != index
+    ]
 
 
 def _removable(prefix: list[AnyMessage]) -> list[AnyMessage]:

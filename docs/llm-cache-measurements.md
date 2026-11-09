@@ -175,13 +175,18 @@ layout:
 
 - `openrouter` / `custom` (OpenAI-wire): volatile slots move after the
   conversation → tail layout.
-- `openai` (direct): every singleton slot, the clock included, leads the
-  conversation. OpenAI reuses an earlier request only whole: replaying one
-  executor run on gpt-5.6-luna, any message trailing the conversation held
-  every call at 23,814 cached tokens (the tools and first system message),
-  while with nothing trailing each call read the previous one in full
-  (38,262 of 38,329). A change to the bound tool set still costs one fully
-  cold call.
+- `openai` (direct): append-only. OpenAI reuses an earlier request only
+  whole: replaying one executor run on gpt-5.6-luna, any message trailing the
+  conversation held every call at 23,814 cached tokens (the tools and first
+  system message), while with nothing trailing each call read the previous
+  one in full (38,262 of 38,329). Leading the conversation with the per-turn
+  slots fails the same way one turn later: the swapped recall and clock read
+  0 cached on the first call of every new turn (production: ~30%). So only
+  the static, stable and onboarding slots lead; every other message stays
+  where the thread wrote it, and a hook's per-call frame is committed to the
+  thread when its text changes. Measured on the real API through the node:
+  new-turn first calls went from 0% to 91-92% cached. A change to the bound
+  tool set still costs one fully cold call.
 - `gemini`: unchanged leading-block layout (its API silently drops
   non-leading system messages).
 - Missing provider: defaults to the leading layout (today's behavior).
