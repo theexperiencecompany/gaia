@@ -297,7 +297,6 @@ apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	arg-type
 apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	list-item
 apps/api/tests/unit/scripts/test_reset_admin_password.py	arg-type
 apps/api/tests/unit/scripts/test_save_provider.py	arg-type
-apps/api/tests/unit/scripts/test_sync_user_workspaces.py	attr-defined
 apps/api/tests/unit/services/browser/jev/test_gateway.py	attr-defined
 apps/api/tests/unit/services/browser/test_capability_code.py	arg-type
 apps/api/tests/unit/services/browser/test_capability_code.py	assignment
