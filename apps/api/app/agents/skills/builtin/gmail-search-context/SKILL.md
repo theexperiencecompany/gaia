@@ -70,7 +70,8 @@ or `query_json(path=<path>, group_count_by="from_address")` to count per sender;
 is searchable too (`{"field":"body","op":"contains","value":"invoice"}`). Use `grep` for
 free-text matches. Each line is one whole message with its body, so narrow first: pull
 `id`, `from`, `subject` and `time` for the whole file, then read bodies only for the
-messages that need it. When every message needs reading, split the file's lines across
+messages that need it. `query_json` returns 50 records unless you raise `limit`, and says
+nothing about the rest, so set `limit` to the record count the save note gives. When every message needs reading, split the file's lines across
 parallel `spawn_subagent` calls in ONE turn, each told to `read(<path>, offset=<line>,
 limit=<count>)` its range a few dozen lines at a time and return only a distilled result,
 never raw bodies; then merge, deduping by `id` and grouping by `threadId`. Without
