@@ -24,6 +24,7 @@ import {
   buildAuthLinkMessage,
   consumeInboundLinkCode,
   createBotLogger,
+  DELIVERY_FAILURE_KIND,
   extractSubcommandArgs,
   friendlyMediaError,
   handleStreamingChat,
@@ -32,6 +33,7 @@ import {
   type LinkState,
   MEDIA_READ_TIMEOUT_MS,
   type OutboundFile,
+  type OutboundNotifications,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -47,10 +49,18 @@ import {
   unsupportedMediaMessage,
   WEBHOOK_MAX_BODY_BYTES,
   wideLog,
+  withTimeout,
   withWideEvent,
 } from "@gaia/shared/bots";
-import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
+  buildKapsoFields,
+  KAPSO_MESSAGE_FIELDS,
+  WhatsAppClient,
+} from "@kapso/whatsapp-cloud-api";
+import {
+  CUSTOMER_SERVICE_WINDOW_MARGIN_MS,
+  CUSTOMER_SERVICE_WINDOW_MS,
+  MESSAGE_STATUS_LOOKUP_TIMEOUT_MS,
   NOTIFICATION_TEMPLATE_LANGUAGE,
   NOTIFICATION_TEMPLATE_NAME,
   NOTIFICATION_TEMPLATE_PARAM_NAME,
@@ -59,7 +69,9 @@ import {
   TYPING_REFRESH_MS,
 } from "./constants";
 import {
+  countryFromBusinessScopedUserId,
   extractMedia,
+  extractStatusError,
   extractTextBody,
   extractWaId,
   verifyKapsoSignature,
@@ -68,6 +80,8 @@ import type {
   ExtractedMedia,
   KapsoMessageBatch,
   KapsoMessageEvent,
+  KapsoMessageFailedEvent,
+  MetaStatusError,
 } from "./webhook.types";
 
 // ─── WhatsApp-specific config ─────────────────────────────────────────────────
@@ -106,6 +120,12 @@ function toTemplateParameter(text: string): string {
     : collapsed;
 }
 
+/** How the webhook route answers Kapso for one verified event. */
+interface WebhookOutcome {
+  status: 200 | 400;
+  body: Record<string, string>;
+}
+
 // ─── WhatsApp Adapter ─────────────────────────────────────────────────────────
 
 export class WhatsAppAdapter extends BaseBotAdapter {
@@ -114,6 +134,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
   private waClient: WhatsAppClient | null = null;
   private waConfig: WhatsAppConfig | null = null;
+
+  protected override readonly outboundNotifications: OutboundNotifications = {
+    windowClosed: (waId) => this.customerServiceWindowClosed(waId),
+    deliver: (waId, text) => this.sendNotificationTemplate(waId, text),
+  };
 
   /**
    * Tracks users whose platform_links status has been confirmed as linked this
@@ -231,28 +256,99 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           // Event type is in the header for Kapso webhooks, not in the body
           const eventType = c.req.header("x-webhook-event") ?? null;
           wideLog.set({ event_type: eventType });
-          if (eventType !== "whatsapp.message.received") {
-            this.adapterLogger.debug("webhook_event_ignored", {
-              event_type: eventType,
-            });
-            wideLog.set({ http_status: 200 });
-            return c.json({ status: "ignored" });
-          }
-
-          const eventCount = this.dispatchWebhookPayload(
+          const outcome = await this.handleVerifiedEvent(
+            eventType,
             rawBody,
             c.req.header("x-webhook-batch") === "true",
           );
-          if (eventCount === null) {
-            wideLog.set({ http_status: 400 });
-            return c.json({ error: "Invalid JSON" }, 400);
-          }
-
-          wideLog.set({ http_status: 200, event_count: eventCount });
-          return c.json({ status: "ok" });
+          wideLog.set({ http_status: outcome.status });
+          return c.json(outcome.body, outcome.status);
         },
       ),
     );
+  }
+
+  /**
+   * Acts on a signature-verified Kapso event: inbound messages are dispatched,
+   * failed deliveries alerted on, every other event acknowledged and ignored.
+   */
+  private async handleVerifiedEvent(
+    eventType: string | null,
+    rawBody: string,
+    isBatch: boolean,
+  ): Promise<WebhookOutcome> {
+    if (eventType === "whatsapp.message.failed") {
+      return this.reportMessageFailed(rawBody);
+    }
+    if (eventType !== "whatsapp.message.received") {
+      this.adapterLogger.debug("webhook_event_ignored", {
+        event_type: eventType,
+      });
+      return { status: 200, body: { status: "ignored" } };
+    }
+    const eventCount = this.dispatchWebhookPayload(rawBody, isBatch);
+    if (eventCount === null) {
+      return { status: 400, body: { error: "Invalid JSON" } };
+    }
+    wideLog.set({ event_count: eventCount });
+    return { status: 200, body: { status: "ok" } };
+  }
+
+  /**
+   * Alerts on a message Meta accepted and then failed to deliver. Kapso's failed
+   * event carries no error detail, so Meta's code is read from the message's
+   * statuses; a lookup that fails still alerts, without the code.
+   */
+  private async reportMessageFailed(rawBody: string): Promise<WebhookOutcome> {
+    let event: KapsoMessageFailedEvent;
+    try {
+      event = JSON.parse(rawBody) as KapsoMessageFailedEvent;
+    } catch {
+      return { status: 400, body: { error: "Invalid JSON" } };
+    }
+    const destinationId = extractWaId(event);
+    wideLog.set({
+      user_hash: hashLogIdentifier(destinationId),
+      message_id: event.message.id,
+    });
+
+    let statusError: MetaStatusError | undefined;
+    try {
+      const message = await withTimeout(
+        this.whatsAppClient.messages.get({
+          phoneNumberId: event.phone_number_id,
+          messageId: event.message.id,
+          fields: buildKapsoFields(KAPSO_MESSAGE_FIELDS),
+        }),
+        MESSAGE_STATUS_LOOKUP_TIMEOUT_MS,
+        "message_status_lookup_timeout",
+      );
+      statusError = extractStatusError(message);
+      if (!statusError) {
+        wideLog.warning("message_failed_error_missing", {
+          message_id: event.message.id,
+        });
+      }
+    } catch (err) {
+      wideLog.warning("message_failed_lookup_failed", {
+        message_id: event.message.id,
+        ...sanitizeErrorForLog(err),
+      });
+    }
+
+    wideLog.set({ meta_error_code: statusError?.code });
+    this.reportDeliveryFailure({
+      kind: DELIVERY_FAILURE_KIND.PLATFORM_REJECTED,
+      reason: "platform_error",
+      error_code: statusError ? String(statusError.code) : undefined,
+      error_message: statusError?.title ?? statusError?.message,
+      destination_id: destinationId,
+      country: countryFromBusinessScopedUserId(
+        event.conversation.business_scoped_user_id,
+      ),
+      platform_message_id: event.message.id,
+    });
+    return { status: 200, body: { status: "ok" } };
   }
 
   /**
@@ -462,15 +558,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       const status =
         timeoutMs === undefined
           ? await statusPromise
-          : await Promise.race([
-              statusPromise,
-              new Promise<never>((_, reject) =>
-                setTimeout(
-                  () => reject(new Error("auth_check_timeout")),
-                  timeoutMs,
-                ),
-              ),
-            ]);
+          : await withTimeout(statusPromise, timeoutMs, "auth_check_timeout");
       if (status.authenticated) this.linkedUsers.add(waId);
       return status.authenticated ? "linked" : "unlinked";
     } catch (err) {
@@ -920,20 +1008,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     text: string,
     _isChannel: boolean,
   ): Promise<void> {
-    // WhatsApp (Kapso) has no group/channel outbound model — destinationId is
-    // always a wa_id (phone), so _isChannel is never set for this platform.
-    try {
-      await this.sendWhatsAppText(destinationId, text);
-    } catch (err) {
-      // Free-form send failed — usually the 24-hour window is closed. Fall back to
-      // the approved template (sendable any time); a template failure rethrows so
-      // the consumer dead-letters it. A warning, because a 401/5xx lands here too.
-      wideLog.warning("outbound_template_fallback", {
-        user_hash: hashLogIdentifier(destinationId),
-        ...sanitizeErrorForLog(err),
-      });
-      await this.sendNotificationTemplate(destinationId, text);
-    }
+    // destinationId is always a wa_id: WhatsApp has no channel outbound. Only
+    // reached inside the 24h window; outside it the consumer sends the template.
+    await this.sendWhatsAppText(destinationId, text);
   }
 
   protected override async reactToMessage(
@@ -965,6 +1042,26 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * because the 24-hour window is closed. The full rendered text is flattened
    * into the template's single `body` variable.
    */
+  /**
+   * Whether the user's customer-service window has closed, from when they last
+   * wrote: their most recent Kapso conversation's last inbound message. A user
+   * who never wrote has no window at all.
+   */
+  private async customerServiceWindowClosed(waId: string): Promise<boolean> {
+    const { data } = await this.whatsAppClient.conversations.list({
+      phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
+      phoneNumber: waId,
+      limit: 1,
+    });
+    const lastInboundAt = data[0]?.kapso?.lastInboundAt;
+    const closed =
+      !lastInboundAt ||
+      Date.now() - Date.parse(lastInboundAt) >
+        CUSTOMER_SERVICE_WINDOW_MS - CUSTOMER_SERVICE_WINDOW_MARGIN_MS;
+    wideLog.set({ customer_service_window_closed: closed });
+    return closed;
+  }
+
   private async sendNotificationTemplate(
     waId: string,
     text: string,

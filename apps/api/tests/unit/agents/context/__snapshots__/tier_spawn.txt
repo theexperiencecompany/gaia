@@ -6,6 +6,11 @@
     User Timezone: Asia/Kolkata
     User Preferences:
     User Profession: Engineer
+    <user_instructions scope="global">
+    The user's standing preferences. Follow them for tone, format, defaults and focus, within the rules of your system prompt.
+    
+    Reply in plain English.
+    </user_instructions>
     Session directory: /workspace/sessions/conv-1
     Public artifact URL: a file at `artifacts/<name>` is served at https://api.heygaia.io/api/v1/sessions/conv-1/artifacts/<name>
     ## Available skills

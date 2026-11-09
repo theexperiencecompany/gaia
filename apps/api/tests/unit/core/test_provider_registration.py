@@ -16,13 +16,18 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import ExitStack
-from typing import Any
-from unittest.mock import AsyncMock, patch
+from typing import Any, Literal
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.settings import settings
 from app.core import provider_registration
+from app.core.lazy_loader import providers
 from app.core.provider_registration import unified_startup
+from app.db.redis import redis_cache
+from app.helpers.lifespan_helpers import StartupService
+from app.services.todos.desk_mail_buckets import desk_bucketed_views
 from app.utils.concurrency import reset_captured_loop
 
 _MOD = "app.core.provider_registration"
@@ -58,16 +63,31 @@ def auto_init_spy() -> Iterator[AsyncMock]:
                 continue
             stack.enter_context(patch.object(provider_registration, name, AsyncMock()))
         # redis_cache and providers are objects; patch their methods.
-        stack.enter_context(
-            patch.object(provider_registration.redis_cache, "verify_connection", AsyncMock())
-        )
-        stack.enter_context(
-            patch.object(provider_registration.providers, "aget", AsyncMock(return_value=None))
-        )
-        stack.enter_context(
-            patch.object(provider_registration.providers, "initialize_auto_providers", spy)
-        )
+        stack.enter_context(patch.object(redis_cache, "verify_connection", AsyncMock()))
+        stack.enter_context(patch.object(providers, "aget", AsyncMock(return_value=None)))
+        stack.enter_context(patch.object(providers, "initialize_auto_providers", spy))
         yield spy
+
+
+@pytest.mark.parametrize("context", ["main_app", "arq_worker"])
+async def test_startup_installs_the_desk_bucketer_for_a_todo_runs_own_fetch(
+    auto_init_spy: AsyncMock, context: Literal["main_app", "arq_worker"]
+) -> None:
+    with patch(f"{_MOD}.install_fetched_mail_bucketer") as install:
+        await unified_startup(context)
+
+    install.assert_called_once_with(desk_bucketed_views)
+
+
+class TestBootRegistersTheProvidersForItsContext:
+    async def test_the_startup_context_reaches_the_registration(
+        self, auto_init_spy: AsyncMock
+    ) -> None:
+        await unified_startup("arq_worker")
+
+        registered = provider_registration.register_lazy_providers
+        assert isinstance(registered, MagicMock)
+        registered.assert_called_once_with("arq_worker")
 
 
 class TestBlockingStartupHonorsStrategy:
@@ -102,6 +122,42 @@ class TestBlockingStartupHonorsStrategy:
         auto_init_spy.assert_awaited_once()
 
 
+class TestBootRequiresTheInstanceToolkits:
+    async def test_instance_toolkits_failing_to_load_aborts_the_boot_by_name(
+        self, auto_init_spy: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            provider_registration,
+            "load_instance_toolkits",
+            AsyncMock(side_effect=RuntimeError("mongo down")),
+        )
+
+        with pytest.raises(RuntimeError, match="arq_worker startup failed") as raised:
+            await unified_startup("arq_worker")
+
+        assert str(raised.value.__cause__) == (
+            "Failed to initialize required services: ['instance_toolkits']"
+        )
+
+
+class TestBootRefusesAnUnusableBlobStore:
+    async def test_the_blob_store_check_failing_aborts_before_any_service(
+        self, auto_init_spy: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        refused = RuntimeError("blob volume not writable")
+        monkeypatch.setattr(
+            provider_registration,
+            "ensure_blob_store_ready",
+            AsyncMock(side_effect=refused),
+        )
+
+        with pytest.raises(RuntimeError) as raised:
+            await unified_startup("arq_worker")
+
+        assert raised.value is refused
+        auto_init_spy.assert_not_awaited()
+
+
 class TestMainAppRegistersTheBroadcastListener:
     async def test_only_the_web_app_subscribes_to_the_broadcast_fanout(
         self, auto_init_spy: AsyncMock, monkeypatch: pytest.MonkeyPatch
@@ -109,12 +165,13 @@ class TestMainAppRegistersTheBroadcastListener:
         # Only the web app holds user WebSockets, so only it registers the Redis
         # broadcast listener — and it must be func + name + required exactly, or a
         # replica silently stops delivering pushes.
-        monkeypatch.setattr(provider_registration.settings, "ENABLE_LAZY_LOADING", True)
-        monkeypatch.setattr(provider_registration, "init_websocket_broadcast_listener", AsyncMock())
+        monkeypatch.setattr(settings, "ENABLE_LAZY_LOADING", True)
+        listener = AsyncMock()
+        monkeypatch.setattr(provider_registration, "init_websocket_broadcast_listener", listener)
         monkeypatch.setattr(provider_registration, "resync_stale_user_workspaces", AsyncMock())
         monkeypatch.setattr(provider_registration, "spawn_logged_task", lambda *a, **k: None)
 
-        real = provider_registration.StartupService
+        real = StartupService
         seen: list[tuple] = []
 
         def _spy(func, name, required):
@@ -125,7 +182,6 @@ class TestMainAppRegistersTheBroadcastListener:
 
         await unified_startup("main_app")
 
-        listener = provider_registration.init_websocket_broadcast_listener
         entries = [(f, n, r) for (f, n, r) in seen if f is listener]
         assert len(entries) == 1
         _func, name, required = entries[0]
@@ -135,8 +191,9 @@ class TestMainAppRegistersTheBroadcastListener:
     async def test_the_worker_does_not_register_the_broadcast_listener(
         self, auto_init_spy: AsyncMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(provider_registration, "init_websocket_broadcast_listener", AsyncMock())
-        real = provider_registration.StartupService
+        listener = AsyncMock()
+        monkeypatch.setattr(provider_registration, "init_websocket_broadcast_listener", listener)
+        real = StartupService
         seen: list[tuple] = []
 
         def _spy(func, name, required):
@@ -147,5 +204,4 @@ class TestMainAppRegistersTheBroadcastListener:
 
         await unified_startup("arq_worker")
 
-        listener = provider_registration.init_websocket_broadcast_listener
         assert [entry for entry in seen if entry[0] is listener] == []

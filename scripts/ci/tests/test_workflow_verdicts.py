@@ -7,8 +7,8 @@ The contract (scripts/ci/verdict.py) fixes that only for as long as every gated
 job actually goes through it — and a job can stop doing so by deleting four
 lines of YAML, which is invisible in review and produces no failure anywhere.
 
-So: for both gate workflows, every job the gate NEEDS uploads its verdicts, and
-the gate expects exactly that set. A lane can then only go quiet by editing
+So: every job the gate NEEDS uploads its verdicts, and the gate expects exactly
+that set. A lane can then only go quiet by editing
 this list, which a reviewer sees.
 """
 
@@ -18,14 +18,14 @@ from pathlib import Path
 import re
 from typing import Any
 
+from doc_shape import mapping
+from lib import nx_affected
 import pytest
+import verdict
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-WORKFLOWS = {
-    "main.yml": REPO_ROOT / ".github" / "workflows" / "main.yml",
-    "code-quality.yml": REPO_ROOT / ".github" / "workflows" / "code-quality.yml",
-}
+WORKFLOWS = {"ci.yml": REPO_ROOT / ".github" / "workflows" / "ci.yml"}
 UPLOAD_VERDICT = "./.github/actions/upload-verdict"
 # A lane that cannot run a local composite at all — no checkout, or a checkout
 # pinned to another revision. It is declared, never silently dropped: the gate
@@ -35,16 +35,16 @@ RESULT_ONLY = "result-only"
 
 @pytest.fixture(scope="module", params=sorted(WORKFLOWS))
 def workflow(request: pytest.FixtureRequest) -> dict[str, Any]:
-    return yaml.safe_load(WORKFLOWS[request.param].read_text())
+    return mapping(yaml.safe_load(WORKFLOWS[request.param].read_text()))
 
 
 def _gate(workflow: dict[str, Any]) -> dict[str, Any]:
-    return workflow["jobs"]["quality-gate"]
+    return mapping(workflow["jobs"]["quality-gate"])
 
 
 def _gated_jobs(workflow: dict[str, Any]) -> list[str]:
     # A reusable-workflow caller (`uses:`) has no steps of its own to add one
-    # to; nothing in either gate's needs is one today, and this keeps the
+    # to; nothing in the gate's needs is one today, and this keeps the
     # failure message about the real case if one ever is.
     return [j for j in _gate(workflow)["needs"] if "steps" in workflow["jobs"][j]]
 
@@ -75,6 +75,10 @@ def _expect_arg(workflow: dict[str, Any]) -> str:
         if "EXPECT" in env:
             return str(env["EXPECT"])
     raise AssertionError("the quality-gate job passes no EXPECT to `verdict.py consolidate`")
+
+
+def _is_partial(step: dict[str, Any]) -> bool:
+    return str(step.get("with", {}).get("partial", "")) == "true"
 
 
 def test_every_gated_job_uploads_its_verdict(workflow: dict[str, Any]) -> None:
@@ -112,7 +116,7 @@ def test_verdict_artifact_names_are_unique(workflow: dict[str, Any]) -> None:
             continue
         seen_steps.append(job["steps"])
         for step in job["steps"]:
-            if step.get("uses") != UPLOAD_VERDICT:
+            if step.get("uses") != UPLOAD_VERDICT or _is_partial(step):
                 continue
             given = str(step["with"]["name"])
             if "strategy" in job:
@@ -260,16 +264,16 @@ def test_the_mutation_family_declares_how_many_shards_were_planned(
     (entry,) = [e for e in _expect_arg(workflow).split(",") if _job_name(e) == "test-mutation"]
     members = entry.partition("=")[0].partition("*")[2]
     assert re.fullmatch(
-        r"\$\{\{\s*needs\.test-mutation-plan\.outputs\.count\s*\}\}", members.strip()
+        r"\$\{\{\s*needs\.detect\.outputs\.mutation_count\s*\}\}", members.strip()
     ), (
         f"the mutation entry in --expect declares {members!r} planned members. It must carry "
-        "`*${{ needs.test-mutation-plan.outputs.count }}` — the shard count the plan job packed "
+        "`*${{ needs.detect.outputs.mutation_count }}` — the shard count detect's plan packed "
         "the diff into, and the only thing that makes a missing shard visible to the gate"
     )
 
 
 def test_the_mutation_shard_declares_the_namespace_it_owns(workflow: dict[str, Any]) -> None:
-    # mutation.sh writes one verdict per MODULE under `mutation/`, not under the
+    # mutation.py writes one verdict per MODULE under `mutation/`, not under the
     # shard's own lane, so without this the ownership check would reject every
     # one of them.
     for name, job in workflow["jobs"].items():
@@ -285,55 +289,167 @@ def test_the_mutation_shard_declares_the_namespace_it_owns(workflow: dict[str, A
             )
 
 
-# A required check whose latest run on the head SHA is `skipped` counts as
-# PASSING for branch protection. So the gate may never skip: a plain title or
-# body edit fires `edited`, the whole lane DAG skips (that part is right — the
-# tree did not move), and a gate that skipped with it would overwrite a RED
-# verdict on that same SHA with a green tick nobody ran. The gate stays
-# `always()` and mirrors what the head SHA's last completed run concluded.
-MIRROR_COMMAND = "verdict.py mirror-previous-gate"
-CONSOLIDATE_COMMAND = "verdict.py consolidate"
-PLAIN_EDIT = ("github.event.action", "edited", "github.event.changes.base")
+# A required check whose latest run is `skipped` counts as PASSING, so the gate
+# may never skip: with select-runner failed every lane skips, and a gate that
+# skipped with them would publish green. And no step may special-case a PR
+# edit: ci.yml does not run on `edited` at all (a retarget re-runs it from
+# pr-title.yml), so an edit guard here would be dead code.
 
 
-def _step_with(workflow: dict[str, Any], command: str) -> dict[str, Any]:
-    matches = [s for s in _gate(workflow)["steps"] if command in str(s.get("run", ""))]
-    assert len(matches) == 1, f"the quality-gate job has {len(matches)} `{command}` steps, want 1"
-    return matches[0]
+def test_the_gate_never_skips_and_never_special_cases_an_edit(workflow: dict[str, Any]) -> None:
+    gate = _gate(workflow)
+
+    assert "always()" in str(gate.get("if", ""))
+    for step in gate["steps"]:
+        assert "edited" not in str(step.get("if", "")), step
 
 
-def test_the_gate_never_skips_itself_on_a_pr_edit(workflow: dict[str, Any]) -> None:
-    condition = str(_gate(workflow).get("if", ""))
+# ---------------------------------------------------------------------------
+# Grouped jobs. Every check is an nx target whose metadata.ci names its job;
+# the job runs them in one `runner.py run-job` step and `verdict.py
+# post-statuses` turns each into a commit status and a verdict. A job that
+# forgets either step, or a step-run check post-statuses is not told about,
+# is a check that can fail in silence.
+# ---------------------------------------------------------------------------
 
-    assert "always()" in condition
-    assert "changes.base" not in condition, (
-        "quality-gate skips itself on a plain edit. A skipped required check counts as "
-        "PASSING, so editing the title of a PR whose last run was RED flips the same head "
-        "SHA to mergeable with no completed verdict behind it"
-    )
+POST = "verdict.py post-statuses"
 
 
-def test_a_plain_edit_mirrors_the_head_shas_last_completed_verdict(
+def _checks_by_job() -> dict[str, list[nx_affected.Check]]:
+    jobs: dict[str, list[nx_affected.Check]] = {}
+    for check in nx_affected.checks().values():
+        if check.check:
+            jobs.setdefault(check.job, []).append(check)
+    return jobs
+
+
+def _steps_running(job: dict[str, Any], command: str) -> list[dict[str, Any]]:
+    return [s for s in job["steps"] if command in str(s.get("run", ""))]
+
+
+def test_every_check_names_a_job_ci_yml_has(workflow: dict[str, Any]) -> None:
+    for check in nx_affected.checks().values():
+        assert check.job in workflow["jobs"] or check.job == "selfhost-smoke", check.task
+
+
+def test_every_grouped_job_runs_its_nx_checks_then_posts_every_check(
     workflow: dict[str, Any],
 ) -> None:
-    condition = str(_step_with(workflow, MIRROR_COMMAND).get("if", ""))
+    grouped = _checks_by_job()
+    assert grouped, "no nx target names a check"
+    for name, checks in grouped.items():
+        job = workflow["jobs"][name]
+        steps = job["steps"]
+        (post,) = _steps_running(job, f"{POST} --job {name} ")
+        assert post["if"] == "always()", name
+        if any(c.runner == "nx" for c in checks):
+            (run,) = _steps_running(job, f"python3 scripts/ci/runner.py run-job {name}")
+            assert run.get("continue-on-error") is True, (
+                f"{name}: one red check must not skip the post"
+            )
+            assert steps.index(run) < steps.index(post), name
+        for check in (c for c in checks if c.runner != "nx"):
+            (step,) = [s for s in steps if s.get("id") == check.check]
+            assert step.get("continue-on-error") is True, (name, check.check)
+            assert steps.index(step) < steps.index(post), (name, check.check)
+            assert f"--step {check.check}=${{{{ steps.{check.check}.outcome }}}}" in post["run"], (
+                f"{name}: post-statuses is never told {check.check}'s outcome"
+            )
 
-    for token in PLAIN_EDIT:
-        assert token in condition, (
-            f"the gate's mirror step is guarded by {condition!r}, which does not read "
-            f"{token}: it must run for exactly the edit that skipped every lane"
-        )
+
+def test_every_step_that_posts_statuses_is_told_its_own_job_id(workflow: dict[str, Any]) -> None:
+    """The id is the status link; `job` is unreadable in a job-level env, so each step reads it."""
+    posting = [
+        (name, step)
+        for name, job in workflow["jobs"].items()
+        for step in job.get("steps", [])
+        if POST in str(step.get("run", "")) or "runner.py run-job" in str(step.get("run", ""))
+    ]
+    assert posting, "found no step that posts statuses"
+    for name, step in posting:
+        env = mapping(step.get("env") or {})
+        assert env.get("JOB_CHECK_RUN_ID") == "${{ job.check_run_id }}", (name, step.get("name"))
+        if POST in str(step["run"]):
+            assert '--job-id "$JOB_CHECK_RUN_ID"' in step["run"], (name, step.get("name"))
 
 
-def test_the_gate_does_not_consolidate_a_run_that_ran_no_lanes(
+def test_every_check_has_an_area() -> None:
+    # post-statuses posts `ci / <area> / <check>`; an area-less check has no status.
+    for checks in _checks_by_job().values():
+        for check in checks:
+            assert check.area in {"node", "python", "contracts", "tests", "security", "build"}, (
+                check.task
+            )
+
+
+def test_a_check_name_belongs_to_one_job() -> None:
+    # Two jobs posting one status context overwrite each other.
+    owner: dict[str, str] = {}
+    for name, checks in _checks_by_job().items():
+        for check in checks:
+            assert owner.setdefault(str(check.check), name) == name, check.task
+
+
+def test_a_partial_upload_runs_only_when_a_failing_verdict_is_waiting(
     workflow: dict[str, Any],
 ) -> None:
-    # The other half: with every lane skipped, `consolidate` has nothing to read
-    # — main.yml's list would print "quality-gate: PASSED" having run nothing.
-    condition = str(_step_with(workflow, CONSOLIDATE_COMMAND).get("if", ""))
+    pending = f"env.{verdict.PENDING_UPLOAD_ENV} == '1'"
+    partials = 0
+    for name, job in workflow["jobs"].items():
+        for step in job.get("steps", []):
+            if step.get("uses") == UPLOAD_VERDICT and _is_partial(step):
+                partials += 1
+                assert pending in str(step.get("if", "")), (name, step.get("if"))
+                assert "always()" in str(step.get("if", "")), name
+    assert partials, "no job uploads its verdicts mid-run"
 
-    for token in PLAIN_EDIT:
-        assert token in condition, (
-            f"the gate consolidates under {condition!r}, which does not read {token}: on a "
-            "plain edit every lane is skipped and there is no run to consolidate"
+
+def test_a_partial_upload_overwrites_the_jobs_own_artifact(workflow: dict[str, Any]) -> None:
+    # Two names would put one lane in front of the gate twice; the composite
+    # overwrites, so a partial upload must name the artifact the job ends with.
+    for name in _reporting_jobs(workflow):
+        job = workflow["jobs"][name]
+        uploads = [s for s in job["steps"] if s.get("uses") == UPLOAD_VERDICT]
+        finals = {str(s["with"]["name"]) for s in uploads if not _is_partial(s)}
+        for step in uploads:
+            if not _is_partial(step):
+                continue
+            given = str(step["with"]["name"]).replace("${{ github.job }}", name)
+            assert given in finals, f"{name}: partial upload {given!r} is not one of {finals}"
+
+
+@pytest.mark.parametrize(
+    "path", sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml")), ids=lambda p: p.name
+)
+def test_a_steps_shell_script_resolves_from_its_working_directory(path: Path) -> None:
+    """A relative verdict.py under working-directory: apps/api failed to open, and the check read as red."""
+    unresolved = []
+    for job_id, job in (mapping(yaml.safe_load(path.read_text())).get("jobs") or {}).items():
+        default = ((job.get("defaults") or {}).get("run") or {}).get("working-directory", ".")
+        for step in job.get("steps", []):
+            script = re.match(r"python3 (\S+\.py)", str(step.get("shell", "")))
+            cwd = REPO_ROOT / str(step.get("working-directory", default))
+            if script and not (cwd / script.group(1)).is_file():
+                unresolved.append(
+                    f"{job_id}/{step.get('id') or step.get('name')}: {script.group(1)}"
+                )
+    assert unresolved == []
+
+
+def test_every_job_that_reads_the_checks_installs_node_first(workflow: dict[str, Any]) -> None:
+    """Regression: scan's post-statuses asks nx for the check list and found no pnpm (merge queue only)."""
+    for name, job in workflow["jobs"].items():
+        steps = job.get("steps", [])
+        readers = [
+            i for i, s in enumerate(steps)
+            if "verdict.py post-statuses" in str(s.get("run", ""))
+            or "runner.py run-job" in str(s.get("run", ""))
+        ]  # fmt: skip
+        if not readers:
+            continue
+        setups = [
+            i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/setup-node-pnpm"
+        ]
+        assert setups and setups[0] < readers[0], (
+            f"{name} asks nx for its checks before installing it"
         )

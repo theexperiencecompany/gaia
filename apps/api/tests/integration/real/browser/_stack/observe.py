@@ -133,15 +133,19 @@ class OutboundObserver:
         if self._channel is None:
             raise RuntimeError("the observer is not started")
         transcript = self.transcripts.setdefault(destination_id, Transcript(destination_id))
+        transcript_queue = f"{_TRANSCRIPT_PREFIX}{destination_id}"
         queue = await self._channel.declare_queue(
-            f"{_TRANSCRIPT_PREFIX}{destination_id}", exclusive=True, auto_delete=True
+            transcript_queue, exclusive=True, auto_delete=True
         )
 
         async def collect(message: AbstractIncomingMessage) -> None:
             async with message.process():
                 transcript.deliveries.append(_delivery(json.loads(message.body)))
 
-        await queue.consume(collect)
+        # Named, not aiormq's default: that one is drawn from `random`, which pytest-randomly
+        # reseeds identically for a test's rerun, so the rerun's tag collided with the failed
+        # attempt's consumer still on this module-long channel.
+        await queue.consume(collect, consumer_tag=transcript_queue)
         return transcript
 
     async def _relay_forever(self) -> None:

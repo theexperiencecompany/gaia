@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import subprocess
 
 import pytest
 
@@ -82,42 +81,5 @@ def test_the_detector_would_catch_an_indented_block(tmp_path: Path) -> None:
 
 
 def test_at_least_one_real_block_was_found() -> None:
-    # Same guard, against the real tree: mutation.sh is known to embed Python.
-    assert _blocks((CI / "mutation.sh").read_text()), "found no embedded Python to check"
-
-
-def test_the_mutation_shard_parses_a_real_group(tmp_path: Path) -> None:
-    """Run `mutation.sh shard` far enough to prove its GROUP parser works.
-
-    The shard fails afterwards (the module does not exist), which is the point:
-    reaching that failure means the embedded Python ran. An IndentationError
-    instead stops at "could not read its GROUP".
-    """
-    group = (
-        '[{"module":"app/does_not_exist.py",'
-        '"testfiles":"[\\"tests/unit/test_nope.py\\"]","ranges":"[[1,2]]"}]'
-    )
-    proc = subprocess.run(
-        ["bash", str(CI / "mutation.sh"), "shard"],
-        env={
-            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-            "HOME": str(tmp_path),
-            "GROUP": group,
-            "SHARD_LOG": str(tmp_path / "shard.log"),
-            # Without this the shard reports its deliberately bogus module into
-            # the CHECKOUT's verdict tree, where the lane's upload composite
-            # ships it and the quality gate reads it as a real failing lane:
-            # `mutation/app/does_not_exist.py` reached the gate of run
-            # 34586506166 from this very fixture.
-            "GAIA_VERDICT_DIR": str(tmp_path / "verdicts"),
-        },
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=180,
-    )
-    combined = proc.stdout + proc.stderr
-    assert "IndentationError" not in combined, combined[-2000:]
-    assert "could not read its GROUP" not in combined, combined[-2000:]
-    # It got past the parser and into the per-module loop.
-    assert "=== app/does_not_exist.py ===" in (tmp_path / "shard.log").read_text()
+    # Same guard, against the real tree: changes.sh is known to embed Python.
+    assert _blocks((CI / "changes.sh").read_text()), "found no embedded Python to check"

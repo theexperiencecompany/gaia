@@ -21,6 +21,7 @@ from app.core.lazy_loader import providers
 from app.db.redis import redis_cache
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import AnalyticsId, Dedupe, PostHogCapture, UserId, prepare_capture
+from shared.py.analytics.activity import is_active_use
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor
 from shared.py.analytics.catalog.auth import UserActive, UserLoggedIn, UserSignedUp
@@ -71,7 +72,6 @@ class AIFeature(StrEnum):
     WORKFLOW = "workflow", ("playbook_ask_fill", "playbook_narration")
     MEMORY = "memory", ("profile_extraction",)
     VISION = "vision", ("image_to_text", "tool_media_vision", "vision_fallback")
-    MAIL = "mail", ("mail_compose",)
     HIL = (
         "hil",
         (
@@ -160,7 +160,7 @@ def capture(distinct_id: AnalyticsId, event: ServerEvent, dedupe: Dedupe | None 
     Stamps the bound analytics context. dedupe makes a resend the same PostHog
     row, so anything a retried task or replayed request can emit needs one; an
     at-most-once event is sent only by the first capture of its key. A user's
-    own event also marks them active for the day.
+    use of GAIA (shared.py.analytics.activity) also marks them active for the day.
     """
     prepared = prepare_capture(distinct_id, event, Surface.SERVER, dedupe)
     client = _get_posthog_client()
@@ -175,10 +175,8 @@ def capture(distinct_id: AnalyticsId, event: ServerEvent, dedupe: Dedupe | None 
         spawn_background_task(
             _send_once(client, prepared, event.at_most_once_ttl), name=AT_MOST_ONCE_TASK_NAME
         )
-    if (
-        isinstance(distinct_id, UserId)
-        and not isinstance(event, UserActive)
-        and current_analytics_context().attribution.actor is Actor.USER
+    if isinstance(distinct_id, UserId) and is_active_use(
+        event, current_analytics_context().attribution
     ):
         # A naive now() names the same instant: astimezone reads it as local time.
         today = analytics_day_start(datetime.now(UTC))  # pragma: no mutate — equivalent

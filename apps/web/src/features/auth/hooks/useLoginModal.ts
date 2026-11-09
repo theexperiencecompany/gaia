@@ -6,11 +6,16 @@ export const useLoginModal = () => {
 };
 
 export const useLoginModalActions = () => {
-  const { setOpen, openModal, closeModal } = useLoginModalStore();
+  const { setOpen, openModal, closeModal, suppressModal, unsuppressModal } =
+    useLoginModalStore();
 
   return {
     setLoginModalOpen: setOpen,
     openModal,
     closeModal,
+    /** Suppress/unsuppress the modal for surfaces with their own sign-in
+     * affordance (desktop popup, setup wizard's account step). */
+    suppressModal,
+    unsuppressModal,
   };
 };

@@ -12,6 +12,7 @@ import { Skeleton } from "@heroui/skeleton";
 import { Tab, Tabs } from "@heroui/tabs";
 import { type ReactNode, useEffect, useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
+import { useWindowOrigin } from "@/hooks/ui/useWindowOrigin";
 import { type ConnectRunner, SAVED_LOGIN_TTL_DAYS } from "../constants";
 import { useImportToken } from "../hooks/useImportToken";
 import {
@@ -166,10 +167,15 @@ function ConnectBrowserBody({ onClose }: { onClose: () => void }) {
   }, [mint]);
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  const apiOrigin = apiBaseUrl ? connectApiOverride(apiBaseUrl) : null;
+  // Empty on the server and during hydration, when no command can be built yet.
+  const pageOrigin = useWindowOrigin();
+  const apiOrigin =
+    apiBaseUrl && pageOrigin
+      ? connectApiOverride(apiBaseUrl, pageOrigin)
+      : null;
   const runners = connectRunnersFor(apiOrigin);
   const command =
-    token && apiBaseUrl
+    token && apiBaseUrl && pageOrigin
       ? buildConnectCommand({ token, apiOrigin, runner })
       : null;
 

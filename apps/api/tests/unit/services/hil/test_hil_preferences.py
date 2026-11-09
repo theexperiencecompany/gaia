@@ -8,6 +8,7 @@ tests/contracts/test_users_repository.py — what remains here is the service's
 own behavior: default resolution and reading back after a write.
 """
 
+from http import HTTPStatus
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -18,6 +19,7 @@ from app.services.hil.preferences import (
     set_tool_override,
     update_hil_preferences,
 )
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
 
@@ -159,4 +161,34 @@ class TestCaptures:
             SettingsPreferencesChanged(
                 setting="tool_approval", tool_name="GMAIL_SEND_EMAIL", require_approval=False
             ),
+        )
+
+
+class TestMalformedMcpKeys:
+    """Seen on this branch: one stored mcp: key with no tool name made every later read raise."""
+
+    @pytest.mark.parametrize("key", ["mcp:", "mcp:posthog", "mcp::search", "mcp:posthog:"])
+    async def test_a_malformed_scoped_override_is_refused_before_it_is_stored(
+        self, user_repo, key: str
+    ) -> None:
+        with pytest.raises(AppError) as refused:
+            await set_tool_override(USER_ID, key, True)
+
+        assert refused.value.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+        user_repo.set_hil_tool_override.assert_not_awaited()
+
+    async def test_a_malformed_key_in_a_bulk_update_stores_nothing(self, user_repo) -> None:
+        with pytest.raises(AppError) as refused:
+            await update_hil_preferences(
+                USER_ID, tool_overrides={"send": True}, never_auto_tools=["mcp:posthog"]
+            )
+
+        assert refused.value.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+        user_repo.set_hil_preference_fields.assert_not_awaited()
+
+    async def test_a_well_formed_scoped_key_is_stored(self, user_repo) -> None:
+        await set_tool_override(USER_ID, "mcp:posthog:search", False)
+
+        user_repo.set_hil_tool_override.assert_awaited_once_with(
+            USER_ID, "mcp:posthog:search", False
         )

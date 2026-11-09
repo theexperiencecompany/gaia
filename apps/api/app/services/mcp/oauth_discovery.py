@@ -6,6 +6,7 @@ Handles OAuth 2.1 discovery flow per MCP specification:
 - RFC 8414 Authorization Server Metadata discovery
 """
 
+from app.config.settings import settings
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
 from app.constants.mcp import COMPOSIO_MCP_HOST
@@ -27,7 +28,7 @@ from app.utils.mcp_oauth_utils import (
     validate_https_url,
     validate_oauth_endpoints,
 )
-from app.utils.url_safety import assert_public_http_url
+from app.utils.url_safety import assert_endpoint_url_allowed
 from mcp.shared.auth import OAuthMetadata
 from shared.py.wide_events import log
 
@@ -64,7 +65,7 @@ async def discover_oauth_config(
             error_type=type(e).__name__,
         )
 
-    challenge = challenge_data or await extract_auth_challenge(server_url)
+    challenge: McpAuthChallenge = challenge_data or await extract_auth_challenge(server_url)
     initial_scope = challenge.get("scope")
 
     # Try RFC 9728 Protected Resource Metadata
@@ -152,9 +153,11 @@ async def probe_mcp_connection(server_url: str) -> McpProbeResult:
     try:
         # SSRF re-check before the outbound probe (DNS-rebinding defense). A raised
         # ValueError is caught below and surfaced through the existing error dict.
-        await assert_public_http_url(server_url)
+        await assert_endpoint_url_allowed(
+            server_url, allow_private=settings.deployment.private_network_endpoints
+        )
 
-        challenge = await extract_auth_challenge(server_url)
+        challenge: McpAuthChallenge = await extract_auth_challenge(server_url)
 
         # Empty dict => the probe got a non-401 response: no auth required.
         if not challenge:

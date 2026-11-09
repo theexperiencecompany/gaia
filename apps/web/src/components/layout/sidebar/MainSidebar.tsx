@@ -9,7 +9,6 @@ import { Suspense } from "react";
 import ChatsList from "@/components/layout/sidebar/ChatsList";
 
 import IntegrationsSidebar from "@/components/layout/sidebar/variants/IntegrationsSidebar";
-import EmailSidebar from "@/components/layout/sidebar/variants/MailSidebar";
 import SettingsSidebar from "@/components/layout/sidebar/variants/SettingsSidebar";
 import TodoSidebar from "@/components/layout/sidebar/variants/TodoSidebar";
 import WorkflowsSidebar from "@/components/layout/sidebar/variants/WorkflowsSidebar";
@@ -22,7 +21,6 @@ export default function Sidebar() {
 
   // Determine which sidebar to show based on the current route
   if (pathname.startsWith("/todos")) return <TodoSidebar />;
-  if (pathname.startsWith("/mail")) return <EmailSidebar />;
   if (pathname.startsWith("/workflows")) return <WorkflowsSidebar />;
   if (pathname.startsWith("/settings"))
     return (

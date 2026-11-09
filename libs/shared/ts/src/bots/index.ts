@@ -45,6 +45,16 @@ export {
   outboundMessageEnvelopeSchemaFor,
   outboundReactionSchema,
 } from "./consumer/envelope";
+export type {
+  DeliveryFailure,
+  ReportDeliveryFailure,
+} from "./delivery-failures";
+export {
+  createDeliveryFailureReporter,
+  DELIVERY_FAILURE_KIND,
+  describeErrorForAlert,
+  isLostReply,
+} from "./delivery-failures";
 export {
   buildLinkCodeFailureMessage,
   consumeInboundLinkCode,
@@ -81,6 +91,7 @@ export type {
   CommandContext,
   CommandExecuteParams,
   MessageTarget,
+  OutboundNotifications,
   PlatformName,
   RichMessage,
   RichMessageTarget,
@@ -178,5 +189,6 @@ export {
   WEBHOOK_MAX_BODY_BYTES,
   WIDE_EVENT_MESSAGE,
   wideLog,
+  withTimeout,
   withWideEvent,
 } from "./utils";

@@ -1,0 +1,186 @@
+# Creation requests for the authored-gate eval. Each is sent through the real authoring path
+# (workflow: the workflow subagent prompt; todo: the subscribe_todo_to_trigger call) and the
+# condition GAIA writes is gated against the corpus emails labelled here for the request's intent.
+# wanted: emails the user asked the job to act on (a skip of one is a wrong skip).
+# unwanted: emails the job would do nothing with (a run of one is a wasted run).
+# extra-*: pseudonymised emails added for intents the corpus lacks (extra_mail.yaml).
+# rule: false means the right authoring is no condition at all.
+
+- id: req-01
+  path: workflow
+  split: tune
+  request: When a customer pays us through Krufrefi, post the amount and customer name to #revenue on Slack
+  wanted: [mail-014, mail-037, mail-043, mail-108, mail-247, mail-267, mail-274, mail-311, mail-394]
+  unwanted: [mail-210, mail-315, mail-234, mail-130, mail-059, mail-123, mail-201, mail-249]
+- id: req-02
+  path: workflow
+  split: tune
+  request: Whenever a Krufrefi payment fails, draft a friendly email to that customer asking them to update their card
+  wanted: [mail-210, mail-315, mail-329, mail-344]
+  unwanted: [mail-014, mail-108, mail-247, mail-234, mail-273, mail-130, mail-054, mail-118]
+- id: req-03
+  path: workflow
+  split: holdout
+  request: Summarise invoices as they arrive and add each one to my finance sheet
+  wanted: [mail-059, mail-362, mail-033]
+  unwanted: [mail-118, mail-123, mail-201, mail-249, mail-087, mail-232, mail-176, mail-188]
+- id: req-04
+  path: workflow
+  split: tune
+  request: Every new email from my cofounder Drikri Hedehi (gogrin@trogakrean.example) should become a todo for me
+  wanted: [mail-071, mail-088]
+  unwanted: [mail-239, mail-371, mail-005, mail-123, mail-232, mail-087, mail-249, mail-014]
+- id: req-05
+  path: workflow
+  split: tune
+  request: Draft replies to recruiter emails saying I'm not looking right now but happy to stay in touch
+  wanted: [extra-recruiter-1, extra-recruiter-2]
+  unwanted: [mail-047, mail-132, mail-385, mail-123, mail-249, mail-014, mail-201, mail-087]
+- id: req-06
+  path: workflow
+  split: tune
+  request: When a RISTOK alert starts firing, post it to #incidents on Slack
+  wanted: [mail-010, mail-046, mail-087, mail-216, mail-261, mail-306]
+  unwanted: [mail-009, mail-044, mail-214, mail-304, mail-181, mail-085, mail-142, mail-232]
+- id: req-07
+  path: workflow
+  split: holdout
+  request: When a new support request reaches RISTOK Support, open a Linear issue with the customer's problem
+  wanted: [mail-232, mail-264]
+  unwanted: [mail-087, mail-214, mail-049, mail-074, mail-266, mail-123, mail-014, mail-201]
+- id: req-08
+  path: workflow
+  split: tune
+  request: Tell me on Telegram whenever a cloud provider sends a spend, budget or usage-limit alert
+  wanted: [mail-007, mail-012, mail-019, mail-034, mail-146, mail-147, mail-151, mail-215, mail-125, mail-094]
+  unwanted: [mail-014, mail-059, mail-123, mail-087, mail-343, mail-201, mail-249, mail-232]
+- id: req-09
+  path: workflow
+  split: tune
+  request: When Zaizapu Drefre emails me about our meetings, reply to confirm the time and add it to my calendar
+  wanted: [mail-291, mail-249]
+  unwanted: [mail-184, mail-241, mail-005, mail-014, mail-123, mail-087, mail-201, mail-232]
+- id: req-10
+  path: workflow
+  split: holdout
+  request: Forward emails from investors to my cofounder Drikri
+  wanted: [extra-investor-1, extra-investor-2]
+  unwanted: [mail-063, mail-131, mail-152, mail-081, mail-321, mail-014, mail-123, mail-232]
+- id: req-11
+  path: workflow
+  split: tune
+  request: Archive newsletters as soon as they land so my inbox stays clean
+  wanted: [mail-118, mail-123, mail-255, mail-297, mail-376, mail-410]
+  unwanted: [mail-249, mail-291, mail-232, mail-071, mail-210, mail-005]
+- id: req-12
+  path: workflow
+  split: holdout
+  request: Save every attachment I'm emailed to my Google Drive
+  wanted: [mail-033, mail-059, mail-362, mail-079]
+  unwanted: [mail-118, mail-123, mail-201, mail-249, mail-087, mail-014, mail-071, mail-232]
+- id: req-13
+  path: workflow
+  split: tune
+  request: Log every security alert, new-device or password-reset email in my security sheet
+  wanted: [mail-079, mail-080, mail-188, mail-207, mail-293]
+  unwanted: [mail-118, mail-123, mail-249, mail-087, mail-014, mail-232, mail-059]
+- id: req-14
+  path: workflow
+  split: tune
+  request: Every new GitHub star on our repo, post it to #wins on Slack
+  rule: false
+- id: req-15
+  path: workflow
+  split: tune
+  request: Every weekday at 9am summarise my inbox and send it to me on Slack
+  rule: false
+- id: req-16
+  path: workflow
+  split: tune
+  request: When any new email arrives, add a line with its sender and subject to my email log sheet
+  rule: false
+  wanted: [mail-014, mail-118, mail-123, mail-201, mail-249, mail-087, mail-232, mail-059]
+- id: req-17
+  path: workflow
+  split: holdout
+  request: Whenever a new email comes in, send me a Slack DM with its subject so I see everything instantly
+  rule: false
+  wanted: [mail-014, mail-118, mail-123, mail-201, mail-249, mail-087, mail-232, mail-059]
+- id: req-18
+  path: workflow
+  split: tune
+  request: When a service emails that I must verify my account or submit documents, create a todo for it
+  wanted: [mail-058, mail-105, mail-229, mail-373, mail-072]
+  unwanted: [mail-014, mail-118, mail-123, mail-087, mail-201, mail-249, mail-057, mail-056]
+- id: req-19
+  path: workflow
+  split: holdout
+  request: When someone asks about press, a media kit or a pitch video for RISTOK, draft a reply for me to review
+  wanted: [mail-313, mail-364]
+  unwanted: [mail-123, mail-118, mail-087, mail-014, mail-232, mail-249, mail-011]
+- id: req-20
+  path: workflow
+  split: tune
+  request: When a bounced-email notice arrives, tell me which address failed so I can fix it
+  wanted: [mail-245]
+  unwanted: [mail-118, mail-123, mail-087, mail-014, mail-249, mail-201, mail-232]
+- id: req-21
+  path: todo
+  split: tune
+  request: Get Kramiotai's subscription paid. Their card keeps failing; follow up with them until a payment goes through.
+  wanted: [mail-315, mail-329, mail-344, mail-247]
+  unwanted: [mail-210, mail-014, mail-108, mail-311, mail-234, mail-123, mail-087]
+- id: req-22
+  path: todo
+  split: tune
+  request: Finish the Haidrain application. Answer whatever Haidrain asks for until it is approved.
+  wanted: [mail-072, mail-073, mail-075]
+  unwanted: [mail-259, mail-014, mail-123, mail-087, mail-249, mail-232, mail-111]
+- id: req-23
+  path: todo
+  split: holdout
+  request: Resolve support ticket RISTOK-35107050 (the customer whose app won't open) and reply to them when it's fixed.
+  wanted: [mail-232, mail-233]
+  unwanted: [mail-264, mail-265, mail-087, mail-014, mail-123, mail-249]
+- id: req-24
+  path: todo
+  split: tune
+  request: Pay the Lefa bill before they cut our services off.
+  wanted: [mail-054]
+  unwanted: [mail-111, mail-134, mail-014, mail-123, mail-087, mail-249, mail-059]
+- id: req-25
+  path: todo
+  split: holdout
+  request: Get the Stize Cloud Platform account verified; send them whatever information they ask for.
+  wanted: [mail-105, mail-229, mail-373]
+  unwanted: [mail-059, mail-146, mail-014, mail-123, mail-087, mail-249]
+- id: req-26
+  path: todo
+  split: tune
+  request: Keep the tax-problem thread with the faifrol team moving and reply when they write back.
+  wanted: [mail-269, mail-176, mail-178, mail-179]
+  unwanted: [mail-014, mail-123, mail-087, mail-249, mail-232, mail-118]
+- id: req-27
+  path: todo
+  split: tune
+  request: Accept Zaizapu Drefre's invite to work together in Gruha.
+  wanted: [mail-184, mail-241]
+  unwanted: [mail-249, mail-291, mail-230, mail-014, mail-123, mail-087]
+- id: req-28
+  path: todo
+  split: holdout
+  request: Settle the ristok sandboxes question with Meapre Retro once they reply.
+  wanted: [mail-006, mail-135, mail-319]
+  unwanted: [mail-014, mail-123, mail-087, mail-249, mail-232, mail-118]
+- id: req-29
+  path: todo
+  split: tune
+  request: Ship the fix for the paid user whose PPT creation broke, and tell Drikri when it's live.
+  wanted: [mail-088]
+  unwanted: [mail-071, mail-014, mail-123, mail-087, mail-249, mail-232]
+- id: req-30
+  path: todo
+  split: holdout
+  request: Reply to every new email from Chihor Drisun about the pitch video.
+  wanted: [mail-313, mail-242, mail-243]
+  unwanted: [mail-353, mail-364, mail-014, mail-123, mail-087, mail-249]

@@ -11,10 +11,10 @@ import httpx
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.oauth_config import get_integration_by_id, get_short_name_mapping
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.constants.log_tags import LogTag
 from app.models.user_models import AuthenticatedUser
 from app.services.oauth.oauth_service import check_integration_status
+from app.utils.errors import IntegrationNotConnectedError
 from shared.py.wide_events import log
 
 http_async_client = httpx.AsyncClient(timeout=10.0)
@@ -40,6 +40,7 @@ def require_integration(
 
     if not integration_config:
         raise ValueError(f"Integration config not found for: {integration_id}")
+    integration_name = integration_config.name
 
     async def wrapper(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
         user_id = user.user_id
@@ -50,25 +51,7 @@ def require_integration(
             )
 
         try:
-            # Use unified integration status checker
             is_connected = await check_integration_status(integration_id, user_id)
-
-            if not is_connected:
-                detail = {
-                    "type": "integration",
-                    "code": INTEGRATION_NOT_CONNECTED,
-                    "toolkit": integration_short_name,
-                    "message": f"Missing connection: {integration_config.name}. Please connect integrations in settings.",
-                }
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=detail,
-                )
-
-            return user
-
-        except HTTPException:
-            raise
         except Exception as e:
             log.error(
                 f"{LogTag.API} Error checking integration",
@@ -80,6 +63,14 @@ def require_integration(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to verify integration permissions",
             ) from e
+        if not is_connected:
+            raise IntegrationNotConnectedError(
+                integration_id=integration_id,
+                integration_name=integration_name,
+                why="The integration has no connected account",
+                toolkit=integration_short_name,
+            )
+        return user
 
     return wrapper
 

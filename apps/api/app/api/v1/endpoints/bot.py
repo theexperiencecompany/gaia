@@ -18,6 +18,7 @@ from app.constants.cache import BOT_UPGRADE_LINK_PREFIX, BOT_UPGRADE_LINK_TTL
 from app.constants.error_codes import BOT_ACCOUNT_NOT_LINKED, BOT_API_KEY_INVALID
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
+from app.constants.platform_links import Platform
 from app.core.stream_manager import stream_manager, with_heartbeat
 from app.db.redis import redis_cache
 from app.decorators import (
@@ -77,7 +78,6 @@ from app.services.integrations.user_integrations import get_user_integration_rec
 from app.services.latency_metrics import observe_sse_delivery
 from app.services.payments.payment_service import payment_service
 from app.services.platform_link_service import (
-    Platform,
     PlatformLinkService,
     platform_requires_upgrade,
 )
@@ -319,6 +319,7 @@ async def _bot_rate_limit_notice(
 
     Rate limits are streamed as a ``tool_data`` card for the web UI to render.
     Bots drop ``tool_data``, so without this they'd silently swallow the limit.
+    The card's own message wins, as on web: it names the wall that actually bound.
     Returns the user-facing notice, or ``None`` if ``chunk`` isn't such a card.
 
     The upgrade link is emitted as CommonMark ``[label](url)``; each bot adapter
@@ -334,8 +335,11 @@ async def _bot_rate_limit_notice(
         if isinstance(tool_card.data, dict)
         else BotRateLimitCardData()
     )
-    feature = str(card.feature or "this feature").replace("_", " ")
-    notice = f"⏳ You've reached your {feature} limit. Please try again later."
+    if card.message:
+        notice = f"⏳ {card.message}"
+    else:
+        feature = str(card.feature or "this feature").replace("_", " ")
+        notice = f"⏳ You've reached your {feature} limit. Please try again later."
 
     # Nudge an upgrade only for non-Pro users (Pro is the top tier).
     if card.current_plan != PlanType.PRO.value:

@@ -34,11 +34,19 @@
       "cache": true,
       "dependsOn": ["^build"],
       "inputs": [
-        "default",
+        "typecheck",
         "^production",
+        {
+          "env": "NEXT_PUBLIC_API_BASE_URL"
+        },
+        {
+          "env": "NEXT_PUBLIC_DISCORD_CLIENT_ID"
+        },
+        {
+          "env": "NEXT_PUBLIC_SLACK_CLIENT_ID"
+        },
         "{workspaceRoot}/apps/web/next.config.mjs",
-        "{workspaceRoot}/apps/web/tsconfig.json",
-        "{workspaceRoot}/apps/web/tailwind.config.ts"
+        "{workspaceRoot}/apps/web/tsconfig.json"
       ],
       "outputs": ["{projectRoot}/.next", "{projectRoot}/.next/cache"]
     },
@@ -79,14 +87,14 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm type && pnpm exec tsc -p e2e/tsconfig.json --noEmit",
+        "command": "pnpm type && node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" -p e2e/tsconfig.json --noEmit",
         "cwd": "{projectRoot}"
       },
       "cache": true,
       "inputs": [
-        "default",
-        "{workspaceRoot}/apps/web/tsconfig.json",
-        "^production"
+        "typecheck",
+        "^production",
+        "{workspaceRoot}/apps/web/tsconfig.json"
       ]
     },
     "e2e": {
@@ -110,6 +118,9 @@
         "command": "pnpm vitest run --config vitest.config.ts",
         "cwd": "{projectRoot}"
       }
+    },
+    "docker:build": {
+      "inputs": ["production", "^production", "{workspaceRoot}/.dockerignore"]
     }
   }
 }

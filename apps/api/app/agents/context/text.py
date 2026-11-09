@@ -64,7 +64,8 @@ EXECUTOR_CONNECTED_DEVICES_HEADER = (
     "the sandbox shell is a cloud container that CANNOT see it, so NEVER answer a question "
     "about the user's own files or apps by running commands in the sandbox. A device may also "
     "expose its own MCP servers (listed after 'exposing:' on each line); to use one, work "
-    "through that server's own tools - retrieve them and hand off to its subagent - rather "
+    "through that server's own tools - activate_integration it (list_devices shows its "
+    "integration_id) and run its tools via execute - rather "
     "than run_on_device. Use list_devices for live online status and the MCP servers a device "
     "exposes:"
 )

@@ -1,0 +1,32 @@
+# squirrelscan at --level surface, which `scripts/ci/smoke-web.sh` holds to this
+# file. `<rule id>=<count>` is the most pages (or, for a site-wide check, items)
+# the rule may flag; `score:<category>=<score>` the lowest score a category below
+# 100 may fall to. squirrel-build.txt is the PR gate's, on the production build
+# served locally (`audit-build`); squirrel-live.txt is the post-deploy run's, on
+# https://heygaia.io (`squirrel`). They differ where Cloudflare's edge does:
+# image resizing, caching and response headers.
+#
+# This file only tightens. The PR that fixes a finding rewrites it
+# (SMOKE_SQUIRREL_UPDATE=1 on the subcommand above), and the PR gate fails until
+# it does; a rule or category worse than its line fails every run.
+
+a11y/duplicate-id-aria=3
+ax/token-weight=98
+content/keyword-stuffing=1
+content/word-count=15
+images/image-file-size=6
+links/orphan-pages=10
+links/weak-internal-links=8
+perf/cache-headers=24
+perf/critical-request-chains=100
+perf/css-file-size=100
+perf/source-maps=100
+perf/total-byte-weight=1
+score:Accessibility=98
+score:Agent Experience=50
+score:Content=95
+score:Images=92
+score:Links=90
+score:Performance=70
+score:Security=96
+security/csp=1

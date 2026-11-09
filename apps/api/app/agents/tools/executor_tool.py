@@ -286,8 +286,8 @@ async def _dispatch_executor(
             )
             return (
                 "It's been added to the work already in progress and will be "
-                "covered in the same answer. Confirm briefly in plain words — "
-                "never mention runs, task ids, queues, or waiting."
+                "covered in the same answer. Acknowledge it with a reaction or a few plain "
+                "words; never mention runs, task ids, queues, or waiting."
             )
 
     # MCP tools load lazily inside each subagent's first use — the old eager
@@ -329,7 +329,7 @@ def handoff_message(task_id: str) -> str:
     """What comms reads the moment work is handed off, before the executor has run a single tool."""
     return (
         f"Handed to the executor (task_id: {task_id}). If a step needs the user's approval, "
-        "they see an approval card for it."
+        "it has not run yet and their decision releases it or skips it."
     )
 
 

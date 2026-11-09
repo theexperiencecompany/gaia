@@ -7,6 +7,7 @@ leaves updated_at unset on insert and only update_custom writes it, so the
 repository mirrors that on-disk reality rather than stamping every write.
 """
 
+from collections.abc import Collection
 from datetime import UTC, datetime
 import re
 
@@ -41,6 +42,13 @@ _TOOLS_STUB_FILTER: dict[str, object] = {
     **{field: {"$exists": False} for field in _IDENTITY_FIELDS},
 }
 _FULL_DOCUMENT_FILTER: dict[str, object] = {field: {"$exists": True} for field in _IDENTITY_FIELDS}
+_HAS_TOOLS_FILTER: dict[str, object] = {"tools": {"$exists": True, "$ne": []}}
+_TOOLS_RECORD_PROJECTION: dict[str, object] = {
+    "integration_id": 1,
+    "tools": 1,
+    "name": 1,
+    "icon_url": 1,
+}
 
 
 class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
@@ -68,11 +76,6 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
                 ]
             }
         )
-
-    async def find_by_id_prefix(self, prefix: str) -> Integration | None:
-        """Resolve a partial integration_id (case-insensitive prefix) to an integration."""
-        escaped = re.escape(prefix)
-        return await self._find_one({"integration_id": {"$regex": f"^{escaped}", "$options": "i"}})
 
     async def find_custom_by_ids(self, integration_ids: list[str]) -> list[Integration]:
         """Custom-source integrations among the given ids (a user's added customs)."""
@@ -360,15 +363,6 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         )
         return matched > 0
 
-    async def clear_tools(self, integration_id: str) -> None:
-        """Drop the stored tool metadata (on disconnect) so ghost tools don't linger."""
-        await self._apply_raw_update_unfetched(
-            {"integration_id": integration_id},
-            {"$unset": {"tools": ""}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=integration_id,
-        )
-
     async def ensure_unique_slug(self, name: str, category: str, integration_id: str) -> str:
         """Return a marketplace slug unique across published integrations.
 
@@ -492,9 +486,16 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     async def all_with_tools(self) -> list[IntegrationToolsRecord]:
         """Every integration that has stored tools, projected for the global roll-up."""
         return await self._aggregate(
+            [{"$match": _HAS_TOOLS_FILTER}, {"$project": _TOOLS_RECORD_PROJECTION}],
+            IntegrationToolsRecord,
+        )
+
+    async def tools_by_ids(self, integration_ids: Collection[str]) -> list[IntegrationToolsRecord]:
+        """Those of integration_ids that have stored tools, projected like all_with_tools."""
+        return await self._aggregate(
             [
-                {"$match": {"tools": {"$exists": True, "$ne": []}}},
-                {"$project": {"integration_id": 1, "tools": 1, "name": 1, "icon_url": 1}},
+                {"$match": {"integration_id": {"$in": list(integration_ids)}, **_HAS_TOOLS_FILTER}},
+                {"$project": _TOOLS_RECORD_PROJECTION},
             ],
             IntegrationToolsRecord,
         )

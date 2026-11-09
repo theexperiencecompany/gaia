@@ -1,31 +1,39 @@
 """What a run's Browser-Use Agent is built with, apart from the live objects it runs on.
 
-The run's contract with Browser-Use: Jev acts first, on the part of the task
-the start page is for (a run resumed on the fallback engine goes on instead),
-the agent reads pages as text
+The run's contract with Browser-Use: with the user's BROWSER_JEV flag, Jev acts
+first, on the part of the task the start page is for, else the start page is
+opened (a run resumed on the fallback engine goes on instead), the agent reads pages as text
 with whole URLs, and each step gets the run's step budget, which a handoff's
 wait is outside of.
 """
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import TypedDict
+
+from browser_use.tools.views import NavigateAction
 
 from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_AGENT_FAST_ENGINE_NOTE,
+    BROWSER_AGENT_JEV_ROLE,
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
     BROWSER_AGENT_ROLE,
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_HUMAN_CHECKS,
-    BROWSER_TASK_QUOTE_RULE,
     JEV_FIRST_BURST_DONE_WHEN,
     JEV_FIRST_BURST_GOAL,
 )
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.jev.tool import JEV_ACTION
+from app.services.browser.jev.tool import JEV_ACTION, JevParams
 from app.services.browser.run_contract import BrowserRunConfig
+
+#: Browser-Use's own action that opens an address (registered by function name).
+_NAVIGATE_ACTION = "navigate"
+
+#: Browser-Use's initial_actions: each action's name to its params, as the action's model dumps them.
+InitialActions = list[dict[str, dict[str, object]]]
 
 
 class AgentOptions(TypedDict):
@@ -33,7 +41,7 @@ class AgentOptions(TypedDict):
 
     task: str
     directly_open_url: bool
-    initial_actions: list[dict[str, dict[str, Any]]] | None
+    initial_actions: InitialActions | None
     sensitive_data: dict[str, str | dict[str, str]] | None
     extend_system_message: str
     use_vision: bool
@@ -48,7 +56,7 @@ class AgentOptions(TypedDict):
 def agent_options(
     task: str, config: BrowserRunConfig, secrets: RunSecrets, *, resumed: bool, fast_engine: bool
 ) -> AgentOptions:
-    """Return the Agent for task: Jev's burst on the start page first when there is one, the agent steering after.
+    """Return the Agent for task: the start page's first action when there is one, the agent steering after.
 
     An agent on the fast engine is told so: one that was not believed the page
     it read there was already the full browser, and never moved when the task said to.
@@ -58,27 +66,14 @@ def agent_options(
     return AgentOptions(
         # A resumed agent read its own "switch to the full browser" in its history,
         # and asked again: the request it reads every step says the move is done.
-        task=task + (secrets.mask(moved) if resumed else "") + BROWSER_TASK_QUOTE_RULE,
+        task=task + (secrets.mask(moved) if resumed else ""),
         # A resumed run's session already opened its last page; reopening the task's
         # first URL lost that page and the agent's place.
         directly_open_url=not resumed,
-        # With no page to start on, a first burst could only end on the blank tab: the first move is the agent's.
-        initial_actions=(
-            [
-                {
-                    JEV_ACTION: {
-                        "goal": JEV_FIRST_BURST_GOAL.format(task=task),
-                        "done_when": JEV_FIRST_BURST_DONE_WHEN,
-                        "start_url": config.start_url,
-                    }
-                }
-            ]
-            if config.start_url and not resumed
-            else None
-        ),
+        initial_actions=_initial_actions(task, config) if not resumed else None,
         sensitive_data=secrets.sensitive_data() or None,
         extend_system_message=(
-            BROWSER_AGENT_ROLE
+            (BROWSER_AGENT_JEV_ROLE if config.jev else BROWSER_AGENT_ROLE)
             + BROWSER_HUMAN_CHECKS
             + (BROWSER_AGENT_FAST_ENGINE_NOTE if fast_engine else "")
         ),
@@ -92,3 +87,24 @@ def agent_options(
         step_timeout=config.step_timeout_seconds,
         _url_shortening_limit=BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     )
+
+
+def _initial_actions(task: str, config: BrowserRunConfig) -> InitialActions | None:
+    """Return the start page's first action: Jev's burst there, else opening it; None on a blank tab.
+
+    A burst on the blank tab could only end there, so the agent moves first.
+    Opened here, not by Browser-Use's find of a URL in the task: that gives up on two.
+    """
+    if not config.start_url:
+        return None
+    if config.jev:
+        return [
+            {
+                JEV_ACTION: JevParams(
+                    goal=JEV_FIRST_BURST_GOAL.format(task=task),
+                    done_when=JEV_FIRST_BURST_DONE_WHEN,
+                    start_url=config.start_url,
+                ).model_dump()
+            }
+        ]
+    return [{_NAVIGATE_ACTION: NavigateAction(url=config.start_url).model_dump()}]

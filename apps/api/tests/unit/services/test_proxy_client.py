@@ -12,7 +12,6 @@ from app.constants.log_tags import LogTag
 from app.models.agent_config import ComposioAccountSelection
 from app.services.composio import proxy_client
 from app.services.composio.account_scope import account_scope
-from app.services.composio.dead_account import ConnectedAccountGoneError
 from app.services.composio.proxy_client import (
     ProxyRequest,
     _build_parameters,
@@ -20,7 +19,7 @@ from app.services.composio.proxy_client import (
     proxy_request,
     proxy_request_sync,
 )
-from app.utils.errors import AppError
+from app.utils.errors import AppError, IntegrationNotConnectedError
 from shared.py.wide_events import log
 from tests.factories import make_composio_not_found
 
@@ -213,15 +212,34 @@ class TestProxyRequestSync:
                 proxy_request_sync(
                     ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
                 )
+        assert isinstance(exc.value, IntegrationNotConnectedError)
+        assert exc.value.grant_died is True
+        assert exc.value.why == "The provider rejected the token and Composio's refresh failed"
         assert exc.value.status_code == 403
         assert exc.value.code == INTEGRATION_NOT_CONNECTED
-        assert exc.value.public == {"toolkit": "GMAIL"}
+        assert exc.value.public == {"toolkit": "GMAIL", "integration_id": "gmail"}
         assert exc.value.meta == {
             "endpoint": "/x",
             "method": "GET",
             "provider_status": 401,
             "provider_response": {"error": "invalid_grant"},
         }
+
+    @pytest.mark.parametrize(
+        ("provider_status", "gaia_status"),
+        [(400, 400), (404, 404), (599, 599), (600, 502)],
+    )
+    def test_a_provider_error_keeps_its_status_unless_it_is_not_an_http_error(
+        self, provider_status: int, gaia_status: int
+    ) -> None:
+        composio = _make_composio(proxy_status=provider_status, proxy_data={"error": "x"})
+        with _patch_primary(), _patch_composio(composio):
+            with pytest.raises(AppError) as exc:
+                proxy_request_sync(
+                    ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
+                )
+        assert not isinstance(exc.value, IntegrationNotConnectedError)
+        assert exc.value.status_code == gaia_status
 
     def test_sdk_failure_is_a_502_carrying_the_request_identity(self) -> None:
         composio = _make_composio()
@@ -263,12 +281,14 @@ class TestProxyRequestSync:
         )
         composio.tools.proxy.side_effect = not_found
         with _patch_primary("ca_gone"), _patch_composio(composio):
-            with pytest.raises(ConnectedAccountGoneError) as exc:
+            with pytest.raises(IntegrationNotConnectedError) as exc:
                 proxy_request_sync(
                     ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
                 )
+        assert exc.value.grant_died is True
+        assert exc.value.why == "Composio has no connected account with the id this call ran as"
         assert exc.value.code == INTEGRATION_NOT_CONNECTED
-        assert exc.value.public == {"toolkit": "GMAIL"}
+        assert exc.value.public == {"toolkit": "GMAIL", "integration_id": "gmail"}
         assert exc.value.meta == {"cause": str(not_found)}
 
     def test_any_other_composio_404_stays_a_loud_502(self) -> None:
@@ -282,7 +302,7 @@ class TestProxyRequestSync:
                 proxy_request_sync(
                     ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
                 )
-        assert not isinstance(exc.value, ConnectedAccountGoneError)
+        assert not isinstance(exc.value, IntegrationNotConnectedError)
         assert exc.value.status_code == 502
         assert exc.value.message == f"Composio tools.proxy failed: {not_found}"
         assert exc.value.meta["exception"] == str(not_found)

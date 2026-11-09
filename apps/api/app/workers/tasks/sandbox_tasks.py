@@ -10,7 +10,7 @@ Currently:
 - refresh_lab_sandboxes: every 10 minutes, over agent-lab sandboxes. A live
   run's sandbox is saved and, near E2B's lifetime cap, renewed with a pause
   and resume; any other, including a run past SANDBOX_LAB_MAX_RUN_SECONDS
-  (one notification per cap window), is paused once idle.
+  (logged once per cap window, never shown to the user), is paused once idle.
 """
 
 from __future__ import annotations
@@ -28,16 +28,9 @@ from app.constants.execute import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
-from app.models.notification.notification_models import (
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-    NotificationType,
-)
 from app.services.agent_lab.agents_saves import save_agents_home
 from app.services.agent_lab.lab_runs import lab_run_status
 from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
-from app.services.notification_service import notification_service
 from app.services.sandbox import (
     acquire_sandbox,
     mark_sandbox_dead,
@@ -116,12 +109,14 @@ async def _tick_lab_sandbox(ctx: ArqJobContext, user_id: str) -> LabTickOutcome:
     """Keep a live run's sandbox warm; otherwise pause it once idle. A failure only logs."""
     try:
         status = await lab_run_status(user_id)
-        if status.capped_todo_ids:
-            await _notify_lab_cap_hit(ctx, user_id, status.capped_todo_ids)
         if status.live:
             await _keep_lab_sandbox(user_id)
             return LabTickOutcome.KEPT
-        return LabTickOutcome.PAUSED if await pause_idle_sandbox(user_id) else LabTickOutcome.LEFT
+        paused = await pause_idle_sandbox(user_id)
+        outcome = LabTickOutcome.PAUSED if paused else LabTickOutcome.LEFT
+        if status.capped_todo_ids:
+            await _log_lab_cap_hit(ctx, user_id, status.capped_todo_ids, outcome)
+        return outcome
     except Exception as e:
         log.warning(
             f"{LogTag.SANDBOX} failed to refresh lab sandbox",
@@ -149,60 +144,35 @@ async def _keep_lab_sandbox(user_id: str) -> None:
     )
 
 
-def _lab_cap_notified_key(user_id: str) -> str:
-    """Redis key throttling the cap-hit notification to one per cap window."""
-    return f"lab:cap_notified:{user_id}"
+def _lab_cap_logged_key(user_id: str) -> str:
+    """Redis key throttling the cap-hit log line to one per cap window."""
+    return f"lab:cap_logged:{user_id}"
 
 
-async def _notify_lab_cap_hit(ctx: ArqJobContext, user_id: str, todo_ids: list[str]) -> None:
-    """One in-app notification per cap window that keep-warm stopped; delivery failure never costs the tick."""
+async def _log_lab_cap_hit(
+    ctx: ArqJobContext, user_id: str, todo_ids: list[str], outcome: LabTickOutcome
+) -> None:
+    """Log once per cap window that keep-warm stopped. Ops-only: users are never notified of it."""
     pool = ctx.get("redis")
     if pool is not None:
         try:
-            if await pool.exists(_lab_cap_notified_key(user_id)):
+            first_in_window = await pool.set(
+                _lab_cap_logged_key(user_id), "1", ex=SANDBOX_LAB_MAX_RUN_SECONDS, nx=True
+            )
+        except Exception as e:
+            log.warning(
+                f"{LogTag.SANDBOX} lab cap dedup failed; logging anyway",
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+        else:
+            if not first_in_window:
                 return
-        except Exception as e:
-            log.warning(
-                f"{LogTag.SANDBOX} lab cap dedup check failed; notifying anyway",
-                user_id=user_id,
-                error_type=type(e).__name__,
-                error=str(e),
-            )
-    cap_hours = SANDBOX_LAB_MAX_RUN_SECONDS // 3600
-    try:
-        await notification_service.create_notification(
-            NotificationRequest(
-                user_id=user_id,
-                source=NotificationSourceEnum.BACKGROUND_JOB,
-                type=NotificationType.WARNING,
-                content=NotificationContent(
-                    title=f"Agent lab run hit the {cap_hours}-hour cap",
-                    body=(
-                        f"GAIA stopped keeping its sandbox warm after {cap_hours} hours, "
-                        "so the sandbox will pause when idle. Start a fresh run to continue."
-                    ),
-                ),
-                metadata={
-                    "cap_seconds": SANDBOX_LAB_MAX_RUN_SECONDS,
-                    "todo_ids": todo_ids,
-                },
-            )
-        )
-    except Exception as notify_exc:
-        log.warning(
-            f"{LogTag.SANDBOX} lab cap notification failed",
-            user_id=user_id,
-            error_type=type(notify_exc).__name__,
-            error=str(notify_exc),
-        )
-        return
-    if pool is not None:
-        try:
-            await pool.set(_lab_cap_notified_key(user_id), "1", ex=SANDBOX_LAB_MAX_RUN_SECONDS)
-        except Exception as e:
-            log.warning(
-                f"{LogTag.SANDBOX} lab cap dedup stamp failed",
-                user_id=user_id,
-                error_type=type(e).__name__,
-                error=str(e),
-            )
+    log.info(
+        f"{LogTag.SANDBOX} lab run hit the run cap; keep-warm stopped",
+        user_id=user_id,
+        todo_ids=todo_ids,
+        cap_seconds=SANDBOX_LAB_MAX_RUN_SECONDS,
+        outcome=outcome.value,
+    )

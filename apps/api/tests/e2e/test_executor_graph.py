@@ -43,6 +43,7 @@ from tests.e2e._harness.graph_run import (
     NUDGE_NODE,
     REJECT_NODE,
     TOOLS_NODE,
+    ToolCall,
     call,
     executor_graph,
     run_graph,
@@ -52,7 +53,7 @@ from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
 pytestmark = pytest.mark.e2e
 
 
-def plan(*contents: str, plan_id: str = "p1") -> dict[str, Any]:
+def plan(*contents: str, plan_id: str = "p1") -> ToolCall:
     return call("plan_tasks", {"tasks": [{"content": c} for c in contents]}, plan_id)
 
 
@@ -68,7 +69,7 @@ class TestToolsBoundFromTurnOne:
         [
             "plan_tasks",
             "update_tasks",
-            "handoff",
+            "activate_integration",
             "retrieve_tools",
             # spawn_subagent comes from the middleware stack, not
             # initial_tool_ids — it is the only tool here that depends on
@@ -296,12 +297,12 @@ class TestTermination:
         # takes its one nudge and then ends in plain text.
         assert run.nodes() == [AGENT_NODE, NUDGE_NODE, AGENT_NODE]
 
-    async def test_finish_task_without_a_result_still_terminates(self):
-        """A missing result must yield a usable completion message, not an empty one."""
+    async def test_finish_task_without_a_result_terminates_with_no_answer(self):
+        """A missing result ends the run with no answer, which is never reported as done."""
         async with executor_graph([call("finish_task", {}, call_id="f1")]) as graph:
             run = await run_graph(graph, "wrap up")
 
-        assert run.results_from(FINISH_NODE) == ["Task completed."]
+        assert run.results_from(FINISH_NODE) == [""]
 
 
 class TestRecursionWrapup:

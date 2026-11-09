@@ -435,3 +435,15 @@ export interface BotCommand {
 // Re-export GaiaClient type for use in CommandExecuteParams
 // (avoids circular imports - consumers import GaiaClient from @gaia/shared directly)
 import type { GaiaClient } from "../api";
+
+/**
+ * For a platform that only lets a business message a user freely inside a window
+ * (WhatsApp: 24h after the user last wrote). Outside it, a message must go out as
+ * the platform's approved notification template, or the platform drops it.
+ */
+export interface OutboundNotifications {
+  /** Whether a free-form message to `destinationId` would be refused right now. */
+  windowClosed(destinationId: string, isChannel: boolean): Promise<boolean>;
+  /** Sends one whole message, already rendered, as the notification template. */
+  deliver(destinationId: string, text: string): Promise<void>;
+}

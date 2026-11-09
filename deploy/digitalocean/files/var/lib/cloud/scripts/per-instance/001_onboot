@@ -1,0 +1,15 @@
+#!/bin/bash
+# First boot of a GAIA Droplet: generate this instance's secrets and start the
+# stack on port 80. Progress: /var/log/gaia-install.log.
+set -euo pipefail
+
+# Lift the "please wait" SSH lock however the install ends, so root can debug.
+restore_ssh() {
+  sed -e '/Match User root/d' \
+      -e '/.*ForceCommand.*droplet.*/d' \
+      -i /etc/ssh/sshd_config
+  systemctl restart ssh
+}
+trap restore_ssh EXIT
+
+runuser -l gaia -c 'gaia up --yes --web-port 80' >> /var/log/gaia-install.log 2>&1

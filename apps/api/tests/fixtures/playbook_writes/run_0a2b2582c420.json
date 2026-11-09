@@ -1,0 +1,102 @@
+{
+ "run": "run_0a2b2582c420",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "create_tracked_todo"
+  },
+  {
+   "tool_name": "create_tracked_todo"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 3,
+   "written": {
+    "description": "Ytt lar Snobe Mszeec jcqviucr: fetch pmff 55c Svdly inbox, classify, draft replies udh rxrpqy-aclrlesq emails, create todos udh rxrpqy emrwk, vyxqdlz w dikcp toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch_msgs",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "hx:inbox wfjho_wqbg:8v",
+         "body_processing": "tqoqqbhdv",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "duacch"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "draft",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "create_draft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "recipient_email": "$xba.draft_qnvvslhfg",
+         "subject": "$xba.draft_hpsorlw",
+         "thread_id": "$xba.draft_tbyrfw_lm",
+         "body": "$xba.draft_zbta"
+        }
+       }
+      ]
+     },
+     {
+      "id": "todo",
+      "tool": "create_tracked_todo",
+      "args": {
+       "title": "$xba.todo_pnkwu",
+       "description": "$xba.todo_uvstqfniqxq",
+       "priority": "wer"
+      }
+     }
+    ],
+    "synthesize": "Cjrcogu vhi iwsxbtw dikcp toxyfucq: dwka vsrb hx (vbthf qiq teawzudnol), dwka pnpjt ebfhkdrhx (rxrpqy-aclrlesq/futskbhmb emails), rfroc todos uign eacrpal (awnwii), qiq rfroc replies uign mykchqr (qnvvslhfg + qmagvMd, nzqsos nlla hbe drafts mth sent).",
+    "ask": {
+     "draft_recipient": {
+      "prompt": "Ldjgdubsw email zsggppn yg lar email uzku dqmaibj w pwwwn (evvq lar ivlzzgqbwf rxrpqy-aclrlesq/futskbhmb yjx)."
+     },
+     "draft_subject": {
+      "prompt": "Rwlik hpsorlw zlls, qagrqqtq xhuc 'Ag: ' ymbncago lar txyfpmhc hpsorlw."
+     },
+     "draft_thread_id": {
+      "prompt": "qjwzyvOb yg lar email sfamx ntilaea oa."
+     },
+     "draft_body": {
+      "prompt": "Jylzmmt aognijtpsuov pwwwn zbta ymbncago lar txyfpmhc purw, mth tcczogwipe fwppclc dmqo jhbmwa w vyxrzx pwwwn."
+     },
+     "todo_title": {
+      "prompt": "Krtkh pnkwu udh lar rxrpqy-item todo."
+     },
+     "todo_description": {
+      "prompt": "Hhbrvctamog yg lar rxrpqy item aiupidgai lar iqiswc email qiq sja mxiqhhbd/gmrlbxc."
+     }
+    }
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -1,15 +1,13 @@
-"""Shared logic for subagent invocation, used by handoff_tools.py and executor_tool.py.
+"""Shared logic for subagent invocation, used by delegation.py and executor_tool.py."""
 
-Lives here (rather than in handoff_tools.py) so those modules import from it,
-avoiding a cyclic dependency.
-"""
-
+import asyncio
 from dataclasses import dataclass, field, replace
 import time
 from typing import Any, TypedDict, cast
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from langchain_core.messages import (
+    AIMessage,
     AIMessageChunk,
     AnyMessage,
     BaseMessage,
@@ -21,6 +19,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command, StateSnapshot, interrupt
 
 from app.agents.context.assemble import assemble_context
+from app.agents.context.presence_note import presence_note_message
 from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
@@ -30,6 +29,7 @@ from app.agents.core.graph_manager import (
     GraphManager,
     GraphUnavailableError,
 )
+from app.agents.core.held_replies import HeldReplies
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, dev_option
 from app.agents.llm.reasoning import extract_reasoning_delta
@@ -37,7 +37,12 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
-from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
+from app.constants.agents import (
+    DONE_EVIDENCE_RULE,
+    NO_ANSWER_NOTICE,
+    AgentTag,
+    wrap_agent_payload,
+)
 from app.constants.general import (
     EXECUTOR_INTEGRATION_ID,
     EXECUTOR_THREAD_PREFIX,
@@ -53,12 +58,14 @@ from app.helpers.message_helpers import (
     create_system_message,
     format_files_list,
 )
+from app.models.agent_config import AgentConfigurableView
 from app.models.agent_models import (
     AgentConfigurable,
     AgentRunnableConfig,
     AgentUserContext,
     StreamChunkMetadata,
     agent_configurable,
+    run_analytics_context,
 )
 from app.models.hil_models import HilInterruptPayload, HilResumeDecision
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
@@ -71,16 +78,15 @@ from app.utils.stream_utils import extract_tool_entries_from_update
 from shared.py.wide_events import log
 
 
-def _capture_finish_task_content(chunk: ToolMessage, current_message: str) -> str:
-    """Return the finish_task chunk's textual content if applicable.
+def _finish_task_result(chunk: ToolMessage) -> str | None:
+    """Return the finish_task chunk's textual content, or None for any other tool result.
 
-    finish_task carries the final answer in its return value; capturing it makes
-    the parent handoff return the actual content instead of the literal "Task
-    completed" fallback. Subagents with include_finish_task=False never enter this branch.
+    finish_task carries the final answer in its return value, so the parent handoff
+    returns it. Subagents with include_finish_task=False never enter this branch.
     """
     if chunk.name == FINISH_TASK_NAME and isinstance(chunk.content, str):
         return chunk.content
-    return current_message
+    return None
 
 
 class _MessagesChannel(TypedDict, total=False):
@@ -117,6 +123,8 @@ class SubagentOutcome:
     interrupt: HilInterruptPayload | None = None
     run_messages: tuple[AnyMessage, ...] = ()
     stopped: bool = False
+    #: False when the run ended without an answer; text then says nothing confirms the work.
+    answered: bool = True
 
     @property
     def paused(self) -> bool:
@@ -185,7 +193,6 @@ class ThreadSeed:
     user_id: str | None = None
     subagent_id: str | None = None
     retrieval_query: str | None = None
-    integration_id: str | None = None
     #: The comms turn's request this thread serves; see SectionContext.request_query.
     request_query: str | None = None
 
@@ -204,28 +211,28 @@ async def build_initial_messages(
     callers pass the unenhanced task when task carries hints that would pollute search.
     """
     configurable: AgentConfigurable = seed.configurable
-    tier, user_id, subagent_id, retrieval_query, integration_id = (
+    tier, user_id, subagent_id, retrieval_query = (
         seed.tier,
         seed.user_id,
         seed.subagent_id,
         seed.retrieval_query,
-        seed.integration_id,
     )
 
     log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
 
-    assembled = await assemble_context(
-        SectionContext.from_configurable(
-            tier,
-            configurable,
-            SectionScope(
-                query=retrieval_query if retrieval_query is not None else task,
-                request_query=seed.request_query,
-                user_id=user_id,
-                subagent_id=subagent_id,
-                integration_id=integration_id,
-            ),
-        )
+    section_context = SectionContext.from_configurable(
+        tier,
+        configurable,
+        SectionScope(
+            query=retrieval_query if retrieval_query is not None else task,
+            request_query=seed.request_query,
+            user_id=user_id,
+            subagent_id=subagent_id,
+        ),
+    )
+    assembled, note = await asyncio.gather(
+        assemble_context(section_context),
+        _executor_presence_note(section_context, configurable),
     )
 
     # Current time rides in a HumanMessage so the system_instruction prefix
@@ -238,12 +245,30 @@ async def build_initial_messages(
     return [
         system_message,
         *assembled.messages(),
+        *([note] if note is not None else []),
         HumanMessage(
             content=task,
             additional_kwargs={"visible_to": {agent_name}},
         ),
         time_message,
     ]
+
+
+async def _executor_presence_note(
+    ctx: SectionContext, configurable: AgentConfigurable
+) -> HumanMessage | None:
+    """Return the executor's surface-change note; every other worker tier gets none."""
+    if ctx.tier is not AgentTier.EXECUTOR:
+        return None
+    return await presence_note_message(
+        ctx.user_id,
+        configurable.get("presence"),
+        ctx.source,
+        ctx.execution_mode,
+        # Comms voices the result and gets the first-turn note itself.
+        opens_thread=False,
+        entry_surface=run_analytics_context(configurable).attribution.surface,
+    )
 
 
 def _with_current_time(resume: Command, configurable: AgentConfigurable) -> Command:
@@ -263,59 +288,6 @@ def _with_current_time(resume: Command, configurable: AgentConfigurable) -> Comm
     return Command(resume=resume.resume, update=update, goto=resume.goto, graph=resume.graph)
 
 
-def _process_messages_payload(
-    # "messages"-mode payloads are always (message chunk, metadata); the driver
-    # above holds them as `object` only because the shape varies per stream mode.
-    payload: tuple[BaseMessage, StreamChunkMetadata],
-    complete_message: str,
-    stream_writer: StreamWriterCallable | None,
-    subagent_id: str | None,
-    stream_id: str,
-) -> str:
-    """Handle one "messages"-mode stream event, returning the updated message.
-
-    Emits tool_output for ToolMessages, gated by claim_tool_output: a nested
-    subagent's chunks carry the SAME run metadata as ours, so ungated it would
-    double-render the result — the claim goes to whichever run announced the call.
-    """
-    metadata: StreamChunkMetadata
-    chunk, metadata = payload
-    if metadata.get("silent"):
-        return complete_message
-
-    # Accumulate AI response content
-    if chunk and isinstance(chunk, AIMessageChunk):
-        content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
-        if content:
-            complete_message += content
-
-        # Stream reasoning token by token, carrying subagent_id for step nesting
-        # (empty for non-reasoning models). Deltas are per chunk; the stream
-        # writer coalesces them for the persistence collector, never for publish.
-        if stream_writer:
-            reasoning_delta = extract_reasoning_delta(chunk)
-            if reasoning_delta:
-                reasoning_payload = ReasoningPayload(
-                    content=reasoning_delta, subagent_id=subagent_id
-                )
-                stream_writer({"reasoning": reasoning_payload.model_dump(exclude_none=True)})
-
-    # Emit tool_output when ToolMessage arrives. Text-extract block content so
-    # inline media (base64 image blocks) never streams to the frontend.
-    elif chunk and isinstance(chunk, ToolMessage):
-        content_str = extract_text_content(chunk.content)
-        complete_message = _capture_finish_task_content(chunk, complete_message)
-        if stream_writer and claim_tool_output(stream_id, chunk.tool_call_id, subagent_id):
-            tool_output_payload = ToolOutputPayload(
-                tool_call_id=chunk.tool_call_id,
-                output=content_str,
-                subagent_id=subagent_id,
-            )
-            stream_writer({"tool_output": tool_output_payload.model_dump(exclude_none=True)})
-
-    return complete_message
-
-
 @dataclass
 class _StreamRun:
     """One drive of execute_subagent_stream: its emitters and its running state.
@@ -328,11 +300,77 @@ class _StreamRun:
     stream_writer: StreamWriterCallable | None
     integration_metadata: IntegrationMetadata | None
     subagent_id: str | None
-    complete_message: str = ""
+    #: The finish_task return value, which is the answer over anything the run said.
+    finish_result: str | None = None
+    held: HeldReplies = field(default_factory=HeldReplies)
     emitted_tool_calls: set[str] = field(default_factory=set)
     tool_ran: bool = False
     pending_approvals: list[HilInterruptPayload] = field(default_factory=list)
     run_messages: list[AnyMessage] = field(default_factory=list)
+    #: The run's own thread, which build_agent_config stamps on every chunk its model streams.
+    thread_id: str | None = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.thread_id = AgentConfigurableView.model_validate(self.ctx.configurable).thread_id
+
+    @property
+    def complete_message(self) -> str:
+        """What the run answered: finish_task's result, else the replies that called no tool."""
+        if self.finish_result is not None:
+            return self.finish_result
+        return self.held.reply_text()
+
+
+def _process_messages_payload(
+    run: _StreamRun,
+    # "messages"-mode payloads are always (message chunk, metadata); the driver
+    # holds them as `object` only because the shape varies per stream mode.
+    payload: tuple[BaseMessage, StreamChunkMetadata],
+) -> None:
+    """Handle one "messages"-mode stream event.
+
+    Emits tool_output for ToolMessages, gated by claim_tool_output: a nested
+    subagent's chunks carry the SAME run metadata as ours, so ungated it would
+    double-render the result — the claim goes to whichever run announced the call.
+    """
+    metadata: StreamChunkMetadata
+    chunk, metadata = payload
+    if metadata.get("silent"):
+        return
+
+    # A spawned subagent's chunks share this stream: its reply and finish_task are its own.
+    nested = metadata.get("agent_thread_id", run.thread_id) != run.thread_id
+
+    if chunk and isinstance(chunk, AIMessageChunk):
+        if not nested:
+            run.held.hold(chunk, metadata)
+
+        # Stream reasoning token by token, carrying subagent_id for step nesting
+        # (empty for non-reasoning models). Deltas are per chunk; the stream
+        # writer coalesces them for the persistence collector, never for publish.
+        if run.stream_writer:
+            reasoning_delta = extract_reasoning_delta(chunk)
+            if reasoning_delta:
+                reasoning_payload = ReasoningPayload(
+                    content=reasoning_delta, subagent_id=run.subagent_id
+                )
+                run.stream_writer({"reasoning": reasoning_payload.model_dump(exclude_none=True)})
+
+    # Emit tool_output when ToolMessage arrives. Text-extract block content so
+    # inline media (base64 image blocks) never streams to the frontend.
+    elif chunk and isinstance(chunk, ToolMessage):
+        content_str = extract_text_content(chunk.content)
+        if not nested and (finish_result := _finish_task_result(chunk)) is not None:
+            run.finish_result = finish_result
+        if run.stream_writer and claim_tool_output(
+            run.ctx.stream_id or "", chunk.tool_call_id, run.subagent_id
+        ):
+            tool_output_payload = ToolOutputPayload(
+                tool_call_id=chunk.tool_call_id,
+                output=content_str,
+                subagent_id=run.subagent_id,
+            )
+            run.stream_writer({"tool_output": tool_output_payload.model_dump(exclude_none=True)})
 
 
 async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) -> None:
@@ -360,9 +398,13 @@ async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) 
         # streams them as partial chunks. Captured for the call record.
         if isinstance(state_update, dict):
             agent_update: _MessagesChannel = cast(_MessagesChannel, state_update)
-            run.run_messages.extend(
+            announcing = [
                 msg for msg in agent_update.get("messages", []) if getattr(msg, "tool_calls", None)
-            )
+            ]
+            run.run_messages.extend(announcing)
+            for msg in announcing:
+                if isinstance(msg, AIMessage):
+                    run.held.mark_announced(msg)
         # Use shared helper to extract and format tool entries
         entries = await extract_tool_entries_from_update(
             state_update=state_update,
@@ -391,13 +433,20 @@ def _finalize_run(run: _StreamRun) -> SubagentOutcome:
             run_messages=tuple(run.run_messages),
         )
 
+    if not run.complete_message:
+        log.warning("subagent_ended_without_answer", subagent_name=run.ctx.agent_name)
+        return SubagentOutcome(
+            text=NO_ANSWER_NOTICE.format(name=f"The {run.ctx.agent_name} run"),
+            run_messages=tuple(run.run_messages),
+            answered=False,
+        )
+
     # A worker that only narrated did no work: say so, so its delegator re-issues it.
     # The executor is nobody's delegate; its words are its answer (collection runs report).
     if (
         run.ctx.integration_id != EXECUTOR_INTEGRATION_ID
         and not run.tool_ran
         and not run.emitted_tool_calls
-        and run.complete_message
     ):
         log.warning("subagent_returned_narration_only", subagent_name=run.ctx.agent_name)
         final_message = (
@@ -406,7 +455,7 @@ def _finalize_run(run: _StreamRun) -> SubagentOutcome:
             "explicit instruction to perform the action."
         )
     else:
-        final_message = run.complete_message or "Task completed"
+        final_message = run.complete_message
     initial_state: SubagentInitialState = run.ctx.initial_state
     log.set(
         subagent={
@@ -518,8 +567,8 @@ async def execute_subagent_stream(
                 observe_subagent_run(
                     time.perf_counter() - segment_start, subagent_id=label, status="cancelled"
                 )
-                # What the run said so far, not the finished-run text: that one reads
-                # "Task completed" or tells the executor to re-issue what it just stopped.
+                # What the run said so far, not the finished-run text: that one says
+                # nothing was confirmed or tells the executor to re-issue what it just stopped.
                 return replace(
                     outcome,
                     text=wrap_agent_payload(
@@ -569,13 +618,7 @@ async def _consume_stream_event(run: _StreamRun, stream_mode: str, payload: obje
 
     if stream_mode == "messages":
         chunk_and_metadata = cast(tuple[BaseMessage, StreamChunkMetadata], payload)
-        run.complete_message = _process_messages_payload(
-            chunk_and_metadata,
-            run.complete_message,
-            run.stream_writer,
-            run.subagent_id,
-            run.ctx.stream_id or "",
-        )
+        _process_messages_payload(run, chunk_and_metadata)
         if isinstance(chunk_and_metadata[0], ToolMessage):
             run.tool_ran = True
             run.run_messages.append(chunk_and_metadata[0])
@@ -628,7 +671,11 @@ async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutc
         )
     if not _snapshot_messages(snapshot):
         return None
-    return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
+    if final_text := _final_text_from_snapshot(snapshot):
+        return SubagentOutcome(text=final_text)
+    return SubagentOutcome(
+        text=NO_ANSWER_NOTICE.format(name=f"The {ctx.agent_name} run"), answered=False
+    )
 
 
 async def _address_resume(
@@ -849,26 +896,13 @@ async def prepare_executor_execution(
     resolved_category = get_subagent_by_id(tool_category) if tool_category else None
     if tool_category and resolved_category:
         tool_hint = f"the '{selected_tool}' tool" if selected_tool else "the user's request"
-        if (
-            resolved_category.managed_by == "mcp"
-            and resolved_category.mcp_config
-            and resolved_category.mcp_config.requires_auth
-        ):
-            enhanced_task = (
-                f"{task}\n\n"
-                f"DIRECT EXECUTION HINT: This request should be handled by "
-                f"'{tool_category}'. Skip retrieve_tools discovery and directly "
-                f'handoff(subagent_id="{tool_category}", task="...") with the full request, then '
-                f"use its result for {tool_hint}."
-            )
-        else:
-            enhanced_task = (
-                f"{task}\n\n"
-                f"DIRECT EXECUTION HINT: This request should be handled by "
-                f"'{tool_category}'. Skip retrieve_tools discovery and directly "
-                f'call activate_integration(integration_id="{tool_category}"), then '
-                f"act on {tool_hint} yourself with its tools."
-            )
+        enhanced_task = (
+            f"{task}\n\n"
+            f"DIRECT EXECUTION HINT: This request should be handled by "
+            f"'{tool_category}'. Skip retrieve_tools discovery and directly "
+            f'call activate_integration(integration_id="{tool_category}"), then '
+            f"act on {tool_hint} yourself with its tools."
+        )
         log.set(
             executor_prep={
                 "direct_hint_applied": True,

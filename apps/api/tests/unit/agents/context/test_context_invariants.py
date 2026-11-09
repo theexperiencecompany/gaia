@@ -3,17 +3,17 @@
 Each of these was, until now, defended only by a comment — and every comment
 here documents a real incident. A comment cannot fail CI, which is why the
 regressions kept coming back. These are the same rules as executable assertions,
-and they hold across all five tiers.
+and they hold across every tier.
 """
 
+from contextlib import AbstractContextManager
 from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 import pytest
 from tests._harness.context_chain import (
     FIXED_NOW,
-    AgentTier,
     ContextSeed,
     HarnessUser,
     bound_for,
@@ -46,6 +46,7 @@ from app.agents.context.slots import (
     slot_of,
 )
 from app.agents.context.text import VOLATILE_BLOCK_TRUNC_MARKER
+from app.agents.context.tiers import AgentTier
 from app.constants.llm import LLMProviderName
 from app.constants.log_tags import LogTag
 
@@ -56,15 +57,14 @@ RICH_SOURCES = ContextSources(
     tracked_todos="Tracked: ship the context refactor",
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
-    account_identity={"email": "ada@example.com"},
-    custom_instructions="Always archive newsletters.",
+    global_instructions="Reply in plain English.",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )
 
 #: A checkpointed thread's worth of prior turns, carrying a stale copy of every
 #: slot a tier can produce. The collapse invariants are only interesting here —
 #: a first turn has nothing to collapse.
-STALE_THREAD = [
+STALE_THREAD: list[AnyMessage] = [
     SystemMessage(content="stale static"),
     SystemMessage(content="stale dynamic", additional_kwargs={"dynamic_context": True}),
     SystemMessage(content="stale recall", additional_kwargs={"memory_recall": True}),
@@ -313,9 +313,7 @@ class TestLegacyMarkersStillResolve:
 class TestWorkspaceSessionNeverGuesses:
     """thread_id is the executor_<conv> wrapper — using it as a fallback would point deliverables outside the directory the artifact watcher scans."""
 
-    @pytest.mark.parametrize(
-        "tier", [AgentTier.EXECUTOR, AgentTier.PROVIDER_SUBAGENT, AgentTier.SPAWN]
-    )
+    @pytest.mark.parametrize("tier", [AgentTier.EXECUTOR, AgentTier.SPAWN])
     async def test_absent_vfs_session_id_yields_no_banner(self, tier: AgentTier) -> None:
         messages = await effective_context(
             tier, ContextSeed(sources=RICH_SOURCES, configurable_overrides={"vfs_session_id": None})
@@ -324,9 +322,7 @@ class TestWorkspaceSessionNeverGuesses:
         assembled = " ".join(text_of(m) for m in messages if m.type == "system")
         assert "Session directory:" not in assembled
 
-    @pytest.mark.parametrize(
-        "tier", [AgentTier.EXECUTOR, AgentTier.PROVIDER_SUBAGENT, AgentTier.SPAWN]
-    )
+    @pytest.mark.parametrize("tier", [AgentTier.EXECUTOR, AgentTier.SPAWN])
     async def test_it_never_falls_back_to_thread_id(self, tier: AgentTier) -> None:
         messages = await effective_context(
             tier, ContextSeed(sources=RICH_SOURCES, configurable_overrides={"vfs_session_id": None})
@@ -404,7 +400,7 @@ class TestAnAssemblyDefectDegradesToAByteStableEmptyBlock:
     """
 
     @staticmethod
-    def _defective_gather() -> object:
+    def _defective_gather() -> AbstractContextManager[AsyncMock]:
         return patch(
             "app.agents.context.assemble._gather_sections",
             AsyncMock(side_effect=RuntimeError("assembler defect")),

@@ -13,6 +13,9 @@ import uuid
 
 import pytest
 
+from app.constants import chat as chat_constants
+from app.db.mongodb import indexes
+from app.db.repositories import conversations as conversations_module
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import (
@@ -21,7 +24,7 @@ from app.models.chat_models import (
     SavedSubagentGroup,
     SystemPurpose,
 )
-from app.models.conversation_models import ConversationDocument
+from app.models.conversation_models import ConversationDocument, ConversationSearchResults
 
 
 def _uid() -> str:
@@ -110,6 +113,15 @@ class TestConversationCrud:
         assert await repo.exists(doc.conversation_id, user_id=doc.user_id) is True
         assert await repo.exists(doc.conversation_id, user_id="other") is False
         assert await repo.exists(_cid(), user_id=doc.user_id) is False
+
+    async def test_owner_ids_spans_users_and_ignores_other_conversations(self, repo):
+        shared, other = _cid(), _cid()
+        await repo.create(_doc(user_id="first", conversation_id=shared))
+        await repo.create(_doc(user_id="second", conversation_id=shared))
+        await repo.create(_doc(user_id="third", conversation_id=other))
+
+        assert await repo.owner_ids(shared) == {"first", "second"}
+        assert await repo.owner_ids(_cid()) == set()
 
     async def test_delete_then_gone(self, repo):
         doc = _doc()
@@ -379,6 +391,15 @@ class TestInPlaceWritesUnderACachePolicy:
         fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None and fetched.messages[0].tool_data is not None
         assert fetched.messages[0].tool_data[0]["data"]["duration_ms"] == 1200
+
+    async def test_deleting_a_todos_chats_evicts_the_cached_chat(self, cached_repo):
+        doc = _doc(todo_id="todo-1")
+        await cached_repo.create(doc)
+        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
+
+        await cached_repo.delete_for_todos(doc.user_id, ["todo-1"])
+
+        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is None
 
 
 class TestMessages:
@@ -913,6 +934,114 @@ class TestLegacyReadTolerance:
         assert "old" in tool_names and "weather_data" in tool_names  # legacy field folded in
 
 
+class TestTrackedTodoChats:
+    """A tracked todo's chat: one per todo, reached only from it, never listed anywhere."""
+
+    @pytest.fixture(autouse=True)
+    async def _shipped_index(self, raw_collection) -> None:
+        await raw_collection.create_index(
+            indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
+        )
+
+    async def test_a_todos_chat_is_never_listed_starred_counted_or_searched(self, repo):
+        user = _uid()
+        chat = _doc(user_id=user, source=ConversationSource.WEB, description="normal")
+        todo_chat = _doc(user_id=user, todo_id="todo-1", description="Watch the deploy")
+        # Starring or an approval card must not pull it into the sidebar either.
+        starred_todo_chat = _doc(user_id=user, todo_id="todo-2", starred=True)
+        approval_todo_chat = _doc(
+            user_id=user,
+            todo_id="todo-3",
+            source=ConversationSource.BACKGROUND,
+            has_live_approval=True,
+        )
+        for doc in (chat, todo_chat, starred_todo_chat, approval_todo_chat):
+            await repo.create(doc)
+        await repo.append_messages(
+            todo_chat.conversation_id,
+            user_id=user,
+            messages=[MessageModel(type="bot", response="the deploy is green")],
+        )
+
+        active = await repo.list_active_summaries(user, skip=0, limit=10)
+        assert [s.conversation_id for s in active] == [chat.conversation_id]
+        assert await repo.count_active(user) == 1
+        assert await repo.list_starred_summaries(user) == []
+        assert await repo.search(user, pattern="deploy") == ConversationSearchResults()
+
+    async def test_the_chat_is_found_by_its_todo_and_the_todo_by_its_chat(self, repo):
+        user = _uid()
+        todo_chat = _doc(user_id=user, todo_id="todo-1")
+        chat = _doc(user_id=user)
+        await repo.create(todo_chat)
+        await repo.create(chat)
+
+        assert await repo.find_todo_conversation_id(user, "todo-1") == todo_chat.conversation_id
+        assert await repo.find_todo_conversation_id(user, "todo-2") is None
+        # Another user's todo of the same id is not theirs.
+        assert await repo.find_todo_conversation_id(_uid(), "todo-1") is None
+        assert await repo.get_todo_id(todo_chat.conversation_id, user_id=user) == "todo-1"
+        assert await repo.get_todo_id(chat.conversation_id, user_id=user) is None
+        assert await repo.get_todo_id(todo_chat.conversation_id, user_id=_uid()) is None
+
+    async def test_a_second_chat_for_the_same_todo_loses_the_create(self, repo):
+        user = _uid()
+        assert await repo.try_create(_doc(user_id=user, todo_id="todo-1")) is True
+        assert await repo.try_create(_doc(user_id=user, todo_id="todo-1")) is False
+        # Unbound chats and another user's chat for that todo id never collide.
+        assert await repo.try_create(_doc(user_id=user)) is True
+        assert await repo.try_create(_doc(user_id=user)) is True
+        assert await repo.try_create(_doc(user_id=_uid(), todo_id="todo-1")) is True
+
+    async def test_a_lookup_by_todo_is_served_by_the_binding_index(self, raw_collection):
+        query = {"user_id": "u1", **conversations_module._todo_binding("todo-1")}
+
+        plan = (await raw_collection.find(query).explain())["queryPlanner"]["winningPlan"]
+
+        assert indexes.CONVERSATION_TODO_BINDING_OPTIONS["name"] in str(plan)
+
+    async def test_deleting_todos_deletes_only_their_chats(self, repo):
+        user = _uid()
+        first = _doc(user_id=user, todo_id="todo-1")
+        second = _doc(user_id=user, todo_id="todo-2")
+        kept = _doc(user_id=user, todo_id="todo-3")
+        chat = _doc(user_id=user)
+        foreign = _doc(user_id=_uid(), todo_id="todo-1")
+        for doc in (first, second, kept, chat, foreign):
+            await repo.create(doc)
+
+        deleted = await repo.delete_for_todos(user, ["todo-1", "todo-2"])
+
+        assert sorted(deleted) == sorted([first.conversation_id, second.conversation_id])
+        assert await repo.exists(kept.conversation_id, user_id=user)
+        assert await repo.exists(chat.conversation_id, user_id=user)
+        assert await repo.exists(foreign.conversation_id, user_id=foreign.user_id)
+        assert await repo.delete_for_todos(user, ["todo-9"]) == []
+
+    async def test_retitling_todos_retitles_only_their_chats_and_marks_them_for_sync(self, repo):
+        user = _uid()
+        bound = _doc(user_id=user, todo_id="todo-1", description="Watch staging")
+        other = _doc(user_id=user, todo_id="todo-2", description="Watch canary")
+        chat = _doc(user_id=user, description="Watch staging")
+        foreign = _doc(user_id=_uid(), todo_id="todo-1", description="Watch staging")
+        for doc in (bound, other, chat, foreign):
+            await repo.create(doc)
+        before = await repo.get(bound.conversation_id, user_id=user)
+
+        await repo.retitle_todo_chats(user, ["todo-1"], "Watch production")
+
+        retitled = await repo.get(bound.conversation_id, user_id=user)
+        assert retitled is not None and before is not None
+        assert retitled.description == "Watch production"
+        # A client syncs a chat by updatedAt, so the new title must move it.
+        assert retitled.updatedAt is not None and retitled.updatedAt != before.updatedAt
+        for untouched in (other, chat):
+            kept = await repo.get(untouched.conversation_id, user_id=user)
+            assert kept is not None and kept.description == untouched.description
+        kept_foreign = await repo.get(foreign.conversation_id, user_id=foreign.user_id)
+        assert kept_foreign is not None and kept_foreign.description == "Watch staging"
+
+
 class TestWorkflowAndOnboarding:
     async def test_find_and_bind_workflow_conversation(self, repo):
         doc = _doc(
@@ -1039,3 +1168,148 @@ class TestSearchAndSweeps:
         doc = _doc(user_id=_uid())
         await repo.create(doc)
         assert doc.conversation_id in await repo.all_conversation_ids()
+
+
+async def test_owners_of_maps_each_existing_conversation_to_its_owner(repo):
+    alice, bob = _uid(), _uid()
+    a_conv, b_conv = _doc(user_id=alice), _doc(user_id=bob)
+    await repo.create(a_conv)
+    await repo.create(b_conv)
+    await repo.create(_doc(user_id=alice))
+
+    owners = await repo.owners_of([a_conv.conversation_id, b_conv.conversation_id, _cid()])
+
+    assert owners == {a_conv.conversation_id: alice, b_conv.conversation_id: bob}
+
+
+class TestHistoryTrimming:
+    """A conversation is one Mongo document, so history is trimmed — never silently losing what the user kept."""
+
+    async def _seed(
+        self, repo: ConversationRepository, count: int
+    ) -> tuple[ConversationDocument, list[str]]:
+        doc = _doc()
+        await repo.create(doc)
+        ids: list[str] = []
+        for index in range(count):
+            added = await repo.append_messages(
+                doc.conversation_id,
+                user_id=doc.user_id,
+                messages=[MessageModel(type="user", response=f"m{index}")],
+            )
+            assert added is not None
+            ids.extend(added)
+        return doc, ids
+
+    async def test_trimming_keeps_the_newest_messages(self, repo):
+        doc, _ids = await self._seed(repo, 5)
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m5")],
+            max_messages=3,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == ["m3", "m4", "m5"]
+
+    @pytest.mark.regression
+    async def test_trimming_keeps_a_pinned_message_outside_the_window(self, repo):
+        # Read off the module, not imported: a module-level import of a constant this
+        # PR adds cannot collect on base, and a collection ERROR is not the red to prove.
+        doc, ids = await self._seed(repo, 5)
+        await repo.set_message_pinned(
+            doc.conversation_id, user_id=doc.user_id, message_id=ids[0], pinned=True
+        )
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m5")],
+            max_messages=3,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == ["m0", "m3", "m4", "m5"]
+        assert stored.messages[0].pinned is True
+
+    async def test_a_cap_above_a_short_history_drops_nothing(self, repo):
+        doc, _ids = await self._seed(repo, 4)
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m4")],
+            max_messages=10,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == [
+            "m0",
+            "m1",
+            "m2",
+            "m3",
+            "m4",
+        ]
+
+    async def test_a_pinned_message_is_not_duplicated_when_no_trimming_is_needed(self, repo):
+        doc, ids = await self._seed(repo, 3)
+        await repo.set_message_pinned(
+            doc.conversation_id, user_id=doc.user_id, message_id=ids[0], pinned=True
+        )
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m3")],
+            max_messages=10,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == ["m0", "m1", "m2", "m3"]
+
+    async def test_pins_retained_across_many_trims_stay_bounded(self, repo):
+        """Pins outlive the window, so the pin count needs its own ceiling."""
+        doc = _doc()
+        await repo.create(doc)
+        kept = chat_constants.CONVERSATION_MAX_RETAINED_PINS + 10
+        pinned_ids: list[str] = []
+        for index in range(kept):
+            added = await repo.append_messages(
+                doc.conversation_id,
+                user_id=doc.user_id,
+                messages=[MessageModel(type="user", response=f"p{index}")],
+            )
+            assert added is not None
+            pinned_ids.extend(added)
+
+        for message_id in pinned_ids:
+            await repo.set_message_pinned(
+                doc.conversation_id, user_id=doc.user_id, message_id=message_id, pinned=True
+            )
+
+        # Each append trims to the window, so every pin here lives outside it.
+        for index in range(3):
+            await repo.append_messages(
+                doc.conversation_id,
+                user_id=doc.user_id,
+                messages=[MessageModel(type="user", response=f"tail{index}")],
+                max_messages=3,
+            )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        pinned = [message.response for message in stored.messages if message.pinned]
+        assert len(pinned) == chat_constants.CONVERSATION_MAX_RETAINED_PINS
+        # The newest pins survive; the oldest fall out with the messages carrying them.
+        assert pinned[0] == f"p{kept - chat_constants.CONVERSATION_MAX_RETAINED_PINS}"
+        assert [message.response for message in stored.messages][-3:] == [
+            "tail0",
+            "tail1",
+            "tail2",
+        ]

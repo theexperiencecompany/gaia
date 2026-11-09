@@ -14,6 +14,7 @@ real connection patched into redis_cache the same way.
 
 from __future__ import annotations
 
+from datetime import UTC
 import os
 
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -42,10 +43,8 @@ def redis_url() -> str:
 
 @pytest.fixture(scope="session")
 def postgres_url() -> str:
-    return os.environ.get(
-        "DATABASE_URL",
-        "postgresql://gaia:gaia@localhost:5432/gaia_test",  # pragma: allowlist secret
-    )
+    # Always set: tests/offline_env.py defaults it before any test module loads.
+    return os.environ["DATABASE_URL"]
 
 
 # ---------------------------------------------------------------------------
@@ -59,10 +58,11 @@ async def mongo_db(mongodb_url: str, monkeypatch):
 
     Creates a fresh per-test Motor client, since a session-scoped client can't be reused across function-scoped async fixtures on a "function"-scoped event loop; the database is per-xdist-worker (worker_mongo_db_name) so parallel workers don't collide.
     """
-    # Pin server selection to 5s (mirrors tests/contracts/conftest.py) so the
-    # root conftest's 100ms MONGO_DB default — meant for the mocked unit tests —
-    # cannot make a real connection here flake against a cold local Mongo.
-    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url, serverSelectionTimeoutMS=5000)
+    # Server selection pinned to 5s (as tests/contracts/conftest.py) so the root conftest's
+    # 100ms MONGO_DB default cannot flake a real connection; tz-aware as the app's own client.
+    client: AsyncIOMotorClient = AsyncIOMotorClient(
+        mongodb_url, tz_aware=True, tzinfo=UTC, serverSelectionTimeoutMS=5000
+    )
     db = client[worker_mongo_db_name()]
 
     monkeypatch.setattr("app.db.repositories.base.get_async_collection", lambda name: db[name])

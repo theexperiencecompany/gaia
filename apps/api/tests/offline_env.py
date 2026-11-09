@@ -27,6 +27,9 @@ os.environ["COMPOSIO_AUTH_CONFIG_OVERRIDES"] = "{}"
 os.environ["ENABLE_CODE_MODE"] = "false"
 # The HIL ledger ships ON too; barrier-path tests opt out via hil_barrier_mode.
 os.environ["ENABLE_HIL_LEDGER"] = "true"
+# The console sink enqueues to a background thread, which only races the tests that
+# assert on captured stdout/stderr. Write inline instead.
+os.environ["LOG_ENQUEUE"] = "false"
 os.environ.setdefault(
     "MONGO_DB",
     "mongodb://localhost:27017/gaia_test?serverSelectionTimeoutMS=100&connectTimeoutMS=100",
@@ -43,6 +46,29 @@ os.environ.setdefault(
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
 )
 os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma: allowlist secret
+# The self-host profile's infra-only required set (capability_requirements.py): the
+# schema export boots under ENV=selfhost, so these need hermetic values too.
+# setdefault-only — a test or export that sets them wins.
+os.environ.setdefault("CHROMADB_HOST", "localhost")
+os.environ.setdefault("CHROMADB_PORT", "8001")
+# One test database: the fixtures dial DATABASE_URL, the app's engine POSTGRES_URL.
+# Either one set names it for both (selfhost-smoke exports only POSTGRES_URL); neither
+# defaults to the CI test container's (scripts/ci/test-services.sh exports both equal).
+os.environ.setdefault(
+    "DATABASE_URL",
+    os.environ.get(
+        "POSTGRES_URL",
+        "postgresql://gaia:gaia@localhost:5432/gaia_test",  # pragma: allowlist secret
+    ),
+)
+if os.environ.setdefault("POSTGRES_URL", os.environ["DATABASE_URL"]) != os.environ["DATABASE_URL"]:
+    raise RuntimeError(
+        "POSTGRES_URL and DATABASE_URL name different databases; the app would not see "
+        "the fixtures' data. Export one of them, or both equal."
+    )
+os.environ.setdefault("RABBITMQ_URL", "amqp://localhost:5672")
+os.environ.setdefault("E2B_DOMAIN", "e2b.local")
+os.environ.setdefault("BOT_SESSION_TOKEN_SECRET", "test-bot-session-secret-" + "x" * 16)
 
 # LangChain ships every graph run to LangSmith when these are truthy (a dev .env sets
 # them): runs get rate-limited (429s), the exporter retries on shutdown, and every

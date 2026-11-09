@@ -2,8 +2,8 @@
   "software-developers": {
     "title": "KI-Assistent für Softwareentwickler",
     "role": "Softwareentwickler",
-    "metaTitle": "KI-Assistent für Softwareentwickler – Automatisieren Sie Ihren Entwicklungs-Workflow",
-    "metaDescription": "GAIA unterstützt Softwareentwickler dabei, Code-Reviews zu automatisieren, GitHub-Issues zu verwalten, Linear-Tickets zu verfolgen und tägliche Standups effizient zu gestalten. Sparen Sie über 10 Stunden pro Woche an Routinearbeit.",
+    "metaTitle": "KI-Assistent für Entwickler: GitHub-Triage und Standups",
+    "metaDescription": "Weniger Fokusverlust durch Benachrichtigungen und Statusmeetings. GAIA sortiert GitHub und Linear, schreibt Ihr Standup und bereitet Meetings vor.",
     "keywords": [
       "KI-Assistent für Entwickler",
       "Produktivitätstool für Entwickler",
@@ -53,15 +53,15 @@
       },
       {
         "question": "Sind meine Code-Daten bei GAIA sicher?",
-        "answer": "GAIA ist komplett Open Source und selbst hostbar. Du kannst es auf deiner eigenen Infrastruktur mit vollständiger Datenkontrolle betreiben. GAIA nutzt deine Daten weder zum Training noch werden sie an Dritte weitergegeben."
+        "answer": "GAIA ist source-available (PolyForm Noncommercial) und für nicht-kommerzielle Nutzung selbst hostbar; gewinnorientierte Unternehmen können GAIA mit einer Enterprise-Lizenz selbst hosten (wende dich an das GAIA-Team). Du kannst es auf deiner eigenen Infrastruktur mit vollständiger Datenkontrolle betreiben. GAIA nutzt deine Daten weder zum Training noch werden sie an Dritte weitergegeben."
       }
     ]
   },
   "product-managers": {
     "title": "KI-Assistent für Produktmanager",
     "role": "Produktmanager",
-    "metaTitle": "KI-Assistent für Produktmanager – Produktentwicklung optimieren",
-    "metaDescription": "GAIA unterstützt Produktmanager dabei, Feature-Anfragen zu verfolgen, Stakeholder-Updates zu automatisieren, Roadmaps über verschiedene Tools hinweg zu steuern und sich mit KI-gestützten Briefings auf Meetings vorzubereiten.",
+    "metaTitle": "KI-Assistent für Produktmanager: Stakeholder-Reports",
+    "metaDescription": "Schluss mit manuell gebauten Status-Updates. GAIA entwirft Stakeholder-Reports, sammelt Feature-Wünsche aus Slack und E-Mail und hält die Roadmap synchron.",
     "keywords": [
       "KI-Assistent für Produktmanager",
       "Automatisierung im Produktmanagement",
@@ -79,7 +79,7 @@
       "KI für Meeting-Vorbereitung von Produktmanagern",
       "Asana-KI-Integration für PMs"
     ],
-    "intro": "Produktmanager agieren an der Schnittstelle von Engineering, Design, Business und Customer Success. Laut einer Umfrage von Productboard aus dem Jahr 2024 verbringen PMs über 40 % ihrer Woche mit Status-Updates, Meeting-Vorbereitung und Tool-Management, statt mit strategischem Produktdenken. GAIA ist Ihr proaktiver KI-Co-Pilot, der Informationen aus Linear, Slack, Gmail und Notion bündelt, damit Sie sich darauf konzentrieren können, das richtige Produkt zu entwickeln, statt Prozesse zu verwalten.",
+    "intro": "Produktmanager agieren an der Schnittstelle von Engineering, Design, Business und Customer Success. Laut einer Umfrage von Productboard aus dem Jahr 2024 verbringen PMs zahlreiche % ihrer Woche mit Status-Updates, Meeting-Vorbereitung und Tool-Management, statt mit strategischem Produktdenken. GAIA ist Ihr proaktiver KI-Co-Pilot, der Informationen aus Linear, Slack, Gmail und Notion bündelt, damit Sie sich darauf konzentrieren können, das richtige Produkt zu entwickeln, statt Prozesse zu verwalten.",
     "painPoints": [
       "Für Stakeholder-Updates müssen Daten manuell aus Linear, GitHub und Slack-Kanälen zusammengetragen werden",
       "Feature-Anfragen verteilen sich auf E-Mail, Slack-Nachrichten und Support-Tickets – eine einheitliche Übersicht fehlt",
@@ -118,8 +118,8 @@
   "designers": {
     "title": "KI-Assistent für Designer:innen",
     "role": "Designer:innen",
-    "metaTitle": "KI-Assistent für Designer:innen – Design-Operations optimieren",
-    "metaDescription": "GAIA hilft Designer:innen, Feedback-Schleifen zu steuern, Designanfragen zu verfolgen, die Übergabedokumentation zu automatisieren und alle Beteiligten über Slack, Notion und E-Mail auf dem Laufenden zu halten.",
+    "metaTitle": "KI-Assistent für Designer:innen: Feedback an einem Ort",
+    "metaDescription": "Kein Suchen mehr nach Feedback in Slack-Threads und E-Mails. GAIA sammelt Kommentare an einem Ort, plant Design-Reviews und erfasst Anfragen.",
     "keywords": [
       "KI-Assistent für Designer:innen",
       "Automatisierung von Design-Workflows",
@@ -172,8 +172,8 @@
   "startup-founders": {
     "title": "KI-Assistent für Startup-Gründer",
     "role": "Startup-Gründer",
-    "metaTitle": "KI-Assistent für Startup-Gründer - Skalieren Sie sich selbst mit KI",
-    "metaDescription": "GAIA hilft Startup-Gründern, Investoren-Updates zu verwalten, Hiring-Pipelines zu automatisieren, Metriken über Tools hinweg zu verfolgen und das operative Chaos beim Aufbau eines Unternehmens zu bewältigen.",
+    "metaTitle": "KI-Assistent für Gründer: Investoren-Updates und Postfach",
+    "metaDescription": "Holen Sie sich Stunden aus Postfach und Status-Updates zurück. GAIA entwirft Investoren-Updates, sortiert E-Mails und koordiniert Recruiting.",
     "keywords": [
       "KI-Assistent für Startup-Gründer",
       "Tool für Gründerproduktivität",
@@ -223,19 +223,23 @@
       },
       {
         "question": "Ist GAIA sicher genug für sensible Startup-Daten?",
-        "answer": "GAIA ist vollständig Open Source und selbst hostbar. Sie können es auf Ihrer eigenen Infrastruktur bereitstellen und so die vollständige Datenhoheit gewährleisten. Es werden niemals Daten an Dritte weitergegeben oder für das Modelltraining verwendet."
+        "answer": "GAIA ist source-available (PolyForm Noncommercial). Als Unternehmen können Sie GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team) und auf Ihrer eigenen Infrastruktur bereitstellen, um die vollständige Datenhoheit zu gewährleisten. Es werden niemals Daten an Dritte weitergegeben oder für das Modelltraining verwendet."
       },
       {
         "question": "Kann GAIA meinen Kalender als Gründer verwalten?",
         "answer": "Ja. GAIA integriert sich in Google Calendar, um Ihren Zeitplan zu optimieren, Fokuszeiten zu blockieren, Meeting-Briefings vorzubereiten und über mehrere Kalender hinweg zu koordinieren. Es schlägt proaktiv Zeitplananpassungen vor, wenn Konflikte auftreten."
+      },
+      {
+        "question": "Welcher KI-Assistent ist der beste für Startup-Gründer?",
+        "answer": "Einer, der Terminplanung und E-Mail-Verwaltung übernimmt, nicht nur chattet. GAIA sortiert Ihr Postfach, entwirft Antworten und Investoren-Updates, findet Termine in Ihrem Kalender und schickt Ihnen ein tägliches Briefing. GAIA arbeitet mit Gmail, Google Kalender, Slack, Notion und GitHub, sodass ein Assistent die Tools abdeckt, in denen Gründer leben."
       }
     ]
   },
   "students": {
     "title": "KI-Assistent für Studierende",
     "role": "Studierende",
-    "metaTitle": "KI-Assistent für Studierende - Akademische Organisation und Fokussteigerung",
-    "metaDescription": "GAIA hilft Studierenden, Aufgaben zu verwalten, Recherchen zu organisieren, Lernsessions zu planen und Fristen über alle ihre akademischen Tools hinweg einzuhalten.",
+    "metaTitle": "KI-Assistent für Studierende: Fristen, Lernzeit und Fokus",
+    "metaDescription": "Keine verpasste Abgabe mehr. GAIA behält Fristen im Blick, ordnet Ihre Recherchenotizen und blockt feste Lernzeiten im Kalender für mehr Fokus.",
     "keywords": [
       "KI-Assistent für Studierende",
       "Tool für Studentenproduktivität",
@@ -275,8 +279,8 @@
     ],
     "faqs": [
       {
-        "question": "Ist GAIA für Studierende kostenlos?",
-        "answer": "GAIA bietet eine kostenlose Stufe mit Kernfunktionen, die die meisten Studentenbedürfnisse abdeckt. Sie können GAIA auch vollständig kostenlos selbst hosten, um die vollständige Kontrolle über Ihre Daten zu erhalten."
+        "question": "Gibt es eine kostenlose Möglichkeit für Studierende, GAIA zu nutzen?",
+        "answer": "Die gehostete Version von GAIA ist ein kostenpflichtiger Plan für {{PRO_MONTHLY_PRICE}} $/Monat. Wer GAIA kostenlos nutzen möchte, kann es für nicht-kommerzielle Zwecke selbst hosten (zzgl. eigener Modell-API-Kosten) und behält so die vollständige Kontrolle über die eigenen Daten."
       },
       {
         "question": "Kann GAIA bei wissenschaftlichen Arbeiten helfen?",
@@ -287,8 +291,8 @@
   "remote-workers": {
     "title": "KI-Assistent für Remote-Mitarbeiter",
     "role": "Remote-Mitarbeiter",
-    "metaTitle": "KI-Assistent für Remote-Mitarbeiter - Asynchrone Kommunikation meistern",
-    "metaDescription": "GAIA hilft Remote-Mitarbeitern, asynchrone Kommunikation zu verwalten, verstreute Tools zu organisieren, Statusaktualisierungen zu automatisieren und mit intelligenter Automatisierung Work-Life-Grenzen einzuhalten.",
+    "metaTitle": "KI-Assistent für Remote-Arbeit: Slack und E-Mail vereint",
+    "metaDescription": "Über Zeitzonen hinweg informiert, ohne in Slack zu leben. GAIA bündelt Ihre Nachrichten, schreibt Status-Updates und hält Unwichtiges zurück.",
     "keywords": [
       "KI-Assistent für Remote-Mitarbeiter",
       "Remote-Arbeitsproduktivität",
@@ -341,8 +345,8 @@
   "freelancers": {
     "title": "KI-Assistent für Freelancer",
     "role": "Freelancer",
-    "metaTitle": "KI-Assistent für Freelancer - Automatisieren Sie die geschäftliche Seite",
-    "metaDescription": "GAIA hilft Freelancern, die Kundenkommunikation zu verwalten, Projekte zu verfolgen, die Nachverfolgung von Rechnungen zu automatisieren und den administrativen Overhead bei der Führung eines Solo-Unternehmens zu bewältigen.",
+    "metaTitle": "KI-Assistent für Freelancer: Kunden, Projekte und Rechnungen",
+    "metaDescription": "Ihre Zeit gehört der Kundenarbeit, nicht der Verwaltung. GAIA managt Kundenmails, plant Calls, verfolgt Aufgaben und erinnert an offene Rechnungen.",
     "keywords": [
       "KI-Assistent für Freelancer",
       "Tool zur Steigerung der Freelancer-Produktivität",
@@ -399,8 +403,8 @@
   "entrepreneurs": {
     "title": "KI-Assistent für Unternehmer",
     "role": "Unternehmer",
-    "metaTitle": "KI-Assistent für Unternehmer - Schnelleres Aufbauen mit KI-Automatisierung",
-    "metaDescription": "GAIA hilft Unternehmern, Abläufe zu automatisieren, Kundenbeziehungen zu verwalten, Teams zu koordinieren und mit KI-gestützter Workflow-Automatisierung schnellere Entscheidungen zu treffen.",
+    "metaTitle": "KI-Assistent für Unternehmer: E-Mail, CRM und Teamabläufe",
+    "metaDescription": "Führen Sie die Firma, ohne im Postfach zu versinken. GAIA priorisiert E-Mails, pflegt Ihr CRM, automatisiert Teamroutinen und brieft Sie vor Entscheidungen.",
     "keywords": [
       "KI-Assistent für Unternehmer",
       "KI für Geschäftsautomatisierung",
@@ -453,8 +457,8 @@
   "marketers": {
     "title": "KI-Assistent für Marketer",
     "role": "Marketer",
-    "metaTitle": "KI-Assistent für Marketer - Marketingabläufe automatisieren",
-    "metaDescription": "GAIA hilft Marketern, Kampagnen zu verfolgen, Social-Media-Workflows zu verwalten, Content-Kalender zu koordinieren und kanalübergreifende Berichte zu optimieren.",
+    "metaTitle": "KI-Assistent für Marketer: Reports, Social und Content",
+    "metaDescription": "Schluss mit manuell gesammelten Kampagnenzahlen. GAIA erstellt Kampagnenreports, beobachtet Social-Media-Erwähnungen, steuert Freigaben und pflegt Leads.",
     "keywords": [
       "KI-Assistent für Marketer",
       "KI für Marketingautomatisierung",
@@ -505,8 +509,8 @@
   "content-creators": {
     "title": "KI-Assistent für Content-Ersteller",
     "role": "Content-Ersteller",
-    "metaTitle": "KI-Assistent für Content-Ersteller - Optimieren Sie Ihren kreativen Workflow",
-    "metaDescription": "GAIA hilft Content-Erstellern, Veröffentlichungspläne zu verwalten, die Publikumsbindung zu verfolgen, Recherchen zu organisieren und die geschäftliche Seite der Content-Erstellung zu automatisieren.",
+    "metaTitle": "KI-Assistent für Creator: Content-Planung und Engagement",
+    "metaDescription": "Aus Recherche werden Content-Ideen, und Sie behalten Reaktionen auf allen Plattformen im Blick. GAIA übernimmt auch E-Mails und Admin. So funktioniert es.",
     "keywords": [
       "KI-Assistent für Content-Ersteller",
       "Workflow zur Content-Erstellung",
@@ -559,8 +563,8 @@
   "data-scientists": {
     "title": "AI Assistant for Data Scientists",
     "role": "Data Scientists",
-    "metaTitle": "AI Assistant for Data Scientists - Automate Data Workflow Operations",
-    "metaDescription": "GAIA helps data scientists manage experiment tracking, automate stakeholder reporting, organize documentation, and reduce operational overhead in data workflows.",
+    "metaTitle": "KI-Assistent für Data Scientists: Reports und Recherche",
+    "metaDescription": "Schützen Sie Ihre Modellierungszeit vor Statusanfragen. GAIA entwirft Stakeholder-Reports, ordnet Recherchen und Notizen und koordiniert mit anderen Teams.",
     "keywords": [
       "AI assistant for data scientists",
       "data science productivity",
@@ -572,7 +576,7 @@
       "Notion AI for ML projects",
       "data scientist workflow tool",
       "best AI for data scientists",
-      "open source AI for data science",
+      "source-available AI for data science",
       "AI for stakeholder reporting in data science",
       "Perplexity AI for research tracking",
       "data science team coordination tool",
@@ -613,8 +617,8 @@
   "project-managers": {
     "title": "AI Assistant for Project Managers",
     "role": "Project Managers",
-    "metaTitle": "AI Assistant for Project Managers - Automate Project Operations",
-    "metaDescription": "GAIA helps project managers track deliverables, automate status reports, manage stakeholder communications, and keep distributed teams aligned across all tools.",
+    "metaTitle": "KI-Assistent für Projektmanager: Statusberichte und Risiken",
+    "metaDescription": "Erkennen Sie, welches Projekt hakt, bevor das Meeting beginnt. GAIA schreibt Statusberichte aus Asana und Linear, meldet Risiken und verfolgt Meeting-To-dos.",
     "keywords": [
       "AI assistant for project managers",
       "project management automation",
@@ -675,8 +679,8 @@
   "engineering-managers": {
     "title": "AI Assistant for Engineering Managers",
     "role": "Engineering Managers",
-    "metaTitle": "AI Assistant for Engineering Managers - Scale Your Leadership",
-    "metaDescription": "GAIA helps engineering managers automate sprint reporting, track team velocity, manage 1:1 prep, and stay connected to technical work without micromanaging.",
+    "metaTitle": "KI-Assistent für Engineering Manager: Sprints und 1:1s",
+    "metaDescription": "Gehen Sie mit Kontext in jedes 1:1. GAIA fasst den Sprintfortschritt aus GitHub und Linear zusammen, bereitet 1:1s vor und verfolgt Blocker. So funktioniert es.",
     "keywords": [
       "AI assistant for engineering managers",
       "engineering management automation",
@@ -688,7 +692,7 @@
       "Linear sprint analytics AI",
       "engineering manager productivity tool",
       "best AI for engineering managers",
-      "open source AI for engineering leadership",
+      "source-available AI for engineering leadership",
       "AI for PR cycle time tracking",
       "self-hosted AI for engineering teams",
       "Slack automation for engineering managers",
@@ -729,8 +733,8 @@
   "sales-professionals": {
     "title": "AI Assistant for Sales Professionals",
     "role": "Sales Professionals",
-    "metaTitle": "AI Assistant for Sales Professionals - Close More Deals with AI",
-    "metaDescription": "GAIA helps sales professionals automate CRM updates, manage follow-ups, prepare for calls, and keep pipelines moving with proactive AI assistance.",
+    "metaTitle": "KI-Assistent für Vertriebsprofis: CRM-Pflege und Follow-ups",
+    "metaDescription": "Weniger Zeit für Gesprächsnotizen und Nachfassen. GAIA hält Ihr CRM aktuell, entwirft Follow-ups und bereitet Kundentermine vor. So funktioniert es.",
     "keywords": [
       "AI assistant for sales",
       "sales automation AI",
@@ -791,8 +795,8 @@
   "customer-success": {
     "title": "AI Assistant for Customer Success Managers",
     "role": "Customer Success Managers",
-    "metaTitle": "AI Assistant for Customer Success - Proactive Account Management",
-    "metaDescription": "GAIA helps customer success managers monitor account health, automate check-in scheduling, track renewal timelines, and deliver proactive support across all channels.",
+    "metaTitle": "KI-Assistent für Customer Success: Renewals und QBRs",
+    "metaDescription": "Gefährdete Accounts erkennen, bevor die Verlängerung ansteht. GAIA überwacht Kundenzustand per E-Mail und HubSpot, bereitet QBRs vor und plant Check-ins.",
     "keywords": [
       "AI assistant for customer success",
       "customer success automation",
@@ -845,8 +849,8 @@
   "researchers": {
     "title": "AI Assistant for Researchers",
     "role": "Researchers",
-    "metaTitle": "AI Assistant for Researchers - Accelerate Academic Workflows",
-    "metaDescription": "GAIA helps researchers organize literature, manage citations, coordinate collaborations, and automate the administrative burden of academic research.",
+    "metaTitle": "KI-Assistent für Forschende: Literatur, Anträge und Fristen",
+    "metaDescription": "Neue Paper im Blick, ohne Schreibzeit zu verlieren. GAIA verfolgt Literatur, ordnet Notizen, managt Mails mit Kooperationspartnern und überwacht Antragsfristen.",
     "keywords": [
       "AI assistant for researchers",
       "research workflow automation",
@@ -889,8 +893,8 @@
   "consultants": {
     "title": "AI Assistant for Consultants",
     "role": "Consultants",
-    "metaTitle": "AI Assistant for Consultants - Maximize Billable Utilization",
-    "metaDescription": "GAIA helps consultants manage client engagements, automate deliverable tracking, prepare for meetings, and reduce non-billable administrative overhead.",
+    "metaTitle": "KI-Assistent für Berater: Kundenmails und Deliverables",
+    "metaDescription": "Mehrere Mandate ohne verlorene Fäden. GAIA sortiert E-Mails nach Kunde, verfolgt Deliverables je Projekt und bereitet Sie auf jedes Kundenmeeting vor.",
     "keywords": [
       "AI assistant for consultants",
       "consulting productivity tool",
@@ -943,8 +947,8 @@
   "agency-owners": {
     "title": "AI Assistant for Agency Owners",
     "role": "Agency Owners",
-    "metaTitle": "AI Assistant for Agency Owners - Scale Operations Efficiently",
-    "metaDescription": "GAIA helps agency owners manage client portfolios, automate project reporting, coordinate distributed teams, and streamline new business development.",
+    "metaTitle": "KI-Assistent für Agenturinhaber: Kundenberichte, Teamarbeit",
+    "metaDescription": "Alle Kundenkonten im Blick, ohne dem Team nachzulaufen. GAIA erstellt Kundenberichte, koordiniert Arbeit in Slack und ClickUp und meldet Probleme.",
     "keywords": [
       "AI assistant for agency owners",
       "agency management automation",
@@ -1001,8 +1005,8 @@
   "indie-hackers": {
     "title": "AI Assistant for Indie Hackers",
     "role": "Indie Hackers",
-    "metaTitle": "AI Assistant for Indie Hackers - Ship Faster, Automate Operations",
-    "metaDescription": "GAIA helps indie hackers automate customer support, monitor product metrics, manage launches, and handle the operational overhead of building products solo.",
+    "metaTitle": "KI-Assistent für Indie Hacker: Support und Launches",
+    "metaDescription": "Weiter bauen, während Support und Launches laufen. GAIA entwirft Support-Antworten, koordiniert Launch-Posts und beobachtet Ihre Metriken in PostHog.",
     "keywords": [
       "AI assistant for indie hackers",
       "solo developer productivity",
@@ -1044,7 +1048,7 @@
     "faqs": [
       {
         "question": "Is GAIA affordable for bootstrapped indie hackers?",
-        "answer": "GAIA offers a free tier with core features, and you can self-host GAIA entirely free on your own infrastructure. For bootstrapped builders, the self-hosting option provides full functionality at zero cost beyond hosting."
+        "answer": "Die gehostete Version von GAIA ist ein kostenpflichtiger Plan für {{PRO_MONTHLY_PRICE}} $/Monat. Für nicht-kommerzielle Projekte können Sie GAIA kostenlos auf Ihrer eigenen Infrastruktur selbst hosten. Dann zahlen Sie nur Ihr Hosting und Ihre eigenen Modell-API-Kosten und erhalten den vollen Funktionsumfang."
       },
       {
         "question": "How does GAIA help with build-in-public workflows?",
@@ -1055,8 +1059,8 @@
   "solopreneurs": {
     "title": "AI Assistant for Solopreneurs",
     "role": "Solopreneurs",
-    "metaTitle": "AI Assistant for Solopreneurs - Run Your Business on Autopilot",
-    "metaDescription": "GAIA helps solopreneurs manage email, automate client workflows, handle scheduling, and run business operations with AI-powered efficiency as a team of one.",
+    "metaTitle": "KI-Assistent für Solopreneure: E-Mail, Kunden, Follow-ups",
+    "metaDescription": "Das ganze Team sein, ohne alles selbst zu tun. GAIA managt Ihr Postfach, plant Kundentermine, erinnert an Follow-ups und automatisiert Routinearbeit.",
     "keywords": [
       "AI assistant for solopreneurs",
       "solopreneur automation",
@@ -1109,8 +1113,8 @@
   "operations-managers": {
     "title": "AI Assistant for Operations Managers",
     "role": "Operations Managers",
-    "metaTitle": "AI Assistant for Operations Managers - Streamline Operational Workflows",
-    "metaDescription": "GAIA helps operations managers automate process monitoring, streamline vendor communications, track KPIs, and reduce manual operational overhead across teams.",
+    "metaTitle": "KI-Assistent für Operations Manager: Lieferanten und Reports",
+    "metaDescription": "Prozessprobleme erkennen, bevor es brennt. GAIA überwacht Ihre Abläufe, hält Lieferantenmails im Griff und entwirft wiederkehrende Ops-Reports.",
     "keywords": [
       "AI assistant for operations managers",
       "operations automation AI",
@@ -1163,8 +1167,8 @@
   "team-leads": {
     "title": "AI Assistant for Team Leads",
     "role": "Team Leads",
-    "metaTitle": "AI Assistant for Team Leads - Empower Your Team with AI",
-    "metaDescription": "GAIA helps team leads manage team communication, automate standup collection, track deliverables, and maintain alignment across distributed teams.",
+    "metaTitle": "KI-Assistent für Teamleiter: Standups und Statusberichte",
+    "metaDescription": "Wissen, woran Ihr Team arbeitet, ohne weiteres Meeting. GAIA sammelt asynchrone Standups, zeigt Fortschritt in Linear und GitHub und schreibt Ihre Reports.",
     "keywords": [
       "AI assistant for team leads",
       "team leadership automation",
@@ -1217,8 +1221,8 @@
   "executives": {
     "title": "AI Assistant for Executives",
     "role": "Executives",
-    "metaTitle": "AI Assistant for Executives - Strategic Intelligence on Autopilot",
-    "metaDescription": "GAIA helps executives manage information overload, automate meeting prep, streamline communication, and maintain strategic focus amidst operational demands.",
+    "metaTitle": "KI-Assistent für Führungskräfte: E-Mails und Meeting-Prep",
+    "metaDescription": "Wichtige E-Mails zuerst und gut vorbereitet in jedes Meeting. GAIA sortiert Ihr Postfach, erstellt Briefings und verfolgt offene Punkte. So funktioniert es.",
     "keywords": [
       "AI assistant for executives",
       "executive productivity AI",
@@ -1260,7 +1264,7 @@
     "faqs": [
       {
         "question": "How does GAIA handle confidential executive communications?",
-        "answer": "GAIA is fully open source and self-hostable. Executives can deploy GAIA on dedicated infrastructure with enterprise-grade security controls, ensuring complete confidentiality. No data is shared with third parties or used for model training."
+        "answer": "GAIA ist source-available (PolyForm Noncommercial). Gewinnorientierte Unternehmen können GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team), sodass Führungskräfte es auf dedizierter Infrastruktur mit Sicherheitskontrollen auf Enterprise-Niveau betreiben und vollständige Vertraulichkeit sicherstellen können. Es werden keine Daten an Dritte weitergegeben oder für das Modelltraining verwendet."
       },
       {
         "question": "Can GAIA integrate with an existing executive assistant's workflow?",
@@ -1269,14 +1273,18 @@
       {
         "question": "How does GAIA prioritize information for executives?",
         "answer": "GAIA uses AI to assess urgency, strategic relevance, and sender importance. It learns your priorities over time through graph-based memory, ensuring the information hierarchy it presents aligns with your actual decision-making needs."
+      },
+      {
+        "question": "Welcher KI-Assistent ist der beste für Führungskräfte und CEOs?",
+        "answer": "Für die meisten Führungskräfte der, der Postfach und Kalender führt, nicht ein Chatbot. GAIA zeigt Ihnen die E-Mails, die Sie brauchen, entwirft Antworten, bereitet vor jedem Meeting ein Briefing vor, verfolgt Nachfassaktionen und erledigt wiederkehrende Arbeit nach Zeitplan. Copilot und Gemini sind in Microsoft 365 oder Google Workspace stark; GAIA arbeitet mit Outlook und Gmail und Ihren übrigen Tools."
       }
     ]
   },
   "real-estate-agents": {
     "title": "AI Assistant for Real Estate Agents",
     "role": "Real Estate Agents",
-    "metaTitle": "AI Assistant for Real Estate Agents - Close More Deals with AI",
-    "metaDescription": "GAIA helps real estate agents manage leads, automate follow-ups, schedule showings, and keep clients informed with proactive AI-powered communication management.",
+    "metaTitle": "KI-Assistent für Immobilienmakler: Leads und Besichtigungen",
+    "metaDescription": "Neue Anfragen beantworten, auch während einer Besichtigung. GAIA entwirft Antworten, verfolgt jede Kundenkommunikation und plant Besichtigungen im Kalender.",
     "keywords": [
       "AI assistant for real estate agents",
       "real estate automation",
@@ -1333,8 +1341,8 @@
   "lawyers": {
     "title": "AI Assistant for Lawyers",
     "role": "Lawyers",
-    "metaTitle": "AI Assistant for Lawyers - Maximize Billable Hours with AI",
-    "metaDescription": "GAIA helps lawyers manage client communications, track deadlines, automate document workflows, and reduce the administrative burden of legal practice.",
+    "metaTitle": "KI-Assistent für Anwälte: Mandantenmails, Fristen, Entwürfe",
+    "metaDescription": "Mehr abrechenbare Stunden, weniger Verwaltung. GAIA sortiert Mandantenmails, überwacht Fristen im Kalender und ordnet Dokumententwürfe in Google Docs.",
     "keywords": [
       "AI assistant for lawyers",
       "legal productivity AI",
@@ -1370,7 +1378,7 @@
     "faqs": [
       {
         "question": "Is GAIA secure enough for attorney-client communications?",
-        "answer": "GAIA is fully open source and self-hostable. Law firms can deploy GAIA on their own infrastructure with full data sovereignty, ensuring attorney-client privilege is maintained. No data is ever shared with third parties or used for training."
+        "answer": "GAIA ist source-available (PolyForm Noncommercial). Kanzleien können GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team) und auf ihrer eigenen Infrastruktur mit voller Datenhoheit betreiben, sodass das Anwaltsgeheimnis gewahrt bleibt. Es werden niemals Daten an Dritte weitergegeben oder für das Training verwendet."
       },
       {
         "question": "How does GAIA help lawyers track deadlines?",
@@ -1385,8 +1393,8 @@
   "data-analysts": {
     "title": "AI Assistant for Data Analysts",
     "role": "Data Analysts",
-    "metaTitle": "AI Assistant for Data Analysts - Automate Reports and BI Workflows",
-    "metaDescription": "GAIA helps data analysts automate recurring reports, set up data threshold alerts, schedule analytical briefings, and eliminate manual data pulls across Excel, Tableau, and SQL tools.",
+    "metaTitle": "KI-Assistent für Datenanalysten: Reports und Alerts",
+    "metaDescription": "Nie wieder denselben Wochenreport bauen. GAIA automatisiert Reports aus Google Sheets, warnt bei überschrittenen Schwellenwerten und sortiert Ad-hoc-Anfragen.",
     "keywords": [
       "AI assistant for data analysts",
       "data analyst productivity tool",
@@ -1438,15 +1446,15 @@
       },
       {
         "question": "Is GAIA suitable for enterprise data teams?",
-        "answer": "GAIA is fully open source and self-hostable, making it suitable for enterprise deployments with strict data governance requirements. Teams can run GAIA on their own infrastructure with complete control over data access and integrations."
+        "answer": "GAIA ist source-available (PolyForm Noncommercial), und gewinnorientierte Unternehmen können GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team) – geeignet für Unternehmensbereitstellungen mit strengen Anforderungen an die Data Governance. Teams können GAIA auf ihrer eigenen Infrastruktur betreiben und behalten die volle Kontrolle über Datenzugriff und Integrationen."
       }
     ]
   },
   "hr-managers": {
     "title": "AI Assistant for HR Managers",
     "role": "HR Managers",
-    "metaTitle": "AI Assistant for HR Managers - Automate Recruiting and HR Operations",
-    "metaDescription": "GAIA helps HR managers automate interview scheduling, triage the HR inbox, draft offer letters, manage onboarding task lists, and prepare for performance review cycles.",
+    "metaTitle": "KI-Assistent für HR-Manager: Interviews und Onboarding",
+    "metaDescription": "HR-Postfach leeren statt Termine zu jonglieren. GAIA plant Interviews, sortiert HR-Mails, verfolgt Onboarding-Aufgaben und bereitet Mitarbeitergespräche vor.",
     "keywords": [
       "AI assistant for HR managers",
       "HR automation AI",
@@ -1495,7 +1503,7 @@
       },
       {
         "question": "How does GAIA handle sensitive HR communications?",
-        "answer": "GAIA is fully open source and self-hostable. HR teams can deploy it on their own infrastructure with complete data control, ensuring employee information stays within organizational boundaries. No data is shared with third parties."
+        "answer": "GAIA ist source-available (PolyForm Noncommercial). Gewinnorientierte Unternehmen können GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team), gemeinnützige und öffentliche Arbeitgeber unter der nicht-kommerziellen Lizenz, sodass HR-Teams es auf der eigenen Infrastruktur mit vollständiger Datenkontrolle betreiben und Mitarbeiterdaten innerhalb der Organisation bleiben. Es werden keine Daten an Dritte weitergegeben."
       },
       {
         "question": "Can GAIA help manage the performance review cycle?",
@@ -1506,8 +1514,8 @@
   "recruiters": {
     "title": "AI Assistant for Recruiters",
     "role": "Recruiters",
-    "metaTitle": "AI Assistant for Recruiters - Automate Sourcing, Scheduling, and Outreach",
-    "metaDescription": "GAIA helps recruiters draft personalized outreach at scale, auto-schedule interviews across time zones, summarize candidate profiles, and manage follow-up sequences for every open role.",
+    "metaTitle": "KI-Assistent für Recruiter: Ansprache und Interviewplanung",
+    "metaDescription": "Persönliche Kandidatenansprache ohne Copy-and-paste. GAIA entwirft Nachrichten, plant Interviews, fasst Profile zusammen und fasst nach. So funktioniert es.",
     "keywords": [
       "AI assistant for recruiters",
       "recruiting automation AI",
@@ -1567,8 +1575,8 @@
   "teachers-educators": {
     "title": "AI Assistant for Teachers and Educators",
     "role": "Teachers and Educators",
-    "metaTitle": "AI Assistant for Teachers and Educators - Reduce Admin, Focus on Teaching",
-    "metaDescription": "GAIA helps teachers draft parent communications, organize lesson plans, schedule parent-teacher conferences, manage assignment deadlines, and triage school administrative emails.",
+    "metaTitle": "KI-Assistent für Lehrkräfte: Elternkontakt und Unterricht",
+    "metaDescription": "Elternmails, Sprechtage und Abgabefristen im Griff. GAIA entwirft Antworten, plant Elterngespräche und ordnet Ihre Unterrichtsplanung. So funktioniert es.",
     "keywords": [
       "AI assistant for teachers",
       "teacher productivity tool",
@@ -1620,15 +1628,15 @@
       },
       {
         "question": "Is GAIA suitable for use in schools and educational institutions?",
-        "answer": "GAIA is fully open source and self-hostable, making it suitable for school deployments with data privacy requirements. Institutions can run GAIA on their own infrastructure with complete control over educator and student data."
+        "answer": "GAIA ist source-available (PolyForm Noncommercial): Schulen und Bildungseinrichtungen können GAIA unter der nicht-kommerziellen Lizenz kostenlos selbst hosten (zzgl. eigener Modell-API-Kosten), was es für Bereitstellungen mit Datenschutzanforderungen geeignet macht. Nur gewinnorientierte Bildungsunternehmen brauchen eine Enterprise-Lizenz (wenden Sie sich an das GAIA-Team). Einrichtungen können GAIA auf ihrer eigenen Infrastruktur betreiben und behalten die volle Kontrolle über die Daten von Lehrkräften und Lernenden."
       }
     ]
   },
   "financial-advisors": {
     "title": "AI Assistant for Financial Advisors",
     "role": "Financial Advisors",
-    "metaTitle": "AI Assistant for Financial Advisors - Automate Client Prep and Follow-Ups",
-    "metaDescription": "GAIA helps financial advisors prepare pre-meeting client briefings, draft compliant client communications, manage follow-up tasks, schedule portfolio review cadences, and triage client requests by urgency.",
+    "metaTitle": "KI-Assistent für Finanzberater: Briefings und Follow-ups",
+    "metaDescription": "Gut vorbereitet in jedes Kundengespräch. GAIA erstellt Briefings, entwirft Kundenmails zur Freigabe, plant Portfolio-Reviews und verfolgt offene Aufgaben.",
     "keywords": [
       "AI assistant for financial advisors",
       "wealth management AI",
@@ -1676,7 +1684,7 @@
     "faqs": [
       {
         "question": "How does GAIA handle the compliance sensitivity of financial communications?",
-        "answer": "GAIA drafts client communications based on templates and guidelines you provide, and keeps you in the review and approval loop before anything is sent. It is fully open source and self-hostable, so RIAs and broker-dealers can deploy it within their own infrastructure with complete data control."
+        "answer": "GAIA entwirft Kundenkommunikation auf Basis der Vorlagen und Richtlinien, die Sie vorgeben, und lässt Sie alles prüfen und freigeben, bevor etwas versendet wird. GAIA ist source-available (PolyForm Noncommercial), und RIAs sowie Broker-Dealer können GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team), um es mit vollständiger Datenkontrolle auf ihrer eigenen Infrastruktur zu betreiben."
       },
       {
         "question": "Can GAIA integrate with Salesforce or financial CRM tools?",
@@ -1691,8 +1699,8 @@
   "healthcare-professionals": {
     "title": "AI Assistant for Healthcare Professionals",
     "role": "Healthcare Professionals",
-    "metaTitle": "AI Assistant for Healthcare Professionals - Reduce Administrative Burden",
-    "metaDescription": "GAIA helps healthcare professionals triage non-clinical email, manage scheduling, organize research, and handle administrative correspondence. Self-hostable for HIPAA-compliant administrative workflows.",
+    "metaTitle": "KI-Assistent für Gesundheitsberufe: E-Mail und Verwaltung",
+    "metaDescription": "Weniger Papierkram zwischen Patiententerminen. GAIA sortiert nicht-klinische E-Mails, koordiniert Termine, entwirft Verwaltungspost und ordnet Fachliteratur.",
     "keywords": [
       "AI assistant for doctors",
       "healthcare productivity AI",
@@ -1707,7 +1715,7 @@
       "healthcare administrative automation",
       "physician email management AI"
     ],
-    "intro": "Healthcare professionals face one of the heaviest administrative burdens of any profession. A 2024 AMA survey found that physicians spend an average of 15.5 hours per week on administrative tasks, with electronic communication and paperwork consuming time that could go toward patient care. Importantly, GAIA operates strictly in the administrative and productivity layer: it does not access clinical systems, electronic health records, or protected health information. For healthcare organizations with compliance requirements, GAIA is fully open source and self-hostable, enabling deployment within your own infrastructure for HIPAA-compliant administrative workflows.",
+    "intro": "Angehörige der Gesundheitsberufe tragen eine der höchsten Verwaltungslasten aller Berufe. Laut einer AMA-Umfrage von 2024 verbringen Ärztinnen und Ärzte durchschnittlich 15,5 Stunden pro Woche mit Verwaltungsaufgaben, wobei elektronische Kommunikation und Papierkram Zeit kosten, die in die Patientenversorgung fließen könnte. Wichtig: GAIA arbeitet ausschließlich auf der Verwaltungs- und Produktivitätsebene und greift nicht auf klinische Systeme, elektronische Patientenakten oder geschützte Gesundheitsdaten zu. Gewinnorientierte Praxen und Gesundheitsunternehmen mit Compliance-Anforderungen können GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team), öffentliche und gemeinnützige Gesundheitseinrichtungen unter der nicht-kommerziellen Lizenz; der Betrieb auf eigener Infrastruktur kann ihre Compliance-Anforderungen an Verwaltungsabläufe unterstützen.",
     "painPoints": [
       "Administrative email volume including scheduling requests, referrals, and departmental communications creates daily inbox overload",
       "Scheduling complexity across clinics, hospitals, and patient appointments requires constant coordination",
@@ -1744,7 +1752,7 @@
       },
       {
         "question": "Can GAIA be deployed in a HIPAA-compliant manner?",
-        "answer": "Yes. GAIA is fully open source and self-hostable. Healthcare organizations can deploy GAIA entirely within their own infrastructure, maintaining complete control over data flows and ensuring compliance with organizational and regulatory requirements for administrative systems."
+        "answer": "Ja. GAIA ist source-available (PolyForm Noncommercial). Eine gewinnorientierte Praxis kann GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team); öffentliche und gemeinnützige Gesundheitseinrichtungen hosten GAIA unter der nicht-kommerziellen Lizenz selbst. In beiden Fällen läuft GAIA vollständig innerhalb der eigenen Infrastruktur, und die Einrichtung behält die volle Kontrolle über Datenflüsse, was organisatorische und regulatorische Anforderungen an Verwaltungssysteme unterstützen kann."
       },
       {
         "question": "How does GAIA help physicians manage their administrative email load?",
@@ -1753,76 +1761,87 @@
     ]
   },
   "adhd-professionals": {
-    "title": "GAIA for ADHD Professionals",
-    "role": "ADHD Professionals",
-    "metaTitle": "GAIA for ADHD Professionals — Less Overhead, More Focus",
-    "metaDescription": "GAIA captures tasks before ideas vanish, surfaces what's urgent without you having to remember to check, and handles follow-ups automatically — reducing the executive function tax of managing a modern workday.",
+    "title": "Ein persönlicher KI-Assistent für Erwachsene mit ADHS",
+    "role": "Erwachsene mit ADHS",
+    "metaTitle": "KI-Assistent für Erwachsene mit ADHS: merkt sich alles",
+    "metaDescription": "Ein persönlicher Assistent für Erwachsene mit ADHS: GAIA macht aus E-Mails Aufgaben, schreibt Ihnen, bevor etwas untergeht, und merkt sich Ihre Zusagen.",
     "keywords": [
-      "ai assistant for adhd",
-      "ai assistant for adhd reddit",
-      "adhd productivity tool",
-      "ai task manager adhd",
-      "adhd ai tool",
-      "best ai for adhd professionals",
-      "ai executive function support",
-      "adhd assistant app",
-      "ai tool for adhd professionals",
-      "ai for adhd productivity"
+      "KI-Assistent ADHS",
+      "bester KI-Assistent bei ADHS",
+      "persönlicher Assistent ADHS Erwachsene",
+      "persönlicher KI-Assistent für ADHS",
+      "ADHS App Erwachsene",
+      "KI für Erwachsene mit ADHS",
+      "KI exekutive Funktionen",
+      "KI Aufgabenmanager ADHS",
+      "KI-Assistent für Berufstätige mit ADHS"
     ],
-    "intro": "For professionals with ADHD, the modern workplace's constant context-switching isn't just annoying — it's a system that actively works against the way your brain operates. The moment attention shifts, tasks escape capture, emails pile into a doom stack, and the guilt of unread notifications quietly compounds. GAIA was built to remove the executive function overhead from your day: it captures tasks from wherever they surface, proactively tells you what needs attention right now, and handles follow-ups in the background so your working memory doesn't have to.",
+    "intro": "Der beste KI-Assistent bei ADHS ist einer, bei dem Sie nicht daran denken müssen, ihn zu benutzen. Genau so arbeitet GAIA: Es macht aus den Bitten, die in Ihren E-Mails untergehen, Aufgaben, schreibt Ihnen per WhatsApp, Telegram oder iMessage, wenn etwas fällig ist, und merkt sich, was Sie ihm erzählt haben – damit Ihr Arbeitsgedächtnis nicht das einzige System ist, das Ihren Tag zusammenhält. Sie sprechen ganz normal mit GAIA oder schicken eine Sprachnachricht, und Sie können es so einrichten, dass das Wichtige passiert, ohne dass Sie überhaupt eine App öffnen.",
     "painPoints": [
-      "Tasks that surface mid-conversation or in passing emails vanish the moment attention shifts to the next thing",
-      "The unread email doom pile grows faster than motivation to tackle it, until avoidance becomes the default",
-      "Important follow-ups get forgotten entirely — not because they aren't a priority, but because there was no system to surface them at the right moment",
-      "Hyperfocus pulls attention deep into low-priority work while genuinely urgent items quietly pile up unnoticed",
-      "The paralysis of opening a task list with 40 undifferentiated items and no clear signal of where to start"
+      "Aufgaben, die mitten im Gespräch oder in einer beiläufigen E-Mail auftauchen, sind weg, sobald die Aufmerksamkeit weiterwandert",
+      "Der Stapel ungelesener E-Mails wächst schneller als die Motivation, sich ihm zu stellen, bis das Ausweichen zum Normalfall wird",
+      "Nachfassaktionen werden vergessen – nicht weil sie unwichtig sind, sondern weil nichts sie im richtigen Moment hochgeholt hat",
+      "Der Hyperfokus zieht Sie tief in unwichtige Arbeit, während sich Dringendes unbemerkt stapelt",
+      "Eine Liste mit vierzig gleichrangigen Aufgaben öffnen und keine Ahnung haben, wo man anfangen soll"
     ],
     "howGaiaHelps": [
       {
-        "title": "Proactive Task Capture from Email and Chat",
-        "description": "GAIA monitors your Gmail and Slack for action items and adds them to Todoist automatically — so tasks get captured before your attention moves on, even if you never explicitly wrote them down."
+        "title": "Aufgaben aus E-Mails und Chats erfasst",
+        "description": "Richten Sie einmal einen Workflow ein, und GAIA durchsucht neue Gmail- oder Slack-Nachrichten nach Dingen, um die man Sie gebeten hat, und trägt sie mit Datum in die GAIA-Aufgaben oder in Todoist ein. Erfasst wird auch dann, wenn Sie sich nie etwas notiert haben."
       },
       {
-        "title": "Automatic Prioritization Surface",
-        "description": "Instead of requiring you to review every item in every tool, GAIA proactively surfaces what's most urgent each morning based on deadlines, email context, and calendar pressure — removing the paralysis of choosing where to start."
+        "title": "Erinnerungen dort, wo Sie sie wirklich sehen",
+        "description": "Erinnerungen und Workflow-Ergebnisse kommen in der Messenger-App Ihrer Wahl an. So erreicht Sie der Anstoß auf dem Handy, auf das Sie ohnehin schauen, statt in einer Aufgaben-App, die Sie vergessen zu öffnen."
       },
       {
-        "title": "Follow-up Reminders Without Manual Setup",
-        "description": "When GAIA detects you've sent an email that likely needs a reply, it schedules a follow-up reminder automatically — no manual reminder creation required, no thread forgotten."
+        "title": "Ein Startpunkt am Morgen statt einer Wand aus Aufgaben",
+        "description": "Bitten Sie GAIA, Ihren Tag zu planen, oder lassen Sie das jeden Morgen automatisch geschehen: GAIA sieht sich Kalender, Fristen und offene Aufgaben an und gibt Ihnen eine kurze Liste, womit Sie anfangen."
       },
       {
-        "title": "Unified Inbox Across All Tools",
-        "description": "GAIA consolidates email, Slack messages, calendar events, and tasks into a single context — reducing the tool-switching tax that fragments attention and drains working memory throughout the day."
+        "title": "Ein Posteingang, dem Sie sich nicht allein stellen müssen",
+        "description": "GAIA fasst zusammen, was eingegangen ist, zieht die wenigen Nachrichten heraus, die Sie brauchen, und entwirft Antworten auf den Rest – aus dem Stapel wird eine Handvoll Entscheidungen."
       },
       {
-        "title": "Natural Language Task Entry",
-        "description": "Add tasks in plain language through chat, email, or voice without navigating menus or opening apps. GAIA parses intent, sets due dates, and routes the task to the right list so low-friction capture actually happens."
+        "title": "Erfassen so schnell wie der Gedanke",
+        "description": "Tippen Sie es, sagen Sie es im Sprachmodus oder schicken Sie eine Sprachnachricht über WhatsApp oder Telegram. GAIA erkennt die Aufgabe, das Fälligkeitsdatum und wohin sie gehört – das Erfassen dauert Sekunden."
       },
       {
-        "title": "Open Source and Self-Hostable",
-        "description": "GAIA is fully open source and free to self-host — no subscription required to get started — with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat if you want the managed version, giving you full control over your data and no vendor lock-in."
+        "title": "Ein Gedächtnis, das Sie nicht selbst tragen müssen",
+        "description": "GAIA merkt sich Ihre Vorlieben, die Menschen, mit denen Sie arbeiten, und was Sie zugesagt haben, und bringt es zurück, wenn es zählt. Jede Erinnerung können Sie in den Einstellungen einsehen oder löschen."
       }
     ],
     "faqs": [
       {
-        "question": "How is GAIA different from a regular task manager for ADHD?",
-        "answer": "Most task managers require you to remember to open them and manually enter tasks — which is exactly the step that breaks down with ADHD. GAIA is proactive: it captures tasks from your existing tools automatically, surfaces what's urgent without you having to check, and sends follow-up reminders it sets itself. It reduces the number of deliberate actions required to stay on top of your day."
+        "question": "Was ist der beste KI-Assistent bei ADHS?",
+        "answer": "Suchen Sie einen, der die Zahl der Dinge verringert, an die Sie denken müssen. GAIA erfasst Aufgaben aus Ihren E-Mails und Chats, erreicht Sie in der Messenger-App, die Sie ohnehin nutzen, und merkt sich den Kontext für Sie. Ein Aufgabenmanager, der darauf wartet, dass Sie ihn öffnen, ist nur eine weitere Sache, an die Sie denken müssen."
       },
       {
-        "question": "Can GAIA help with email avoidance?",
-        "answer": "Yes. GAIA triages your Gmail inbox, categorizes messages by urgency and type, drafts responses for routine emails, and surfaces only the messages that genuinely need your attention. The doom pile shrinks because GAIA handles the low-stakes noise, leaving you with a manageable set of real decisions."
+        "question": "Gibt es einen persönlichen Assistenten für Erwachsene mit ADHS?",
+        "answer": "Ja. GAIA ist ein persönlicher Assistent, dem Sie schreiben oder mit dem Sie sprechen: Es verwaltet E-Mails, Kalender und Aufgaben, schickt Ihnen Erinnerungen per WhatsApp, Telegram oder iMessage und behält im Blick, was Sie zugesagt haben."
       },
       {
-        "question": "Does GAIA work with the tools I already use?",
-        "answer": "GAIA connects to Gmail, Google Calendar, Slack, and Todoist out of the box, with 50+ additional integrations available via MCP. It works within your existing stack rather than requiring you to adopt a new system, which means lower switching cost and faster habit formation."
+        "question": "Was unterscheidet GAIA von einem normalen Aufgabenmanager für ADHS?",
+        "answer": "Die meisten Aufgabenmanager setzen voraus, dass Sie daran denken, sie zu öffnen, und Aufgaben von Hand eintragen – genau der Schritt, der bei ADHS hakt. GAIA holt Aufgaben aus Ihren E-Mails und Chats, klärt mit Ihnen, was dringend ist, und kommt mit Erinnerungen zu Ihnen, statt darauf zu warten, dass Sie nachsehen."
+      },
+      {
+        "question": "Kann GAIA helfen, wenn ich meine E-Mails vor mir herschiebe?",
+        "answer": "Ja. GAIA fasst Ihren Gmail- oder Outlook-Posteingang zusammen, sucht die Nachrichten heraus, die Sie brauchen, und entwirft Antworten auf die Routinenachrichten. So stehen Sie vor einer kurzen Liste von Entscheidungen statt vor dem ganzen Stapel."
+      },
+      {
+        "question": "Funktioniert GAIA mit den Tools, die ich schon nutze?",
+        "answer": "GAIA verbindet sich mit Gmail, Outlook, Google Calendar, Slack, Todoist, Notion und vielen weiteren Tools und arbeitet direkt darin. Sie müssen also nicht auf ein neues System umsteigen, um davon zu profitieren."
+      },
+      {
+        "question": "Wie kann KI Erwachsenen mit ADHS helfen?",
+        "answer": "KI hilft vor allem bei dem, was ADHS am schwersten macht: sich erinnern, anfangen und dranbleiben. GAIA macht aus E-Mails und Nachrichten Aufgaben, zerlegt ein großes Ziel in Schritte, schickt Ihnen Erinnerungen per WhatsApp oder Telegram, bevor etwas untergeht, und merkt sich Ihre Zusagen, damit Sie sie nicht im Kopf behalten müssen."
       }
     ]
   },
   "chiefs-of-staff": {
     "title": "GAIA for Chiefs of Staff",
     "role": "Chiefs of Staff",
-    "metaTitle": "GAIA for Chiefs of Staff — Executive Support at Scale",
-    "metaDescription": "GAIA prepares pre-meeting briefings, extracts action items from all communications, drafts stakeholder updates, and manages the executive inbox — so you can run the office without manually tracking every thread.",
+    "metaTitle": "KI-Assistent für Chiefs of Staff: Briefings und To-dos",
+    "metaDescription": "Das Chefbüro im Griff, ohne jedem Thread nachzulaufen. GAIA erstellt Briefings, zieht To-dos aus allen Kanälen und entwirft Stakeholder-Updates.",
     "keywords": [
       "ai chief of staff app",
       "ai for chiefs of staff",
@@ -1862,11 +1881,11 @@
       },
       {
         "title": "Cross-Tool Task Coordination",
-        "description": "With 50+ integrations via MCP, GAIA connects Gmail, Google Calendar, Slack, Notion, and Todoist into a unified operational layer — so the CoS can track deliverables, deadlines, and decisions across tools from a single interface."
+        "description": "With deep integrations via MCP, GAIA connects Gmail, Google Calendar, Slack, Notion, and Todoist into a unified operational layer — so the CoS can track deliverables, deadlines, and decisions across tools from a single interface."
       },
       {
-        "title": "Open Source and Self-Hostable",
-        "description": "GAIA is fully open source and self-hostable for organizations with data residency requirements, with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat for the managed version — no per-seat pricing that makes executive support tooling prohibitively expensive."
+        "title": "Source-available und selbst hostbar",
+        "description": "GAIA ist source-available (PolyForm Noncommercial), und gewinnorientierte Unternehmen mit Anforderungen an die Datenresidenz können GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team). Die verwaltete Version kostet im Pro-Tarif {{PRO_MONTHLY_PRICE}} $/Monat pro Person."
       }
     ],
     "faqs": [
@@ -1880,15 +1899,15 @@
       },
       {
         "question": "Is GAIA appropriate for managing a C-suite executive's sensitive communications?",
-        "answer": "GAIA is fully open source and self-hostable, meaning your organization can deploy it entirely within your own infrastructure with no third-party data access. For organizations that need full control over executive communications, self-hosting provides complete data sovereignty. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for teams comfortable with a hosted deployment."
+        "answer": "GAIA ist source-available (PolyForm Noncommercial), und Ihr Unternehmen kann GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team) und vollständig innerhalb der eigenen Infrastruktur ohne Datenzugriff Dritter betreiben. Für Organisationen, die volle Kontrolle über die Kommunikation der Geschäftsführung brauchen, bietet dieses Self-Hosting vollständige Datensouveränität. Der verwaltete Pro-Tarif für {{PRO_MONTHLY_PRICE}} $/Monat steht ebenfalls für Teams bereit, denen eine gehostete Lösung genügt."
       }
     ]
   },
   "virtual-assistants": {
     "title": "GAIA for Virtual Assistants",
     "role": "Virtual Assistants",
-    "metaTitle": "GAIA for Virtual Assistants — Handle More Clients, Less Grind",
-    "metaDescription": "GAIA helps VAs manage multiple client inboxes, automate routine communications, coordinate scheduling across client calendars, and track deliverables — so you can scale capacity without burning out.",
+    "metaTitle": "KI-Assistent für virtuelle Assistenten: Mehrere Kunden",
+    "metaDescription": "Mehr Kunden ohne mehr Stunden. GAIA managt das Postfach jedes Kunden, entwirft Routineantworten mit Kontext, plant Termine und verfolgt Deliverables.",
     "keywords": [
       "ai for virtual assistants",
       "ai tools for virtual assistants",
@@ -1928,11 +1947,11 @@
       },
       {
         "title": "Integration with Client Tools via MCP",
-        "description": "With 50+ integrations via MCP, GAIA connects to the tools each client already uses — Notion, Slack, Todoist, Google Workspace — so the VA can operate within the client's existing stack rather than asking every client to adopt something new."
+        "description": "With deep integrations via MCP, GAIA connects to the tools each client already uses — Notion, Slack, Todoist, Google Workspace — so the VA can operate within the client's existing stack rather than asking every client to adopt something new."
       },
       {
-        "title": "Open Source and Free to Start",
-        "description": "GAIA is fully open source with a free tier for self-hosted deployments, and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows."
+        "title": "Source-available und selbst hostbar",
+        "description": "GAIA ist source-available (PolyForm Noncommercial) und für nicht-kommerzielle Nutzung kostenlos selbst hostbar. Die gehostete Version kostet {{PRO_MONTHLY_PRICE}} $/Monat pro Person, ohne Preise pro Kunde, die mit wachsendem Kundenstamm die Marge auffressen."
       }
     ],
     "faqs": [
@@ -1946,7 +1965,78 @@
       },
       {
         "question": "How does GAIA handle client confidentiality?",
-        "answer": "GAIA is fully open source and self-hostable, meaning you can deploy it within your own infrastructure with no third-party access to client data. For VAs managing sensitive client communications, self-hosting provides complete data control. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for VAs comfortable with a hosted deployment."
+        "answer": "GAIA ist source-available (PolyForm Noncommercial). Für den gewerblichen Einsatz können Sie GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team) und auf Ihrer eigenen Infrastruktur ohne Zugriff Dritter auf Kundendaten betreiben. Für VAs, die sensible Kundenkommunikation verwalten, bietet das vollständige Datenkontrolle. Der verwaltete Pro-Tarif für {{PRO_MONTHLY_PRICE}} $/Monat steht ebenfalls für VAs bereit, denen eine gehostete Lösung genügt."
+      }
+    ]
+  },
+  "small-business-owners": {
+    "title": "GAIA für Kleinunternehmer",
+    "role": "Kleinunternehmer",
+    "metaTitle": "KI-Assistent für Kleinunternehmer: Büroarbeit abgeben",
+    "metaDescription": "GAIA entwirft Antworten an Kunden, bucht Termine, behält Nachfassaktionen im Blick und erinnert Sie per WhatsApp – damit Büroarbeit nicht Ihre Abende frisst.",
+    "keywords": [
+      "KI-Assistent für Kleinunternehmer",
+      "KI-Assistent für kleine Unternehmen",
+      "KI für Selbstständige",
+      "virtueller Assistent für Kleinunternehmen",
+      "KI-Assistent für Unternehmer",
+      "KI Büroassistent",
+      "bester KI-Assistent für kleine Unternehmen"
+    ],
+    "intro": "Wer ein kleines Unternehmen führt, ist gleichzeitig Empfang, Terminplanung und Mahnwesen. GAIA ist ein KI-Assistent, der diese Verwaltungsebene übernimmt: Er liest Ihre E-Mails und entwirft die Routineantworten, bucht und verschiebt Termine in Ihrem Kalender, macht aus jedem „Ich melde mich“ eine Aufgabe mit Datum und schreibt Ihnen per WhatsApp, Telegram oder iMessage, wenn etwas Sie braucht. Er arbeitet in den Tools, für die Sie ohnehin bezahlen, statt Sie zum Wechsel zu zwingen.",
+    "painPoints": [
+      "E-Mails von Kunden und Lieferanten stapeln sich, während Sie die eigentliche Arbeit machen, und Antworten gehen Tage zu spät raus",
+      "Ein Telefontermin kostet vier Nachrichten, weil niemand Ihren Kalender sieht",
+      "Angebote, Rechnungen und versprochene Rückrufe gehen unter, weil die Erinnerung nur in Ihrem Kopf existierte",
+      "Sie führen das Geschäft vom Handy aus, aber jedes Tool will Sie am Laptop",
+      "Eine Assistenz einzustellen ist teuer, und die Einarbeitung kostet Zeit, die Sie nicht haben"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Routine-E-Mails werden für Sie beantwortet",
+        "description": "GAIA liest Ihren Gmail- oder Outlook-Posteingang, fasst zusammen, was eingegangen ist, und entwirft Antworten auf Routinenachrichten: Verfügbarkeit, Preisfragen, die Sie schon einmal beantwortet haben, Bestätigungen. Sie geben frei und senden – oder lassen GAIA senden."
+      },
+      {
+        "title": "Termine ohne Hin und Her",
+        "description": "Bitten Sie GAIA, einen Termin mit einem Kunden zu finden: GAIA prüft Ihren Google Calendar, schlägt Zeitfenster vor, legt den Termin an und verschickt die Einladung. Einen Termin zu verschieben ist eine einzige Nachricht."
+      },
+      {
+        "title": "Nachfassen, ohne selbst daran denken zu müssen",
+        "description": "Sagen Sie GAIA, dass am Donnerstag ein Angebot nachgefasst werden soll, und daraus wird eine Aufgabe mit Fälligkeitsdatum. Richten Sie einmal einen Workflow ein, und jede E-Mail, in der jemand etwas von Ihnen möchte, wird automatisch zur Aufgabe."
+      },
+      {
+        "title": "Alles vom Handy aus steuern",
+        "description": "Schreiben Sie GAIA zwischen zwei Aufträgen per WhatsApp, Telegram oder iMessage. Schicken Sie eine Sprachnachricht über WhatsApp oder Telegram, und sie wird transkribiert und umgesetzt; Erinnerungen und Workflow-Ergebnisse landen im selben Chat."
+      },
+      {
+        "title": "Der Wochenüberblick ohne eigene Reports",
+        "description": "Ein geplanter Workflow kann jeden Montagmorgen die offenen Vorgänge, anstehenden Termine und überfälligen Aufgaben der Woche zusammenfassen – aus Ihren E-Mails, Ihrem Kalender und Google Sheets."
+      },
+      {
+        "title": "GAIA kennt Ihre Kunden und Lieferanten",
+        "description": "GAIA merkt sich langfristig, mit wem Sie arbeiten und wie Sie Dinge erledigt haben möchten. Sie müssen also nie wieder erklären, wer Ihr Steuerberater ist oder wie Sie E-Mails unterschreiben. Jede Erinnerung ist in den Einstellungen sichtbar und bearbeitbar."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "Was kann ein KI-Assistent für Kleinunternehmer tun?",
+        "answer": "Die Verwaltungsarbeit, die Ihren Tag auffrisst: E-Mails sortieren und Antworten entwerfen, Termine planen und verschieben, eine Liste mit datierten Nachfassaktionen führen und Ihnen Erinnerungen schicken. GAIA erledigt das in Ihren bestehenden E-Mail-, Kalender- und Aufgaben-Tools und kann wiederkehrende Aufgaben nach Zeitplan ausführen."
+      },
+      {
+        "question": "Ersetzt GAIA eine virtuelle Assistenz?",
+        "answer": "Bei Posteingang, Kalender und Nachfassen deckt GAIA vieles von dem ab, wofür Inhaber eine virtuelle Assistenz einstellen – und ist rund um die Uhr verfügbar. GAIA führt keine Telefonate, übernimmt keine physischen Aufgaben und ersetzt nicht Ihr Urteilsvermögen in Kundenbeziehungen."
+      },
+      {
+        "question": "Kann mein ganzes Team GAIA nutzen?",
+        "answer": "Jede Person nutzt GAIA mit ihrem eigenen Konto und ihren eigenen verbundenen Tools. Für einen teamweiten Plan wenden Sie sich wegen Enterprise an das GAIA-Team."
+      },
+      {
+        "question": "Sind die Daten meiner Kunden sicher?",
+        "answer": "Sie entscheiden, welche Konten Sie verbinden, können eine Freigabe verlangen, bevor GAIA etwas sendet oder löscht, und können alles, was GAIA sich merkt, einsehen oder löschen. Inhalte werden von Anbietern von KI-Modellen verarbeitet, um Antworten zu erzeugen, wie in der Datenschutzerklärung beschrieben."
+      },
+      {
+        "question": "Kann KI Verwaltungsaufgaben für ein kleines Unternehmen automatisieren?",
+        "answer": "Einen Großteil der Arbeit in Postfach und Kalender, ja. GAIA entwirft Antworten auf Kunden-E-Mails, bucht und verschiebt Termine, behält offene Nachfassaktionen im Blick und erledigt wiederkehrende Verwaltung wie eine wöchentliche Zusammenfassung nach Zeitplan. Ihre Marketingkampagnen oder Ihre Buchhaltung übernimmt GAIA nicht."
       }
     ]
   }

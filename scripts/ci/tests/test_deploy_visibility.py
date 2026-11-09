@@ -70,19 +70,28 @@ def sink() -> Iterator[Sink]:
     server.shutdown()
 
 
-def fake_docker(tmp_path: Path, envs: dict[str, list[str]]) -> Path:
-    """`docker buildx imagetools inspect <repo>:<tag>` prints that repo's image Env."""
+def image_json(
+    env: list[str], platforms: tuple[str, ...] = ("linux/amd64", "linux/arm64")
+) -> object:
+    """Build what imagetools inspect's {{json .Image}} prints: one config, or one per platform."""
+    config = {"architecture": "amd64", "os": "linux", "config": {"Env": env}}
+    return config if not platforms else dict.fromkeys(platforms, config)
+
+
+def fake_docker(tmp_path: Path, images: dict[str, object]) -> Path:
+    """`docker buildx imagetools inspect <repo>:<tag> --format '{{json .Image}}'` prints that repo's image."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for repo, env in envs.items():
-        (tmp_path / f"env-{repo}.json").write_text(json.dumps(env))
+    for repo, image in images.items():
+        (tmp_path / f"image-{repo}.json").write_text(json.dumps(image))
     stub = bin_dir / "docker"
     stub.write_text(
         textwrap.dedent(
             f"""\
             #!/usr/bin/env bash
+            [[ "$6" == '{{{{json .Image}}}}' ]] || {{ echo "unexpected format: $6" >&2; exit 2; }}
             ref="$4"; repo="${{ref##*/}}"; repo="${{repo%%:*}}"
-            cat "{tmp_path}/env-$repo.json"
+            cat "{tmp_path}/image-$repo.json"
             """
         )
     )
@@ -130,6 +139,35 @@ def test_notify_posts_to_discord_and_slack(tmp_path: Path, sink: Sink) -> None:
     assert "channel 42" in proc.stdout
 
 
+def test_notify_sends_a_structured_state_message(tmp_path: Path, sink: Sink) -> None:
+    """Send a structured message: the STATE path leaves MESSAGE unset.
+
+    Nothing may read it — Slack's fallback did, and `set -u` killed the send
+    on the first structured message.
+    """
+    proc, _ = run(
+        tmp_path,
+        "notify",
+        {
+            "STATE": "deploy_blocked",
+            "SUBJECT": "prod is 3 commits behind master",
+            "IMPACT": "fine, serving fc67d3d8.",
+            "CAUSE": "ci / security / pip-audit failed on d980793b",
+            "ACTION": "fix pyasn1.",
+            "CLEARS_WHEN": "master's quality-gate goes green.",
+            "DISCORD_WEBHOOK": f"{sink.url}/discord",
+            "SLACK_WEBHOOK": f"{sink.url}/slack",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    by_path = {path.split("?")[0]: body for path, body in sink.posts}
+    assert by_path["/discord"]["embeds"][0]["description"].startswith(
+        "⛔ DEPLOY BLOCKED — prod is 3 commits behind master"
+    )
+    assert by_path["/slack"]["attachments"][0]["fallback"].startswith("⛔ DEPLOY BLOCKED")
+
+
 def test_notify_still_sends_discord_but_fails_when_slack_is_unset(
     tmp_path: Path, sink: Sink
 ) -> None:
@@ -163,9 +201,9 @@ def verify_env(sink: Sink, bots_tag: str = "") -> dict[str, str]:
 
 
 def images(tmp_path: Path) -> Path:
-    envs = {"gaia": ["PATH=/bin", f"GIT_COMMIT_SHA={APPS_SHA}"]}
-    envs |= {f"gaia-bot-{bot}": [f"GIT_COMMIT_SHA={BOTS_SHA}"] for bot in BOTS}
-    return fake_docker(tmp_path, envs)
+    found: dict[str, object] = {"gaia": image_json(["PATH=/bin", f"GIT_COMMIT_SHA={APPS_SHA}"])}
+    found |= {f"gaia-bot-{bot}": image_json([f"GIT_COMMIT_SHA={BOTS_SHA}"]) for bot in BOTS}
+    return fake_docker(tmp_path, found)
 
 
 def test_verify_commit_passes_when_prod_serves_the_deployed_image(
@@ -206,9 +244,35 @@ def test_verify_commit_checks_every_bot_when_bots_were_deployed(tmp_path: Path, 
 
 def test_verify_commit_fails_when_the_image_carries_no_commit(tmp_path: Path, sink: Sink) -> None:
     sink.bodies["/health"] = {"commit": "local"}
-    bin_dir = fake_docker(tmp_path, {"gaia": ["PATH=/bin"]})
+    bin_dir = fake_docker(tmp_path, {"gaia": image_json(["PATH=/bin"])})
 
     proc, _ = run(tmp_path, "verify-commit", verify_env(sink), bin_dir)
 
     assert proc.returncode != 0
     assert "GIT_COMMIT_SHA" in proc.stdout + proc.stderr
+
+
+def test_verify_commit_reads_a_single_platform_image(tmp_path: Path, sink: Sink) -> None:
+    sink.bodies["/health"] = {"commit": APPS_SHA[:8]}
+    bin_dir = fake_docker(tmp_path, {"gaia": image_json([f"GIT_COMMIT_SHA={APPS_SHA}"], ())})
+
+    proc, output = run(tmp_path, "verify-commit", verify_env(sink), bin_dir)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert f"commit={APPS_SHA}" in output.splitlines()
+
+
+def test_verify_commit_fails_when_an_index_s_platforms_disagree_on_the_commit(
+    tmp_path: Path, sink: Sink
+) -> None:
+    sink.bodies["/health"] = {"commit": APPS_SHA[:8]}
+    index = {
+        "linux/amd64": {"config": {"Env": [f"GIT_COMMIT_SHA={APPS_SHA}"]}},
+        "linux/arm64": {"config": {"Env": [f"GIT_COMMIT_SHA={BOTS_SHA}"]}},
+    }
+    bin_dir = fake_docker(tmp_path, {"gaia": index})
+
+    proc, _ = run(tmp_path, "verify-commit", verify_env(sink), bin_dir)
+
+    assert proc.returncode != 0
+    assert "platforms disagree" in proc.stdout + proc.stderr

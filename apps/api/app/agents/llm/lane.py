@@ -19,12 +19,12 @@ from enum import StrEnum
 
 from pydantic import TypeAdapter
 
-from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider, openai_lane_available
+from app.agents.llm.client import chat_model, chat_route, provider_configured
 from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
+from app.config.settings import settings
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
-    COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -32,6 +32,7 @@ from app.constants.llm import (
     MODEL_FIELD_ID,
     MODEL_KWARGS_FIELD_ID,
     MONTHLY_BUDGET_TTL_SECONDS,
+    OPENROUTER_PROVIDER_ROUTING,
     OPENROUTER_REASONING,
     PAID_COMMS_REASONING,
     PAID_MODEL_NAME,
@@ -99,8 +100,8 @@ class ModelLane:
     #: env-defined custom dev endpoint serves ``DEV_LLM_MODEL`` this way.
     model: str | None
     reasoning: OpenRouterReasoning | None
-    #: OpenRouter provider-routing pin. Provider-specific by definition, so it
-    #: never survives :meth:`fallback`.
+    #: The model's own OpenRouter routing, from OPENROUTER_PROVIDER_ROUTING via
+    #: _provider_pin wherever a lane picks its model.
     provider_pin: OpenRouterModelKwargs | None
     max_input_tokens: int
 
@@ -167,15 +168,28 @@ class ModelLane:
     def fallback(self) -> "ModelLane | None":
         """Return the same run on the next configured provider, or None when there is no other one.
 
-        The pin AND the reasoning config are dropped: both are OpenRouter-wire
-        concepts, so carrying either onto a different provider is how a
-        fallback turns one failure into two.
+        The reasoning config is dropped and the pin re-derived for the new model:
+        carrying either onto a different provider is how a fallback turns one
+        failure into two.
         """
-        nxt = next_fallback_provider(self.provider)
+        nxt = chat_route(self.provider)
         if nxt is None:
             return None
         provider, model = nxt
-        return replace(self, provider=provider, model=model, provider_pin=None, reasoning=None)
+        return replace(
+            self,
+            provider=provider,
+            model=model,
+            provider_pin=_provider_pin(provider, model),
+            reasoning=None,
+        )
+
+
+def _provider_pin(provider: LLMProviderName, model: str | None) -> OpenRouterModelKwargs | None:
+    """Return model's routing pin on OpenRouter; any other provider takes none."""
+    if provider is not LLMProviderName.OPENROUTER or model is None:
+        return None
+    return OPENROUTER_PROVIDER_ROUTING.get(model)
 
 
 def _reasoning_for(role: AgentRole) -> OpenRouterReasoning:
@@ -191,22 +205,41 @@ def _reasoning_for(role: AgentRole) -> OpenRouterReasoning:
 
 
 def _default_lane() -> ModelLane:
+    """Return the lane for a default (free or unresolved-plan) turn.
+
+    Hosted instances run OpenRouter's default model exactly as always. Without
+    OpenRouter the highest-priority usable chat provider serves, so LangChain is
+    never asked for a lane that has no config; with none at all, the OpenRouter
+    lane fails loud at load time naming the fix.
+    """
+    route = chat_route()
+    if route is not None:
+        provider, model = route
+        is_openrouter = provider is LLMProviderName.OPENROUTER
+        return ModelLane(
+            provider=provider,
+            model=model,
+            # A reasoning pin is OpenRouter-wire only.
+            reasoning=OPENROUTER_REASONING if is_openrouter else None,
+            provider_pin=_provider_pin(provider, model),
+            max_input_tokens=DEFAULT_MAX_TOKENS,
+        )
     return ModelLane(
         provider=LLMProviderName(DEFAULT_LLM_PROVIDER),
         model=DEFAULT_MODEL_NAME,
         reasoning=OPENROUTER_REASONING,
-        provider_pin=None,
+        provider_pin=_provider_pin(LLMProviderName(DEFAULT_LLM_PROVIDER), DEFAULT_MODEL_NAME),
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 
 
 def _comms_lane() -> ModelLane | None:
     """Return comms' own direct-OpenAI lane, or None when OpenAI is not configured."""
-    if not openai_lane_available():
+    if not provider_configured(LLMProviderName.OPENAI):
         return None
     return ModelLane(
         provider=LLMProviderName.OPENAI,
-        model=COMMS_MODEL_NAME,
+        model=chat_model(LLMProviderName.OPENAI),
         # The effort is fixed on the client; a reasoning key would only be ignored.
         reasoning=None,
         provider_pin=None,
@@ -223,15 +256,16 @@ def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
     """Build a lane pinned from the DEV-ONLY model menu.
 
     An entry may carry no model (the env-defined "custom" endpoint); the lane
-    resolves PROVIDER_MODELS[provider] instead of leaving it None, so
+    resolves the provider's chat model instead of leaving it None, so
     accounting sees the real name instead of metering as "unknown". None
-    survives only when the env var itself is unset.
+    survives only when no model is configured at all.
     """
+    model = option.model or chat_model(option.provider)
     return ModelLane(
         provider=option.provider,
-        model=option.model or PROVIDER_MODELS.get(option.provider) or None,
+        model=model,
         reasoning=_reasoning_for(role) if option.reasoning else None,
-        provider_pin=option.provider_pin,
+        provider_pin=_provider_pin(option.provider, model),
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 
@@ -292,7 +326,9 @@ async def resolve_lane(
     if comms_lane is not None:
         return comms_lane, plan
 
-    if plan == PlanType.FREE:
+    # Without plans every user is Pro, yet the paid model is a hosted tier: the
+    # instance's own configured lane serves everyone.
+    if plan == PlanType.FREE or not settings.deployment.enforces_plans:
         return _default_lane(), plan
 
     if await _pro_monthly_budget_exhausted(user_id):
@@ -310,10 +346,7 @@ async def resolve_lane(
             provider=LLMProviderName(PAID_MODEL_PROVIDER),
             model=PAID_MODEL_NAME,
             reasoning=_reasoning_for(role),
-            # No per-lane `only` pin: it conflicts with session_id sticky
-            # routing and measured WORSE (64% cache hits vs 83-91% without it).
-            # The soft `order` preference is set on the client instead.
-            provider_pin=None,
+            provider_pin=_provider_pin(LLMProviderName(PAID_MODEL_PROVIDER), PAID_MODEL_NAME),
             max_input_tokens=DEFAULT_MAX_TOKENS,
         ),
         plan,

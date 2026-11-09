@@ -100,6 +100,9 @@ MEDIA_EVICTED_NOTICE = (
 MEDIA_DESCRIPTIONS_KEY = "media_descriptions"
 
 MEDIA_DESCRIBE_FAILED = "[Image could not be described: the vision model was unavailable.]"
+MEDIA_VISION_NOT_CONFIGURED = (
+    "[Image could not be described: no configured AI provider can read images on this instance.]"
+)
 
 TOOL_MEDIA_DESCRIBE_PROMPT = (
     "An image was returned by the '{tool_name}' tool. Context from the tool result:\n"

@@ -52,7 +52,7 @@ export function SplitShowcase({
         <div className="mt-9 flex justify-start">
           <GetStartedButton
             btnColor="#00bbff"
-            classname="text-black! px-2 hover:scale-105"
+            classname="px-2 hover:scale-105"
             text="Get Started"
           />
         </div>

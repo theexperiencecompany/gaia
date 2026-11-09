@@ -13,6 +13,7 @@ path it lives at here.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -50,13 +51,15 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def run(repo: Path) -> subprocess.CompletedProcess[str]:
+def run(repo: Path, uv_project: Path = _HERE.parents[1]) -> subprocess.CompletedProcess[str]:
+    """Run the copied check; its ruff is the lint group of uv_project (the real repo's lockfile)."""
     return subprocess.run(
         [sys.executable, "tools/lints/check_ignore_staleness.py"],
         cwd=repo,
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, "UV_PROJECT": str(uv_project)},
     )
 
 
@@ -73,3 +76,14 @@ def test_entry_masking_nothing_fails_naming_the_file(repo: Path) -> None:
     assert result.returncode == 1
     assert '"app.py"' in result.stderr
     assert "masks nothing anymore" in result.stderr
+
+
+def test_uv_failing_to_start_ruff_is_an_error_not_a_stale_entry(repo: Path, tmp_path: Path) -> None:
+    """Uv exits 1 without a lockfile, ruff's findings code; read as findings, a live entry was reported stale."""
+    unlocked = tmp_path / "unlocked"
+    unlocked.mkdir()
+    (unlocked / "pyproject.toml").write_text('[project]\nname = "unlocked"\nversion = "0"\n')
+    result = run(repo, uv_project=unlocked)
+    assert result.returncode != 0
+    assert "ruff failed" in result.stderr + result.stdout
+    assert "masks nothing" not in result.stdout
