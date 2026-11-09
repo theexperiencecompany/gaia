@@ -626,7 +626,7 @@ class TestBuildDelegation:
         loaded = integration_activation.IntegrationLoad(
             text="Integration 'gmail' is now active with 44 tools.",
             bind=["query_json"],
-            artifact={"activated_integration": "gmail"},
+            record=integration_activation.ActivationRecord(activated_integration="gmail"),
         )
         mw = _ready_middleware(inherit_parent_tools=True)
         parent = _make_spawn_config()["configurable"]
@@ -647,10 +647,20 @@ class TestBuildDelegation:
         assert load.await_args.args[:2] == ("gmail", parent)
         call_message, result = delegation.ctx.initial_state["messages"][-2:]
         assert isinstance(call_message, AIMessage) and isinstance(result, ToolMessage)
-        assert call_message.tool_calls[0]["name"] == "activate_integration"
-        assert call_message.tool_calls[0]["args"] == {"integration_id": "gmail"}
+        # The spawn's own turn says nothing; it only calls the tool, as a model would.
+        assert call_message.content == ""
+        assert call_message.tool_calls == [
+            {
+                "name": "activate_integration",
+                "args": {"integration_id": "gmail"},
+                "id": call_message.tool_calls[0]["id"],
+                "type": "tool_call",
+            }
+        ]
         assert result.tool_call_id == call_message.tool_calls[0]["id"]
+        assert result.name == "activate_integration"
         assert result.content == loaded.text
+        assert result.artifact == {"activated_integration": "gmail"}
         assert delegation.ctx.initial_state["selected_tool_ids"] == [
             "create_flowchart",
             "query_json",
@@ -784,7 +794,38 @@ class TestLargeResultsPointToSpawns:
     async def _wrap(self, result):
         mw = _make_middleware()
         request = SimpleNamespace(tool_call={"name": "query_json", "args": {}, "id": "c1"})
-        return await mw.awrap_tool_call(request, AsyncMock(return_value=result))
+        handler = AsyncMock(return_value=result)
+        wrapped = await mw.awrap_tool_call(request, handler)
+        handler.assert_awaited_once_with(request)
+        return wrapped
+
+    async def test_a_result_exactly_at_the_size_line_carries_the_hint(self):
+        from app.agents.prompts import spawn_subagent_prompts
+        from app.constants import agents
+
+        body = "x" * agents.LARGE_TOOL_RESULT_CHARS
+        wrapped = await self._wrap(ToolMessage(content=body, tool_call_id="c1"))
+
+        assert wrapped.content.endswith(spawn_subagent_prompts.LARGE_RESULT_SPAWN_HINT)
+
+    async def test_a_result_just_under_the_size_line_is_left_alone(self):
+        from app.constants import agents
+
+        result = ToolMessage(content="x" * (agents.LARGE_TOOL_RESULT_CHARS - 1), tool_call_id="c1")
+
+        assert await self._wrap(result) is result
+
+    async def test_a_large_result_in_content_blocks_gets_the_hint_as_a_text_block(self):
+        from app.agents.prompts import spawn_subagent_prompts
+
+        blocks = [{"type": "text", "text": "y" * 30_000}]
+        wrapped = await self._wrap(ToolMessage(content=blocks, tool_call_id="c1"))
+
+        assert wrapped.content[0] == blocks[0]
+        assert wrapped.content[1] == {
+            "type": "text",
+            "text": f"\n\n{spawn_subagent_prompts.LARGE_RESULT_SPAWN_HINT}",
+        }
 
     async def test_a_large_result_carries_the_hint_after_its_content(self):
         from app.agents.prompts import spawn_subagent_prompts

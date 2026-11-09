@@ -10,7 +10,7 @@ falls back to reading through the sandbox so file reads still work.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Annotated
 
 from e2b import AsyncSandbox, NotFoundException
 from langchain_core.runnables.config import RunnableConfig
@@ -37,7 +37,7 @@ from app.services.storage.juicefs import (
 )
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
 from app.utils.image_codec import ImageCodec, InvalidImageError
-from app.utils.multimodal import text_content_block
+from app.utils.multimodal import ContentBlock, text_content_block
 from shared.py.wide_events import log
 
 DEFAULT_LIMIT = 2000
@@ -70,7 +70,7 @@ class ReadPage:
 
 async def _read_special(
     target: ReadTarget, page: ReadPage, mime_type: str | None
-) -> str | list[dict[str, Any]] | None:
+) -> str | list[ContentBlock] | None:
     """Serve image, in-memory system, and todo-document files.
 
     Returns the tool result when handled, else None so the caller falls
@@ -119,7 +119,7 @@ async def read(
     path: Annotated[str, "Path inside the workspace (relative = session scratch)"],
     offset: Annotated[int, "Starting line (1-indexed); 0 = start of file"] = 0,
     limit: Annotated[int, "Max lines to return"] = DEFAULT_LIMIT,
-) -> str | list[dict[str, Any]]:
+) -> str | list[ContentBlock]:
     """Read a file from the persistent workspace."""
 
     log.set(tool={"name": "read", "action": "read"})
@@ -176,7 +176,7 @@ async def _read_image(
     abs_path: str,
     mime_type: str,
     session_id: str | None,
-) -> str | list[dict[str, Any]]:
+) -> str | list[ContentBlock]:
     """Read an image file and return it as inline content blocks.
 
     Always returns the pixels. Fitting them to the active lane — actual image, or

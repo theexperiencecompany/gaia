@@ -14,6 +14,7 @@ import shutil
 import sys
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.tools.coding import _filter
@@ -24,7 +25,7 @@ from app.services.storage import JuiceFSUnavailable
 
 PY = sys.executable
 GREP = shutil.which("grep") or "grep"
-CONFIG = {"configurable": {"user_id": "u1", "conversation_id": "c1"}}
+CONFIG: RunnableConfig = {"configurable": {"user_id": "u1", "conversation_id": "c1"}}
 
 
 def _mock_resolve(path: Path):
@@ -338,3 +339,11 @@ async def test_grep_tool_alternation_matches_any_branch(tmp_path: Path) -> None:
         '1:{"subject": "New job: Full Stack Engineer"}',
         '3:{"subject": "We are Hiring founders"}',
     ]
+
+
+async def test_grep_tool_alternation_also_works_case_sensitively(tmp_path: Path) -> None:
+    f = tmp_path / "mail.jsonl"
+    f.write_text('{"subject": "New job"}\n{"subject": "digest"}\n{"subject": "recruit now"}\n')
+    with _mock_resolve(f):
+        out = await grep.ainvoke({"pattern": "job|recruit", "path": "mail.jsonl"}, config=CONFIG)
+    assert out.splitlines() == ['1:{"subject": "New job"}', '3:{"subject": "recruit now"}']

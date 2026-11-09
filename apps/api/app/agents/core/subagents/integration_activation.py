@@ -14,8 +14,8 @@ spend a whole retrieve_tools round trip rediscovering tools the config names.
 
 import asyncio
 from collections.abc import AsyncIterator, Callable, Sequence
-from dataclasses import dataclass
-from typing import Annotated, TypedDict
+from dataclasses import dataclass, field
+from typing import Annotated
 
 import httpx
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
@@ -25,6 +25,7 @@ from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 from mcp.shared.exceptions import McpError
 from mcp_use.client.exceptions import MCPError as McpUseError, OAuthAuthenticationError
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.context.fetchers import build_provider_metadata_block
 from app.agents.context.text import ACTIVATION_MULTI_ACCOUNT_POINTER
@@ -68,10 +69,16 @@ ALREADY_ACTIVE_REPLY = (
 )
 
 
-class _ActivationArtifact(TypedDict):
-    """Marks a reply that loaded an integration, so a later call can tell it is still loaded."""
+class ActivationRecord(BaseModel):
+    """Marks a reply that loaded an integration, so a later call can tell it is still loaded.
 
-    activated_integration: str
+    Stored as the reply's artifact in plain form, so the checkpoint keeps it; any
+    other artifact parses to activated_integration=None.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    activated_integration: str | None = None
 
 
 # The server refused our credential: the user has to sign in again.
@@ -295,24 +302,6 @@ async def _activation_context(
     return "\n\n".join(sections)
 
 
-def _reply(
-    tool_call_id: str,
-    text: str,
-    bind: list[str] | None = None,
-    artifact: _ActivationArtifact | None = None,
-) -> Command[str]:
-    """Build the tool's result, binding any tools it names in the same turn.
-
-    selected_tool_ids has an append reducer, so listing names here adds them to
-    what the model can call on its very next step — no discovery round trip.
-    """
-    message = ToolMessage(content=text, tool_call_id=tool_call_id, artifact=artifact)
-    update: dict[str, object] = {"messages": [message]}
-    if bind:
-        update["selected_tool_ids"] = bind
-    return Command(update=update)
-
-
 async def _stamp_activation(
     configurable: AgentConfigurable, integration_id: str, activated: ActivatedTools
 ) -> bool:
@@ -425,7 +414,8 @@ def _still_active(messages: Sequence[AnyMessage], integration_id: str) -> bool:
     return any(
         isinstance(message, ToolMessage)
         and isinstance(message.artifact, dict)
-        and message.artifact.get("activated_integration") == integration_id
+        and ActivationRecord.model_validate(message.artifact).activated_integration
+        == integration_id
         for message in messages
     )
 
@@ -435,9 +425,30 @@ class IntegrationLoad:
     """What activating one integration produced: the reply text, the tools it binds, its marker."""
 
     text: str
-    bind: list[str]
+    bind: list[str] = field(default_factory=list)
     #: Set only when the integration loaded, so a later call can tell it is still active.
-    artifact: _ActivationArtifact | None = None
+    record: ActivationRecord | None = None
+
+    def reply(self, tool_call_id: str) -> ToolMessage:
+        """Build the activate_integration reply carrying this load, marked when it loaded."""
+        return ToolMessage(
+            content=self.text,
+            tool_call_id=tool_call_id,
+            name=ACTIVATE_INTEGRATION_TOOL_NAME,
+            artifact=self.record.model_dump() if self.record else None,
+        )
+
+
+def _reply(tool_call_id: str, loaded: IntegrationLoad) -> Command[str]:
+    """Build the tool's result, binding any tools it names in the same turn.
+
+    selected_tool_ids has an append reducer, so listing names here adds them to
+    what the model can call on its very next step — no discovery round trip.
+    """
+    update: dict[str, object] = {"messages": [loaded.reply(tool_call_id)]}
+    if loaded.bind:
+        update["selected_tool_ids"] = loaded.bind
+    return Command(update=update)
 
 
 async def load_integration(
@@ -452,16 +463,16 @@ async def load_integration(
     if target is None:
         log.set(activation={"integration": integration_id})
         log.warning(f"{LogTag.AGENT} Activation requested for unknown integration")
-        return IntegrationLoad(text=f"Unknown integration '{integration_id}'.", bind=[])
+        return IntegrationLoad(text=f"Unknown integration '{integration_id}'.")
 
     if _still_active(history, target.id):
         log.set(activation={"integration": target.id, "already_active": True})
-        return IntegrationLoad(text=ALREADY_ACTIVE_REPLY.format(integration_id=target.id), bind=[])
+        return IntegrationLoad(text=ALREADY_ACTIVE_REPLY.format(integration_id=target.id))
 
     activated = await _connect_and_activate(target, user_id)
     if isinstance(activated, str):
         log.set(activation={"integration": target.id, "connected": False})
-        return IntegrationLoad(text=activated, bind=[])
+        return IntegrationLoad(text=activated)
 
     several_accounts = await _has_several_accounts(target.id, user_id)
     context = await _activation_context(target, user_id, several_accounts)
@@ -485,7 +496,7 @@ async def load_integration(
     return IntegrationLoad(
         text=body,
         bind=activated.bind,
-        artifact=_ActivationArtifact(activated_integration=target.id),
+        record=ActivationRecord(activated_integration=target.id),
     )
 
 
@@ -505,7 +516,7 @@ async def activate_integration(
     yourself, or pass its id to spawn_subagent's integration_ids.
     """
     loaded = await load_integration(integration_id, agent_configurable(config), messages)
-    return _reply(tool_call_id, loaded.text, loaded.bind, loaded.artifact)
+    return _reply(tool_call_id, loaded)
 
 
 @dataclass(frozen=True)
@@ -529,7 +540,8 @@ async def preload_integrations(
     loads = await asyncio.gather(*(load_integration(i, configurable, []) for i in unique))
     messages: list[AnyMessage] = []
     bind: list[str] = []
-    for index, (integration_id, loaded) in enumerate(zip(unique, loads, strict=True)):
+    for index, integration_id in enumerate(unique):
+        loaded = loads[index]
         call_id = f"{PRELOAD_CALL_ID_PREFIX}{index}"
         messages.append(
             AIMessage(
@@ -539,19 +551,11 @@ async def preload_integrations(
                         "name": ACTIVATE_INTEGRATION_TOOL_NAME,
                         "args": {"integration_id": integration_id},
                         "id": call_id,
-                        "type": "tool_call",
                     }
                 ],
             )
         )
-        messages.append(
-            ToolMessage(
-                content=loaded.text,
-                tool_call_id=call_id,
-                name=ACTIVATE_INTEGRATION_TOOL_NAME,
-                artifact=loaded.artifact,
-            )
-        )
+        messages.append(loaded.reply(call_id))
         bind.extend(name for name in loaded.bind if name not in bind)
     return PreloadedIntegrations(messages=messages, bind=bind)
 

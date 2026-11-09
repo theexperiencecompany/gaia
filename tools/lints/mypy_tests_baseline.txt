@@ -261,11 +261,6 @@ apps/api/tests/unit/memory/test_user_time.py	attr-defined
 apps/api/tests/unit/middleware/test_loop_guard.py	union-attr
 apps/api/tests/unit/middleware/test_rate_limiter_middleware.py	arg-type
 apps/api/tests/unit/middleware/test_request_timeout.py	arg-type
-apps/api/tests/unit/middleware/test_summarization.py	arg-type
-apps/api/tests/unit/middleware/test_summarization.py	attr-defined
-apps/api/tests/unit/middleware/test_summarization.py	call-overload
-apps/api/tests/unit/middleware/test_summarization.py	typeddict-item
-apps/api/tests/unit/middleware/test_summarization.py	union-attr
 apps/api/tests/unit/middleware/test_unhandled_exception_middleware.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	call-arg
@@ -449,7 +444,6 @@ apps/api/tests/unit/tools/coding/test_bash_execute_env.py	attr-defined
 apps/api/tests/unit/tools/coding/test_bash_exit.py	attr-defined
 apps/api/tests/unit/tools/coding/test_bash_lab_run.py	arg-type
 apps/api/tests/unit/tools/coding/test_bash_lab_run.py	attr-defined
-apps/api/tests/unit/tools/coding/test_grep_filter_tools.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	index
 apps/api/tests/unit/tools/coding/test_read_fallback.py	arg-type

@@ -16,7 +16,9 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
-from langchain.agents import create_agent
+from langchain.agents import AgentState, create_agent
+from langchain.agents.middleware.types import InputAgentState
+from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import (
     AIMessage,
@@ -45,6 +47,7 @@ from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.summarization import SUMMARY_INPUT_BUDGET_FRACTION
 from app.services.storage import JuiceFSUnavailable
 from shared.py.wide_events import log
 
@@ -86,7 +89,7 @@ def _humans(count: int) -> list[AnyMessage]:
     return [HumanMessage(content=f"m{i}", id=f"m{i}") for i in range(count)]
 
 
-def _graph_config(**configurable: Any) -> AbstractContextManager[None]:
+def _graph_config(**configurable: Any) -> AbstractContextManager[object]:
     """Stand in for LangGraph's runnable context var, which get_config() reads.
 
     The runtime object a middleware hook receives deliberately carries no
@@ -170,7 +173,7 @@ def test_provider_reported_tokens_trigger_the_archive_too() -> None:
 
 def test_an_empty_history_never_triggers_an_archive() -> None:
     assert _middleware()._should_trigger_summarization({"messages": []}) is False
-    assert _middleware()._should_trigger_summarization({}) is False
+    assert _middleware()._should_trigger_summarization(cast("AgentState[Any]", {})) is False
 
 
 def test_a_failing_token_counter_surfaces_instead_of_silently_skipping() -> None:
@@ -261,7 +264,7 @@ async def test_archive_of_a_state_without_messages_archives_an_empty_history(
 
     monkeypatch.setattr(summarization_module, "write_session_file", fake_write)
     with _graph_config(user_id="u1", thread_id="c1"):
-        await _middleware()._archive({})
+        await _middleware()._archive({"messages": []})
 
     assert json.loads(captured["content"]) == []
 
@@ -377,7 +380,7 @@ def test_the_archive_path_is_appended_to_the_summary_message() -> None:
     summary = HumanMessage(content="Here is a summary")
     summarization_module._inject_archive_path(summary, "/workspace/a.json", "read_tool")
 
-    assert summary.content.startswith("Here is a summary")
+    assert summary.text.startswith("Here is a summary")
     assert "/workspace/a.json" in summary.content
     assert "`read` tool" in summary.content
     assert summary.additional_kwargs["archive_path"] == "/workspace/a.json"
@@ -387,7 +390,7 @@ def test_the_archive_pointer_asks_the_executor_when_the_agent_cannot_read() -> N
     summary = HumanMessage(content="Here is a summary")
     summarization_module._inject_archive_path(summary, "/workspace/a.json", "executor")
 
-    assert summary.content.startswith("Here is a summary")
+    assert summary.text.startswith("Here is a summary")
     assert "/workspace/a.json" in summary.content
     assert "`call_executor`" in summary.content
     assert "ask the executor to read that file" in summary.content
@@ -396,7 +399,7 @@ def test_the_archive_pointer_asks_the_executor_when_the_agent_cannot_read() -> N
 
 
 def test_injection_leaves_block_style_content_intact_but_still_records_the_path() -> None:
-    content = [{"type": "text", "text": "summary"}]
+    content: list[str | dict[Any, Any]] = [{"type": "text", "text": "summary"}]
     summary = HumanMessage(content=content)
     summarization_module._inject_archive_path(summary, "/workspace/a.json", "read_tool")
 
@@ -550,8 +553,10 @@ async def test_the_summary_call_streams_silent_and_the_reply_does_not() -> None:
     agent = create_agent(model=model, tools=[], middleware=[mw])
 
     streamed: dict[str, list[bool]] = {"SUMMARY": [], "REPLY": []}
-    async for chunk, metadata in agent.astream({"messages": _humans(6)}, stream_mode="messages"):
+    state: InputAgentState = {"messages": [*_humans(6)]}
+    async for chunk, metadata in agent.astream(state, stream_mode="messages"):
         if isinstance(chunk, AIMessageChunk) and chunk.text in streamed:
+            assert isinstance(metadata, dict)
             streamed[chunk.text].append(bool(metadata.get("silent")))
 
     assert streamed["SUMMARY"] and all(streamed["SUMMARY"])
@@ -565,15 +570,16 @@ class _RecordingModel(GenericFakeChatModel):
     prompts: list[str] = Field(default_factory=list)
     call_metadata: list[dict[str, Any]] = Field(default_factory=list)
 
-    def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
         self.prompts.append(str(messages[-1].content))
-        return super()._generate(messages, *args, **kwargs)
-
-    async def ainvoke(  # type: ignore[override]  # narrower config type is enough here
-        self, model_input: Any, config: dict[str, Any] | None = None, **kwargs: Any
-    ) -> BaseMessage:
-        self.call_metadata.append(dict((config or {}).get("metadata") or {}))
-        return await super().ainvoke(model_input, config, **kwargs)
+        self.call_metadata.append(dict(run_manager.metadata) if run_manager else {})
+        return super()._generate(messages, stop, run_manager, **kwargs)
 
 
 def _recording_model(max_input_tokens: int = MAX_INPUT_TOKENS) -> _RecordingModel:
@@ -602,7 +608,7 @@ async def test_a_large_tool_output_never_drops_the_previous_summary() -> None:
     )
     call = AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}])
     huge = ToolMessage(content="x " * 20_000, tool_call_id="c1", id="t1")
-    state = {
+    state: AgentState[Any] = {
         "messages": [
             previous,
             call,
@@ -625,7 +631,7 @@ async def test_an_id_less_message_is_left_in_place_with_its_tool_pair() -> None:
     mw = _middleware(trigger=("messages", 4), keep=("messages", 1), archive=None)
     call = AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}])
     legacy_result = ToolMessage(content="interrupted", tool_call_id="c1")
-    state = {
+    state: AgentState[Any] = {
         "messages": [
             HumanMessage("first", id="h1"),
             call,
@@ -742,7 +748,7 @@ async def test_the_running_turn_stays_verbatim_while_older_history_exists() -> N
     assert result is not None
     summary, *removals = result["messages"]
     assert summary.id == "h0"
-    assert summary.content.endswith("NEW SUMMARY")
+    assert summary.text.endswith("NEW SUMMARY")
     # The produced summary must be recognisable as one, or the next fold cannot
     # tell it apart from a real user turn.
     assert is_conversation_summary(summary)
@@ -1141,7 +1147,11 @@ async def test_when_nothing_past_the_old_summary_fits_history_stays_and_says_why
         additional_kwargs={"lc_source": "summarization"},
         id="summary",
     )
-    history = [previous, HumanMessage("z" * 6000, id="huge"), HumanMessage("next", id="h")]
+    history: list[AnyMessage] = [
+        previous,
+        HumanMessage("z" * 6000, id="huge"),
+        HumanMessage("next", id="h"),
+    ]
 
     result = await mw.abefore_model({"messages": history}, _runtime())
 
@@ -1161,7 +1171,7 @@ def _chars(messages: Any) -> int:
 
 def _window_for(budget: int) -> int:
     """Return the smallest window whose summary budget is exactly the given budget."""
-    fraction = summarization_module.SUMMARY_INPUT_BUDGET_FRACTION
+    fraction = SUMMARY_INPUT_BUDGET_FRACTION
     window = int(budget / fraction)
     while int(window * fraction) < budget:
         window += 1
@@ -1174,7 +1184,7 @@ async def test_the_budget_is_measured_on_the_xml_and_a_full_budget_still_fits(
     fits: int, folded: int
 ) -> None:
     """The prompt template plus each message as the XML it is sent as; exactly full is not over."""
-    history = [HumanMessage(content="a" * 40, id=f"m{i}") for i in range(6)]
+    history: list[AnyMessage] = [HumanMessage(content="a" * 40, id=f"m{i}") for i in range(6)]
     per_message = len(get_buffer_string([history[0]], format="xml"))
     template = len(CONVERSATION_SUMMARY_PROMPT.format(messages=""))
     model = _recording_model(_window_for(template + 3 * per_message + fits))
@@ -1190,3 +1200,52 @@ async def test_the_budget_is_measured_on_the_xml_and_a_full_budget_still_fits(
 
     assert result is not None
     assert 1 + len(result["messages"][1:]) == folded
+
+
+async def test_a_failed_fold_of_a_running_turn_counts_its_steps_too() -> None:
+    log.reset()
+    previous = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\nearlier work",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+    mw = _middleware(
+        model=_raising_model(), trigger=("messages", 4), keep=("messages", 2), archive=None
+    )
+    history: list[AnyMessage] = [
+        previous,
+        HumanMessage("the task", id="task"),
+        *_tool_step(1),
+        *_tool_step(2),
+        *_tool_step(3),
+    ]
+
+    assert await mw.abefore_model({"messages": history}, _runtime()) is None
+
+    [failure] = [e for e in log.get()["errors"] if e["msg"].endswith("Summary generation failed")]
+    # The old summary plus the two finished tool steps (a call and a result each).
+    assert failure["message_count"] == 5
+
+
+def test_with_no_running_request_everything_before_the_cutoff_is_older_history() -> None:
+    conversation: list[AnyMessage] = [
+        AIMessage("an unprompted note", id="a0"),
+        AIMessage("another", id="a1"),
+        AIMessage("latest", id="a2"),
+    ]
+
+    folded = summarization_module._foldable(conversation, 2)
+
+    assert folded.older == conversation[:2]
+    assert folded.progress == []
+
+
+def test_the_running_requests_steps_are_rendered_as_the_same_xml_as_older_history() -> None:
+    steps: list[AnyMessage] = [AIMessage("fetched 40 emails", id="s1")]
+    older: list[AnyMessage] = [HumanMessage("earlier", id="o1")]
+
+    rendered = summarization_module._render_folded(
+        summarization_module._FoldedMessages(older=older, progress=steps)
+    )
+
+    assert f"<progress>\n{get_buffer_string(steps, format='xml')}\n</progress>" in rendered
