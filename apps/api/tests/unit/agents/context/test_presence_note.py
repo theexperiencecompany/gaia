@@ -5,14 +5,15 @@ from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 import pytest
-from tests._harness.context_chain import AgentTier, ContextSeed, effective_context, text_of
+from tests._harness.context_chain import ContextSeed, effective_context, text_of
 from tests._harness.context_sources import ContextSources
 
 from app.agents.context import presence_note as presence_note_module
 from app.agents.context.assemble import AssembledContext
 from app.agents.context.presence_note import presence_note
 from app.agents.context.section_context import ExecutionMode
-from app.agents.context.slots import PromptSlot, is_gaia_authored_note, slot_of
+from app.agents.context.slots import PRESENCE_NOTE_MARKER, PromptSlot, has_marker, slot_of
+from app.agents.context.tiers import AgentTier
 from app.agents.core import messages as messages_module
 from app.models.agent_models import AgentConfigurable
 from app.models.chat_models import ConversationSource
@@ -216,10 +217,14 @@ class TestTheNote:
             TELEGRAM_UNREACHABLE_TO_WHATSAPP,
             TELEGRAM_UNREACHABLE_ONLY,
         )
+        source_modes: tuple[tuple[str | None, ExecutionMode], ...] = (
+            ("telegram", "interactive"),
+            (None, "background"),
+        )
         for note in [
             presence_note(CAME_FROM_WEB, source, mode, target)
             for target in targets
-            for source, mode in (("telegram", "interactive"), (None, "background"))
+            for source, mode in source_modes
         ]:
             assert note is not None
             assert "\u2014" not in note
@@ -227,7 +232,7 @@ class TestTheNote:
 
 
 def _notes(messages: list[AnyMessage]) -> list[AnyMessage]:
-    return [message for message in messages if is_gaia_authored_note(message)]
+    return [message for message in messages if has_marker(message, PRESENCE_NOTE_MARKER)]
 
 
 def _seed(
@@ -267,10 +272,8 @@ class TestWhereTheNoteSits:
 
         assert _notes(messages) == []
 
-    async def test_a_handoff_subagent_gets_no_note(self) -> None:
-        messages = await effective_context(
-            AgentTier.PROVIDER_SUBAGENT, _seed(CAME_FROM_WEB, "telegram")
-        )
+    async def test_a_spawned_subagent_gets_no_note(self) -> None:
+        messages = await effective_context(AgentTier.SPAWN, _seed(CAME_FROM_WEB, "telegram"))
 
         assert _notes(messages) == []
 

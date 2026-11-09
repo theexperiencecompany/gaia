@@ -10,13 +10,15 @@ run's stream writer emits (tool_calls_data entries, todo_progress snapshots).
 import asyncio
 from datetime import UTC, datetime
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 import pytest
 
+from app.agents.context.live_work import build_executor_status_block
+from app.agents.context.section_context import SectionContext
+from app.agents.context.tiers import AgentTier
 from app.agents.core.background.executor_progress import (
     ProgressRecorder,
     RunProgress,
@@ -32,8 +34,6 @@ from app.agents.core.background.executor_queue import (
     reclaim_dead_lock,
     release_lock_if_owned,
 )
-from app.agents.core.nodes.executor_status import executor_status_hook
-from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import cancel_executor
 from app.constants.cache import (
     EXECUTOR_ALIVE_TTL,
@@ -46,6 +46,7 @@ from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
+from app.core.websocket_manager import websocket_manager
 from tests.helpers import captured_wide_event
 
 CONV = "conv-1"
@@ -111,7 +112,9 @@ class TestApplyFrame:
 
     def test_several_calls_in_one_frame_all_count(self) -> None:
         progress = RunProgress()
-        frame = {"tool_data": [_call("a", {})["tool_data"], _call("b", {})["tool_data"]]}
+        frame: dict[str, object] = {
+            "tool_data": [_call("a", {})["tool_data"], _call("b", {})["tool_data"]]
+        }
 
         apply_frame(progress, frame)
 
@@ -171,7 +174,7 @@ class TestApplyFrame:
     def test_a_frame_mixing_entries_keeps_every_real_call(self) -> None:
         """A result card or a plan tool ahead of a call in one frame must not end the scan."""
         progress = RunProgress()
-        frame = {
+        frame: dict[str, object] = {
             "tool_data": [
                 {"tool_name": "email_fetch_data", "data": {"emails": []}},
                 _call("plan_tasks", {"tasks": []})["tool_data"],
@@ -221,7 +224,11 @@ class TestRecorder:
     async def test_every_frame_still_reaches_the_stream_unchanged(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        frames = [{"response": "hi"}, _call("search", {"q": "x"}), {"reasoning": {"content": "r"}}]
+        frames: list[dict[str, object]] = [
+            {"response": "hi"},
+            _call("search", {"q": "x"}),
+            {"reasoning": {"content": "r"}},
+        ]
 
         passed = await _record(HOLDER, *frames)
 
@@ -259,7 +266,9 @@ class TestRecorder:
     async def test_an_unreadable_frame_still_reaches_the_stream_and_breaks_nothing(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        bad = {"todo_progress": {"todos": [{"content": "x", "status": "not-a-status"}]}}
+        bad: dict[str, object] = {
+            "todo_progress": {"todos": [{"content": "x", "status": "not-a-status"}]}
+        }
 
         async with captured_wide_event() as event:
             passed = await _record(HOLDER, bad, _call("search", {"q": "x"}))
@@ -395,7 +404,7 @@ class TestLifetime:
     ) -> None:
         """Cancel frees the lock directly, so the run's later finalize finds it gone and deletes nothing."""
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
-        monkeypatch.setattr(executor_tool.websocket_manager, "broadcast_to_user", AsyncMock())
+        monkeypatch.setattr(websocket_manager, "broadcast_to_user", AsyncMock())
         await _hold_live_lock(fake_redis)
         await _record(HOLDER, _call("search", {"q": "x"}))
 
@@ -423,22 +432,10 @@ class TestLifetime:
 # ── What comms sees ──────────────────────────────────────────────────
 
 
-def _dispatched() -> list:
-    return [
-        HumanMessage(content="archive the promo emails"),
-        AIMessage(content="", tool_calls=[{"name": CALL_EXECUTOR_NAME, "args": {}, "id": "c1"}]),
-        ToolMessage(content="Handed to the executor (task_id: task-1).", tool_call_id="c1"),
-        HumanMessage(content="how's it going?"),
-    ]
-
-
-async def _status_frame(config: dict | None = None) -> str | None:
-    messages = _dispatched()
-    out = await executor_status_hook(
-        {"messages": messages}, config or {"configurable": {"thread_id": CONV}}, MagicMock()
+async def _status_frame() -> str:
+    return await build_executor_status_block(
+        SectionContext(tier=AgentTier.COMMS, conversation_id=CONV)
     )
-    added = out["messages"][len(messages) :]
-    return str(added[0].content) if added else None
 
 
 class TestStatusNote:
@@ -455,7 +452,6 @@ class TestStatusNote:
 
         frame = await _status_frame()
 
-        assert frame is not None
         assert "running right now (task_id: task-1). Its result has not arrived yet." in frame
         assert "What it has done so far:\nPlan (executor):" in frame
         assert "[in_progress] archive them" in frame
@@ -468,7 +464,6 @@ class TestStatusNote:
 
         frame = await _status_frame()
 
-        assert frame is not None
         assert "done so far" not in frame
 
     async def test_a_new_run_never_shows_the_previous_runs_progress(
@@ -479,7 +474,6 @@ class TestStatusNote:
 
         frame = await _status_frame()
 
-        assert frame is not None
         assert "old run" not in frame
 
     async def test_a_dead_run_shows_no_progress(
@@ -491,18 +485,5 @@ class TestStatusNote:
 
         frame = await _status_frame()
 
-        assert frame is not None
         assert "stopped before it finished" in frame
         assert "half done" not in frame
-
-    async def test_result_narration_shows_nothing(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
-        await _hold_live_lock(fake_redis)
-        await _record(HOLDER, _call("search", {"q": "x"}))
-
-        frame = await _status_frame(
-            {"configurable": {"thread_id": CONV, "is_result_narration": True}}
-        )
-
-        assert frame is None

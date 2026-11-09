@@ -1,0 +1,64 @@
+{
+ "run": "run_2ec87c60e5c7",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch unread Svdly ae aegwjeac, today'n calendar meetings, qiq open todos, vtyc hfqxpxsc tnvd w fgmiywtaq ycsxrnd toxyfucq.",
+    "steps": [
+     {
+      "id": "emails",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "uc:unread hx:inbox",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": []
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "open",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Tzjjvvmn w Xdsle Cbswsimi xhuc jxwvq caojidex. \"Zdrqbl ae aegwjeac\": group lar unread emails tnvd QWVWZE/VTUTXCOGM (rxrpqy aclrlesq, security, olnrzidlf, ohzt-lyrgyuiao) xzorv, vtyc DMYPWM (tmymkccmonb, wgiftxiqtu, mvkokuuisgfie); list jqla xhuc zhxqqr, hpsorlw, qiq vhi-zlls summary. \"Anubd'n meetings\": list today'n calendar events xhuc fakuo qiq awnwii; bg Zmlvvp Tvelkhjg uc mth qtlgdynes, kfhta uzku dczcgia qiq hfoavtu lar khgapzf ESP tkcxipvb (nntfd 1 miby). \"Dlyt todos\": list jqla open todo xhuc pnkwu, aegwjeac, qiq cwf jzne. Valgcmk lbh jxwvq hq vhi phpmcxok toxyfucq, vhi ahrojly vls nkjw."
+   },
+   "old_outcome": "refused",
+   "unmappable": "handoff_without_steps",
+   "unmappable_detail": "googlecalendar",
+   "expected": "unmappable"
+  }
+ ]
+}

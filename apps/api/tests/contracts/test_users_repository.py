@@ -20,11 +20,13 @@ from app.constants.auth import InstanceRole
 from app.constants.email import SignupDelivery
 from app.db.repositories.users import UserRepository
 from app.models.onboarding_models import SocialProfile
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
     OnboardingPreferences,
     PersonalizationBundle,
+    StartingJobs,
     UserDocument,
     UserUpdate,
 )
@@ -66,6 +68,15 @@ class TestUserReads:
         assert await repo.get(created.id) == created
         assert await repo.get_by_email("x@y.com") == created
         assert await repo.get_by_email("missing@y.com") is None
+
+    async def test_find_by_email_ignoring_case_matches_whole_address_only(self, repo, make_user):
+        upper = await repo.create(make_user(email="Erase.Me@Y.com"))
+        await repo.create(make_user(email="erase.me@y.com.evil"))
+        await repo.create(make_user(email="eraseXme@y.com"))
+
+        found = await repo.find_by_email_ignoring_case("erase.me@y.com")
+
+        assert [u.id for u in found] == [upper.id]
 
     async def test_find_by_ids_skips_invalid(self, repo, make_user):
         a = await repo.create(make_user(email="c1@b.com"))
@@ -203,6 +214,44 @@ class TestOnboardingWrites:
         assert completed.timezone == "Asia/Kolkata"
         stored = await raw_collection.find_one({"email": "tzkeep@y.com"})
         assert stored["timezone"] == "Asia/Kolkata"
+
+    async def test_complete_onboarding_keeps_preferences_the_wizard_stored_earlier(
+        self, repo, make_user
+    ):
+        """The browser language saved with the Q1/Q2 answers must survive completion."""
+        created = await repo.create(make_user(email="lang@y.com"))
+        await repo.update_onboarding_preferences(
+            created.id, OnboardingPreferences(profession="eng", language="de-DE")
+        )
+        completed = await repo.complete_onboarding(
+            created.id,
+            phase=OnboardingPhase.COMPLETED,
+            bio_status=BioStatus.PENDING,
+            preferences=OnboardingPreferences(profession="founder", response_style="casual"),
+        )
+        assert completed is not None
+        assert completed.onboarding is not None
+        stored = completed.onboarding.preferences
+        assert stored is not None
+        assert (stored.language, stored.profession) == ("de", "founder")
+
+    async def test_drafted_jobs_are_stored_on_the_onboarding_record_and_survive_completion(
+        self, repo, make_user
+    ):
+        """The paywall reads them before completion and the first chat after it, with no TTL."""
+        created = await repo.create(make_user(email="jobs@y.com"))
+        jobs = StartingJobs(answers_fingerprint="f" * 16, chips=["Find investors", "Hire someone"])
+        await repo.set_starting_jobs(created.id, jobs)
+        await repo.complete_onboarding(
+            created.id,
+            phase=OnboardingPhase.COMPLETED,
+            bio_status=BioStatus.PENDING,
+            preferences=OnboardingPreferences(profession="founder"),
+        )
+
+        stored = await repo.get(created.id)
+        assert stored is not None and stored.onboarding is not None
+        assert stored.onboarding.starting_jobs == jobs
 
     async def test_update_preferences_patches_only_given_keys(self, repo, make_user):
         created = await repo.create(make_user())
@@ -363,6 +412,17 @@ class TestSettingsWrites:
         assert onboarding.overlay_color == "rgba(1,2,3,1)"
         assert onboarding.overlay_opacity == 55
         assert await repo.set_holo_card_colors("0" * 24, "x", 1) is False
+
+    async def test_set_quiet_hours_stores_them_and_misses_an_unknown_user(self, repo, make_user):
+        created = await repo.create(make_user())
+        hours = QuietHours(enabled=False, start_hour=23, end_hour=6)
+
+        updated = await repo.set_quiet_hours(created.id, hours)
+
+        assert updated is not None
+        assert updated.quiet_hours == hours
+        assert (await repo.get(created.id)).quiet_hours == hours
+        assert await repo.set_quiet_hours("0" * 24, hours) is None
 
     async def test_set_feature_flag_merges_overwrites_and_busts_the_cache(self, repo, make_user):
         created = await repo.create(make_user())

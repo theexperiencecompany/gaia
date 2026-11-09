@@ -1,11 +1,12 @@
 /**
- * Top progress bar plus the floating Restart button. Steps are filled based
- * on `currentStep` (from `getProgress`) and clicking restart confirms via
- * a modal before invoking the caller-supplied `onRestart`.
+ * Top progress bar plus the floating account menu. Steps are filled based
+ * on `currentStep` (from `getProgress`). The menu names the signed-in account
+ * and offers Log out — the way out for someone who signed in with the wrong
+ * one — and Restart, which confirms via a modal before invoking `onRestart`.
  */
 
-import { Button, Modal } from "@heroui/react";
-import { RedoIcon } from "@icons";
+import { Button, Dropdown, Modal } from "@heroui/react";
+import { Logout02Icon, RedoIcon, UserCircleIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo, useState } from "react";
 import { useIsMobile } from "@/hooks/ui/useMobile";
@@ -13,9 +14,14 @@ import { useIsMobile } from "@/hooks/ui/useMobile";
 interface OnboardingProgressProps {
   currentStep: number;
   totalSteps: number;
-  onRestart?: () => void;
-  isRestarting?: boolean;
+  onRestart: () => void;
+  isRestarting: boolean;
+  email: string | undefined;
+  onLogout: () => void;
 }
+
+const RESTART_KEY = "restart";
+const LOGOUT_KEY = "logout";
 
 const stepKey = (i: number) => `onboarding-progress-step-${i}`;
 
@@ -23,7 +29,9 @@ function OnboardingProgressImpl({
   currentStep,
   totalSteps,
   onRestart,
-  isRestarting = false,
+  isRestarting,
+  email,
+  onLogout,
 }: OnboardingProgressProps) {
   const isMobile = useIsMobile();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -69,33 +77,57 @@ function OnboardingProgressImpl({
         );
       })}
 
-      {onRestart && currentStep !== 0 && (
-        <Button
-          size="sm"
-          variant="tertiary"
-          onPress={() => setConfirmOpen(true)}
-          isPending={isRestarting}
-          isDisabled={isRestarting}
-          isIconOnly={isMobile}
-          // A phone has no spare bottom edge (the composer lives there), so
-          // the restart is a small icon in the top-right corner instead.
-          className={
-            isMobile ? "fixed top-3 right-3 z-20" : "fixed right-3 bottom-3"
-          }
-          aria-label="Restart onboarding"
-        >
-          {isMobile ? (
-            !isRestarting && <RedoIcon size={16} />
-          ) : isRestarting ? (
-            "Restarting…"
-          ) : (
-            <>
-              {!(isRestarting || isMobile) && <RedoIcon size={14} />}
-              Restart Onboarding
-            </>
-          )}
-        </Button>
-      )}
+      <Dropdown>
+        <Dropdown.Trigger>
+          <Button
+            size="sm"
+            variant="tertiary"
+            isPending={isRestarting}
+            isDisabled={isRestarting}
+            isIconOnly={isMobile}
+            // A phone has no spare bottom edge (the composer lives there), so
+            // the menu is a small icon in the top-right corner instead.
+            className={
+              isMobile ? "fixed top-3 right-3 z-20" : "fixed right-3 bottom-3"
+            }
+            aria-label="Account"
+          >
+            {isMobile ? (
+              !isRestarting && <UserCircleIcon size={16} />
+            ) : isRestarting ? (
+              "Restarting…"
+            ) : (
+              (email ?? "Account")
+            )}
+          </Button>
+        </Dropdown.Trigger>
+        <Dropdown.Popover placement={isMobile ? "bottom end" : "top end"}>
+          <Dropdown.Menu aria-label="Account">
+            <Dropdown.Item
+              id={RESTART_KEY}
+              textValue="Restart onboarding"
+              isDisabled={currentStep === 0 || isRestarting}
+              onAction={() => setConfirmOpen(true)}
+            >
+              <div className="flex flex-row items-center justify-start gap-2">
+                <RedoIcon size={16} />
+                Restart onboarding
+              </div>
+            </Dropdown.Item>
+            <Dropdown.Item
+              id={LOGOUT_KEY}
+              textValue="Log out"
+              className="text-danger"
+              onAction={onLogout}
+            >
+              <div className="flex flex-row items-center justify-start gap-2">
+                <Logout02Icon size={16} />
+                Log out
+              </div>
+            </Dropdown.Item>
+          </Dropdown.Menu>
+        </Dropdown.Popover>
+      </Dropdown>
 
       <Modal isOpen={confirmOpen} onOpenChange={setConfirmOpen}>
         <Modal.Backdrop>

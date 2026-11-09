@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, StrEnum
+import re
 from typing import Annotated, Any, TypedDict
 
 from pydantic import (
@@ -17,8 +18,10 @@ from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
 from app.db.repositories.base import MongoDocument
 from app.models.first_steps_models import FirstStepsState
+from app.models.quiet_hours_models import QuietHours
 from app.schemas.common import ResponseModel
 from app.utils.timezone import is_valid_timezone
+from shared.py.analytics.catalog.onboarding import OnboardingStep, ReportedOnboardingStep
 
 # Shared field doc for the `message` field on the success/message response models.
 _RESPONSE_MESSAGE_DESC = "Response message"
@@ -88,6 +91,18 @@ def clean_other_need(value: str | None) -> str | None:
     if value is None:
         return None
     return value.strip() or None
+
+
+#: A BCP-47 primary language subtag: two or three ASCII letters ("de", "pt", "fil").
+_LANGUAGE_SUBTAG = re.compile(r"[a-z]{2,3}")
+
+
+def clean_language(value: str | None) -> str | None:
+    """Reduce a browser locale ("de-DE", "pt_BR") to its lowercase primary subtag, or None."""
+    if value is None:
+        return None
+    primary = value.strip().replace("_", "-").split("-")[0].lower()
+    return primary if _LANGUAGE_SUBTAG.fullmatch(primary) else None
 
 
 class OnboardingPhase(str, Enum):
@@ -221,7 +236,16 @@ class OnboardingPreferences(BaseModel):
         max_length=OTHER_NEED_MAX_LENGTH,
         description="What the user typed under 'Something else' in onboarding Q2, verbatim",
     )
+    language: str | None = Field(
+        default=None,
+        description='The user\'s browser language as a primary subtag ("de", "pt"), set at onboarding',
+    )
     # Removed timezone field - now only stored at user.timezone root level
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def validate_language(cls, v: object) -> object:
+        return clean_language(v) if isinstance(v, str) else v
 
     @field_validator("other_need")
     @classmethod
@@ -250,8 +274,8 @@ class OnboardingPreferences(BaseModel):
         return None if v == "" else v
 
 
-class OnboardingRequest(BaseModel):
-    """The onboarding submission — Q1 (profession) and Q2 (needs).
+class OnboardingAnswers(BaseModel):
+    """The wizard's answers — Q1 (profession) and Q2 (needs).
 
     The name is derived from the email server-side, so it is not submitted;
     nothing else is generated at onboarding, so nothing else is collected.
@@ -266,13 +290,19 @@ class OnboardingRequest(BaseModel):
         description="The jobs the user handed GAIA (onboarding Q2, up to three)",
     )
     other_need: str | None = Field(
-        None,
+        default=None,
         max_length=OTHER_NEED_MAX_LENGTH,
         description="What the user typed under 'Something else' in Q2, verbatim",
     )
-    timezone: str | None = Field(
-        None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
+    language: str | None = Field(
+        default=None,
+        description='The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")',
     )
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def validate_language(cls, v: object) -> object:
+        return clean_language(v) if isinstance(v, str) else v
 
     @field_validator("needs", mode="before")
     @classmethod
@@ -295,7 +325,7 @@ class OnboardingRequest(BaseModel):
         return clean_other_need(v)
 
     @model_validator(mode="after")
-    def require_an_answer_to_q2(self) -> "OnboardingRequest":
+    def require_an_answer_to_q2(self) -> "OnboardingAnswers":
         # Q2 is answered by a pick or by typed words; an empty Q2 leaves the
         # first message with nothing to ask about.
         if not self.needs and not self.other_need:
@@ -303,7 +333,7 @@ class OnboardingRequest(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def role_needs_match_the_profession(self) -> "OnboardingRequest":
+    def role_needs_match_the_profession(self) -> "OnboardingAnswers":
         # A role pair is only ever shown to its role, so a mismatch is a client
         # bug or a replayed request, and the playbooks would coach the wrong job.
         for need in self.needs:
@@ -311,6 +341,14 @@ class OnboardingRequest(BaseModel):
             if role is not None and role != self.profession.lower():
                 raise ValueError(f"{need.value} is only offered to {role}")
         return self
+
+
+class OnboardingRequest(OnboardingAnswers):
+    """The onboarding submission: the answers again, plus the browser's timezone."""
+
+    timezone: str | None = Field(
+        default=None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
+    )
 
     @field_validator("timezone")
     @classmethod
@@ -339,15 +377,9 @@ class OnboardingResponse(ResponseModel):
 
 
 class OnboardingPhaseUpdateRequest(BaseModel):
-    phase: OnboardingPhase = Field(..., description="The onboarding phase to transition to")
+    """A wizard step the browser reached; the server stamps and reports it once per onboarding run."""
 
-    @field_validator("phase")
-    @classmethod
-    def validate_phase_progression(cls, v: OnboardingPhase) -> OnboardingPhase:
-        """Ensure phase values are valid"""
-        # Phase validation is handled by the enum type
-        # Additional business logic validation should be in the service layer
-        return v
+    phase: ReportedOnboardingStep = Field(..., description="The wizard step the user reached")
 
 
 class PlatformLinkRecord(TypedDict, total=False):
@@ -373,6 +405,17 @@ class _StoredProfession(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     profession: object = None
+
+
+class StartingJobs(BaseModel):
+    """``users.onboarding.starting_jobs``: the jobs drafted from the answers at the Q2 save.
+
+    answers_fingerprint names the answers they were written from, so a changed
+    answer reads as no jobs instead of someone else's.
+    """
+
+    answers_fingerprint: str
+    chips: list[str]
 
 
 class OnboardingSubdocument(BaseModel):
@@ -402,10 +445,13 @@ class OnboardingSubdocument(BaseModel):
     preferences: OnboardingPreferences | None = None
     focus: str = ""
     clarify_answers: list[dict[str, Any]] = Field(default_factory=list)
+    #: When each wizard step was first reached this run; the stamp is what makes its event fire once.
+    steps_reached: dict[OnboardingStep, datetime] = Field(default_factory=dict)
 
     # Seeded conversations, kept so a reset can tear them down again.
     first_message_conversation_id: str | None = None
     getting_started_conversation_id: str | None = None
+    starting_jobs: StartingJobs | None = None
     holo_conversation_id: str | None = None
     first_message: str | None = None
 
@@ -554,6 +600,8 @@ class UserDocument(MongoDocument):
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
+    # Unset means the default 22:00 to 08:00; read through user_service.get_quiet_hours.
+    quiet_hours: QuietHours | None = None
     # Self-host (local auth) accounts only; hosted users never carry a role.
     role: InstanceRole | None = None
 
@@ -621,6 +669,7 @@ class AuthenticatedUser(BaseModel):
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
     role: InstanceRole | None = None
+    quiet_hours: QuietHours | None = None
 
     def with_timezone(self, timezone: str) -> "AuthenticatedUser":
         """A copy carrying the resolved home timezone (the model is frozen)."""

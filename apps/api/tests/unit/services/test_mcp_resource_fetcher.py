@@ -1,6 +1,7 @@
 """Unit tests for mcp_resource_fetcher (MCP Apps UI resource fetch)."""
 
-from unittest.mock import AsyncMock, patch
+from collections.abc import Iterator
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -18,24 +19,31 @@ def _details() -> dict:
 
 
 @pytest.fixture
-def mock_client():
-    mcp_client = AsyncMock()
-    mcp_client.read_ui_resource_details.return_value = _details()
+def mock_client() -> Iterator[MagicMock]:
+    mcp_client = MagicMock()
     with patch(f"{_MOD}.get_mcp_client", AsyncMock(return_value=mcp_client)):
         yield mcp_client
 
 
+@pytest.fixture
+def read_details(mock_client: MagicMock) -> Iterator[AsyncMock]:
+    with patch(
+        f"{_MOD}.read_ui_resource_details", new_callable=AsyncMock, return_value=_details()
+    ) as mock:
+        yield mock
+
+
 class TestFetchMcpUiResource:
-    async def test_returns_resource_details(self, mock_client):
+    async def test_returns_resource_details(self, mock_client, read_details):
         result = await fetch_mcp_ui_resource(SERVER_URL, RESOURCE_URI, USER_ID)
 
         assert result == _details()
-        mock_client.read_ui_resource_details.assert_awaited_once_with(
-            server_url=SERVER_URL, resource_uri=RESOURCE_URI
+        read_details.assert_awaited_once_with(
+            mock_client, server_url=SERVER_URL, resource_uri=RESOURCE_URI
         )
 
-    async def test_returns_none_on_fetch_failure(self, mock_client):
-        mock_client.read_ui_resource_details.side_effect = RuntimeError("server exploded")
+    async def test_returns_none_on_fetch_failure(self, read_details):
+        read_details.side_effect = RuntimeError("server exploded")
 
         result = await fetch_mcp_ui_resource(SERVER_URL, RESOURCE_URI, USER_ID)
 
@@ -47,8 +55,8 @@ class TestFetchMcpUiResource:
 
         assert result is None
 
-    async def test_returns_none_on_missing_resource(self, mock_client):
-        mock_client.read_ui_resource_details.return_value = None
+    async def test_returns_none_on_missing_resource(self, read_details):
+        read_details.return_value = None
 
         result = await fetch_mcp_ui_resource(SERVER_URL, RESOURCE_URI, USER_ID)
 

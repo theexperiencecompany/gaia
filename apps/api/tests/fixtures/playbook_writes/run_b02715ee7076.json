@@ -1,0 +1,199 @@
+{
+ "run": "run_b02715ee7076",
+ "captured_from": "2026-09-03",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_FIND_FREE_SLOTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 16,
+   "record_len": 9,
+   "written": {
+    "description": "Dovtnio Cbswsimi jcqviucr: znkiciio lar upcoming calendar event uzku ckyxiautz lar rui, research qwatdybzz/context (Svdly, memory), qiq pwlztlikjl w hjujzutryf toxyfucq (mnzjrox oa Grctj'n jtmlpp-fxztkwar team yxzdqaiqw higci ga web research ovwkefn).",
+    "steps": [
+     {
+      "id": "cal",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "list_cals",
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+       },
+       {
+        "id": "freebusy",
+        "tool": "GOOGLECALENDAR_FIND_FREE_SLOTS",
+        "args": {
+         "items": [
+          "user@example.com",
+          "user@example.com",
+          "user@example.com",
+          "user@example.com"
+         ],
+         "time_max": "$now + 12h",
+         "time_min": "$now",
+         "timezone": "$user.timezone"
+        }
+       },
+       {
+        "id": "events_work",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 20,
+         "timeMax": "$now + 12h",
+         "timeMin": "$now"
+        }
+       },
+       {
+        "id": "events_aca",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 20,
+         "timeMax": "$now + 12h",
+         "timeMin": "$now"
+        }
+       },
+       {
+        "id": "events_personal",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 20,
+         "timeMax": "$now + 12h",
+         "timeMin": "$now"
+        }
+       },
+       {
+        "id": "events_suncoast",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 20,
+         "timeMax": "$now + 12h",
+         "timeMin": "$now"
+        }
+       }
+      ]
+     },
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "search",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt"
+         ],
+         "query": "\"Bbltxnly Xpymq\"",
+         "timeframe": "9d"
+        }
+       },
+       {
+        "id": "search2",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt"
+         ],
+         "query": "swish",
+         "timeframe": "9d"
+        }
+       },
+       {
+        "id": "search3",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt"
+         ],
+         "query": "\"team kdhgmvqo\" YU kdhgmvqo",
+         "timeframe": "9d"
+        }
+       },
+       {
+        "id": "search4",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt"
+         ],
+         "query": "Ekceaid",
+         "timeframe": "9d"
+        }
+       },
+       {
+        "id": "search5",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt"
+         ],
+         "query": "ykydgya",
+         "timeframe": "9d"
+        }
+       }
+      ]
+     },
+     {
+      "id": "mem",
+      "tool": "search_memory",
+      "args": {
+       "limit": 10,
+       "query": "Bbltxnly Xpymq dygtimmdqh team kdhgmvqo xrpvnecw yzlpmzw ykydgya Ekceaid"
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc lar cwzwcxyyna event (pnkwu, jzne, start/qxg hx ynrm whdrf ohzt, yuizmdvm). Yiqrlwdpi event wkun: gdks (glg/qooxs/agpit) g ffq ga brief uc qpxlxm qiq kojg; 1:1 g agpit fx lycibitosubd ammjvnc xhuc lar pjqqh enpbd; group/fxztkwar (c.q. w team kdhgmvqo) g agpit fx kdhgmvqo agpit qiq open emrwk. Iftb osig: (1) izb/dwka Grctj uc meeting qiq key context, (2) sjznoqgpq rgupyck juqeqf / kdhgmvqo agpit, (3) open rxrpqy emrwk, (4) bgchvcmk duilvcbnuh evvq lliv uqerxgvbeeow (calendar bmdirxpw rjyqlao, recent hjebi, ajkjg hzpin rsulewjh), (5) yuizmdvm/opps details (udh fxztkwar team yxzdqaiqw smpw uc lar haftvrkc yuizmdvm; kfhta xtwyuay uzku ga tscekmvq/DlajqzLn/zzmcdad research ovwkefn). Dqhi ptybmub lar inbox vlh armqdsb work threads up wbnz hfhprcqujm/edhihwgks."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "only_failed_calls",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES",
+   "expected": "unmappable"
+  }
+ ]
+}

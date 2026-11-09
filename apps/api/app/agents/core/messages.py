@@ -3,12 +3,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
-from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AnyMessage, HumanMessage
 
 from app.agents.context.assemble import assemble_context
 from app.agents.context.presence_note import presence_note_message
 from app.agents.context.section_context import SectionContext
-from app.agents.context.slots import ONBOARDING_MARKER, mark
 from app.agents.context.tiers import AgentTier
 from app.helpers.message_helpers import (
     build_current_time_message,
@@ -18,7 +17,6 @@ from app.helpers.message_helpers import (
     format_reply_context,
     format_tool_selection_message,
     format_workflow_execution_message,
-    get_onboarding_system_prompt_if_applicable,
 )
 from app.models.message_models import (
     ReplyToMessageData,
@@ -103,10 +101,12 @@ async def construct_langchain_messages(
             SectionContext(
                 tier=AgentTier.COMMS,
                 user_id=user_id,
+                conversation_id=conversation_id,
                 user_name=user_name,
                 user_timezone=user_timezone,
                 user_preferences=user_preferences,
                 writing_style=writing_style,
+                onboarding=user_dict.onboarding if user_dict else None,
                 query=query,
                 active_todo_id=scope.active_todo_id,
                 execution_mode=scope.execution_mode,
@@ -124,26 +124,10 @@ async def construct_langchain_messages(
         ),
     )
 
-    # Its own slot, not the dynamic one: tagged `memory_message` it once
-    # competed with the stable identity block for a single-occupant slot and
-    # won, silently dropping user name/timezone/preferences from the model.
-    onboarding_msg: SystemMessage | None = None
-    if user_id and conversation_id:
-        onboarding_prompt = await get_onboarding_system_prompt_if_applicable(
-            user_id, conversation_id, latest_user_message=user_content
-        )
-        if onboarding_prompt:
-            onboarding_msg = mark(SystemMessage(content=onboarding_prompt), ONBOARDING_MARKER)
-
-    # Current time lives in a HumanMessage in ``contents`` (not
-    # ``system_instruction``) so minute ticks never invalidate the cache
-    # prefix. See ``build_current_time_message``.
+    # The recall block and the clock are written into the thread with this turn and
+    # stay where they are, so the next turn's request begins with this one.
     time_msg = build_current_time_message(user_timezone=user_timezone)
-    # Emitted in canonical slot order, so the hook chain's reordering is a
-    # normalisation of correct input rather than a correction this tier relies on.
     chain_msgs: list[AnyMessage] = [system_msg, assembled.stable]
-    if onboarding_msg is not None:
-        chain_msgs.append(onboarding_msg)
     if assembled.volatile is not None:
         chain_msgs.append(assembled.volatile)
 

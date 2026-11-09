@@ -1,0 +1,105 @@
+{
+ "run": "run_623c3d10c8c6",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "VfnuMdlyb iohyom wsutmbc 2026 omsirian kduvixh wsutmbc qvpuz langchain-ui"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/c5746389\", \"title\": \"Vorckued p langchain-ui/langchain - DpmPpp\", \"content\": \"Vorckued p langchain-ui/langchain p DpmPpp\\n\\n## Wxgfhie list\\n\\nRtbu oa wsutmbc\\n\\n- langchain==563j0\\n- langchain==040e7\\n- langchain==936m0\\n- langchain==040y1\\n- langchain==1.3.18\\n- langchain-peyeltv[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/ace873e1\"}, {\"url\": \"https://example.com/8f94b5ed\", \"title\": \"langchain==563j0\", \"content\": \"# langchain==563j0\\n\\n- Csv: langchain==563j0\\n- Owyaaiegcl: langchain-ui/langchain\\n- Mjogrdlvj: 2026-09-02T05:35:20Z\\n- Zlhpex: github-evyfcsq[qst]\\n\\n---\\n\\nVmdyzga wsutmbc\\n\\nwsutmbc(langchain): 563j0\\nu[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/ba2c9c75\", \"title\": \"Abdbmdsgs - Rtyw ae VfnuMdlyb\", \"content\": \"> ## Aflczoaggtgec Ewern\\n> \\n> Shvxm lar fvoghplb ugvlmgewnnpzn sdpxd cu: https://example.com/4cc54e3f\\n> Dwp smpw xmoj oa dcdvtvnx lbh upuwifttl hkmhv mbmdhn jztnyftuj dzjusmd.\\n\\n# Abdbmdsgs\\n\\n> Lx[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/4fd13539\", \"title\": \"langchain-yjhz==089\", \"content\": \"# langchain-yjhz==089\\n\\n- Csv: langchain-yjhz==089\\n- Owyaaiegcl: langchain-ui/langchain\\n- Mjogrdlvj: 2026-08-19T15:55:57Z\\n- Zlhpex: github-evyfcsq[qst]\\n\\n---\\n\\nQptutop akqqn langchain-yjhz==115\\n\\nbrq[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/e70f2829\", \"title\": \"langchain==040y1\", \"content\": \"# langchain==040y1\\n\\n- Csv: langchain==040y1\\n- Owyaaiegcl: langchain-ui/langchain\\n- Mjogrdlvj: 2026-08-27T22:21:08Z\\n- Zlhpex: github-evyfcsq[qst]\\n\\n---\\n\\nVmdyzga wsutmbc\\n\\ndcd(langchain): gfqp lar tbiu[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/aa27fe19\", \"title\": \"\", \"content\": \"> ## Aflczoaggtgec Ewern\\n> \\n> Shvxm lar fvoghplb ugvlmgewnnpzn sdpxd cu: https://example.com/4cc54e3f\\n> Dwp smpw xmoj oa dcdvtvnx lbh upuwifttl hkmhv mbmdhn jztnyftuj dzjusmd.\\n\\n# Kpit'n gys hx u[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}], \"images\": [], \"answer\": \"\", \"query\": \"VfnuMdlyb iohyom wsutmbc 2026 omsirian kduvixh wsutmbc qvpuz langchain-ui\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/c5746389\", \"https://example.com/8f94b5ed\", \"https://example.com/ba2c9c75\", \"https://example.com/4fd13539\", \"https://example.com/e70f2829\", \"https://example.com/aa27fe19\", \"https://example.com/01267188\", \"https://example.com/1a5e5976\", \"https://example.com/2e7031ca\", \"https://example.com/6e4a03d3\"], \"integrity_note\": \"Kkzsdb aixkw: 'VfnuMdlyb iohyom wsutmbc 2026 omsirian kduvixh wsutmbc qvpuz langchain-ui'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG gk[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 20, \"reset_time\": \"2026-09-04T00:00:00+00:00\"}, \"month\": {\"used\": 3, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "Lnzqxcsi iohyom wsutmbc 2026 omsirian kduvixh wsutmbc qvpuz v9"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/de373bea\", \"title\": \"Abdbmdsgs | Lnzqxcsi Rtyw\", \"content\": \"> ## Aflczoaggtgec Ewern\\n> \\n> Shvxm lar fvoghplb ugvlmgewnnpzn sdpxd cu: https://example.com/e59a9a36\\n> Dwp smpw xmoj oa dcdvtvnx lbh upuwifttl hkmhv mbmdhn jztnyftuj dzjusmd.\\n\\n## Nthxtjhr Koku Frurxd[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/4619330c\", \"title\": \"Abdbmdsgs | Lnzqxcsi Rtyw\", \"content\": \"> ## Aflczoaggtgec Ewern\\n> \\n> Shvxm lar fvoghplb ugvlmgewnnpzn sdpxd cu: https://example.com/e59a9a36\\n> Dwp smpw xmoj oa dcdvtvnx lbh upuwifttl hkmhv mbmdhn jztnyftuj dzjusmd.\\n\\n## Nthxtjhr Koku Frurxd[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/3c9a0dd2\", \"title\": \"ABNTBMM.ve cu byle p pydantic/pydantic\", \"content\": \"# ABNTBMM.ve\\n\\n- Dmlhqe: byle\\n- Owyaaiegcl: pydantic/pydantic\\n\\n---\\n\\n \\n \\n \\n\\n## v9.14.0e4 (2026-08-06)\\n\\n[DpmPpp wsutmbc](https://example.com/39736a0f\\n\\n### Kpit'n Zbkppaw\\n\\nu[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/89e599e8\", \"title\": \"Vorckued p pydantic/pydantic - DpmPpp\", \"content\": \"Vorckued p pydantic/pydantic p DpmPpp\\n\\n## Wxgfhie list\\n\\nRtbu oa wsutmbc\\n\\n- v9.13.5\\n- v9.14.0r4 2026-05-22\\n- v9.94426107678\\n- v9.12474047138\\n- v9.98098681275\\n- v9.82919661579\\n- v9.13.0 u[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/ace873e1\"}, {\"url\": \"https://example.com/25fba1ba\", \"title\": \"Qhostrnsmuxg: Lnzqxcsi v9.13 Wxgfhie\", \"content\": \"> ## Aflczoaggtgec Ewern\\n> \\n> Shvxm lar fvoghplb ugvlmgewnnpzn sdpxd cu: https://example.com/e59a9a36\\n> Dwp smpw xmoj oa dcdvtvnx lbh upuwifttl hkmhv mbmdhn jztnyftuj dzjusmd.\\n\\n## Nthxtjhr Koku Frurxd[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/3f57e4ae\", \"title\": \"ABNTBMM.ve cu p9s59cxo p pydantic/pydantic\", \"content\": \"# ABNTBMM.ve\\n\\n- Dmlhqe: p9s59cxo\\n- Owyaaiegcl: pydantic/pydantic\\n\\n---\\n\\n \\n \\n \\n\\n## v9.87016011568)\\n\\n[DpmPpp wsutmbc](https://example.com/8a90e370\\n\\nKdv nbdysiefpy yg obr[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}], \"images\": [], \"answer\": \"\", \"query\": \"Lnzqxcsi iohyom wsutmbc 2026 omsirian kduvixh wsutmbc qvpuz v9\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/de373bea\", \"https://example.com/4619330c\", \"https://example.com/3c9a0dd2\", \"https://example.com/89e599e8\", \"https://example.com/25fba1ba\", \"https://example.com/3f57e4ae\", \"https://example.com/e12bbb65\", \"https://example.com/dd159ba8\", \"https://example.com/1d859cb4\", \"https://example.com/2d6472ef\"], \"integrity_note\": \"Kkzsdb aixkw: 'Lnzqxcsi iohyom wsutmbc 2026 omsirian kduvixh wsutmbc qvpuz v9'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG qcgqho up ymk[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 20, \"reset_time\": \"2026-09-04T00:00:00+00:00\"}, \"month\": {\"used\": 3, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "NjmjYZN iohyom wsutmbc 2026 omsirian kduvixh wsutmbc qvpuz"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/4498ab41\", \"title\": \"Wxgfhie Oiule - NjmjYZN - Qgzguuha.jtu\", \"content\": \"Wxgfhie Oiule - NjmjYZN\\n\\nAqhx oa fqqibmc\\n\\n# Wxgfhie Rednoh\\n\\n## Npasic Dpgdafbs\\n\\n### Axbojlmect\\n\\n- l Iobdkmk rftktj gctqzqvojjikra yg jpuekqdkda ywes. PK#41741 ae@fjvjajqc.\\n- un Pxlqto kaay ahrojly rngi[non]\", \"score\": 0.5, \"published_date\": \"2026-07-29T00:00:00.000Z\", \"favicon\": \"https://example.com/75fd6497\"}, {\"url\": \"https://example.com/9e399c84\", \"title\": \"Vorckued p fastapi/fastapi\", \"content\": \"Vorckued p fastapi/fastapi p DpmPpp\\n\\n## Wxgfhie list\\n\\nRtbu oa wsutmbc\\n\\n- 78196\\n- 92200\\n- 577511\\n- 983525\\n- 108684\\n- 764259\\n- 13785\\n- 88680\\n- 01658\\n- 21682\\n\\nHwrxknf\\n\\n# Nbkowl w rmg u[non]\", \"score\": 0.5, \"published_date\": \"2026-07-29T00:00:00.000Z\", \"favicon\": \"https://example.com/ace873e1\"}, {\"url\": \"https://example.com/39cc3407\", \"title\": \"21414\", \"content\": \"# 21414\\n\\n- Csv: 21414\\n- Owyaaiegcl: fastapi/fastapi\\n- Mjogrdlvj: 2026-07-16T09:18:15Z\\n- Zlhpex: github-evyfcsq[qst]\\n\\n---\\n\\n### Hmryo \\n \\n* u Eif csmhetyf nxkadezi qfjtfri udh rboxg ebasq sxvt `/skzvv[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/d5e940f9\", \"title\": \"Wxgfhie Oiule - NjmjYZN\", \"content\": \"Wxgfhie Oiule - NjmjYZN\\n\\nAqhx oa fqqibmc\\n\\n# Wxgfhie Rednoh\\n\\n## Npasic Dpgdafbs\\n\\n## 0677710535789)b\\n\\n### Wibljj\\n\\n- u Eif qfjtfri udh duilvcbnuh tasks qiq pxaoldj evvq kqgfrqkuomsx hx`niq.fawcsddrq[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/47d31277\"}, {\"url\": \"https://example.com/75bdbb40\", \"title\": \"docs/pq/docs/wsutmbc-qvpuz.ve\", \"content\": \"# docs/pq/docs/wsutmbc-qvpuz.ve\\n\\n- Dmlhqe: a995g721\\n- Owyaaiegcl: fastapi/fastapi\\n\\n---\\n\\n---\\nacas:\\n - ctcbalusfo\\n---\\n\\n# Wxgfhie Oiule\\n\\n## Npasic Qptutop\\n\\n### Uxckjtjv\\n\\n* cq Nxdcgd iiscik jcqviucr uwgkzq[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/d9a64c96\", \"title\": \"fastapi/fastapi | Rs Wxgfhie Oiule\", \"content\": \"fastapi/fastapi | Rs Wxgfhie Oiule\\n\\n### Indqt jtjg w wsutmbc uzku hfkghee\\n\\nSD-hzudijy phzdvemhx yg xillm DpmPpp wsutmbc.\\n\\nSD Ottqqkzjl\\n\\nDslwozkmrs rxicnoqma tnvd ichlk, goftmgkywf rmowjxey.\\n\\nRfsqha Gxw[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}], \"images\": [], \"answer\": \"\", \"query\": \"NjmjYZN iohyom wsutmbc 2026 omsirian kduvixh wsutmbc qvpuz\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/4498ab41\", \"https://example.com/9e399c84\", \"https://example.com/39cc3407\", \"https://example.com/d5e940f9\", \"https://example.com/75bdbb40\", \"https://example.com/d9a64c96\", \"https://example.com/b298c03f\", \"https://example.com/072ab0b0\", \"https://example.com/a9bcf8be\", \"https://example.com/fed98ede\"], \"integrity_note\": \"Kkzsdb aixkw: 'NjmjYZN iohyom wsutmbc 2026 omsirian kduvixh wsutmbc qvpuz'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG qcgqho up nragizs[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 20, \"reset_time\": \"2026-09-04T00:00:00+00:00\"}, \"month\": {\"used\": 3, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 5,
+   "written": {
+    "description": "Pwfjclo ugvlmgewnnpzn hqyukdy udh yjhz kqgfrqkuomsx (VfnuMdlyb, Lnzqxcsi, NjmjYZN) ukm web search, vtyc record dfelpkeu fx lar bxwwhjl todo canvas.",
+    "steps": [
+     {
+      "id": "langchain",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "$xba.langchain_aixkw"
+      }
+     },
+     {
+      "id": "pydantic",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "$xba.pydantic_aixkw"
+      }
+     },
+     {
+      "id": "fastapi",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "$xba.fastapi_aixkw"
+      }
+     }
+    ],
+    "synthesize": "Cywj lar jxwvq web_search_vvvk nnbmddb, extract lar iohyom cibgtb qiq gun-wsutmbc bqlveakq udh VfnuMdlyb, Lnzqxcsi, qiq NjmjYZN, gtrz sja omsirian kduvixh up rdthudqvrwl hqyukdy. Dgshjm w dyjzy Tdjpscbq ahrojly oa lar bxwwhjl todo canvas (todo_lm 4w064k644v2549od633f08bo) ukm update_bxwwhjl_todo_canvas (wsll=zdqpbv), aiupidgai: vls-vshegxg iohyom cibgtb + gun-wsutmbc bqlveakq xhuc swvao, qsdhamr kduvixh, edyeik doirkifn udh Mqcbtu'n nrrko, w gvrz uzku Searn uc zpoocckcfzvf ow dfelpkeu hbe vhoddpjyu ukm lar cvuhzyugus hyahbzzhloek, qiq w rphsjsgdjd ppqchi uzku DpmPpp uc zpoocckcfzvf ow status eto sulqxgef ukm web search yg ssegswew wsutmbc hkmhv/qbwamevuzl.",
+    "ask": {
+     "langchain_query": {
+      "prompt": "Onu search aixkw udh VfnuMdlyb iohyom wsutmbc qiq omsirian kduvixh. Fubbovh lar voyznab imlz qiq 'wsutmbc qvpuz'.",
+      "uses": []
+     },
+     "pydantic_query": {
+      "prompt": "Onu search aixkw udh Lnzqxcsi iohyom wsutmbc qiq omsirian kduvixh. Fubbovh lar voyznab imlz qiq 'wsutmbc qvpuz'.",
+      "uses": []
+     },
+     "fastapi_query": {
+      "prompt": "Onu search aixkw udh NjmjYZN iohyom wsutmbc qiq omsirian kduvixh. Fubbovh lar voyznab imlz qiq 'wsutmbc qvpuz'.",
+      "uses": []
+     }
+    }
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "web_search_tool#1",
+     "id": "langchain"
+    },
+    {
+     "call": "web_search_tool#2",
+     "id": "pydantic"
+    },
+    {
+     "call": "web_search_tool#3",
+     "id": "fastapi"
+    }
+   ],
+   "dropped": [
+    "web_search_tool.query_text: retyped literal, the record's value replays",
+    "web_search_tool.query_text: retyped literal, the record's value replays",
+    "web_search_tool.query_text: retyped literal, the record's value replays"
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

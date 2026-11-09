@@ -2,7 +2,7 @@
 
 A section with no logic of its own is registered straight against its read in
 fetchers and is covered there. What is left here branches before rendering —
-a tier-dependent header, a provider lookup, two sources of skills — and this is
+a tier-dependent header, two sources of skills — and this is
 the tier at which that branching is cheap to pin: the table and the branch, with
 every store mocked one layer down.
 
@@ -33,9 +33,7 @@ from app.agents.context.tiers import ALL_TIERS, AgentTier
 from app.agents.prompts.user_instructions_prompts import USER_INSTRUCTIONS_HEADER
 from app.constants.log_tags import LogTag
 
-#: A real, registered integration, so ``get_integration_by_id`` resolves and the
-#: provider-metadata and custom-instruction sections are genuinely reachable
-#: rather than short-circuiting on an unknown id.
+#: A real, registered integration, the one the manifest's account records belong to.
 INTEGRATION_ID = "gmail"
 
 
@@ -54,9 +52,7 @@ class _CtxOverrides(TypedDict, total=False):
     user_timezone: str | None
     user_preferences: dict[str, Any] | None
     writing_style: dict[str, Any] | None
-    user_id: str | None
     subagent_id: str | None
-    integration_id: str | None
     source: str | None
 
 
@@ -117,6 +113,9 @@ class TestTheTableIsWellFormed:
             "memory_recall",
             "gaia_knowledge",
             "tracked_todos",
+            # Live work beside the chat, comms-only: the executor IS that work.
+            "executor_status",
+            "browser_task",
             "bg_banner",
             "active_todo_banner",
         ]
@@ -429,139 +428,7 @@ class TestIntegrationsManifest:
 
 
 @pytest.mark.unit
-class TestProviderMetadata:
-    async def test_it_names_who_the_user_is_on_that_provider(self) -> None:
-        """Two fields, not one: with a single entry the \\n joining them would be unobservable."""
-        record = _record(
-            make_integration_account("ca_1", identity={"email": "ada@example.com", "login": "ada"})
-        )
-        with patch(
-            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
-        ):
-            rendered = await section("provider_metadata").fetch(
-                ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
-            )
-
-        assert rendered == "USER CONTEXT FOR GMAIL:\n- email: ada@example.com\n- login: ada"
-
-    async def test_several_accounts_are_listed_with_the_primary_and_the_rule_for_choosing(
-        self,
-    ) -> None:
-        record = _record(
-            make_integration_account("ca_1", label="work@acme.com"),
-            make_integration_account("ca_2", label="me@gmail.com", nickname="Personal"),
-            make_integration_account("ca_3", label="old@acme.com", status="expired"),
-            primary="ca_2",
-        )
-        with patch(
-            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
-        ):
-            rendered = await section("provider_metadata").fetch(
-                ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
-            )
-
-        assert rendered == (
-            "USER'S GMAIL ACCOUNTS:\n"
-            '- "work@acme.com" (id ca_1)\n'
-            '- "Personal" or "me@gmail.com" (id ca_2, default)\n'
-            '- "old@acme.com" (id ca_3, expired)\n' + MULTI_ACCOUNT_INSTRUCTION
-        )
-
-    async def test_it_asks_about_this_user_on_this_integration(self) -> None:
-        lookup = AsyncMock(return_value=None)
-        with patch("app.agents.context.fetchers.get_account_record", lookup):
-            await section("provider_metadata").fetch(
-                ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
-            )
-
-        lookup.assert_awaited_once_with("user1", INTEGRATION_ID)
-
-    async def test_an_unknown_user_is_never_looked_up(self) -> None:
-        lookup = AsyncMock(
-            return_value=_record(make_integration_account("ca_1", identity={"email": "a@b.c"}))
-        )
-        with patch("app.agents.context.fetchers.get_account_record", lookup):
-            rendered = await section("provider_metadata").fetch(
-                SectionContext(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
-            )
-
-        assert rendered == ""
-        lookup.assert_not_awaited()
-
-    async def test_an_unregistered_integration_is_never_looked_up(self) -> None:
-        """A subagent id that resolves to no integration has no accounts to ask about."""
-        lookup = AsyncMock(
-            return_value=_record(make_integration_account("ca_1", identity={"email": "a@b.c"}))
-        )
-        with patch("app.agents.context.fetchers.get_account_record", lookup):
-            rendered = await section("provider_metadata").fetch(
-                ctx(AgentTier.PROVIDER_SUBAGENT, integration_id="not-a-real-integration")
-            )
-
-        assert rendered == ""
-        lookup.assert_not_awaited()
-
-    async def test_one_account_without_an_identity_yields_no_block(self) -> None:
-        record = _record(make_integration_account("ca_1"))
-        with patch(
-            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
-        ):
-            assert (
-                await section("provider_metadata").fetch(
-                    ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
-                )
-                == ""
-            )
-
-    async def test_a_failed_lookup_is_visible_in_the_wide_event(self) -> None:
-        async with captured_wide_event() as event:
-            with patch(
-                "app.agents.context.fetchers.get_account_record",
-                AsyncMock(side_effect=RuntimeError("mongo down")),
-            ):
-                rendered = await section("provider_metadata").fetch(
-                    ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
-                )
-
-        assert rendered == ""
-        (warning,) = event["warnings"]
-        assert warning["msg"] == f"{LogTag.AGENT} Failed to read the integration's accounts"
-        assert warning["integration_id"] == INTEGRATION_ID
-        assert warning["user_id"] == "user1"
-        assert warning["error"] == "mongo down"
-        assert warning["error_type"] == "RuntimeError"
-
-
-@pytest.mark.unit
-class TestUserInstructions:
-    async def test_it_injects_the_integration_instructions_in_full_inside_the_fence(self) -> None:
-        """Injected rather than pointed at, so the subagent honours it without spending a file read to discover it."""
-        with patch(
-            "app.agents.context.sections.get_instructions",
-            AsyncMock(return_value="  Always archive newsletters.  "),
-        ):
-            rendered = await section("integration_instructions").fetch(
-                ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
-            )
-
-        assert rendered == (
-            f'<user_instructions scope="{INTEGRATION_ID}">\n'
-            f"{USER_INSTRUCTIONS_HEADER}\n\n"
-            "Always archive newsletters.\n"
-            "</user_instructions>"
-        )
-
-    async def test_a_spawned_subagent_is_looked_up_by_its_own_id(self) -> None:
-        """With no integration, subagent_id is the key, otherwise a spawned worker never receives its instructions."""
-        instructions = AsyncMock(return_value="Stay terse.")
-        with patch("app.agents.context.sections.get_instructions", instructions):
-            rendered = await section("integration_instructions").fetch(
-                ctx(AgentTier.PROVIDER_SUBAGENT, subagent_id="docgen")
-            )
-
-        instructions.assert_awaited_once_with("user1", "docgen")
-        assert rendered.startswith('<user_instructions scope="docgen">')
-
+class TestGlobalInstructions:
     async def test_the_global_scope_is_read_for_every_tier(self) -> None:
         instructions = AsyncMock(return_value="Reply in Spanish.")
         with patch("app.agents.context.sections.get_instructions", instructions):
@@ -573,12 +440,6 @@ class TestUserInstructions:
 
     async def test_no_instructions_yields_no_block(self) -> None:
         with patch("app.agents.context.sections.get_instructions", AsyncMock(return_value=None)):
-            assert (
-                await section("integration_instructions").fetch(
-                    ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
-                )
-                == ""
-            )
             assert await section("global_instructions").fetch(ctx(AgentTier.COMMS)) == ""
 
     async def test_user_text_cannot_close_the_fence(self) -> None:
@@ -597,21 +458,11 @@ class TestUserInstructions:
             "</user_instructions>"
         )
 
-    @pytest.mark.parametrize(
-        ("section_id", "overrides"),
-        [
-            ("global_instructions", _CtxOverrides(user_id=None)),
-            ("integration_instructions", _CtxOverrides(user_id=None, integration_id="gmail")),
-            ("integration_instructions", _CtxOverrides(integration_id=None, subagent_id=None)),
-        ],
-    )
-    async def test_a_context_without_a_user_or_a_scope_reads_nothing(
-        self, section_id: str, overrides: _CtxOverrides
-    ) -> None:
+    async def test_a_context_without_a_user_reads_nothing(self) -> None:
         instructions = AsyncMock(return_value="Reply in Spanish.")
         with patch("app.agents.context.sections.get_instructions", instructions):
-            rendered = await section(section_id).fetch(
-                ctx(AgentTier.PROVIDER_SUBAGENT, **overrides)
+            rendered = await section("global_instructions").fetch(
+                ctx(AgentTier.COMMS, user_id=None)
             )
 
         assert rendered == ""
@@ -623,14 +474,12 @@ class TestUserInstructions:
                 "app.agents.context.sections.get_instructions",
                 AsyncMock(side_effect=RuntimeError("mongo down")),
             ):
-                rendered = await section("integration_instructions").fetch(
-                    ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
-                )
+                rendered = await section("global_instructions").fetch(ctx(AgentTier.COMMS))
 
         assert rendered == ""
         (warning,) = event["warnings"]
         assert warning["msg"] == f"{LogTag.AGENT} Failed to fetch user instructions"
-        assert warning["scope"] == INTEGRATION_ID
+        assert warning["scope"] == "global"
         assert warning["user_id"] == "user1"
         assert warning["error"] == "mongo down"
         assert warning["error_type"] == "RuntimeError"
@@ -661,9 +510,7 @@ class TestSkills:
             patch("app.agents.context.sections.get_available_skills_text", skills),
             patch("app.agents.context.sections.integration_skills_block", return_value=""),
         ):
-            await section("skills").fetch(
-                ctx(AgentTier.PROVIDER_SUBAGENT, subagent_id="docgen_agent")
-            )
+            await section("skills").fetch(ctx(AgentTier.SPAWN, subagent_id="docgen_agent"))
 
         skills.assert_awaited_once_with(user_id="user1", agent_name="docgen_agent")
 
@@ -688,7 +535,7 @@ class TestSkills:
             ) as block,
         ):
             rendered = await section("skills").fetch(
-                ctx(AgentTier.PROVIDER_SUBAGENT, subagent_id="docgen_agent")
+                ctx(AgentTier.SPAWN, subagent_id="docgen_agent")
             )
 
         block.assert_called_once_with("docgen")
@@ -705,7 +552,7 @@ class TestSkills:
             ),
         ):
             rendered = await section("skills").fetch(
-                ctx(AgentTier.PROVIDER_SUBAGENT, subagent_id="docgen_agent")
+                ctx(AgentTier.SPAWN, subagent_id="docgen_agent")
             )
 
         assert rendered == "## Gmail skills\n- archive"
@@ -724,7 +571,7 @@ class TestSkills:
                 ),
             ):
                 rendered = await section("skills").fetch(
-                    ctx(AgentTier.PROVIDER_SUBAGENT, subagent_id="docgen_agent")
+                    ctx(AgentTier.SPAWN, subagent_id="docgen_agent")
                 )
 
         assert rendered == "## Gmail skills\n- archive"

@@ -1,0 +1,99 @@
+{
+ "run": "run_b88368a4a704",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "web_search_tool"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 14,
+   "record_len": 3,
+   "written": {
+    "description": "Xdsle Snobe Mszeec: fetch qiq classify Mdxax'n Svdly evvq lar pmff 55c, extract rxrpqy emrwk, draft replies udh rxrpqy-aclrlesq emails, create todos, vyxqdlz dikcp toxyfucq.",
+    "steps": [
+     {
+      "id": "gmail_step",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "ssjzq:$today mbmdhn:$now",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "ctt",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "mbOxys",
+          "smqYfetgzubuh",
+          "duacch"
+         ],
+         "max_messages": 100
+        }
+       },
+       {
+        "id": "replies",
+        "tool": "GMAIL_FETCH_THREAD",
+        "args": {
+         "thread_ids": {
+          "$ask": "lar tbyrfw APb yg xillm aqtgnru email (lbh yg ssjf, oa verify pwwwn/BD status), kvrww evvq lar fetch zubw"
+         },
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "duacch"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "todos_step",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "create",
+        "tool": "create_todo",
+        "args": {
+         "title": {
+          "$ask": "w idgzpfva rxrpqy item pnkwu stvyyezcp evvq lar rxrpqy-aclrlesq/futskbhmb emails"
+         },
+         "description": {
+          "$ask": "brief context udh lar rxrpqy item"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cjrcogu DLV iwsxbtw dikcp toxyfucq evvq lar gmail qiq todos ieeqo. Tshl xhuc oyi mrsx emails pzxueij hx lar pmff 55c qiq lar kfxsfogoxeqyfs tnvd kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, qiq rxrpqy-aclrlesq (gfqp lar hsuyioc teawzudnol yoo szbof ssjf juqtyyw). Iftb list dwka pnpjt ebfhkdrhx, xillm todo eacrpal xhuc lab HW, qiq xillm pwwwn mykchqr. Hx ga email kzuafrob w pwwwn (lbh mrppkqdwp/ga-pwwwn/edhihwgks), ffq jyjt uign mykchqr rphxcys evqhlbd kzuafrob w pwwwn."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

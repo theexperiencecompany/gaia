@@ -1,6 +1,5 @@
 "use client";
 
-import { Skeleton } from "@heroui/react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 
@@ -19,6 +18,7 @@ import {
 } from "../utils/planPredicates";
 import { EnterpriseCard } from "./EnterpriseCard";
 import { PricingCard } from "./PricingCard";
+import { PricingCardsFallback } from "./PricingCardsFallback";
 
 const ENTERPRISE_CONTACT_TEMPLATE = `Hey GAIA team,
 
@@ -77,47 +77,11 @@ export function PricingCards({
   // An instance that sells nothing has no plans to show or check out.
   if (!billingEnabled) return null;
 
-  // Only show loading if we're actually loading AND don't have any plans yet
-  if (isLoading && (!plans || plans.length === 0)) {
-    return (
-      <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
-        <Skeleton className="h-96 w-full rounded-2xl" />
-        <Skeleton className="h-96 w-full rounded-2xl" />
-      </div>
-    );
-  }
-
-  // Only show error if we have an error AND no plans to display
-  if (error && (!plans || plans.length === 0)) {
-    return (
-      <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
-        <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl bg-red-500/10 p-6">
-          <p className="text-center text-red-400">
-            Unable to load pricing plans. Please refresh the page or try again
-            later.
-          </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="mt-4 rounded-lg bg-red-500 px-4 py-2 text-white hover:bg-red-600"
-          >
-            Refresh Page
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // If we have no plans at all, show a message
+  // With no plans yet, a load in flight wins over an error, and an error over "none".
   if (!plans || plans.length === 0) {
+    const state = isLoading ? "loading" : error ? "error" : "empty";
     return (
-      <div className="grid w-full max-w-2xl grid-cols-2 gap-3">
-        <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl bg-gray-500/10 p-8">
-          <p className="text-center text-gray-400">
-            No pricing plans available at the moment.
-          </p>
-        </div>
-      </div>
+      <PricingCardsFallback state={state} hideEnterprise={hideEnterprise} />
     );
   }
 

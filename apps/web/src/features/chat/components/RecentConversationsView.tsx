@@ -34,7 +34,7 @@ const RecentConversationsView = memo(() => {
 
   const handleConversationClick = useCallback(
     (conversationId: string) => {
-      router.push(`/chat/${conversationId}`);
+      router.push(`/c/${conversationId}`);
     },
     [router],
   );

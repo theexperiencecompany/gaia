@@ -293,6 +293,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      expect.any(Function), // onNoReply
     );
   });
 
@@ -351,6 +352,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      expect.any(Function), // onNoReply
     );
   });
 
@@ -575,6 +577,7 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      expect.any(Function), // onNoReply
     );
   });
 
@@ -1116,6 +1119,7 @@ describe("TelegramAdapter - /gaia command", () => {
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      expect.any(Function), // onNoReply
     );
   });
 });
@@ -1511,6 +1515,7 @@ describe("TelegramAdapter - media message routing", () => {
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      expect.any(Function), // onNoReply
     );
   });
 

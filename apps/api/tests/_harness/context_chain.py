@@ -6,13 +6,14 @@ harness exists to catch.
 
 execute_hooks is a plain async function over a plain dict, so the chain
 runs with no compiled graph, checkpointer, LLM or network:
-    messages = await effective_context(AgentTier.PROVIDER_SUBAGENT, ContextSeed(query="..."))
+    messages = await effective_context(AgentTier.EXECUTOR, ContextSeed(query="..."))
 
 External reads are pinned by fake_context_sources and fenced beneath it,
 so a new read fails loudly instead of reaching a real store.
 """
 
-from dataclasses import dataclass, field, replace
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import patch
@@ -32,12 +33,10 @@ from app.agents.core.nodes.pre_model_hooks import (
     comms_pre_model_hooks,
     worker_pre_model_hooks,
 )
-from app.agents.core.subagents.subagent_helpers import create_subagent_system_message
 from app.agents.core.subagents.subagent_runner import ThreadSeed, build_initial_messages
 from app.agents.llm.lane import ModelLane
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
-from app.agents.tools.todo_tools import create_todo_pre_model_hook
 from app.config.settings import settings
 from app.constants.llm import DEFAULT_MAX_TOKENS, LLMProviderName
 from app.helpers.agent_helpers import (
@@ -68,18 +67,11 @@ FIXED_HOST = "https://api.heygaia.io"
 #: text rather than a template, so the harness supplies a stable stand-in.
 SPAWN_SYSTEM_PROMPT = "You are a spawned worker subagent."
 
-#: A real, registered integration, so ``get_integration_by_id`` resolves and the
-#: provider-metadata and integration-instructions sections are genuinely reachable
-#: rather than short-circuiting on an unknown id.
-PROVIDER_INTEGRATION_ID = "gmail"
-PROVIDER_AGENT_NAME = "gmail_agent"
-
 #: The agent name each tier runs under. Only affects visibility metadata and the
 #: skills lookup key, but both are real inputs to what the tier ends up seeing.
 _AGENT_NAMES = {
     AgentTier.COMMS: "comms_agent",
     AgentTier.EXECUTOR: "executor_agent",
-    AgentTier.PROVIDER_SUBAGENT: PROVIDER_AGENT_NAME,
     AgentTier.SPAWN: "spawn_agent",
     AgentTier.WORKFLOW_AUTHORING: "workflow_agent",
 }
@@ -149,12 +141,7 @@ def hooks_for(tier: AgentTier) -> list[HookType]:
     """Return that tier's real pre-model hook chain, from the builders the graphs use."""
     if tier is AgentTier.COMMS:
         return comms_pre_model_hooks()
-    if tier in (AgentTier.SPAWN, AgentTier.WORKFLOW_AUTHORING):
-        # A spawn owns no todo list; the workflow author is authoring-only and
-        # must not plan or execute. Neither wires the todo hook.
-        return worker_pre_model_hooks()
-    source = "executor" if tier is AgentTier.EXECUTOR else PROVIDER_INTEGRATION_ID
-    return worker_pre_model_hooks(cast(HookType, create_todo_pre_model_hook(source=source)))
+    return worker_pre_model_hooks()
 
 
 def bound_for(provider: LLMProviderName) -> AgentConfigurable:
@@ -232,22 +219,6 @@ async def seed_context(
             ),
         )
 
-    if tier is AgentTier.PROVIDER_SUBAGENT:
-        return await build_initial_messages(
-            system_message=await create_subagent_system_message(
-                integration_id=PROVIDER_INTEGRATION_ID
-            ),
-            agent_name=PROVIDER_AGENT_NAME,
-            task=query,
-            seed=ThreadSeed(
-                tier=AgentTier.PROVIDER_SUBAGENT,
-                configurable=configurable,
-                user_id=user.user_id,
-                subagent_id=PROVIDER_AGENT_NAME,
-                integration_id=PROVIDER_INTEGRATION_ID,
-            ),
-        )
-
     if tier is AgentTier.SPAWN:
         return await build_initial_messages(
             system_message=SystemMessage(content=SPAWN_SYSTEM_PROMPT),
@@ -305,18 +276,18 @@ async def _seed_workflow(
         )
     )
     # Through the module so the harness sees the same patched binding production
-    # does, rather than a second reference resolved at import time.
-    hint = await workflow_subagent.build_connected_integrations_hint(user.user_id)
+    # does, rather than a second reference resolved at import time. Read from
+    # the module namespace because the name is an import there, not an export.
+    build_hint: Callable[[str], Awaitable[str]] = vars(workflow_subagent)[
+        "build_connected_integrations_hint"
+    ]
+    hint = await build_hint(user.user_id)
     human_message = HumanMessage(
         content=f"{hint}\n\n---\n\nRequest: {query}",
         additional_kwargs={"visible_to": {"workflow_agent"}},
     )
     time_message = build_current_time_message(user_timezone=user.timezone)
     return [system_message, *assembled.messages(), human_message, time_message]
-
-
-def _with_onboarding(sources: ContextSources, prompt: str | None) -> ContextSources:
-    return sources if prompt is None else replace(sources, onboarding_prompt=prompt)
 
 
 @dataclass(frozen=True)
@@ -330,19 +301,18 @@ class ContextSeed:
     now: datetime = FIXED_NOW
     prior_messages: list[AnyMessage] | None = None
     run_messages: list[AnyMessage] | None = None
-    onboarding_prompt: str | None = None
 
 
 async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) -> list[AnyMessage]:
     """Seed tier and run it through that tier's real pre-model hooks.
 
     ContextSeed.prior_messages are prepended to the seed to model a checkpointed
-    thread, where stale slot copies accumulate; run_messages are appended to it
+    thread, where earlier turns accumulate; run_messages are appended to it
     to model a later model call of the same run, after its own tool turns.
     """
     spec = seed or ContextSeed()
     resolved_user = spec.user or HarnessUser()
-    resolved_sources = _with_onboarding(spec.sources or ContextSources(), spec.onboarding_prompt)
+    resolved_sources = spec.sources or ContextSources()
 
     with (
         time_machine.travel(spec.now, tick=False),

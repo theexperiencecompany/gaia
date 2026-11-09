@@ -1,3 +1,6 @@
+> [!TIP]
+> ⭐ We're a small team building GAIA in the open. If it seems interesting, or makes your day easier, [give it a star](https://github.com/theexperiencecompany/gaia/stargazers)!
+
 <div align="center">
 
 <img src="apps/desktop/resources/icons/512x512.png" alt="GAIA" width="128" />
@@ -6,7 +9,7 @@
 
 **The open-source AI assistant that handles your whole day.**
 
-[![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io)
+[![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?label=Discord&color=5c6af3)](https://discord.heygaia.io) [![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io)
 
 </div>
 
@@ -51,7 +54,7 @@ Gmail, Calendar, Slack, Notion, Linear — different tools, same problem: your d
 | If you want to… | Go here |
 | --- | --- |
 | Just use it | **[heygaia.io](https://heygaia.io)** — sign up, nothing to install |
-| Text it from your phone | [iMessage](https://docs.heygaia.io/guides/imessage-bot) · [WhatsApp](https://wa.me/12762088737) · [Telegram](https://t.me/heygaia_bot) · [Slack](https://heygaia.io/slack-bot) · [Discord](https://heygaia.io/discord-bot) |
+| Text it from your phone | [iMessage](https://docs.heygaia.io/guides/imessage-bot) · [WhatsApp](https://wa.me/12038429512) · [Telegram](https://t.me/heygaia_bot) · [Slack](https://heygaia.io/slack-bot) · [Discord](https://heygaia.io/discord-bot) |
 | Run it on your own machines | `curl -fsSL https://heygaia.io/install.sh \| sh` — or the [guide](https://docs.heygaia.io/self-hosting/walkthrough) |
 | Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) |
 | See how it's built | [ARCHITECTURE.md](./ARCHITECTURE.md) |
@@ -154,7 +157,7 @@ Workflows run on their own. This is what you ask it directly.
 | | Platform | How |
 | --- | --- | --- |
 | <img src="apps/web/public/images/icons/macos/imessage.webp" width="26" height="26" /> | **iMessage** | [Register your number](https://heygaia.io/settings/linked-accounts), text `/auth`, then just type. [Pro plan](https://heygaia.io/pricing). |
-| <img src="apps/web/public/images/icons/macos/whatsapp.webp" width="26" height="26" /> | **WhatsApp** | [Message GAIA](https://wa.me/12762088737) |
+| <img src="apps/web/public/images/icons/macos/whatsapp.webp" width="26" height="26" /> | **WhatsApp** | [Message GAIA](https://wa.me/12038429512) |
 | <img src="apps/web/public/images/icons/macos/telegram.webp" width="26" height="26" /> | **Telegram** | [@heygaia_bot](https://t.me/heygaia_bot) — DMs, or `@mention` it in groups |
 | <img src="apps/web/public/images/icons/macos/slack.webp" width="26" height="26" /> | **Slack** | [Add to your workspace](https://heygaia.io/slack-bot) |
 | <img src="apps/web/public/images/icons/macos/discord.webp" width="26" height="26" /> | **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) |

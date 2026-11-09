@@ -115,6 +115,7 @@ function buildDraftFormValues(
     selectedTrigger: selectedTriggerValue,
     trigger_config: triggerConfig,
     notify_on_completion: true,
+    gate: { condition: draftData.runs_only_when ?? "", enabled: true },
   };
 }
 

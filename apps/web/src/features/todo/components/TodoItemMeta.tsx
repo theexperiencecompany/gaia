@@ -89,7 +89,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
     <div className="mt-2 flex flex-wrap items-center gap-1">
       {todo.due_date && (
         <Chip
-          className="flex items-center text-zinc-400 px-1"
+          className="flex items-center px-1"
           size="sm"
           color={dueChipColor(isToday, isOverdue)}
           variant="tertiary"
@@ -101,7 +101,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.scheduled_at && (
         <Chip
-          className="flex items-center text-zinc-400 px-1"
+          className="flex items-center px-1"
           size="sm"
           color="accent"
           variant="tertiary"
@@ -113,7 +113,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.expires_at && (
         <Chip
-          className="flex items-center text-zinc-400 px-1"
+          className="flex items-center px-1"
           size="sm"
           color="warning"
           variant="tertiary"
@@ -125,7 +125,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {isTrackedTodo(todo) && (
         <Chip
-          className="flex items-center text-primary px-1"
+          className="flex items-center px-1"
           size="sm"
           color="accent"
           variant="tertiary"

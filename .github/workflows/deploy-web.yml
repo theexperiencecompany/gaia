@@ -2,10 +2,12 @@ name: Deploy Web (Cloudflare)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Deploys the OpenNext Cloudflare Worker via GitHub (not Cloudflare dashboard
-# Builds). Timing + failure are visible in GitHub checks. Every PR and every
-# merge-queue group builds the bundle and boots it in workerd (`build
-# (cf:build)`), so a web change that would break production cannot enter
-# master; only a master push deploys. There are no PR preview deploys.
+# Builds). Timing + failure are visible in GitHub checks. ci.yml calls it on a
+# master push whose quality-gate passed and whose web-build job (web-build.yml,
+# the same build and workerd smoke every PR and merge group runs) uploaded the
+# `open-next` bundle; this ships that artifact. A failed deploy leaves the run
+# red, so the next master run's nx base still contains the web change and
+# deploys it. There are no PR preview deploys.
 #
 # Secrets required (already configured via `gh secret`):
 #   CLOUDFLARE_API_TOKEN  — minimal token: Workers Scripts Write + R2 Write/Read + Routes Write
@@ -38,38 +40,22 @@ name: Deploy Web (Cloudflare)
 # ──────────────────────────────────────────────────────────────────────────
 
 on:
-  # The same inputs as `changes.sh web-inputs` (WEB_INPUTS), held equal by
-  # scripts/ci/tests/test_changes.py. The pre-merge build lives in web-build.yml.
-  push:
-    branches: [master]
-    paths:
-      - "apps/web/**"
-      - "libs/shared/ts/**"
-      - ".github/workflows/deploy-web.yml"
-      - ".github/workflows/web-build.yml"
-  workflow_dispatch:
-
-# Production deploys must never be cancelled mid-flight (rapid master merges
-# should queue, not drop the final deploy).
-concurrency:
-  group: deploy-web-${{ github.ref }}
-  cancel-in-progress: false
+  workflow_call:
 
 permissions:
   contents: read
   deployments: write
 
 jobs:
-  # The bundle deploy-production ships, built and smoked by the same job every
-  # PR runs; on a push it takes the production environment and uploads it.
-  build:
-    uses: ./.github/workflows/web-build.yml
-
   deploy-production:
     name: deploy-production
-    needs: build
-    # A dispatch may name any ref; only master ships.
     if: github.ref == 'refs/heads/master'
+    # Two deploys never overlap, and none is cancelled mid-flight: a newer
+    # master push leaves a run whose deploy has started (runner.py
+    # cancel-superseded) and deploys after it, queued on this group.
+    concurrency:
+      group: deploy-web-production
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     # populateCache uploads ~1.7GB of prerendered pages to R2; the deploy alone
     # is quick but the upload needs headroom (local populate of ~5.4k entries
@@ -86,7 +72,7 @@ jobs:
         id: t0
         run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: open-next
           path: apps/web/.open-next
@@ -185,6 +171,9 @@ jobs:
       - name: Submit the changed pages to IndexNow (Bing, Yandex, Seznam, Naver)
         env:
           GH_TOKEN: ${{ github.token }}
+          # This file's job names, matched bare in its own pre-ci.yml push runs and
+          # under ci.yml's "deploy-web / " prefix since ci.yml calls it.
+          INDEXNOW_DEPLOY_WORKFLOW: deploy-web.yml
           INDEXNOW_DEPLOY_JOB: deploy-production
           INDEXNOW_JOB: IndexNow (post-deploy)
         run: bash scripts/ci/smoke-web.sh indexnow

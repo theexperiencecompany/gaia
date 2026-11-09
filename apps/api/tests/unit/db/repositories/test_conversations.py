@@ -10,7 +10,7 @@ in the base repository goes through.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Iterator
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -361,7 +361,9 @@ class TestBackgroundVisibility:
         flt = repo._active_filter(USER_ID)
         if doc.get("user_id") != flt.get("user_id"):
             return False
-        for clause in flt["$and"]:
+        # A Mongo filter: $and holds clauses, each an $or of field -> condition branches.
+        clauses = cast(list[dict[str, list[dict[str, object]]]], flt["$and"])
+        for clause in clauses:
             ok = False
             for branch in clause["$or"]:
                 good = True
@@ -465,3 +467,18 @@ class TestBackgroundVisibility:
 
         flt, update, _kwargs = _update_call(collection)
         assert update == {"$set": {"has_live_approval": False}}
+
+
+class TestOwnerIds:
+    async def test_it_collects_every_user_holding_the_conversation_id(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        collection.distinct = AsyncMock(return_value=["first", "second"])
+
+        owners = await repo.owner_ids(CONVERSATION_ID)
+
+        assert owners == {"first", "second"}
+        collection.distinct.assert_awaited_once()
+        args = collection.distinct.await_args.args
+        assert args[0] == "user_id"
+        assert args[1] == {"conversation_id": CONVERSATION_ID}

@@ -25,8 +25,10 @@ class FeatureFlag(StrEnum):
     HIL_LEDGER = "HIL_LEDGER"
     HIL_JEV_JUDGE = "HIL_JEV_JUDGE"
     HIL_JEV_REPLY = "HIL_JEV_REPLY"
+    TRIGGER_GATES = "TRIGGER_GATES"
     AGENT_LAB = "AGENT_LAB"
     BROWSER_OBSCURA = "BROWSER_OBSCURA"
+    BROWSER_JEV = "BROWSER_JEV"
 
 
 # A separate boolean flag, not a value of the rollout flag: stored choices beat the
@@ -98,6 +100,14 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
         ),
         default=lambda: settings.ENABLE_HIL_JEV_REPLY,
     ),
+    FeatureFlag.TRIGGER_GATES: FlagSpec(
+        description=(
+            "Kill switch for trigger gates: on, a confident skip from an enforced gate kind "
+            "stops the run and records it as skipped; off, every gate is still evaluated and "
+            "recorded but every run goes ahead (see ENABLE_TRIGGER_GATES)."
+        ),
+        default=lambda: settings.ENABLE_TRIGGER_GATES,
+    ),
     FeatureFlag.AGENT_LAB: FlagSpec(
         description=(
             "Private agent lab runs Claude Code and OpenCode CLIs inside "
@@ -117,6 +127,21 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
             description=(
                 "Run browser tasks on Obscura, a lighter self-hosted engine. It may "
                 "break on some sites; when it does, GAIA falls back to Chrome."
+            ),
+            stage=FeatureStage.EXPERIMENTAL,
+        ),
+    ),
+    FeatureFlag.BROWSER_JEV: FlagSpec(
+        description=(
+            "Browser tasks hand single-page objectives to Jev, the fast page operator, "
+            "with its burst as the run's first action; off runs the Browser-Use agent alone."
+        ),
+        default=lambda: False,
+        user_toggle=UserToggle(
+            label="Jev page operator",
+            description=(
+                "Let Jev, a faster page operator, fill forms and click through pages during "
+                "browser tasks. It may misread some pages."
             ),
             stage=FeatureStage.EXPERIMENTAL,
         ),

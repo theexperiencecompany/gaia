@@ -44,12 +44,11 @@ constraint-dependencies = [
   "python-multipart>=0.0.22",
   "pyasn1>=0.6.5",
   "pyopenssl>=26.0.0",
-  "nltk>=3.9.4",
-  "ecdsa>=0.19.2",
+  "nltk>=3.10.4",
   "click>=8.3.3",
   "pillow>=13.0.0",
   "json-repair>=0.60.1",
-  "virtualenv>=21.14.9",
+  "virtualenv>=21.14.13",
   "graphql-core>=3.2.12",
   "fsspec>=2026.6.0",
   "multidict>=6.9.1",
@@ -58,6 +57,16 @@ constraint-dependencies = [
   "certifi>=2026.10.19",
   "h2>=4.4.1",
   "hpack>=4.2.0",
+  "dnspython>=2.9.0",
+  "langgraph-sdk>=0.4.4",
+  "banks>=2.5.1",
+  "brotli>=1.2.1",
+  "httplib2>=0.32.0",
+  "joserfc>=1.7.6",
+  "mcp>=1.30.0",
+  "oauthlib>=4.0.0",
+  "pypdf>=6.21.4",
+  "setuptools>=84.1.0",
 ]
 
 [tool.uv.workspace]
@@ -446,6 +455,7 @@ unfixable = [
 # _ModerationResult (services/integrations/profanity.py) and _CandidateContext /
 # _ProfileCandidate (services/onboarding/social_profile_service.py).
 "apps/api/app/agents/tools/todo_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity (same as tracked_todo_tools.py below)
+"apps/api/app/agents/tools/executor_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity: call_executor's brief (task, acceptance criteria, desired outcome, time horizon, defaults, approval, bound todo) is what the model fills in, and nesting it would hide each field from the schema (same as todo_tool.py and tracked_todo_tools.py)
 "apps/api/app/agents/tools/tracked_todo_tools.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity; PLR0911/0912 stay enforced (update_tracked_todo was refactored to satisfy them)
 "apps/api/app/db/repositories/base.py" = ["PLR0913"]  # _apply_raw_update is the one raw-Mongo seam every repository routes through; its seven knobs (filter, update, scope, extra_filter, return_document, array_filters, upsert) are the operator surface, used at 76 call sites. The paid-only gate only adds a cache eviction on a write miss here.
 "apps/api/app/db/repositories/todos.py" = ["PLR0912"]  # _list_filter predates this change; the triggers feature only adds subscription finders to this file
@@ -868,4 +878,29 @@ exclude = [
   "migrations",
   "scripts",
   ".agents",
+]
+
+# The CI harness tests' own deps (ci.yml harness-tests), locked here so the lane never resolves "latest".
+[dependency-groups]
+harness = [
+  "pytest>=9.1.1",
+  "pytest-xdist>=3.8.0",
+  "defusedxml>=0.7.1",
+  "pyyaml>=6.0.3",
+  # Pinned in apps/api's dev group; the one workspace lock gives both the same.
+  "pytest-rerunfailures",
+]
+# The Python lint and audit tools CI, the hooks and mise run, at the one version
+# each: run them with `uv run --frozen --no-build --isolated --only-group lint`.
+# Exact pins, so a re-lock never moves a linter; bump one here and re-lock.
+lint = [
+  "ruff==0.14.13",
+  "bandit==1.9.4",
+  "interrogate==1.7.0",
+  "xenon==0.9.3",
+  "import-linter==2.6",
+  "pip-audit==2.10.1",
+  # Not run from this group (mypy needs each app's environment), but the one
+  # workspace lock resolves one mypy, so this pins theirs.
+  "mypy==1.19.1",
 ]

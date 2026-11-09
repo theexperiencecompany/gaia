@@ -13,6 +13,7 @@ import {
   BOT_PLATFORM_LABELS,
 } from "@/config/botPlatforms";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { OpenPlatformChatButton } from "@/features/settings/components/OpenPlatformChatButton";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -31,6 +32,8 @@ interface PlatformConfig {
   connectedDescription: string;
   premium?: boolean;
   requiresPhone?: boolean;
+  /** The linked account has a DM chat the web app can open. */
+  chat?: boolean;
 }
 
 const PLATFORMS: PlatformConfig[] = [
@@ -41,6 +44,7 @@ const PLATFORMS: PlatformConfig[] = [
     image: BOT_PLATFORM_ICONS.telegram,
     color: "#0088cc",
     connectedDescription: "Message your bot on Telegram to chat with GAIA",
+    chat: true,
   },
   {
     id: "whatsapp",
@@ -49,6 +53,7 @@ const PLATFORMS: PlatformConfig[] = [
     color: "#25D366",
     description: "Connect GAIA to WhatsApp (Beta)",
     connectedDescription: "Message GAIA on WhatsApp",
+    chat: true,
   },
   {
     id: "imessage",
@@ -59,6 +64,7 @@ const PLATFORMS: PlatformConfig[] = [
     connectedDescription: "Message GAIA from your iPhone or Mac",
     premium: true,
     requiresPhone: true,
+    chat: true,
   },
   {
     id: "slack",
@@ -282,6 +288,9 @@ export default function LinkedAccountsSettings() {
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                     Connected
                   </span>
+                )}
+                {isConnected && platform.chat && (
+                  <OpenPlatformChatButton platform={platform.id} />
                 )}
                 <Button
                   variant={isConnected ? "danger-soft" : "primary"}

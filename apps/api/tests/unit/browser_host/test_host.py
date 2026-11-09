@@ -15,7 +15,8 @@ from playwright.sync_api import StorageState
 import pytest
 
 from app.browser_host import host as host_mod
-from app.browser_host.cdp_mux import CdpCommandError
+from app.browser_host.cdp_mux import CdpCommandError, CDPTimeoutError
+from app.browser_host.engine import ChromiumBinary
 from app.browser_host.host import (
     AtCapacityError,
     BrowserHost,
@@ -25,7 +26,15 @@ from app.browser_host.host import (
 )
 from app.browser_host.wire import HealthResponse, SessionInfo
 from app.config.browser_host_settings import browser_host_settings
-from app.constants.browser import BrowserEngine, EngineExit, HostAdmissionRefusal
+from app.constants.browser import (
+    BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS,
+    BROWSER_SESSION_LEASE_SECONDS,
+    BrowserEngine,
+    EngineExit,
+    HostAdmissionRefusal,
+    HostSessionEnd,
+)
+from shared.py.wide_events import log, spawn_logged_task
 from tests.unit.browser_host.conftest import (
     FAKE_ROOT_WS_URL,
     AdmissionProbe,
@@ -227,7 +236,7 @@ async def test_a_renewed_lease_replaces_the_one_it_renews(engine: FakeEngine) ->
     assert not renewed.cancelled()
     assert renewed.when() >= first.when()
     assert renewed.when() - asyncio.get_running_loop().time() == pytest.approx(
-        host_mod.BROWSER_SESSION_LEASE_SECONDS, abs=1.0
+        BROWSER_SESSION_LEASE_SECONDS, abs=1.0
     )
 
 
@@ -397,14 +406,15 @@ async def test_start_launches_the_configured_engine_and_watches_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
-    monkeypatch.setattr(host_mod, "resolve_chromium_path", lambda: "/opt/chrome")
+    chrome = ChromiumBinary(path="/opt/chrome", fortress=False)
+    monkeypatch.setattr(host_mod, "resolve_chromium_binary", lambda: chrome)
     stub = StubEngine()
     launcher = Launcher(stub)
     host = make_host(launch=launcher)
 
     await host.start()
 
-    assert host._chromium_path == "/opt/chrome"
+    assert host._chromium == chrome
     assert host.engine_up
     assert as_engine(stub) in host._supervisors
     await host.stop()
@@ -418,7 +428,7 @@ async def test_an_obscura_host_never_resolves_a_chromium_binary(
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
     resolve = MagicMock()
-    monkeypatch.setattr(host_mod, "resolve_chromium_path", resolve)
+    monkeypatch.setattr(host_mod, "resolve_chromium_binary", resolve)
     launcher = Launcher(StubEngine())
     host = make_host(launch=launcher)
 
@@ -702,7 +712,7 @@ async def test_a_dispose_logs_the_lost_login_when_the_dump_fails(
     session = await host.create_context(None)
     engine.send_error = CdpCommandError({"message": "gone"})
     error = MagicMock()
-    monkeypatch.setattr(host_mod.log, "error", error)
+    monkeypatch.setattr(log, "error", error)
 
     with pytest.raises(CdpCommandError):
         await host.dispose_context(session.session_id)
@@ -719,9 +729,9 @@ async def test_a_failed_context_dispose_is_warned_about_and_the_connection_still
     session = await host.create_context(None)
     mux.send_error = CdpCommandError({"message": "no such context"})
     warning = MagicMock()
-    monkeypatch.setattr(host_mod.log, "warning", warning)
+    monkeypatch.setattr(log, "warning", warning)
 
-    await host._end_session(session, host_mod.HostSessionEnd.DISPOSED)
+    await host._end_session(session, HostSessionEnd.DISPOSED)
 
     assert warning.call_args.kwargs["error_type"] == "CdpCommandError"
     assert mux.closed
@@ -769,7 +779,7 @@ async def test_a_create_through_an_attach_the_engine_never_answers_fails_as_unre
     monkeypatch.setattr(host_mod, "BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS", 0.01)
     host = make_host(mux=mux)
 
-    with pytest.raises(host_mod.CDPTimeoutError):
+    with pytest.raises(CDPTimeoutError):
         await host.create_context(None)
     assert host._pending_slots == 0
 
@@ -832,11 +842,10 @@ class _Spawned(list[str]):
 @pytest.fixture
 def spawned(monkeypatch: pytest.MonkeyPatch) -> _Spawned:
     record = _Spawned()
-    real = host_mod.spawn_logged_task
 
     def _spawn(operation: str, coro: Any) -> Any:
         record.append(operation)
-        task = real(operation, coro)
+        task = spawn_logged_task(operation, coro)
         record.tasks.append(task)
         return task
 
@@ -1089,16 +1098,13 @@ async def test_the_launch_names_the_configured_engine_and_the_resolved_binary(
 ) -> None:
     launch = AsyncMock(return_value=(as_engine(StubEngine()), "UA"))
     host = make_host(launch=launch)
-    host._chromium_path = "/opt/chrome"
+    chrome = ChromiumBinary(path="/opt/chrome", fortress=False)
+    host._chromium = chrome
     host._user_agent = "Earlier UA"
 
     await host._launch()
 
-    assert launch.await_args.args == (
-        browser_host_settings.BROWSER_ENGINE,
-        "/opt/chrome",
-        "Earlier UA",
-    )
+    assert launch.await_args.args == (browser_host_settings.BROWSER_ENGINE, chrome, "Earlier UA")
     await host.stop()
 
 
@@ -1164,7 +1170,7 @@ async def test_session_info_is_its_whole_view_inside_the_liveness_budget(
     assert info == SessionInfo(
         session_id=session.session_id, live=True, url="https://x.example/", title="X"
     )
-    assert stub.asked_within == [host_mod.BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS]
+    assert stub.asked_within == [BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS]
     getinfo = [c for c in engine.calls if c[0] == "Target.getTargetInfo"]
     assert getinfo[-1][1] == {"targetId": session.target_id}
 

@@ -37,7 +37,7 @@ from shared.py.analytics.catalog.billing import (
     PaywallBlocked,
     SubscriptionActivated,
 )
-from shared.py.analytics.catalog.bots import BotChatCompleted, BotChatStarted, BotMessageReceived
+from shared.py.analytics.catalog.bots import BotMessageReceived
 from shared.py.analytics.catalog.chat import (
     ChatConversationCreated,
     ChatConversationRenamed,
@@ -45,7 +45,11 @@ from shared.py.analytics.catalog.chat import (
     ChatMessageSubmitted,
 )
 from shared.py.analytics.catalog.notifications import NotificationAgentSent
-from shared.py.analytics.catalog.onboarding import OnboardingCompleted, OnboardingPhaseCompleted
+from shared.py.analytics.catalog.onboarding import (
+    OnboardingCompleted,
+    OnboardingPhaseCompleted,
+    OnboardingStarted,
+)
 from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from shared.py.analytics.catalog.workflows import (
@@ -211,8 +215,13 @@ def build_journeys(transcript: Path) -> list[Journey]:
             "onboarding",
             journeys.onboarding,
             (
+                # Reported twice, as a reload does; the server's step stamp keeps it to one.
+                Expect(OnboardingStarted.event, BROWSER, True),
+                *(
+                    Expect(OnboardingPhaseCompleted.event, BROWSER, True, (("phase", step.value),))
+                    for step in journeys.ONBOARDING_PHASES
+                ),
                 Expect(OnboardingCompleted.event, BROWSER, True),
-                Expect(OnboardingPhaseCompleted.event, BROWSER, True),
                 Expect(UserActive.event, BROWSER, True),
                 # Onboarding opens the user's first conversation.
                 Expect(
@@ -258,8 +267,6 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 Expect(ChatMessageSubmitted.event, BOT, False, (("source", telegram),)),
                 *_agent_turn(BOT, False, telegram),
                 Expect(BotMessageReceived.event, None, False),
-                Expect(BotChatStarted.event, None, False),
-                Expect(BotChatCompleted.event, None, False),
             ),
         ),
     ]

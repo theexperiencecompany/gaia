@@ -115,6 +115,12 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
             {draft.suggested_description}
           </p>
 
+          {draft.trigger_type === "integration" && draft.runs_only_when && (
+            <p className="line-clamp-2 text-xs leading-relaxed text-zinc-400">
+              Runs only when: {draft.runs_only_when}
+            </p>
+          )}
+
           {draft.trigger_type === "integration" && (
             <p className="text-xs text-zinc-500">
               Configure trigger settings to complete setup

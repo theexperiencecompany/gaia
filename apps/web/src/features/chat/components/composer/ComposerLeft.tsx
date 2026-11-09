@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ATTACHMENT_LIMITS_HINT } from "@/features/chat/constants/files";
 import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { useIsInitialResponseStreaming } from "@/stores/streamStore";
@@ -55,7 +56,7 @@ export default function ComposerLeft({
       ),
       action: openFilePicker,
       isMode: false,
-      description: "Upload and analyze documents, images or other files",
+      description: ATTACHMENT_LIMITS_HINT,
     },
   ];
 

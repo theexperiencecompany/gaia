@@ -26,6 +26,8 @@ SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
 # routing). Eventually consistent: a plan change takes effect within the TTL.
 SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
 SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
+# The day of month a subscription bills on: anchors the Pro allowance month. Same TTL.
+SUBSCRIPTION_BILLING_DAY_CACHE_PREFIX = "subscription_billing_day:"
 # The plan catalogue itself, keyed by whether inactive plans are included. Seeded
 # by scripts/payment_setup.py, which drops every key after writing.
 ACTIVE_PLANS_CACHE_KEY = "plans:active"
@@ -105,9 +107,6 @@ USER_PRESENCE_PREFIX = "user_presence"
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
-HANDOFF_METADATA_CACHE_PREFIX = "handoff_metadata"
-# Custom-MCP display name resolved for handoff (keyed by integration id).
-HANDOFF_NAME_CACHE_PREFIX = "handoff_name"
 SUBAGENT_CACHE_PREFIX = "subagent_info"
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
 OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
@@ -203,7 +202,18 @@ WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
 BOT_UPGRADE_LINK_PREFIX = "bot:upgrade-link:"
 BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
 
+# Every tool call one run made, in order, keyed by the run's stream id. Outlives
+# the longest run (a parked approval) so the trace and a playbook write read it whole.
+RUN_RECORD_PREFIX = "run_record:"
+RUN_RECORD_TTL = ONE_DAY_TTL * 2
+# The integrations a run already showed a connect card for; calls to them are refused.
+RUN_BLOCKED_INTEGRATIONS_PREFIX = "run_blocked_integrations:"
+
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
+# Set when an executor run ends asking the user to confirm; only then may the
+# next call_executor carry irreversible_approved (confirmation_gate.py).
+AWAITING_CONFIRMATION_PREFIX = "executor:awaiting_confirmation:"
+AWAITING_CONFIRMATION_TTL = ONE_HOUR_TTL
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 # Keyed by holder: whatever holds the busy lock renews this while its process lives (a parked
 # run for as long as its park); a lock without it is a dead holder, reclaimable by anyone.
@@ -260,15 +270,10 @@ ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
 # seconds; on timeout the answer still reaches the user via the WebSocket push.
 VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 
-# One-shot gate (SET NX) for the "priority compute used this month" in-app notice,
-# so a degraded pro user is told once per month, not once per turn.
-COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"
+# One-shot gate (SET NX) for the heads-up at PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION of
+# the month, so a pro user is told once per month, not once per request.
+COST_BUDGET_NEAR_NOTIFIED_KEY = "cost_budget_near_notified:{user_id}:{window}"
 
-# Keyed by user plus a hash of the answers it was written from, so a changed
-# Q1/Q2 answer reads a never-written key rather than a stale question. Two
-# hours covers a wizard someone walked away from before pressing completion.
-FIRST_QUESTION_CACHE_PREFIX = "onboarding:first_question:"
-FIRST_QUESTION_CACHE_TTL = 2 * ONE_HOUR_TTL
 #: Prefix of the tiered rate limiter's per-user counters: ``{prefix}:{user_id}:{feature}:{period}:{window}``.
 #: Named so a dev tool can clear one user's counters without knowing the rest of the key.
 RATE_LIMIT_KEY_PREFIX = "rate_limit"

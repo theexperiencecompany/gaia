@@ -26,13 +26,24 @@ from posthog import Posthog
 import pytest
 from starlette.types import Receive, Scope, Send
 
-# Hypothesis profiles: PR lanes select "ci" (25 examples) to keep feedback
-# short; master/local keep "default" (200). suppress differing_executors
-# since mutmut's in-process runner reinstantiates the @given class per mutant.
+# "ci" (PRs, queue) is derandomized so the queue reproduces the PR's verdict; "ci-full"
+# (master) explores, seeded per commit by pytest.sh's --hypothesis-seed.
+# differing_executors: mutmut's in-process runner reinstantiates the @given class.
 _hypothesis_settings.register_profile(
     "ci",
     max_examples=25,
     deadline=None,
+    derandomize=True,
+    database=None,
+    suppress_health_check=[HealthCheck.differing_executors],
+)
+_hypothesis_settings.register_profile(
+    "ci-full",
+    max_examples=200,
+    deadline=None,
+    # Explicit: under CI=true a new profile inherits Hypothesis's built-in "ci", which derandomizes.
+    derandomize=False,
+    database=None,
     suppress_health_check=[HealthCheck.differing_executors],
 )
 _hypothesis_settings.register_profile(
@@ -78,6 +89,8 @@ _mock_subscription = MagicMock()
 # Mirror the real get_user_subscription_status return type: plan_type is a
 # PlanType enum, not a raw str. get_cached_plan_type relies on `.value`.
 _mock_subscription.plan_type = PlanType.FREE
+# A FREE status carries no subscription row; the billing-day read takes it from here.
+_mock_subscription.subscription = None
 
 # Always mock: Infisical secrets and rate limiting. These are external SaaS
 # services that must never be called in any test environment.
@@ -346,6 +359,15 @@ def _no_captured_loop_carryover() -> Iterator[None]:
     """Forget a server loop a test captured (unified_startup does); the next test's loop is new, that one closed."""
     yield
     reset_captured_loop()
+
+
+@pytest.fixture
+def onboarding_finish_on_link() -> Iterator[AsyncMock]:
+    """Double the onboarding finish a new platform link runs, for link tests that double the user DB."""
+    with patch(
+        "app.services.platform_link_completion.complete_onboarding_on_platform_link", AsyncMock()
+    ) as finish:
+        yield finish
 
 
 @pytest.fixture
@@ -747,7 +769,7 @@ def core_tool_registry() -> Iterator[None]:
     registry = ToolRegistry()
     registry.setup()
     with patch(
-        "app.services.mcp.mcp_client.get_tool_registry",
+        "app.services.mcp.tool_naming.get_tool_registry",
         new_callable=AsyncMock,
         return_value=registry,
     ):

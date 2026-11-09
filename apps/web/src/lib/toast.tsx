@@ -116,8 +116,20 @@ function ToastControls({
   );
 }
 
-function translate(message: string, opts?: ToastOptions): SileoOptions {
-  const out: SileoOptions = {};
+// sileo reads `id` at runtime (it is how a toast is replaced in place) but leaves it out of its types.
+type IdentifiedSileoOptions = SileoOptions & { id: string };
+
+let toastCounter = 0;
+
+// sileo files every id-less toast under one shared id, so a later dismiss of
+// that id also removes whichever toast has since taken its place.
+function translate(
+  message: string,
+  opts?: ToastOptions,
+): IdentifiedSileoOptions {
+  const out: IdentifiedSileoOptions = {
+    id: opts?.id ?? `toast-${++toastCounter}`,
+  };
 
   if (message.length > TITLE_MAX_CHARS && opts?.description === undefined) {
     // Long title, no description: promote to description so it wraps, and opt into
@@ -180,8 +192,6 @@ function fire(
   message: string,
   opts?: ToastOptions,
 ): string {
-  // When an id is passed, dismiss the previous toast first (replace loading → result)
-  if (opts?.id) sileo.dismiss(opts.id);
   const out = translate(message, opts);
   const bindId = attachControls(out, state, opts);
   const id = fn(out);
@@ -210,7 +220,6 @@ export const toast = {
 
   /** Sticky info toast. Pass the returned id to success/error to replace it. */
   loading: (message: string, opts?: ToastOptions): string => {
-    if (opts?.id) sileo.dismiss(opts.id);
     const out: SileoOptions = { ...translate(message, opts), duration: null };
     const bindId = attachControls(out, "loading", opts);
     const id = sileo.info(out);

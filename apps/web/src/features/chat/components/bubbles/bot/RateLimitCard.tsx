@@ -69,6 +69,7 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
             featureName={featureName}
             showUpgradeNudge={showUpgradeNudge}
             resetInfo={resetInfo}
+            message={message}
           />
         )}
       </div>

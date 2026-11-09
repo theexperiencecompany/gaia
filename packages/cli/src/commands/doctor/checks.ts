@@ -124,7 +124,7 @@ export function describeUnhealthyServices(
 // Ports
 // ---------------------------------------------------------------------------
 
-/** Host port with override support (`infra/docker/.env` → default). */
+/** Host port with override support (the compose env file → default). */
 export function resolvePort(
   overrides: Record<number, number>,
   defaultPort: number,
@@ -137,7 +137,7 @@ export function resolvePort(
 // ---------------------------------------------------------------------------
 
 /**
- * Re-checks the mode's host ports (respecting `infra/docker/.env` overrides)
+ * Re-checks the mode's host ports (respecting the compose env file's overrides)
  * for conflicts with non-GAIA processes; ports GAIA's own stack publishes are
  * not conflicts. Skipped when the Docker daemon is unreachable because the
  * check needs `docker ps` and `lsof`.
@@ -146,6 +146,8 @@ export async function checkPortConflicts(
   mode: SetupMode,
   overrides: Record<number, number> = {},
   domain?: string,
+  /** The install's compose env file, as the user would type it; none without an install. */
+  envFile?: string,
 ): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "port-conflict",
@@ -195,8 +197,8 @@ export async function checkPortConflicts(
     detail,
     fix:
       mode === "selfhost"
-        ? "Free the port or re-run 'gaia up' with --web-port (or set WEB_HOST_PORT in infra/docker/.env)."
-        : "Free the port or set its *_HOST_PORT override in infra/docker/.env.",
+        ? `Free the port or re-run 'gaia up' with --web-port${envFile ? ` (or set WEB_HOST_PORT in ${envFile})` : ""}.`
+        : `Free the port${envFile ? ` or set its *_HOST_PORT override in ${envFile}` : ""}.`,
   };
 }
 

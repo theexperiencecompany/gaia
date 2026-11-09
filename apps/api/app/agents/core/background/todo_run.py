@@ -54,7 +54,7 @@ from app.helpers.agent_helpers import (
     background_authorization,
     build_agent_config,
 )
-from app.models.agent_config import AgentConfigurable
+from app.models.agent_config import AgentConfigurable, SpawnJob
 from app.models.agent_models import agent_user_context
 from app.models.message_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
@@ -95,6 +95,8 @@ class TodoRunRequest:
     #: Awaited once the chat's executor lock is this run's, so a run that finds
     #: the chat busy never reads as started.
     on_started: Callable[[], Awaitable[object]] | None = None
+    #: What the run's spawn_subagent calls do, which sets their step budget.
+    spawn_job: SpawnJob = SpawnJob.FOCUSED
 
 
 async def run_todo_on_executor(request: TodoRunRequest) -> None:
@@ -221,4 +223,5 @@ async def _todo_run_configurable(request: TodoRunRequest, stream_id: str) -> Age
     # Indexed, not read via agent_configurable: this bag is written to.
     configurable = cast(AgentConfigurable, config[CONF])
     configurable["stream_id"] = stream_id
+    configurable["spawn_job"] = request.spawn_job
     return configurable

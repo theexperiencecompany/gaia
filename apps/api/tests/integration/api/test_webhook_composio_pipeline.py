@@ -66,7 +66,7 @@ def _gmail_delivery() -> dict:
 
 
 def _gmail_sent_delivery() -> dict:
-    """GMAIL_EMAIL_SENT_TRIGGER at toolkit 20260107_00: recipients is one comma-separated string."""
+    """GMAIL_EMAIL_SENT_TRIGGER at toolkit 20261105_00: recipients is one comma-separated string."""
     return {
         "type": "gmail_email_sent_trigger",
         "timestamp": "2026-09-27T05:44:33Z",

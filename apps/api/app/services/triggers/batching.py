@@ -17,23 +17,30 @@ by its window is a missed meeting.
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 import json
+import math
 from typing import TypedDict
 from uuid import uuid4
 
 from redis.exceptions import RedisError
 
 from app.constants.log_tags import LogTag
+from app.constants.trigger_gates import QUIET_HOURS_CONTEXT_KEY
 from app.constants.triggers import PER_EMAIL_TRIGGER_NAMES
 from app.db.redis import redis_cache
 from app.models.trigger_configs import GmailPollInboxConfig
+from app.models.trigger_gate_models import QuietHoursHold
 from app.models.workflow_models import TriggerConfig
+from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 # One list per workflow holding the JSON payloads awaiting their batched run.
 TRIGGER_BATCH_KEY = "trigger_batch:{workflow_id}"
+# The drain at the end of one night's quiet hours, so every path that defers to it is one job.
+TRIGGER_BATCH_HELD_JOB_ID = "trigger_batch:{workflow_id}:held:{until}"
 
 WORKFLOW_BATCH_TASK = "execute_workflow_by_id"
 
@@ -188,6 +195,80 @@ async def buffer_trigger_event(
         ),
         {"workflow_id": workflow_id, "user_id": user_id},
     )
+
+
+def _held_drain(workflow_id: str, until: datetime, context: Mapping[str, object]) -> BatchDrainJob:
+    """Name the run that drains a workflow's batch when the user's quiet hours end, until."""
+    # Unmutated: the stamp's kind is a StrEnum, equal to its value in either mode.
+    stamp = QuietHoursHold().model_dump(mode="json")  # pragma: no mutate
+    return BatchDrainJob(
+        function=WORKFLOW_BATCH_TASK,
+        args=(
+            workflow_id,
+            {
+                **context,
+                "trigger_batch_key": TRIGGER_BATCH_KEY.format(workflow_id=workflow_id),
+                QUIET_HOURS_CONTEXT_KEY: stamp,
+            },
+        ),
+        job_id=TRIGGER_BATCH_HELD_JOB_ID.format(
+            workflow_id=workflow_id, until=occurrence_stamp(until)
+        ),
+    )
+
+
+def _seconds_until(moment: datetime) -> int:
+    # Round up: a truncated sub-second delay becomes 0 and the drain runs before
+    # its moment, re-enqueuing its own held job id and stranding the batch.
+    return max(math.ceil((moment - datetime.now(UTC)).total_seconds()), 0)
+
+
+async def hold_trigger_event(
+    workflow_id: str,
+    user_id: str,
+    data: Mapping[str, object],
+    until: datetime,
+    context: Mapping[str, object],
+) -> bool:
+    """Add one held event to the workflow's batch, which drains at until whenever its window ends."""
+    return await buffer_batch_event(
+        TRIGGER_BATCH_KEY.format(workflow_id=workflow_id),
+        data,
+        _seconds_until(until),
+        _held_drain(workflow_id, until, context),
+        {"workflow_id": workflow_id, "user_id": user_id},
+    )
+
+
+async def hold_trigger_batch(
+    workflow_id: str, until: datetime, context: Mapping[str, object]
+) -> bool:
+    """Move the drain of everything the workflow's batch holds to until, keeping the batch that long.
+
+    Returns False when the batch is unreachable, so the fire meets the same outage at its drain.
+    """
+    client = redis_cache.redis
+    if client is None:
+        log.warning(
+            f"{LogTag.TRIGGER} Redis unavailable — trigger batch cannot be held",
+            workflow_id=workflow_id,
+        )
+        return False
+    defer_seconds = _seconds_until(until)
+    await client.expire(
+        TRIGGER_BATCH_KEY.format(workflow_id=workflow_id), _batch_ttl_seconds(defer_seconds)
+    )
+    drain = _held_drain(workflow_id, until, context)
+    pool = await RedisPoolManager.get_pool()
+    await enqueue_worker_job(
+        pool, drain.function, *drain.args, _job_id=drain.job_id, _defer_by=defer_seconds
+    )
+    log.info(
+        f"{LogTag.TRIGGER} Trigger batch held until the user's quiet hours end",
+        workflow_id=workflow_id,
+        held_until=until.isoformat(),
+    )
+    return True
 
 
 async def drain_trigger_batch(batch_key: str) -> list[dict[str, object]] | None:

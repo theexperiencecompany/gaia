@@ -114,6 +114,15 @@ class TestConversationCrud:
         assert await repo.exists(doc.conversation_id, user_id="other") is False
         assert await repo.exists(_cid(), user_id=doc.user_id) is False
 
+    async def test_owner_ids_spans_users_and_ignores_other_conversations(self, repo):
+        shared, other = _cid(), _cid()
+        await repo.create(_doc(user_id="first", conversation_id=shared))
+        await repo.create(_doc(user_id="second", conversation_id=shared))
+        await repo.create(_doc(user_id="third", conversation_id=other))
+
+        assert await repo.owner_ids(shared) == {"first", "second"}
+        assert await repo.owner_ids(_cid()) == set()
+
     async def test_delete_then_gone(self, repo):
         doc = _doc()
         await repo.create(doc)

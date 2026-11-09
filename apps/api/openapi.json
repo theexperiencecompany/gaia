@@ -346,31 +346,6 @@
         "title": "ApiCallConfig",
         "type": "object"
       },
-      "ApplyLabelRequest": {
-        "description": "Request model for applying or removing labels from messages.",
-        "properties": {
-          "label_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Label Ids",
-            "type": "array"
-          },
-          "message_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Message Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "message_ids",
-          "label_ids"
-        ],
-        "title": "ApplyLabelRequest",
-        "type": "object"
-      },
       "ApprovalDecisionRequest": {
         "description": "Body for a button approval decision (approve/deny, with scope and feedback).",
         "properties": {
@@ -471,37 +446,6 @@
           "user_code"
         ],
         "title": "ApprovePairingRequest",
-        "type": "object"
-      },
-      "ArchiveEmailsResponse": {
-        "properties": {
-          "archived": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Archived",
-            "type": "array"
-          },
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "count",
-          "status",
-          "archived"
-        ],
-        "title": "ArchiveEmailsResponse",
         "type": "object"
       },
       "ArtifactInfo": {
@@ -1028,6 +972,66 @@
           "role"
         ],
         "title": "AuthorDetails",
+        "type": "object"
+      },
+      "AuthoredGateView": {
+        "description": "An authored gate as the API returns it, with what the user reads about it.",
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/GateAuthor"
+          },
+          "condition": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Condition",
+            "type": "string"
+          },
+          "display_condition": {
+            "readOnly": true,
+            "title": "Display Condition",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "enforced": {
+            "readOnly": true,
+            "title": "Enforced",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "authored",
+            "default": "authored",
+            "title": "Kind",
+            "type": "string"
+          },
+          "recent_skips": {
+            "items": {
+              "$ref": "#/components/schemas/GateSkipRecord"
+            },
+            "title": "Recent Skips",
+            "type": "array"
+          },
+          "skipped_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Skipped Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "recent_skips",
+          "skipped_count",
+          "condition",
+          "author",
+          "enabled",
+          "display_condition",
+          "enforced"
+        ],
+        "title": "AuthoredGateView",
         "type": "object"
       },
       "BatchApprovalDecisionRequest": {
@@ -1876,7 +1880,7 @@
           "source_browser": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2297,56 +2301,6 @@
         ],
         "title": "BulkActions",
         "type": "string"
-      },
-      "BulkEmailImportanceSummariesResponse": {
-        "description": "Response for ``POST /gmail/importance-summaries/bulk``.\n\n``emails`` values stay ``dict[str, Any]`` for the same reason as\n``EmailImportanceSummariesResponse.emails``.",
-        "properties": {
-          "emails": {
-            "additionalProperties": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Emails",
-            "type": "object"
-          },
-          "found_count": {
-            "title": "Found Count",
-            "type": "integer"
-          },
-          "found_message_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Found Message Ids",
-            "type": "array"
-          },
-          "missing_count": {
-            "title": "Missing Count",
-            "type": "integer"
-          },
-          "missing_message_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Missing Message Ids",
-            "type": "array"
-          },
-          "status": {
-            "const": "success",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "emails",
-          "found_count",
-          "missing_count",
-          "found_message_ids",
-          "missing_message_ids"
-        ],
-        "title": "BulkEmailImportanceSummariesResponse",
-        "type": "object"
       },
       "BulkMoveRequest": {
         "properties": {
@@ -3095,27 +3049,6 @@
         "title": "CommunityListResponse",
         "type": "object"
       },
-      "ComposedEmailOutput": {
-        "description": "Structured output of the AI email composer.",
-        "properties": {
-          "body": {
-            "description": "Generated email body",
-            "title": "Body",
-            "type": "string"
-          },
-          "subject": {
-            "description": "Generated email subject line",
-            "title": "Subject",
-            "type": "string"
-          }
-        },
-        "required": [
-          "subject",
-          "body"
-        ],
-        "title": "ComposedEmailOutput",
-        "type": "object"
-      },
       "ComposioAuthConfigCandidate": {
         "description": "An enabled auth config in the admin's Composio project for this integration's toolkit.",
         "properties": {
@@ -3518,7 +3451,7 @@
         "description": "A profile the user confirmed; its platform is a slug so onboarding analytics can carry it.",
         "properties": {
           "platform": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           },
@@ -4664,7 +4597,7 @@
           },
           "product_id": {
             "description": "Product ID to subscribe to",
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Product Id",
             "type": "string"
           },
@@ -4844,6 +4777,20 @@
             "minLength": 1,
             "title": "Prompt",
             "type": "string"
+          },
+          "runs_only_when": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "GAIA's drafted condition for an integration trigger, stored as GAIA's gate",
+            "title": "Runs Only When"
           },
           "source_integration": {
             "anyOf": [
@@ -5932,255 +5879,6 @@
         "title": "DodoWebhookAckResponse",
         "type": "object"
       },
-      "DraftMutationResponse": {
-        "description": "Response for the draft create and update endpoints.",
-        "properties": {
-          "draft_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Draft Id"
-          },
-          "message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message Id"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "draft_id",
-          "message_id",
-          "status"
-        ],
-        "title": "DraftMutationResponse",
-        "type": "object"
-      },
-      "DraftRequest": {
-        "description": "Request model for creating or updating a draft email.\n\n``body`` may be Markdown or HTML \u2014 the Composio Gmail hook converts\nMarkdown to HTML before sending, so callers never need to choose.",
-        "properties": {
-          "bcc": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bcc"
-          },
-          "body": {
-            "title": "Body",
-            "type": "string"
-          },
-          "cc": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cc"
-          },
-          "subject": {
-            "title": "Subject",
-            "type": "string"
-          },
-          "to": {
-            "items": {
-              "type": "string"
-            },
-            "title": "To",
-            "type": "array"
-          }
-        },
-        "required": [
-          "to",
-          "subject",
-          "body"
-        ],
-        "title": "DraftRequest",
-        "type": "object"
-      },
-      "EmailActionRequest": {
-        "description": "Request model for performing actions on emails like star, trash, archive.",
-        "properties": {
-          "message_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Message Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "message_ids"
-        ],
-        "title": "EmailActionRequest",
-        "type": "object"
-      },
-      "EmailImportanceSummariesResponse": {
-        "description": "Response for ``GET /gmail/importance-summaries``.\n\n``emails`` entries stay ``dict[str, Any]`` because they are JSON dumps of\n``MailDocument``, which allows analyzer-supplied extra fields that vary per email.",
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "emails": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Emails",
-            "type": "array"
-          },
-          "filtered_by_importance": {
-            "title": "Filtered By Importance",
-            "type": "boolean"
-          },
-          "status": {
-            "const": "success",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "emails",
-          "count",
-          "filtered_by_importance"
-        ],
-        "title": "EmailImportanceSummariesResponse",
-        "type": "object"
-      },
-      "EmailImportanceSummaryResponse": {
-        "description": "Response for ``GET /gmail/importance-summary/{message_id}``.\n\n``email`` stays ``dict[str, Any]`` for the same reason as\n``EmailImportanceSummariesResponse.emails``.",
-        "properties": {
-          "email": {
-            "additionalProperties": true,
-            "title": "Email",
-            "type": "object"
-          },
-          "status": {
-            "const": "success",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "email"
-        ],
-        "title": "EmailImportanceSummaryResponse",
-        "type": "object"
-      },
-      "EmailReadStatusRequest": {
-        "properties": {
-          "message_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Message Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "message_ids"
-        ],
-        "title": "EmailReadStatusRequest",
-        "type": "object"
-      },
-      "EmailRequest": {
-        "properties": {
-          "body": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Body"
-          },
-          "clarityOption": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Clarityoption"
-          },
-          "contentLength": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Contentlength"
-          },
-          "prompt": {
-            "title": "Prompt",
-            "type": "string"
-          },
-          "subject": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subject"
-          },
-          "writingStyle": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Writingstyle"
-          }
-        },
-        "required": [
-          "prompt"
-        ],
-        "title": "EmailRequest",
-        "type": "object"
-      },
       "EmailSearchResponse": {
         "description": "Contact-email addresses extracted from a web search, plus the raw search data.",
         "properties": {
@@ -6297,10 +5995,34 @@
             ],
             "title": "Fix"
           },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Integration an INTEGRATION_NOT_CONNECTED error asks to connect.",
+            "title": "Integration Id"
+          },
           "message": {
             "description": "Human-readable description of the failure.",
             "title": "Message",
             "type": "string"
+          },
+          "toolkit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.",
+            "title": "Toolkit"
           },
           "why": {
             "anyOf": [
@@ -7098,6 +6820,75 @@
         "title": "FoldedCards",
         "type": "object"
       },
+      "GateAuthor": {
+        "description": "Who wrote an authored gate's condition; always set by the server.",
+        "enum": [
+          "gaia",
+          "user"
+        ],
+        "title": "GateAuthor",
+        "type": "string"
+      },
+      "GateEdit": {
+        "description": "A gate as a client edits it: a new condition, or the current gate turned on or off.\n\nThe server decides who wrote a condition. No condition keeps the current one,\na system preset included, so turning a gate off never loses its text.",
+        "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "GateEdit",
+        "type": "object"
+      },
+      "GateSkipRecord": {
+        "description": "One event a gate kept from running its job, as the gate's panel lists it.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "certainty": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How sure GAIA was the event did not match; None on skips kept before it was",
+            "title": "Certainty"
+          },
+          "event": {
+            "description": "The skipped event as a person reads it: an email's sender and subject",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "at"
+        ],
+        "title": "GateSkipRecord",
+        "type": "object"
+      },
       "GenerateWorkflowPromptRequest": {
         "description": "Request model for AI-generated workflow instructions.",
         "properties": {
@@ -7289,65 +7080,6 @@
         "title": "GitHubStarAddedConfig",
         "type": "object"
       },
-      "GmailDeletionResponse": {
-        "description": "Response for the label and draft delete endpoints.",
-        "properties": {
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "success",
-              "error"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "message"
-        ],
-        "title": "GmailDeletionResponse",
-        "type": "object"
-      },
-      "GmailDraftResource": {
-        "additionalProperties": true,
-        "description": "A Gmail ``drafts`` resource, forwarded verbatim \u2014 see ``GmailLabelResource``.",
-        "properties": {},
-        "title": "GmailDraftResource",
-        "type": "object"
-      },
-      "GmailDraftsResponse": {
-        "description": "Return shape of ``list_drafts``, forwarded verbatim by ``GET /gmail/drafts``.",
-        "properties": {
-          "drafts": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Drafts",
-            "type": "array"
-          },
-          "nextPageToken": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Nextpagetoken"
-          }
-        },
-        "required": [
-          "drafts"
-        ],
-        "title": "GmailDraftsResponse",
-        "type": "object"
-      },
       "GmailEmailSentConfig": {
         "description": "Config for the gmail sent-mail trigger; account-level, so nothing to scope.",
         "properties": {
@@ -7359,63 +7091,6 @@
           }
         },
         "title": "GmailEmailSentConfig",
-        "type": "object"
-      },
-      "GmailLabelResource": {
-        "additionalProperties": true,
-        "description": "A Gmail ``labels`` resource, forwarded to the client verbatim.\n\nNo field is declared on purpose: Gmail owns this schema, so ``extra=\"allow\"``\npasses the payload through untouched instead of guessing at a structure that\nwould silently drop provider fields. Mirrors ``GoogleCalendarEventResource``.",
-        "properties": {},
-        "title": "GmailLabelResource",
-        "type": "object"
-      },
-      "GmailLabelsResponse": {
-        "description": "Response for ``GET /gmail/labels``.",
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "labels": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Labels",
-            "type": "array"
-          }
-        },
-        "required": [
-          "labels",
-          "count"
-        ],
-        "title": "GmailLabelsResponse",
-        "type": "object"
-      },
-      "GmailMessageResponse": {
-        "description": "Response for ``GET /gmail/message/{message_id}``.",
-        "properties": {
-          "message": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "message",
-          "status"
-        ],
-        "title": "GmailMessageResponse",
         "type": "object"
       },
       "GmailMessageSummary": {
@@ -7508,7 +7183,7 @@
         "type": "object"
       },
       "GmailMessagesResponse": {
-        "description": "Response for ``GET /gmail/messages`` and ``GET /gmail/search``, and the return\nshape of ``search_messages``, which the routes forward unchanged.",
+        "description": "Response for ``GET /gmail/search``: the ``search_messages`` result, forwarded unchanged.",
         "properties": {
           "messages": {
             "items": {
@@ -7567,31 +7242,6 @@
           }
         },
         "title": "GmailPollInboxConfig",
-        "type": "object"
-      },
-      "GmailThreadResponse": {
-        "description": "Response for ``GET /gmail/thread/{thread_id}``.\n\n``thread`` is the Composio thread payload with its messages transformed, so it\nkeeps the provider's own envelope keys alongside ``messages``.",
-        "properties": {
-          "messages_count": {
-            "title": "Messages Count",
-            "type": "integer"
-          },
-          "thread": {
-            "additionalProperties": true,
-            "title": "Thread",
-            "type": "object"
-          },
-          "thread_id": {
-            "title": "Thread Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "thread_id",
-          "messages_count",
-          "thread"
-        ],
-        "title": "GmailThreadResponse",
         "type": "object"
       },
       "GoogleCalendarEventDateTime": {
@@ -9037,6 +8687,41 @@
         "title": "IntegrationTool",
         "type": "object"
       },
+      "IntegrationToolApproval": {
+        "properties": {
+          "approval_key": {
+            "description": "Key the user's per-tool approval override is stored under; send it back unchanged.",
+            "title": "Approval Key",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "destructive": {
+            "default": false,
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "approval_key"
+        ],
+        "title": "IntegrationToolApproval",
+        "type": "object"
+      },
       "IntegrationToolsResponse": {
         "description": "Full tool list for a single integration (catalog data, on demand).",
         "properties": {
@@ -9052,7 +8737,7 @@
           "tools": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/IntegrationTool"
+              "$ref": "#/components/schemas/IntegrationToolApproval"
             },
             "title": "Tools",
             "type": "array"
@@ -9150,68 +8835,6 @@
           "run_id"
         ],
         "title": "LabEventResponse",
-        "type": "object"
-      },
-      "LabelRequest": {
-        "description": "Request model for creating or updating Gmail labels.",
-        "properties": {
-          "background_color": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Background Color"
-          },
-          "label_list_visibility": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": "labelShow",
-            "description": "Whether the label appears in the label list: 'labelShow', 'labelHide', 'labelShowIfUnread'",
-            "title": "Label List Visibility"
-          },
-          "message_list_visibility": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": "show",
-            "description": "Whether the label appears in the message list: 'show', 'hide'",
-            "title": "Message List Visibility"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "text_color": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Text Color"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "LabelRequest",
         "type": "object"
       },
       "LinearCommentAddedConfig": {
@@ -9755,7 +9378,7 @@
             "type": "string"
           },
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           }
@@ -9821,68 +9444,6 @@
           "updated_count"
         ],
         "title": "MarkAllReadSummary",
-        "type": "object"
-      },
-      "MarkAsReadResponse": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "marked_as_read": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Marked As Read",
-            "type": "array"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "count",
-          "status",
-          "marked_as_read"
-        ],
-        "title": "MarkAsReadResponse",
-        "type": "object"
-      },
-      "MarkAsUnreadResponse": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "marked_as_unread": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Marked As Unread",
-            "type": "array"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "count",
-          "status",
-          "marked_as_unread"
-        ],
-        "title": "MarkAsUnreadResponse",
         "type": "object"
       },
       "MarketplaceResponse": {
@@ -11194,6 +10755,17 @@
               }
             ]
           },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
           "subtype": {
             "anyOf": [
               {
@@ -11482,6 +11054,17 @@
               }
             ]
           },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
           "subtype": {
             "anyOf": [
               {
@@ -11678,7 +11261,7 @@
           "selectedTool": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -11700,7 +11283,7 @@
           "toolCategory": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -11829,69 +11412,6 @@
           "component"
         ],
         "title": "ModalConfig",
-        "type": "object"
-      },
-      "ModifyLabelsResponse": {
-        "description": "Response for both the apply-label and remove-label endpoints.",
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "modified_messages": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Modified Messages",
-            "type": "array"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "count",
-          "status",
-          "modified_messages"
-        ],
-        "title": "ModifyLabelsResponse",
-        "type": "object"
-      },
-      "MoveToInboxResponse": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "moved_to_inbox": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Moved To Inbox",
-            "type": "array"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "count",
-          "status",
-          "moved_to_inbox"
-        ],
-        "title": "MoveToInboxResponse",
         "type": "object"
       },
       "MultiURLResponse": {
@@ -13028,6 +12548,57 @@
         "title": "OAuthClientMetadataResponse",
         "type": "object"
       },
+      "OnboardingAnswers": {
+        "description": "The wizard's answers \u2014 Q1 (profession) and Q2 (needs).\n\nThe name is derived from the email server-side, so it is not submitted;\nnothing else is generated at onboarding, so nothing else is collected.",
+        "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The web locale the wizard ran in, reduced to a primary subtag (\"de\", \"pt\")",
+            "title": "Language"
+          },
+          "needs": {
+            "description": "The jobs the user handed GAIA (onboarding Q2, up to three)",
+            "items": {
+              "$ref": "#/components/schemas/OnboardingNeed"
+            },
+            "maxItems": 3,
+            "title": "Needs",
+            "type": "array"
+          },
+          "other_need": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the user typed under 'Something else' in Q2, verbatim",
+            "title": "Other Need"
+          },
+          "profession": {
+            "description": "User's profession",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Profession",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profession"
+        ],
+        "title": "OnboardingAnswers",
+        "type": "object"
+      },
       "OnboardingNeed": {
         "description": "The pains the user handed GAIA during onboarding (Q2, up to three picks).\n\nSix are shown to everyone; the rest come in pairs, one pair per Q1 role, and\nonly that role sees its pair (``ROLE_NEEDS``). Each value is a different job\nGAIA can start on, so the picks carry signal into the first thread, the\nbot opener and the comms playbooks.",
         "enum": [
@@ -13059,23 +12630,19 @@
         "title": "OnboardingNeed",
         "type": "string"
       },
-      "OnboardingPhase": {
-        "description": "Tracks the current phase of user onboarding",
-        "enum": [
-          "initial",
-          "personalization_pending",
-          "personalization_complete",
-          "getting_started",
-          "completed"
-        ],
-        "title": "OnboardingPhase",
-        "type": "string"
-      },
       "OnboardingPhaseUpdateRequest": {
+        "description": "A wizard step the browser reached; the server stamps and reports it once per onboarding run.",
         "properties": {
           "phase": {
-            "$ref": "#/components/schemas/OnboardingPhase",
-            "description": "The onboarding phase to transition to"
+            "description": "The wizard step the user reached",
+            "enum": [
+              "started",
+              "paywall_reached",
+              "paid_reveal_seen",
+              "first_chat_opened"
+            ],
+            "title": "Phase",
+            "type": "string"
           }
         },
         "required": [
@@ -13085,30 +12652,37 @@
         "type": "object"
       },
       "OnboardingPhaseUpdateResponse": {
-        "description": "Response body for an onboarding phase update.",
+        "description": "Response body for a reported wizard step; first_time is False when the step was already stamped.",
         "properties": {
-          "message": {
-            "title": "Message",
-            "type": "string"
+          "first_time": {
+            "title": "First Time",
+            "type": "boolean"
           },
           "phase": {
-            "$ref": "#/components/schemas/OnboardingPhase"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
+            "$ref": "#/components/schemas/OnboardingStep"
           }
         },
         "required": [
-          "success",
           "phase",
-          "message"
+          "first_time"
         ],
         "title": "OnboardingPhaseUpdateResponse",
         "type": "object"
       },
       "OnboardingPreferences": {
         "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The user's browser language as a primary subtag (\"de\", \"pt\"), set at onboarding",
+            "title": "Language"
+          },
           "needs": {
             "anyOf": [
               {
@@ -13167,8 +12741,20 @@
         "type": "object"
       },
       "OnboardingRequest": {
-        "description": "The onboarding submission \u2014 Q1 (profession) and Q2 (needs).\n\nThe name is derived from the email server-side, so it is not submitted;\nnothing else is generated at onboarding, so nothing else is collected.",
+        "description": "The onboarding submission: the answers again, plus the browser's timezone.",
         "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The web locale the wizard ran in, reduced to a primary subtag (\"de\", \"pt\")",
+            "title": "Language"
+          },
           "needs": {
             "description": "The jobs the user handed GAIA (onboarding Q2, up to three)",
             "items": {
@@ -13360,6 +12946,18 @@
         ],
         "title": "OnboardingStatusResponse",
         "type": "object"
+      },
+      "OnboardingStep": {
+        "description": "A wizard milestone, stamped once per onboarding run on users.onboarding.steps_reached.",
+        "enum": [
+          "started",
+          "questions_answered",
+          "paywall_reached",
+          "paid_reveal_seen",
+          "first_chat_opened"
+        ],
+        "title": "OnboardingStep",
+        "type": "string"
       },
       "PaginatedNotificationsResponse": {
         "description": "Response model for paginated notifications",
@@ -13994,6 +13592,21 @@
         ],
         "title": "PlanType",
         "type": "string"
+      },
+      "PlatformConversationResponse": {
+        "description": "The linked platform's DM chat, opened from the settings page.",
+        "properties": {
+          "conversation_id": {
+            "description": "Conversation id of the platform's DM chat",
+            "title": "Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "title": "PlatformConversationResponse",
+        "type": "object"
       },
       "PlatformLinkEntry": {
         "description": "One linked platform account \u2014 the single shape for this entry.\n\nA ``TypedDict`` rather than a model (Type Safety item 6) because it has two\nconsumers with different needs, and this type serves both without a rival\ncopy. ``PlatformLinkService.get_linked_platforms`` assembles it in-process\nfrom an already-loaded ``UserDocument``, and the outbound-delivery paths\nread it tolerating a legacy non-string ``platformUserId`` (Telegram stores\nchat_id as an int) which they coerce at the envelope; validating there would\nstart raising on those rows \u2014 a behaviour change (item 13). Pydantic still\nvalidates it as a field of ``GetPlatformLinksResponse`` below, so the HTTP\nboundary rejects the same values a ``BaseModel`` here would.",
@@ -15264,6 +14877,35 @@
         "title": "PushTokenResponse",
         "type": "object"
       },
+      "QuietHours": {
+        "additionalProperties": false,
+        "description": "When the user's quiet hours start and end on their own clock; the span may cross midnight.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "end_hour": {
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "End Hour",
+            "type": "integer"
+          },
+          "start_hour": {
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Start Hour",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "start_hour",
+          "end_hour"
+        ],
+        "title": "QuietHours",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "description": "``GET /health/ready``: whether every backing service answered a real request.",
         "properties": {
@@ -15291,12 +14933,33 @@
         "type": "object"
       },
       "RecordedCall": {
-        "description": "One tool call as it actually ran.\n\nCaptured from the run's own tool events \u2014 the same stream the chat UI\nrenders \u2014 so recording costs nothing beyond persisting what was already\ncollected. ``args`` is what makes this useful: it is the material an agent\nreads to author a playbook, and the cursor a later run picks up from.",
+        "description": "One tool call as it actually ran, recorded by app.agents.tools.invocation.\n\nargs is what makes this useful: it is the material an agent reads to author\na playbook, and the cursor a later run picks up from.",
         "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account"
+          },
           "args": {
             "additionalProperties": true,
             "title": "Args",
             "type": "object"
+          },
+          "failed": {
+            "default": false,
+            "title": "Failed",
+            "type": "boolean"
+          },
+          "proxied": {
+            "default": false,
+            "title": "Proxied",
+            "type": "boolean"
           },
           "replayed": {
             "default": false,
@@ -15309,17 +14972,6 @@
             "maxLength": 4000,
             "title": "Result Digest",
             "type": "string"
-          },
-          "subagent": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subagent"
           },
           "subagent_id": {
             "anyOf": [
@@ -16010,7 +15662,7 @@
             "type": "object"
           },
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           }
@@ -16389,7 +16041,7 @@
             "type": "string"
           },
           "id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Id",
             "type": "string"
           },
@@ -16433,7 +16085,7 @@
             "type": "string"
           },
           "id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Id",
             "type": "string"
           },
@@ -16494,7 +16146,7 @@
           "client": {
             "maxLength": 20,
             "minLength": 1,
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Client",
             "type": "string"
           },
@@ -16520,7 +16172,7 @@
           "platform": {
             "maxLength": 60,
             "minLength": 1,
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           }
@@ -16656,86 +16308,6 @@
           "body"
         ],
         "title": "SendEmailForm",
-        "type": "object"
-      },
-      "SendEmailRequest": {
-        "properties": {
-          "bcc": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bcc"
-          },
-          "body": {
-            "title": "Body",
-            "type": "string"
-          },
-          "cc": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cc"
-          },
-          "subject": {
-            "title": "Subject",
-            "type": "string"
-          },
-          "to": {
-            "items": {
-              "type": "string"
-            },
-            "title": "To",
-            "type": "array"
-          }
-        },
-        "required": [
-          "to",
-          "subject",
-          "body"
-        ],
-        "title": "SendEmailRequest",
-        "type": "object"
-      },
-      "SendEmailResponse": {
-        "description": "Response for ``POST /gmail/send-json``.",
-        "properties": {
-          "message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message Id"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "message_id",
-          "status"
-        ],
-        "title": "SendEmailResponse",
         "type": "object"
       },
       "SendEmailWithAttachmentsResponse": {
@@ -17402,37 +16974,6 @@
         "title": "StarConversationResponse",
         "type": "object"
       },
-      "StarEmailsResponse": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "starred": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Starred",
-            "type": "array"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "count",
-          "status",
-          "starred"
-        ],
-        "title": "StarEmailsResponse",
-        "type": "object"
-      },
       "StarVoiceRequest": {
         "description": "Request body for starring/unstarring a voice.",
         "properties": {
@@ -17689,6 +17230,9 @@
           },
           "value": {
             "anyOf": [
+              {
+                "type": "boolean"
+              },
               {
                 "type": "string"
               },
@@ -18369,6 +17913,67 @@
         "title": "SupportRequestType",
         "type": "string"
       },
+      "SystemGatePreset": {
+        "description": "A gate whose decision and wording live in code, not on the job.",
+        "enum": [
+          "inbox_desk"
+        ],
+        "title": "SystemGatePreset",
+        "type": "string"
+      },
+      "SystemGateView": {
+        "description": "A system gate as the API returns it: its preset's wording, which the user cannot rewrite.",
+        "properties": {
+          "display_condition": {
+            "readOnly": true,
+            "title": "Display Condition",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "enforced": {
+            "readOnly": true,
+            "title": "Enforced",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "system",
+            "default": "system",
+            "title": "Kind",
+            "type": "string"
+          },
+          "preset": {
+            "$ref": "#/components/schemas/SystemGatePreset"
+          },
+          "recent_skips": {
+            "items": {
+              "$ref": "#/components/schemas/GateSkipRecord"
+            },
+            "title": "Recent Skips",
+            "type": "array"
+          },
+          "skipped_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Skipped Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "recent_skips",
+          "skipped_count",
+          "preset",
+          "enabled",
+          "display_condition",
+          "enforced"
+        ],
+        "title": "SystemGateView",
+        "type": "object"
+      },
       "SystemPurpose": {
         "description": "Why a system-generated conversation was created.",
         "enum": [
@@ -18894,7 +18499,7 @@
           "trigger_subscriptions": {
             "description": "Read-only; subscriptions are written by trigger registration, not by clients",
             "items": {
-              "$ref": "#/components/schemas/TriggerSubscription"
+              "$ref": "#/components/schemas/TriggerSubscriptionView"
             },
             "title": "Trigger Subscriptions",
             "type": "array"
@@ -19615,37 +19220,6 @@
         "title": "TranscribeAudioResponse",
         "type": "object"
       },
-      "TrashEmailsResponse": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          },
-          "trashed": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Trashed",
-            "type": "array"
-          }
-        },
-        "required": [
-          "success",
-          "count",
-          "status",
-          "trashed"
-        ],
-        "title": "TrashEmailsResponse",
-        "type": "object"
-      },
       "TriageEmailSummary": {
         "description": "The fields of an important email that actually reach the client.\n\nDeliberately not :class:`EmailSummary`: both the persisted triage subdoc and\nthe ``triage_ready`` WebSocket payload drop ``snippet``, and the frontend\ntypes exactly these three.\n\nDefaulted for the same reason as :class:`PersistedTriageSummary` \u2014 these\nentries are read back out of a persisted subdoc, and the write path always\nsupplies all three, so the defaults only ever apply on read.",
         "properties": {
@@ -20018,8 +19592,16 @@
         "title": "TriggerOptionsResponse",
         "type": "object"
       },
-      "TriggerSubscription": {
-        "description": "A tracked todo's standing interest in one trigger.",
+      "TriggerSubscriptionStatus": {
+        "enum": [
+          "active",
+          "paused"
+        ],
+        "title": "TriggerSubscriptionStatus",
+        "type": "string"
+      },
+      "TriggerSubscriptionView": {
+        "description": "A subscription as the API returns it, its gate with what the user reads about it.",
         "properties": {
           "account_id": {
             "anyOf": [
@@ -20063,6 +19645,32 @@
             "title": "Created At",
             "type": "string"
           },
+          "gate": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "authored": "#/components/schemas/AuthoredGateView",
+                    "system": "#/components/schemas/SystemGateView"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AuthoredGateView"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SystemGateView"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The check a fired event must pass before an EXECUTE subscription runs",
+            "title": "Gate"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -20091,20 +19699,22 @@
           }
         },
         "required": [
+          "id",
           "trigger_name",
+          "account_id",
+          "conditions",
+          "match",
           "action",
-          "resolution"
+          "cooldown_seconds",
+          "resolution",
+          "composio_trigger_ids",
+          "trigger_data",
+          "gate",
+          "status",
+          "created_at"
         ],
-        "title": "TriggerSubscription",
+        "title": "TriggerSubscriptionView",
         "type": "object"
-      },
-      "TriggerSubscriptionStatus": {
-        "enum": [
-          "active",
-          "paused"
-        ],
-        "title": "TriggerSubscriptionStatus",
-        "type": "string"
       },
       "TriggerType": {
         "description": "What caused a run.\n\n- MANUAL: Triggered by user action\n- SCHEDULE: Triggered by cron schedule\n- INTEGRATION: Triggered by external service (calendar, email, github, etc.)\n- SCHEDULED_TODO: A tracked todo firing on its own schedule\n- TODO_TRIGGER: A tracked todo woken by an integration event it subscribed to\n\nThe last two were bare strings written at one site and read at another, which\nis exactly the drift an enum exists to stop.",
@@ -20239,68 +19849,6 @@
           "integrationId"
         ],
         "title": "UnpublishIntegrationResponse",
-        "type": "object"
-      },
-      "UnstarEmailsResponse": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          },
-          "unstarred": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Unstarred",
-            "type": "array"
-          }
-        },
-        "required": [
-          "success",
-          "count",
-          "status",
-          "unstarred"
-        ],
-        "title": "UnstarEmailsResponse",
-        "type": "object"
-      },
-      "UntrashEmailsResponse": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "restored": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Restored",
-            "type": "array"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "count",
-          "status",
-          "restored"
-        ],
-        "title": "UntrashEmailsResponse",
         "type": "object"
       },
       "UpdateCustomIntegrationRequest": {
@@ -20857,7 +20405,7 @@
         "properties": {
           "voice_id": {
             "description": "Catalog voice id to use for voice mode",
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Voice Id",
             "type": "string"
           }
@@ -20892,6 +20440,17 @@
               }
             ],
             "title": "Description"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateEdit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent keeps the gate, null removes it, a value replaces it"
           },
           "icon": {
             "anyOf": [
@@ -22221,6 +21780,32 @@
             "title": "Execution Logs",
             "type": "array"
           },
+          "gate": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "authored": "#/components/schemas/AuthoredGateView",
+                    "system": "#/components/schemas/SystemGateView"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AuthoredGateView"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SystemGateView"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The check a fired integration event must pass before this workflow runs",
+            "title": "Gate"
+          },
           "icon": {
             "anyOf": [
               {
@@ -22511,6 +22096,7 @@
           "icon_color",
           "steps",
           "trigger_config",
+          "gate",
           "activated",
           "deactivated_reason",
           "notify_on_completion",
@@ -22795,7 +22381,7 @@
     },
     "/api/v1/approvals/tools/{tool_name}": {
       "put": {
-        "description": "Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.",
+        "description": "Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.\n\ntool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).",
         "operationId": "approvals_set_tool_approval",
         "parameters": [
           {
@@ -22803,7 +22389,7 @@
             "name": "tool_name",
             "required": true,
             "schema": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "title": "Tool Name",
               "type": "string"
             }
@@ -24388,6 +23974,79 @@
         ]
       }
     },
+    "/api/v1/browser/live/{code}/decision": {
+      "post": {
+        "description": "Done or Stop from the bot user's live-view page: the code that opened the page is the authority.\n\nThe same decision a chat reply or the web card's buttons make, for the\nhandoff this link was sent for.",
+        "operationId": "browser_decide_live_view_handoff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandoffDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Decide Live View Handoff",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
     "/api/v1/browser/logins": {
       "delete": {
         "description": "Forget every saved browser login for the user.",
@@ -24543,6 +24202,69 @@
         ]
       }
     },
+    "/api/v1/browser/replays/{code}": {
+      "get": {
+        "description": "Standalone recap slideshow for a finished session: its code is the capability.",
+        "operationId": "browser_replay_page",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Replay Page",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
     "/api/v1/browser/sessions/{session_id}/live-view-token": {
       "get": {
         "description": "Mint a short-lived takeover token the web card carries on its live-view\nsocket and full-page link, so neither depends on the session cookie.",
@@ -24601,6 +24323,71 @@
           }
         },
         "summary": "Get Live View Token",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/shots/{code}/{index}.jpg": {
+      "get": {
+        "description": "One step frame of a run, for deployments with no object store.\n\nSame capability model as the recap page it feeds: the code is the secret, so\na frame cannot be reached by guessing a session id, and it expires with the\ncode.",
+        "operationId": "browser_step_screenshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "title": "Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Step Screenshot",
         "tags": [
           "Browser"
         ]
@@ -27361,403 +27148,6 @@
         ]
       }
     },
-    "/api/v1/gmail/archive": {
-      "post": {
-        "description": "Archive Gmail messages by removing the INBOX label.\n\n- **message_ids**: List of Gmail message IDs to archive\n\nReturns a list of IDs that were successfully archived.",
-        "operationId": "mail_archive_emails",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailActionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ArchiveEmailsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Archive emails",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/drafts": {
-      "get": {
-        "description": "List all Gmail draft emails.\n\n- **max_results**: Maximum number of drafts to return\n- **page_token**: Token for pagination\n\nReturns a list of drafts and a next page token if more results are available.",
-        "operationId": "mail_list_drafts_route",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "max_results",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "title": "Max Results",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "page_token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Page Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GmailDraftsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "List all draft emails",
-        "tags": [
-          "Mail"
-        ]
-      },
-      "post": {
-        "description": "Create a new Gmail draft email.\n\n- **to**: List of recipient email addresses\n- **subject**: Email subject\n- **body**: Email body\n- **cc**: Optional list of CC recipients\n- **bcc**: Optional list of BCC recipients\n\nReturns the created draft data.",
-        "operationId": "mail_create_draft_route",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DraftRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DraftMutationResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Create a new draft email",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/drafts/{draft_id}": {
-      "delete": {
-        "description": "Delete a Gmail draft email.\n\n- **draft_id**: ID of the draft to delete\n\nReturns a success message.",
-        "operationId": "mail_delete_draft_route",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "draft_id",
-            "required": true,
-            "schema": {
-              "title": "Draft Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GmailDeletionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Delete a draft email",
-        "tags": [
-          "Mail"
-        ]
-      },
-      "get": {
-        "description": "Get a specific Gmail draft email.\n\n- **draft_id**: ID of the draft to retrieve\n\nReturns the draft data with message details \u2014 the Gmail payload verbatim.",
-        "operationId": "mail_get_draft_route",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "draft_id",
-            "required": true,
-            "schema": {
-              "title": "Draft Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GmailDraftResource"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get a specific draft email",
-        "tags": [
-          "Mail"
-        ]
-      },
-      "put": {
-        "description": "Update an existing Gmail draft email.\n\n- **draft_id**: ID of the draft to update\n- **to**: List of recipient email addresses\n- **subject**: Email subject\n- **body**: Email body\n- **cc**: Optional list of CC recipients\n- **bcc**: Optional list of BCC recipients\n\nReturns the updated draft data.",
-        "operationId": "mail_update_draft_route",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "draft_id",
-            "required": true,
-            "schema": {
-              "title": "Draft Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DraftRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DraftMutationResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Update a draft email",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
     "/api/v1/gmail/drafts/{draft_id}/send": {
       "post": {
         "description": "Send an existing Gmail draft email.\n\n- **draft_id**: ID of the draft to send\n\nReturns the sent message data.",
@@ -27816,902 +27206,6 @@
           }
         },
         "summary": "Send a draft email",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/importance-summaries": {
-      "get": {
-        "description": "Get email importance summaries for the current user.\n\n- **limit**: Maximum number of emails to return (default: 50)\n- **important_only**: If True, only return important emails (default: False)\n\nReturns list of email summaries with importance analysis.",
-        "operationId": "mail_get_email_importance_summaries",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "important_only",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Important Only",
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EmailImportanceSummariesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get email importance summaries",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/importance-summaries/bulk": {
-      "post": {
-        "description": "Get importance summaries for multiple emails in bulk.\n\n- **message_ids**: List of Gmail message IDs\n\nReturns summaries for all available emails. Does not throw error for missing summaries.",
-        "operationId": "mail_get_bulk_email_importance_summaries",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailActionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BulkEmailImportanceSummariesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get bulk email importance summaries",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/importance-summary/{message_id}": {
-      "get": {
-        "description": "Get importance summary for a specific email.\n\n- **message_id**: Gmail message ID\n\nReturns the importance analysis for the specified email.",
-        "operationId": "mail_get_single_email_importance_summary",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "message_id",
-            "required": true,
-            "schema": {
-              "title": "Message Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EmailImportanceSummaryResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get single email importance summary",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/labels": {
-      "get": {
-        "operationId": "mail_list_labels",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GmailLabelsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "List Gmail Labels",
-        "tags": [
-          "Mail"
-        ]
-      },
-      "post": {
-        "description": "Create a new Gmail label.\n\n- **name**: Name of the label\n- **label_list_visibility**: Whether the label appears in the label list\n- **message_list_visibility**: Whether the label appears in the message list\n- **background_color**: Background color of the label (hex code)\n- **text_color**: Text color of the label (hex code)\n\nReturns the created label data \u2014 the Gmail payload verbatim.",
-        "operationId": "mail_create_label_route",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LabelRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GmailLabelResource"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Create a new Gmail label",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/labels/{label_id}": {
-      "delete": {
-        "description": "Delete a Gmail label.\n\n- **label_id**: ID of the label to delete\n\nReturns a success message.",
-        "operationId": "mail_delete_label_route",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "label_id",
-            "required": true,
-            "schema": {
-              "title": "Label Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GmailDeletionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Delete a Gmail label",
-        "tags": [
-          "Mail"
-        ]
-      },
-      "put": {
-        "description": "Update an existing Gmail label.\n\n- **label_id**: ID of the label to update\n- **name**: New name for the label\n- **label_list_visibility**: Whether the label appears in the label list\n- **message_list_visibility**: Whether the label appears in the message list\n- **background_color**: Background color of the label (hex code)\n- **text_color**: Text color of the label (hex code)\n\nReturns the updated label data \u2014 the Gmail payload verbatim.",
-        "operationId": "mail_update_label_route",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "label_id",
-            "required": true,
-            "schema": {
-              "title": "Label Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LabelRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GmailLabelResource"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Update an existing Gmail label",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/mark-as-read": {
-      "post": {
-        "description": "Mark Gmail messages as read by removing the UNREAD label.\n\n- **message_ids**: List of Gmail message IDs to mark as read\n\nReturns a list of IDs that were successfully marked as read.",
-        "operationId": "mail_mark_as_read",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailReadStatusRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MarkAsReadResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Mark emails as read",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/mark-as-unread": {
-      "post": {
-        "description": "Mark Gmail messages as unread by adding the UNREAD label.\n\n- **message_ids**: List of Gmail message IDs to mark as unread\n\nReturns a list of IDs that were successfully marked as unread.",
-        "operationId": "mail_mark_as_unread",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailReadStatusRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MarkAsUnreadResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Mark emails as unread",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/message/{message_id}": {
-      "get": {
-        "description": "Get a Gmail message by its ID.\n\n- **message_id**: The ID of the Gmail message to retrieve",
-        "operationId": "mail_get_email_by_id",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "message_id",
-            "required": true,
-            "schema": {
-              "title": "Message Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GmailMessageResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get Gmail Message by ID",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/messages": {
-      "get": {
-        "operationId": "mail_list_messages",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "max_results",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "title": "Max Results",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "pageToken",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Pagetoken"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GmailMessagesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "List Messages",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/messages/apply-label": {
-      "post": {
-        "description": "Apply one or more labels to specified messages.\n\n- **message_ids**: List of message IDs\n- **label_ids**: List of label IDs to apply\n\nReturns a list of modified messages.",
-        "operationId": "mail_apply_labels_route",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApplyLabelRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModifyLabelsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Apply labels to messages",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/messages/remove-label": {
-      "post": {
-        "description": "Remove one or more labels from specified messages.\n\n- **message_ids**: List of message IDs\n- **label_ids**: List of label IDs to remove\n\nReturns a list of modified messages.",
-        "operationId": "mail_remove_labels_route",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApplyLabelRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModifyLabelsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Remove labels from messages",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/move-to-inbox": {
-      "post": {
-        "description": "Move Gmail messages to inbox by adding the INBOX label.\n\n- **message_ids**: List of Gmail message IDs to move to inbox\n\nReturns a list of IDs that were successfully moved to inbox.",
-        "operationId": "mail_move_emails_to_inbox",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailActionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MoveToInboxResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Move emails to inbox",
         "tags": [
           "Mail"
         ]
@@ -29014,389 +27508,6 @@
           }
         },
         "summary": "Send an email using Gmail API",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/send-json": {
-      "post": {
-        "description": "Send an email using the Gmail API with JSON payload (no attachments).\n\n- **to**: List of recipient email addresses\n- **subject**: Email subject\n- **body**: Email body\n- **cc**: Optional list of CC recipients\n- **bcc**: Optional list of BCC recipients",
-        "operationId": "mail_send_email_json",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SendEmailRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SendEmailResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Gmail rejected the send, or the send failed upstream"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Send an email using JSON payload",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/star": {
-      "post": {
-        "description": "Star Gmail messages by adding the STARRED label.\n\n- **message_ids**: List of Gmail message IDs to star\n\nReturns a list of IDs that were successfully starred.",
-        "operationId": "mail_star_emails",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailActionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StarEmailsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Star emails",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/thread/{thread_id}": {
-      "get": {
-        "description": "Fetch a complete email thread with all messages.\n\n- **thread_id**: The Gmail thread ID to fetch\n\nReturns the thread with all its messages in chronological order.",
-        "operationId": "mail_get_thread",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "thread_id",
-            "required": true,
-            "schema": {
-              "title": "Thread Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GmailThreadResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get complete email thread",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/trash": {
-      "post": {
-        "description": "Move Gmail messages to trash.\n\n- **message_ids**: List of Gmail message IDs to move to trash\n\nReturns a list of IDs that were successfully moved to trash.",
-        "operationId": "mail_trash_emails",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailActionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TrashEmailsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Move emails to trash",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/unstar": {
-      "post": {
-        "description": "Unstar Gmail messages by removing the STARRED label.\n\n- **message_ids**: List of Gmail message IDs to unstar\n\nReturns a list of IDs that were successfully unstarred.",
-        "operationId": "mail_unstar_emails",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailActionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnstarEmailsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Unstar emails",
-        "tags": [
-          "Mail"
-        ]
-      }
-    },
-    "/api/v1/gmail/untrash": {
-      "post": {
-        "description": "Restore Gmail messages from trash.\n\n- **message_ids**: List of Gmail message IDs to restore from trash\n\nReturns a list of IDs that were successfully restored from trash.",
-        "operationId": "mail_untrash_emails",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailActionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UntrashEmailsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Restore emails from trash",
         "tags": [
           "Mail"
         ]
@@ -31485,67 +29596,6 @@
         "summary": "Report Lab Event",
         "tags": [
           "Lab"
-        ]
-      }
-    },
-    "/api/v1/mail/ai/compose": {
-      "post": {
-        "operationId": "mail_process_email",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ComposedEmailOutput"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Process Email",
-        "tags": [
-          "Mail"
         ]
       }
     },
@@ -34682,7 +32732,7 @@
     },
     "/api/v1/oauth/login/workos": {
       "get": {
-        "description": "Start the WorkOS SSO authentication flow.\n\nArgs:\n    return_url: Optional URL to redirect to after authentication.\n\nReturns:\n    RedirectResponse: Redirects the user to the WorkOS SSO authorization URL",
+        "description": "Start the WorkOS SSO authentication flow.\n\nArgs:\n    return_url: Optional URL to redirect to after authentication.\n    screen_hint: The AuthKit screen to open on; /signup asks for sign-up.\n\nReturns:\n    RedirectResponse: Redirects the user to the WorkOS SSO authorization URL",
         "operationId": "oauth_login_workos",
         "parameters": [
           {
@@ -34699,6 +32749,26 @@
                 }
               ],
               "title": "Return Url"
+            }
+          },
+          {
+            "in": "query",
+            "name": "screen_hint",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "sign-up",
+                    "sign-in"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Screen Hint"
             }
           }
         ],
@@ -35155,6 +33225,68 @@
         ]
       }
     },
+    "/api/v1/onboarding/answers": {
+      "put": {
+        "description": "Store the wizard's Q1 and Q2 as soon as they are confirmed.",
+        "operationId": "onboarding_save_answers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingAnswers"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Save Answers",
+        "tags": [
+          "Onboarding"
+        ]
+      }
+    },
     "/api/v1/onboarding/personalization": {
       "get": {
         "description": "Get personalization data (house, phrase, bio, workflows) for current authenticated user.\nUsed as fallback if WebSocket fails or to refetch data.\nReturns default values if personalization hasn't completed yet.",
@@ -35209,8 +33341,8 @@
     },
     "/api/v1/onboarding/phase": {
       "post": {
-        "description": "Update the user's onboarding phase.\nUsed to track progress through onboarding stages.",
-        "operationId": "onboarding_update_onboarding_phase",
+        "description": "Stamp a wizard step the browser reached; a repeat report is a no-op.",
+        "operationId": "onboarding_report_onboarding_step",
         "requestBody": {
           "content": {
             "application/json": {
@@ -35263,7 +33395,7 @@
             "description": "Server Error"
           }
         },
-        "summary": "Update Onboarding Phase",
+        "summary": "Report Onboarding Step",
         "tags": [
           "Onboarding"
         ]
@@ -35271,7 +33403,7 @@
     },
     "/api/v1/onboarding/preferences": {
       "patch": {
-        "description": "Update user's onboarding preferences.\nThis can be used from the settings page to update preferences after onboarding.",
+        "description": "Update the user's preferences from settings; the wizard's answers go to PUT /answers.",
         "operationId": "onboarding_update_user_preferences",
         "requestBody": {
           "content": {
@@ -36658,6 +34790,69 @@
           }
         },
         "summary": "Initiate Platform Connect",
+        "tags": [
+          "Platform Links"
+        ]
+      }
+    },
+    "/api/v1/platform-links/{platform}/conversation": {
+      "post": {
+        "description": "Open the DM chat of a linked Telegram, WhatsApp or iMessage account.",
+        "operationId": "platform_links_open_platform_chat_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Open Platform Chat Endpoint",
         "tags": [
           "Platform Links"
         ]
@@ -41193,6 +39388,88 @@
         ]
       }
     },
+    "/api/v1/todos/{todo_id}/subscriptions/{subscription_id}/gate": {
+      "patch": {
+        "description": "Rewrite, or turn on or off, the gate on one of a tracked todo's run watches.",
+        "operationId": "todos_edit_subscription_gate_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "todo_id",
+            "required": true,
+            "schema": {
+              "title": "Todo Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GateEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Edit Subscription Gate Endpoint",
+        "tags": [
+          "Todos"
+        ]
+      }
+    },
     "/api/v1/todos/{todo_id}/subtasks": {
       "post": {
         "description": "Add a new subtask to a todo.",
@@ -42776,8 +41053,22 @@
     },
     "/api/v1/user/me": {
       "get": {
-        "description": "Returns the current authenticated user's details.\nUses the dependency injection to fetch user data.",
+        "description": "Return the signed-in user; the app's session load also stores the browser's zone when none is saved.",
         "operationId": "user_get_me",
+        "parameters": [
+          {
+            "description": "Browser timezone fallback",
+            "in": "header",
+            "name": "x-timezone",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Browser timezone fallback",
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -42942,6 +41233,118 @@
           }
         },
         "summary": "Update User Name",
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/api/v1/user/quiet-hours": {
+      "get": {
+        "description": "The local hours in which GAIA holds what can wait for the morning.",
+        "operationId": "user_read_quiet_hours",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuietHours"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Read Quiet Hours",
+        "tags": [
+          "User"
+        ]
+      },
+      "patch": {
+        "description": "Store the user's quiet hours and echo what was saved.",
+        "operationId": "user_update_quiet_hours",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuietHours"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuietHours"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Quiet Hours",
         "tags": [
           "User"
         ]
@@ -43133,7 +41536,7 @@
             "name": "voice_id",
             "required": true,
             "schema": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "title": "Voice Id",
               "type": "string"
             }
@@ -44825,207 +43228,6 @@
         "summary": "Readiness Check",
         "tags": [
           "Health"
-        ]
-      }
-    },
-    "/live/{code}/decision": {
-      "post": {
-        "description": "Done or Stop from the bot user's live-view page: the code that opened the page is the authority.\n\nThe same decision a chat reply or the web card's buttons make, for the\nhandoff this link was sent for.",
-        "operationId": "browser_decide_live_view_handoff",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HandoffDecisionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HandoffDecisionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Decide Live View Handoff",
-        "tags": [
-          "Browser"
-        ]
-      }
-    },
-    "/replays/{code}": {
-      "get": {
-        "description": "Standalone recap slideshow for a finished session: its code is the capability.",
-        "operationId": "browser_replay_page",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Replay Page",
-        "tags": [
-          "Browser"
-        ]
-      }
-    },
-    "/shots/{code}/{index}.jpg": {
-      "get": {
-        "description": "One step frame of a run, for deployments with no object store.\n\nSame capability model as the recap page it feeds: the code is the secret, so\na frame cannot be reached by guessing a session id, and it expires with the\ncode.",
-        "operationId": "browser_step_screenshot",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "index",
-            "required": true,
-            "schema": {
-              "title": "Index",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Step Screenshot",
-        "tags": [
-          "Browser"
         ]
       }
     }

@@ -8,9 +8,8 @@ import {
   DropdownTrigger,
 } from "@heroui/react";
 import { ArrowDown01Icon, Copy01Icon, Tick01Icon } from "@icons";
-import Link from "@tiptap/extension-link";
-import Underline from "@tiptap/extension-underline";
-import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
 import React from "react";
 import type { z } from "zod";
@@ -119,18 +118,20 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      Underline,
-      // StarterKit v2 ships no Link mark, so URLs in the body would be dropped.
-      Link.configure({
-        autolink: true,
-        openOnClick: true,
-        HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" },
+      StarterKit.configure({
+        link: {
+          autolink: true,
+          openOnClick: true,
+          HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" },
+        },
+        trailingNode: false,
       }),
     ],
     content: body,
     // Defer first render to the client to avoid SSR hydration mismatches.
     immediatelyRender: false,
+    // The bubble menu reads isActive() on render, so re-render per transaction.
+    shouldRerenderOnTransaction: true,
     editorProps: {
       attributes: {
         class:
@@ -144,7 +145,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
   React.useEffect(() => {
     if (!editor || body === lastBodyRef.current) return;
     lastBodyRef.current = body;
-    editor.commands.setContent(body, false);
+    editor.commands.setContent(body, { emitUpdate: false });
   }, [editor, body]);
 
   const flashCopied = (copied: boolean) => {
@@ -266,7 +267,6 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       {editor && (
         <BubbleMenu
           editor={editor}
-          tippyOptions={{ duration: 100 }}
           className="flex items-center gap-0.5 rounded-2xl bg-zinc-700 p-1 shadow-lg"
         >
           <ToolbarButton

@@ -169,6 +169,11 @@ export default function WorkflowModalFormView({
                 onTriggerConfigChange={(config) =>
                   setValue("trigger_config", config)
                 }
+                gate={formData.gate}
+                savedGate={currentWorkflow?.gate ?? null}
+                onGateChange={(gate) =>
+                  setValue("gate", gate, { shouldDirty: true })
+                }
                 isPreview={isPreview}
               />
 

@@ -8,6 +8,7 @@ from typing import Any, Literal, TypedDict, cast
 from dodopayments import DodoPayments, NotFoundError
 from dodopayments.types import Subscription
 from fastapi import HTTPException
+from pydantic import BaseModel
 
 from app.config.settings import settings
 from app.constants.cache import (
@@ -15,12 +16,14 @@ from app.constants.cache import (
     ALL_PLANS_CACHE_KEY,
     CHECKOUT_SCAN_MISS_CACHE_PREFIX,
     CHECKOUT_SCAN_MISS_TTL,
+    SUBSCRIPTION_BILLING_DAY_CACHE_PREFIX,
     SUBSCRIPTION_PLAN_CACHE_PREFIX,
     SUBSCRIPTION_PLAN_CACHE_TTL,
 )
 from app.constants.log_tags import LogTag
 from app.constants.payments import (
     CHECKOUT_SESSION_SCAN_LIMIT,
+    DODO_CHECKOUT_THEME,
     DODO_TEST_MODE_BILLING_ADDRESS,
     DODO_TEST_MODE_PHONE_NUMBER,
     PAYMENT_HISTORY_LIMIT,
@@ -75,6 +78,22 @@ class _CachedPlanType(TypedDict, total=False):
     """The record get_cached_plan_type caches under SUBSCRIPTION_PLAN_CACHE_PREFIX."""
 
     plan_type: str
+
+
+class _CachedBillingDay(BaseModel):
+    """The record get_cached_billing_day caches under SUBSCRIPTION_BILLING_DAY_CACHE_PREFIX."""
+
+    billing_day: int | None
+
+
+def _billing_day(subscription: SubscriptionDocument | None) -> int | None:
+    """Return the day of month a subscription bills on (UTC), from Dodo's billing dates."""
+    if subscription is None:
+        return None
+    for iso in (subscription.next_billing_date, subscription.previous_billing_date):
+        if iso:
+            return datetime.fromisoformat(iso).astimezone(UTC).day
+    return subscription.created_at.day if subscription.created_at else None
 
 
 class DodoPaymentService:
@@ -207,8 +226,13 @@ class DodoPaymentService:
                     "allow_discount_code": True,
                     # Allow customers to change their billing address country
                     "allow_customer_editing_country": True,
+                    # Wallets, email, billing and card on one page, no Continue to Payment step
+                    "single_page": True,
                 },
                 "return_url": f"{settings.FRONTEND_URL}{return_path}",
+                # The app is dark-only; Dodo's default follows the OS, which
+                # flashed a white sheet over GAIA for every light-mode user.
+                "customization": {"theme": DODO_CHECKOUT_THEME},
                 "metadata": {"user_id": user_id, "product_id": product_id},
                 "subscription_data": {
                     # Use product's stored price; override trial if needed
@@ -728,6 +752,19 @@ class DodoPaymentService:
         await redis_cache.set(cache_key, {"plan_type": plan.value}, ttl=SUBSCRIPTION_PLAN_CACHE_TTL)
         log.set_ns("payment", plan_type=plan.value, plan_source="subscription")
         return plan
+
+    async def get_cached_billing_day(self, user_id: str) -> int | None:
+        """Return the day of month the user's subscription bills on (None without one), Redis-cached."""
+        if not settings.deployment.enforces_plans:
+            return None
+        cache_key = f"{SUBSCRIPTION_BILLING_DAY_CACHE_PREFIX}{user_id}"
+        cached = await redis_cache.get(cache_key)
+        if cached is not None:
+            return _CachedBillingDay.model_validate(cached).billing_day
+        status = await self.get_user_subscription_status(user_id)
+        record = _CachedBillingDay(billing_day=_billing_day(status.subscription))
+        await redis_cache.set(cache_key, record.model_dump(), ttl=SUBSCRIPTION_PLAN_CACHE_TTL)
+        return record.billing_day
 
 
 payment_service = DodoPaymentService()

@@ -7,7 +7,7 @@ must never hand create_workflow an empty string as if it were a draft.
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import (
@@ -17,13 +17,17 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from langchain_core.messages.base import TextAccessor
 from langgraph.errors import GraphRecursionError
+from langgraph.graph.state import CompiledStateGraph
 import pytest
 
 from app.agents.context.assemble import AssembledContext
 from app.agents.core.held_replies import HeldReplies
-from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
+from app.constants.agents import NO_ANSWER_NOTICE
+from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT, LLMProviderName
 from app.helpers.agent_helpers import AgentIdentity, AgentThread
+from app.models.agent_models import AgentConfigurable
 from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
 
 _MOD = "app.services.workflow.workflow_subagent"
@@ -38,7 +42,7 @@ class _NoTextChunk(AIMessageChunk):
     """A chunk whose text attribute is absent, forcing the str(content) path."""
 
     @property
-    def text(self) -> str:
+    def text(self) -> TextAccessor:
         raise AttributeError("no text here")
 
 
@@ -57,7 +61,7 @@ class _Run:
     assemble: AsyncMock
 
 
-async def _execute(draft: str, base_configurable: dict | None = None) -> _Run:
+async def _execute(draft: str, base_configurable: AgentConfigurable | None = None) -> _Run:
     """Drive execute() with everything outside it stubbed at its seams."""
     build_config = AsyncMock(return_value={"configurable": {"thread_id": "workflow_t1"}})
     stream_turn = AsyncMock(return_value=(draft, False))
@@ -108,14 +112,23 @@ class TestTheDraftItHandsBack:
         """create_workflow reads this as the agent's answer; "" would look like a successful run producing nothing."""
         run = await _execute("")
 
-        assert run.result == "Task completed"
+        assert run.result == NO_ANSWER_NOTICE.format(name="The workflow assistant")
 
 
 @pytest.mark.unit
 class TestTheLaneItInherits:
     async def test_it_runs_on_its_parents_configurable(self) -> None:
         """The executor's bag carries the run's resolved lane, or a pro user's authoring silently drops to the default model."""
-        parent = {"user_id": "u1", "lane": {"provider": "openrouter", "model": "paid/model"}}
+        parent: AgentConfigurable = {
+            "user_id": "u1",
+            "lane": {
+                "provider": LLMProviderName.OPENROUTER,
+                "model": "paid/model",
+                "reasoning": None,
+                "provider_pin": None,
+                "max_input_tokens": 200_000,
+            },
+        }
 
         run = await _execute('{"title": "x"}', base_configurable=parent)
 
@@ -386,7 +399,7 @@ class TestStreamTurnModes:
             return_value=[("tc1", {"tool_name": "search_triggers"})],
         ):
             message, hit_limit = await WorkflowSubagentRunner._stream_turn(
-                _StreamGraph(events), {}, {}, writer, set()
+                cast(CompiledStateGraph, _StreamGraph(events)), {}, {}, writer, set()
             )
         return message, hit_limit, writer
 
@@ -421,7 +434,7 @@ class TestStreamTurnModes:
 
         writer = MagicMock()
         message, hit_limit = await WorkflowSubagentRunner._stream_turn(
-            _RecursingGraph([]), {}, {}, writer, set()
+            cast(CompiledStateGraph, _RecursingGraph([])), {}, {}, writer, set()
         )
 
         assert message == "partial"
@@ -445,11 +458,14 @@ class TestStreamTurnModes:
             ) as consume,
         ):
             await WorkflowSubagentRunner._stream_turn(
-                _StreamGraph(
-                    [
-                        ("updates", {"node": {"messages": []}}),
-                        ("messages", (AIMessageChunk(content="Hi"), {})),
-                    ]
+                cast(
+                    CompiledStateGraph,
+                    _StreamGraph(
+                        [
+                            ("updates", {"node": {"messages": []}}),
+                            ("messages", (AIMessageChunk(content="Hi"), {})),
+                        ]
+                    ),
                 ),
                 {},
                 {},
@@ -463,7 +479,7 @@ class TestStreamTurnModes:
     @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     async def test_a_custom_event_with_no_writer_is_ignored_not_fatal(self) -> None:
         message, hit_limit = await WorkflowSubagentRunner._stream_turn(
-            _StreamGraph([("custom", {"step": 1})]), {}, {}, None, set()
+            cast(CompiledStateGraph, _StreamGraph([("custom", {"step": 1})])), {}, {}, None, set()
         )
 
         assert message == ""

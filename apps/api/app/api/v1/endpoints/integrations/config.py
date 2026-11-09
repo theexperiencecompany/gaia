@@ -26,16 +26,10 @@ from app.services.analytics_service import capture
 from app.services.connect_link_service import resolve_and_consume_connect_code
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
-    connect_composio_integration,
-    connect_mcp_integration,
-    connect_self_integration,
     disconnect_integration,
     initiate_integration_connection,
 )
-from app.services.integrations.integration_resolver import (
-    IntegrationResolver,
-    ResolvedIntegration,
-)
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.integrations.my_integrations import (
     get_integration_tools,
@@ -148,66 +142,6 @@ async def disconnect_integration_endpoint(
         raise HTTPException(status_code=500, detail="Failed to disconnect integration") from e
 
 
-def _require_provider(resolved: ResolvedIntegration) -> str:
-    provider = resolved.platform_integration.provider if resolved.platform_integration else None
-    if not provider:
-        raise HTTPException(status_code=400, detail="Provider not configured")
-    return provider
-
-
-async def _connect_by_manager(
-    resolved: ResolvedIntegration,
-    integration_id: str,
-    request: ConnectIntegrationRequest,
-    user: AuthenticatedUser,
-) -> ConnectIntegrationResponse:
-    """Hand the connect to the manager that owns the integration."""
-    user_id = user.user_id
-    if resolved.managed_by == "mcp":
-        result = await connect_mcp_integration(
-            user_id=user_id,
-            integration_id=integration_id,
-            integration_name=resolved.name,
-            requires_auth=resolved.requires_auth,
-            redirect_path=request.redirect_path,
-            server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
-            is_platform=resolved.source == "platform",
-            bearer_token=request.bearer_token,
-        )
-        # OAuth-managed connects complete at their callback; only a direct
-        # (no-auth / bearer) connect finishes here.
-        if result.status == "connected":
-            capture(
-                UserId(user_id),
-                IntegrationConnected(integration_id=integration_id, managed_by=resolved.managed_by),
-            )
-        return result
-    if resolved.managed_by == "composio":
-        return await connect_composio_integration(
-            user_id=user_id,
-            integration_id=integration_id,
-            integration_name=resolved.name,
-            provider=_require_provider(resolved),
-            redirect_path=request.redirect_path,
-            reconnect_account_id=request.account_id,
-        )
-    if resolved.managed_by == "self":
-        return await connect_self_integration(
-            user_id=user_id,
-            user_email=(user.email or ""),
-            integration_id=integration_id,
-            integration_name=resolved.name,
-            provider=_require_provider(resolved),
-            redirect_path=request.redirect_path,
-        )
-    return ConnectIntegrationResponse(
-        status="error",
-        integration_id=integration_id,
-        name=resolved.name,
-        error=f"Unsupported integration type: {resolved.managed_by}",
-    )
-
-
 @router.post("/connect/{integration_id}", response_model=ConnectIntegrationResponse)
 async def connect_integration_endpoint(
     integration_id: str,
@@ -229,18 +163,6 @@ async def connect_integration_endpoint(
     if not resolved:
         raise HTTPException(status_code=404, detail=f"Integration {integration_id} not found")
 
-    if (
-        resolved.source == "platform"
-        and resolved.platform_integration
-        and not resolved.platform_integration.available
-    ):
-        return ConnectIntegrationResponse(
-            status="error",
-            integration_id=integration_id,
-            name=resolved.name,
-            error=f"Integration {integration_id} is not available yet",
-        )
-
     auth_type: str | None = None
     if resolved.mcp_config:
         auth_type = "oauth2" if resolved.mcp_config.requires_auth else "none"
@@ -256,24 +178,25 @@ async def connect_integration_endpoint(
             "provider": provider or integration_id,
         },
     )
-    try:
-        result = await _connect_by_manager(resolved, integration_id, request, user)
-    except Exception as e:
-        log.error(
-            f"{LogTag.INTEGRATION} Failed to connect integration",
-            integration_id=integration_id,
-            user_id=user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        log.set(integration={"id": integration_id, "status": "error"})
-        return ConnectIntegrationResponse(
-            status="error",
-            integration_id=integration_id,
-            name=resolved.name,
-            error=str(e),
-        )
+    result = await initiate_integration_connection(
+        user_id,
+        resolved,
+        user_email=user.email or "",
+        redirect_path=request.redirect_path,
+        bearer_token=request.bearer_token,
+        reconnect_account_id=request.account_id,
+    )
+    if result.status == "error":
+        log.set(outcome="error")
+        return result
     log.set(outcome="success")
+    if result.status == "connected":
+        # OAuth-managed connects complete at their callback; only a direct
+        # (no-auth / bearer) connect finishes here.
+        capture(
+            UserId(user_id),
+            IntegrationConnected(integration_id=integration_id, managed_by=resolved.managed_by),
+        )
     if result.status == "redirect":
         capture(
             UserId(user_id),
@@ -366,14 +289,18 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
     if user_doc:
         user_email = user_doc.email or ""
 
+    resolved = await IntegrationResolver.resolve(integration_id)
+    if not resolved:
+        log.set(outcome="error")
+        return _connect_link_error("could_not_start")
     result = await initiate_integration_connection(
-        user_id=user_id,
-        integration_id=integration_id,
+        user_id,
+        resolved,
         user_email=user_email,
         redirect_path="/integrations",
         reconnect_account_id=verified.account_id,
     )
-    if result and result.status == "redirect" and result.redirect_url:
+    if result.status == "redirect" and result.redirect_url:
         capture(
             UserId(user_id),
             IntegrationConnectInitiated(integration_id=integration_id, source="connect_link"),

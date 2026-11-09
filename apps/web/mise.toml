@@ -7,7 +7,7 @@
 #   mise tasks               # List all available commands
 
 [env]
-NEXT_PUBLIC_API_BASE_URL = "http://localhost:8000/api/v1/"
+NEXT_PUBLIC_API_BASE_URL = "http://localhost:{{ env.API_PORT | default(value='8000') }}/api/v1/"
 
 [tasks.dev]
 description = "Run development server with Turbopack"
@@ -52,17 +52,9 @@ run = "nx format web"
 description = "Check code formatting (via Nx with caching)"
 run = "nx format:check web"
 
-[tasks.depcheck]
-description = "Check for unused dependencies"
-run = "pnpm depcheck"
-
 [tasks.prepare]
 description = "Setup husky hooks"
 run = "pnpm prepare"
-
-[tasks."generate:barrels"]
-description = "Generate barrel exports"
-run = "pnpm generate-barrels"
 
 [tasks.deps]
 description = "Install dependencies with pnpm"
@@ -88,10 +80,6 @@ run = "pnpm knip"
 [tasks.precommit]
 description = "Run all prek checks"
 run = "prek run --all-files"
-
-[tasks."precommit:barrels"]
-description = "Generate barrel exports (prek hook)"
-run = "prek run generate-barrels"
 
 [tasks."precommit:trailing-whitespace"]
 description = "Check trailing whitespace (prek hook)"

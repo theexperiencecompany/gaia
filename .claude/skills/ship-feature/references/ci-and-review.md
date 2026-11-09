@@ -15,10 +15,9 @@ lane's exact command; don't trust memory or this file for specifics.
   full-tier lane on a PR push). See `.github/quality-gate/README.md`.
 - **PR title check** (`pr-title.yml`, `Validate PR Title`) —
   Conventional Commit title; the allowed type list lives in that job.
-- **Desktop PR Build** (`desktop-pr-build.yml`, not a required check) —
-  packages Linux on a PR and every OS in the merge queue; skips in seconds
-  unless the desktop app or the shared TS it bundles changed
-  (`changes.sh desktop-inputs`).
+- **desktop-build** (ci.yml, calls `desktop-pr-build.yml`, behind
+  `quality-gate`) — packages Linux on a PR and every OS in the merge queue,
+  when nx says `desktop:build` (desktop, web, shared TS) is affected.
 
 Jobs that are red by design or advisory (e.g. changelog-sync, security
 scanners marked `continue-on-error`) are excluded from the gates — check the

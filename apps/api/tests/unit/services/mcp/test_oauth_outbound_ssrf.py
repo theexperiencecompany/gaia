@@ -14,7 +14,7 @@ import respx
 
 from app.config.settings import settings
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
-from app.services.mcp.mcp_client import MCPClient
+from app.services.mcp.mcp_oauth import _exchange_code_for_tokens, _register_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.token_management import try_refresh_token
 from app.utils.mcp_oauth_utils import fetch_auth_server_metadata, fetch_protected_resource_metadata
@@ -51,20 +51,18 @@ class TestGaiaCloudRefusesPrivateOAuthEndpoints:
     @respx.mock(assert_all_called=False)
     async def test_dynamic_client_registration(self, respx_mock: respx.MockRouter) -> None:
         route = respx_mock.post(f"https://{AUTH_HOST}/register")
-        client = MCPClient(user_id="u1")
-
         with pytest.raises(ValueError, match="non-public"):
-            await client._register_client(INTEGRATION_ID, _metadata(), "https://gaia/callback")
+            await _register_client(
+                MCPTokenStore(user_id="u1"), INTEGRATION_ID, _metadata(), "https://gaia/callback"
+            )
 
         assert not route.called
 
     @respx.mock(assert_all_called=False)
     async def test_token_exchange(self, respx_mock: respx.MockRouter) -> None:
         route = respx_mock.post(f"https://{AUTH_HOST}/token")
-        client = MCPClient(user_id="u1")
-
         with pytest.raises(ValueError, match="non-public"):
-            await client._exchange_code_for_tokens(
+            await _exchange_code_for_tokens(
                 INTEGRATION_ID,
                 f"https://{AUTH_HOST}/token",
                 {
@@ -124,11 +122,10 @@ async def test_a_selfhost_instance_registers_with_an_authorization_server_on_its
     route = respx_mock.post(f"https://{AUTH_HOST}/register").respond(
         201, json={"client_id": "registered", "redirect_uris": ["https://gaia/callback"]}
     )
-    client = MCPClient(user_id="u1")
-    client.token_store = AsyncMock(spec=MCPTokenStore)
-
     assert (
-        await client._register_client(INTEGRATION_ID, _metadata(), "https://gaia/callback")
+        await _register_client(
+            AsyncMock(spec=MCPTokenStore), INTEGRATION_ID, _metadata(), "https://gaia/callback"
+        )
         == "registered"
     )
     assert route.called

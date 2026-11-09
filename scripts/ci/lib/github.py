@@ -13,7 +13,7 @@ GITHUB_API_BACKOFF_SECS (2).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 import json
 import os
@@ -29,6 +29,10 @@ import urllib.request
 
 DEFAULT_API_URL = "https://api.github.com"
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+# A 403 is a rate limit when its body names a secondary limit or no requests are left; else a refusal.
+SECONDARY_RATE_LIMIT = "secondary rate limit"
+# GitHub's floor for retrying a rate limit that names no Retry-After and has requests left.
+RATE_LIMIT_COOLDOWN_SECS = 60.0
 MAX_RETRY_AFTER_SECS = 60
 ERROR_BODY_CHARS = 300
 LINK_NEXT = re.compile(r'<([^>]+)>;\s*rel="next"')
@@ -92,6 +96,15 @@ def _resolve_token() -> str:
 
 
 @dataclass(frozen=True)
+class _RateLimit:
+    """The headers GitHub sends with a rate limit, raw; empty when absent."""
+
+    retry_after: str
+    remaining: str
+    reset: str
+
+
+@dataclass(frozen=True)
 class GitHub:
     """The one REST client: timeouts, retry with backoff, and no failure read as data."""
 
@@ -129,10 +142,14 @@ class GitHub:
             headers["Content-Type"] = "application/json"
         return urllib.request.Request(url, data=data, headers=headers, method=method)  # noqa: S310  # scheme checked in _url
 
-    def _delay(self, attempt: int, retry_after: str | None) -> float:
-        if retry_after and retry_after.isdigit():
-            return float(min(int(retry_after), MAX_RETRY_AFTER_SECS))
-        return self.backoff * float(2 ** (attempt - 1))
+    def _delay(self, attempt: int, limit: _RateLimit | None) -> float:
+        if limit is None:
+            return self.backoff * float(2 ** (attempt - 1))
+        if limit.retry_after.isdigit():
+            return float(min(int(limit.retry_after), MAX_RETRY_AFTER_SECS))
+        if limit.remaining == "0" and limit.reset.isdigit():
+            return min(max(int(limit.reset) - time.time(), 0.0), MAX_RETRY_AFTER_SECS)
+        return RATE_LIMIT_COOLDOWN_SECS
 
     def send(
         self, method: str, path: str, body: Mapping[str, object] | None = None
@@ -140,7 +157,7 @@ class GitHub:
         """Return the body and the Link header; raise GitHubError once retries are spent."""
         url = self._url(path)
         for attempt in range(1, self.attempts + 1):
-            failure, retry_after, retryable, status = "", None, True, None
+            failure, limit, retryable, status = "", None, True, None
             try:
                 req = self._request(method, url, body)
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310 — scheme checked in _url
@@ -148,8 +165,20 @@ class GitHub:
             except urllib.error.HTTPError as err:
                 detail = err.read().decode(errors="replace")[:ERROR_BODY_CHARS]
                 failure = f"HTTP {err.code}: {detail}"
-                retry_after = err.headers.get("Retry-After")
-                retryable = err.code in RETRYABLE_STATUS
+                rate_limited = err.code == 429 or (
+                    err.code == 403
+                    and (
+                        SECONDARY_RATE_LIMIT in detail
+                        or err.headers.get("X-RateLimit-Remaining") == "0"
+                    )
+                )
+                if rate_limited:
+                    limit = _RateLimit(
+                        err.headers.get("Retry-After") or "",
+                        err.headers.get("X-RateLimit-Remaining") or "",
+                        err.headers.get("X-RateLimit-Reset") or "",
+                    )
+                retryable = rate_limited or err.code in RETRYABLE_STATUS
                 status = err.code
             except (urllib.error.URLError, TimeoutError, ConnectionError) as err:
                 failure = f"network: {err}"
@@ -157,7 +186,7 @@ class GitHub:
                 raise GitHubError(
                     f"{method} {url} failed after {attempt} attempt(s) — {failure}", status
                 )
-            delay = self._delay(attempt, retry_after)
+            delay = self._delay(attempt, limit)
             print(
                 f"[github] {method} {url} — {failure}; retry {attempt}/{self.attempts - 1} in {delay:g}s",
                 file=sys.stderr,
@@ -191,16 +220,18 @@ class GitHub:
             raise GitHubError(f"graphql query failed — {json.dumps(errors)[:ERROR_BODY_CHARS]}")
         return field_of(doc, "data", dict)
 
-    def collect(self, path: str, key: str) -> list[Json]:
-        """Collect every record under key across all pages."""
-        out: list[Json] = []
+    def each(self, path: str, key: str) -> Iterator[Json]:
+        """Yield every record under key, fetching a page only once the one before it is spent."""
         url: str | None = path
         while url:
             raw, link = self.send("GET", url)
-            out.extend(records(_decode_object(raw, url), key))
+            yield from records(_decode_object(raw, url), key)
             match = LINK_NEXT.search(link)
             url = match.group(1) if match else None
-        return out
+
+    def collect(self, path: str, key: str) -> list[Json]:
+        """Collect every record under key across all pages."""
+        return list(self.each(path, key))
 
 
 def _decode(raw: bytes, path: str) -> object:

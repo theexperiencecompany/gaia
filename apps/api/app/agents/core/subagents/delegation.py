@@ -1,6 +1,6 @@
 """The one runner for a subagent the executor delegates to, blocking or in the background.
 
-spawn_subagent and the per-user MCP handoff only build a Delegation; everything
+spawn_subagent only builds a Delegation; everything
 after — claiming the checkpoint thread in RunningSubagents, the start/end events,
 the drive loop, background dispatch, landing the result in the executor inbox,
 parking on an approval and resuming from it — happens here, once.
@@ -109,7 +109,6 @@ class Delegation:
     display: SubagentDisplay
     parent_configurable: AgentConfigurable
     context: str = ""
-    integration_id: str = ""
     inherited_tool_names: tuple[str, ...] = field(default_factory=tuple)
     integration_metadata: IntegrationMetadata | None = None
 
@@ -150,7 +149,6 @@ class Delegation:
             "tool_call_id": self.tool_call_id,
             "task": self.task,
             "context": self.context,
-            "integration_id": self.integration_id,
             "inherited_tool_names": list(self.inherited_tool_names),
             "parent_configurable": safe_configurable(self.parent_configurable),
         }

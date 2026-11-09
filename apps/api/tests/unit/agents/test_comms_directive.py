@@ -131,6 +131,64 @@ class TestInterpretCommsOutput:
 PASSPORT = "Your passport expires in 13 days, on October 10, 2026. Please book your renewal."
 
 
+class TestAReactTagIsAReaction:
+    """Seen live: the reaction tag written under its old name reached the user as literal text."""
+
+    @pytest.mark.regression
+    def test_a_react_tag_is_read_as_the_reaction_it_means(self) -> None:
+        d = interpret_comms_output("<REACT>🔎</REACT>")
+
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REACT, "🔎")
+
+    @pytest.mark.regression
+    def test_a_react_tag_never_reaches_the_user_as_text(self) -> None:
+        assert visible_comms_text("<REACT>🔎</REACT>") == ""
+        assert visible_comms_text_so_far("<REACT>🔎</REA") == ""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("tag", ["REACTION", "Reaction", "reaction"])
+    def test_a_reaction_tag_is_a_reaction_too(self, tag: str) -> None:
+        """Seen live on Telegram, three turns in a row: <REACTION>👍</REACTION> sent as text."""
+        text = f"<{tag}>👍</{tag}>"
+
+        d = interpret_comms_output(text)
+
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REACT, "👍")
+        assert visible_comms_text(text) == ""
+        assert visible_comms_text_so_far(f"<{tag}>👍</REAC") == ""
+
+    def test_a_react_tag_around_a_word_stays_text(self) -> None:
+        assert interpret_comms_output("<REACT>done</REACT>").kind is CommsDirectiveKind.REPLY
+
+
+class TestABareEmojiReplyIsAReaction:
+    """Seen live on Telegram: the hand-off ack came as a bare "🙏" message instead of a reaction."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("text", ["🙏", "  👍\n", "❤️", "👨‍💻", "👍🏽"])
+    def test_a_reply_that_is_only_one_emoji_is_a_reaction(self, text: str) -> None:
+        d = interpret_comms_output(text)
+
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REACT, text.strip())
+
+    @pytest.mark.regression
+    def test_a_lone_emoji_is_held_back_while_it_streams(self) -> None:
+        assert visible_comms_text_so_far("🙏") == ""
+
+    def test_an_emoji_that_turns_into_a_sentence_is_shown(self) -> None:
+        assert visible_comms_text_so_far("🙏 sure, on it") == "🙏 sure, on it"
+
+    @pytest.mark.parametrize("text", ["Спасибо", "ок", "🙏 sure thing", "1", "™️ really"])
+    def test_a_word_or_a_sentence_is_never_mistaken_for_one(self, text: str) -> None:
+        assert interpret_comms_output(text).kind is CommsDirectiveKind.REPLY
+
+    def test_an_emoji_bubble_beside_text_stays_part_of_the_reply(self) -> None:
+        d = interpret_comms_output(f"Done, it's booked.{BREAK}🎉")
+
+        assert d.kind is CommsDirectiveKind.REPLY
+        assert "🎉" in d.payload
+
+
 class TestADirectiveBesideAReplyIsNeverDelivered:
     """A model that writes a message AND a directive bubble: the message goes out, the tag never does."""
 

@@ -31,7 +31,7 @@ from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.constants.cache import STREAM_ACTIVE_PREFIX
 from app.constants.general import NEW_MESSAGE_BREAKER
-from app.core.provider_registration import register_lazy_providers
+from app.core.provider_registration import boot_process
 from app.db.redis import redis_cache
 from app.utils.message_breaks import normalize_message_breaks
 
@@ -138,7 +138,7 @@ async def repair_thread(
 
 async def _run(*, apply: bool) -> None:
     # A script has no lifespan, so nobody registers the lazy providers otherwise.
-    register_lazy_providers("arq_worker")
+    boot_process("arq_worker")
     manager = await get_checkpointer_manager()
     try:
         graph = await GraphManager.get_graph(COMMS_GRAPH)

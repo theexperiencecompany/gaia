@@ -14,14 +14,15 @@ from langchain_core.tools import tool
 
 from app.agents.tools.tracked_todo_fields import (
     apply_field_updates,
-    creation_field_update,
     get_user_tz,
     gives_sub_todo_rules,
-    resolve_first_fire,
+    plan_creation_schedule,
+    waiting_fields,
 )
 from app.agents.tools.tracked_todo_formatting import (
     format_canvas_match,
     format_create_output,
+    format_open_state_refusal,
     format_refused_create_output,
     format_tracked_todo_full,
     parse_action,
@@ -29,10 +30,18 @@ from app.agents.tools.tracked_todo_formatting import (
     parse_match,
     render_catalog,
 )
+from app.config.oauth_config import get_integration_by_id
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     LIST_TRACKED_TODOS_LIMIT,
+    MAX_HOLD_CHECKS,
+    MAX_NEXT_CHECK_AHEAD,
+    MAX_QUESTION_EXPIRY,
+    NoReplyPlan,
+    WaitingOn,
 )
+from app.constants.trigger_gates import GateAuthor
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import get_user_id, read_agent_configurable
 from app.models.todo_models import (
@@ -42,18 +51,30 @@ from app.models.todo_models import (
     TodoDocument,
     TodoUpdate,
     UpdateFieldInputs,
+    default_notify_on_run,
 )
+from app.models.trigger_gate_models import AuthoredGate, GateCondition
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
 )
-from app.services.todo_activity import agent_actor, record_field_changes
+from app.services.integrations.user_integrations import get_connected_integration_ids
+from app.services.todo_activity import agent_actor, record_field_changes, record_waiting_change
 from app.services.todos.account_refs import owned_gmail_thread_ref, watched_account_id
 from app.services.todos.errors import (
     CanvasShapeError,
     ExternalRefTakenError,
+    OpenStateError,
     SubTodoParentError,
     UnwatchedTodoKeptError,
+)
+from app.services.todos.open_state import (
+    NEXT_CHECK_HINT,
+    WAITING_ON_CHOICES,
+    open_state_problems,
+    state_after,
+    touches_open_state,
+    with_waiting_normalized,
 )
 from app.services.tracked_todo_service import require_sub_todo_parent, tracked_todo_service
 from app.services.triggers.subscription_service import (
@@ -86,6 +107,31 @@ SUB_TODO_STANDING_RULES_REFUSAL = (
     "Not created: a sub-todo opened by a background run starts with an empty Standing rules "
     "section. Standing rules hold only the user's own instructions, and its parent's already "
     "bind it; put what you noticed under Context and call again. Nothing was saved."
+)
+_SCHEDULED_AT_DESC = (
+    "When GAIA next looks at this todo. Every open todo without a recurrence needs one, so it "
+    "can never be forgotten. An ISO datetime with the user's offset "
+    "(e.g. '2026-03-20T09:00:00+05:30', never 'Z' unless they say UTC), or a duration from "
+    f"now: '30m', '4h', '3d', '1w'. {NEXT_CHECK_HINT} At most {MAX_NEXT_CHECK_AHEAD.days} "
+    f"days out ({MAX_QUESTION_EXPIRY.days} for a question to the user): a longer wait is "
+    "fine, look again by then. With a delta recurrence ('daily', 'weekly', 'every_4h', "
+    "'every_1h') it is the first-fire anchor; for a cron recurrence OMIT it."
+)
+_WAITING_ON_DESC = (
+    "What this todo waits for until scheduled_at; required on every todo without a "
+    f"recurrence: {WAITING_ON_CHOICES}."
+)
+_QUESTION_DESC = "With waiting_on='user': the exact question you asked them."
+_IF_NO_REPLY_DESC = (
+    "With waiting_on='user': what happens when the question expires unanswered. Decide it "
+    "now, while you know why you asked: 'ask_again' (it matters: ask once more; one re-ask "
+    "per todo), 'proceed' (carry out default_action), 'hold' (nothing can move without the "
+    f"answer: GAIA checks back slowly and after {MAX_HOLD_CHECKS} unanswered checks closes "
+    "the todo and tells the user)."
+)
+_DEFAULT_ACTION_DESC = (
+    "With if_no_reply='proceed': exactly what you will do if they never answer "
+    "('archive the thread without replying')."
 )
 
 
@@ -133,6 +179,47 @@ async def _references_refusal(
     )
 
 
+async def _unconnected_refusal(user_id: str, needs_integrations: list[str]) -> str | None:
+    """Refuse a todo whose later runs need a service that is not connected; None when all are."""
+    connected = await get_connected_integration_ids(user_id)
+    missing = [iid for iid in needs_integrations if iid not in connected]
+    if not missing:
+        return None
+    names = ", ".join(
+        integration.name if (integration := get_integration_by_id(iid)) else iid for iid in missing
+    )
+    return (
+        f"Error: {names} is not connected, so no later run of this todo could do its work. "
+        "Nothing was saved. Activate it first (activation brings the user its connect card) "
+        "and create the todo once it is connected."
+    )
+
+
+async def _creation_refusal(
+    config: RunnableConfig,
+    user_id: str,
+    references: list[str] | None,
+    parent_todo_id: str | None,
+    initial_canvas: str | None,
+    needs_integrations: list[str] | None,
+    gmail_thread_id: str | None,
+) -> str | None:
+    """Return why a create is refused before anything is saved, or None to go ahead.
+
+    A thread watch needs Gmail whether or not the caller listed it.
+    """
+    if references and (refusal := await _references_refusal(user_id, references)):
+        return refusal
+    if gives_sub_todo_rules(config, parent_todo_id, initial_canvas):
+        return SUB_TODO_STANDING_RULES_REFUSAL
+    needed = list(needs_integrations or [])
+    if gmail_thread_id and GMAIL_INTEGRATION_ID not in needed:
+        needed.append(GMAIL_INTEGRATION_ID)
+    if needed:
+        return await _unconnected_refusal(user_id, needed)
+    return None
+
+
 async def _link_refusal(
     user_id: str, todo_id: str, references: list[str] | None, parent_todo_id: str | None
 ) -> str | None:
@@ -145,6 +232,21 @@ async def _link_refusal(
         except SubTodoParentError as refused:
             return f"Error: {refused.message} Nothing was saved."
     return None
+
+
+def _refused_create_text(
+    refused: OpenStateError
+    | ExternalRefTakenError
+    | SubTodoParentError
+    | CanvasShapeError
+    | SubscriptionError
+    | UnwatchedTodoKeptError,
+    user_tz_name: str,
+) -> str:
+    """Tell the model why the service refused the create."""
+    if isinstance(refused, OpenStateError):
+        return format_open_state_refusal(refused.problems, user_tz_name, refused="created")
+    return format_refused_create_output(refused)
 
 
 @tool
@@ -164,17 +266,11 @@ async def create_tracked_todo(
         "Optional labels for categorization (gaia-tracked is added automatically)",
     ] = None,
     priority: Annotated[Priority, "Priority"] = Priority.NONE,
-    scheduled_at: Annotated[
-        str | None,
-        "ISO datetime for a ONE-TIME future execution. "
-        "Use this ONLY when there is no recurrence, or when the recurrence is a "
-        "delta-style shortcut ('daily', 'weekly', 'every_4h', 'every_1h') that "
-        "needs a first-fire anchor. "
-        "For cron-style recurrence (e.g. '0 9 * * *' or '0 9,20 * * *'), OMIT this: "
-        "the first fire is computed automatically in the user's timezone. "
-        "Always include the user's timezone offset (e.g., '2026-03-20T09:00:00+05:30'); "
-        "never 'Z' unless the user explicitly says UTC.",
-    ] = None,
+    scheduled_at: Annotated[str | None, _SCHEDULED_AT_DESC] = None,
+    waiting_on: Annotated[WaitingOn | None, _WAITING_ON_DESC] = None,
+    question: Annotated[str | None, _QUESTION_DESC] = None,
+    if_no_reply: Annotated[NoReplyPlan | None, _IF_NO_REPLY_DESC] = None,
+    default_action: Annotated[str | None, _DEFAULT_ACTION_DESC] = None,
     recurrence: Annotated[
         str | None,
         "How often to repeat. Options: 'daily', 'weekly', 'every_4h', 'every_1h', "
@@ -220,6 +316,23 @@ async def create_tracked_todo(
         "ones found with search_todo_context. Every run of this todo reads their Learnings.",
     ] = None,
     parent_todo_id: Annotated[str | None, _PARENT_TODO_DESC] = None,
+    done_when: Annotated[
+        list[str] | None,
+        "The checkable conditions that make this todo done, one each, inferred from what "
+        "the user actually wants (e.g. 'the feature is live for users', not 'a PR exists'). "
+        "Every run checks them before closing. Set it on every tracked todo.",
+    ] = None,
+    evidence: Annotated[
+        str | None,
+        "Where proof of each condition will show up and how a run checks it: a connected "
+        "service and what to look for there, a thread, a page, or the user's word. Use the "
+        "user's own patterns (their skills and standing instructions) when one fits.",
+    ] = None,
+    needs_integrations: Annotated[
+        list[str] | None,
+        "Integration ids its later runs depend on (e.g. ['gmail'] to watch for replies). "
+        "Nothing is created while one is not connected.",
+    ] = None,
 ) -> str:
     """
     Create a tracked todo: a GAIA-managed todo with a working-memory canvas.
@@ -249,10 +362,16 @@ async def create_tracked_todo(
     read the "tracked-todo-working-memory" skill first for scheduling best practices,
     canvas template guidelines, and lifecycle rules.
 
-    scheduled_at: ISO datetime with the user's timezone offset (e.g., "2026-03-20T09:00:00+05:30").
-                  For a one-time run, or as the first-fire anchor for a delta recurrence
-                  ('daily'/'weekly'/'every_4h'). For cron recurrence, OMIT it: the first fire is
-                  computed in the user's timezone. Never use raw 'Z' unless the user says UTC.
+    Every open tracked todo has a next step, so none is ever forgotten: a recurrence, or
+    waiting_on plus scheduled_at (when GAIA next looks). Ask yourself what it waits for and
+    when to look again; a wait of months is fine, it just looks again within the limit.
+
+    scheduled_at: When GAIA next looks: an ISO datetime with the user's offset, or a duration
+                  from now ('4h', '3d', '1w'). The first-fire anchor for a delta recurrence
+                  ('daily'/'weekly'/'every_4h'); for cron recurrence, OMIT it.
+    waiting_on: What it waits for until then: time, event, user, sub_todos or unplanned.
+    question / if_no_reply / default_action: with waiting_on='user', the question asked and
+                what happens if it expires unanswered.
     recurrence: How often to repeat. Options: 'daily', 'weekly', 'every_4h', or a cron expression.
                 Cron does NOT require scheduled_at; delta shortcuts use scheduled_at as their
                 first-fire anchor.
@@ -270,30 +389,37 @@ async def create_tracked_todo(
                 Learnings. An id that is not one of the user's todos creates nothing.
     parent_todo_id: The open tracked todo this one is a sub-todo of; a parent that is not
                 usable creates nothing and says why.
+    needs_integrations: Integration ids its later runs depend on; a promise to watch or act
+                later needs the means, so nothing is created while one is not connected.
     """
     user_id = get_user_id(config)
     # conversation_id lives in `configurable`, not `metadata` (matching
     # reminder_tool). None for a non-chat root (onboarding/REST).
     source_conversation_id = read_agent_configurable(config).conversation_id
 
-    # Recurrence is always evaluated in the user's stored timezone. We only
-    # look it up here to (a) compute the first cron fire correctly and (b)
-    # surface a user-readable note in the return value.
-    user_tz_name = await get_user_tz(user_id) if recurrence else None
+    # The user's timezone computes a cron's first fire and says "now" in a refusal.
+    user_tz_name = await get_user_tz(user_id)
 
-    parsed_scheduled_at, notes, error = resolve_first_fire(recurrence, scheduled_at, user_tz_name)
-    if error:
-        return error
-    creation_update, error = creation_field_update(
-        parsed_scheduled_at, recurrence, due_date, expires_at
+    planned = plan_creation_schedule(
+        recurrence,
+        scheduled_at,
+        due_date,
+        expires_at,
+        waiting_fields(waiting_on, question, if_no_reply, default_action),
+        user_tz_name,
     )
-    if error:
-        return error
-
-    if references and (refusal := await _references_refusal(user_id, references)):
+    if isinstance(planned, str):
+        return planned
+    if refusal := await _creation_refusal(
+        config,
+        user_id,
+        references,
+        parent_todo_id,
+        initial_canvas,
+        needs_integrations,
+        gmail_thread_id,
+    ):
         return refusal
-    if gives_sub_todo_rules(config, parent_todo_id, initial_canvas):
-        return SUB_TODO_STANDING_RULES_REFUSAL
 
     external_ref = await owned_gmail_thread_ref(user_id, gmail_thread_id, gmail_account)
     if isinstance(external_ref, str):
@@ -311,23 +437,26 @@ async def create_tracked_todo(
             external_ref=external_ref,
             references=references,
             parent_todo_id=parent_todo_id,
-            schedule=creation_update,
+            schedule=planned.update,
+            done_when=done_when or (),
+            evidence=evidence,
         )
     except (
+        OpenStateError,
         ExternalRefTakenError,
         SubTodoParentError,
         CanvasShapeError,
         SubscriptionError,
         UnwatchedTodoKeptError,
     ) as refused:
-        return format_refused_create_output(refused)
+        return _refused_create_text(refused, user_tz_name)
 
-    if parsed_scheduled_at:
-        schedule_error = await _schedule_execution_after_create(result.id, parsed_scheduled_at)
+    if planned.first_fire:
+        schedule_error = await _schedule_execution_after_create(result.id, planned.first_fire)
         if schedule_error:
             return schedule_error
 
-    return format_create_output(result, parsed_scheduled_at, user_tz_name, notes)
+    return format_create_output(result, planned.first_fire, user_tz_name, planned.notes)
 
 
 @tool
@@ -366,6 +495,11 @@ async def complete_tracked_todo(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the tracked todo to complete"],
     summary: Annotated[str, "One or two sentences describing what was achieved"],
+    stop_recurrence: Annotated[
+        bool,
+        "True only when the user asked to stop a recurring todo entirely; it then closes "
+        "with its schedule.",
+    ] = False,
 ) -> str:
     """Complete a tracked todo: mark done and flag its canvas as completed in search.
 
@@ -376,22 +510,20 @@ async def complete_tracked_todo(
     partial completion or status changes only. Never repeat the todo ID in
     user-visible text.
 
-    Refuses a todo with an active recurrence: one finished run never ends a
-    standing schedule. To stop one entirely, clear its recurrence (and
-    scheduled_at) with update_tracked_todo first, then complete it.
+    Refuses a todo with an active recurrence unless stop_recurrence is set: one
+    finished run never ends a standing schedule.
     """
     user_id = get_user_id(config)
 
     doc = await todo_repository.get(todo_id, user_id=user_id)
     if doc is None:
         return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
-    if doc.recurrence:
+    if doc.recurrence and not stop_recurrence:
         return (
             f"Error: tracked todo {todo_id} still has an active recurrence "
             f"({doc.recurrence}). One finished run never ends a standing schedule: "
-            "leave it open, or if the user asked to stop it entirely, clear its "
-            "recurrence (and scheduled_at) with update_tracked_todo first, "
-            "then complete it."
+            "leave it open, or if the user asked to stop it entirely, call "
+            "complete_tracked_todo again with stop_recurrence=true."
         )
 
     success = await tracked_todo_service.complete_tracked_todo(
@@ -420,16 +552,15 @@ async def _rollback_stale_move(user_id: str, todo_id: str, parent_todo_id: str) 
 
 async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: str) -> str | None:
     """Persist a field update and move the scheduled run; an error string when refused."""
-    effective_scheduled_at = (
-        update.scheduled_at if "scheduled_at" in update.model_fields_set else existing.scheduled_at
+    update = with_waiting_normalized(existing, update)
+    problems = (
+        open_state_problems(state_after(existing, update), datetime.now(UTC))
+        if touches_open_state(update)
+        else []
     )
-    effective_recurrence = (
-        update.recurrence if "recurrence" in update.model_fields_set else existing.recurrence
-    )
-    if effective_recurrence and not effective_scheduled_at:
-        return (
-            "Error: cannot have recurrence without scheduled_at. "
-            "Either clear recurrence or provide a scheduled_at value."
+    if problems:
+        return format_open_state_refusal(
+            problems, await get_user_tz(existing.user_id), refused="updated"
         )
     if await todo_repository.update(existing.id, user_id=existing.user_id, update=update) is None:
         return f"Error: tracked todo {existing.id} not found or not a tracked todo."
@@ -437,6 +568,7 @@ async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: 
     if update.scheduled_at is not None:
         await tracked_todo_service.schedule_execution(existing.id, update.scheduled_at)
     await record_field_changes(existing.id, existing.user_id, update, by=actor)
+    await record_waiting_change(existing.id, existing.user_id, update, by=actor)
     # The link check and this write are two separate writes: when the parent
     # closed in between, the move is rolled back rather than completing the
     # user's open todo out from under them.
@@ -460,13 +592,11 @@ async def update_tracked_todo(
         "Set to empty string '' to clear.",
     ] = None,
     priority: Annotated[Priority | None, "Priority"] = None,
-    scheduled_at: Annotated[
-        str | None,
-        "ISO datetime for one-shot scheduled execution, or first-fire anchor for "
-        "shortcut recurrences ('daily', 'weekly', 'every_4h', 'every_1h'). "
-        "OMIT for cron-style recurrence: first fire is computed from the cron. "
-        "Always include the user's timezone offset. Set to empty string '' to clear.",
-    ] = None,
+    scheduled_at: Annotated[str | None, _SCHEDULED_AT_DESC] = None,
+    waiting_on: Annotated[WaitingOn | None, _WAITING_ON_DESC] = None,
+    question: Annotated[str | None, _QUESTION_DESC] = None,
+    if_no_reply: Annotated[NoReplyPlan | None, _IF_NO_REPLY_DESC] = None,
+    default_action: Annotated[str | None, _DEFAULT_ACTION_DESC] = None,
     recurrence: Annotated[
         str | None,
         "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or 5-field cron "
@@ -506,7 +636,8 @@ async def update_tracked_todo(
         labels: Replace labels. Always include 'gaia-tracked'.
         due_date: Set or clear due date.
         priority: Change priority.
-        scheduled_at: Schedule or reschedule execution. Must be in the future.
+        scheduled_at: Move the next check (ISO or a duration like '3d'); the todo must keep one.
+        waiting_on / question / if_no_reply / default_action: change what it waits for.
         recurrence: Set or clear recurrence pattern.
         expires_at: Set or clear the expiry datetime (when the todo becomes irrelevant).
         references: IDs of the user's tracked todos to link (appended to existing).
@@ -527,13 +658,12 @@ async def update_tracked_todo(
     )
     if error := await apply_field_updates(inputs, user_id, update_fields, notes):
         return error
-    # Moved under a parent, a todo reports to it like a new sub-todo unless told otherwise.
-    moved_default = False if parent_todo_id else None
     plain_fields = {
-        "notify_on_run": moved_default if notify_on_run is None else notify_on_run,
+        "notify_on_run": notify_on_run,
         "parent_todo_id": parent_todo_id or None,
     }
     update_fields.update({name: value for name, value in plain_fields.items() if value is not None})
+    update_fields.update(waiting_fields(waiting_on, question, if_no_reply, default_action))
 
     if not update_fields and not references:
         return "No fields to update. Provide at least one field to change."
@@ -545,6 +675,11 @@ async def update_tracked_todo(
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
     if refusal := await _link_refusal(user_id, todo_id, references, parent_todo_id):
         return refusal
+    if parent_todo_id and notify_on_run is None:
+        # Moved under a parent, a todo reports like a new sub-todo of its kind unless told otherwise.
+        update_fields["notify_on_run"] = default_notify_on_run(
+            parent_todo_id=parent_todo_id, external_ref=existing.external_ref
+        )
 
     if update_fields:
         actor = agent_actor(read_agent_configurable(config).conversation_id)
@@ -676,6 +811,15 @@ async def subscribe_todo_to_trigger(
         "Only events on this one connected account, by its listed name or id (e.g. the "
         "user's work inbox). Omit to watch every account on the integration.",
     ] = None,
+    runs_only_when: Annotated[
+        GateCondition | None,
+        "Only with action 'execute': one short plain-text sentence, written from the "
+        "todo's intent and about the event itself, naming which events are worth running "
+        "the todo for, e.g. 'The reply confirms the invoice is paid or asks about it.' "
+        "GAIA checks it before each run and skips an event that clearly fails it, so make "
+        "it as broad as the todo needs: an event the todo would act on must pass. Omit it "
+        "when every event that passes the conditions should run.",
+    ] = None,
 ) -> str:
     """Make a tracked todo react to an integration event instead of only a schedule.
 
@@ -721,7 +865,12 @@ async def subscribe_todo_to_trigger(
         return f"Error: no connected account for {trigger_name} is named {account!r}."
 
     try:
-        subscription, outcome, _created = await register_subscription(
+        gate = (
+            None
+            if runs_only_when is None
+            else AuthoredGate(condition=runs_only_when, author=GateAuthor.GAIA)
+        )
+        subscription, outcome, created = await register_subscription(
             todo_id=todo_id,
             user_id=user_id,
             trigger_name=trigger_name,
@@ -731,10 +880,23 @@ async def subscribe_todo_to_trigger(
             cooldown_seconds=cooldown_seconds,
             trigger_data=trigger_data,
             account_id=account_id,
+            gate=gate,
         )
     except SubscriptionError as e:
         # The catalog rides along on failure so the retry has what it needs.
         return f"Could not subscribe: {e}\n\n{render_catalog(trigger_name)}"
+
+    if not created and subscription.gate != gate:
+        runs_on = (
+            f"runs only when: {subscription.gate.display_condition}"
+            if subscription.gate
+            else "runs on every event"
+        )
+        return (
+            f"Todo {todo_id} already watches {trigger_name} with these settings "
+            f"(subscription id: {subscription.id}), so nothing new was stored and it still "
+            f"{runs_on}. To change its runs_only_when, unsubscribe it and subscribe again."
+        )
 
     lines = [
         f"Todo {todo_id} is now watching {trigger_name} and will {parsed_action} when it fires.",

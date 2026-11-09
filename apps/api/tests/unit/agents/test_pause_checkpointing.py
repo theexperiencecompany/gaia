@@ -26,12 +26,19 @@ from langgraph.types import Command, Send, interrupt
 import pytest
 
 from app.agents.core.subagents.subagent_runner import interrupt_values, merge_approvals
+from app.models.hil_models import HilInterruptPayload
 
 
 class ToolRun(TypedDict):
     """The graph state these fixtures run over: an append-only log of what executed."""
 
     ran: Annotated[list[str], operator.add]
+
+
+class _ToolCall(TypedDict):
+    """The Send payload: the one tool a tools-node task runs."""
+
+    tool: str
 
 
 class ToolCallSimulator:
@@ -64,7 +71,7 @@ class ToolCallSimulator:
         self.drain = drain
         self.ran: list[str] = []
         #: Every approval payload seen, in arrival order. One event per paused task.
-        self.interrupts: list[dict[str, Any]] = []
+        self.interrupts: list[HilInterruptPayload] = []
         self._saver = InMemorySaver()
         self._app = self._build()
         self._thread = {"configurable": {"thread_id": "sim"}}
@@ -79,8 +86,8 @@ class ToolCallSimulator:
             """Two frames deep — handoff -> resume_for_gate -> interrupt."""
             pause_for(name)
 
-        def tools(payload: dict[str, Any]) -> ToolRun:
-            name = payload["tool"]
+        def tools(state: _ToolCall) -> ToolRun:
+            name = state["tool"]
             if name in self.gated:
                 if self.nested:
                     bubble_up_from_a_subagent(name)
@@ -248,7 +255,11 @@ class TestMergingWhatThePauseReports:
         assert merged["tool_name"] == "send_email"
 
     def test_a_lone_approval_is_passed_through_unchanged(self) -> None:
-        payload = {"type": "hil_approval", "approval_id": "a", "tool_name": "send_email"}
+        payload: HilInterruptPayload = {
+            "type": "hil_approval",
+            "approval_id": "a",
+            "tool_name": "send_email",
+        }
 
         assert merge_approvals([payload]) == payload
 

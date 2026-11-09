@@ -17,6 +17,7 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL
+from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT, GateAuthor, SystemGatePreset
 from app.db.mongodb import indexes
 from app.db.repositories import todos as todos_repository_module
 from app.db.repositories.todos import TodosRepository
@@ -31,6 +32,7 @@ from app.models.todo_models import (
     TodoSearchParams,
     TodoUpdate,
 )
+from app.models.trigger_gate_models import AuthoredGate, GateSkipRecord, SystemGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
@@ -41,6 +43,8 @@ from app.models.trigger_subscription_models import (
     TriggerSubscriptionStatus,
 )
 from tests.contracts.base_contract import UserScopedRepositoryContract
+
+_DESK_GATE = SystemGate(preset=SystemGatePreset.INBOX_DESK)
 
 
 @pytest.fixture
@@ -95,6 +99,66 @@ def _host_zone_ahead_of_utc(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     finally:
         monkeypatch.undo()
         time.tzset()
+
+
+def _skips(count: int) -> list[GateSkipRecord]:
+    start = datetime(2026, 11, 1, tzinfo=UTC)
+    return [
+        GateSkipRecord(
+            event=f'Bank <alerts@bank.example>, "Statement {n}"',
+            certainty=0.99,
+            at=start + timedelta(minutes=n),
+        )
+        for n in range(count)
+    ]
+
+
+class TestGateSkipRecord:
+    async def test_a_hundred_skips_keep_the_newest_few_and_count_all_and_leave_activity_alone(
+        self, repo, make_doc
+    ):
+        gate = AuthoredGate(condition="the email needs me", author=GateAuthor.GAIA)
+        watch, other = _subscription(gate=gate), _subscription(gate=gate)
+        doc = await repo.create(
+            make_doc(user_id="u", activity_content="- ran", trigger_subscriptions=[watch, other])
+        )
+        skips = _skips(100)
+
+        for skip in skips:
+            await repo.remember_subscription_gate_skip(
+                user_id="u", subscription_id=watch.id, skip=skip
+            )
+
+        stored = await repo.get(doc.id, user_id="u")
+        kept, untouched = (w.gate for w in stored.trigger_subscriptions)
+        assert kept.recent_skips == skips[-GATE_RECENT_SKIPS_KEPT:]
+        assert GATE_RECENT_SKIPS_KEPT == 5
+        assert kept.skipped_count == 100
+        assert (untouched.recent_skips, untouched.skipped_count) == ([], 0)
+        assert stored.activity_content == "- ran"
+
+    async def test_a_skip_is_never_written_to_another_users_watch(self, repo, make_doc):
+        gate = AuthoredGate(condition="the email needs me", author=GateAuthor.GAIA)
+        watch = _subscription(gate=gate)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+
+        await repo.remember_subscription_gate_skip(
+            user_id="intruder", subscription_id=watch.id, skip=_skips(1)[0]
+        )
+
+        stored = await repo.get(doc.id, user_id="u")
+        assert stored.trigger_subscriptions[0].gate.skipped_count == 0
+
+    async def test_a_watch_without_a_gate_is_left_without_one(self, repo, make_doc):
+        watch = _subscription(gate=None)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+
+        await repo.remember_subscription_gate_skip(
+            user_id="u", subscription_id=watch.id, skip=_skips(1)[0]
+        )
+
+        stored = await repo.get(doc.id, user_id="u")
+        assert stored.trigger_subscriptions[0].gate is None
 
 
 class TestTodosRepository(UserScopedRepositoryContract):
@@ -425,6 +489,30 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert (latest.title, latest.completed) == ("stopped", True)
         assert nothing is None
 
+    async def test_list_open_by_external_ref_source_is_every_users_open_todo_of_that_kind(
+        self, repo, make_doc
+    ):
+        desk = todo_models.ExternalRef(source=todo_models.ExternalRefSource.INBOX_DESK, id="gmail")
+        thread = todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611"
+        )
+        for title, owner, ref, completed in (
+            ("open desk", "u", desk, False),
+            ("their desk", "u2", desk, False),
+            ("stopped desk", "u3", desk, True),
+            ("thread", "u", thread, False),
+            ("no ref", "u", None, False),
+        ):
+            await repo.create(
+                make_doc(user_id=owner, title=title, external_ref=ref, completed=completed)
+            )
+
+        found = await repo.list_open_by_external_ref_source(
+            todo_models.ExternalRefSource.INBOX_DESK
+        )
+
+        assert sorted(t.title for t in found) == ["open desk", "their desk"]
+
     # ---- sub-todos ----------------------------------------------------------
 
     async def test_top_level_listing_leaves_out_every_sub_todo(self, repo, make_doc):
@@ -664,6 +752,62 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         found = await repo.find_active_by_composio_trigger("ti_upd")
         assert [t.id for t in found] == [doc.id]
+
+    async def test_a_gate_is_set_on_the_one_run_watch_it_names(
+        self, repo, make_doc, raw_collection
+    ):
+        desk_mail, other = (
+            _subscription(gate=_DESK_GATE),
+            _subscription(trigger_name="gmail_email_sent"),
+        )
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[desk_mail, other]))
+        off = _DESK_GATE.model_copy(update={"enabled": False})
+
+        written = await repo.set_subscription_gate(
+            doc.id, user_id="u", subscription_id=desk_mail.id, gate=off
+        )
+
+        assert written is not None
+        assert [w.gate for w in written.trigger_subscriptions] == [off, None]
+        raw = await raw_collection.find_one({"_id": ObjectId(doc.id)})
+        assert raw["trigger_subscriptions"][0]["gate"] == {
+            "kind": "system",
+            "recent_skips": [],
+            "skipped_count": 0,
+            "preset": "inbox_desk",
+            "enabled": False,
+        }
+
+    async def test_a_gate_write_refreshes_the_cached_copy(self, repo, make_doc):
+        watch = _subscription(gate=_DESK_GATE)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+        await repo.get(doc.id, user_id="u")  # warm the entity cache
+        off = _DESK_GATE.model_copy(update={"enabled": False})
+
+        await repo.set_subscription_gate(doc.id, user_id="u", subscription_id=watch.id, gate=off)
+
+        cached = await repo.get(doc.id, user_id="u")
+        assert cached is not None
+        assert [w.gate for w in cached.trigger_subscriptions] == [off]
+
+    @pytest.mark.parametrize(
+        ("owner", "action"),
+        [("intruder", SubscriptionAction.EXECUTE), ("u", SubscriptionAction.NOTIFY)],
+        ids=["another_users_todo", "a_watch_that_starts_no_run"],
+    )
+    async def test_a_gate_write_it_may_not_make_writes_nothing(
+        self, repo, make_doc, raw_collection, owner, action
+    ):
+        watch = _subscription(action=action)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+        before = await raw_collection.find_one({"_id": ObjectId(doc.id)})
+
+        written = await repo.set_subscription_gate(
+            doc.id, user_id=owner, subscription_id=watch.id, gate=_DESK_GATE
+        )
+
+        assert written is None
+        assert await raw_collection.find_one({"_id": ObjectId(doc.id)}) == before
 
     async def test_count_trigger_references_counts_across_users(self, repo, make_doc):
         sub = _subscription(

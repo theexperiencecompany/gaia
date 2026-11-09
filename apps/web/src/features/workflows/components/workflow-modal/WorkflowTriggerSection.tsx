@@ -1,8 +1,14 @@
 import { Tabs } from "@heroui/react";
 import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
+import type { ReactElement } from "react";
+import { PanelRowGroup } from "@/components/shared/PanelRowGroup";
 import { getUserHomeTimezone } from "@/lib/timezone";
+import type { Workflow } from "../../api/workflowApi";
+import { MAIL_TRIGGER_NAMES } from "../../constants/gates";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { GateRow } from "../../triggers/components/GateRow";
 import { createDefaultTriggerConfig } from "../../triggers/registry";
+import { isIntegrationTrigger } from "../../triggers/types";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
 import WorkflowSection from "./WorkflowSection";
@@ -16,6 +22,10 @@ interface WorkflowTriggerSectionProps {
     trigger: WorkflowFormData["selectedTrigger"],
   ) => void;
   onTriggerConfigChange: (config: WorkflowFormData["trigger_config"]) => void;
+  gate: WorkflowFormData["gate"];
+  /** The gate as last saved; a new workflow has none. */
+  savedGate: Workflow["gate"];
+  onGateChange: (gate: WorkflowFormData["gate"]) => void;
   isPreview?: boolean;
 }
 
@@ -32,6 +42,9 @@ export default function WorkflowTriggerSection({
   onActiveTabChange,
   onSelectedTriggerChange,
   onTriggerConfigChange,
+  gate,
+  savedGate,
+  onGateChange,
   isPreview = false,
 }: WorkflowTriggerSectionProps) {
   const handleTabChange = (tabKey: "manual" | "schedule" | "trigger") => {
@@ -109,12 +122,30 @@ export default function WorkflowTriggerSection({
     }
 
     return (
-      <TriggerConfigForm
-        selectedTrigger={selectedTrigger}
-        triggerConfig={triggerConfig}
-        onTriggerChange={onSelectedTriggerChange}
-        onConfigChange={onTriggerConfigChange}
-      />
+      <div className="flex flex-col gap-5">
+        <TriggerConfigForm
+          selectedTrigger={selectedTrigger}
+          triggerConfig={triggerConfig}
+          onTriggerChange={onSelectedTriggerChange}
+          onConfigChange={onTriggerConfigChange}
+        />
+        {isIntegrationTrigger(triggerConfig) && gate.condition.trim() && (
+          <PanelRowGroup>
+            <GateRow
+              condition={gate.condition}
+              enabled={gate.enabled}
+              saved={savedGate ?? null}
+              editable={savedGate?.kind !== "system"}
+              watchesMail={MAIL_TRIGGER_NAMES.has(selectedTrigger)}
+              onConditionSave={(condition) =>
+                onGateChange({ ...gate, condition })
+              }
+              onEnabledChange={(enabled) => onGateChange({ ...gate, enabled })}
+              isDisabled={isPreview}
+            />
+          </PanelRowGroup>
+        )}
+      </div>
     );
   };
 

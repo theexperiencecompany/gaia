@@ -25,6 +25,7 @@ import {
   type ApprovalResolver,
 } from "../ApprovalResolveContext";
 import { ChatItemBoundary } from "../ChatItemBoundary";
+import { StoppedNote } from "../StoppedNote";
 import type { ApprovalOutcome } from "../SubagentRow";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
@@ -352,6 +353,7 @@ export default function TextBubble({
   loading,
   replyToMessage,
   error,
+  stopped,
   onRetry,
   isRetrying,
   partChoreography = DEFAULT_PART_CHOREOGRAPHY,
@@ -574,6 +576,7 @@ export default function TextBubble({
           }
         />
       )}
+      {stopped && !error && <StoppedNote />}
     </ApprovalResolveProvider>
   );
 }

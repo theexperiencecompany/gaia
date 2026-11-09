@@ -5,6 +5,7 @@ import { ActivityIcon, CanvasIcon } from "@icons";
 import type React from "react";
 import { useRef, useState } from "react";
 import MarkdownViewerModal from "@/components/common/MarkdownViewerModal";
+import { PanelRow } from "@/components/shared/PanelRow";
 import { getTodoCanvas, type TodoNotes } from "@/features/todo/api/todoApi";
 
 interface CanvasViewerProps {
@@ -81,27 +82,19 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ todoId, todoTitle }) => {
 
   return (
     <>
-      <div className="flex flex-col gap-2">
-        {FILES.map(({ name, hint, Icon }) => (
-          <button
-            key={name}
-            type="button"
-            onClick={() => handleOpen(name)}
-            className="flex w-full items-center gap-3 rounded-2xl bg-zinc-800 px-3 py-2.5 text-left transition-colors hover:bg-zinc-700/70"
-          >
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-violet-500/15">
-              <Icon className="size-4 text-violet-400" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-zinc-300">{name}</p>
-              <p className="truncate text-xs text-zinc-500">{hint}</p>
-            </div>
-            {isLoading && openFile === name && (
-              <Spinner size="sm" color="current" />
-            )}
-          </button>
-        ))}
-      </div>
+      {FILES.map(({ name, hint, Icon }) => (
+        <PanelRow
+          key={name}
+          icon={Icon}
+          label={name}
+          summary={hint}
+          onPress={() => handleOpen(name)}
+          end={
+            isLoading &&
+            openFile === name && <Spinner size="sm" color="current" />
+          }
+        />
+      ))}
 
       <MarkdownViewerModal
         isOpen={openFile !== null}

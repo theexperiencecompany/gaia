@@ -1,28 +1,66 @@
 /**
  * `questions` stage. Active until Q1 (profession) and Q2 (needs) are both
- * answered. The transcript renders in `MessagesRegion`; this file owns the
- * user's reply to the active question, rendered in the thread on their side.
+ * answered and stored. The transcript renders in `MessagesRegion`; this file
+ * owns the user's reply to the active question, rendered in the thread on
+ * their side, and the save that follows the last one.
  */
 
 "use client";
 
+import { Spinner } from "@heroui/react";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useCallback } from "react";
 import { FIELD_NAMES, isKnownNeed, questions } from "../../constants";
+import {
+  ANSWERS_SAVE_FAILED_MESSAGE,
+  ANSWERS_SAVING_LABEL,
+  FINISH_RETRY_LABEL,
+} from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
+import type { AnswersSave } from "../../effects/useOnboardingPreferences";
 import { usePaceDone } from "../../hooks/useTypedLines";
 import { canSubmitNeeds, isAtNeedsCap } from "../../state/derive";
 import { questionRevealKey } from "../../state/paceStore";
 import type { Action, OnboardingState } from "../../state/types";
+import { OnboardingBotBubble } from "../OnboardingBotBubble";
+import { OnboardingCTAButton } from "../OnboardingCTAButton";
 import { OnboardingInput } from "../OnboardingInput";
 
 interface QuestionsProps {
   state: OnboardingState;
   dispatch: Dispatch<Action>;
+  answersSave: AnswersSave;
 }
 
-export function QuestionsReply({ state, dispatch }: QuestionsProps) {
+function AnswersSaveStatus({ answersSave }: { answersSave: AnswersSave }) {
+  if (answersSave.status === "error") {
+    return (
+      <m.div className="flex flex-col items-start gap-3" {...MOTION_FADE_UP}>
+        <OnboardingBotBubble text={ANSWERS_SAVE_FAILED_MESSAGE} />
+        <OnboardingCTAButton
+          className="sm:ml-10.75"
+          onClick={answersSave.retry}
+        >
+          {FINISH_RETRY_LABEL}
+        </OnboardingCTAButton>
+      </m.div>
+    );
+  }
+  return (
+    <Spinner
+      size="sm"
+      className="sm:ml-10.75"
+      aria-label={ANSWERS_SAVING_LABEL}
+    />
+  );
+}
+
+export function QuestionsReply({
+  state,
+  dispatch,
+  answersSave,
+}: QuestionsProps) {
   const currentQuestion = questions[state.questionIndex];
   // The reply only shows up once GAIA has finished "typing" the question.
   const gaiaDone = usePaceDone(questionRevealKey(currentQuestion?.id ?? ""));
@@ -64,7 +102,8 @@ export function QuestionsReply({ state, dispatch }: QuestionsProps) {
     [dispatch],
   );
 
-  if (!currentQuestion || !gaiaDone) return null;
+  if (!currentQuestion) return <AnswersSaveStatus answersSave={answersSave} />;
+  if (!gaiaDone) return null;
 
   if (currentQuestion.fieldName === FIELD_NAMES.NEEDS) {
     return (

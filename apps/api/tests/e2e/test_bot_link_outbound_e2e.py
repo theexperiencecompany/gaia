@@ -28,7 +28,7 @@ from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import PlatformAccountTakenError, PlatformLinkService
 from app.utils.errors import AppError
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("onboarding_finish_on_link")]
 
 COMPLETION = "app.services.platform_link_completion"
 DELIVERY = "app.services.outbound_delivery"

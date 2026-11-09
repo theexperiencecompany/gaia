@@ -15,6 +15,7 @@ from app.db.mongodb.indexes import (
 from app.db.repositories.integrations import IntegrationsRepository
 from app.models.integration_models import Integration, StoredIntegrationTool
 from app.models.mcp_config import MCPConfig
+from app.services.integrations.integration_resolver import IntegrationResolver
 
 
 @pytest.fixture
@@ -52,12 +53,6 @@ class TestIntegrationsRepository:
 
     async def test_get_missing_returns_none(self, repo):
         assert await repo.get(f"absent-{uuid.uuid4().hex}") is None
-
-    async def test_find_by_id_prefix_case_insensitive(self, repo):
-        iid = f"AbC-{uuid.uuid4().hex}"
-        await repo.create(_integration(iid, "Prefixed"))
-        found = await repo.find_by_id_prefix(iid[:5].lower())
-        assert found is not None and found.integration_id == iid
 
     async def test_find_by_id_prefix_or_name_matches_id_prefix(self, repo):
         iid = f"pref-{uuid.uuid4().hex}"
@@ -107,23 +102,13 @@ class TestIntegrationsRepository:
         await repo.increment_clone_count(iid)
         assert (await repo.get(iid)).clone_count == 2
 
-    async def test_set_mcp_auth_and_clear_tools(self, repo):
+    async def test_set_mcp_auth(self, repo):
         iid = f"auth-{uuid.uuid4().hex}"
-        await repo.create(
-            _integration(
-                iid,
-                "Auther",
-                tools=[{"name": "t1"}],
-            )
-        )
+        await repo.create(_integration(iid, "Auther"))
         assert await repo.set_mcp_auth(iid, True, "oauth") is True
         got = await repo.get(iid)
         assert got.mcp_config.requires_auth is True
         assert got.mcp_config.auth_type == "oauth"
-        assert got.tools  # tools present before clear
-
-        await repo.clear_tools(iid)
-        assert (await repo.get(iid)).tools == []
         # No such integration → no update.
         assert await repo.set_mcp_auth(f"absent-{uuid.uuid4().hex}", True, "oauth") is False
 
@@ -218,6 +203,23 @@ class TestIntegrationsRepository:
         assert records[a].name == "Aname"  # existing doc's name is preserved
         assert records[a].icon_url == "https://a.png"
         assert [t.name for t in records[a].tools] == ["ta"]
+
+    async def test_tools_by_ids_returns_only_the_asked_ids_with_stored_tools(self, repo):
+        asked, empty, other = (f"{p}-{uuid.uuid4().hex}" for p in ("ask", "empty", "other"))
+        await repo.create(_integration(asked, "Asked"))
+        await repo.store_tools_batch(
+            [
+                (asked, [StoredIntegrationTool(name="search")]),
+                (other, [StoredIntegrationTool(name="x")]),
+            ]
+        )
+        await repo.create(_integration(empty, "Empty"))
+
+        [record] = await repo.tools_by_ids([asked, empty])
+
+        assert record.integration_id == asked
+        assert record.name == "Asked"
+        assert [t.name for t in record.tools] == ["search"]
 
     async def test_heal_top_level_auth(self, repo):
         iid = f"heal-{uuid.uuid4().hex}"
@@ -477,3 +479,23 @@ class TestCustomServerUrlDedup:
                     "https://host/mcp",
                 )
             )
+
+
+class TestResolverIgnoresToolsOnlyStubs:
+    """store_tools writes {integration_id, tools} for ids with no Integration document."""
+
+    async def test_a_tools_only_stub_does_not_resolve_as_an_integration(self, repo):
+        iid = f"stub-{uuid.uuid4().hex}"
+        await repo.store_tools(iid, [StoredIntegrationTool(name="t1", description="d1")])
+
+        assert await IntegrationResolver.resolve(iid) is None
+
+    async def test_a_custom_integration_still_resolves(self, repo):
+        iid = f"custom-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Mine"))
+
+        resolved = await IntegrationResolver.resolve(iid)
+
+        assert resolved is not None
+        assert resolved.source == "custom"
+        assert resolved.name == "Mine"

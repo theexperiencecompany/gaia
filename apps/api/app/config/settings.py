@@ -24,7 +24,12 @@ from app.config.deployment import (
 )
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
-from app.constants.bot import GAIA_CLOUD_TELEGRAM_BOT_USERNAME
+from app.constants.bot import (
+    GAIA_CLOUD_DISCORD_CLIENT_ID,
+    GAIA_CLOUD_SLACK_CLIENT_ID,
+    GAIA_CLOUD_TELEGRAM_BOT_USERNAME,
+    GAIA_CLOUD_WHATSAPP_NUMBER,
+)
 from app.constants.browser import BrowserAgentEffort
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.files import S3AddressingStyle
@@ -67,10 +72,6 @@ class Settings(BrowserHostSettings):
     OPENROUTER_BASE_URL: str | None = None
     # Every request authenticates as this Mongo user with no WorkOS session.
     DEV_AUTH_BYPASS_EMAIL: str | None = None
-    # Comma-separated OpenRouter provider slugs to PREFER for the default-model
-    # lane — fallbacks stay enabled. Set from the per-provider cache-hit table;
-    # see _provider_order_kwargs in agents/llm/client.py.
-    OPENROUTER_PROVIDER_ORDER: str | None = None
     # Dev-only: lift every per-user rate limit. Eval harnesses drive thousands
     # of requests/day against a free-plan dev user, which 429s at 200/day
     # otherwise. get_settings() refuses production boot when set.
@@ -161,6 +162,9 @@ class Settings(BrowserHostSettings):
     # one structured decision call per reply (hil-reply calibration: 0 dangerous
     # approves vs the LLM's 2), LLM classifier as the transport-failure fallback.
     ENABLE_HIL_JEV_REPLY: bool = True
+    # Trigger gates skip a run JEV is sure its event does not need. The kill switch:
+    # off still evaluates and records every gate, but every run goes ahead.
+    ENABLE_TRIGGER_GATES: bool = True
     # Private agent lab — Claude Code / OpenCode CLIs inside the
     # per-user E2B sandbox, controllable from chat. Off by default; PostHog
     # targeting enables it for specific users.
@@ -184,10 +188,8 @@ class Settings(BrowserHostSettings):
 
     @property
     def telegram_bot_username(self) -> str | None:
-        """Return this instance's Telegram bot, GAIA Cloud's own when the deployment runs on it."""
-        if self.TELEGRAM_BOT_USERNAME:
-            return self.TELEGRAM_BOT_USERNAME
-        return GAIA_CLOUD_TELEGRAM_BOT_USERNAME if self.deployment.hosted_bots else None
+        """The Telegram bot for this instance, from env or the shared identity file."""
+        return self.TELEGRAM_BOT_USERNAME
 
     # Outbound Email. EMAIL_PROVIDER keys the registry in
     # app/services/email/providers.
@@ -271,8 +273,10 @@ class Settings(BrowserHostSettings):
     # steers and signs off while Jev does the stepping. Served by OpenRouter.
     BROWSER_AGENT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
     BROWSER_AGENT_REASONING_EFFORT: BrowserAgentEffort = "low"
-    # Browser-Use's flash mode: the agent writes only its memory and actions, no thinking.
-    BROWSER_AGENT_FLASH_MODE: bool = True
+    # Browser-Use's flash mode: the agent writes only its memory and actions, no evaluation of
+    # its last step and no next goal or plan. Browser-Use turns it on only for its own trained
+    # model; on ours the agent stopped noticing it was looping (38 steps on GitHub's code page).
+    BROWSER_AGENT_FLASH_MODE: bool = False
 
     # Hard limits — everything is bounded so no browser task can run away. The
     # agent's step count is only Browser-Use's required backstop: a run ends on
@@ -315,10 +319,6 @@ class Settings(BrowserHostSettings):
     # When false, a session's login is never persisted or restored (per-deployment
     # opt-out of "log in once, reuse next time").
     BROWSER_PERSIST_LOGINS: bool = True
-    # Public base URL for the recap and step-screenshot links a user is sent, e.g.
-    # https://browser.heygaia.io where a vhost reverse-proxies to this api service.
-    # When unset, those links fall back to HOST.
-    BROWSER_LIVE_VIEW_BASE_URL: str | None = None
 
     # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage.
     # All three must be set; the "custom" provider is registered exclusively in
@@ -640,6 +640,17 @@ class Settings(BrowserHostSettings):
     # ----------------------------------------------
     BOT_SESSION_TOKEN_SECRET: str | None = None  # min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
+
+    @model_validator(mode="after")
+    def _default_hosted_bot_identity(self) -> Self:
+        """Fill the hosted handles from the shared identity file when env leaves them unset."""
+        if not self.deployment.hosted_bots:
+            return self
+        self.WHATSAPP_PHONE_NUMBER = self.WHATSAPP_PHONE_NUMBER or GAIA_CLOUD_WHATSAPP_NUMBER
+        self.DISCORD_OAUTH_CLIENT_ID = self.DISCORD_OAUTH_CLIENT_ID or GAIA_CLOUD_DISCORD_CLIENT_ID
+        self.SLACK_OAUTH_CLIENT_ID = self.SLACK_OAUTH_CLIENT_ID or GAIA_CLOUD_SLACK_CLIENT_ID
+        self.TELEGRAM_BOT_USERNAME = self.TELEGRAM_BOT_USERNAME or GAIA_CLOUD_TELEGRAM_BOT_USERNAME
+        return self
 
     @model_validator(mode="before")
     @classmethod

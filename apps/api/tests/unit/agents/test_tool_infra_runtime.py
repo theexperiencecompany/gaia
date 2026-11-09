@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import json
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -37,13 +37,11 @@ from app.agents.tools.instructions_tools import (
     get_user_instructions,
     update_integration_instructions,
 )
+from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.models.integration_models import UserToolNamespaces
-from app.override.langgraph_bigtool.create_agent import (
-    AgentConfig,
-    ToolRetrievalConfig,
-    create_agent,
-)
+from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
+from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import BindableToolsFakeModel, PassthroughFakeLLM
 
 
@@ -78,9 +76,9 @@ class _FakeLLM(PassthroughFakeLLM):
         self.bind_calls: list[list[str]] = []
         self._invoke_count = 0
 
-    def bind_tools(self, tools: Any, **_kwargs: Any) -> "_FakeLLM":
+    def bind_tools(self, _tools: Any, **_kwargs: Any) -> "_FakeLLM":
         # Overridden only to record what was bound; the assertions read this.
-        names = [getattr(t, "name", str(t)) for t in tools]
+        names = [getattr(t, "name", str(t)) for t in _tools]
         self.bind_calls.append(names)
         return self
 
@@ -369,7 +367,13 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
 
     executor_child = build_executor_child_tool_runtime_config()
     assert executor_child.enable_retrieve_tools is True
-    assert executor_child.initial_tool_names == ["read", "bash", "finish_task"]
+    assert executor_child.initial_tool_names == [
+        "read",
+        "bash",
+        "execute",
+        "get_tool_schema",
+        "finish_task",
+    ]
 
     kwargs = build_create_agent_tool_kwargs(parent_dynamic, tool_space="provider_space")
     tools_config = kwargs["tools_config"]
@@ -517,6 +521,21 @@ async def test_spawn_graph_wires_identity_middleware_and_hooks_into_create_agent
     assert list(captured["hooks_config"].pre_model_hooks) == list(
         worker_pre_model_hooks(drains_subagent_inbox=True)
     )
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_an_executor_spawn_can_run_the_integration_tools_retrieve_hands_it():
+    """Regression: retrieve_tools told a desk's subagents to run Gmail via execute, which they lacked."""
+    captured = await _spawn_graph_agent_kwargs(
+        registry={"vfs_read": vfs_read, "normal_tool": normal_tool},
+        excluded=set(),
+        runtime=build_executor_child_tool_runtime_config(),
+    )
+
+    bound = captured["tools_config"].initial_tool_ids
+    assert EXECUTE_TOOL_NAME in bound
+    assert "get_tool_schema" in bound
 
 
 @pytest.mark.asyncio
@@ -900,7 +919,7 @@ async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[s
     """Run the factory with every collaborator recorded.
 
     Returns a dict with: create_agent kwargs (agent_kwargs), the middleware
-    factory kwargs (middleware_kwargs), the todo-tool/hook factory calls
+    factory kwargs (middleware_kwargs), the todo-tool factory call
     (todo_calls), and the worker_pre_model_hooks stand-in (worker).
     """
     full_tools = {"normal_tool": normal_tool, "vfs_read": vfs_read}
@@ -920,16 +939,11 @@ async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[s
         captured["middleware_kwargs"].update(kwargs)
         return []
 
-    hook_sentinel = object()
     pre_model_hooks_sentinel = object()
 
     def _fake_todo_tools(**kwargs: Any) -> list[BaseTool]:
         captured["todo_calls"]["tools"] = kwargs
         return []
-
-    def _fake_todo_hook(**kwargs: Any) -> object:
-        captured["todo_calls"]["hook"] = kwargs
-        return hook_sentinel
 
     worker = MagicMock(return_value=pre_model_hooks_sentinel)
 
@@ -956,10 +970,6 @@ async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[s
             new=_fake_todo_tools,
         ),
         patch(
-            "app.agents.core.subagents.base_subagent.create_todo_pre_model_hook",
-            new=_fake_todo_hook,
-        ),
-        patch(
             "app.agents.core.subagents.base_subagent.worker_pre_model_hooks",
             new=worker,
         ),
@@ -976,24 +986,20 @@ async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[s
 
 
 @pytest.mark.asyncio
-async def test_todo_factories_receive_the_provider_identity_exactly():
+async def test_the_todo_factory_receives_the_provider_identity_exactly():
     """source/source_label key the todo tools' progress events; a dropped kwarg falls back to a generic label."""
     captured = await _run_factory_recording_wiring(config=SubAgentToolConfig(source_label="Gmail"))
 
     assert captured["todo_calls"]["tools"] == {"source": "provider", "source_label": "Gmail"}
-    assert captured["todo_calls"]["hook"] == {"source": "provider"}
 
 
 @pytest.mark.asyncio
-async def test_the_todo_hook_reaches_hooks_config_through_worker_pre_model_hooks():
-    """A None in either position silently un-hooks the subagent's pre-model pass."""
+async def test_the_worker_chain_reaches_hooks_config_unaltered():
+    """Anything but the shared chain itself would un-hook or reorder the subagent's pre-model pass."""
     captured = await _run_factory_recording_wiring(config=SubAgentToolConfig())
 
     worker = captured["worker"]
     assert worker.call_count == 1
-    assert len(worker.call_args.args) == 1
-    # The argument is exactly what create_todo_pre_model_hook returned.
-    assert worker.call_args.args[0] is not None
     assert captured["agent_kwargs"]["hooks_config"].pre_model_hooks is worker.return_value
 
 
@@ -1027,9 +1033,10 @@ async def test_a_provider_subagent_drains_its_own_mailbox_not_the_executors():
 
 def _scoped_provider_tools() -> tuple[dict[str, BaseTool], list[str]]:
     return build_scoped_tool_dict(
-        tool_registry=_DummyRegistry([normal_tool], {"normal_tool": normal_tool}),
+        tool_registry=cast(
+            ToolRegistry, _DummyRegistry([normal_tool], {"normal_tool": normal_tool})
+        ),
         tool_space="provider_space",
-        mcp_tools=None,
         include_finish_task=True,
     )
 
@@ -1122,7 +1129,7 @@ def _render_text(
     opts = options or _DiscoveryOptions()
     return _render_discovery_response(
         _RankedHits(final_tools, opts.total_candidates, opts.limit),
-        _DiscoveryRegistry(opts.categories or {}, opts.destructive),
+        cast(ToolRegistry, _DiscoveryRegistry(opts.categories or {}, opts.destructive)),
         opts.connected or {},
         query,
         (),
@@ -1179,7 +1186,7 @@ class TestDiscoveryResponseIsIndentedJson:
 
 
 class TestDiscoveryHasNoProviderSubagentSurface:
-    """Discovery returns real tools plus two narrow entry kinds: subagent: pointers to per-user MCP integrations (the sole subagent surface) and integration: pointers to not-yet-connected integrations.
+    """Discovery returns real tools plus two pointer kinds for activate_integration: mcp_integration: (per-user MCP integrations) and integration: (not-yet-connected integrations).
 
     Provider and built-in integrations surface as tools, never as pointers.
     """
@@ -1190,19 +1197,21 @@ class TestDiscoveryHasNoProviderSubagentSurface:
             options=_DiscoveryOptions(categories={"web_search_tool": "search"}),
         )
 
-        assert payload["mcp_subagents"] == []
+        assert payload["mcp_integrations"] == []
         assert payload["new_integrations"] == []
+        assert "mcp_subagents" not in payload
         assert "subagents_builtin" not in payload
         assert "subagents_connected" not in payload
         assert "subagents_needing_connection" not in payload
         assert "handoff" not in payload["next"]
 
     def test_mcp_entries_land_in_the_mcp_bucket(self) -> None:
-        payload = _render(["subagent:my-mcp (My MCP)"])
+        payload = _render(["mcp_integration:my-mcp (My MCP)"])
 
-        assert payload["mcp_subagents"] == [{"id": "my-mcp", "name": "My MCP"}]
+        assert payload["mcp_integrations"] == [{"id": "my-mcp", "name": "My MCP"}]
         assert [t["name"] for t in payload["tools_to_bind"]] == []
-        assert "handoff" in payload["next"]
+        assert "activate_integration" in payload["next"]
+        assert "handoff" not in payload["next"]
 
     def test_integration_entries_land_in_the_new_bucket(self) -> None:
         payload = _render(["integration:linear (Linear)"])
@@ -1299,8 +1308,7 @@ class TestDiscoveryZeroMatchSignal:
         assert _render(["x"], options=_DiscoveryOptions(total_candidates=1))["next"] == (
             "Load with retrieve_tools(exact_tool_names=[...]): internal tools bind "
             "and are called by name, integration tools (ALLCAPS) return schemas to "
-            "run via execute and are never bound. Integrations are not subagents: "
-            "act on them yourself."
+            "run via execute and are never bound. Act on integrations yourself."
         )
 
 

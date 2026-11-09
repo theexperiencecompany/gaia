@@ -61,7 +61,11 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
 
   return (
     <div className="h-screen">
-      <RedirectLoader url={`${apiBaseUrl}/oauth/login/workos`} replace />
+      {/* AuthKit opens on Sign in by default; a visitor who chose sign-up backed out of it. */}
+      <RedirectLoader
+        url={`${apiBaseUrl}/oauth/login/workos?screen_hint=sign-up`}
+        replace
+      />
     </div>
   );
 }
