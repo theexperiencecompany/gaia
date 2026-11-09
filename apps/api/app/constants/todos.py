@@ -6,6 +6,7 @@ Constants for todo service operations.
 
 from datetime import timedelta
 from enum import StrEnum
+import re
 from typing import Final
 
 from app.constants.chat import MAX_MESSAGE_LENGTH
@@ -19,6 +20,10 @@ ONBOARDING_LABEL: Final[str] = "onboarding"
 # Kept here (not in tracked_todo_service) so the VFS sync glue can import it
 # without creating a circular dependency.
 GAIA_TRACKED_LABEL: Final[str] = "gaia-tracked"
+
+# How many characters an unknown todo id may differ from a real one and still be
+# offered as the one meant: a model copying sibling ObjectIds swaps one or two.
+MAX_MISCOPIED_ID_CHARS: Final[int] = 4
 
 # Label added by the worker when a tracked todo exhausts its retry budget — the
 # execution path skips todos carrying it until the user manually resets.
@@ -42,6 +47,63 @@ BLOCKING_LABEL: Final[str] = "blocked"
 BLOCKING_LABELS: Final[frozenset[str]] = frozenset(
     {WAITING_FOR_REPLY_LABEL, WAITING_FOR_APPROVAL_LABEL, BLOCKING_LABEL}
 )
+
+
+class WaitingOn(StrEnum):
+    """What an open, non-recurring tracked todo is waiting for until its next check."""
+
+    TIME = "time"
+    EVENT = "event"
+    USER = "user"
+    SUB_TODOS = "sub_todos"
+    UNPLANNED = "unplanned"
+
+
+class NoReplyPlan(StrEnum):
+    """What a todo waiting on the user does when its question expires unanswered."""
+
+    ASK_AGAIN = "ask_again"
+    PROCEED = "proceed"
+    HOLD = "hold"
+
+
+# A next check given as a duration from now ("30m", "4h", "3d", "1w").
+NEXT_CHECK_DURATION: Final[re.Pattern[str]] = re.compile(r"(\d+)\s*([mhdw])")
+NEXT_CHECK_DURATION_UNITS: Final[dict[str, timedelta]] = {
+    "m": timedelta(minutes=1),
+    "h": timedelta(hours=1),
+    "d": timedelta(days=1),
+    "w": timedelta(weeks=1),
+}
+
+
+class WakeReason(StrEnum):
+    """Why a scheduled run of a non-recurring tracked todo woke, read off its open state."""
+
+    SCHEDULED_CHECK = "scheduled_check"
+    BACKUP_CHECK = "backup_check"
+    SUB_TODO_CHECK = "sub_todo_check"
+    PLAN_IT = "plan_it"
+    REASK_DUE = "reask_due"
+    DEFAULT_DUE = "default_due"
+    HOLD_CHECK = "hold_check"
+    HOLD_LAST_CHECK = "hold_last_check"
+    QUESTION_EXPIRED = "question_expired"
+
+
+# How far out a next check may be set, so a todo can't be silenced with a far date.
+# A todo may live for months; it looks again at least this often.
+MAX_NEXT_CHECK_AHEAD: Final[timedelta] = timedelta(days=14)
+MAX_QUESTION_EXPIRY: Final[timedelta] = timedelta(days=7)
+# Once a question is on hold (nothing can move without the answer), checks slow down.
+MAX_HOLD_CHECK_AHEAD: Final[timedelta] = timedelta(days=31)
+# One re-ask per todo, ever; three hold checks with no answer and the todo closes.
+MAX_REASKS: Final[int] = 1
+MAX_HOLD_CHECKS: Final[int] = 3
+# When a run ends with no next step even after being sent back, code sets one this far out.
+OPEN_STATE_REPAIR_CHECK: Final[timedelta] = timedelta(days=1)
+# How soon a parent waiting on its sub-todos runs after one of them completes.
+SUB_TODO_PARENT_WAKE_DELAY: Final[timedelta] = timedelta(seconds=30)
 
 # How much of activity.md (from the end) a scheduled run sees in its prompt:
 # enough for the recent trail, bounded so a long-lived recurring todo does not
@@ -150,6 +212,8 @@ class TodoActivityEvent(StrEnum):
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"
     MAINTENANCE = "maintenance"
+    WAITING_CHANGED = "waiting_changed"
+    OPEN_STATE_REPAIRED = "open_state_repaired"
     SANDBOX_EVENT = "sandbox_event"
     COMPLETED = "completed"
 
@@ -158,10 +222,15 @@ class TodoActivityEvent(StrEnum):
 # (dated "### YYYY-MM-DD" entries, any run log) belongs in activity.md, never here.
 CANVAS_STANDING_RULES_SECTION: Final[str] = "Standing rules"
 CANVAS_KEY_DETAILS_SECTION: Final[str] = "Key Details"
+# What makes the todo done, and where the proof will show up: what every run checks against.
+CANVAS_DONE_WHEN_SECTION: Final[str] = "Done when"
+CANVAS_EVIDENCE_SECTION: Final[str] = "Evidence"
 CANVAS_CURRENT_STATE_SECTION: Final[str] = "Current State"
 CANVAS_LEARNINGS_SECTION: Final[str] = "Learnings"
 CANVAS_SECTIONS: Final[tuple[str, ...]] = (
     CANVAS_STANDING_RULES_SECTION,
+    CANVAS_DONE_WHEN_SECTION,
+    CANVAS_EVIDENCE_SECTION,
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_CURRENT_STATE_SECTION,
     "Context",
@@ -196,6 +265,8 @@ OBSERVATIONS_MAX_CHARS: Final[int] = 12_000
 OBSERVATIONS_PROMPT_MAX_CHARS: Final[int] = 6_000
 # Most of a todo's Key Details its delivery decision reads.
 DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
+# Earlier runs' delivery outcomes shown to comms when it decides whether to message.
+DELIVERY_RUN_HISTORY_LINES: Final[int] = 3
 
 # How many referenced todos a run reads Learnings from.
 REFERENCED_TODOS_PROMPT_LIMIT: Final[int] = 5
@@ -214,6 +285,11 @@ EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
 LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
 
 # The one tracked todo per user that triages mail, owns its threads, briefs each morning and alerts on new mail.
+# Where a ping meets follow-through: one rule, read by comms, the executor and the manual.
+PING_WITH_FOLLOW_THROUGH_RULE: Final[str] = (
+    "A ping that GAIA must also see through is ONE tracked todo whose first run gives the "
+    "ping: never a reminder beside it, and never the reminder alone."
+)
 INBOX_DESK_TITLE: Final[str] = "Inbox desk"
 INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
 PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"

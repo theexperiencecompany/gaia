@@ -2,8 +2,8 @@
 
 import pytest
 
-from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.agents.prompts.comms_prompts import outcome_delivery_note, tracked_todo_delivery_note
+from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.comms import SILENCE_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
 
@@ -12,13 +12,17 @@ pytestmark = pytest.mark.unit
 
 def _note() -> str:
     # Built per test, not at import: mutmut only credits a test with code it runs.
-    return tracked_todo_delivery_note("Watch the deploy", None, None, runs_once=False)
+    return tracked_todo_delivery_note(
+        "Watch the deploy", None, None, runs_once=False, run_history=()
+    )
 
 
 class TestTrackedTodoDeliveryNote:
     def test_a_todo_that_runs_once_always_sends_its_answer(self) -> None:
         """A one-time check the user asked for was silenced 10/10 when its answer was 'no'."""
-        once = tracked_todo_delivery_note("Umbrella check", None, None, runs_once=True)
+        once = tracked_todo_delivery_note(
+            "Umbrella check", None, None, runs_once=True, run_history=()
+        )
 
         assert (
             "This todo runs once, to answer what the user asked when they set it up, so its "
@@ -34,7 +38,9 @@ class TestTrackedTodoDeliveryNote:
     @pytest.mark.regression
     def test_a_todo_that_runs_once_never_answers_with_a_reaction(self) -> None:
         """A reaction is an invalid directive for a todo run, so the awaited answer was dropped."""
-        once = tracked_todo_delivery_note("Umbrella check", None, None, runs_once=True)
+        once = tracked_todo_delivery_note(
+            "Umbrella check", None, None, runs_once=True, run_history=()
+        )
 
         assert (
             "There is no message of theirs to react to, so never answer with a reaction."
@@ -46,11 +52,15 @@ class TestTrackedTodoDeliveryNote:
             wrap_agent_payload(
                 AgentTag.DELIVERY_INSTRUCTIONS,
                 "This is the result of a background run of the user's tracked todo \"Watch the "
-                'deploy". Nobody asked for it just now: it ran on its schedule or on an event it '
+                'deploy". The run cannot message the user: only you reach them, so nothing in its '
+                "report is something they have seen. Nothing from this todo has reached them yet. "
+                "Nobody asked for it just now: it ran on its schedule or on an event it "
                 "watches, and its full record is already kept in the todo. Message the user when "
                 "the report shows something new they need to know or act on, a decision or "
-                "blocker only they can settle that they have not already been asked about, or a "
-                "result they asked to hear every time (always send that one). Anything else is "
+                "blocker only they can settle that they have not already been asked about, a "
+                "result they asked to hear every time (always send that one), or the nudge or "
+                "reminder this todo exists to give, even when it repeats the last one. Anything "
+                "else is "
                 "not worth a message: a routine check, a no-op, nothing new, a question they "
                 "already have, open items you already raised that are still open (a reply they "
                 "owe, an approval they have not given), a run that only kept notes. A report that "
@@ -90,7 +100,7 @@ class TestTrackedTodoDeliveryNote:
     def test_the_todos_standing_rules_close_the_note_and_bind_it(self) -> None:
         """Regression: an Inbox desk briefing with content was silenced as routine under a rule to deliver every one."""
         note = tracked_todo_delivery_note(
-            "Word count", "- Tell me the result every time.", None, runs_once=False
+            "Word count", "- Tell me the result every time.", None, runs_once=False, run_history=()
         )
 
         assert (
@@ -105,14 +115,14 @@ class TestTrackedTodoDeliveryNote:
         ) in note
 
     def test_a_quiet_hours_nothing_new_is_silence_not_an_alert(self) -> None:
-        note = tracked_todo_delivery_note("Inbox desk", None, None, runs_once=False)
+        note = tracked_todo_delivery_note("Inbox desk", None, None, runs_once=False, run_history=())
 
         assert "A report that says only that nothing is new is that too" in note
         assert "the next briefing carries the rest" in note
 
     def test_key_details_follow_the_rules_as_details_of_their_own(self) -> None:
         note = tracked_todo_delivery_note(
-            "Word count", "- Be brief.", "- tell me every time", runs_once=False
+            "Word count", "- Be brief.", "- tell me every time", runs_once=False, run_history=()
         )
 
         assert (
@@ -120,3 +130,53 @@ class TestTrackedTodoDeliveryNote:
             "- tell me every time\n"
         ) in note
         assert note.index("Message the user when") < note.index("- Be brief.")
+
+
+class TestTheNarratorKnowsWhatReachedTheUser:
+    """Seen live: a nudge todo's report said "reminder issued"; comms took it as sent and kept quiet."""
+
+    def test_it_is_told_the_run_cannot_message_the_user(self) -> None:
+        note = tracked_todo_delivery_note("Call dad", None, None, runs_once=False, run_history=())
+        assert "The run cannot message the user" in note
+
+    def test_gaias_record_of_earlier_runs_is_in_front_of_it(self) -> None:
+        history = [
+            "- 2026-11-05T06:30:00+00:00 [run_finished] run r1: sent: call dad today",
+            "- 2026-11-06T06:32:00+00:00 [run_finished] run r2: kept quiet: routine",
+        ]
+        note = tracked_todo_delivery_note(
+            "Call dad", None, None, runs_once=False, run_history=history
+        )
+        assert (
+            "GAIA's own record of what this todo's last runs did with their message:\n"
+            f"{history[0]}\n{history[1]}\n"
+        ) in note
+
+    def test_with_no_earlier_runs_it_knows_nothing_has_reached_them(self) -> None:
+        note = tracked_todo_delivery_note("Call dad", None, None, runs_once=False, run_history=())
+        assert "Nothing from this todo has reached them yet" in note
+
+    def test_a_nudge_the_todo_exists_to_give_is_worth_repeating(self) -> None:
+        note = tracked_todo_delivery_note("Call dad", None, None, runs_once=False, run_history=())
+        assert "even when it repeats the last one" in note
+
+
+class TestTheOutcomeLineCommsNarratesUnder:
+    def test_a_plain_text_stop_that_broke_no_rule_adds_nothing(self) -> None:
+        assert outcome_delivery_note(None, None) == ""
+
+    def test_a_verified_outcome_gets_its_reply_shape(self) -> None:
+        assert outcome_delivery_note(OutcomeState.BLOCKED, None) == (
+            "\n\n<delivery_instructions>\nOutcome: blocked. Say plainly what did not happen "
+            "and the smallest thing needed from them.\n</delivery_instructions>\n"
+        )
+
+    @pytest.mark.parametrize("declared", [OutcomeState.DONE, None])
+    def test_an_unbacked_claim_is_reported_as_not_verified(
+        self, declared: OutcomeState | None
+    ) -> None:
+        assert outcome_delivery_note(declared, "no work call succeeded") == (
+            "\n\n<delivery_instructions>\nOutcome: NOT verified (no work call succeeded). "
+            "Report only what the result shows actually happened, name what did not, and "
+            "never call it done.\n</delivery_instructions>\n"
+        )

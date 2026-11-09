@@ -13,6 +13,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { BOT_LINKS } from "@/features/bots/constants";
 
 import {
   ChatDemo,
@@ -62,7 +63,7 @@ const PLATFORMS: Platform[] = [
     icon: "/images/icons/macos/whatsapp.webp",
     primaryAction: {
       label: "Message on WhatsApp",
-      href: "https://wa.me/12762088737",
+      href: BOT_LINKS.whatsapp,
       external: true,
     },
     phone: { screenBackground: "#F6F6F6" },
@@ -99,7 +100,7 @@ const PLATFORMS: Platform[] = [
     icon: "/images/icons/macos/telegram.webp",
     primaryAction: {
       label: "Message on Telegram",
-      href: "https://t.me/heygaia_bot",
+      href: BOT_LINKS.telegram,
       external: true,
     },
     phone: { screenBackground: "#F6F6F6" },
@@ -137,7 +138,7 @@ const PLATFORMS: Platform[] = [
     icon: "/images/icons/macos/slack.webp",
     primaryAction: {
       label: "Install in Slack",
-      href: "/slack-bot",
+      href: BOT_LINKS.slack,
     },
     phone: {},
     demo: {
@@ -173,7 +174,7 @@ const PLATFORMS: Platform[] = [
     icon: "/images/icons/macos/discord.webp",
     primaryAction: {
       label: "Add to Your Server",
-      href: "https://heygaia.io/discord-bot",
+      href: BOT_LINKS.discord,
       external: true,
     },
     phone: { screenBackground: "#1E1F22", statusBarTone: "light" },

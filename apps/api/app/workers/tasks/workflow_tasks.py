@@ -32,6 +32,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
     RateLimitExceededException,
 )
+from app.config.rate_limits import RateLimitPeriod
 from app.config.settings import settings
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
@@ -48,7 +49,7 @@ from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
-from app.decorators import enforce_daily_cost_budget
+from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.decorators.rate_limiting import enforce_tiered_limit
 from app.models.chat_models import MessageModel
@@ -80,6 +81,7 @@ from app.models.workflow_models import (
     WorkflowUpdate,
 )
 from app.services.analytics_service import capture
+from app.services.cost_budget import format_reset_date
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.notification_service import notification_service
 from app.services.triggers.batching import (
@@ -450,12 +452,19 @@ async def _rate_limit_failure_content(
 
     if isinstance(error, CostBudgetExceededException):
         # Budget (cost) wall, not the execution-count quota — different cause,
-        # different copy. Runs resume after the daily reset; the caller's
+        # different copy. Runs resume after the window resets; the caller's
         # re-arm keeps the cron.
-        body = (
-            f"'{workflow.title}' couldn't run. You're out of "
-            f"AI usage for today. It will run again after your usage resets."
-        )
+        if error.period is RateLimitPeriod.MONTH and error.reset_time is not None:
+            body = (
+                f"'{workflow.title}' couldn't run. You've used this month's AI usage "
+                f"allowance. It will run again after it resets on "
+                f"{format_reset_date(error.reset_time)}."
+            )
+        else:
+            body = (
+                f"'{workflow.title}' couldn't run. You're out of "
+                f"AI usage for today. It will run again after your usage resets."
+            )
         if not is_pro:
             body += f" Upgrade to {upgrade_plan} for much higher limits."
     elif reset_time_str:
@@ -788,7 +797,7 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
     """
     # ONE charge per fire regardless of path: a fallback to the agent must not
     # bill twice, and charging up front stops an over-quota user before any
-    # side effect. Real consumption is metered separately by enforce_daily_cost_budget.
+    # side effect. Real consumption is metered separately by enforce_cost_budget.
     workflow, workflow_id, context, user = fire.workflow, fire.workflow_id, fire.context, fire.user
     reservation = fire.reservation
     await enforce_tiered_limit(workflow.user_id, "trigger_workflow_executions")
@@ -1579,7 +1588,7 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
         # Cost wall BEFORE any execution record or LLM work: a spent daily budget
         # skips the run cleanly (no "failed" row); the except branch notifies and
         # re-arms the next occurrence so a recurring workflow resumes after reset.
-        await enforce_daily_cost_budget(
+        await enforce_cost_budget(
             workflow.user_id,
             feature_key="trigger_workflow_executions",
         )

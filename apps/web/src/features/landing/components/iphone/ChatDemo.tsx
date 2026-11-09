@@ -5,6 +5,7 @@
 "use client";
 
 import { DiscordIcon, SlackIcon, TelegramIcon, WhatsappIcon } from "@icons";
+import type { BotPlatform } from "@shared/constants/platforms";
 import Image from "next/image";
 import type React from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
@@ -13,12 +14,7 @@ import { RaisedButton } from "@/components/ui/raised-button";
 import { cn } from "@/lib/utils";
 import { vanityTarget } from "../../../../../vanity-redirects.mjs";
 
-export type ChatPlatform =
-  | "imessage"
-  | "whatsapp"
-  | "slack"
-  | "discord"
-  | "telegram";
+export type ChatPlatform = BotPlatform;
 
 export interface ChatMessageItem {
   id?: string | number;
