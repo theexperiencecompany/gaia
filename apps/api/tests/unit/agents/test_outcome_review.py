@@ -137,6 +137,22 @@ class TestReviewOutcome:
 
         assert review.verified
 
+    def test_a_schedule_sent_as_json_text_through_the_execute_proxy_is_seen(self) -> None:
+        """Execute's data can arrive JSON-encoded; reviewing it once raised and lost the result."""
+        review = review_outcome(
+            [
+                _task(),
+                *_call(
+                    "execute",
+                    {"tool_name": "create_tracked_todo", "data": '{"recurrence": "weekly"}'},
+                    "c1",
+                ),
+                *_finish("schedule"),
+            ]
+        )
+
+        assert review.verified
+
     def test_subscribe_needs_a_trigger_watch(self) -> None:
         unbacked = review_outcome(
             [_task(), *_call("create_tracked_todo", {}, "c1"), *_finish("subscribe")]

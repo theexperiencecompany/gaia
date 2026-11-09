@@ -200,6 +200,8 @@ async def call_executor(
         else ""
     )
 
+    # Every dispatch spends a pending ask: only the very next turn can be its answer.
+    answers_gaias_question = await spend_confirmation(conversation_id)
     composed_task = compose_executor_brief(
         task,
         acceptance_criteria,
@@ -210,8 +212,7 @@ async def call_executor(
             desired_outcome=desired_outcome,
             time_horizon=time_horizon,
             defaults_assumed=tuple(defaults_assumed or ()),
-            irreversible_approved=irreversible_approved
-            and await spend_confirmation(conversation_id),
+            irreversible_approved=irreversible_approved and answers_gaias_question,
         ),
     )
 

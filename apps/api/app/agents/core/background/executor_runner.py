@@ -617,8 +617,15 @@ async def _finalize_executor_run(
 
 
 async def _review_outcome_note(conversation_id: str, ctx: SubagentExecutionContext) -> str:
-    """Check the run's declared outcome against its own tool calls; the note comms delivers under."""
-    review = review_run(await thread_messages(ctx))
+    """Check the run's declared outcome against its own tool calls; the note comms delivers under.
+
+    The note is an addition to the result, so a review that cannot run drops the note, never the result.
+    """
+    try:
+        review = review_run(await thread_messages(ctx))
+    except Exception:  # the thread read is a checkpointer call; the result still delivers
+        log.error(f"{LogTag.AGENT} Executor outcome review failed")
+        return ""
     if review.verified and review.declared is OutcomeState.ASK:
         await record_confirmation_asked(conversation_id)
     log.set(

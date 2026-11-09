@@ -247,10 +247,14 @@ def broadcast(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 class TestIrreversibleApprovalNeedsAnAsk:
     """The approval flag counts only as the answer to a confirmation GAIA asked for."""
 
-    async def _dispatched_brief(self, spawned_runs: list[dict[str, Any]]) -> str:
-        await call_executor_with(
-            config=config_for(), task="delete all 3 todos", irreversible_approved=True
-        )
+    async def _dispatched_brief(
+        self,
+        spawned_runs: list[dict[str, Any]],
+        task: str = "delete all 3 todos",
+        *,
+        approved: bool = True,
+    ) -> str:
+        await call_executor_with(config=config_for(), task=task, irreversible_approved=approved)
         await drain_background_tasks()
         return str(spawned_runs[-1]["task"])
 
@@ -274,6 +278,18 @@ class TestIrreversibleApprovalNeedsAnAsk:
 
         assert IRREVERSIBLE_APPROVED_BRIEF in first
         assert IRREVERSIBLE_UNAPPROVED_BRIEF in second
+
+    async def test_the_reply_after_a_question_spends_it_whatever_that_reply_asks(
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        await record_confirmation_asked(CONVERSATION_ID)
+
+        await self._dispatched_brief(spawned_runs, "book it for tuesday", approved=False)
+        await release_lock_if_owned(CONVERSATION_ID, "stream-1", spawned_runs[-1]["run"].task_id)
+        later = await self._dispatched_brief(spawned_runs)
+
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF in later
+        assert IRREVERSIBLE_APPROVED_BRIEF not in later
 
     async def test_an_unanswered_question_stops_counting_as_asked_after_its_ttl(
         self, fake_redis: AsyncRedisCommands

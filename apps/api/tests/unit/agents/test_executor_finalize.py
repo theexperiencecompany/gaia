@@ -373,6 +373,24 @@ class TestTheRunsDeclaredOutcomeIsCheckedAtFinalize:
         assert "warnings" not in event
         assert await spend_confirmation("conv-1") is False
 
+    async def test_a_review_that_cannot_read_the_thread_still_delivers_the_result(
+        self, boundaries: _Boundaries
+    ) -> None:
+        create_session("s1", RunKind.QUEUED)
+        unreadable = AsyncMock(side_effect=ConnectionError("checkpointer down"))
+        with patch.object(er, "thread_messages", unreadable):
+            async with log_context("executor_finalize_test"):
+                await er._finalize_executor_run(
+                    _run(RunKind.QUEUED), TASK, "result", "final", _executor_ctx()
+                )
+                event = dict(log.get())
+
+        assert boundaries.deliver.await_args.args[1] == "result"
+        assert boundaries.deliver.await_args.kwargs["outcome_note"] == ""
+        assert [(e["msg"], e["error_type"]) for e in event["errors"]] == [
+            (f"{LogTag.AGENT} Executor outcome review failed", "ConnectionError")
+        ]
+
 
 class TestDoneSignalAndOrdering:
     @pytest.mark.parametrize("cancelled", [True, False])

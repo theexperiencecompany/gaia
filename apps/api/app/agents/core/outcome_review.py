@@ -10,9 +10,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.agents.core.delegation_window import current_delegation
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.agents import (
     OUTCOME_COMPLETE_TOOL,
     OUTCOME_SCHEDULE_ARGS,
@@ -22,7 +23,6 @@ from app.constants.agents import (
     TODO_WAKES_AGAIN_TAG,
     OutcomeState,
 )
-from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import COMPLETION_NON_WORK_TOOLS
 from app.override.langgraph_bigtool.utils import State
@@ -56,19 +56,9 @@ def _is_answered(call: ToolCall, answered: set[str]) -> bool:
     return call["id"] in answered
 
 
-class _ExecuteArgs(BaseModel):
-    """The arguments of the execute proxy: the tool it runs and that tool's own arguments."""
-
-    tool_name: str = ""
-    data: dict[str, object] = Field(default_factory=dict)
-
-
 def _effective_call(call: ToolCall) -> tuple[str, Mapping[str, object]]:
     """Return the tool a call really ran, seen through the execute proxy."""
-    if call["name"] == EXECUTE_TOOL_NAME:
-        proxied = _ExecuteArgs.model_validate(call["args"])
-        return proxied.tool_name, proxied.data
-    return call["name"], call["args"]
+    return unwrap_execute_call(call["name"], call["args"])
 
 
 def _wakes_later(call: ToolCall) -> bool:
