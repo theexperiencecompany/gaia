@@ -5,6 +5,7 @@ the tests pin argument parsing, the delegation call, and the result report —
 the script was at 0% coverage.
 """
 
+import argparse
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,7 +21,7 @@ async def test_run_delegates_and_reports() -> None:
         sync_user_workspaces, "sync_stale_user_workspaces", new_callable=AsyncMock
     ) as sync:
         sync.return_value = result
-        args = sync_user_workspaces.argparse.Namespace(all=False, force=False)
+        args = argparse.Namespace(all=False, force=False)
         code = await sync_user_workspaces._run(args)
 
     assert code == 0
