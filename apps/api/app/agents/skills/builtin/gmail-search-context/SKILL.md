@@ -73,7 +73,13 @@ free-text matches. Each line is one whole message with its body, so narrow first
 messages that need it. `query_json` returns 50 records unless you raise `limit`, and says
 nothing about the rest, so set `limit` to the record count the save note gives. It reads at
 most 20,000 records or 16 MB of a file and says "input truncated" when it stops early; then
-re-fetch in smaller date ranges and query each saved file, rather than trusting a partial list. When every message needs reading, split the file's lines across
+re-fetch in smaller date ranges and query each saved file, rather than trusting a partial list.
+Its output also stops at 30,000 characters ("output truncated"), about 150 messages of headers:
+when it does, re-fetch the window as consecutive Gmail date ranges (`after:`/`before:`) small
+enough that each saved file's headers fit, covering the whole window between them (`time` is a
+text date, so `gt`/`lt` on it does not order by date), and report any range you could not get
+through.
+When every message needs reading, split the file's lines across
 parallel `spawn_subagent` calls in ONE turn, each told to `read(<path>, offset=<line>,
 limit=<count>)` its range a few dozen lines at a time and return only a distilled result,
 never raw bodies; then merge, deduping by `id` and grouping by `threadId`. Without
