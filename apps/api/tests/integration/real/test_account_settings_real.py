@@ -95,27 +95,6 @@ class TestPreferences:
         assert (await user_doc(mongo_db))["timezone"] == "Asia/Kolkata"
 
 
-class TestCustomInstructions:
-    async def test_instructions_persist_verbatim_up_to_the_cap(self, mongo_db):
-        text = "Always answer with an example." * 15  # 420 chars
-
-        await account_settings.set_custom_instructions(USER_ID, instructions=text)
-
-        stored = (await user_doc(mongo_db))["onboarding"]["preferences"]["custom_instructions"]
-        assert stored == text
-
-    async def test_clearing_writes_null_not_a_stale_string(self, mongo_db):
-        await mongo_db["users"].update_one(
-            {"_id": USER_OID},
-            {"$set": {"onboarding.preferences.custom_instructions": "old rules"}},
-        )
-
-        await account_settings.set_custom_instructions(USER_ID, instructions="")
-
-        stored = (await user_doc(mongo_db))["onboarding"]["preferences"]["custom_instructions"]
-        assert stored is None
-
-
 class TestVoiceSelection:
     async def test_selected_voice_id_persists_through_the_real_validator(self, mongo_db):
         """Mock only the ElevenLabs data source; the real set_user_voice validation and repository write run."""

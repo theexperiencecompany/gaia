@@ -1,0 +1,48 @@
+{
+  "slug": "meeting-scheduling",
+  "term": "Meeting Scheduling",
+  "metaTitle": "What Is Meeting Scheduling? How Long Meetings Should Be",
+  "metaDescription": "Meeting scheduling is finding a time every attendee can make. Learn the manual process, common tools, and how GAIA schedules meetings for you.",
+  "definition": "Meeting scheduling is the process of choosing a time, duration, and location for a meeting that works for every required attendee, including sending the invite and handling changes.",
+  "extendedDescription": "Every meeting starts with a coordination problem: several busy people, several calendars, and one shared hour. Manual scheduling solves it with messages, polls, and calendar archaeology. It works, but it scales badly. Each additional attendee multiplies the back-and-forth, and recurring meetings drift as schedules change.\n\nScheduling tools reduce the load in layers. Shared calendars show availability. Booking pages let guests pick from open slots. Polls collect preferences from groups. Automated schedulers go one step further and pick the slot themselves, weighing working hours, time zones, buffers, and meeting load.\n\nGood scheduling also covers the edges: clear agendas so invitees know why they are needed, accurate durations instead of default hour blocks, and rescheduling that notifies everyone when plans move. Teams that treat scheduling as a system rather than a chore spend less time coordinating and more time in meetings that matter.",
+  "keywords": [
+    "meeting scheduling",
+    "what is meeting scheduling",
+    "automated meeting scheduling",
+    "ai meeting scheduler",
+    "schedule meetings automatically",
+    "meeting scheduling software"
+  ],
+  "category": "calendar",
+  "howGaiaUsesIt": "GAIA schedules meetings with full context. It compares availability across connected calendars, respects time zones and working hours, and proposes times that fit each attendee. GAIA also watches for conflicts after the invite goes out, so double bookings get flagged before they cause missed meetings.",
+  "relatedTerms": [
+    "scheduling-automation",
+    "ai-meeting-assistant",
+    "calendar-automation",
+    "meeting-intelligence",
+    "time-zone-management"
+  ],
+  "relatedComparisons": [
+    "calendly",
+    "cal",
+    "fantastical"
+  ],
+  "faqs": [
+    {
+      "question": "What is the hardest part of meeting scheduling?",
+      "answer": "Finding a slot that fits everyone across calendars and time zones, then keeping it valid when schedules change. Most of the work is coordination overhead, not the meeting itself."
+    },
+    {
+      "question": "Should recurring meetings have a fixed slot?",
+      "answer": "Fixed slots reduce coordination cost and build routine, but they should be reviewed when attendees or time zones change. A scheduler that flags stale recurring meetings keeps them from becoming calendar clutter."
+    },
+    {
+      "question": "How long should meetings be?",
+      "answer": "As long as the decision or discussion needs, and no longer. Default hour-long blocks waste time. Shorter, purpose-built slots with clear agendas usually produce the same outcomes."
+    },
+    {
+      "question": "Can GAIA reschedule when conflicts appear?",
+      "answer": "Yes. GAIA detects conflicts across your connected calendars and raises them early, so you can move or decline meetings before overlaps turn into missed commitments."
+    }
+  ]
+}

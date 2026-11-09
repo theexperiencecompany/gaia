@@ -4,7 +4,7 @@ name: Browser Eval
 # models drive a Chrome host through 22 tasks on real sites, each scored on what
 # the run reported. On demand only and never a required check: it bills model
 # calls and loads live third-party sites, so a red run means "read the report",
-# not "the PR is broken". The hermetic browser slice in main.yml is the gate.
+# not "the PR is broken". The hermetic browser slice in ci.yml is the gate.
 #
 # Needs the EVAL_OPENROUTER_API_KEY repository secret (the agent, its text model
 # and Jev's decisions all run on OpenRouter).

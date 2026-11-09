@@ -124,7 +124,7 @@ CRITICAL REQUIREMENTS:
 **Steps are GENERIC descriptions, NOT specific tool calls!**
 
 - **You generate WHAT should happen**, the execution LLM will decide HOW
-- **Use descriptive titles**: "Search for client context" not "GMAIL_SEARCH_MESSAGES"
+- **Use descriptive titles**: "Search for client context" not "GMAIL_FETCH_EMAILS"
 - **Focus on intent**: The `category` provides routing, the `description` provides context
 - **Let execution decide**: The executing LLM has full context and will choose optimal tools
 - **Think high-level**: "Create follow-up reminder" instead of "create_todo with title=..."

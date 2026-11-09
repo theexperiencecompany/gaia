@@ -69,7 +69,7 @@ Completes in this conversation. Create → delegate → document → complete.
 
 ```
 search_todo_context → (nothing relevant found) → create_tracked_todo
-→ handoff to subagent → collect activity report
+→ activate the integration and do the work → note ids and outcomes
 → edit activity.md (dated entry at the end) and canvas.md (Current State, Learnings)
 → complete_tracked_todo
 ```
@@ -130,13 +130,7 @@ edit(
 
 ## Standing rules: the user's feedback
 
-When the user tells GAIA how a todo should behave from now on (comms hands it over as "Apply the user's feedback to this todo: ..."), record it in exactly one place, so every later run obeys it:
-
-| Feedback | Where it goes |
-|---|---|
-| How this todo behaves: what it shows or skips, what it does on its own, how it reports ("stop showing me newsletters", "put flights on my calendar automatically") | one dated line in its canvas.md `## Standing rules` |
-| How GAIA writes email, to one person or in general ("write to Sarah more formally", "never draft replies to my landlord") | the Gmail integration instructions: `get_integration_instructions("gmail")`, then `update_integration_instructions` with the full text, so drafting in chat obeys it too |
-| When it runs ("brief me at 7") | `update_tracked_todo` with `recurrence` / `scheduled_at` |
+Where the user's feedback on a todo goes is "THE USER'S FEEDBACK ON A TODO" in your system prompt; follow it as written there. A Standing rule is one dated line:
 
 ```python
 edit(
@@ -146,15 +140,14 @@ edit(
 )
 ```
 
-One short line per rule. Rewrite a rule the new feedback changes instead of adding a contradicting one; remove a rule only when the user retracts it. Every run obeys its own Standing rules over its defaults, and a sub-todo's run also obeys its parent's.
 
 ## activity.md
 
-Chronological, oldest first, one dated entry per event. After subagents return, record their structured reports here:
+Chronological, oldest first, one dated entry per event. After acting (or after a spawned subagent returns), record what was done here:
 
 ```markdown
 - 2026-03-26T09:12:00+00:00 Gmail agent: sent email to rahul@example.com re: Q2 contract renewal.
-  Tools: GMAIL_CREATE_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b. Draft approved and sent.
+  Tools: GMAIL_CREATE_EMAIL_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b. Draft approved and sent.
 - 2026-03-26T09:14:00+00:00 Linear agent: created issue LIN-423 "Track Q2 contract renewal".
   Tools: LINEAR_CREATE_ISSUE. URL: https://linear.app/team/LIN-423.
 - 2026-03-27T09:00:00+00:00 [run_started] scheduled run (conversation 3f9a1c2e)
@@ -267,7 +260,7 @@ References are appended (not replaced) and must be the user's own todos. Each ru
 
 Before calling `complete_tracked_todo`, `edit` the `## Learnings` section of canvas.md. Future similar tasks will reference these.
 
-**Good:** "Sarah responds in 2-3 days", "approval takes 1 week", "batch the Linear + Notion updates in one handoff"
+**Good:** "Sarah responds in 2-3 days", "approval takes 1 week", "batch the Linear + Notion updates in one pass"
 **Bad:** "went well", restating the timeline, obvious observations
 
 ## Lifecycle
@@ -280,7 +273,7 @@ Before calling `complete_tracked_todo`, `edit` the `## Learnings` section of can
 
 ### After Acting
 
-- Add dated entries to activity.md from subagent reports
+- Add dated entries to activity.md for what you did (and from spawned subagents' results)
 - Rewrite Current State in canvas.md
 - Update properties if needed (`update_tracked_todo`)
 
@@ -307,7 +300,7 @@ create_tracked_todo(
     title="Sent Q2 report to Sarah",
     initial_canvas="# Sent Q2 report to Sarah\n\n## Key Details\n- Recipient: sarah@example.com\n\n## Current State\n\n## Learnings\n",
 )
-# handoff to Gmail → collect report → add entry to activity.md → complete
+# activate gmail → draft, confirm, send via execute → add entry to activity.md → complete
 ```
 
 ### Long-running: follow-up with expiry
@@ -321,7 +314,7 @@ create_tracked_todo(
     initial_canvas="# Rahul Contract Follow-up\n\n## Key Details\n- Email: rahul@example.com\n- Thread ID: 18f3a2b\n- Contract: Q2 vendor agreement\n\n## Current State\nInitial email sent. Waiting for reply.\n\n## Learnings\n",
 )
 # then record the send at the end of activity.md:
-# - 2026-03-25T14:02:00+00:00 Gmail agent: sent email re: Q2 contract. Tools: GMAIL_CREATE_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b.
+# - 2026-03-25T14:02:00+00:00 Gmail agent: sent email re: Q2 contract. Tools: GMAIL_CREATE_EMAIL_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b.
 ```
 
 ### Recurring: work that writes, then reports

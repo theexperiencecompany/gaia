@@ -24,16 +24,19 @@ from app.agents.core.background import (
     executor_runner as er,
     result_delivery as rd,
     workflow_completion,
+    workflow_platform_delivery as wpd,
 )
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
+    TodoRun,
 )
 from app.agents.prompts.comms_prompts import (
     INTERACTIVE_DELIVERY_NOTE,
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
+from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
     EXECUTOR_NARRATION_FAILED_MESSAGE,
@@ -41,14 +44,19 @@ from app.constants.executor import (
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
+from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
 from app.constants.workflows import WorkflowDelivery
 from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
+from app.models.workflow_models import TriggerType
+from app.services.delivery.chat_channel import InApp
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved
+from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 
@@ -56,6 +64,7 @@ from tests.helpers import captured_wide_event
 pytestmark = pytest.mark.usefixtures("fake_redis")
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+NO_CHAT_APP = InApp(reason="no_chat_app")
 
 
 def _run(
@@ -180,7 +189,11 @@ class TestAWorkflowAnswerCarriesItsFollowUpsInline:
             ),
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_workflow_completion", new_callable=AsyncMock),
+            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
+            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)),
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ),
         ):
             await rd.deliver_result(
                 _run(workflow=True), result_text="done", result_type="final", tool_data=None
@@ -350,10 +363,16 @@ class TestWorkflowResultReachesThePlatformDelivery:
             ),
             patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(
-                workflow_completion, "deliver_result_to_platforms", new_callable=AsyncMock
+                rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None
+            ) as conversation_source,
+            patch.object(
+                wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)
+            ) as resolve_target,
+            patch.object(
+                wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
             ) as deliver,
+            patch.object(wpd, "capture") as capture,
             patch.object(
                 workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
             ) as notify,
@@ -362,12 +381,62 @@ class TestWorkflowResultReachesThePlatformDelivery:
                 _run(workflow=True), result_text="done", result_type="final", tool_data=None
             )
 
+        capture.assert_called_once_with(
+            UserId(USER_ID),
+            WorkflowResultDelivered(
+                workflow_id="wf-1",
+                outcome="delivered",
+                destination="in_app",
+                destination_basis="no_chat_app",
+            ),
+        )
+        conversation_source.assert_awaited_once_with("conv-1", USER_ID)
+        resolve_target.assert_awaited_once_with(USER_ID)
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
         assert kwargs["user"] == AuthenticatedUser(user_id=USER_ID)
-        assert kwargs["user_id"] == USER_ID
         assert kwargs["origin"] == ('workflow "Morning digest" (id wf-1), tracked todo (id todo-9)')
+        assert kwargs["target"] is NO_CHAT_APP
         notify.assert_awaited_once()  # the in-app badge still fires alongside
+
+    async def test_a_failed_target_lookup_loses_only_the_chat_app_copy(self) -> None:
+        """Regression: the lookup ran before the save, so its failure dropped the saved result and the badge."""
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="done"
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                wpd,
+                "resolve_proactive_target",
+                AsyncMock(side_effect=ConnectionError("mongo down")),
+            ),
+            patch.object(
+                wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
+            ) as deliver,
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ) as notify,
+        ):
+            async with captured_wide_event() as event:
+                narrated, message_id = await rd.deliver_result(
+                    _run(workflow=True), result_text="done", result_type="final", tool_data=None
+                )
+
+        save.assert_awaited_once()
+        notify.assert_awaited_once()
+        deliver.assert_not_awaited()
+        assert (narrated, message_id is not None) == ("done", True)
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} workflow result: chat app lookup failed, not sent to the chat app",
+                "workflow_id": "wf-1",
+                "error": "mongo down",
+                "error_type": "ConnectionError",
+            }
+        ]
 
 
 class TestGetConversationSource:
@@ -430,6 +499,41 @@ class TestPersistCancelledRun:
         narrate.assert_not_awaited()  # the run was stopped — no re-voicing
         ws.assert_not_awaited()  # no re-broadcast of already-streamed data
 
+    @pytest.mark.parametrize(
+        ("todo_run", "cap"),
+        [
+            (None, CONVERSATION_MAX_MESSAGES),
+            (
+                TodoRun(
+                    todo_id="todo-1",
+                    trigger_type=TriggerType.SCHEDULED_TODO,
+                    message_class=ProactiveMessageClass.ROUTINE,
+                ),
+                TODO_CONVERSATION_MAX_MESSAGES,
+            ),
+        ],
+        ids=["chat", "todo-chat"],
+    )
+    async def test_a_stopped_runs_cards_keep_the_conversations_cap(
+        self, todo_run: TodoRun | None, cap: int
+    ) -> None:
+        """Regression: an explicit None for a plain chat switched off the cap every conversation has."""
+        run = replace(
+            _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9"), todo_run=todo_run
+        )
+
+        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
+            await rd.persist_cancelled_run(run, CARDS)
+
+        assert save.await_args.kwargs["max_messages"] == cap
+
+    async def test_a_bot_reply_keeps_the_conversations_cap(self) -> None:
+        bot_message = MessageModel(type="bot", response="hi")
+        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
+            await rd._save_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
+
+        assert save.await_args.kwargs["max_messages"] == CONVERSATION_MAX_MESSAGES
+
     async def test_no_cards_writes_nothing(self) -> None:
         run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
 
@@ -482,11 +586,11 @@ class TestDeliveryLatency:
             await rd._narrate_result(_run(), "raw", "final", "")
         assert _narration_count("success") == before + 1
 
-    async def test_save_bot_message_records_span(self) -> None:
+    async def test_save_message_records_span(self) -> None:
         before = _persist_count("save_bot_message")
         bot_message = MessageModel(type="bot", response="hi", date="2026-01-01")
         with patch.object(rd, "update_messages", new_callable=AsyncMock):
-            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
+            assert await rd._save_message("conv-1", {"user_id": USER_ID}, bot_message) is True
         assert _persist_count("save_bot_message") == before + 1
 
     async def test_cancelled_persist_records_exact_seconds(self) -> None:
@@ -502,7 +606,7 @@ class TestDeliveryLatency:
             await rd.persist_cancelled_run(run, CARDS)
         assert REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) == before + 0.75
 
-    async def test_save_bot_message_records_exact_seconds(self) -> None:
+    async def test_save_message_records_exact_seconds(self) -> None:
         labels = {"op": "save_bot_message"}
         before = REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) or 0.0
         bot_message = MessageModel(type="bot", response="hi", date="2026-01-01")
@@ -510,7 +614,7 @@ class TestDeliveryLatency:
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd.time, "perf_counter", side_effect=[7.0, 7.25]),
         ):
-            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
+            assert await rd._save_message("conv-1", {"user_id": USER_ID}, bot_message) is True
         assert REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) == before + 0.25
 
     async def test_narration_records_exact_seconds(self) -> None:
@@ -2621,7 +2725,7 @@ async def _deliver_run(
             patch.object(rd, "_spawn_deferred_follow_ups") as spawn,
             patch.object(rd, "capture") as capture,
             patch.object(
-                workflow_completion, "deliver_result_to_platforms", new_callable=AsyncMock
+                workflow_completion, "deliver_workflow_result", new_callable=AsyncMock
             ) as to_platforms,
             patch.object(
                 workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
@@ -2834,6 +2938,17 @@ class TestAWorkflowResult:
         delivered.held.assert_not_awaited()
         assert delivered.returned == (None, None)
 
+    @pytest.mark.parametrize("message_class", list(ProactiveMessageClass))
+    async def test_the_runs_quiet_hours_class_reaches_the_delivery(
+        self, message_class: ProactiveMessageClass
+    ) -> None:
+        """A run the gate let through quiet hours as urgent must not be held at delivery."""
+        run = replace(_run(workflow=True), workflow_message_class=message_class)
+
+        delivered = await _deliver_run(run, _Seams(comms_text="Digest ready.", source=None))
+
+        assert delivered.to_platforms.await_args.kwargs["message_class"] is message_class
+
     async def test_a_workflow_react_falls_back_to_the_text_ack(self) -> None:
         delivered = await _deliver_run(
             _run(workflow=True), _Seams(comms_text="<EMOJI>👍</EMOJI>", source=None)
@@ -2944,9 +3059,7 @@ class TestWorkflowNotificationIsTraceable:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(
-                workflow_completion, "deliver_result_to_platforms", new_callable=AsyncMock
-            ),
+            patch.object(workflow_completion, "deliver_workflow_result", new_callable=AsyncMock),
             patch.object(
                 workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
             ) as completion,

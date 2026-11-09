@@ -37,6 +37,7 @@ from app.agents.context.slots import (
     SUMMARY_SOURCE,
     PromptSlot,
     is_conversation_summary,
+    is_gaia_authored_note,
     slot_of,
 )
 from app.agents.llm.client import SILENT_LLM_CONFIG
@@ -164,7 +165,13 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         if not summarized:
             return None
 
-        summary_text = await self._asummarize(summarized)
+        # Notes are folded away with the history but never summarized: a stale
+        # "the user is on X" line restated as summary text would read as current.
+        to_summarize = [m for m in summarized if not is_gaia_authored_note(m)]
+        if not to_summarize:
+            return None
+
+        summary_text = await self._asummarize(to_summarize)
         if summary_text is None:
             return None
         summary_message = self._build_new_messages(summary_text)[0]
@@ -273,7 +280,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         return self._should_summarize(filtered, self.token_counter(filtered))
 
     async def _archive(self, state: AgentState[object]) -> str:
-        messages = state.get("messages", [])
+        messages = [m for m in state.get("messages", []) if not is_gaia_authored_note(m)]
         # `runtime` carries no config (LangGraph's `Runtime` deliberately omits
         # it) — reading it from there once raised "requires 'user_id'" silently.
         # `get_config()` is the supported accessor, as LLMAccountingMiddleware uses.
@@ -343,14 +350,14 @@ def _foldable(conversation: list[AnyMessage], cutoff: int) -> list[AnyMessage]:
     """Return what to fold: history before the running turn, else that turn's finished steps.
 
     The running turn's request is never folded. Only when nothing but an old
-    summary precedes it (a long executor run) are its completed tool steps
-    folded, so the run stays bounded; cutoff is already a safe tool-pair boundary.
+    summary or a GAIA note precedes it (a long executor run) are its completed tool
+    steps folded, so the run stays bounded; cutoff is already a safe tool-pair boundary.
     """
     start = running_turn_start(conversation)
     if start is None:
         return conversation[:cutoff]
     before = conversation[: min(start, cutoff)]
-    if any(not is_conversation_summary(m) for m in before):
+    if any(not (is_conversation_summary(m) or is_gaia_authored_note(m)) for m in before):
         return before
     steps = conversation[start + 1 : cutoff]
     # Nothing new to fold: re-summarizing the old summary alone frees no context.

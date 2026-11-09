@@ -17,6 +17,7 @@ MESSAGE = proactive_delivery_tasks.DeferredChatMessage(
     user_id="user-1",
     source=ConversationSource.TELEGRAM,
     platform_user_id="tg-7",
+    basis="priority",
     text="Invoice overdue.",
     origin="notification from ai_agent",
     message_class=ProactiveMessageClass.ROUTINE,
@@ -47,7 +48,7 @@ class TestDeliverDeferredChatMessage:
         assert kwargs["user"].email == "u@gaia.local"
         assert kwargs["user"].auth_provider is None
         assert kwargs["channel"] == ChatChannel(
-            source=ConversationSource.TELEGRAM, platform_user_id="tg-7"
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-7", basis="priority"
         )
         assert kwargs["text"] == "Invoice overdue."
         assert kwargs["origin"] == "notification from ai_agent"

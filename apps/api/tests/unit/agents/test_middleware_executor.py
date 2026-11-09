@@ -16,8 +16,17 @@ from langchain.agents.middleware.types import (
 )
 from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    MessageLikeRepresentation,
+    RemoveMessage,
+    ToolCall,
+    ToolMessage,
+)
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
 from langchain_google_genai.chat_models import _parse_chat_history
 import pytest
 
@@ -31,6 +40,7 @@ from app.agents.middleware.executor import (
 )
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
+from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.override.langgraph_bigtool.utils import State
 from shared.py.analytics import UserId
@@ -61,6 +71,15 @@ def _make_state(**overrides: Any) -> State:
     return State(**defaults)
 
 
+def _write_ids(writes: list[MessageLikeRepresentation]) -> list[str | None]:
+    """Return the ids of a hook's message writes, failing on any write that is not a message."""
+    ids: list[str | None] = []
+    for write in writes:
+        assert isinstance(write, BaseMessage)
+        ids.append(write.id)
+    return ids
+
+
 def _make_config(**overrides: Any) -> RunnableConfig:
     cfg: dict[str, Any] = {
         "configurable": {
@@ -70,6 +89,18 @@ def _make_config(**overrides: Any) -> RunnableConfig:
     }
     cfg.update(overrides)
     return cfg  # type: ignore[return-value]  # fixture returns a plain dict as RunnableConfig
+
+
+def _tool_request(
+    tool_call: dict[str, Any], tool: BaseTool | None, state: State, config: RunnableConfig
+) -> ToolCallRequest:
+    """Build the request ToolNode hands its wrapper, with config on the runtime."""
+    return ToolCallRequest(
+        tool_call=cast(ToolCall, tool_call),
+        tool=tool,
+        state=state,
+        runtime=BigtoolToolRuntime.from_graph_context(config, tool_call_id=tool_call["id"]),
+    )
 
 
 class _NoOpMiddleware(AgentMiddleware):
@@ -459,7 +490,9 @@ class TestExecuteBeforeModelStateUpdates:
         # model node to commit; a hook write is not a graph node write and would
         # otherwise be dropped, taking the summary with it.
         assert any(
-            not isinstance(m, RemoveMessage) and "SUMMARY" in str(m.content)
+            isinstance(m, BaseMessage)
+            and not isinstance(m, RemoveMessage)
+            and "SUMMARY" in str(m.content)
             for m in result.message_writes
         )
 
@@ -477,7 +510,7 @@ class TestExecuteBeforeModelStateUpdates:
         result = await executor.execute_before_model(state, _make_config())
 
         assert [m.id for m in result.state["messages"]] == ["h0", "a0", "h1", "a1", "injected-1"]
-        assert [m.id for m in result.message_writes] == ["injected-1"]
+        assert _write_ids(result.message_writes) == ["injected-1"]
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -510,7 +543,7 @@ class TestExecuteBeforeModelStateUpdates:
 
         result = await executor.execute_before_model(_make_state(), _make_config())
 
-        assert [m.id for m in result.message_writes] == ["first-1", "second-1"]
+        assert _write_ids(result.message_writes) == ["first-1", "second-1"]
         assert [m.id for m in result.state["messages"]][-2:] == ["first-1", "second-1"]
 
 
@@ -759,18 +792,13 @@ class TestWrapToolInvocation:
         expected = ToolMessage(content="tool result", tool_call_id="call_1")
         invoke_fn = AsyncMock(return_value=expected)
 
-        with (
-            patch("app.agents.middleware.executor.create_tool_call_request"),
-            patch(
-                "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-                return_value=MagicMock(),
-            ),
-        ):
-            executor = MiddlewareExecutor([])
-            state = _make_state()
-            result = await executor.wrap_tool_invocation(
-                tool_call, None, state, _make_config(), None, invoke_fn
-            )
+        executor = MiddlewareExecutor([])
+        state = _make_state()
+        result = await executor.wrap_tool_invocation(
+            _tool_request(tool_call, None, state, _make_config()), invoke_fn
+        )
+
+        assert isinstance(result, ToolMessage)
 
         assert result.content == "tool result"
         _no_real_analytics.assert_called_once()
@@ -784,120 +812,64 @@ class TestWrapToolInvocation:
         expected = ToolMessage(content="tool result", tool_call_id="call_1")
         invoke_fn = AsyncMock(return_value=expected)
 
-        with (
-            patch("app.agents.middleware.executor.create_tool_call_request"),
-            patch(
-                "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-                return_value=MagicMock(),
+        executor = MiddlewareExecutor([])
+        state = _make_state()
+        result = await executor.wrap_tool_invocation(
+            _tool_request(
+                tool_call, None, state, _make_config(configurable={"thread_id": "thread_abc"})
             ),
-        ):
-            executor = MiddlewareExecutor([])
-            state = _make_state()
-            result = await executor.wrap_tool_invocation(
-                tool_call,
-                None,
-                state,
-                _make_config(configurable={"thread_id": "thread_abc"}),
-                None,
-                invoke_fn,
-            )
+            invoke_fn,
+        )
+
+        assert isinstance(result, ToolMessage)
 
         assert result.content == "tool result"
         _no_real_analytics.assert_not_called()
 
-    @patch(
-        "app.agents.middleware.executor.create_tool_call_request",
-    )
-    @patch(
-        "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-        return_value=MagicMock(),
-    )
-    async def test_no_middleware_calls_invoke_fn(
-        self, mock_rt: MagicMock, mock_create_req: MagicMock
-    ) -> None:
+    async def test_no_middleware_calls_invoke_fn(self) -> None:
         tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
         expected = ToolMessage(content="result", tool_call_id="call_1")
         invoke_fn = AsyncMock(return_value=expected)
 
-        mock_request = MagicMock(spec=ToolCallRequest)
-        mock_request.tool_call = tool_call
-        mock_create_req.return_value = mock_request
-
         executor = MiddlewareExecutor([])
         state = _make_state()
         result = await executor.wrap_tool_invocation(
-            tool_call, None, state, _make_config(), None, invoke_fn
+            _tool_request(tool_call, None, state, _make_config()), invoke_fn
         )
+        assert isinstance(result, ToolMessage)
         assert result.content == "result"
 
-    @patch(
-        "app.agents.middleware.executor.create_tool_call_request",
-    )
-    @patch(
-        "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-        return_value=MagicMock(),
-    )
-    async def test_async_wrap_tool_call(
-        self, mock_rt: MagicMock, mock_create_req: MagicMock
-    ) -> None:
+    async def test_async_wrap_tool_call(self) -> None:
         tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
         expected = ToolMessage(content="tool result", tool_call_id="call_1")
         invoke_fn = AsyncMock(return_value=expected)
-
-        mock_request = MagicMock(spec=ToolCallRequest)
-        mock_request.tool_call = tool_call
-        mock_create_req.return_value = mock_request
 
         mw = _WrapToolMiddleware()
         executor = MiddlewareExecutor([mw])
         state = _make_state()
         result = await executor.wrap_tool_invocation(
-            tool_call, None, state, _make_config(), None, invoke_fn
+            _tool_request(tool_call, None, state, _make_config()), invoke_fn
         )
+        assert isinstance(result, ToolMessage)
         assert result.content == "tool result"
 
-    @patch(
-        "app.agents.middleware.executor.create_tool_call_request",
-    )
-    @patch(
-        "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-        return_value=MagicMock(),
-    )
-    async def test_sync_wrap_tool_call(
-        self, mock_rt: MagicMock, mock_create_req: MagicMock
-    ) -> None:
+    async def test_sync_wrap_tool_call(self) -> None:
         tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
         expected = ToolMessage(content="sync tool result", tool_call_id="call_1")
         invoke_fn = AsyncMock(return_value=expected)
-
-        mock_request = MagicMock(spec=ToolCallRequest)
-        mock_request.tool_call = tool_call
-        mock_create_req.return_value = mock_request
 
         mw = _SyncWrapToolMiddleware()
         executor = MiddlewareExecutor([mw])
         state = _make_state()
         result = await executor.wrap_tool_invocation(
-            tool_call, None, state, _make_config(), None, invoke_fn
+            _tool_request(tool_call, None, state, _make_config()), invoke_fn
         )
+        assert isinstance(result, ToolMessage)
         assert result.content == "sync tool result"
 
-    @patch(
-        "app.agents.middleware.executor.create_tool_call_request",
-    )
-    @patch(
-        "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-        return_value=MagicMock(),
-    )
-    async def test_tool_cancelled_error_propagates(
-        self, mock_rt: MagicMock, mock_create_req: MagicMock
-    ) -> None:
+    async def test_tool_cancelled_error_propagates(self) -> None:
         tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
         invoke_fn = AsyncMock()
-
-        mock_request = MagicMock(spec=ToolCallRequest)
-        mock_request.tool_call = tool_call
-        mock_create_req.return_value = mock_request
 
         class _CancellingWrapTool(AgentMiddleware):
             async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
@@ -907,7 +879,7 @@ class TestWrapToolInvocation:
         state = _make_state()
         with pytest.raises(asyncio.CancelledError):
             await executor.wrap_tool_invocation(
-                tool_call, None, state, _make_config(), None, invoke_fn
+                _tool_request(tool_call, None, state, _make_config()), invoke_fn
             )
 
 
@@ -940,18 +912,13 @@ class TestBoundToolUsedGuard:
         expected = ToolMessage(content="tool result", tool_call_id="call_1")
         invoke_fn = AsyncMock(return_value=expected)
 
-        with (
-            patch("app.agents.middleware.executor.create_tool_call_request"),
-            patch(
-                "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-                return_value=MagicMock(),
-            ),
-        ):
-            executor = MiddlewareExecutor([])
-            state = _make_state()
-            result = await executor.wrap_tool_invocation(
-                tool_call, None, state, _make_config(), None, invoke_fn
-            )
+        executor = MiddlewareExecutor([])
+        state = _make_state()
+        result = await executor.wrap_tool_invocation(
+            _tool_request(tool_call, None, state, _make_config()), invoke_fn
+        )
+
+        assert isinstance(result, ToolMessage)
 
         assert result.content == "tool result"
         _no_real_analytics.assert_not_called()
@@ -990,7 +957,7 @@ class TestToolChainFailsClosed:
             patch("app.agents.middleware.executor.log") as mock_log,
         ):
             result = await MiddlewareExecutor([HILApprovalMiddleware()]).wrap_tool_invocation(
-                tool_call, None, _make_state(), _gated_run_config(), None, invoke_fn
+                _tool_request(tool_call, None, _make_state(), _gated_run_config()), invoke_fn
             )
 
         invoke_fn.assert_not_awaited()
@@ -1011,11 +978,9 @@ class TestToolChainFailsClosed:
             result = await MiddlewareExecutor(
                 [_WrapToolMiddleware(), _PreToolBreak()]
             ).wrap_tool_invocation(
-                {"name": "t", "args": {}, "id": "c1"},
-                None,
-                _make_state(),
-                _make_config(),
-                None,
+                _tool_request(
+                    {"name": "t", "args": {}, "id": "c1"}, None, _make_state(), _make_config()
+                ),
                 invoke_fn,
             )
 
@@ -1031,11 +996,9 @@ class TestToolChainFailsClosed:
         invoke_fn = AsyncMock()
         with patch("app.agents.middleware.executor.log") as mock_log:
             result = await MiddlewareExecutor([_SyncPreToolBreak()]).wrap_tool_invocation(
-                {"name": "t", "args": {}, "id": "c1"},
-                None,
-                _make_state(),
-                _make_config(),
-                None,
+                _tool_request(
+                    {"name": "t", "args": {}, "id": "c1"}, None, _make_state(), _make_config()
+                ),
                 invoke_fn,
             )
 
@@ -1045,11 +1008,9 @@ class TestToolChainFailsClosed:
 
     async def test_a_refusal_for_a_call_without_an_id_carries_an_empty_id(self) -> None:
         result = await MiddlewareExecutor([_PreToolBreak()]).wrap_tool_invocation(
-            {"name": "t", "args": {}, "id": None},
-            None,
-            _make_state(),
-            _make_config(),
-            None,
+            _tool_request(
+                {"name": "t", "args": {}, "id": None}, None, _make_state(), _make_config()
+            ),
             AsyncMock(),
         )
 
@@ -1064,11 +1025,9 @@ class TestToolChainFailsClosed:
             pytest.raises(RuntimeError, match="tool broke"),
         ):
             await MiddlewareExecutor([_WrapToolMiddleware()]).wrap_tool_invocation(
-                {"name": "t", "args": {}, "id": "c1"},
-                None,
-                _make_state(),
-                _make_config(),
-                None,
+                _tool_request(
+                    {"name": "t", "args": {}, "id": "c1"}, None, _make_state(), _make_config()
+                ),
                 invoke_fn,
             )
 
@@ -1086,11 +1045,9 @@ class TestToolChainFailsClosed:
 
         with patch("app.agents.middleware.executor.log") as mock_log:
             result = await MiddlewareExecutor([_PostToolBreak()]).wrap_tool_invocation(
-                {"name": "t", "args": {}, "id": "c1"},
-                None,
-                _make_state(),
-                _make_config(),
-                None,
+                _tool_request(
+                    {"name": "t", "args": {}, "id": "c1"}, None, _make_state(), _make_config()
+                ),
                 invoke_fn,
             )
 
@@ -1100,7 +1057,7 @@ class TestToolChainFailsClosed:
 
 
 # ---------------------------------------------------------------------------
-# has_wrap_model_call / has_wrap_tool_call
+# has_wrap_model_call
 # ---------------------------------------------------------------------------
 
 
@@ -1117,29 +1074,22 @@ class _RecordingWrapToolMiddleware(AgentMiddleware):
 
 
 class TestTheRequestTheChainSees:
-    async def test_carries_this_calls_tool_state_and_runtime(self) -> None:
-        """Compaction and HIL read the request, not the raw arguments; a blanked field is a tool they never see."""
-        tool_call = {"name": "test_tool", "args": {"q": 1}, "id": "call_1"}
-        tool = MagicMock(name="tool")
-        runtime = MagicMock(name="runtime")
-        state = _make_state()
+    async def test_every_link_and_the_tool_see_the_nodes_own_request(self) -> None:
+        """Compaction and HIL read the request ToolNode built; a rebuilt one would lose its runtime."""
+        request = _tool_request(
+            {"name": "test_tool", "args": {"q": 1}, "id": "call_1"},
+            MagicMock(name="tool"),
+            _make_state(),
+            _make_config(),
+        )
         recorder = _RecordingWrapToolMiddleware()
-        invoke_fn = AsyncMock(return_value=ToolMessage(content="ok", tool_call_id="call_1"))
+        run_tool = AsyncMock(return_value=ToolMessage(content="ok", tool_call_id="call_1"))
 
-        with patch(
-            "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-            return_value=runtime,
-        ):
-            await MiddlewareExecutor([recorder]).wrap_tool_invocation(
-                tool_call, tool, state, _make_config(), None, invoke_fn
-            )
+        await MiddlewareExecutor([recorder]).wrap_tool_invocation(request, run_tool)
 
-        (request,) = recorder.requests
-        assert request.tool_call == tool_call
-        assert request.tool is tool
-        assert request.state is state
-        assert request.runtime is runtime
-        invoke_fn.assert_awaited_once_with(tool_call)
+        assert recorder.requests == [request]
+        assert recorder.requests[0] is request
+        run_tool.assert_awaited_once_with(request)
 
 
 class TestApplyStateUpdate:
@@ -1165,22 +1115,9 @@ class TestHasWrapMethods:
         executor = MiddlewareExecutor([_SyncWrapModelMiddleware()])
         assert executor.has_wrap_model_call() is True
 
-    def test_has_wrap_tool_call_true(self) -> None:
-        executor = MiddlewareExecutor([_WrapToolMiddleware()])
-        assert executor.has_wrap_tool_call() is True
-
-    def test_has_wrap_tool_call_false(self) -> None:
-        executor = MiddlewareExecutor([_NoOpMiddleware()])
-        assert executor.has_wrap_tool_call() is False
-
-    def test_has_wrap_tool_call_sync(self) -> None:
-        executor = MiddlewareExecutor([_SyncWrapToolMiddleware()])
-        assert executor.has_wrap_tool_call() is True
-
     def test_empty_middleware(self) -> None:
         executor = MiddlewareExecutor([])
         assert executor.has_wrap_model_call() is False
-        assert executor.has_wrap_tool_call() is False
 
 
 # ---------------------------------------------------------------------------

@@ -26,13 +26,24 @@ from posthog import Posthog
 import pytest
 from starlette.types import Receive, Scope, Send
 
-# Hypothesis profiles: PR lanes select "ci" (25 examples) to keep feedback
-# short; master/local keep "default" (200). suppress differing_executors
-# since mutmut's in-process runner reinstantiates the @given class per mutant.
+# "ci" (PRs, queue) is derandomized so the queue reproduces the PR's verdict; "ci-full"
+# (master) explores, seeded per commit by pytest.sh's --hypothesis-seed.
+# differing_executors: mutmut's in-process runner reinstantiates the @given class.
 _hypothesis_settings.register_profile(
     "ci",
     max_examples=25,
     deadline=None,
+    derandomize=True,
+    database=None,
+    suppress_health_check=[HealthCheck.differing_executors],
+)
+_hypothesis_settings.register_profile(
+    "ci-full",
+    max_examples=200,
+    deadline=None,
+    # Explicit: under CI=true a new profile inherits Hypothesis's built-in "ci", which derandomizes.
+    derandomize=False,
+    database=None,
     suppress_health_check=[HealthCheck.differing_executors],
 )
 _hypothesis_settings.register_profile(
@@ -53,7 +64,7 @@ import tests.offline_env  # isort: skip  # noqa: F401 -- imported for its side e
 
 # Imported after the env setup above: document models extend MongoDocument,
 # pulling in app.config.settings which instantiates settings at import
-# time; without ENV set first that resolves to ProductionSettings and fails.
+# time; without ENV set first it boots as production and fails.
 from app.config.posthog import init_posthog
 from app.config.settings import settings as app_settings
 from app.core.lazy_loader import MissingKeyStrategy, providers
@@ -63,11 +74,10 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
-from app.models.user_models import AuthenticatedUser, UserDocument
+from app.models.user_models import AuthenticatedUser
 from app.utils.concurrency import reset_captured_loop
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context
-from tests.helpers import quiet_hours_excluding_now
 
 # Hermetic by default (USE_REAL_SERVICES=0): a bare local run stays offline
 # via the global _get_mongodb_instance mock. CI sets USE_REAL_SERVICES=1 so
@@ -257,7 +267,7 @@ class _FenceAsyncRedis:
 _fence_redis_client = _FenceAsyncRedis()
 
 # Only mock MongoDB/Redis when real services are NOT available. When
-# USE_REAL_SERVICES=1 the Dagger container has real MongoDB/Redis running and
+# USE_REAL_SERVICES=1 the CI service containers are running MongoDB/Redis and
 # integration/e2e/service tests should reach them.
 _infra_patches = (
     []
@@ -299,6 +309,7 @@ assert isinstance(_settings_module.inject_infisical_secrets, MagicMock), (
 assert isinstance(_secrets_module.inject_infisical_secrets, MagicMock), (
     "hermetic fence broken: secrets.inject_infisical_secrets is not mocked"
 )
+
 
 # Registers the PostHog provider the way production startup does, since the
 # test app's lifespan is a no-op; POSTHOG_PROJECT_TOKEN is blanked above so
@@ -350,15 +361,20 @@ def _no_captured_loop_carryover() -> Iterator[None]:
 
 @pytest.fixture
 def outside_quiet_hours() -> Iterator[AsyncMock]:
-    """Make post_to_platform_chat read a recipient whose quiet hours exclude the current hour.
+    """Make post_to_platform_chat find the recipient outside their quiet hours, whatever time the suite runs."""
+    with patch(
+        "app.agents.core.background.platform_chat.quiet_hours_end", AsyncMock(return_value=None)
+    ) as end:
+        yield end
 
-    The window starts two hours from now on a UTC clock, so a test that sends a
-    proactive message reaches the publish path whatever time the suite runs.
-    """
-    user = UserDocument(timezone="UTC", quiet_hours=quiet_hours_excluding_now())
-    read = AsyncMock(return_value=user)
-    with patch("app.agents.core.background.platform_chat.user_repository", MagicMock(get=read)):
-        yield read
+
+@pytest.fixture
+def onboarding_finish_on_link() -> Iterator[AsyncMock]:
+    """Double the onboarding finish a new platform link runs, for link tests that double the user DB."""
+    with patch(
+        "app.services.platform_link_completion.complete_onboarding_on_platform_link", AsyncMock()
+    ) as finish:
+        yield finish
 
 
 @pytest.fixture
@@ -371,6 +387,19 @@ async def fake_redis(
     yield client
     await client.flushall()
     await client.connection_pool.disconnect()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _delivery_alert_fence() -> Iterator[None]:
+    """Keep every failed publish's alert off the real ARQ queue.
+
+    offline_env points REDIS_URL at localhost, so without this a test that hits
+    a failed outbound publish enqueued a real job into a developer's Redis (and
+    sat through connection retries in CI). Tests of the reporting path itself
+    call queue_delivery_failure directly or patch this seam.
+    """
+    with patch("app.services.delivery_alerts.reporting.queue_delivery_failure", AsyncMock()):
+        yield
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -432,9 +461,9 @@ def _hermetic_environment() -> Iterator[None]:
 def _default_rate_limit_off() -> None:
     """Keep the app-wide slowapi limit off for the whole hermetic run.
 
-    The limiter counts against Redis, which this run never starts, so a request
-    through the real app would 500 on the first count. A test that exercises the
-    middleware builds its own app with a memory-backed Limiter instead.
+    The limiter counts against Redis, which this run never starts, so every
+    request through the real app would share one in-memory fallback budget. A
+    test that exercises the middleware builds its own app with its own Limiter.
     """
     from app.api.v1.middleware.rate_limiter import limiter
 
@@ -747,7 +776,7 @@ def core_tool_registry() -> Iterator[None]:
     registry = ToolRegistry()
     registry.setup()
     with patch(
-        "app.services.mcp.mcp_client.get_tool_registry",
+        "app.services.mcp.tool_naming.get_tool_registry",
         new_callable=AsyncMock,
         return_value=registry,
     ):
@@ -757,6 +786,13 @@ def core_tool_registry() -> Iterator[None]:
 @pytest.fixture
 def mock_mongodb():
     return AsyncMock()
+
+
+@pytest.fixture
+def cloudinary_configured() -> Iterator[None]:
+    """Let uploads past require_cloudinary; the uploader itself stays each test's own mock."""
+    with patch("app.config.cloudinary.providers", MagicMock(get=MagicMock(return_value=True))):
+        yield
 
 
 @pytest.fixture(scope="session")

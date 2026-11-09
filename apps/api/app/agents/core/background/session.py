@@ -16,6 +16,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
@@ -76,6 +77,8 @@ class TodoRun:
 
     todo_id: str
     trigger_type: TriggerType
+    #: URGENT when an event the trigger gate let through quiet hours woke the run.
+    message_class: ProactiveMessageClass
 
 
 @dataclass(frozen=True)
@@ -149,9 +152,10 @@ class ExecutorRun:
     workflow_execution_id: str | None = None
     workflow_title: str = ""
     workflow_delivery: WorkflowDelivery = WorkflowDelivery.NOW
+    workflow_message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
     active_todo_id: str | None = None
-    #: Set only on a tracked todo's own scheduled/triggered run: its result goes
-    #: through todo delivery, never into a conversation (the run's has none).
+    #: Set only on a tracked todo's own scheduled/triggered run: it executes in its
+    #: todo's chat, which keeps its report, and its result goes through todo delivery.
     todo_run: TodoRun | None = None
     #: Where the turn that spawned this run came from. Defaults to background
     #: work, matching ``build_agent_config``: the only callers that leave the
@@ -192,6 +196,7 @@ class ExecutorRun:
             workflow_execution_id=workflow_execution_id or current_workflow_execution_id(),
             workflow_title=view.workflow_title,
             workflow_delivery=view.workflow_delivery,
+            workflow_message_class=view.workflow_message_class,
             active_todo_id=view.active_todo_id,
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
             t_dispatch_perf=identity.t_dispatch_perf,
@@ -225,9 +230,18 @@ class ExecutorRun:
         return self.kind is RunKind.QUEUED
 
     @property
+    def owns_stream(self) -> bool:
+        """Whether this run streams into a message of its own instead of a comms turn's.
+
+        A detached run does, and so does a tracked todo's run, which streams into
+        its todo's chat with no comms turn in front of it.
+        """
+        return self.is_queued or self.todo_run is not None
+
+    @property
     def render_message_id(self) -> str | None:
         """The chat message this run's frames render into: the live turn's, a resumed turn's, or its own placeholder."""
-        return self.bot_message_id or (self.task_id if self.is_queued else None)
+        return self.bot_message_id or (self.task_id if self.owns_stream else None)
 
     @property
     def renders_native_cards(self) -> bool:
@@ -245,10 +259,10 @@ class ExecutorRun:
         """Whether this run persists its own tool_data.
 
         The real axis is live-streamed vs background-detached: live-streamed
-        attaches tool_data to the comms message; background-detached has no
-        comms consumer, so the executor self-persists.
+        attaches tool_data to the comms message; a run with no comms consumer
+        (detached, a workflow's, a tracked todo's) self-persists.
         """
-        return self.kind is RunKind.QUEUED or self.workflow_id is not None
+        return self.owns_stream or self.workflow_id is not None
 
 
 # ── Session registry ─────────────────────────────────────────────────
@@ -298,9 +312,9 @@ def teardown_session(stream_id: str) -> None:
 
 # ── Executor lifecycle helpers ───────────────────────────────────────
 
-#: Streams whose waiter gave up on the executor, oldest first. Bounded because
-#: nothing else ever forgets a stream id; a finalize for one of these skips
-#: delivery instead of answering a run that was already closed as failed.
+#: Streams whose todo run gave up on the executor and stopped it, oldest first.
+#: Bounded because nothing else forgets a stream id; a finalize for one of these
+#: skips delivery, since the worker retries the todo and a late answer would double it.
 _ABANDONED_REMEMBERED = 1024
 _abandoned: deque[str] = deque(maxlen=_ABANDONED_REMEMBERED)
 
@@ -324,7 +338,7 @@ def signal_executor_done(
 
 
 def mark_executor_failed(stream_id: str, reason: str) -> None:
-    """Record that the executor failed without finishing (the waiter gave up).
+    """Record that the executor failed without finishing (a todo run gave up and stopped it).
 
     The stream is also marked abandoned, outside the session: the waiter tears
     the session down right after, and the executor's own finalize, whenever it

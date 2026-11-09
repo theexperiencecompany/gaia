@@ -83,6 +83,7 @@ export default function NotificationSettings() {
 
   return (
     <SettingsPage>
+      <QuietHoursSettings />
       {!loading && <ChatChannelSettings linkedPlatforms={linkedPlatforms} />}
       <SettingsSection description="Choose where to receive GAIA notifications.">
         {NOTIFICATION_CHANNELS.map((channel) => {
@@ -131,7 +132,6 @@ export default function NotificationSettings() {
           );
         })}
       </SettingsSection>
-      <QuietHoursSettings />
     </SettingsPage>
   );
 }

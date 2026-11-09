@@ -56,32 +56,10 @@ vi.mock("@/features/chat/stream/unread", () => ({
   markConversationUnread: vi.fn(),
 }));
 
+import { textSendArgs } from "@/__tests__/helpers/sendArgs";
 import { TurnSession } from "@/features/chat/stream/turnSession";
-import type { SendArgs } from "@/features/chat/stream/types";
 
 const CONV = "conv-1";
-
-const sendArgs = (): SendArgs => ({
-  inputText: "and book the flight",
-  userMessage: {
-    type: "user",
-    response: "and book the flight",
-    date: new Date().toISOString(),
-    message_id: "msg-1",
-  },
-  options: {
-    fileData: [],
-    selectedTool: null,
-    toolCategory: null,
-    selectedWorkflow: null,
-    selectedCalendarEvent: null,
-    optimisticUserId: "opt-1",
-    replyToMessage: null,
-    conversationId: CONV,
-    isOnboardingDemo: false,
-    isRetry: false,
-  },
-});
 
 /** `handleApprovalFrame` is private; the SSE plumbing that reaches it is not
  *  what these tests are about. */
@@ -99,7 +77,7 @@ const feedApproval = (
 const build = (steering: boolean): TurnSession =>
   new TurnSession(
     steering ? `${CONV}:steer:1` : CONV,
-    sendArgs(),
+    textSendArgs(CONV, "and book the flight"),
     { onEnd: vi.fn(), onRekey: vi.fn() },
     { steering },
   );

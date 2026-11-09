@@ -9,10 +9,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useRetryMessage } from "@/features/chat/hooks/useRetryMessage";
 import { useChatStore } from "@/stores/chatStore";
 
-const sendMessage = vi.fn();
-vi.mock("@/hooks/useSendMessage", () => ({
-  useSendMessage: () => sendMessage,
-}));
+const { sendMessage } = vi.hoisted(() => ({ sendMessage: vi.fn() }));
+vi.mock("@/features/chat/stream/sendMessage", () => ({ sendMessage }));
 
 describe("useRetryMessage", () => {
   beforeEach(() => sendMessage.mockReset());

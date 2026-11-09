@@ -13,7 +13,6 @@ import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
-from app.constants.notifications import DEFAULT_QUIET_HOURS_END, DEFAULT_QUIET_HOURS_START
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationContentView,
@@ -23,13 +22,11 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationType,
     NotificationView,
-    QuietHours,
 )
-from app.models.user_models import AuthenticatedUser, UserDocument
+from app.models.user_models import AuthenticatedUser
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import (
     SettingsNotificationsToggled,
-    SettingsQuietHoursUpdated,
 )
 
 NOTIF_BASE = "/api/v1/notifications"
@@ -796,73 +793,3 @@ class TestGetNotification:
     async def test_get_notification_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.get(f"{NOTIF_BASE}/n1")
         assert response.status_code == 401
-
-
-class TestQuietHoursEndpoints:
-    async def test_an_unset_user_reads_the_default_window(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.notification.user_repository.get",
-                new_callable=AsyncMock,
-                return_value=UserDocument(id=FAKE_USER_ID),
-            ) as get,
-            patch("app.api.v1.endpoints.notification.log") as log,
-        ):
-            response = await client.get(f"{NOTIF_BASE}/preferences/quiet-hours")
-
-        get.assert_awaited_once_with(FAKE_USER_ID)
-        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_quiet_hours")
-        assert response.status_code == 200
-        assert response.json() == {
-            "start_hour": DEFAULT_QUIET_HOURS_START,
-            "end_hour": DEFAULT_QUIET_HOURS_END,
-        }
-
-    async def test_a_missing_user_is_a_404(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.notification.user_repository.get",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            response = await client.get(f"{NOTIF_BASE}/preferences/quiet-hours")
-
-        assert response.status_code == 404
-        assert response.json() == {"message": "User not found"}
-
-    async def test_an_update_is_stored_echoed_and_reported(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.notification.user_repository.set_quiet_hours",
-                new_callable=AsyncMock,
-            ) as store,
-            patch(ANALYTICS_PATCH) as capture,
-            patch("app.api.v1.endpoints.notification.log") as log,
-        ):
-            response = await client.put(
-                f"{NOTIF_BASE}/preferences/quiet-hours", json={"start_hour": 23, "end_hour": 7}
-            )
-
-        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_quiet_hours")
-        log.audit.assert_called_once_with(
-            "quiet hours updated", actor=FAKE_USER_ID, start_hour=23, end_hour=7
-        )
-        assert response.status_code == 200
-        assert response.json() == {"start_hour": 23, "end_hour": 7}
-        store.assert_awaited_once_with(FAKE_USER_ID, QuietHours(start_hour=23, end_hour=7))
-        capture.assert_called_once_with(
-            UserId(FAKE_USER_ID), SettingsQuietHoursUpdated(start_hour=23, end_hour=7)
-        )
-
-    async def test_an_empty_window_is_refused_before_anything_is_stored(
-        self, client: AsyncClient
-    ) -> None:
-        with patch(
-            "app.api.v1.endpoints.notification.user_repository.set_quiet_hours",
-            new_callable=AsyncMock,
-        ) as store:
-            response = await client.put(
-                f"{NOTIF_BASE}/preferences/quiet-hours", json={"start_hour": 8, "end_hour": 8}
-            )
-
-        assert response.status_code == 422
-        store.assert_not_awaited()

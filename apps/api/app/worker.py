@@ -9,6 +9,10 @@ import stackprinter
 # custom tools 500 with "Missing user_id in auth_credentials" because the
 # CustomTool user_id-injection patch never loads here.
 from app.config.sentry import init_sentry
+from app.constants.delivery_alerts import (
+    RECORD_DELIVERY_FAILURE_TASK,
+    REFRESH_DELIVERY_INCIDENT_TASK,
+)
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.notifications import (
     DEFERRED_CHAT_MESSAGE_TASK,
@@ -52,6 +56,10 @@ from app.workers.tasks import (
     sweep_expired_memories,
     sweep_idle_sandboxes,
     sweep_undelivered_signup_emails,
+)
+from app.workers.tasks.delivery_alert_tasks import (
+    record_delivery_failure,
+    refresh_delivery_incident_task,
 )
 from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
@@ -162,6 +170,13 @@ _sync_paid_person_properties = func(
     arq_task(sync_paid_person_properties_task),
     name=PAID_PERSON_SYNC_TASK,
 )
+# Named from the constants their producers enqueue by.
+_record_delivery_failure = func(
+    arq_task(record_delivery_failure), name=RECORD_DELIVERY_FAILURE_TASK
+)
+_refresh_delivery_incident = func(
+    arq_task(refresh_delivery_incident_task), name=REFRESH_DELIVERY_INCIDENT_TASK
+)
 
 # Every job on the default queue. Browser jobs have their own worker
 # (app.workers.browser_worker), started from the worker lifecycle.
@@ -201,6 +216,8 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _sync_workflows_for_subscription_state,
     _sync_paid_person_properties,
     _provision_inbox_desk,
+    _record_delivery_failure,
+    _refresh_delivery_incident,
 ]
 WorkerSettings.functions = TASK_FUNCTIONS
 

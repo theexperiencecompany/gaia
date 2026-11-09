@@ -16,6 +16,8 @@ and the site that strips one (strip_internal_agent_tags) can never disagree.
 from enum import StrEnum
 import re
 
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
+
 
 class AgentTag(StrEnum):
     """Tag names framing an internal payload passed between agent tiers."""
@@ -94,10 +96,17 @@ def leading_agent_tag(text: str) -> AgentTag | None:
 # agent run that takes over. Named once here because a drift between the
 # writer (workflow worker) and reader (format_workflow_execution_message) is silent.
 PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"
-#: The calls a replay made before it stopped, so a rewrite may freeze them —
-#: without this the write validator refused every rewrite that kept one
-#: ("did not run in this run").
-PLAYBOOK_REPLAYED_CALLS_KEY = "playbook_replayed_calls"
+#: Calls a playbook never replays: delegation, whose children are in the run
+#: record themselves, and tool discovery and binding, which do no work.
+PLAYBOOK_UNPICKABLE_TOOLS = frozenset(
+    {
+        "call_executor",
+        "cancel_executor",
+        "spawn_subagent",
+        "retrieve_tools",
+        ACTIVATE_INTEGRATION_TOOL_NAME,
+    }
+)
 
 # The trigger-context key carrying the busy-lock value a workflow fire reserved.
 # Written by the workflow worker, read by call_executor so the dispatched
@@ -106,10 +115,6 @@ WORKFLOW_LOCK_CONTEXT_KEY = "executor_lock_reservation"
 
 # After this many consecutive suspect replays the worker disables the playbook.
 PLAYBOOK_SUSPECT_STREAK_LIMIT = 2
-
-# After this many declines on one unchanged workflow the check brief stops
-# asking; an edit to the workflow (new hash) asks again.
-PLAYBOOK_DECLINE_LIMIT = 3
 
 # A playbook whose last replay was not trusted gets this many heal runs. A heal
 # that lapses, declines, or has its rewrite refused still counts; past the limit
@@ -137,6 +142,13 @@ DONE_EVIDENCE_RULE = (
     "only by a tool call in this run. A memory, or an earlier run of the same task, never meets it."
 )
 
+#: What a delegator reads when a worker ended with no answer. Silence is not success:
+#: the literal "Task completed" once stood in here and comms told the user it was done.
+NO_ANSWER_NOTICE = (
+    "{name} ended without reporting a result, so nothing confirms any of it happened. "
+    "Treat the work as not done, and never report it as done without other evidence."
+)
+
 #: The tag both playbook briefs open with. The executor's graph loop reads it
 #: off the task turn to know the run owes a decision, so the briefs and the
 #: gate cannot drift apart on a string.
@@ -158,8 +170,8 @@ PLAYBOOK_DECISION_NUDGE_MESSAGE = (
 )
 MAX_PLAYBOOK_DECISION_NUDGES = 1
 
-#: The playbook decision tools. Bookkeeping about a run, never the run itself:
-#: left out of the record the next run reads, or the model copies them as steps.
+#: The playbook tools. Bookkeeping about a run, never the run itself: left out
+#: of the record the next run reads, or the model copies them as steps.
 PLAYBOOK_TOOL_NAMES = frozenset(
-    {"write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
+    {"read_run_record", "write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
 )

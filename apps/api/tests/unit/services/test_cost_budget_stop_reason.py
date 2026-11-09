@@ -12,24 +12,25 @@ writer, so the numbers the wall compares are the numbers production would have
 written. Only the plan lookup — an external payments boundary — is stubbed.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import pytest
 
 from app.config.rate_limits import get_daily_cost_budget_usd, get_per_request_token_ceiling
+from app.config.settings import settings
 from app.constants.llm import BUDGET_WRAPUP_REMAINING_FRACTION
 from app.db.redis import redis_cache
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
-from app.services import cost_budget
 from app.services.cost_budget import (
     DAILY_BUDGET_STOP_FREE,
     DAILY_BUDGET_STOP_PRO,
     REQUEST_CEILING_STOP_FREE,
     REQUEST_CEILING_STOP_PRO,
     BudgetCheck,
+    BudgetWall,
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
     is_daily_budget_exhausted,
@@ -51,7 +52,7 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 
 @pytest.fixture(autouse=True)
-def no_rollup() -> AsyncIterator[None]:
+def no_rollup() -> Iterator[None]:
     """Seeding spend uses the real Redis writer; the Mongo sibling is covered in test_usage_activity_rollup.py."""
     with patch("app.services.cost_budget.record_cost", AsyncMock()):
         yield
@@ -76,6 +77,7 @@ class TestDailyWall:
 
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
 
+        assert check.wall == BudgetWall.DAILY_USAGE
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
         assert check.spent_usd == pytest.approx(get_daily_cost_budget_usd(PlanType.FREE))
         assert check.plan_type == PlanType.FREE
@@ -83,7 +85,7 @@ class TestDailyWall:
     async def test_the_dev_unlimited_flag_lifts_a_bound_wall(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(cost_budget.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+        monkeypatch.setattr(settings, "DEV_UNLIMITED_RATE_LIMITS", True)
         await _spend(get_daily_cost_budget_usd(PlanType.FREE))
 
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
@@ -128,6 +130,7 @@ class TestRequestCeiling:
 
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
 
+        assert check.wall == BudgetWall.TASK_SIZE
         assert check.stop_reason == REQUEST_CEILING_STOP_FREE
 
     async def test_still_reports_the_daily_spend_it_read(self) -> None:
@@ -159,6 +162,7 @@ class TestRequestCeiling:
 
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
 
+        assert check.wall == BudgetWall.DAILY_USAGE
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
 
     async def test_a_free_users_token_burn_does_not_bind_the_pro_ceiling(self) -> None:

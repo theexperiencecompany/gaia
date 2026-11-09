@@ -117,6 +117,11 @@ vi.mock("@/features/chat/hooks/useStreamResume", () => ({
   useStreamResume: () => undefined,
 }));
 
+vi.mock("@/features/onboarding/hooks/useReportFirstChatOpened", () => ({
+  // Onboarding's funnel report on the seeded chat — irrelevant to the voice-mode gate.
+  useReportFirstChatOpened: () => undefined,
+}));
+
 vi.mock("@/features/integrations/hooks/useIntegrations", () => ({
   // Refreshes the integrations catalog — irrelevant to the voice-mode gate.
   useIntegrations: () => undefined,
@@ -126,10 +131,8 @@ vi.mock("@/hooks/ui/useDragAndDrop", () => ({
   useDragAndDrop: () => ({ isDragging: false, dragHandlers: {} }),
 }));
 
-const sendMessage = vi.fn();
-vi.mock("@/hooks/useSendMessage", () => ({
-  useSendMessage: () => sendMessage,
-}));
+const { sendMessage } = vi.hoisted(() => ({ sendMessage: vi.fn() }));
+vi.mock("@/features/chat/stream/sendMessage", () => ({ sendMessage }));
 
 vi.mock("@/lib/analytics", () => ({
   track: (...args: unknown[]) => track(...args),

@@ -387,26 +387,17 @@ class TestOnboardingRequest:
 
 class TestOnboardingPreferences:
     def test_valid(self):
-        p = OnboardingPreferences(
-            profession="Developer",
-            response_style="brief",
-            custom_instructions="Be concise",
-        )
+        p = OnboardingPreferences(profession="Developer", response_style="brief")
         assert p.profession == "Developer"
 
     def test_empty_string_normalized_to_none(self):
-        p = OnboardingPreferences(profession="", response_style="", custom_instructions="")
+        p = OnboardingPreferences(profession="", response_style="")
         assert p.profession is None
         assert p.response_style is None
-        assert p.custom_instructions is None
 
     def test_profession_too_long(self):
         with pytest.raises(ValidationError):
             OnboardingPreferences(profession="x" * (PROFESSION_MAX_LENGTH + 1))
-
-    def test_custom_instructions_too_long(self):
-        with pytest.raises(ValidationError):
-            OnboardingPreferences(custom_instructions="x" * 501)
 
     def test_needs_default_to_none(self):
         assert OnboardingPreferences(profession="Developer").needs is None

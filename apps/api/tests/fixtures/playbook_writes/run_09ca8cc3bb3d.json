@@ -1,0 +1,275 @@
+{
+ "run": "run_09ca8cc3bb3d",
+ "captured_from": "2026-09-21",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "time_min": "2026-09-21T13:06:00Z",
+    "time_max": "2026-09-21T13:40:00Z",
+    "max_results": 10
+   },
+   "result_digest": "{\"data\": {\"calendar_fetch_data\": [{\"summary\": \"RSDY e Xdsle Cqbz\", \"start_time\": \"2026-09-21T06:20:00-07:00\", \"end_time\": \"2026-09-21T06:30:00-07:00\", \"calendar_name\": \"user@example.com\", \"background_color\": \"#cz80d0\"}, {\"summary\": \"Xdsle Cqbz\", \"start_time\": \"2026-09-21T06:30:00-07:00\", \"end_time\": \"2026-09-21T07:00:00-07:00\", \"calendar_name\": \"user@example.com\", \"background_color\": \"#cz80d0\"}], \"has_more\": false}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "calendar_id": "ehxfmae",
+    "query": "RSDY e Xdsle Cqbz",
+    "time_min": "2026-09-21T06:00:00-07:00",
+    "time_max": "2026-09-21T07:00:00-07:00"
+   },
+   "result_digest": "{\"data\": {\"events\": [{\"id\": \"2k3fhvsde81n75yicmu33a4qst\", \"summary\": \"RSDY e Xdsle Cqbz\", \"description\": \"DLV CPNEL: azphat uwsmq.\\n\\n1. Svdly e Aajy.ui gun-read\\n2. Oiule e iohyom summary\\n3. Pypvv vhi ubrdlhfo\\n4. Soon meeting\", \"eventType\": \"iwtqdhh\", \"start\": {\"dateTime\": \"2026-09-21T06:20:00-07:00\", \"timeZone\": \"Yeazxzv/Fwt_Syitcin\"}, \"end\": {\"dateTime\": \"2026-09-21T06:30:00-07:00\", \"timeZone\": \"Yeazxzv/Fwt_Syitcin\"}, \"htmlLink\": \"https://example.com/5f4fe1bb\", \"calendarId\": \"user@example.com\", \"calendarTitle\": \"user@example.com\", \"kind\": \"calendar#event\", \"etag\": \"\\\"9564480384918099\\\"\", \"status\": \"tnmalswen\", \"created\": \"2026-09-18T21:47:39.000Z\", \"updated\": \"2026-09-18T21:47:39.557Z\", \"creator\": {\"email\": \"user@example.com\", \"self\": true}, \"organizer\": {\"email\": \"user@example.com\", \"self\": true}, \"visibility\": \"fwppclc\", \"iCalUID\": \"user@example.com\", \"sequence\": 0, \"reminders\": {\"useDefault\": false, \"overrides\": [{\"method\": \"ifppq\", \"minutes\": 0}]}}], \"calendar_search_data\": [{\"summary\": \"RSDY e Xdsle Cqbz\", \"start_time\": \"2026-09-21T06:20:00-07:00\", \"end_time\": \"2026-09-21T06:30:00-07:00\", \"calendar_name\": \"user@example.com\", \"background_color\": \"#cz80d0\"}]}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT"
+  },
+  {
+   "tool_name": "send_notification",
+   "tool_category": "notifications",
+   "args": {
+    "title": "Dovtnio Kkkppnct: RSDY e Xdsle Cqbz",
+    "message": "RSDY e Xdsle Cqbz qjmqiy cu 6:20 AM HW (fmga 6:30 AM).\nSoon: https://example.com/c3d2abcc\nLgfcsd uwsmq e vhi ubrdlhfo hx nvux.",
+    "channels": [
+     "uppkustc",
+     "owwvyot",
+     "rtssswxe",
+     "slack",
+     "nfhtdtip",
+     "ltbnq"
+    ],
+    "notification_type": "vroo"
+   },
+   "result_digest": "{\"success\": true, \"notification_id\": \"q6j9539i-3v78-7wd3-9266-i2587k97f603\", \"title\": \"Dovtnio Kkkppnct: RSDY e Xdsle Cqbz\", \"message\": \"RSDY e Xdsle Cqbz qjmqiy cu 6:20 AM HW (fmga 6:30 AM).\\nSoon: https://example.com/c3d2abcc\\nLgfcsd uwsmq e vhi ubrdlhfo hx nvux.\", \"notification_type\": \"vroo\", \"status\": \"vhoddpjyu\", \"delivered_channels\": [\"ltbnq\"], \"_rate_limit_info\": {\"feature\": \"hyahbzzhloek_finrpalknv\", \"plan\": \"zkr\", \"usage\": {\"day\": {\"used\": 3, \"limit\": 7500, \"reset_time\": \"2026-09-22T00:00:00+00:00\"}, \"month\": {\"used\": 32, \"limit\": 225000, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 4,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah vvuyky ~10 sxw, get lab full details, qiq send lar ynrm w iwsxbtw reminder hyahbzzhloek.",
+    "steps": [
+     {
+      "id": "fetch",
+      "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+      "args": {
+       "max_results": 25,
+       "time_max": {
+        "$time": "$now + 15m",
+        "format": "%Y-%m-%dT%H:%M:%SZ"
+       },
+       "time_min": {
+        "$time": "$now",
+        "format": "%Y-%m-%dT%H:%M:%SZ"
+       }
+      }
+     },
+     {
+      "id": "find",
+      "tool": "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+      "args": {
+       "calendar_id": "ehxfmae",
+       "query": {
+        "$ask": "w hogaq search qmgv ymbncago lar cwzwcxyyna meeting'n pnkwu evvq lar aqtgnru events (c.q. lar event'n byle lmmmq)"
+       },
+       "time_max": {
+        "$time": "$now + 15m",
+        "format": "%Y-%m-%dT%H:%M:%SZ"
+       },
+       "time_min": {
+        "$time": "$now",
+        "format": "%Y-%m-%dT%H:%M:%SZ"
+       }
+      }
+     },
+     {
+      "id": "send",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "uppkustc",
+        "owwvyot",
+        "rtssswxe",
+        "slack",
+        "nfhtdtip",
+        "ltbnq"
+       ],
+       "message": {
+        "$ask": "w 93 zlls meeting reminder xhuc lar event pnkwu, lab start ohzt (qiq qxg bg brief) hx lar ynrm'n whdrf zixgmcwc, qiq lar opps umfp (xbzpggfNehj) up yuizmdvm"
+       },
+       "notification_type": "vroo",
+       "title": {
+        "$ask": "Dovtnio Kkkppnct: <event pnkwu>"
+       }
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar meeting reminder uzku eto sent: lar event pnkwu, lab start ohzt hx lar ynrm'n whdrf zixgmcwc (Yeazxzv/Fwt_Syitcin), qiq lar opps umfp up yuizmdvm. Ttue ic oa w ohfswq yg wozpf."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS#1",
+     "id": "fetch",
+     "vary": {
+      "time_max": {
+       "placeholder": "$now + 15m",
+       "format": "%Y-%m-%dT%H:%M:%SZ"
+      },
+      "time_min": {
+       "placeholder": "$now",
+       "format": "%Y-%m-%dT%H:%M:%SZ"
+      }
+     }
+    },
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FIND_EVENT#1",
+     "id": "find",
+     "vary": {
+      "query": {
+       "$ask": "w hogaq search qmgv ymbncago lar cwzwcxyyna meeting'n pnkwu evvq lar aqtgnru events (c.q. lar event'n byle lmmmq)"
+      },
+      "time_max": {
+       "placeholder": "$now + 15m",
+       "format": "%Y-%m-%dT%H:%M:%SZ"
+      },
+      "time_min": {
+       "placeholder": "$now",
+       "format": "%Y-%m-%dT%H:%M:%SZ"
+      }
+     }
+    },
+    {
+     "call": "send_notification#1",
+     "id": "send",
+     "vary": {
+      "message": {
+       "$ask": "w 93 zlls meeting reminder xhuc lar event pnkwu, lab start ohzt (qiq qxg bg brief) hx lar ynrm'n whdrf zixgmcwc, qiq lar opps umfp (xbzpggfNehj) up yuizmdvm"
+      },
+      "title": {
+       "$ask": "Dovtnio Kkkppnct: <event pnkwu>"
+      }
+     }
+    }
+   ],
+   "dropped": [
+    "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS.max_results: retyped literal, the record's value replays"
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 10,
+   "record_len": 4,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah vvuyky ~10 sxw, get lab full details, qiq send lar ynrm w iwsxbtw reminder hyahbzzhloek.",
+    "result_brief": "Cvouqs lar meeting reminder uzku eto sent: lar event pnkwu, lab start ohzt hx lar ynrm'n whdrf zixgmcwc (Yeazxzv/Fwt_Syitcin), qiq lar opps umfp up yuizmdvm. Ttue ic oa w ohfswq yg wozpf.",
+    "steps": [
+     {
+      "args": {
+       "max_results": 10,
+       "time_max": {
+        "$time": "$now + 34m",
+        "format": "%Y-%m-%dT%H:%M:%SZ"
+       },
+       "time_min": {
+        "$time": "$now",
+        "format": "%Y-%m-%dT%H:%M:%SZ"
+       }
+      },
+      "id": "fetch",
+      "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+     },
+     {
+      "args": {
+       "calendar_id": "ehxfmae",
+       "query": {
+        "$ask": "w hogaq search qmgv ymbncago lar cwzwcxyyna meeting'n pnkwu evvq lar aqtgnru events (c.q. lar event'n byle lmmmq)"
+       },
+       "time_max": {
+        "$time": "$now + 34m",
+        "format": "%Y-%m-%dT%H:%M:%S%z"
+       },
+       "time_min": {
+        "$time": "$now",
+        "format": "%Y-%m-%dT%H:%M:%S%z"
+       }
+      },
+      "id": "find",
+      "tool": "GOOGLECALENDAR_CUSTOM_FIND_EVENT"
+     },
+     {
+      "args": {
+       "channels": [
+        "uppkustc",
+        "owwvyot",
+        "rtssswxe",
+        "slack",
+        "nfhtdtip",
+        "ltbnq"
+       ],
+       "message": {
+        "$ask": "w 93 zlls meeting reminder xhuc lar event pnkwu, lab start ohzt (qiq qxg bg brief) hx lar ynrm'n whdrf zixgmcwc, qiq lar opps umfp (xbzpggfNehj) up yuizmdvm"
+       },
+       "title": {
+        "$ask": "Dovtnio Kkkppnct: <event pnkwu>"
+       }
+      },
+      "id": "send",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS#1",
+     "id": "fetch",
+     "vary": {
+      "time_max": {
+       "placeholder": "$now + 34m",
+       "format": "%Y-%m-%dT%H:%M:%SZ"
+      },
+      "time_min": {
+       "placeholder": "$now",
+       "format": "%Y-%m-%dT%H:%M:%SZ"
+      }
+     }
+    },
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FIND_EVENT#1",
+     "id": "find",
+     "vary": {
+      "query": {
+       "$ask": "w hogaq search qmgv ymbncago lar cwzwcxyyna meeting'n pnkwu evvq lar aqtgnru events (c.q. lar event'n byle lmmmq)"
+      },
+      "time_max": {
+       "placeholder": "$now + 34m",
+       "format": "%Y-%m-%dT%H:%M:%S%z"
+      },
+      "time_min": {
+       "placeholder": "$now",
+       "format": "%Y-%m-%dT%H:%M:%S%z"
+      }
+     }
+    },
+    {
+     "call": "send_notification#1",
+     "id": "send",
+     "vary": {
+      "message": {
+       "$ask": "w 93 zlls meeting reminder xhuc lar event pnkwu, lab start ohzt (qiq qxg bg brief) hx lar ynrm'n whdrf zixgmcwc, qiq lar opps umfp (xbzpggfNehj) up yuizmdvm"
+      },
+      "title": {
+       "$ask": "Dovtnio Kkkppnct: <event pnkwu>"
+      }
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

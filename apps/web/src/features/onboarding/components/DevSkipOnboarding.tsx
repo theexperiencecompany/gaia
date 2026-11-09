@@ -7,7 +7,7 @@ import { useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { CURRENT_USER_QUERY_KEY } from "@/features/auth/hooks/useCurrentUser";
 import { track } from "@/lib/analytics";
-import { isDevelopment } from "@/lib/fetchAll";
+import { isDevelopment } from "@/lib/environment";
 import { toast } from "@/lib/toast";
 
 /**

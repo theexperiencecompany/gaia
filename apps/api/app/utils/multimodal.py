@@ -39,6 +39,15 @@ class _BlockText(BaseModel):
     text: object = None
 
 
+class InlineMediaBlock(BaseModel):
+    """The payload of a canonical inline-media block, as image_content_block writes it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    base64: str
+    mime_type: str
+
+
 def text_content_block(text: str) -> ContentBlock:
     return {"type": "text", "text": text}
 

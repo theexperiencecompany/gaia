@@ -1,3 +1,4 @@
+import type { TodoConversationResponse } from "../api/generated";
 import { buildQueryString, type QueryValue } from "../api/queryBuilder";
 import { normalizeListResponse } from "../api/responseNormalizer";
 import { TODO_ENDPOINTS } from "../api/todosApi";
@@ -240,5 +241,12 @@ export function createTodoApi(http: HttpAdapter): TodoApiClient {
         silent: true,
         background: true,
       }),
+
+    openTodoConversation: (todoId) =>
+      http.post<TodoConversationResponse>(
+        TODO_ENDPOINTS.conversation(todoId),
+        undefined,
+        { errorMessage: "Failed to open the task's chat" },
+      ),
   } satisfies TodoApiClient;
 }

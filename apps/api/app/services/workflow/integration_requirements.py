@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from functools import lru_cache
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.config.oauth_config import all_integrations, get_integration_by_id
 from app.constants.integrations import MANAGED_BY_INTERNAL
 from app.models.workflow_models import (
     IntegrationRef,
@@ -24,7 +24,7 @@ def _category_to_integration() -> dict[str, str]:
     reminders, …) are excluded — always available, no connection needed.
     """
     result: dict[str, str] = {}
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if integration.managed_by == MANAGED_BY_INTERNAL:
             continue
         if integration.subagent_config and integration.subagent_config.tool_space:
@@ -36,7 +36,7 @@ def _category_to_integration() -> dict[str, str]:
 
 @lru_cache(maxsize=1)
 def _integration_name_map() -> dict[str, str]:
-    return {i.id: i.name for i in OAUTH_INTEGRATIONS}
+    return {i.id: i.name for i in all_integrations()}
 
 
 def compute_required_integrations(

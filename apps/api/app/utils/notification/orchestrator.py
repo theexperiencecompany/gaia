@@ -20,7 +20,7 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationView,
 )
-from app.services.delivery.chat_channel import resolve_chat_channel
+from app.services.delivery.chat_channel import InApp, resolve_proactive_target
 from app.utils.notification.actions import (
     ActionHandler,
     ApiCallActionHandler,
@@ -191,14 +191,14 @@ class NotificationOrchestrator:
             )
 
     async def _default_channels(self, user_id: str) -> list[str]:
-        """In-app always; plus the one chat platform the user prefers, if any.
+        """In-app always; plus the chat app, when that is the one place the user is reached.
 
         On a failed lookup the notification still lands in the app and the
         failure is on the wide event: a stray platform message is not worth
         guessing a platform the user may have switched off.
         """
         try:
-            channel = await resolve_chat_channel(user_id)
+            target = await resolve_proactive_target(user_id)
         except Exception as e:
             log.warning(
                 f"{LogTag.NOTIFICATION} Chat channel lookup failed, delivering in-app only",
@@ -207,9 +207,9 @@ class NotificationOrchestrator:
                 error_type=type(e).__name__,
             )
             return [NotificationChannel.INAPP]
-        if channel is None:
+        if isinstance(target, InApp):
             return [NotificationChannel.INAPP]
-        return [NotificationChannel.INAPP, channel.source.value]
+        return [NotificationChannel.INAPP, target.source.value]
 
     async def _deliver_via_channel(
         self, notification: NotificationRecord, adapter: ChannelAdapter[TContent]

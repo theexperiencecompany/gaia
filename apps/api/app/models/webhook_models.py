@@ -128,10 +128,11 @@ class DodoPaymentData(BaseModel):
     total_amount: int
     settlement_amount: int
     settlement_currency: str
-    tax: int
-    settlement_tax: int
-    status: str
-    payment_method: str
+    # Nullable in Dodo's Payment schema; a required one abandons the whole delivery.
+    tax: int | None = None
+    settlement_tax: int | None = None
+    status: str | None = None
+    payment_method: str | None = None
     card_network: str | None = None
     card_type: str | None = None
     card_last_four: str | None = None

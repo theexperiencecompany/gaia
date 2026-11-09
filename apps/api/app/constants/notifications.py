@@ -62,11 +62,13 @@ DEFAULT_CHAT_CHANNEL_PRIORITY: tuple[str, ...] = (
     NotificationChannel.DISCORD,
 )
 
-# The default quiet hours, on the user's own clock: 22:00 to 08:00. A proactive
-# chat message sent inside them is held until they end (app/services/delivery/
-# quiet_hours.py). The user overrides it in notification settings (users.quiet_hours).
-DEFAULT_QUIET_HOURS_START = 22
-DEFAULT_QUIET_HOURS_END = 8
+# How long a message the user sent on a platform keeps it "the one they're on":
+# inside this window a proactive message follows them there instead of the order above.
+PRESENCE_ACTIVE_WINDOW_SECONDS = 3 * 60 * 60
+
+# How long the per-surface "last wrote here" stamps are kept, so the agent can
+# still say "last seen on WhatsApp 6 days ago". The window above decides delivery.
+PRESENCE_RETENTION_SECONDS = 30 * 24 * 60 * 60
 
 
 class ProactiveMessageClass(StrEnum):
@@ -77,6 +79,14 @@ class ProactiveMessageClass(StrEnum):
     ROUTINE = "routine"
     #: A reminder the user set for this time: it arrives when they asked, quiet hours or not.
     USER_TIMED = "user_timed"
+    #: The result of a run the trigger gate let through quiet hours as urgent.
+    URGENT = "urgent"
+
+
+#: Classes delivered even inside the user's quiet hours.
+QUIET_HOURS_EXEMPT: frozenset[ProactiveMessageClass] = frozenset(
+    {ProactiveMessageClass.USER_TIMED, ProactiveMessageClass.URGENT}
+)
 
 
 # ARQ task that delivers a proactive chat message held for quiet hours, and the

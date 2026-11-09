@@ -22,19 +22,6 @@ export interface EmailData {
   threadId?: string; // Thread ID for grouping related messages
 }
 
-export interface EmailsResponse {
-  emails: EmailData[];
-  nextPageToken?: string;
-}
-
-export interface EmailThreadResponse {
-  thread_id: string;
-  messages_count: number;
-  thread: {
-    messages: EmailData[];
-  };
-}
-
 export interface EmailPayload {
   [x: string]: unknown;
   parts: EmailPart[];
@@ -76,25 +63,6 @@ export type EmailComposeData = {
   thread_id?: string;
   attachments?: EmailAttachmentMeta[];
 };
-
-// AI Email Analysis Types
-export interface EmailImportanceSummary {
-  _id: string;
-  user_id: string;
-  message_id: string;
-  subject: string;
-  sender: string;
-  date: string;
-  labels: string[];
-  is_important: boolean;
-  importance_level: "URGENT" | "HIGH" | "MEDIUM" | "LOW";
-  summary: string;
-  semantic_labels: string[];
-  category: string;
-  intent: string;
-  analyzed_at: string;
-  content_preview: string;
-}
 
 export type EmailFetchData = {
   from: string;

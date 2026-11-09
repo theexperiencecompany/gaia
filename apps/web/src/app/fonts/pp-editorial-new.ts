@@ -25,6 +25,7 @@ export const ppEditorialNew = localFont({
   ],
   variable: "--font-pp-editorial-new",
   display: "swap",
-  preload: true,
+  // No page sets this family today; a preload made every page fetch all four files.
+  preload: false,
   fallback: ["serif"],
 });

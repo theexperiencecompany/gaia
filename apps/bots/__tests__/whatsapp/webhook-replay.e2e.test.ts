@@ -12,6 +12,9 @@
  * 2. a bad signature is rejected (401) and nothing dispatches
  * 3. a batched delivery dispatches every event
  * 4. an image message routes through the shared media pipeline
+ * 5. a failed delivery is reported with Meta's error read back from Kapso
+ * 6. a failed delivery whose Kapso lookup fails is still reported, without the code
+ * 7. the customer-service window is read from the user's latest Kapso conversation
  */
 
 import { createHmac } from "node:crypto";
@@ -20,10 +23,13 @@ import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@kapso/whatsapp-cloud-api", () => ({
+vi.mock("@kapso/whatsapp-cloud-api", async (importOriginal) => ({
+  // The real field builders: the fields string sent to Kapso is part of the contract.
+  ...(await importOriginal<Record<string, unknown>>()),
   WhatsAppClient: vi.fn(() => ({})),
 }));
 
+import { createDeliveryFailureReporter } from "../../../../libs/shared/ts/src/bots/delivery-failures";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 
 const SECRET = "conformance-webhook-secret-0123456789abcdef";
@@ -62,10 +68,13 @@ interface Harnessed {
     chatStream: ReturnType<typeof vi.fn>;
     checkAuthStatus: ReturnType<typeof vi.fn>;
     createLinkToken: ReturnType<typeof vi.fn>;
+    reportDeliveryFailure: ReturnType<typeof vi.fn>;
     getPricingUrl: () => string;
   };
   waClient: {
+    conversations: { list: ReturnType<typeof vi.fn> };
     messages: {
+      get: ReturnType<typeof vi.fn>;
       markRead: ReturnType<typeof vi.fn>;
       sendText: ReturnType<typeof vi.fn>;
     };
@@ -93,15 +102,25 @@ async function buildHarness(): Promise<Harnessed> {
       platformUserId: "",
     })),
     createLinkToken: vi.fn(async () => ({ token: "t", authUrl: "u" })),
+    reportDeliveryFailure: vi.fn(async () => undefined),
     getPricingUrl: () => "https://gaia.test/pricing",
   };
   const waClient = {
+    conversations: { list: vi.fn() },
     messages: {
+      get: vi.fn(),
       markRead: vi.fn(async () => ({})),
       sendText: vi.fn(async () => ({ messages: [{ id: "wamid.out" }] })),
     },
   };
   (adapter as unknown as { gaia: unknown }).gaia = gaia;
+  // boot() builds the reporter; the real one, over the faked client, is what runs here.
+  (
+    adapter as unknown as { reportDeliveryFailure: unknown }
+  ).reportDeliveryFailure = createDeliveryFailureReporter(
+    gaia as unknown as Parameters<typeof createDeliveryFailureReporter>[0],
+    "whatsapp",
+  );
   (adapter as unknown as { waConfig: unknown }).waConfig = {
     kapsoApiKey: "k",
     kapsoPhoneNumberId: "pn",
@@ -224,5 +243,141 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
         expect.objectContaining({ body: "I see your image." }),
       ),
     );
+  });
+
+  it("reports a failed delivery with Meta's error read back from Kapso", async () => {
+    // The SDK camel-cases Kapso's response; these keys are one word either way.
+    h.waClient.messages.get.mockResolvedValue({
+      id: "wamid.SYNTHETIC0003",
+      kapso: {
+        statuses: [
+          { status: "sent", timestamp: "1" },
+          {
+            status: "failed",
+            timestamp: "2",
+            errors: [
+              {
+                code: 130497,
+                title:
+                  "Business account is restricted from messaging users in this country.",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const body = JSON.stringify(loadFixture("message-failed.json"));
+
+    const res = await post(h.app, body, {
+      "x-webhook-signature": sign(body),
+      "x-webhook-event": "whatsapp.message.failed",
+    });
+
+    expect(res.status).toBe(200);
+    expect(h.waClient.messages.get).toHaveBeenCalledWith({
+      phoneNumberId: "pn_synthetic",
+      messageId: "wamid.SYNTHETIC0003",
+      // The exact request verified against production Kapso to return statuses[].errors.
+      fields:
+        "kapso(direction,status,processing_status,phone_number,has_media,media_data,media_url,whatsapp_conversation_id,contact_name,message_type_data,content,flow_response,flow_token,flow_name,order_text)",
+    });
+    await vi.waitFor(() =>
+      expect(h.gaia.reportDeliveryFailure).toHaveBeenCalledWith({
+        platform: "whatsapp",
+        kind: "platform_rejected",
+        reason: "platform_error",
+        error_code: "130497",
+        error_message:
+          "Business account is restricted from messaging users in this country.",
+        destination_id: "5511900000001",
+        country: "BR",
+        platform_message_id: "wamid.SYNTHETIC0003",
+        occurred_at: expect.any(String),
+      }),
+    );
+    expect(h.gaia.chatStream).not.toHaveBeenCalled();
+  });
+
+  it("still reports a failed delivery when the Kapso lookup fails, without the code", async () => {
+    h.waClient.messages.get.mockRejectedValue(new Error("kapso unavailable"));
+    const body = JSON.stringify(loadFixture("message-failed.json"));
+
+    const res = await post(h.app, body, {
+      "x-webhook-signature": sign(body),
+      "x-webhook-event": "whatsapp.message.failed",
+    });
+
+    expect(res.status).toBe(200);
+    await vi.waitFor(() =>
+      expect(h.gaia.reportDeliveryFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "platform_rejected",
+          error_code: undefined,
+          destination_id: "5511900000001",
+          country: "BR",
+        }),
+      ),
+    );
+  });
+
+  describe("the 24h customer-service window", () => {
+    const HOUR_MS = 60 * 60 * 1000;
+
+    function lastWroteAgo(ms: number | null) {
+      h.waClient.conversations.list.mockResolvedValue({
+        data:
+          ms === null
+            ? []
+            : [
+                {
+                  id: "conv-1",
+                  kapso: {
+                    lastInboundAt: new Date(Date.now() - ms).toISOString(),
+                  },
+                },
+              ],
+        paging: { cursors: {} },
+      });
+    }
+
+    function windowClosed(): Promise<boolean> {
+      const notifications = (
+        h.adapter as unknown as {
+          outboundNotifications: {
+            windowClosed: (id: string, isChannel: boolean) => Promise<boolean>;
+          };
+        }
+      ).outboundNotifications;
+      return notifications.windowClosed("5511900000001", false);
+    }
+
+    it("is open when the user wrote within 24h, read from their latest conversation", async () => {
+      lastWroteAgo(1 * HOUR_MS);
+
+      expect(await windowClosed()).toBe(false);
+      expect(h.waClient.conversations.list).toHaveBeenCalledWith({
+        phoneNumberId: "pn",
+        phoneNumber: "5511900000001",
+        limit: 1,
+      });
+    });
+
+    it("is closed 24h after the user last wrote, as Meta's 131047 enforces", async () => {
+      lastWroteAgo(25 * HOUR_MS);
+
+      expect(await windowClosed()).toBe(true);
+    });
+
+    it("closes a few minutes early, before Meta would refuse the send", async () => {
+      lastWroteAgo(24 * HOUR_MS - 60 * 1000);
+
+      expect(await windowClosed()).toBe(true);
+    });
+
+    it("is closed for a user who never wrote", async () => {
+      lastWroteAgo(null);
+
+      expect(await windowClosed()).toBe(true);
+    });
   });
 });

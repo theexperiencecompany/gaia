@@ -49,7 +49,12 @@ from app.models.onboarding_models import (
     WritingStyleExampleBlocks,
     WritingStyleOutput,
 )
-from app.models.user_models import OnboardingPhase, PersonalizationBundle, UserDocument
+from app.models.user_models import (
+    OnboardingPhase,
+    PersonalizationBundle,
+    StartingJobs,
+    UserDocument,
+)
 from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.oauth_service import handle_oauth_connection
 from app.services.onboarding.intelligence_job import personalization_job_id
@@ -138,18 +143,21 @@ class _UserStore:
     # -- onboarding lifecycle ---------------------------------------------
     async def complete_onboarding(self, user_id: str, **fields: Any) -> UserDocument | None:
         doc = self.docs.get(user_id)
-        if doc is None or "onboarding" in doc:
+        if doc is None or (doc.get("onboarding") or {}).get("completed"):
             return None
         if fields.get("timezone") is not None:
             doc["timezone"] = fields["timezone"]
-        sub: dict[str, Any] = {
-            "completed": True,
-            "completed_at": datetime.now(UTC),
-            "phase": fields["phase"],
-            "bio_status": fields["bio_status"],
-            "preferences": fields["preferences"].model_dump(),
-        }
-        doc["onboarding"] = sub
+        sub = doc.setdefault("onboarding", {})
+        sub.update(
+            completed=True,
+            completed_at=datetime.now(UTC),
+            phase=fields["phase"],
+            bio_status=fields["bio_status"],
+        )
+        # Field by field, as the repository writes them: earlier saves survive.
+        sub.setdefault("preferences", {}).update(
+            fields["preferences"].model_dump(exclude_unset=True)
+        )
         return await self.get(user_id)
 
     async def clear_onboarding(self, user_id: str) -> None:
@@ -158,17 +166,15 @@ class _UserStore:
     async def reset_onboarding(self, user_id: str) -> None:
         self.docs.get(user_id, {}).pop("onboarding", None)
 
-    async def set_onboarding_phase(self, user_id: str, phase: OnboardingPhase) -> bool:
-        sub = self._sub(user_id)
-        if sub is None:
-            return False
-        sub["phase"] = phase
-        return True
-
     async def set_bio_status(self, user_id: str, bio_status: Any) -> None:
         sub = self._sub(user_id)
         if sub is not None:
             sub["bio_status"] = bio_status
+
+    async def set_starting_jobs(self, user_id: str, jobs: StartingJobs) -> None:
+        sub = self._sub(user_id)
+        if sub is not None:
+            sub["starting_jobs"] = jobs.model_dump()
 
     async def set_first_conversation_id(
         self, user_id: str, conversation_id: str
@@ -446,6 +452,7 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
 
     for patcher in (
         patch(f"{SVC}.onboarding_service.user_repository", users),
+        patch(f"{SVC}.first_question.user_repository", users),
         patch(f"{SVC}.intelligence_job.user_repository", users),
         patch(f"{SVC}.intelligence_service.user_repository", users),
         patch("app.api.v1.endpoints.onboarding.user_repository", users),

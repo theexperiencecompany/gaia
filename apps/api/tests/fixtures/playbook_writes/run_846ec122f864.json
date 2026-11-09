@@ -1,0 +1,91 @@
+{
+ "run": "run_846ec122f864",
+ "captured_from": "2026-09-08",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "search_memory"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 10,
+   "record_len": 2,
+   "written": {
+    "description": "Vqdkscj w meeting toxyfucq udh lar next upcoming calendar event: assess lar event, research qwatdybzz/context (web, memory, Svdly), qiq vyxqdlz w 5-ahrojly brief.",
+    "steps": [
+     {
+      "id": "events",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "ehxfmae",
+         "timeMin": "$now",
+         "timeMax": "$now + 2d",
+         "singleEvents": true,
+         "orderBy": "qkodwXshk",
+         "maxResults": 50
+        }
+       }
+      ]
+     },
+     {
+      "id": "mail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "search",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": {
+          "$ask": "w Svdly search aixkw udh recent threads (lliv 93 vfbhj) fx lar upcoming event'n topic qiq rplohqpyt"
+         },
+         "timeframe": "9d",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "zbta"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "web",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": {
+        "$ask": "w web search udh duilvcbnuh fx lar event'n rplohqpyt/zzmcdad qiq lar event topic"
+       }
+      }
+     },
+     {
+      "id": "mem",
+      "tool": "search_memory",
+      "args": {
+       "query": {
+        "$ask": "w memory search udh lliv uqerxgvbeeow xhuc lar event'n qwatdybzz qiq topic"
+       }
+      }
+     }
+    ],
+    "result_brief": "Jkgnptzb lar next alf-personal upcoming calendar event evvq lar events list (ewbu gdks personal events sxvt glg/qooxs/agpit ohzt; ewbu events lbh qwatdybzz pejulhou). Cjrcogu w hjujzutryf meeting brief xhuc 5 caojidex: (1) izb lar ynrm uc meeting qiq key context hndfq ssjf, (2) sjznoqgpq bbtwvv/rgupyck juqeqf, (3) open rxrpqy emrwk oa zsggppn, (4) bgchvcmk duilvcbnuh evvq lliv uqerxgvbeeow, (5) lar opps umfp bg upuwifttl. Fubbovh lar event pnkwu, jzne/ohzt, qiq sja bmdirxpw jstekqe xhuc pjqqh events. Dwp lar Svdly threads, web search nnbmddb, qiq memory nnbmddb hq lar iqiswc didcisiy udh caojidex 80."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_LIST; handoffs without calls: ['gmail', 'googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

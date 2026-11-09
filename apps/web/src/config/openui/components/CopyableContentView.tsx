@@ -2,6 +2,7 @@ import { Button } from "@heroui/react";
 import { CheckmarkCircle02Icon, Copy01Icon } from "@icons";
 import React from "react";
 import type { z } from "zod";
+import { copyWithFeedback } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { ToolCard } from "../primitives/ToolCard";
 import type { copyableContentSchema } from "../promptSpecs";
@@ -21,20 +22,12 @@ export function CopyableContentView(
   );
 
   const copy = React.useCallback(() => {
-    // navigator.clipboard is undefined in non-secure contexts (e.g. http,
-    // some webviews). Calling writeText on undefined would throw synchronously
-    // before the catch can swallow it.
-    if (!navigator.clipboard?.writeText) return;
-    void navigator.clipboard
-      .writeText(props.content)
-      .then(() => {
-        setCopied(true);
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => setCopied(false), 1800);
-      })
-      .catch(() => {
-        /* best-effort copy: clipboard failures (permissions, insecure context) are non-actionable */
-      });
+    void copyWithFeedback(props.content).then((copied) => {
+      if (!copied) return;
+      setCopied(true);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => setCopied(false), 1800);
+    });
   }, [props.content]);
 
   if (inline) {

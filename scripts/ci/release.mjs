@@ -12,8 +12,13 @@
  *                                 Guard the CLI publish workflow: tag format,
  *                                 tag/version/package.json/manifest agreement,
  *                                 and whether the version is already on npm.
- *                                 Writes tag / version / version_exists_on_npm
- *                                 / should_publish to $GITHUB_OUTPUT.
+ *                                 Writes tag / version / npm_dist_tag /
+ *                                 prerelease / version_exists_on_npm /
+ *                                 should_publish to $GITHUB_OUTPUT.
+ *
+ * A CLI version is X.Y.Z (npm dist-tag latest) or X.Y.Z-beta.N (dist-tag beta).
+ * A beta is cut by hand on top of the last stable release, so the release-please
+ * manifest keeps naming that stable version while package.json names the beta.
  *
  * Why this exists:
  * - catches manifest drift after manual version bumps or partial releases,
@@ -35,6 +40,24 @@ const RELEASE_CONFIG_PATH = "config/release-please-config.json";
 const CLI_PACKAGE_PATH = "packages/cli/package.json";
 const CLI_MANIFEST_KEY = "packages/cli";
 const NPM_PACKAGE_NAME = "@heygaia/cli";
+const CLI_VERSION_RE = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
+const NPM_DIST_TAG = { stable: "latest", beta: "beta" };
+
+/** { core: [x, y, z], beta: boolean } for a CLI release version, null for anything else. */
+function parseCliVersion(version) {
+  const match = CLI_VERSION_RE.exec(version);
+  if (!match) return null;
+  return { core: match.slice(1, 4).map(Number), beta: match[4] !== undefined };
+}
+
+/** Whether version is a beta of a release after the stable version. */
+function isBetaAfter(version, stable) {
+  const beta = parseCliVersion(version);
+  const base = parseCliVersion(stable);
+  if (!beta?.beta || !base || base.beta) return false;
+  const differing = beta.core.findIndex((part, i) => part !== base.core[i]);
+  return differing !== -1 && beta.core[differing] > base.core[differing];
+}
 
 function readJson(filePath) {
   if (!existsSync(filePath)) {
@@ -115,7 +138,9 @@ function cmdValidateManifest() {
     }
 
     const manifestVersion = manifest[manifestPath];
-    if (manifestVersion !== actualVersion) {
+    const isCliBeta =
+      manifestPath === CLI_MANIFEST_KEY && isBetaAfter(actualVersion, manifestVersion);
+    if (manifestVersion !== actualVersion && !isCliBeta) {
       errors.push(
         `Version mismatch for "${manifestPath}": manifest=${manifestVersion} file=${actualVersion} (${resolver.filePath})`,
       );
@@ -216,6 +241,15 @@ function cmdVerifyCli(argv) {
     process.exit(1);
   }
 
+  const parsedVersion = parseCliVersion(version);
+  if (!parsedVersion) {
+    errors.push(
+      `Version "${version}" must be X.Y.Z (npm ${NPM_DIST_TAG.stable}) or X.Y.Z-beta.N (npm ${NPM_DIST_TAG.beta})`,
+    );
+  }
+  const isBeta = parsedVersion?.beta ?? false;
+  const npmDistTag = isBeta ? NPM_DIST_TAG.beta : NPM_DIST_TAG.stable;
+
   const tagMatch = /^cli-v(.+)$/.exec(tag);
   if (!tagMatch) {
     errors.push(`Tag "${tag}" must match format cli-v<version>`);
@@ -242,8 +276,13 @@ function cmdVerifyCli(argv) {
   const publishedVersions = loadPublishedVersions();
   const versionExistsOnNpm = publishedVersions.includes(version);
 
-  if (manifestVersion && manifestVersion !== version) {
-    const mismatchMessage = `${MANIFEST_PATH} entry "${CLI_MANIFEST_KEY}" is "${manifestVersion}" but expected "${version}"`;
+  const manifestMismatch = isBeta
+    ? manifestVersion && !isBetaAfter(version, manifestVersion)
+    : manifestVersion && manifestVersion !== version;
+  if (manifestMismatch) {
+    const mismatchMessage = isBeta
+      ? `Beta "${version}" must be a beta of a release after the last stable one (${MANIFEST_PATH} "${CLI_MANIFEST_KEY}" is "${manifestVersion}")`
+      : `${MANIFEST_PATH} entry "${CLI_MANIFEST_KEY}" is "${manifestVersion}" but expected "${version}"`;
     if (versionExistsOnNpm) {
       warnings.push(
         `${mismatchMessage}. Non-blocking for idempotent reruns because ${NPM_PACKAGE_NAME}@${version} is already published.`,
@@ -257,11 +296,14 @@ function cmdVerifyCli(argv) {
 
   writeOutput("tag", tag);
   writeOutput("version", version);
+  writeOutput("npm_dist_tag", npmDistTag);
+  writeOutput("prerelease", isBeta);
   writeOutput("version_exists_on_npm", versionExistsOnNpm);
   writeOutput("should_publish", shouldPublish);
 
   console.log(`[info] tag=${tag}`);
   console.log(`[info] version=${version}`);
+  console.log(`[info] npm_dist_tag=${npmDistTag}`);
   console.log(`[info] package_version=${cliPackageVersion}`);
   if (manifestVersion) {
     console.log(`[info] manifest_version=${manifestVersion}`);

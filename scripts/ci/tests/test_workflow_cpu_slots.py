@@ -1,7 +1,7 @@
-"""Every heavy nx lane in main.yml queues through the host CPU governor.
+"""Every heavy nx step in ci.yml queues through the host CPU governor.
 
 `lib/cpu-slots.sh` only governs the lanes that ask it to. A lane that sizes its
-own parallelism from `runner.sh parallel` and then runs nx directly takes those
+own parallelism from `runner.py parallel` and then runs nx directly takes those
 cores whether or not the box has them, and the cost lands on whichever
 neighbour has a deadline: `test-typescript` was unenrolled, and a jsdom render
 that takes 137 ms idle blew vitest's 5 s timeout on the loaded box, failed the
@@ -13,83 +13,105 @@ be quiet — so the only way to notice is a test that reads the workflow.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-import re
+import subprocess
 from typing import Any
 
+from doc_shape import mapping
+from lib import nx_affected
 import pytest
+import runner
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MAIN_YML = REPO_ROOT / ".github" / "workflows" / "main.yml"
-
-# The lanes whose step runs nx across the whole workspace at a parallelism it
-# picked from nproc. Named rather than discovered: a new one should have to be
-# added here deliberately, which is the moment to ask whether it needs slots.
-GOVERNED_JOBS = ("build", "test-typescript")
+CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[str, Any]:
-    return yaml.safe_load(MAIN_YML.read_text())
+    return mapping(yaml.safe_load(CI_YML.read_text()))
 
 
-@pytest.mark.parametrize("job_name", GOVERNED_JOBS)
-def test_the_nx_step_holds_cpu_tokens_while_it_runs(
-    workflow: dict[str, Any], job_name: str
+def test_no_step_runs_nx_across_the_workspace_outside_the_governor(
+    workflow: dict[str, Any],
 ) -> None:
-    steps = workflow["jobs"][job_name]["steps"]
-    nx_steps = [s for s in steps if "pnpm exec nx run-many" in s.get("run", "")]
-    assert nx_steps, f"{job_name} no longer runs nx run-many — is this table stale?"
-
-    for step in nx_steps:
-        assert "runner.sh with-slots" in step["run"], (
-            f"{job_name}: the nx step runs outside the CPU governor. Wrap it in "
-            f'`runner.sh with-slots "$NX_PARALLEL" -- ...` so it queues against '
-            f"the box's core budget instead of thrashing the concurrent lanes."
-        )
+    for name, job in workflow["jobs"].items():
+        for step in job.get("steps", []):
+            run = str(step.get("run", ""))
+            if "nx run-many" in run:
+                assert "runner.py with-slots" in run, (
+                    f"{name}: {step.get('name')} skips the governor"
+                )
 
 
-@pytest.mark.parametrize("job_name", GOVERNED_JOBS)
-def test_the_tokens_it_takes_match_the_parallelism_it_asks_nx_for(
-    workflow: dict[str, Any], job_name: str
+def test_run_job_holds_as_many_tokens_as_it_asks_nx_for(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Hold as many tokens as nx spawns workers, or the box is oversubscribed on the quiet."""
-    steps = workflow["jobs"][job_name]["steps"]
-    run = next(s["run"] for s in steps if "runner.sh with-slots" in s.get("run", ""))
-    # The command line only. The step's own comments explain what with-slots is
-    # for and name NX_PARALLEL in prose, and a regex over the whole block reads
-    # the explanation instead of the invocation.
-    command = next(line for line in run.splitlines() if "runner.sh with-slots" in line)
+    asked: dict[str, Any] = {}
 
-    held = re.search(r"with-slots\s+\"?\$\{?([A-Za-z_]\w*)\}?\"?", command)
-    requested = re.search(r"--parallel=\"?\$\{?([A-Za-z_]\w*)\}?\"?", command)
-    assert held and requested, f"{job_name}: could not read the slot/parallel pair from the step"
-    assert held.group(1) == requested.group(1), (
-        f"{job_name}: takes {held.group(1)} tokens but runs nx at {requested.group(1)}"
+    def fake_run(tasks: list[str], parallel: int, wrap: Any, on_done: Any) -> bool:
+        asked.update(tasks=tasks, parallel=parallel, many=wrap(parallel), one=wrap(1))
+        return True
+
+    check = nx_affected.Check("ci:biome", "lint-node", "biome", "node", None, None, True, "nx")
+    monkeypatch.setattr(nx_affected, "checks", lambda: {check.task: check})
+    monkeypatch.setattr(nx_affected, "run", fake_run)
+    monkeypatch.setattr(runner, "measure_parallelism", lambda: _parallelism(nx=6))
+    monkeypatch.setenv("JOB_TASKS", json.dumps({"lint-node": ["ci:biome"]}))
+    monkeypatch.setenv("RESULTS_FILE", str(tmp_path / "results.json"))
+    monkeypatch.delenv("REUSED", raising=False)
+
+    assert runner.cmd_run_job(["lint-node"]) == 0
+    assert asked["tasks"] == ["ci:biome"] and asked["parallel"] == 6
+    assert "with-slots" in asked["many"] and asked["many"][-1] == "6"
+    assert asked["one"][-1] == "1", "a single-task nx run holds one token"
+
+
+def _parallelism(nx: int) -> Any:
+    return runner.Parallelism(
+        nproc=8, mem_gb=16, mem_avail_gb=8, nx=nx, pytest_n=4, pytest_capped=False, docker=2
     )
 
 
-# lib/cpu-slots.sh: GAIA_CPU_SLOTS_TIMEOUT default, in minutes. A lane that
-# waits this long still runs afterwards (fail-open), so the wait is time the
-# job cap has to be able to absorb on top of the work itself.
-FAIL_OPEN_WAIT_MINUTES = 10
-
-
-@pytest.mark.parametrize("job_name", GOVERNED_JOBS)
-def test_the_job_cap_can_absorb_a_full_governor_wait(
-    workflow: dict[str, Any], job_name: str
+def test_run_job_posts_each_check_the_moment_its_tasks_finish(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A governed lane's `timeout-minutes` must leave room for the queue.
+    """Regression: every status waited for the job's slowest check, so a quick red showed late."""
+    posts: list[str] = []
+    seen_when_deps_finished: list[str] = []
+    checks = [
+        nx_affected.Check("ci:biome", "lint-node", "biome", "node", None, None, True, "nx"),
+        nx_affected.Check(
+            "web:type-check", "lint-node", "type-check", "node", None, None, True, "nx"
+        ),
+        nx_affected.Check(
+            "cli:type-check", "lint-node", "type-check", "node", None, None, True, "nx"
+        ),
+    ]
 
-    Enrolling a lane trades wall clock for not thrashing the box, which is the
-    trade we want — but the job cap is what decides whether patience reads as a
-    failure. test-typescript was enrolled at `timeout-minutes: 12` against a
-    600s fail-open wait plus ~4 min of checkout, install and suite: a busy box
-    would have failed it for queueing exactly as designed.
-    """
-    cap = workflow["jobs"][job_name]["timeout-minutes"]
-    assert cap > FAIL_OPEN_WAIT_MINUTES, (
-        f"{job_name}: timeout-minutes={cap} does not even cover the governor's "
-        f"{FAIL_OPEN_WAIT_MINUTES}-minute fail-open wait, let alone the work after it"
-    )
+    def fake_run(tasks: list[str], parallel: int, wrap: Any, on_done: Any) -> bool:
+        on_done("ci:biome", {"status": "failure", "code": 1, "output": "biome found problems"})
+        on_done("web:type-check", {"status": "success", "code": 0, "output": ""})
+        seen_when_deps_finished.extend(posts)
+        on_done("cli:type-check", {"status": "success", "code": 0, "output": ""})
+        return False
+
+    def fake_post(argv: list[str], **_: Any) -> None:
+        posts.append(argv[argv.index("--check") + 1])
+
+    monkeypatch.setattr(nx_affected, "checks", lambda: {c.task: c for c in checks})
+    monkeypatch.setattr(nx_affected, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_post)
+    monkeypatch.setattr(runner, "measure_parallelism", lambda: _parallelism(nx=2))
+    monkeypatch.setenv("JOB_TASKS", json.dumps({"lint-node": [c.task for c in checks]}))
+    monkeypatch.setenv("RESULTS_FILE", str(tmp_path / "results.json"))
+    monkeypatch.setenv("NO_POST", "--no-post")
+    # CI sets REUSED for the whole job; a reused check would never be waited on.
+    monkeypatch.delenv("REUSED", raising=False)
+
+    assert runner.cmd_run_job(["lint-node"]) == 1
+    # biome posted before type-check's second task finished; type-check only once both had.
+    assert seen_when_deps_finished == ["biome"]
+    assert posts == ["biome", "type-check"]

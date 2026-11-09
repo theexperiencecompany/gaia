@@ -29,6 +29,7 @@ from app.constants.workflows import WorkflowDelivery
 from app.decorators import with_rate_limiting
 from app.models.agent_models import agent_configurable, current_stream_writer, get_user_id
 from app.models.workflow_models import WorkflowExecutionRequest
+from app.services.analytics_service import capture
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
@@ -43,6 +44,8 @@ from app.utils.workflow_utils import (
     get_thread_id,
     success_response,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import WorkflowCreated
 from shared.py.wide_events import log
 
 SUBAGENT_WORKFLOW_TOOLS = _SUBAGENT_WORKFLOW_TOOLS
@@ -152,7 +155,14 @@ async def create_workflow(
                 )
 
                 if direct_result is not None:
-                    # Success - workflow was created directly
+                    capture(
+                        UserId(user_id),
+                        WorkflowCreated(
+                            origin="chat_agent",
+                            trigger_type=draft.backend_trigger_type.value,
+                            delivery=delivery.value,
+                        ),
+                    )
                     return direct_result
 
                 # Fall through to draft card if direct creation failed

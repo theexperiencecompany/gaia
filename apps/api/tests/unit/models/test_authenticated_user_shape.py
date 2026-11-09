@@ -17,8 +17,9 @@ from pydantic import ValidationError
 import pytest
 
 from app.config.feature_flags import FeatureFlag
+from app.constants.auth import InstanceRole
 from app.models.first_steps_models import FirstStepsState
-from app.models.notification.notification_models import QuietHours
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument, UserDocument
 from app.utils.auth_utils import build_user_context
 
@@ -43,8 +44,9 @@ _STAMP = datetime(2024, 5, 1, tzinfo=UTC)
 _SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
     ("OnboardingSubdocument", OnboardingSubdocument(focus="ops")),
     ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_STAMP)),
-    ("QuietHours", QuietHours(start_hour=1, end_hour=6)),
+    ("QuietHours", QuietHours(enabled=False, start_hour=23, end_hour=6)),
     ("FeatureFlag", {FeatureFlag.BROWSER_OBSCURA: True}),
+    ("InstanceRole", InstanceRole.ADMIN),
     ("datetime", _STAMP),
     ("bool", True),
     ("int", 3),
@@ -94,7 +96,7 @@ def test_authenticated_user_declares_no_unknown_fields() -> None:
 def test_build_user_context_copies_every_document_field() -> None:
     """A field build_user_context forgets to copy is declared yet never set, the drift this guards."""
     values = _sample_values()
-    doc = UserDocument(id="507f1f77bcf86cd799439011", **values)
+    doc = UserDocument.model_validate({"id": "507f1f77bcf86cd799439011", **values})
 
     user = build_user_context(doc, auth_provider="workos")
 
@@ -108,7 +110,7 @@ def test_authenticated_user_is_frozen_and_closed() -> None:
     with pytest.raises(ValidationError):
         user.user_id = "u2"
     with pytest.raises(ValidationError):
-        AuthenticatedUser(user_id="u1", _id="legacy")
+        AuthenticatedUser.model_validate({"user_id": "u1", "_id": "legacy"})
     assert user.with_timezone("Asia/Kolkata").timezone == "Asia/Kolkata"
     assert user.timezone is None
 

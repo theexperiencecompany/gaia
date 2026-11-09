@@ -11,10 +11,8 @@ import asyncio
 
 import pytest
 
-from app.db.repositories.processed_webhooks import (
-    CLAIMED_STATUS,
-    ProcessedWebhooksRepository,
-)
+from app.constants.payments import CLAIMED_STATUS
+from app.db.repositories.processed_webhooks import ProcessedWebhooksRepository
 from app.models.payment_models import ProcessedWebhookUpdate
 
 

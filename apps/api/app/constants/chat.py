@@ -107,6 +107,16 @@ UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS = 4000
 # chars into .txt attachments, so normal traffic never gets near this.
 MAX_MESSAGE_LENGTH = 50_000
 
+# A conversation is one Mongo document, and a 16MB one can never be written again:
+# every later $push is rejected outright. This keeps the newest messages and drops
+# the oldest, the same $slice the workflow threads already use.
+CONVERSATION_MAX_MESSAGES = 600
+
+# Pinned messages are kept outside that window, so the pin count is its own bound:
+# an unbounded set of pins would grow the document past 16MB just as history did.
+# Past this many, the oldest pins fall out with the messages that carried them.
+CONVERSATION_MAX_RETAINED_PINS = 100
+
 # ``MessageModel.type`` of a message the human wrote (the other value is
 # ``"bot"``). Named so a stored-message query and the writers agree on the literal.
 USER_MESSAGE_TYPE = "user"

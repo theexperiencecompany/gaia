@@ -5,11 +5,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.constants.notifications import (
-    DEFAULT_QUIET_HOURS_END,
-    DEFAULT_QUIET_HOURS_START,
-    ProactiveMessageClass,
-)
+from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.base import UserScopedDocument
 from app.schemas.common import ResponseModel
 
@@ -337,30 +333,6 @@ class BulkActions(str, Enum):
 
     MARK_READ = "mark_read"
     ARCHIVE = "archive"
-
-
-class QuietHours(BaseModel):
-    """A daily window, on the user's own clock, when GAIA holds proactive pushes.
-
-    Whole local hours; the window may span midnight (start 22, end 8 is 22:00 to
-    08:00). The end hour is the first hour outside the window. What the window
-    means for a message is app/services/delivery/quiet_hours.py's to decide.
-    """
-
-    start_hour: int = Field(ge=0, le=23)
-    end_hour: int = Field(ge=0, le=23)
-
-    @model_validator(mode="after")
-    def _spans_some_hours(self) -> "QuietHours":
-        """Reject an empty window: equal hours cannot say whether they mean none or all day."""
-        if self.start_hour == self.end_hour:
-            raise ValueError("Quiet hours must start and end at different hours")
-        return self
-
-
-def default_quiet_hours() -> QuietHours:
-    """The quiet hours of a user who never set their own."""
-    return QuietHours(start_hour=DEFAULT_QUIET_HOURS_START, end_hour=DEFAULT_QUIET_HOURS_END)
 
 
 class ChannelPreferences(ResponseModel):

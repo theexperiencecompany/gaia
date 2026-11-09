@@ -17,14 +17,15 @@ from app.constants.notifications import (
     DEFERRED_CHAT_MESSAGE_TASK,
     ProactiveMessageClass,
 )
+from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
-from app.models.notification.notification_models import QuietHours
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
 
 USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
-CHANNEL = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-7")
+CHANNEL = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-7", basis="priority")
 TEXT = f"Invoice overdue.{NEW_MESSAGE_BREAKER}Chase them?"
 NOON_UTC = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
 NIGHT_UTC = datetime(2026, 10, 14, 23, 30, tzinfo=UTC)
@@ -56,7 +57,7 @@ async def _post(result: OutboundResult) -> _Posted:
         patch.object(platform_chat, "record_platform_delivery", record),
         patch.object(platform_chat, "log") as log,
         # Noon on a UTC clock: outside the default 22-8 quiet hours.
-        patch.object(platform_chat.user_repository, "get", AsyncMock(return_value=AWAKE_USER)),
+        patch.object(user_repository, "get", AsyncMock(return_value=AWAKE_USER)),
         time_machine.travel(NOON_UTC, tick=False),
     ):
         returned = await platform_chat.post_to_platform_chat(
@@ -153,7 +154,7 @@ class TestQuietHours:
         publish = AsyncMock(return_value=OutboundResult.PUBLISHED)
         get_user = AsyncMock(return_value=user)
         with (
-            patch.object(platform_chat.user_repository, "get", get_user),
+            patch.object(user_repository, "get", get_user),
             patch.object(platform_chat, "enqueue_worker_job", enqueue),
             patch.object(platform_chat.RedisPoolManager, "get_pool", AsyncMock(return_value=POOL)),
             patch.object(
@@ -167,7 +168,6 @@ class TestQuietHours:
             result = await platform_chat.post_to_platform_chat(
                 user=USER, channel=CHANNEL, text=text, origin="origin", message_class=message_class
             )
-        get_user.assert_awaited_once_with("user-1")
         return result, enqueue, publish
 
     async def test_a_routine_message_in_the_window_is_scheduled_for_its_end(self) -> None:
@@ -182,6 +182,7 @@ class TestQuietHours:
             user_id="user-1",
             source=ConversationSource.TELEGRAM,
             platform_user_id="tg-7",
+            basis="priority",
             text=TEXT,
             origin="origin",
             message_class=ProactiveMessageClass.ROUTINE,
@@ -195,7 +196,8 @@ class TestQuietHours:
     async def test_the_users_own_window_and_clock_decide(self) -> None:
         # 12:00 UTC is 17:30 in Kolkata, inside a 17-19 window that ends 13:30 UTC.
         user = UserDocument(
-            timezone="Asia/Kolkata", quiet_hours=QuietHours(start_hour=17, end_hour=19)
+            timezone="Asia/Kolkata",
+            quiet_hours=QuietHours(enabled=True, start_hour=17, end_hour=19),
         )
         result, enqueue, _ = await self._post_at(NOON_UTC, ProactiveMessageClass.ROUTINE, user)
 
@@ -209,6 +211,24 @@ class TestQuietHours:
 
         assert result is OutboundResult.PUBLISHED
         publish.assert_awaited_once()
+        enqueue.assert_not_awaited()
+
+    async def test_the_result_of_a_run_let_through_as_urgent_is_sent_inside_the_window(
+        self,
+    ) -> None:
+        result, enqueue, publish = await self._post_at(NIGHT_UTC, ProactiveMessageClass.URGENT)
+
+        assert result is OutboundResult.PUBLISHED
+        publish.assert_awaited_once()
+        enqueue.assert_not_awaited()
+
+    async def test_switched_off_quiet_hours_hold_nothing(self) -> None:
+        user = UserDocument(
+            timezone="UTC", quiet_hours=QuietHours(enabled=False, start_hour=22, end_hour=8)
+        )
+        result, enqueue, _ = await self._post_at(NIGHT_UTC, ProactiveMessageClass.ROUTINE, user)
+
+        assert result is OutboundResult.PUBLISHED
         enqueue.assert_not_awaited()
 
     async def test_outside_the_window_it_is_sent_now(self) -> None:
@@ -232,7 +252,7 @@ class TestQuietHours:
             NIGHT_UTC, ProactiveMessageClass.ROUTINE, text="Rent is due."
         )
         moved_window = UserDocument(
-            timezone="UTC", quiet_hours=QuietHours(start_hour=22, end_hour=9)
+            timezone="UTC", quiet_hours=QuietHours(enabled=True, start_hour=22, end_hour=9)
         )
         _, other_release, _ = await self._post_at(
             NIGHT_UTC, ProactiveMessageClass.ROUTINE, moved_window
@@ -242,7 +262,3 @@ class TestQuietHours:
             enqueue.await_args.kwargs["_job_id"] for enqueue in (first, other_text, other_release)
         }
         assert len(job_ids) == 3
-
-    async def test_an_unknown_user_fails_loudly(self) -> None:
-        with pytest.raises(LookupError, match="^proactive message for unknown user user-1$"):
-            await self._post_at(NIGHT_UTC, ProactiveMessageClass.ROUTINE, user=None)

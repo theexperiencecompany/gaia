@@ -7,9 +7,10 @@ their DM conversation and recorded in that conversation's LangGraph thread.
 Without both, the user's reply reaches an agent that has no idea what it just
 said.
 
-Being the one path, it is also where quiet hours apply: a message the policy
-holds (app/services/delivery/quiet_hours.py) is scheduled as a durable job for
-the window's end instead of being sent, so no caller knows about quiet hours.
+Being the one path, it is also where quiet hours apply to a message: one sent
+inside the user's quiet hours (user_service.quiet_hours_end), unless its class
+is exempt, is scheduled as a durable job for their end instead of being sent,
+so no caller knows about quiet hours.
 """
 
 from datetime import UTC, datetime
@@ -23,16 +24,16 @@ from app.constants.log_tags import LogTag
 from app.constants.notifications import (
     DEFERRED_CHAT_MESSAGE_JOB_PREFIX,
     DEFERRED_CHAT_MESSAGE_TASK,
+    QUIET_HOURS_EXEMPT,
     ProactiveMessageClass,
 )
-from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource, MessageModel, UpdateMessagesRequest
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
-from app.services.delivery.chat_channel import ChatChannel
-from app.services.delivery.quiet_hours import held_until
+from app.services.delivery.chat_channel import ChatChannel, ChatChannelBasis
 from app.services.outbound_delivery import OutboundResult, publish_outbound_message
+from app.services.user_service import quiet_hours_end
 from app.utils.message_breaks import split_message_bubbles
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
@@ -47,6 +48,7 @@ class DeferredChatMessage(BaseModel):
     user_id: str
     source: ConversationSource
     platform_user_id: str
+    basis: ChatChannelBasis
     text: str
     origin: str
     message_class: ProactiveMessageClass
@@ -54,7 +56,9 @@ class DeferredChatMessage(BaseModel):
     @property
     def channel(self) -> ChatChannel:
         """The platform and account the message was addressed to."""
-        return ChatChannel(source=self.source, platform_user_id=self.platform_user_id)
+        return ChatChannel(
+            source=self.source, platform_user_id=self.platform_user_id, basis=self.basis
+        )
 
 
 async def post_to_platform_chat(
@@ -79,6 +83,7 @@ async def post_to_platform_chat(
                 user_id=user.user_id,
                 source=channel.source,
                 platform_user_id=channel.platform_user_id,
+                basis=channel.basis,
                 text=text,
                 origin=origin,
                 message_class=message_class,
@@ -135,17 +140,10 @@ async def post_to_platform_chat(
 
 
 async def _quiet_hours_end(user_id: str, message_class: ProactiveMessageClass) -> datetime | None:
-    """Return when the user's quiet hours release a message of message_class, or None for now.
-
-    Read from the stored user, not the caller's context: a run's context can be
-    a partial user whose window is the default rather than the one they set.
-    """
-    user_doc = await user_repository.get(user_id)
-    if user_doc is None:
-        raise LookupError(f"proactive message for unknown user {user_id}")
-    # astimezone reads a naive now() as the same instant, so dropping UTC is equivalent.
-    now = datetime.now(UTC)  # pragma: no mutate
-    return held_until(message_class, user_doc.quiet_hours, user_doc.timezone, now)
+    """Return when the user's quiet hours release a message of message_class, or None for now."""
+    if message_class in QUIET_HOURS_EXEMPT:
+        return None
+    return await quiet_hours_end(user_id)
 
 
 async def _schedule(message: DeferredChatMessage, deliver_at: datetime) -> None:

@@ -107,8 +107,9 @@ def build_provider_parent_tool_runtime_config(
 
 def build_executor_child_tool_runtime_config() -> ToolRuntimeConfig:
     """Build child tool runtime config for executor-spawned subagents."""
+    # retrieve_tools hands back integration tools as docs to run via execute, so it always binds.
     return ToolRuntimeConfig(
-        initial_tool_names=["read", "bash", FINISH_TASK_NAME],
+        initial_tool_names=["read", "bash", "execute", "get_tool_schema", FINISH_TASK_NAME],
         enable_retrieve_tools=True,
         include_subagents_in_retrieve=False,
     )

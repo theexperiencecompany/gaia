@@ -1,24 +1,34 @@
 """Unit tests for activate_integration — tool registration + context injection."""
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.tools import tool as langchain_tool
+from langchain_core.messages import ToolCall
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool, tool as langchain_tool
 from langgraph.types import Command
 import pytest
 
 from app.agents.context.text import ACTIVATION_MULTI_ACCOUNT_POINTER
 from app.agents.core.subagents import integration_activation
-from app.agents.core.subagents.handoff_tools import CustomMcpSubagent
 from app.agents.core.subagents.integration_activation import (
+    ActivatedTools,
     _activate_tools,
     _activation_context,
     _activation_header,
     _has_several_accounts,
+    _mcp_preload_names,
     activate_integration,
 )
+from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.prompts.user_instructions_prompts import USER_INSTRUCTIONS_HEADER
 from app.agents.tools.execute.resolver import ResolvedTool
+from app.constants.integrations import ConnectMode
 from app.constants.log_tags import LogTag
+from app.constants.mcp import MCP_PRELOAD_ALL_MAX
+from app.db.repositories.integrations import integration_repository
+from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError
 from tests.helpers import captured_wide_event
 from tests.integration_account_factories import make_integration_account, make_integration_record
 
@@ -45,10 +55,74 @@ def _subagent(
 ) -> MagicMock:
     subagent = MagicMock()
     subagent.id = "gmail"
+    subagent.name = "Gmail"
     subagent.config.agent_name = agent_name
     subagent.managed_by = managed_by
     subagent.mcp_config = MagicMock(requires_auth=requires_auth) if managed_by == "mcp" else None
     return subagent
+
+
+@pytest.fixture(autouse=True)
+def _user_owns_their_custom_mcp() -> Iterator[None]:
+    """Treat every custom MCP as the caller's own; tests of someone else's override this."""
+    with patch(f"{_MOD}.check_user_has_integration", new=AsyncMock(return_value=True)):
+        yield
+
+
+def _auth_mcp() -> MagicMock:
+    subagent = _subagent(agent_name="perplexity_agent", managed_by="mcp", requires_auth=True)
+    subagent.id = "perplexity"
+    subagent.name = "Perplexity"
+    subagent.config.auto_bind_tools = None
+    subagent.config.extra_initial_tools = None
+    return subagent
+
+
+def _custom_mcp() -> CustomMcpSubagent:
+    return CustomMcpSubagent(id="abc123", name="Scholar", managed_by="mcp")
+
+
+def _named_tools(*names: str) -> list[BaseTool]:
+    tools: list[BaseTool] = []
+    for name in names:
+        fake = MagicMock()
+        fake.name = name
+        tools.append(fake)
+    return tools
+
+
+def _mcp_client(tools: list[BaseTool]) -> MagicMock:
+    client = MagicMock()
+    client.ensure_connected = AsyncMock(return_value=tools)
+    return client
+
+
+class TestMcpPreloadNames:
+    def test_a_small_server_preloads_every_tool(self) -> None:
+        tools = _named_tools(*(f"t{i}" for i in range(MCP_PRELOAD_ALL_MAX)))
+
+        assert _mcp_preload_names(_custom_mcp(), tools) == [t.name for t in tools]
+
+    def test_a_large_custom_server_preloads_none(self) -> None:
+        tools = _named_tools(*(f"t{i}" for i in range(MCP_PRELOAD_ALL_MAX + 1)))
+
+        assert _mcp_preload_names(_custom_mcp(), tools) == []
+
+    async def test_a_large_platform_server_preloads_only_its_exposed_startup_tools(self) -> None:
+        target = _auth_mcp()
+        target.config.auto_bind_tools = ["t3", "ghost"]
+        target.config.extra_initial_tools = ["t1", "t3"]
+        tools = _named_tools(*(f"t{i}" for i in range(MCP_PRELOAD_ALL_MAX + 1)))
+
+        async with captured_wide_event() as event:
+            assert _mcp_preload_names(target, tools) == ["t3", "t1"]
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.AGENT} Activation dropped startup tools the MCP server does not expose",
+                "integration": "perplexity",
+                "dropped_tools": ["ghost"],
+            }
+        ]
 
 
 class TestActivationContext:
@@ -61,7 +135,6 @@ class TestActivationContext:
             "build_provider_metadata_block": AsyncMock(
                 return_value="USER CONTEXT FOR GMAIL:\n- email: me@x.com"
             ),
-            "get_subagent_by_id": MagicMock(return_value=_subagent()),
             "get_available_skills_text": AsyncMock(return_value="- gmail-draft-send"),
             "integration_skills_block": MagicMock(return_value="## Workspace skills\n- triage"),
         }
@@ -72,12 +145,13 @@ class TestActivationContext:
     async def test_every_section_lands_in_order_for_this_integration_and_user(
         self, sources: dict[str, MagicMock]
     ) -> None:
-        context = await _activation_context("gmail", "Gmail", "u1", False)
+        context = await _activation_context(_subagent(), "u1", False)
 
         assert context == "\n\n".join(
             [
                 f"## gmail: how it works\n{REFRAME}\nYou manage gmail.",
-                "## The user's standing instructions for gmail\nAlways CC me.",
+                f'<user_instructions scope="gmail">\n{USER_INSTRUCTIONS_HEADER}\n\n'
+                "Always CC me.\n</user_instructions>",
                 "USER CONTEXT FOR GMAIL:\n- email: me@x.com",
                 "## gmail skills available to read on demand\n- gmail-draft-send",
                 "## Workspace skills\n- triage",
@@ -86,18 +160,28 @@ class TestActivationContext:
         sources["build_subagent_system_prompt"].assert_awaited_once_with(integration_id="gmail")
         sources["get_instructions"].assert_awaited_once_with("u1", "gmail")
         sources["build_provider_metadata_block"].assert_awaited_once_with("gmail", "u1")
-        sources["get_subagent_by_id"].assert_called_once_with("gmail")
         sources["get_available_skills_text"].assert_awaited_once_with("u1", "gmail_agent")
         sources["integration_skills_block"].assert_called_once_with("gmail")
 
-    async def test_an_unknown_subagent_still_lists_skills_under_no_agent_name(
-        self, sources: dict[str, MagicMock]
+    async def test_a_custom_mcp_reads_its_doc_and_its_own_skills(
+        self, sources: dict[str, MagicMock], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        sources["get_subagent_by_id"].return_value = None
+        """A custom MCP has no static config: its name, description and skills come from the user's own integration."""
+        doc = MagicMock(description="Searches papers.")
+        lookup = AsyncMock(return_value=doc)
+        monkeypatch.setattr(integration_repository, "get", lookup)
+        custom = CustomMcpSubagent(id="abc123", name="Scholar", managed_by="mcp")
 
-        await _activation_context("gmail", "Gmail", "u1", False)
+        context = await _activation_context(custom, "u1", True)
 
-        sources["get_available_skills_text"].assert_awaited_once_with("u1", "")
+        sections = context.split("\n\n")
+        assert sections[0] == "## Scholar: what it is\nSearches papers."
+        assert ACTIVATION_MULTI_ACCOUNT_POINTER.format(integration="Scholar") in sections
+        lookup.assert_awaited_once_with("abc123")
+        sources["build_subagent_system_prompt"].assert_not_awaited()
+        sources["get_instructions"].assert_awaited_once_with("u1", "abc123")
+        sources["get_available_skills_text"].assert_awaited_once_with("u1", "custom_mcp_abc123")
+        sources["integration_skills_block"].assert_called_once_with("abc123")
 
     async def test_empty_everywhere_yields_empty_context(
         self, sources: dict[str, MagicMock]
@@ -105,7 +189,7 @@ class TestActivationContext:
         sources["build_subagent_system_prompt"].return_value = ""
         sources["integration_skills_block"].return_value = ""
 
-        assert await _activation_context("gmail", "Gmail", None, False) == ""
+        assert await _activation_context(_subagent(), None, False) == ""
         sources["get_instructions"].assert_not_awaited()
 
     async def test_enrichment_failure_degrades_to_partial_and_is_logged(
@@ -115,7 +199,7 @@ class TestActivationContext:
         sources["get_instructions"].side_effect = ConnectionError("mongo down")
 
         async with captured_wide_event() as event:
-            context = await _activation_context("gmail", "Gmail", "u1", False)
+            context = await _activation_context(_subagent(), "u1", False)
 
         assert context == f"## gmail: how it works\n{REFRAME}\nYou manage gmail."
         assert event["warnings"] == [
@@ -131,7 +215,7 @@ class TestActivationContext:
         self, sources: dict[str, MagicMock]
     ) -> None:
         """Activation runs once per conversation; an account added later must not be hidden by a stale copy."""
-        context = await _activation_context("gmail", "Gmail", "u1", True)
+        context = await _activation_context(_subagent(), "u1", True)
 
         assert ACTIVATION_MULTI_ACCOUNT_POINTER.format(integration="Gmail") in context.split("\n\n")
         sources["build_provider_metadata_block"].assert_not_awaited()
@@ -178,9 +262,7 @@ class TestActivateTools:
         monkeypatch.setattr(f"{_MOD}.get_tool_registry", AsyncMock(return_value=registry))
         subagent = _subagent()
 
-        total, bind, preloaded, docs = await _activate_tools(subagent)
-
-        assert (total, bind, preloaded, docs) == (2, [], [], "")
+        assert await _activate_tools(subagent) == ActivatedTools(2, [], [], "")
         register.assert_awaited_once_with(subagent)
         registry.get_category.assert_called_once_with("gmail_toolkit")
 
@@ -194,9 +276,7 @@ class TestActivateTools:
         )
         monkeypatch.setattr(f"{_MOD}.get_tool_registry", AsyncMock(return_value=registry))
 
-        total, *_ = await _activate_tools(_subagent())
-
-        assert total == 0
+        assert (await _activate_tools(_subagent())).total == 0
 
     async def test_no_category_means_no_integration_tools(
         self, monkeypatch: pytest.MonkeyPatch
@@ -207,9 +287,9 @@ class TestActivateTools:
         monkeypatch.setattr(f"{_MOD}.register_integration_tools", AsyncMock(return_value=None))
         monkeypatch.setattr(f"{_MOD}.get_tool_registry", AsyncMock(return_value=registry))
 
-        total, bind, preloaded, docs = await _activate_tools(_subagent(managed_by="internal"))
+        activated = await _activate_tools(_subagent(managed_by="internal"))
 
-        assert (total, bind, preloaded, docs) == (0, [], [], "")
+        assert activated == ActivatedTools(0, [], [], "")
         registry.get_category.assert_not_called()
 
     async def test_the_split_and_the_docs_are_resolved_for_this_user(
@@ -229,7 +309,7 @@ class TestActivateTools:
         async with captured_wide_event() as event:
             result = await _activate_tools(subagent, "u1")
 
-        assert result == (0, ["query_json"], ["GMAIL_FETCH_MESSAGES"], "DOCS")
+        assert result == ActivatedTools(0, ["query_json"], ["GMAIL_FETCH_MESSAGES"], "DOCS")
         split.assert_awaited_once_with("u1", ["GMAIL_FETCH_MESSAGES", "query_json"])
         render.assert_awaited_once_with("u1", ["GMAIL_FETCH_MESSAGES"])
         assert "warnings" not in event
@@ -296,13 +376,13 @@ class TestAutoBind:
             AsyncMock(side_effect=lambda _u, n: _resolved_tool(n)),
         )
 
-        total, bind, preloaded, docs = await _activate_tools(subagent)
-        assert total == 40
-        assert bind == ["query_json", "grep"]
-        assert preloaded == ["GMAIL_FETCH_MESSAGES", "GMAIL_FETCH_THREAD"]
-        assert "## GMAIL_FETCH_MESSAGES" in docs
-        assert "## GMAIL_FETCH_THREAD" in docs
-        assert "NOT bound" in docs
+        activated = await _activate_tools(subagent)
+        assert activated.total == 40
+        assert activated.bind == ["query_json", "grep"]
+        assert activated.preload == ["GMAIL_FETCH_MESSAGES", "GMAIL_FETCH_THREAD"]
+        assert "## GMAIL_FETCH_MESSAGES" in activated.docs
+        assert "## GMAIL_FETCH_THREAD" in activated.docs
+        assert "NOT bound" in activated.docs
 
     @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_drops_names_the_registry_does_not_hold(
@@ -322,10 +402,10 @@ class TestAutoBind:
         )
 
         async with captured_wide_event() as event:
-            _, bind, preloaded, _ = await _activate_tools(subagent)
+            activated = await _activate_tools(subagent)
 
-        assert bind == []
-        assert preloaded == ["GMAIL_FETCH_MESSAGES"]
+        assert activated.bind == []
+        assert activated.preload == ["GMAIL_FETCH_MESSAGES"]
         assert event["warnings"] == [
             {
                 "msg": f"{LogTag.AGENT} Activation dropped unregistered startup tools",
@@ -351,11 +431,9 @@ class TestAutoBind:
         )
 
         async with captured_wide_event() as event:
-            _, bind, preloaded, docs = await _activate_tools(subagent)
+            activated = await _activate_tools(subagent)
 
-        assert bind == []
-        assert preloaded == ["GMAIL_FETCH_MESSAGES"]
-        assert docs == ""
+        assert activated == ActivatedTools(40, [], ["GMAIL_FETCH_MESSAGES"], "")
         assert {
             "msg": f"{LogTag.AGENT} Activation preloaded tools but rendered no docs",
             "integration": "gmail",
@@ -374,7 +452,9 @@ class TestActivationHeader:
     )
 
     def test_bound_helpers_and_a_searchable_preload(self) -> None:
-        header = _activation_header("gmail", 40, ["query_json", "grep"], ["GMAIL_X"], "D", True)
+        header = _activation_header(
+            "gmail", ActivatedTools(40, ["query_json", "grep"], ["GMAIL_X"], "D"), True
+        )
 
         assert header == (
             "Integration 'gmail' is now active with 40 tools. "
@@ -384,12 +464,12 @@ class TestActivationHeader:
         )
 
     def test_the_remaining_count_never_goes_negative(self) -> None:
-        header = _activation_header("gmail", 1, [], ["GMAIL_X"], "D", True)
+        header = _activation_header("gmail", ActivatedTools(1, [], ["GMAIL_X"], "D"), True)
 
         assert "one of the other 0." in header
 
     def test_an_unstamped_preload_asks_for_exact_names(self) -> None:
-        header = _activation_header("gmail", 40, [], ["GMAIL_X"], "D", False)
+        header = _activation_header("gmail", ActivatedTools(40, [], ["GMAIL_X"], "D"), False)
 
         assert header == (
             f"Integration 'gmail' is now active with 40 tools. {self.PRELOAD_NOTE} "
@@ -399,7 +479,7 @@ class TestActivationHeader:
         )
 
     def test_a_preload_that_rendered_no_docs_is_not_described_as_preloaded(self) -> None:
-        header = _activation_header("gmail", 40, [], ["GMAIL_X"], "", True)
+        header = _activation_header("gmail", ActivatedTools(40, [], ["GMAIL_X"], ""), True)
 
         assert header == (
             "Integration 'gmail' is now active with 40 tools. "
@@ -407,7 +487,7 @@ class TestActivationHeader:
         )
 
     def test_bound_helpers_alone_need_no_retrieve_guidance(self) -> None:
-        header = _activation_header("gmail", 40, ["query_json"], [], "", True)
+        header = _activation_header("gmail", ActivatedTools(40, ["query_json"], [], ""), True)
 
         assert header == (
             "Integration 'gmail' is now active with 40 tools. "
@@ -416,7 +496,7 @@ class TestActivationHeader:
         )
 
     def test_an_unstamped_activation_asks_for_exact_names(self) -> None:
-        header = _activation_header("gmail", 40, [], [], "", False)
+        header = _activation_header("gmail", ActivatedTools(40, [], [], ""), False)
 
         assert header == (
             "Integration 'gmail' is now active with 40 tools. Use retrieve_tools with exact "
@@ -425,7 +505,7 @@ class TestActivationHeader:
         )
 
     def test_nothing_registered_points_away_from_retrieve_tools(self) -> None:
-        header = _activation_header("todos", 0, [], [], "", False)
+        header = _activation_header("todos", ActivatedTools(0, [], [], ""), False)
 
         assert header == (
             "Integration 'todos' is now active with 0 tools. It registered no tools of its own "
@@ -434,7 +514,7 @@ class TestActivationHeader:
         )
 
     def test_zero_tools_with_an_undocumented_preload_is_not_called_empty(self) -> None:
-        header = _activation_header("gmail", 0, [], ["GMAIL_X"], "", False)
+        header = _activation_header("gmail", ActivatedTools(0, [], ["GMAIL_X"], ""), False)
 
         assert "It registered no tools of its own" not in header
         assert "Use retrieve_tools with exact tool names" in header
@@ -442,7 +522,9 @@ class TestActivationHeader:
 
 class TestActivateIntegrationTool:
     @staticmethod
-    def _invoke(configurable: dict | None = None, **kwargs: str) -> tuple[dict, dict]:
+    def _invoke(
+        configurable: dict[str, str] | None = None, **kwargs: str
+    ) -> tuple[ToolCall, RunnableConfig]:
         return (
             {"args": kwargs, "name": "activate_integration", "type": "tool_call", "id": "call1"},
             {"configurable": configurable or {}},
@@ -461,16 +543,31 @@ class TestActivateIntegrationTool:
         """Resolve gmail as a connected composio integration."""
         resolve = AsyncMock(return_value=_subagent())
         with (
-            patch(f"{_MOD}._get_subagent_by_id", new=resolve),
+            patch(f"{_MOD}.get_integration_target", new=resolve),
             patch(f"{_MOD}.check_integration_connection", new=AsyncMock(return_value=None)),
             patch(f"{_MOD}._has_several_accounts", new=AsyncMock(return_value=False)),
         ):
             yield resolve
 
+    async def test_a_custom_mcp_the_user_never_added_is_unknown_and_not_named(self) -> None:
+        """Another user's private custom MCP must not be activatable, nor reveal its name."""
+        someone_elses = CustomMcpSubagent(id="abc123", name="Secret Project Wiki", managed_by="mcp")
+        connect = AsyncMock()
+        with (
+            patch(f"{_MOD}.get_integration_target", new=AsyncMock(return_value=someone_elses)),
+            patch(f"{_MOD}.check_user_has_integration", new=AsyncMock(return_value=False)),
+            patch(f"{_MOD}.check_mcp_connection", new=connect),
+        ):
+            call, run_cfg = self._invoke({"user_id": "bob"}, integration_id="abc123")
+            result = await activate_integration.ainvoke(call, run_cfg)
+
+        assert self._text(result) == "Unknown integration 'abc123'."
+        connect.assert_not_awaited()
+
     async def test_unknown_integration_fails_loud(self) -> None:
         resolve = AsyncMock(return_value=None)
         async with captured_wide_event() as event:
-            with patch(f"{_MOD}._get_subagent_by_id", new=resolve):
+            with patch(f"{_MOD}.get_integration_target", new=resolve):
                 call, run_cfg = self._invoke({}, integration_id="nope")
                 result = await activate_integration.ainvoke(call, run_cfg)
 
@@ -482,7 +579,7 @@ class TestActivateIntegrationTool:
         ]
 
     async def test_registers_tools_and_returns_expertise(self, connected: AsyncMock) -> None:
-        activate_tools = AsyncMock(return_value=(7, [], [], ""))
+        activate_tools = AsyncMock(return_value=ActivatedTools(7, [], [], ""))
         context = AsyncMock(return_value="PROMPT + SKILLS")
         async with captured_wide_event() as event:
             with (
@@ -493,9 +590,9 @@ class TestActivateIntegrationTool:
                 result = await activate_integration.ainvoke(call, run_cfg)
 
         activate_tools.assert_awaited_once_with(connected.return_value, "u1")
-        context.assert_awaited_once_with("gmail", connected.return_value.name, "u1", False)
+        context.assert_awaited_once_with(connected.return_value, "u1", False)
         assert self._text(result) == (
-            _activation_header("gmail", 7, [], [], "", False) + "PROMPT + SKILLS"
+            _activation_header("gmail", ActivatedTools(7, [], [], ""), False) + "PROMPT + SKILLS"
         )
         assert event["activation"] == {
             "integration": "gmail",
@@ -511,7 +608,7 @@ class TestActivateIntegrationTool:
         with (
             patch(
                 f"{_MOD}._activate_tools",
-                new=AsyncMock(return_value=(40, ["query_json"], ["GMAIL_X"], "DOCS")),
+                new=AsyncMock(return_value=ActivatedTools(40, ["query_json"], ["GMAIL_X"], "DOCS")),
             ),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="")),
             patch(f"{_MOD}.mark_active", new=AsyncMock()),
@@ -522,7 +619,9 @@ class TestActivateIntegrationTool:
             result = await activate_integration.ainvoke(call, run_cfg)
 
         assert self._text(result) == (
-            _activation_header("gmail", 40, ["query_json"], ["GMAIL_X"], "DOCS", True)
+            _activation_header(
+                "gmail", ActivatedTools(40, ["query_json"], ["GMAIL_X"], "DOCS"), True
+            )
             + f"{NO_CONTEXT}\n\nDOCS"
         )
         assert self._bound(result) == ["query_json"]
@@ -533,7 +632,9 @@ class TestActivateIntegrationTool:
         with (
             patch(
                 f"{_MOD}._activate_tools",
-                new=AsyncMock(return_value=(40, ["query_json"], ["GMAIL_FETCH_MESSAGES"], docs)),
+                new=AsyncMock(
+                    return_value=ActivatedTools(40, ["query_json"], ["GMAIL_FETCH_MESSAGES"], docs)
+                ),
             ),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="CTX")),
         ):
@@ -553,7 +654,7 @@ class TestActivateIntegrationTool:
         with (
             patch(
                 f"{_MOD}._activate_tools",
-                new=AsyncMock(return_value=(40, ["query_json"], [], "")),
+                new=AsyncMock(return_value=ActivatedTools(40, ["query_json"], [], "")),
             ),
             patch(f"{_MOD}._has_several_accounts", new=AsyncMock(return_value=True)) as several,
             patch(f"{_MOD}._activation_context", new=context),
@@ -564,14 +665,14 @@ class TestActivateIntegrationTool:
         several.assert_awaited_once_with("gmail", "u1")
         # Account tools cost context on every turn; the agent retrieves them when it needs one.
         assert self._bound(result) == ["query_json"]
-        context.assert_awaited_once_with("gmail", connected.return_value.name, "u1", True)
+        context.assert_awaited_once_with(connected.return_value, "u1", True)
 
     async def test_unconnected_integration_returns_the_connect_prompt(self) -> None:
         """Activating an unconnected integration must gate on the connection check."""
         connect = AsyncMock(return_value="Connect your Gmail account to continue.")
         async with captured_wide_event() as event:
             with (
-                patch(f"{_MOD}._get_subagent_by_id", new=AsyncMock(return_value=_subagent())),
+                patch(f"{_MOD}.get_integration_target", new=AsyncMock(return_value=_subagent())),
                 patch(f"{_MOD}.check_integration_connection", new=connect),
                 patch(f"{_MOD}._activate_tools", new=AsyncMock()) as activate_tools,
             ):
@@ -588,11 +689,13 @@ class TestActivateIntegrationTool:
         connect = AsyncMock()
         with (
             patch(
-                f"{_MOD}._get_subagent_by_id",
+                f"{_MOD}.get_integration_target",
                 new=AsyncMock(return_value=_subagent(managed_by="internal")),
             ),
             patch(f"{_MOD}.check_integration_connection", new=connect),
-            patch(f"{_MOD}._activate_tools", new=AsyncMock(return_value=(0, [], [], ""))),
+            patch(
+                f"{_MOD}._activate_tools", new=AsyncMock(return_value=ActivatedTools(0, [], [], ""))
+            ),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="")),
         ):
             call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="todos")
@@ -603,39 +706,178 @@ class TestActivateIntegrationTool:
 
     @pytest.mark.parametrize(
         "resolved",
-        [
-            _subagent(managed_by="mcp", requires_auth=True),
-            CustomMcpSubagent.model_validate(
-                {"id": "abc123", "name": "My MCP", "managed_by": "mcp", "mcp_config": {}}
-            ),
-        ],
+        [_auth_mcp(), _custom_mcp()],
         ids=["auth-required-mcp", "custom-mcp"],
     )
-    async def test_a_per_user_integration_routes_to_handoff(self, resolved: object) -> None:
-        """Its tools live only in the caller's MCP session, so activation cannot bind them."""
+    async def test_an_unconnected_per_user_mcp_returns_the_connect_prompt(
+        self, resolved: MagicMock | CustomMcpSubagent
+    ) -> None:
+        check = AsyncMock(return_value="Connect it to continue.")
         async with captured_wide_event() as event:
             with (
-                patch(f"{_MOD}._get_subagent_by_id", new=AsyncMock(return_value=resolved)),
-                patch(f"{_MOD}._activate_tools", new=AsyncMock()) as activate_tools,
+                patch(f"{_MOD}.get_integration_target", new=AsyncMock(return_value=resolved)),
+                patch(f"{_MOD}.check_mcp_connection", new=check),
+                patch(f"{_MOD}.check_integration_connection", new=AsyncMock()) as composio,
+                patch(f"{_MOD}._activate_mcp_tools", new=AsyncMock()) as activate_mcp,
             ):
-                call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="perplexity")
+                call, run_cfg = self._invoke({"user_id": "u1"}, integration_id=resolved.id)
                 result = await activate_integration.ainvoke(call, run_cfg)
 
-        activate_tools.assert_not_awaited()
+        check.assert_awaited_once_with(resolved.id, "u1")
+        composio.assert_not_awaited()
+        activate_mcp.assert_not_awaited()
+        assert self._text(result) == "Connect it to continue."
+        assert event["activation"] == {"integration": resolved.id, "connected": False}
+
+    async def test_a_per_user_mcp_needs_a_signed_in_user(self) -> None:
+        check = AsyncMock()
+        with (
+            patch(f"{_MOD}.get_integration_target", new=AsyncMock(return_value=_custom_mcp())),
+            patch(f"{_MOD}.check_mcp_connection", new=check),
+        ):
+            call, run_cfg = self._invoke({}, integration_id="abc123")
+            result = await activate_integration.ainvoke(call, run_cfg)
+
+        check.assert_not_awaited()
         assert self._text(result) == (
-            "'perplexity' is a per-user integration, so its tools cannot be activated "
-            "in-context. Delegate it with handoff(subagent_id='perplexity', task=...): that "
-            "runs it in its own per-user graph and returns the result."
+            "'abc123' needs a signed-in user, so it cannot be activated in this run."
         )
-        assert event["activation"] == {"integration": "perplexity", "routed_to_handoff": True}
+
+    async def test_a_connected_mcp_preloads_every_schema_binds_nothing_and_stamps(self) -> None:
+        client = _mcp_client(_named_tools("search", "fetch"))
+        render = AsyncMock(return_value="DOCS")
+        mark = AsyncMock()
+        async with captured_wide_event() as event:
+            with self._mcp_run(_auth_mcp(), client, render, mark):
+                call, run_cfg = self._invoke(
+                    {"user_id": "u1", "conversation_id": "c9"}, integration_id="perplexity"
+                )
+                result = await activate_integration.ainvoke(call, run_cfg)
+
+        client.ensure_connected.assert_awaited_once_with("perplexity")
+        render.assert_awaited_once_with("u1", ["search", "fetch"])
+        mark.assert_awaited_once_with("c9", "perplexity")
+        assert self._text(result) == (
+            _activation_header(
+                "perplexity", ActivatedTools(2, [], ["search", "fetch"], "DOCS"), True
+            )
+            + "CTX\n\nDOCS"
+        )
+        # MCP tools close over the user's session, so they are never bound — execute runs them.
+        assert "selected_tool_ids" not in result.update
+        assert event["activation"] == {
+            "integration": "perplexity",
+            "tool_count": 2,
+            "bound_now": 0,
+            "preloaded": 2,
+            "context_length": len("CTX"),
+        }
+
+    async def test_a_large_custom_mcp_preloads_nothing_and_points_at_retrieve_tools(self) -> None:
+        tools = _named_tools(*(f"tool_{i}" for i in range(MCP_PRELOAD_ALL_MAX + 2)))
+        render = AsyncMock(return_value="")
+        with self._mcp_run(_custom_mcp(), _mcp_client(tools), render, AsyncMock()):
+            call, run_cfg = self._invoke(
+                {"user_id": "u1", "conversation_id": "c9"}, integration_id="abc123"
+            )
+            result = await activate_integration.ainvoke(call, run_cfg)
+
+        render.assert_awaited_once_with("u1", [])
+        assert self._text(result) == (
+            _activation_header(
+                "abc123",
+                ActivatedTools(MCP_PRELOAD_ALL_MAX + 2, [], [], "", preload_capped=True),
+                True,
+            )
+            + "CTX"
+        )
+        assert f"more than {MCP_PRELOAD_ALL_MAX} tools, so none are preloaded" in (
+            self._text(result)
+        )
+        assert "selected_tool_ids" not in result.update
+
+    async def test_a_connect_failure_surfaces_its_reason(self) -> None:
+        client = _mcp_client([])
+        client.ensure_connected.side_effect = ConnectionRefusedError("refused")
+        mark = AsyncMock()
+        async with captured_wide_event() as event:
+            with self._mcp_run(_custom_mcp(), client, AsyncMock(), mark):
+                call, run_cfg = self._invoke(
+                    {"user_id": "u1", "conversation_id": "c9"}, integration_id="abc123"
+                )
+                result = await activate_integration.ainvoke(call, run_cfg)
+
+        assert self._text(result) == (
+            "Could not connect to Scholar ('abc123'): refused. Its tools are unavailable "
+            "right now — tell the user instead of retrying it in this turn."
+        )
+        mark.assert_not_awaited()
+        assert event["activation"] == {
+            "integration": "abc123",
+            "connected": False,
+            "error_type": "ConnectionRefusedError",
+        }
+        assert {
+            "msg": f"{LogTag.AGENT} Activation could not connect the MCP server",
+            "integration": "abc123",
+            "auth_failed": False,
+            "error_type": "ConnectionRefusedError",
+            "error": "refused",
+        } in event["warnings"]
+
+    async def test_an_auth_failure_renders_the_reconnect_card(self) -> None:
+        client = _mcp_client([])
+        client.ensure_connected.side_effect = MCPAuthorizationRequiredError("perplexity")
+        reconnect = AsyncMock(return_value="Reconnect Perplexity to continue.")
+        with (
+            self._mcp_run(_auth_mcp(), client, AsyncMock(), AsyncMock()),
+            patch(f"{_MOD}.request_integration_connection", new=reconnect),
+        ):
+            call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="perplexity")
+            result = await activate_integration.ainvoke(call, run_cfg)
+
+        reconnect.assert_awaited_once_with(
+            "perplexity", "Perplexity", "u1", mode=ConnectMode.RECONNECT
+        )
+        assert self._text(result) == "Reconnect Perplexity to continue."
+
+    async def test_an_unexpected_error_is_not_swallowed(self) -> None:
+        client = _mcp_client([])
+        client.ensure_connected.side_effect = KeyError("bug")
+        with self._mcp_run(_custom_mcp(), client, AsyncMock(), AsyncMock()):
+            call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="abc123")
+            with pytest.raises(KeyError):
+                await activate_integration.ainvoke(call, run_cfg)
+
+    @staticmethod
+    @contextmanager
+    def _mcp_run(
+        target: MagicMock | CustomMcpSubagent,
+        client: MagicMock,
+        render: AsyncMock,
+        mark: AsyncMock,
+    ) -> Iterator[None]:
+        """Run a connected per-user MCP activation against a fake MCP client."""
+        with (
+            patch(f"{_MOD}.get_integration_target", new=AsyncMock(return_value=target)),
+            patch(f"{_MOD}.check_mcp_connection", new=AsyncMock(return_value=None)),
+            patch(f"{_MOD}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch(f"{_MOD}.render_preload_block", new=render),
+            patch(f"{_MOD}._has_several_accounts", new=AsyncMock(return_value=False)),
+            patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="CTX")),
+            patch(f"{_MOD}.mark_active", new=mark),
+        ):
+            yield
 
     async def test_non_auth_mcp_integration_activates(self) -> None:
         with (
             patch(
-                f"{_MOD}._get_subagent_by_id",
+                f"{_MOD}.get_integration_target",
                 new=AsyncMock(return_value=_subagent(managed_by="mcp", requires_auth=False)),
             ),
-            patch(f"{_MOD}._activate_tools", new=AsyncMock(return_value=(3, [], [], ""))),
+            patch(
+                f"{_MOD}._activate_tools", new=AsyncMock(return_value=ActivatedTools(3, [], [], ""))
+            ),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="")),
         ):
             call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="deepwiki")
@@ -645,11 +887,15 @@ class TestActivateIntegrationTool:
 
     @pytest.mark.parametrize(
         "activated",
-        [(40, [], [], ""), (0, ["query_json"], [], ""), (0, [], ["GMAIL_X"], "")],
+        [
+            ActivatedTools(40, [], [], ""),
+            ActivatedTools(0, ["query_json"], [], ""),
+            ActivatedTools(0, [], ["GMAIL_X"], ""),
+        ],
         ids=["tools-only", "bound-only", "preloaded-only"],
     )
     async def test_anything_made_available_stamps_the_conversation(
-        self, connected: AsyncMock, activated: tuple[int, list[str], list[str], str]
+        self, connected: AsyncMock, activated: ActivatedTools
     ) -> None:
         """Discovery searches activated namespaces, so a success that yields tools must stamp — otherwise retrieve_tools stays blind to them."""
         mark = AsyncMock()
@@ -669,7 +915,9 @@ class TestActivateIntegrationTool:
         """Nothing became available — stamping would add a fruitless namespace search to every later discovery call in the conversation."""
         mark = AsyncMock()
         with (
-            patch(f"{_MOD}._activate_tools", new=AsyncMock(return_value=(0, [], [], ""))),
+            patch(
+                f"{_MOD}._activate_tools", new=AsyncMock(return_value=ActivatedTools(0, [], [], ""))
+            ),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="")),
             patch(f"{_MOD}.mark_active", new=mark),
         ):
@@ -684,7 +932,7 @@ class TestActivateIntegrationTool:
             with (
                 patch(
                     f"{_MOD}._activate_tools",
-                    new=AsyncMock(return_value=(40, [], ["GMAIL_X"], "DOCS")),
+                    new=AsyncMock(return_value=ActivatedTools(40, [], ["GMAIL_X"], "DOCS")),
                 ),
                 patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="")),
                 patch(f"{_MOD}.mark_active", new=mark),
@@ -708,7 +956,7 @@ class TestActivateIntegrationTool:
         with (
             patch(
                 f"{_MOD}._activate_tools",
-                new=AsyncMock(return_value=(40, [], ["GMAIL_X"], "DOCS")),
+                new=AsyncMock(return_value=ActivatedTools(40, [], ["GMAIL_X"], "DOCS")),
             ),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="")),
             patch(f"{_MOD}.mark_active", new=AsyncMock()),
@@ -725,7 +973,9 @@ class TestActivateIntegrationTool:
     ) -> None:
         """Nothing registered — "use retrieve_tools" would send the model after tools that do not exist."""
         with (
-            patch(f"{_MOD}._activate_tools", new=AsyncMock(return_value=(0, [], [], ""))),
+            patch(
+                f"{_MOD}._activate_tools", new=AsyncMock(return_value=ActivatedTools(0, [], [], ""))
+            ),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="")),
             patch(f"{_MOD}.mark_active", new=AsyncMock()),
         ):

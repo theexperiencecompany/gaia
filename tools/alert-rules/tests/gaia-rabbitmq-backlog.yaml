@@ -21,7 +21,7 @@ tests:
             exp_annotations:
               description: >-
                 RabbitMQ carries outbound bot delivery on the durable outbound.discord/slack/telegram/whatsapp queues. Assistant replies have been generated but are not reaching users on those platforms. This total is aggregated across queues — open the "Queue Depth by Queue" panel to see which platform is stuck, then check whether that bot's consumer is still connected.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-rabbitmq-backlog
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-rabbitmq-backlog
               __dashboardUid__: gaia-rabbitmq
               __panelId__: '4'
 

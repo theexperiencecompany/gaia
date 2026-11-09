@@ -71,7 +71,7 @@ async def try_record_platform_delivery(conversation_id: str, text: str) -> bool:
         state = await comms_graph.aget_state({"configurable": {"thread_id": conversation_id}})
         if any(task.interrupts for task in state.tasks):
             return False
-        await _append_to_thread(conversation_id, [AIMessage(content=text)])
+        await append_to_thread(conversation_id, [AIMessage(content=text)])
         return True
     finally:
         await break_holder_lock(conversation_id, holder)
@@ -90,12 +90,12 @@ async def record_exchange_in_thread(conversation_id: str, user_message: str, rep
     thread that later voices the run's result still held the original request
     and reported the step the user had cancelled as unfinished.
     """
-    await _append_to_thread(
+    await append_to_thread(
         conversation_id, [HumanMessage(content=user_message), AIMessage(content=reply)]
     )
 
 
-async def _append_to_thread(conversation_id: str, messages: list[BaseMessage]) -> None:
+async def append_to_thread(conversation_id: str, messages: list[BaseMessage]) -> None:
     """Write messages into the comms thread with a silent aupdate_state, no model call; never raises."""
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")

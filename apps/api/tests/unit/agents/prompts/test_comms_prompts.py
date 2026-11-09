@@ -12,10 +12,34 @@ pytestmark = pytest.mark.unit
 
 def _note() -> str:
     # Built per test, not at import: mutmut only credits a test with code it runs.
-    return tracked_todo_delivery_note("Watch the deploy", None, None)
+    return tracked_todo_delivery_note("Watch the deploy", None, None, runs_once=False)
 
 
 class TestTrackedTodoDeliveryNote:
+    def test_a_todo_that_runs_once_always_sends_its_answer(self) -> None:
+        """A one-time check the user asked for was silenced 10/10 when its answer was 'no'."""
+        once = tracked_todo_delivery_note("Umbrella check", None, None, runs_once=True)
+
+        assert (
+            "This todo runs once, to answer what the user asked when they set it up, so its "
+            "result is that answer and they are waiting for it: always send it, even when the "
+            "answer is no or nothing to worry about. "
+        ) in once
+        assert "Write it up: it reaches their chat app as plain text" in once
+        assert "When you do write" not in once
+        assert "Nobody asked for it just now" not in once
+        assert SILENCE_DIRECTIVE not in once
+        assert "not worth a message" not in once
+
+    @pytest.mark.regression
+    def test_a_todo_that_runs_once_never_answers_with_a_reaction(self) -> None:
+        """A reaction is an invalid directive for a todo run, so the awaited answer was dropped."""
+        once = tracked_todo_delivery_note("Umbrella check", None, None, runs_once=True)
+
+        assert (
+            "There is no message of theirs to react to, so never answer with a reaction."
+        ) in once
+
     def test_the_whole_instruction_is_pinned(self) -> None:
         """Every sentence is a rule comms follows; an edit here changes what users are sent."""
         assert (
@@ -28,11 +52,14 @@ class TestTrackedTodoDeliveryNote:
                 "blocker only they can settle that they have not already been asked about, or a "
                 "result they asked to hear every time (always send that one). Anything else is "
                 "not worth a message: a routine check, a no-op, nothing new, a question they "
-                "already have, a run that only kept notes. A report that says only that nothing is "
-                "new is that too: a mail-woken run with nothing to escalate says exactly that, "
-                "and the next briefing carries the rest. Then reply "
-                "with exactly one line and "
+                "already have, open items you already raised that are still open (a reply they "
+                "owe, an approval they have not given), a run that only kept notes. A report that "
+                "says only that nothing is new is that too: a mail-woken run with nothing to "
+                "escalate, or a run held for quiet hours, says exactly that, and the next briefing "
+                "carries the rest. Then reply with exactly one line and "
                 f"nothing else: {SILENCE_DIRECTIVE}. "
+                "Decide first and write only one of the two: a message with no tag, or the tag "
+                "alone, never a recap of open items beside it. "
                 "There is no message of theirs to react to, so never answer with a reaction. When "
                 "you do write, it reaches their chat app as plain text with no cards: lead with "
                 "what changed or what they must decide, give the concrete details they need, keep "
@@ -62,7 +89,9 @@ class TestTrackedTodoDeliveryNote:
 
     def test_the_todos_standing_rules_close_the_note_and_bind_it(self) -> None:
         """Regression: an Inbox desk briefing with content was silenced as routine under a rule to deliver every one."""
-        note = tracked_todo_delivery_note("Word count", "- Tell me the result every time.", None)
+        note = tracked_todo_delivery_note(
+            "Word count", "- Tell me the result every time.", None, runs_once=False
+        )
 
         assert (
             "only when there is more than one beat.\n"
@@ -75,14 +104,16 @@ class TestTrackedTodoDeliveryNote:
             "- Tell me the result every time.\n"
         ) in note
 
-    def test_a_nothing_new_report_is_silence_not_an_alert(self) -> None:
-        note = tracked_todo_delivery_note("Inbox desk", None, None)
+    def test_a_quiet_hours_nothing_new_is_silence_not_an_alert(self) -> None:
+        note = tracked_todo_delivery_note("Inbox desk", None, None, runs_once=False)
 
         assert "A report that says only that nothing is new is that too" in note
         assert "the next briefing carries the rest" in note
 
     def test_key_details_follow_the_rules_as_details_of_their_own(self) -> None:
-        note = tracked_todo_delivery_note("Word count", "- Be brief.", "- tell me every time")
+        note = tracked_todo_delivery_note(
+            "Word count", "- Be brief.", "- tell me every time", runs_once=False
+        )
 
         assert (
             "- Be brief.\nIts Key Details, which can also hold a request of theirs:\n"
