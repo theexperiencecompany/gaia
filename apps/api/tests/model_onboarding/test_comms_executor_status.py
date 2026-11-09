@@ -223,3 +223,59 @@ async def test_comms_acts_on_the_live_status(
     if not dispatched:
         said = str(reply.content).lower()
         assert not [claim for claim in case.must_not_claim if claim in said], reply.content
+
+
+#: A chat that never handed work off still carries the idle status line every turn;
+#: these must read as ordinary conversation, never as talk about background work.
+FRESH_CHAT_MESSAGES = {
+    "greeting": "hey!",
+    "small_math": "what's 15% of 240?",
+    "explain": "explain what a mutex is in one sentence",
+    "thanks": "thanks, that's all for now",
+}
+
+#: What a reply in a chat with no hand-offs has no reason to bring up.
+BACKGROUND_TALK = (
+    "background",
+    "hand-off",
+    "handoff",
+    "handed off",
+    "executor",
+    "running right now",
+    "earlier task",
+    "previous task",
+    "nothing is running",
+    "no work is running",
+)
+
+
+async def _fresh_chat(message: str, *, follow_up: bool) -> list[AnyMessage]:
+    """Return a first turn of a chat that never handed work off, or its second turn."""
+    built = await construct_langchain_messages(query=message, scope=_scope())
+    if not follow_up:
+        thread: list[AnyMessage] = built
+    else:
+        earlier = await construct_langchain_messages(query="hi, how are you?", scope=_scope())
+        thread = [*earlier, AIMessage(content="Doing well! What can I help with?"), *built]
+    ordered = manage_system_prompts_node(cast(Any, {"messages": thread}), _config(), None)
+    return cast(list[AnyMessage], ordered["messages"])
+
+
+@pytest.mark.parametrize("attempt", range(REPEATS))
+@pytest.mark.parametrize("follow_up", [False, True], ids=["first_turn", "second_turn"])
+@pytest.mark.parametrize("case_id", sorted(FRESH_CHAT_MESSAGES))
+async def test_an_idle_chat_with_no_hand_offs_is_ordinary_conversation(
+    fake_redis: fakeredis.aioredis.FakeRedis, case_id: str, follow_up: bool, attempt: int
+) -> None:
+    model = _model().bind_tools(list(comms_tools().values()))
+    request = await _fresh_chat(FRESH_CHAT_MESSAGES[case_id], follow_up=follow_up)
+    assert any("No background work is running" in str(m.content) for m in request)
+
+    reply = cast(AIMessage, await model.ainvoke(request))
+
+    dispatched = any(call["name"] == CALL_EXECUTOR_NAME for call in reply.tool_calls)
+    said = str(reply.content).lower()
+    print(f"\n[{case_id}|{follow_up}|{attempt}] dispatched={dispatched} text={reply.content!r}")
+    assert not dispatched, reply.tool_calls
+    assert said.strip(), "an ordinary message got no reply"
+    assert not [phrase for phrase in BACKGROUND_TALK if phrase in said], reply.content
