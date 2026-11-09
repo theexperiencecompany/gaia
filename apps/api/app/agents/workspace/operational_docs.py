@@ -616,8 +616,7 @@ reminders. "Every morning summarize my email" is a workflow.
 
 Call the reminder tools directly: `create_reminder_tool`, `update_reminder_tool`,
 `list_user_reminders_tool`, `get_reminder_tool`, `search_reminders_tool`,
-`delete_reminder_tool`. They handle scheduling, recurrence, and timezones. There
-is no reminders subagent, so do not hand off for reminders.
+`delete_reminder_tool`. They handle scheduling, recurrence, and timezones.
 
 - **Timezone:** times are read in the user's home timezone unless they name
   another. Do not convert to UTC yourself.

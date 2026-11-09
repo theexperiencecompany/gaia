@@ -4,15 +4,16 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.errors import GraphInterrupt
 import pytest
 
 from app.agents.core.subagents.subagent_runner import subagent_row_id
-from app.constants.llm import INBOX_MAIL_SUBAGENT_RECURSION_LIMIT
-from app.models.agent_models import SpawnJob, SubagentKind
+from app.models.agent_models import SubagentKind
 
 MODULE = "app.agents.middleware.subagent"
+ACTIVATION = "app.agents.core.subagents.integration_activation"
 DELEGATION = "app.agents.core.subagents.delegation"
 
 # ---------------------------------------------------------------------------
@@ -159,6 +160,7 @@ class TestSubagentMiddlewareInit:
             "task",
             "context",
             "background",
+            "integration_ids",
         }
         assert "spawn_subagent" in mw._excluded_tools
 
@@ -286,6 +288,21 @@ class TestSpawnSubagentTool:
         assert message.status == "error"
         assert message.tool_call_id == "call_1"
         provider.assert_not_awaited()
+
+    async def test_integration_ids_reach_the_delegation(self):
+        mw = _ready_middleware()
+        with patch.object(
+            mw, "build_delegation", new=AsyncMock(side_effect=RuntimeError("stop"))
+        ) as build:
+            await mw.tools[0].coroutine(
+                task="sweep",
+                tool_call_id="call_1",
+                selected_tool_ids=[],
+                config=_make_spawn_config(),
+                integration_ids=["gmail", "googlecalendar"],
+            )
+
+        assert build.await_args.kwargs["integration_ids"] == ["gmail", "googlecalendar"]
 
     async def test_hil_pause_propagates_out_of_the_tool(self):
         """A GraphBubbleUp is the approval request in flight; swallowing it into a tool error would drop it."""
@@ -557,20 +574,6 @@ class TestBuildContextWiring:
             recursion_limit=7,
         )
 
-    @pytest.mark.parametrize(
-        ("spawn_job", "limit"),
-        [(SpawnJob.INBOX_MAIL, INBOX_MAIL_SUBAGENT_RECURSION_LIMIT), (SpawnJob.FOCUSED, 7)],
-    )
-    async def test_a_run_stamped_with_a_spawn_job_gives_its_spawns_that_jobs_budget(
-        self, spawn_job: SpawnJob, limit: int
-    ):
-        mw = _ready_middleware(max_turns=7)
-        config = _make_spawn_config(conversation_id="conv-9", spawn_job=spawn_job)
-        with _context_harness() as h:
-            await mw._build_context(self.TASK, "", config["configurable"], "call_abc", [])
-
-        assert h.thread.recursion_limit == limit
-
     async def test_the_thread_seed_retrieves_against_the_spawns_own_run(self):
         """The seed must read the SPAWN's own configurable, not the parent's, and retrieve against the task."""
         from app.agents.context.tiers import AgentTier
@@ -615,6 +618,49 @@ class TestBuildDelegation:
         }
         assert h.task == "Context:\nthe user's notes\n\nTask:\ndraw the flowchart"
         assert delegation.ctx.initial_state["selected_tool_ids"] == ["create_flowchart"]
+
+    async def test_listed_integrations_are_active_before_the_spawn_starts(self):
+        """A spawn given integration_ids opens with each one activated, as if it had called it."""
+        from app.agents.core.subagents import integration_activation
+
+        loaded = integration_activation.IntegrationLoad(
+            text="Integration 'gmail' is now active with 44 tools.",
+            bind=["query_json"],
+            artifact={"activated_integration": "gmail"},
+        )
+        mw = _ready_middleware(inherit_parent_tools=True)
+        parent = _make_spawn_config()["configurable"]
+        with (
+            _context_harness(),
+            patch(f"{ACTIVATION}.load_integration", new=AsyncMock(return_value=loaded)) as load,
+        ):
+            delegation = await mw.build_delegation(
+                task="find job emails from the last 7 days",
+                context="",
+                parent_configurable=parent,
+                tool_call_id="call_abc",
+                inherited_tool_names=["create_flowchart"],
+                integration_ids=["gmail", "gmail"],
+            )
+
+        load.assert_awaited_once()
+        assert load.await_args.args[:2] == ("gmail", parent)
+        call_message, result = delegation.ctx.initial_state["messages"][-2:]
+        assert isinstance(call_message, AIMessage) and isinstance(result, ToolMessage)
+        assert call_message.tool_calls[0]["name"] == "activate_integration"
+        assert call_message.tool_calls[0]["args"] == {"integration_id": "gmail"}
+        assert result.tool_call_id == call_message.tool_calls[0]["id"]
+        assert result.content == loaded.text
+        assert delegation.ctx.initial_state["selected_tool_ids"] == [
+            "create_flowchart",
+            "query_json",
+        ]
+        # A parked spawn is rebuilt from the recipe without activating again, so the
+        # tools activation bound have to travel in it.
+        assert delegation.resume_item()["inherited_tool_names"] == [
+            "create_flowchart",
+            "query_json",
+        ]
 
     async def test_no_inherited_tools_is_an_empty_recipe_entry(self):
         mw = _ready_middleware()
@@ -723,3 +769,83 @@ class TestSpawnRunsInTheBackgroundByDefault:
 
         assert _tool_message(result).content == "the summary"
         start.assert_not_called()
+
+
+class TestLargeResultsPointToSpawns:
+    """A large tool result tells the agent that can spawn to hand further reading to spawns.
+
+    Regression: a 60-day mail sweep pulled ten 30k-char query_json/grep results
+    into the executor's own context (45k to 160k prompt tokens) because every
+    note on them said only "narrow your query". The hint rides on
+    SubagentMiddleware, which a spawned child never has (test_subagent_cannot_spawn),
+    so a subagent is never told to spawn.
+    """
+
+    async def _wrap(self, result):
+        mw = _make_middleware()
+        request = SimpleNamespace(tool_call={"name": "query_json", "args": {}, "id": "c1"})
+        return await mw.awrap_tool_call(request, AsyncMock(return_value=result))
+
+    async def test_a_large_result_carries_the_hint_after_its_content(self):
+        from app.agents.prompts import spawn_subagent_prompts
+
+        body = "x" * 30_000
+        wrapped = await self._wrap(ToolMessage(content=body, tool_call_id="c1", name="query_json"))
+
+        assert wrapped.content.startswith(body)
+        assert wrapped.content.endswith(spawn_subagent_prompts.LARGE_RESULT_SPAWN_HINT)
+        assert wrapped.tool_call_id == "c1"
+
+    @staticmethod
+    def _saved_file_digest() -> ToolMessage:
+        from app.agents.workspace.offload import mark_offload
+
+        return ToolMessage(
+            content="[GMAIL_FETCH_MESSAGES compacted: record_limit (693 records)] digest",
+            tool_call_id="c1",
+            additional_kwargs=mark_offload(
+                {},
+                {
+                    "path": "/workspace/sessions/s/tool_outputs/mail.jsonl",
+                    "bytes": 600_000,
+                    "fmt": "jsonl",
+                    "producer": "GMAIL_FETCH_MESSAGES",
+                    "records": 693,
+                },
+            ),
+        )
+
+    async def test_a_short_digest_of_a_saved_file_carries_the_hint(self):
+        from app.agents.prompts import spawn_subagent_prompts
+
+        wrapped = await self._wrap(self._saved_file_digest())
+
+        assert wrapped.content.endswith(spawn_subagent_prompts.LARGE_RESULT_SPAWN_HINT)
+
+    async def test_a_small_result_is_left_alone(self):
+        small = ToolMessage(content="(no matches)", tool_call_id="c1")
+
+        assert await self._wrap(small) is small
+
+    async def test_a_saved_file_arriving_with_tool_binds_keeps_the_binds(self):
+        """Compaction returns a Command that also binds query_json/grep; the hint must not drop them."""
+        from langgraph.types import Command
+
+        from app.agents.prompts import spawn_subagent_prompts
+
+        command = Command(
+            update={"messages": [self._saved_file_digest()], "selected_tool_ids": ["query_json"]}
+        )
+
+        wrapped = await self._wrap(command)
+
+        assert wrapped.update["selected_tool_ids"] == ["query_json"]
+        (message,) = wrapped.update["messages"]
+        assert message.content.endswith(spawn_subagent_prompts.LARGE_RESULT_SPAWN_HINT)
+
+    async def test_a_small_command_result_is_left_alone(self):
+        from langgraph.types import Command
+
+        command = Command(update={"messages": [ToolMessage(content="ok", tool_call_id="c1")]})
+
+        assert await self._wrap(command) is command

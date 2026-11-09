@@ -19,7 +19,6 @@ from app.agents.core.nodes.pre_model_hooks import (
     worker_pre_model_hooks,
 )
 from app.agents.core.subagents.integration_activation import activate_integration
-from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.llm.client import init_llm
 from app.agents.middleware import (
@@ -49,6 +48,7 @@ from app.agents.tools.subagent_control_tool import (
 )
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
+from app.constants.agents import EXECUTOR_SPAWN_EXCLUDED_TOOLS
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
@@ -135,22 +135,11 @@ async def build_executor_graph(
     )
     todo_hook = create_todo_pre_model_hook(source="executor")
 
-    # Spawned subagents must not see executor-only orchestration tools, and
-    # activate_integration is executor-level: a spawn inherits the tools the
-    # executor already activated rather than activating in-context itself.
-    excluded_subagent_tools = {
-        "list_running_subagents",
-        "message_subagent",
-        "cancel_subagent",
-        ACTIVATE_INTEGRATION_TOOL_NAME,
-        # A spawn mines untrusted output; global instructions reach every tier.
-        "update_user_instructions",
-    }
-
     middleware = create_executor_middleware(
         chat_llm=chat_llm,
         subagent=SubagentStackOptions(
-            excluded_tools=excluded_subagent_tools,
+            # A copy: SubagentMiddleware adds spawn_subagent to the set it is given.
+            excluded_tools=set(EXECUTOR_SPAWN_EXCLUDED_TOOLS),
             tool_runtime_config=build_executor_child_tool_runtime_config(),
             # The executor binds an integration's tools in its own turn, so a
             # spawn it delegates to must inherit them to do the work.
@@ -329,10 +318,9 @@ async def build_comms_agent() -> CompiledAgentGraph:
 
 
 def build_graphs() -> None:
-    """Build comms and executor agents and register subagent providers."""
+    """Build the comms and executor agents."""
     log.info(f"{LogTag.AGENT} Building core agent graphs...")
 
-    register_subagent_providers()
     build_executor_agent()
     build_comms_agent()
 

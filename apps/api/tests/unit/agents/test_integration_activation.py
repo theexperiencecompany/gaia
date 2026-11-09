@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import ToolCall
+from langchain_core.messages import AIMessage, AnyMessage, ToolCall
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool as langchain_tool
 from langgraph.types import Command
@@ -37,26 +37,19 @@ _MOD = "app.agents.core.subagents.integration_activation"
 #: What the reply says in place of context when enrichment gathered nothing.
 NO_CONTEXT = "(no additional context available)"
 SPAWN_LINE = "Anything you spawn inherits the bound tools."
-REFRAME = (
-    "The notes below describe this integration's tools, conventions, "
-    "and standing rules — follow those. They were written for a "
-    "delegated worker, which you are not: you are the executor, "
-    "acting on this integration yourself in your own turn. IGNORE "
-    "any instruction about receiving a delegated task, reporting "
-    "to a parent, or calling finish_task (never call it — reply "
-    "normally when the work is done)."
-)
 
 
 def _subagent(
     agent_name: str = "gmail_agent",
     managed_by: str = "composio",
     requires_auth: bool = False,
+    notes: str = "You manage gmail.",
 ) -> MagicMock:
     subagent = MagicMock()
     subagent.id = "gmail"
     subagent.name = "Gmail"
     subagent.config.agent_name = agent_name
+    subagent.config.system_prompt = notes
     subagent.managed_by = managed_by
     subagent.mcp_config = MagicMock(requires_auth=requires_auth) if managed_by == "mcp" else None
     return subagent
@@ -130,7 +123,6 @@ class TestActivationContext:
     def sources(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
         """Patch every enrichment source to answer; tests blank the ones they do not need."""
         mocks: dict[str, MagicMock] = {
-            "build_subagent_system_prompt": AsyncMock(return_value="You manage gmail."),
             "get_instructions": AsyncMock(return_value="Always CC me."),
             "build_provider_metadata_block": AsyncMock(
                 return_value="USER CONTEXT FOR GMAIL:\n- email: me@x.com"
@@ -149,7 +141,7 @@ class TestActivationContext:
 
         assert context == "\n\n".join(
             [
-                f"## gmail: how it works\n{REFRAME}\nYou manage gmail.",
+                "## gmail: how it works\nYou manage gmail.",
                 f'<user_instructions scope="gmail">\n{USER_INSTRUCTIONS_HEADER}\n\n'
                 "Always CC me.\n</user_instructions>",
                 "USER CONTEXT FOR GMAIL:\n- email: me@x.com",
@@ -157,7 +149,6 @@ class TestActivationContext:
                 "## Workspace skills\n- triage",
             ]
         )
-        sources["build_subagent_system_prompt"].assert_awaited_once_with(integration_id="gmail")
         sources["get_instructions"].assert_awaited_once_with("u1", "gmail")
         sources["build_provider_metadata_block"].assert_awaited_once_with("gmail", "u1")
         sources["get_available_skills_text"].assert_awaited_once_with("u1", "gmail_agent")
@@ -178,7 +169,6 @@ class TestActivationContext:
         assert sections[0] == "## Scholar: what it is\nSearches papers."
         assert ACTIVATION_MULTI_ACCOUNT_POINTER.format(integration="Scholar") in sections
         lookup.assert_awaited_once_with("abc123")
-        sources["build_subagent_system_prompt"].assert_not_awaited()
         sources["get_instructions"].assert_awaited_once_with("u1", "abc123")
         sources["get_available_skills_text"].assert_awaited_once_with("u1", "custom_mcp_abc123")
         sources["integration_skills_block"].assert_called_once_with("abc123")
@@ -186,10 +176,9 @@ class TestActivationContext:
     async def test_empty_everywhere_yields_empty_context(
         self, sources: dict[str, MagicMock]
     ) -> None:
-        sources["build_subagent_system_prompt"].return_value = ""
         sources["integration_skills_block"].return_value = ""
 
-        assert await _activation_context(_subagent(), None, False) == ""
+        assert await _activation_context(_subagent(notes=""), None, False) == ""
         sources["get_instructions"].assert_not_awaited()
 
     async def test_enrichment_failure_degrades_to_partial_and_is_logged(
@@ -201,7 +190,7 @@ class TestActivationContext:
         async with captured_wide_event() as event:
             context = await _activation_context(_subagent(), "u1", False)
 
-        assert context == f"## gmail: how it works\n{REFRAME}\nYou manage gmail."
+        assert context == "## gmail: how it works\nYou manage gmail."
         assert event["warnings"] == [
             {
                 "msg": f"{LogTag.AGENT} Activation context enrichment failed; degrading to partial",
@@ -523,12 +512,34 @@ class TestActivationHeader:
 class TestActivateIntegrationTool:
     @staticmethod
     def _invoke(
-        configurable: dict[str, str] | None = None, **kwargs: str
+        configurable: dict[str, str] | None = None,
+        history: list[AnyMessage] | None = None,
+        call_id: str = "call1",
+        **kwargs: str,
     ) -> tuple[ToolCall, RunnableConfig]:
+        # messages is injected from graph state at run time; a direct invoke passes it.
+        args: dict[str, object] = {**kwargs, "messages": history or []}
         return (
-            {"args": kwargs, "name": "activate_integration", "type": "tool_call", "id": "call1"},
+            {"args": args, "name": "activate_integration", "type": "tool_call", "id": call_id},
             {"configurable": configurable or {}},
         )
+
+    @staticmethod
+    def _history_after(command: Command, integration_id: str, call_id: str) -> list[AnyMessage]:
+        """Build the run's history once an activation call and its reply have landed in it."""
+        reply = command.update["messages"][0]
+        asked = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "activate_integration",
+                    "args": {"integration_id": integration_id},
+                    "id": call_id,
+                    "type": "tool_call",
+                }
+            ],
+        )
+        return [asked, reply]
 
     @staticmethod
     def _text(command: Command) -> str:
@@ -666,6 +677,111 @@ class TestActivateIntegrationTool:
         # Account tools cost context on every turn; the agent retrieves them when it needs one.
         assert self._bound(result) == ["query_json"]
         context.assert_awaited_once_with(connected.return_value, "u1", True)
+
+    async def test_an_activation_still_in_history_is_not_reloaded(
+        self, connected: AsyncMock
+    ) -> None:
+        """A follow-up or a retry after a failed call must not re-send 40-odd schemas still in history."""
+        activate_tools = AsyncMock(return_value=ActivatedTools(40, ["query_json"], [], "DOCS"))
+        with (
+            patch(f"{_MOD}._activate_tools", new=activate_tools),
+            patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="CTX")),
+        ):
+            call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="gmail")
+            first = await activate_integration.ainvoke(call, run_cfg)
+            async with captured_wide_event() as event:
+                call, run_cfg = self._invoke(
+                    {"user_id": "u1"},
+                    history=self._history_after(first, "gmail", "call1"),
+                    call_id="call2",
+                    integration_id="gmail",
+                )
+                again = await activate_integration.ainvoke(call, run_cfg)
+
+        activate_tools.assert_awaited_once()
+        assert self._text(again) == integration_activation.ALREADY_ACTIVE_REPLY.format(
+            integration_id="gmail"
+        )
+        assert self._bound(again) == []
+        assert event["activation"] == {"integration": "gmail", "already_active": True}
+
+    async def test_an_integration_preloaded_into_a_spawn_counts_as_active(
+        self, connected: AsyncMock
+    ) -> None:
+        """A spawn that calls activate_integration on what it was spawned with must not reload it."""
+        activate_tools = AsyncMock(return_value=ActivatedTools(40, ["query_json"], [], "DOCS"))
+        with (
+            patch(f"{_MOD}._activate_tools", new=activate_tools),
+            patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="CTX")),
+        ):
+            preloaded = await integration_activation.preload_integrations(
+                ["gmail"], {"user_id": "u1"}
+            )
+            call, run_cfg = self._invoke(
+                {"user_id": "u1"},
+                history=preloaded.messages,
+                call_id="call2",
+                integration_id="gmail",
+            )
+            again = await activate_integration.ainvoke(call, run_cfg)
+
+        activate_tools.assert_awaited_once()
+        assert preloaded.bind == ["query_json"]
+        assert self._text(again) == integration_activation.ALREADY_ACTIVE_REPLY.format(
+            integration_id="gmail"
+        )
+
+    async def test_a_connect_prompt_in_history_does_not_count_as_active(self) -> None:
+        """Once the user connects, the next activation must load the tools the first could not."""
+        connect = AsyncMock(side_effect=["Connect your Gmail account to continue.", None])
+        activate_tools = AsyncMock(return_value=ActivatedTools(40, [], [], ""))
+        with (
+            patch(f"{_MOD}.get_integration_target", new=AsyncMock(return_value=_subagent())),
+            patch(f"{_MOD}.check_integration_connection", new=connect),
+            patch(f"{_MOD}._has_several_accounts", new=AsyncMock(return_value=False)),
+            patch(f"{_MOD}._activate_tools", new=activate_tools),
+            patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="CTX")),
+        ):
+            call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="gmail")
+            prompt = await activate_integration.ainvoke(call, run_cfg)
+            call, run_cfg = self._invoke(
+                {"user_id": "u1"},
+                history=self._history_after(prompt, "gmail", "call1"),
+                call_id="call2",
+                integration_id="gmail",
+            )
+            loaded = await activate_integration.ainvoke(call, run_cfg)
+
+        activate_tools.assert_awaited_once()
+        assert "is now active" in self._text(loaded)
+
+    async def test_another_integrations_activation_does_not_count(self) -> None:
+        """Gmail being active says nothing about calendar."""
+        calendar = _subagent()
+        calendar.id = "googlecalendar"
+        activate_tools = AsyncMock(return_value=ActivatedTools(40, [], [], ""))
+        with (
+            patch(
+                f"{_MOD}.get_integration_target",
+                new=AsyncMock(side_effect=[_subagent(), calendar]),
+            ),
+            patch(f"{_MOD}.check_integration_connection", new=AsyncMock(return_value=None)),
+            patch(f"{_MOD}._has_several_accounts", new=AsyncMock(return_value=False)),
+            patch(f"{_MOD}._activate_tools", new=activate_tools),
+            patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="CTX")),
+        ):
+            call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="gmail")
+            first = await activate_integration.ainvoke(call, run_cfg)
+            call, run_cfg = self._invoke(
+                {"user_id": "u1"},
+                history=self._history_after(first, "gmail", "call1"),
+                call_id="call2",
+                integration_id="googlecalendar",
+            )
+            other = await activate_integration.ainvoke(call, run_cfg)
+
+        assert activate_tools.await_count == 2
+        assert "Integration 'googlecalendar' is now active" in self._text(other)
 
     async def test_unconnected_integration_returns_the_connect_prompt(self) -> None:
         """Activating an unconnected integration must gate on the connection check."""

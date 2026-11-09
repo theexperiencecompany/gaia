@@ -31,9 +31,14 @@ Gmail supports powerful search operators:
 ## Step 2: Fetch the messages
 
 `GMAIL_FETCH_MESSAGES` is the one read tool for everything: a specific email, a topic,
-or a whole-inbox scan. Call it **directly, do NOT wrap it in `spawn_subagent`**. It
-paginates the Gmail API server-side in one call (results are never silently capped),
-renders the email-list card for small results, and big ones are saved to a file for you.
+or a whole-inbox scan. It paginates the Gmail API server-side in one call (results are
+never silently capped), renders the email-list card for small results, and big ones are
+saved to a file for you. One query is one call: never spread its pages across subagents.
+
+A sweep (several accounts, or months of mail that must be read, not just counted) is
+different work. If you can spawn subagents, give each slice (one account, one date range)
+its own spawn with `integration_ids=["gmail"]`, all in the same turn, each fetching and
+mining its own slice and returning only its findings with their ids.
 
 ```
 GMAIL_FETCH_MESSAGES(
@@ -142,7 +147,7 @@ deliverable: return it to the executor verbatim (headings, order, emoji, line br
 intact) and tell the executor to relay it to comms unchanged, not re-summarized.
 
 ## Anti-Patterns
-- Wrapping `GMAIL_FETCH_MESSAGES` or `GMAIL_FETCH_THREAD` in a subagent (call them directly; they self-paginate).
+- Splitting one query's pages across subagents (`GMAIL_FETCH_MESSAGES` and `GMAIL_FETCH_THREAD` self-paginate).
 - Reading a whole saved JSONL into your own context instead of mining it with `query_json` or splitting it across subagents.
 - Using `label:snoozed` (use `is:snoozed`).
 - Long natural-language queries (use operators); giving up after one search.

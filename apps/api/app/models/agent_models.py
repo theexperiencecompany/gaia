@@ -23,7 +23,6 @@ from app.models.agent_config import (
     ExecutionMode,
     RunMetadata,
     RunUserMissingError,
-    SpawnJob,
     SubagentKind,
     SubagentResumeItem,
     agent_configurable,
@@ -54,7 +53,6 @@ __all__ = [
     "RunUserMissingError",
     "RunningSubagent",
     "SilentRunResult",
-    "SpawnJob",
     "SubagentKind",
     "SubagentResumeItem",
     "agent_configurable",
@@ -83,8 +81,8 @@ class AgentUserContext(TypedDict, total=False):
 
     Deliberately narrower than AuthenticatedUser, which agent_user_context
     narrows to it: only the top-level entries (chat, background narration) hold
-    a real request auth context. Every child agent — executor, handoff
-    subagents, spawn, the workflow author — reconstructs a bare identity bag
+    a real request auth context. Every child agent — executor, spawned
+    subagents, the workflow author — reconstructs a bare identity bag
     from its parent's configurable, and typing those as AuthenticatedUser would
     claim they carry auth-path flags and the whole user document, which they
     do not.

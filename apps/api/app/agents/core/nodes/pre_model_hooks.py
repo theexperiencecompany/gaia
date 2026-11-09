@@ -39,7 +39,7 @@ def worker_pre_model_hooks(
     drains_inbox: bool = False,
     drains_subagent_inbox: bool = False,
 ) -> list[HookType]:
-    """Executor, provider subagents and spawned subagents.
+    """Executor, the workflow authoring subagent and spawned subagents.
 
     todo_hook is None for spawn and authoring-only subagents. Runs BEFORE
     manage_system_prompts_node so appended messages take the canonical slot

@@ -33,6 +33,7 @@ from app.agents.core.held_replies import HeldReplies
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, dev_option
 from app.agents.llm.reasoning import extract_reasoning_delta
+from app.agents.prompts.delegation_prompts import SUBAGENT_NARRATION_ONLY_RESULT
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
@@ -449,10 +450,8 @@ def _finalize_run(run: _StreamRun) -> SubagentOutcome:
         and not run.emitted_tool_calls
     ):
         log.warning("subagent_returned_narration_only", subagent_name=run.ctx.agent_name)
-        final_message = (
-            f"The {run.ctx.agent_name} subagent ended without running any tool; it only "
-            f'produced planning text: "{run.complete_message}". Re-issue the handoff with an '
-            "explicit instruction to perform the action."
+        final_message = SUBAGENT_NARRATION_ONLY_RESULT.format(
+            name=run.ctx.agent_name, text=run.complete_message
         )
     else:
         final_message = run.complete_message

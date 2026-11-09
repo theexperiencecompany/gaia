@@ -412,9 +412,9 @@ async def _execute_executor(
         # Equivalent under mutation: build_agent_config always sets "configurable".
         run_configurable = ctx.config.setdefault("configurable", {})  # pragma: no mutate
         if resume is not None:
-            # Tells the handoff tool to probe its subagent thread for a parked
+            # Tells spawn_subagent to probe its spawn's thread for a parked
             # interrupt — only a resume replay can encounter one, so fresh runs
-            # skip that per-handoff checkpoint read.
+            # skip that per-spawn checkpoint read.
             ctx.configurable[HIL_RESUME_CONFIG_KEY] = True
             run_configurable[HIL_RESUME_CONFIG_KEY] = True
         if message_id := run.render_message_id:

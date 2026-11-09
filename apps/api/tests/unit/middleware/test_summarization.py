@@ -704,7 +704,7 @@ async def test_the_summary_is_a_record_of_the_past_not_a_plan() -> None:
     # a role boundary, and marks the call as summary output so the next fold
     # can recognise it (is_conversation_summary reads lc_source).
     assert '<message type="human">m0</message>' in prompt
-    assert prompt.startswith("You are condensing the OLDER part of a conversation")
+    assert prompt.startswith("You are condensing part of a conversation between a user and GAIA")
     assert prompt.endswith("</messages>")
     assert model.call_metadata[0]["lc_source"] == SUMMARY_SOURCE
     for task_framing in ("SESSION INTENT", "NEXT STEPS", "What should you do next"):
@@ -779,6 +779,59 @@ async def test_a_long_running_turn_folds_its_steps_but_never_its_request() -> No
     assert {"call1", "res1", "call2", "res2"} <= removed
     assert "earlier work" in model.prompts[0]
     assert "the task" not in model.prompts[0]
+
+
+def _section(prompt: str, tag: str) -> str:
+    """Return the rendered <tag> section of a summary prompt, or "" when it has none."""
+    # On their own lines: the prompt's instructions also name the tags inline.
+    start = prompt.find(f"\n<{tag}>\n")
+    end = prompt.find(f"\n</{tag}>")
+    return prompt[start:end] if start != -1 and end != -1 else ""
+
+
+async def test_a_long_running_turns_folded_steps_reach_the_summarizer_as_progress() -> None:
+    # Regression: the prompt told the summarizer the running work was never in its
+    # input, so folded steps of the running request came back as an unfinished old
+    # request ("not completed") and the executor re-planned and redid them.
+    previous = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\nearlier work",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+    model = _recording_model()
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 2), archive=None)
+    history: list[AnyMessage] = [
+        previous,
+        HumanMessage("the task", id="task"),
+        *_tool_step(1),
+        *_tool_step(2),
+        *_tool_step(3),
+    ]
+
+    await mw.abefore_model({"messages": history}, _runtime())
+
+    progress = _section(model.prompts[0], "progress")
+    older = _section(model.prompts[0], "messages")
+    assert "result 1" in progress and "result 2" in progress
+    assert "earlier work" in older
+    assert "result 1" not in older
+
+
+async def test_a_fold_of_older_turns_alone_has_no_progress_section() -> None:
+    model = _recording_model()
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 1), archive=None)
+    history: list[AnyMessage] = [
+        HumanMessage("old question", id="h0"),
+        AIMessage("old answer", id="a0"),
+        HumanMessage("current question", id="h1"),
+        *_tool_step(1),
+        *_tool_step(2),
+    ]
+
+    await mw.abefore_model({"messages": history}, _runtime())
+
+    assert "old answer" in _section(model.prompts[0], "messages")
+    assert _section(model.prompts[0], "progress") == ""
 
 
 async def test_a_presence_note_ahead_of_the_task_is_not_history_that_stops_the_steps_folding() -> (

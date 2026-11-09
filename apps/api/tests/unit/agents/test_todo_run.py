@@ -25,7 +25,6 @@ from app.agents.llm.lane import AgentRole
 from app.constants.log_tags import LogTag
 from app.constants.streaming import DetachedStreamKind
 from app.constants.todos import TodoWakeKind
-from app.models.agent_models import SpawnJob
 from app.models.message_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.models.workflow_models import TriggerType
@@ -331,7 +330,6 @@ async def test_the_executor_config_is_a_background_run_bound_to_the_todo() -> No
     assert configurable == {
         "thread_id": "run-conv",
         "stream_id": "stream-1",
-        "spawn_job": SpawnJob.FOCUSED,
     }
     kwargs = built.await_args.kwargs
     assert kwargs["identity"].conversation_id == "run-conv"

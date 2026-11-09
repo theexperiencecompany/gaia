@@ -108,6 +108,23 @@ PLAYBOOK_UNPICKABLE_TOOLS = frozenset(
     }
 )
 
+#: Executor tools a spawned subagent never gets: steering other subagents, and global
+#: instructions (a spawn mines untrusted output). activate_integration stays: a spawn
+#: loads the integration its own slice needs.
+EXECUTOR_SPAWN_EXCLUDED_TOOLS = frozenset(
+    {
+        "list_running_subagents",
+        "message_subagent",
+        "cancel_subagent",
+        "update_user_instructions",
+    }
+)
+
+#: A tool result at least this long (about 7k tokens) is re-read on every later
+#: model call of the turn, so the agent that can spawn is pointed at spawns for
+#: any further reading of that size.
+LARGE_TOOL_RESULT_CHARS = 25_000
+
 # The trigger-context key carrying the busy-lock value a workflow fire reserved.
 # Written by the workflow worker, read by call_executor so the dispatched
 # executor takes the reservation over instead of queueing behind a stale lock.

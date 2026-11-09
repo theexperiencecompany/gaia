@@ -318,3 +318,23 @@ async def test_grep_tool_pattern_dash_is_literal_not_flag(tmp_path: Path) -> Non
     with _mock_resolve(f):
         out = await grep.ainvoke({"pattern": "-i", "path": "log.txt"}, config=CONFIG)
     assert "value -i is here" in out  # -e keeps a flag-looking pattern literal
+
+
+async def test_grep_tool_alternation_matches_any_branch(tmp_path: Path) -> None:
+    # Regression: the tool ran basic regex, where `|` is a literal character, so
+    # `job|recruit|hiring` matched nothing in a mailbox full of job alerts.
+    f = tmp_path / "mail.jsonl"
+    f.write_text(
+        '{"subject": "New job: Full Stack Engineer"}\n'
+        '{"subject": "Weekly error digest"}\n'
+        '{"subject": "We are Hiring founders"}\n'
+    )
+    with _mock_resolve(f):
+        out = await grep.ainvoke(
+            {"pattern": "job|recruit|hiring", "path": "mail.jsonl", "ignore_case": True},
+            config=CONFIG,
+        )
+    assert out.splitlines() == [
+        '1:{"subject": "New job: Full Stack Engineer"}',
+        '3:{"subject": "We are Hiring founders"}',
+    ]

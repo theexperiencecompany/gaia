@@ -110,7 +110,7 @@ CRITICAL REQUIREMENTS:
 2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "googlecalendar", "todos", "reminders")
 3. Create 3-5 HIGHLY OPTIMIZED steps that accomplish the goal with maximum efficiency
 4. The execution agent will use `activate_integration` to load each step's integration in-context, then run its tools itself via `execute`
-5. Categories like gmail, notion, github, slack, googlecalendar name the integration to activate; the executor acts on them directly, never via subagents
+5. Categories like gmail, notion, github, slack, googlecalendar name the integration to activate; the executor activates it and acts on it itself
 6. Categories like todos, reminders, search, development use direct tool execution
 7. ELIMINATE any step that doesn't directly contribute to the end goal
 8. Use `gaia` category for steps that involve GAIA's own reasoning, writing, analysis, or synthesis with NO external tool call.
@@ -129,7 +129,7 @@ CRITICAL REQUIREMENTS:
 
 **Step Structure:**
 - `title`: Human-readable step name (what action to take)
-- `category`: Which system/subagent handles this step (gmail, notion, todos, reminders, etc.)
+- `category`: Which integration handles this step (gmail, notion, todos, reminders, etc.)
 - `description`: Detailed context about what this step should accomplish
 - `inputs`: Optional hints/parameters, but the executor makes final decisions
 
