@@ -14,11 +14,15 @@ from app.constants.briefing import (
     WEEKLY_DIGEST_WORKFLOW_KEY,
     BriefingFrequency,
 )
+from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.users import user_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.briefing_models import BriefingSchedule
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.briefing import schedule
+from app.services.workflow.service import WorkflowService
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsBriefingScheduleUpdated
 
@@ -119,12 +123,12 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[Seams]:
         deactivate=AsyncMock(return_value=MagicMock()),
         is_paid=AsyncMock(return_value=True),
     )
-    monkeypatch.setattr(schedule.WorkflowService, "activate_workflow", s.activate)
-    monkeypatch.setattr(schedule.WorkflowService, "deactivate_workflow", s.deactivate)
+    monkeypatch.setattr(WorkflowService, "activate_workflow", s.activate)
+    monkeypatch.setattr(WorkflowService, "deactivate_workflow", s.deactivate)
     monkeypatch.setattr(schedule, "is_paid", s.is_paid)
-    monkeypatch.setattr(schedule.workflow_repository, "find_system_workflows", s.find)
-    monkeypatch.setattr(schedule.WorkflowService, "update_workflow", s.update)
-    monkeypatch.setattr(schedule.briefing_repository, "was_delivered", s.was_delivered)
+    monkeypatch.setattr(workflow_repository, "find_system_workflows", s.find)
+    monkeypatch.setattr(WorkflowService, "update_workflow", s.update)
+    monkeypatch.setattr(briefing_repository, "was_delivered", s.was_delivered)
     with time_machine.travel(_NOW, tick=False):
         yield s
 
@@ -294,9 +298,9 @@ class TestSetBriefingSchedule:
     ) -> None:
         stored = _user(DEFAULT_QUIET_HOURS, frequency=BriefingFrequency.WEEKLY_ONLY)
         store = AsyncMock()
-        monkeypatch.setattr(schedule.user_repository, "set_briefing_schedule", store)
+        monkeypatch.setattr(user_repository, "set_briefing_schedule", store)
         get = AsyncMock(return_value=stored)
-        monkeypatch.setattr(schedule.user_repository, "get", get)
+        monkeypatch.setattr(user_repository, "get", get)
         capture = MagicMock()
         monkeypatch.setattr(schedule, "capture", capture)
         log = MagicMock()
@@ -324,8 +328,8 @@ class TestSetBriefingSchedule:
     async def test_an_unknown_user_fails_loud_and_reports_nothing(
         self, seams: Seams, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(schedule.user_repository, "set_briefing_schedule", AsyncMock())
-        monkeypatch.setattr(schedule.user_repository, "get", AsyncMock(return_value=None))
+        monkeypatch.setattr(user_repository, "set_briefing_schedule", AsyncMock())
+        monkeypatch.setattr(user_repository, "get", AsyncMock(return_value=None))
         capture = MagicMock()
         monkeypatch.setattr(schedule, "capture", capture)
 

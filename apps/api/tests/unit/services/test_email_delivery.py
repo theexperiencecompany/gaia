@@ -41,7 +41,7 @@ def _support_notification(**overrides: object) -> SupportEmailNotification:
         "attachments": [],
     }
     data.update(overrides)
-    return SupportEmailNotification(**data)
+    return SupportEmailNotification.model_validate(data)
 
 
 @pytest.fixture

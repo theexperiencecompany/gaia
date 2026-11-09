@@ -149,7 +149,6 @@ apps/api/tests/unit/agents/tools/test_mutations_factory.py	index
 apps/api/tests/unit/agents/tools/test_mutations_factory.py	var-annotated
 apps/api/tests/unit/api/test_device_self_pair.py	attr-defined
 apps/api/tests/unit/api/test_integrations_user.py	call-arg
-apps/api/tests/unit/api/test_oauth_dependencies.py	attr-defined
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	call-arg
 apps/api/tests/unit/api/test_platform_auth_endpoint.py	override
@@ -320,7 +319,6 @@ apps/api/tests/unit/services/hil/test_ledger_publish.py	attr-defined
 apps/api/tests/unit/services/integrations/test_integration_status.py	arg-type
 apps/api/tests/unit/services/mcp/test_device_connector.py	union-attr
 apps/api/tests/unit/services/oauth/test_oauth_service_helpers.py	arg-type
-apps/api/tests/unit/services/onboarding/test_intelligence_service_pipeline.py	attr-defined
 apps/api/tests/unit/services/photon/test_photon_client.py	arg-type
 apps/api/tests/unit/services/photon/test_photon_client.py	attr-defined
 apps/api/tests/unit/services/photon/test_photon_client.py	index
@@ -344,7 +342,6 @@ apps/api/tests/unit/services/test_device_self_pair_service.py	attr-defined
 apps/api/tests/unit/services/test_device_server_lifecycle.py	attr-defined
 apps/api/tests/unit/services/test_device_server_lifecycle.py	misc
 apps/api/tests/unit/services/test_device_server_lifecycle.py	valid-type
-apps/api/tests/unit/services/test_email_delivery.py	arg-type
 apps/api/tests/unit/services/test_file_service.py	list-item
 apps/api/tests/unit/services/test_integration_inference_service.py	misc
 apps/api/tests/unit/services/test_lab_hooks.py	attr-defined
@@ -356,8 +353,6 @@ apps/api/tests/unit/services/test_marketplace_service.py	arg-type
 apps/api/tests/unit/services/test_marketplace_service.py	call-arg
 apps/api/tests/unit/services/test_mcp_tool_result.py	arg-type
 apps/api/tests/unit/services/test_mcp_tool_result.py	index
-apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
-apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
 apps/api/tests/unit/services/test_platform_message_service.py	attr-defined
 apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type

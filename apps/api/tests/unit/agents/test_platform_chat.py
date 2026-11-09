@@ -152,7 +152,7 @@ async def _post_with_image(text: str, photo: OutboundResult) -> tuple[_Posted, A
     send_photo = AsyncMock(return_value=photo)
     record = AsyncMock()
     with (
-        patch.object(platform_chat.BotService, "get_or_create_session", session),
+        patch.object(BotService, "get_or_create_session", session),
         patch.object(platform_chat, "update_messages", save),
         patch.object(platform_chat, "publish_outbound_message", publish),
         patch.object(platform_chat, "publish_outbound_photo", send_photo),

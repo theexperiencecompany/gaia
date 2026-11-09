@@ -1247,7 +1247,10 @@ class TestBindSessionId:
         """Regression: a brief's long session id made OpenAI 400 on a 69-character key."""
         llm = ChatOpenAI(model="gpt-x", api_key=SecretStr("sk-test")).bind_tools([])
         session = "briefing-daily-6ace8c80b48519a26eda057a-2026-10-14-1f2e3d"
-        configurable = {"provider": LLMProviderName.OPENAI, "session_id": session}
+        configurable: AgentConfigurable = {
+            "provider": LLMProviderName.OPENAI,
+            "session_id": session,
+        }
 
         first = _bind_session_id(llm, configurable, "comms_agent")
         second = _bind_session_id(llm, configurable, "comms_agent")
@@ -1264,7 +1267,10 @@ class TestBindSessionId:
         llm = ChatOpenAI(model="gpt-x", api_key=SecretStr("sk-test")).bind_tools([])
         suffix = "-comms_agent"
         session = "s" * (OPENAI_PROMPT_CACHE_KEY_MAX_CHARS - len(suffix))
-        configurable = {"provider": LLMProviderName.OPENAI, "session_id": session}
+        configurable: AgentConfigurable = {
+            "provider": LLMProviderName.OPENAI,
+            "session_id": session,
+        }
 
         bound = _bind_session_id(llm, configurable, "comms_agent")
 

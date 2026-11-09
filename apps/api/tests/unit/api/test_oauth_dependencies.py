@@ -21,6 +21,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone,
     get_user_timezone_from_preferences,
 )
+from app.config.settings import settings
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.models.user_models import AuthenticatedUser, UserDocument
@@ -263,8 +264,8 @@ class TestGetCurrentUserWs:
     async def test_the_dev_bypass_resolves_its_target_without_a_session(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(oauth_dependencies.settings, "ENV", "development")
-        monkeypatch.setattr(oauth_dependencies.settings, "DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local")
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local")
         user_doc = MagicMock()
         bypass_user = AuthenticatedUser(user_id="u1", dev_bypass=True)
         websocket = _websocket()
@@ -286,8 +287,8 @@ class TestGetCurrentUserWs:
     async def test_a_bypass_target_with_no_user_is_refused_not_impersonated(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(oauth_dependencies.settings, "ENV", "development")
-        monkeypatch.setattr(oauth_dependencies.settings, "DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local")
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local")
         with patch(_WS_DEV_BYPASS, new_callable=AsyncMock, return_value=("ghost@x", None)):
             with pytest.raises(WebSocketException) as exc:
                 await get_current_user_ws(_websocket())
@@ -309,9 +310,9 @@ _LOCAL_USER_ID = "507f1f77bcf86cd799439011"
 
 @pytest.fixture
 def local_auth_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(oauth_dependencies.settings, "ENV", "selfhost")
-    monkeypatch.setattr(oauth_dependencies.settings, "AUTH_MODE", "local")
-    monkeypatch.setattr(oauth_dependencies.settings, "DEV_AUTH_BYPASS_EMAIL", None)
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
+    monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
 
 
 @pytest.mark.usefixtures("local_auth_mode")
