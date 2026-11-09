@@ -102,8 +102,6 @@ apps/api/tests/stress/test_link_code_race.py	call-arg
 apps/api/tests/unit/agents/context/test_context_harness.py	attr-defined
 apps/api/tests/unit/agents/context/test_todo_delivery_context.py	attr-defined
 apps/api/tests/unit/agents/context/test_todo_feedback_context.py	arg-type
-apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	arg-type
-apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	attr-defined
 apps/api/tests/unit/agents/nodes/test_memory_node.py	arg-type
 apps/api/tests/unit/agents/test_active_integrations.py	misc
 apps/api/tests/unit/agents/test_call_record.py	arg-type
@@ -112,7 +110,6 @@ apps/api/tests/unit/agents/test_delegation.py	assignment
 apps/api/tests/unit/agents/test_delegation.py	attr-defined
 apps/api/tests/unit/agents/test_delegation.py	list-item
 apps/api/tests/unit/agents/test_delegation.py	typeddict-item
-apps/api/tests/unit/agents/test_deliver_to_executor.py	attr-defined
 apps/api/tests/unit/agents/test_email_processor.py	arg-type
 apps/api/tests/unit/agents/test_email_processor.py	list-item
 apps/api/tests/unit/agents/test_email_processor.py	method-assign
@@ -122,11 +119,6 @@ apps/api/tests/unit/agents/test_executor_channel.py	var-annotated
 apps/api/tests/unit/agents/test_executor_queue.py	attr-defined
 apps/api/tests/unit/agents/test_executor_queue.py	misc
 apps/api/tests/unit/agents/test_executor_queue.py	typeddict-item
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	arg-type
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	attr-defined
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	func-returns-value
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	list-item
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	return-value
 apps/api/tests/unit/agents/test_github_discovery.py	arg-type
 apps/api/tests/unit/agents/test_held_replies.py	arg-type
 apps/api/tests/unit/agents/test_hil_approval_middleware.py	arg-type
