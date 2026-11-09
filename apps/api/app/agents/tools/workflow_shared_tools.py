@@ -9,7 +9,7 @@ tool capabilities, instead of having the whole catalog injected up front.
 """
 
 import asyncio
-from typing import Annotated, Any
+from typing import Annotated
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
@@ -23,6 +23,19 @@ from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
 from app.helpers.integration_helpers import build_search_matcher
 from app.models.agent_models import current_stream_writer, get_user_id
+from app.models.workflow_tool_models import (
+    ConnectedToolMatch,
+    ConnectedToolSearch,
+    IntegrationSummary,
+    IntegrationToolList,
+    MyIntegrationsPage,
+    PublicIntegrationsPage,
+    TriggerSearchPage,
+    WorkflowPage,
+    WorkflowSummary,
+    WorkflowToolError,
+    WorkflowToolSuccess,
+)
 from app.schemas.integrations.responses import IntegrationTool, MyIntegrationItem
 from app.services.integrations.integration_search import (
     match_my_integrations,
@@ -54,7 +67,7 @@ async def search_triggers(
     config: RunnableConfig,
     query: Annotated[str, "Describe when the workflow should trigger"],
     limit: Annotated[int, "Max number of results to return"] = 15,
-) -> dict[str, Any]:
+) -> WorkflowToolSuccess[TriggerSearchPage] | WorkflowToolError:
     """
     Search for integration triggers matching your description.
 
@@ -93,7 +106,7 @@ async def list_workflows(
     config: RunnableConfig,
     page: Annotated[int, "1-indexed page number"] = 1,
     page_size: Annotated[int, "Workflows per page (1-50)"] = 20,
-) -> dict[str, Any]:
+) -> WorkflowToolSuccess[WorkflowPage] | WorkflowToolError:
     """List the user's workflows, newest first, one page at a time.
 
     Returns a page of workflow summaries plus `page`, `page_size`, `total`, and
@@ -111,7 +124,7 @@ async def list_workflows(
             user_id, limit=page_size, offset=offset
         )
 
-        workflow_summaries = [
+        workflow_summaries: list[WorkflowSummary] = [
             {
                 "id": w.id,
                 "title": w.title,
@@ -130,7 +143,7 @@ async def list_workflows(
         # malformed document dropped during validation shrinks the page but does
         # not mean the collection has more pages than it does.
         has_more = offset + page_size < total
-        payload = {
+        payload: WorkflowPage = {
             "workflows": workflow_summaries,
             "page": page,
             "page_size": page_size,
@@ -156,7 +169,7 @@ async def get_my_integrations(
         "Filter to integrations matching this text (e.g. 'email', 'github'). "
         "Omit to list them all.",
     ] = None,
-) -> dict[str, Any]:
+) -> WorkflowToolSuccess[MyIntegrationsPage] | WorkflowToolError:
     """List the integrations THIS user has: built-in and their own custom ones, each connected or not.
 
     Call this FIRST to see what the workflow can build on and to decide which
@@ -168,7 +181,7 @@ async def get_my_integrations(
         user_id = get_user_id(config)
         matched = await match_my_integrations(user_id, query)
         capped = matched[:MAX_MY_INTEGRATIONS_RESULTS]
-        integrations = [
+        integrations: list[IntegrationSummary] = [
             {
                 "id": i.id,
                 "name": i.name,
@@ -182,7 +195,7 @@ async def get_my_integrations(
         return success_response(
             {
                 "integrations": integrations,
-                "connected_count": sum(1 for i in integrations if i["connected"]),
+                "connected_count": sum(1 for i in capped if i.status == "connected"),
                 "truncated": len(matched) > len(capped),
                 "query": query,
             }
@@ -203,7 +216,7 @@ async def search_integrations(
         "What kind of integration to find in the public marketplace "
         "(e.g. 'project management', 'CRM', 'calendar').",
     ],
-) -> dict[str, Any]:
+) -> WorkflowToolSuccess[PublicIntegrationsPage] | WorkflowToolError:
     """Search the PUBLIC integration marketplace for something the user could add.
 
     Use this ONLY when the workflow needs an integration the user does not already
@@ -215,7 +228,7 @@ async def search_integrations(
         log.set(tool={"name": "search_integrations", "action": "search_public"})
         user_id = get_user_id(config)
         owned_ids = {i.id for i in (await fetch_my_integrations(user_id)).integrations}
-        results = [
+        results: list[IntegrationSummary] = [
             {
                 "id": c.integration_id,
                 "name": c.name,
@@ -248,7 +261,11 @@ async def search_integration_tools(
         "Omit to list all of the integration's tools. Required if no "
         "integration_id is given.",
     ] = None,
-) -> dict[str, Any]:
+) -> (
+    WorkflowToolSuccess[IntegrationToolList]
+    | WorkflowToolSuccess[ConnectedToolSearch]
+    | WorkflowToolError
+):
     """Inspect an integration's tools to understand what it can DO.
 
     Use this to confirm an integration can actually perform a step before you put
@@ -286,18 +303,17 @@ async def search_integration_tools(
                 )
             tool_list = await get_integration_tool_list(integration.id)
             matched = [t for t in tool_list if _tool_matches(t)]
-            return success_response(
-                {
-                    "integration_id": integration.id,
-                    "integration_name": integration.name,
-                    "connected": integration.status == "connected",
-                    "tools": [
-                        {"name": t.name, "description": t.description}
-                        for t in matched[:MAX_INTEGRATION_TOOLS_FOR_LLM]
-                    ],
-                    "truncated": len(matched) > MAX_INTEGRATION_TOOLS_FOR_LLM,
-                }
-            )
+            integration_tools: IntegrationToolList = {
+                "integration_id": integration.id,
+                "integration_name": integration.name,
+                "connected": integration.status == "connected",
+                "tools": [
+                    {"name": t.name, "description": t.description}
+                    for t in matched[:MAX_INTEGRATION_TOOLS_FOR_LLM]
+                ],
+                "truncated": len(matched) > MAX_INTEGRATION_TOOLS_FOR_LLM,
+            }
+            return success_response(integration_tools)
 
         # Query only: scan across the user's connected integrations.
         connected = [i for i in mine if i.status == "connected"]
@@ -305,7 +321,7 @@ async def search_integration_tools(
             *(get_integration_tool_list(i.id) for i in connected),
             return_exceptions=True,
         )
-        results: list[dict[str, Any]] = []
+        results: list[ConnectedToolMatch] = []
         for integration, tools_or_error in zip(connected, tool_lists, strict=True):
             if isinstance(tools_or_error, BaseException):
                 log.warning(
@@ -325,14 +341,13 @@ async def search_integration_tools(
                         }
                     )
 
-        return success_response(
-            {
-                "tools": results[:MAX_INTEGRATION_TOOLS_FOR_LLM],
-                "truncated": len(results) > MAX_INTEGRATION_TOOLS_FOR_LLM,
-                "searched_integrations": [i.id for i in connected],
-                "query": query,
-            }
-        )
+        connected_tools: ConnectedToolSearch = {
+            "tools": results[:MAX_INTEGRATION_TOOLS_FOR_LLM],
+            "truncated": len(results) > MAX_INTEGRATION_TOOLS_FOR_LLM,
+            "searched_integrations": [i.id for i in connected],
+            "query": query,
+        }
+        return success_response(connected_tools)
 
     except Exception as e:
         log.error(f"{LogTag.TOOL} Error searching integration tools", error_type=type(e).__name__)

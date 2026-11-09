@@ -1,7 +1,9 @@
 import type {
   InstructionsResponse,
   OnboardingPreferences,
+  OnboardingResponse,
   UpdateInstructionsRequest,
+  UpdateTimezoneResponse,
   UsageHistoryEntry,
 } from "@gaia/shared/api/generated";
 
@@ -23,11 +25,6 @@ export type {
   UsagePeriod,
   UsageSummary,
 } from "@gaia/shared/types";
-
-export interface UpdatePreferencesResponse {
-  success: boolean;
-  message: string;
-}
 
 export interface UserProfile {
   user_id: string;
@@ -73,17 +70,17 @@ export const settingsApi = {
 
   updatePreferences(
     preferences: OnboardingPreferences,
-  ): Promise<UpdatePreferencesResponse> {
-    return apiService.patch<UpdatePreferencesResponse>(
+  ): Promise<OnboardingResponse> {
+    return apiService.patch<OnboardingResponse>(
       "/onboarding/preferences",
       preferences,
     );
   },
 
-  updateTimezone(timezone: string): Promise<UpdatePreferencesResponse> {
+  updateTimezone(timezone: string): Promise<UpdateTimezoneResponse> {
     const form = new FormData();
     form.append("timezone", timezone);
-    return apiService.patch<UpdatePreferencesResponse>("/user/timezone", form);
+    return apiService.patch<UpdateTimezoneResponse>("/user/timezone", form);
   },
 
   getInstructions(scope: string): Promise<InstructionsResponse> {
