@@ -26,6 +26,7 @@ from app.config.rate_limits import (
     RateLimitConfig,
     RateLimitPeriod,
     TieredRateLimits,
+    billing_month_window,
     derive_pro_benefits,
     get_feature_info,
     get_feature_limits,
@@ -649,3 +650,41 @@ class TestDeriveProBenefits:
 
     def test_a_feature_with_no_access_on_either_tier_is_never_advertised(self) -> None:
         assert "Dead" not in {b["title"] for b in derive_pro_benefits("hit")}
+
+
+def _utc(year: int, month: int, day: int, hour: int = 0) -> datetime:
+    return datetime(year, month, day, hour, tzinfo=UTC)
+
+
+class TestBillingMonthWindow:
+    """The Pro allowance month runs from billing day to billing day, not calendar month to month."""
+
+    @pytest.mark.parametrize(
+        ("billing_day", "now", "window", "reset"),
+        [
+            # mid-cycle, after this month's billing day
+            (15, _utc(2026, 11, 20), "20261115", _utc(2026, 12, 15)),
+            # before this month's billing day: the window opened last month
+            (15, _utc(2026, 11, 3), "20261015", _utc(2026, 11, 15)),
+            # exactly on the billing instant a new window opens
+            (15, _utc(2026, 11, 15), "20261115", _utc(2026, 12, 15)),
+            # December rolls into January
+            (10, _utc(2026, 12, 20), "20261210", _utc(2027, 1, 10)),
+            # January before the billing day reaches back into December
+            (10, _utc(2027, 1, 2), "20261210", _utc(2027, 1, 10)),
+            # day 31 clamps to February's end (non-leap)
+            (31, _utc(2027, 2, 10), "20270131", _utc(2027, 2, 28)),
+            # day 30 clamps to the leap-year February 29
+            (30, _utc(2028, 3, 1), "20280229", _utc(2028, 3, 30)),
+            # day 31 clamps to a 30-day month and returns to 31 after it
+            (31, _utc(2026, 4, 30, 12), "20260430", _utc(2026, 5, 31)),
+            (29, _utc(2027, 2, 28, 1), "20270228", _utc(2027, 3, 29)),
+        ],
+    )
+    def test_the_window_is_anchored_on_the_billing_day(
+        self, billing_day: int, now: datetime, window: str, reset: datetime
+    ) -> None:
+        assert billing_month_window(billing_day, now) == (window, reset)
+
+    def test_no_billing_day_falls_back_to_the_calendar_month(self) -> None:
+        assert billing_month_window(None, _utc(2026, 11, 20)) == ("202611", _utc(2026, 12, 1))

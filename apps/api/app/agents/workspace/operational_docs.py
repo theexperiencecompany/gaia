@@ -20,6 +20,7 @@ from typing import Final, Literal, NamedTuple, get_args
 
 from app.agents.prompts.todo_prompts import TODO_FEEDBACK_RULES
 from app.config.settings import settings
+from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
 
 # Topic docs: one self-contained file per concern, faithfully merged from
 # the prior GUIDE.md + gaia-* skill content.
@@ -596,7 +597,7 @@ If it returns `clarifying`, relay the question and retry with the answer. If
 """
 
 
-REMINDERS_DOC: Final[str] = """# Reminders: one-off and recurring time-based nudges
+REMINDERS_DOC: Final[str] = f"""# Reminders: one-off and recurring time-based nudges
 
 A reminder is a scheduled ping to the USER: "remind me to call Sam at 3pm",
 "ping me in 20 minutes", "every weekday at 9am tell me to stand up". It fires at
@@ -611,6 +612,7 @@ it just nudges. That is the line between a reminder and the rest:
 
 "Remind me", "ping me", "alert me", "set a timer", "notify me in N minutes" are
 reminders. "Every morning summarize my email" is a workflow.
+{PING_WITH_FOLLOW_THROUGH_RULE}
 
 ## How to use it
 

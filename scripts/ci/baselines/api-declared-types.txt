@@ -53,7 +53,6 @@ apps/mobile/src/features/search/api/search-api.ts:SearchMessageResult
 apps/mobile/src/features/search/api/search-api.ts:SearchNoteResult
 apps/mobile/src/features/search/api/search-api.ts:SearchResponse
 apps/mobile/src/features/settings/api/settings-api.ts:HoloCardColors
-apps/mobile/src/features/settings/api/settings-api.ts:UpdatePreferencesResponse
 apps/mobile/src/features/settings/api/settings-api.ts:UserProfile
 apps/mobile/src/features/settings/api/settings-api.ts:UserStats
 apps/mobile/src/features/skills/api/skills-api.ts:SkillsResponse

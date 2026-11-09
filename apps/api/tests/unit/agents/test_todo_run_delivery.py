@@ -439,6 +439,7 @@ class TestTheDecisionSeesTheStandingRules:
             long_rules[: todo_constants.STANDING_RULES_MAX_CHARS],
             "- thread abc",
             runs_once=True,
+            run_history=(),
         )
 
     async def test_key_details_reach_the_write_up_as_details_not_rules(self) -> None:
@@ -451,6 +452,7 @@ class TestTheDecisionSeesTheStandingRules:
             None,
             "- thread abc",
             runs_once=True,
+            run_history=(),
         )
 
     @pytest.mark.regression
@@ -467,6 +469,7 @@ class TestTheDecisionSeesTheStandingRules:
             None,
             details[: todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS],
             runs_once=True,
+            run_history=(),
         )
 
     @pytest.mark.regression
@@ -480,6 +483,7 @@ class TestTheDecisionSeesTheStandingRules:
             None,
             None,
             runs_once=True,
+            run_history=(),
         )
 
     @pytest.mark.regression
@@ -493,6 +497,7 @@ class TestTheDecisionSeesTheStandingRules:
             "- 2026-09-28: tell me every time.",
             None,
             runs_once=True,
+            run_history=(),
         )
 
     async def test_a_todo_without_standing_rules_gets_the_defaults_alone(self) -> None:
@@ -504,6 +509,7 @@ class TestTheDecisionSeesTheStandingRules:
             None,
             None,
             runs_once=True,
+            run_history=(),
         )
 
     async def test_a_todo_with_no_canvas_gets_the_defaults_alone(self) -> None:
@@ -515,4 +521,21 @@ class TestTheDecisionSeesTheStandingRules:
             None,
             None,
             runs_once=True,
+            run_history=(),
         )
+
+
+class TestTheWriteUpSeesWhatEarlierRunsSent:
+    """Seen live: a nudge was silenced as already sent; comms never saw that nothing went out."""
+
+    async def test_the_todos_record_of_earlier_runs_reaches_the_write_up(self) -> None:
+        log = (
+            "- 2026-11-06T05:31:00+00:00 [reminder_issued] Reminder delivered.\n"
+            "- 2026-11-06T05:32:00+00:00 [run_finished] run r1: kept quiet: routine check\n"
+        )
+        with _seams(todo=_todo(recurrence="every_1h", activity_content=log)) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        preamble = seams.narrate.await_args.kwargs["preamble"]
+        assert "[run_finished] run r1: kept quiet: routine check" in preamble
+        assert "Reminder delivered." not in preamble

@@ -11,12 +11,15 @@ from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.agents.core.background.executor_progress import RunProgress
+from app.models.executor_activity_models import ExecutorActivity, ExecutorActivitySnapshot
 from app.models.integration_models import UserIntegrationDocument
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 from app.models.presence_models import PresenceSnapshot
 from app.models.todo_models import TodoDocument
+from app.services.browser.chat_task import ChatBrowserTasks
 from app.services.delivery.chat_channel import InApp, ProactiveTarget
 from app.services.gaia_knowledge_service import KnowledgeResult
 
@@ -53,6 +56,10 @@ class ContextSources:
     workflow_integrations_hint: str = ""
     #: Task id of a live background executor run, or ``None`` for "not busy".
     executor_busy_task_id: str | None = None
+    #: The browser tasks the chat controls; none by default.
+    browser_tasks: ChatBrowserTasks = field(
+        default_factory=lambda: ChatBrowserTasks(running=[], paused=None)
+    )
     #: What the root's presence read returns; the default is a user never seen anywhere.
     presence: PresenceSnapshot = field(
         default_factory=lambda: PresenceSnapshot(captured_at=0, last_seen={})
@@ -175,23 +182,36 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
                 AsyncMock(return_value=sources.proactive_target),
             )
         )
-        enter(_patch_executor_lock(sources.executor_busy_task_id))
+        enter(_patch_live_work(sources.executor_busy_task_id, sources.browser_tasks))
         for target in _FENCED_CLIENTS:
             enter(patch(target, _fence(target)))
         yield
 
 
 @contextmanager
-def _patch_executor_lock(task_id: str | None) -> Iterator[None]:
-    """Pin the comms executor-busy lock executor_status_hook reads.
+def _patch_live_work(task_id: str | None, browser_tasks: ChatBrowserTasks) -> Iterator[None]:
+    """Pin what the comms turn-start live-work sections read.
 
-    The hook treats a missing client as "not busy", which is the same observable
-    state as an unheld lock — so None covers both without a Redis server.
+    task_id None is an idle executor; otherwise a live run holding the lock with
+    no subagents and no recorded progress.
     """
-    with patch("app.agents.core.nodes.executor_status.redis_cache") as fake_cache:
-        if task_id is None:
-            fake_cache.client = None
-        else:
-            fake_cache.client = AsyncMock()
-            fake_cache.client.get = AsyncMock(return_value=f"stream-1:{task_id}")
+    snapshot = (
+        ExecutorActivitySnapshot(ExecutorActivity.IDLE)
+        if task_id is None
+        else ExecutorActivitySnapshot(ExecutorActivity.RUNNING, task_id, f"stream-1:{task_id}")
+    )
+    running = MagicMock()
+    running.return_value.live = AsyncMock(return_value=[])
+    with (
+        patch(
+            "app.agents.context.live_work.read_executor_activity",
+            AsyncMock(return_value=snapshot),
+        ),
+        patch("app.agents.context.live_work.RunningSubagents", running),
+        patch("app.agents.context.live_work.read_progress", AsyncMock(return_value=RunProgress())),
+        patch(
+            "app.agents.context.live_work.chat_browser_tasks",
+            AsyncMock(return_value=browser_tasks),
+        ),
+    ):
         yield

@@ -7,9 +7,9 @@ contract assumes the previous ones already ran:
   manage_system_prompts_node the provider would reject the request for a
   dangling tool call, so the user's message appears to vanish;
 * adapt_media_node rewrites media blocks for the model lane;
-* the todo hook re-renders the plan and appends it, marked;
-* manage_system_prompts_node runs LAST and collapses each system slot to its
-  latest copy, which only works once every earlier hook has added theirs.
+* the executor's drain_inbox_hook adds work handed over mid-run;
+* manage_system_prompts_node runs LAST and builds the request the model sees,
+  which only works once every earlier hook has rewritten the messages.
 
 Nothing else asserted that they run in order.
 """
@@ -127,30 +127,30 @@ class TestDeclaredChains:
         assert hooks[1] is adapt_media_node
         assert hooks.index(filter_messages_node) < hooks.index(manage_system_prompts_node)
 
-    async def test_the_prompt_manager_runs_last_so_it_can_slot_what_others_added(self):
-        """Each hook appends its system message marked and lets the prompt manager place it, or slot order drifts."""
+    async def test_the_prompt_manager_runs_last_so_it_sees_what_others_added(self):
+        """Work the inbox drain adds after the request is built would never reach the model."""
+        from app.agents.core.background.executor_channel import drain_inbox_hook
+        from app.agents.core.nodes.adapt_media import adapt_media_node
+        from app.agents.core.nodes.filter_messages import filter_messages_node
         from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 
         hooks = await self._hooks_for("build_executor_graph")
 
-        assert len(hooks) == 5
-        assert hooks[-1] is manage_system_prompts_node
+        assert hooks == [
+            filter_messages_node,
+            adapt_media_node,
+            drain_inbox_hook,
+            manage_system_prompts_node,
+        ]
 
-    async def test_comms_slots_the_status_frames_before_the_prompt_manager(self):
-        """Gemini drops any SystemMessage after a non-system message, so the status frames must be slotted, not appended."""
-        from app.agents.core.nodes.browser_task_status import browser_task_status_hook
-        from app.agents.core.nodes.executor_status import executor_status_hook
+    async def test_comms_filters_then_manages_prompts_and_nothing_else(self):
+        """Comms' live-work status rides the turn-start context, so no hook adds a per-call frame."""
         from app.agents.core.nodes.filter_messages import filter_messages_node
         from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 
         hooks = await self._hooks_for("build_comms_graph")
 
-        assert hooks == [
-            filter_messages_node,
-            executor_status_hook,
-            browser_task_status_hook,
-            manage_system_prompts_node,
-        ]
+        assert hooks == [filter_messages_node, manage_system_prompts_node]
 
     async def test_comms_does_not_carry_the_executor_only_hooks(self):
         """Comms has no todos and no media lane; carrying those hooks would cost every chat turn unused work."""
@@ -159,7 +159,7 @@ class TestDeclaredChains:
         hooks = await self._hooks_for("build_comms_graph")
 
         assert adapt_media_node not in hooks
-        assert len(hooks) == 4
+        assert len(hooks) == 2
 
 
 class TestEndGraphHooks:

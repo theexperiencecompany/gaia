@@ -17,6 +17,12 @@ from app.models.workflow_models import (
     UpdateWorkflowRequest,
     Workflow,
 )
+from app.models.workflow_tool_models import (
+    DataT,
+    WorkflowStatusData,
+    WorkflowToolError,
+    WorkflowToolSuccess,
+)
 from app.services.workflow.subagent_output import FinalizedOutput
 from shared.py.wide_events import log
 
@@ -92,17 +98,14 @@ def ensure_trigger_config_object(
     return TriggerConfig.model_validate(trigger_config)
 
 
-# The two envelopes below stay plain dicts: every workflow tool returns them
-# straight out of a `-> dict[str, Any]` handler, and mypy rejects a model where
-# a plain `dict` is declared (Type Safety item 14).
-def error_response(error_code: str, message: str) -> dict[str, object]:
+def error_response(error_code: str, message: str) -> WorkflowToolError:
     """Return a standardized error response."""
     return {"success": False, "error": error_code, "message": message}
 
 
-def success_response(data: object, message: str | None = None) -> dict[str, object]:
+def success_response(data: DataT, message: str | None = None) -> WorkflowToolSuccess[DataT]:
     """Return a standardized success response."""
-    response: dict[str, object] = {"success": True, "data": data}
+    response: WorkflowToolSuccess[DataT] = {"success": True, "data": data}
     if message:
         response["message"] = message
     return response
@@ -198,7 +201,7 @@ async def create_workflow_directly(
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> dict[str, object] | None:
+) -> WorkflowToolSuccess[WorkflowStatusData] | None:
     """
     Create a workflow directly from a finalized draft.
 
@@ -448,7 +451,7 @@ async def apply_workflow_edit(
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> dict[str, object]:
+) -> WorkflowToolSuccess[WorkflowStatusData] | WorkflowToolError:
     """Apply a finalized edit draft to an existing workflow via WorkflowService.update_workflow.
 
     Applies title/description/prompt and manual/scheduled trigger changes directly.

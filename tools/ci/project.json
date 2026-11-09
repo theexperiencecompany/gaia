@@ -1177,6 +1177,27 @@
         }
       }
     },
+    "bot-handles": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs bot-handles"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "repo-policy",
+          "check": "bot-handles",
+          "area": "contracts"
+        }
+      }
+    },
     "analytics-sync": {
       "executor": "nx:noop",
       "inputs": [

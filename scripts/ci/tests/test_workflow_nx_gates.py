@@ -184,9 +184,13 @@ def test_detect_leaves_out(path: str, task: str) -> None:
 
 
 @pytest.mark.parametrize("path", ["README.md", "docs/introduction.mdx", "apps/api/CLAUDE.md"])
-def test_detect_selects_only_the_secret_scan_for_prose(path: str) -> None:
-    # A secret can land in any file, so gitleaks reads every one.
-    assert set(nx_affected.select([f"--files={path}"]).tasks) == {"ci:gitleaks"}
+def test_detect_selects_only_repo_wide_checks_for_prose(path: str) -> None:
+    # Prose is where the bot handle copies live, and a secret can land in any
+    # file, so both scans read everything; nothing else wakes up for a doc edit.
+    assert set(nx_affected.select([f"--files={path}"]).tasks) == {
+        "ci:gitleaks",
+        "ci:bot-handles",
+    }
 
 
 @pytest.mark.parametrize(

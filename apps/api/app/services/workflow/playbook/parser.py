@@ -50,8 +50,8 @@ from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, place
 from app.services.workflow.playbook.time_layouts import (
     detect_layout,
     renders_inside,
+    renders_whole,
     slot_layout,
-    time_slot_layout,
 )
 from app.services.workflow.playbook.tool_space import ToolSpace, tool_space_denial
 
@@ -638,7 +638,7 @@ def _check_time_layout(
     whole = PLACEHOLDER_TOKEN.fullmatch(value)
     placeholder = whole.group(0) if whole is not None else tokens[0].group(0)
     if whole is not None:
-        if time_slot_layout(whole, example) is None:
+        if renders_whole(whole, example):
             return
         problem = (
             f"{key!r} was {example!r} in this run, whose layout is {layout!r}; {value} "

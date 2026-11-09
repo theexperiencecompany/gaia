@@ -26,7 +26,6 @@ import pytest
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
-    FIRST_CONVERSATION_ID_FIELD,
     GETTING_STARTED_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
@@ -237,8 +236,7 @@ class TestCompleteOnboarding:
 
         result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert result["_id"] == sample_user_id
-        assert result["user_id"] == sample_user_id
+        assert result.user_id == sample_user_id
 
     async def test_persists_the_completed_phase(
         self,
@@ -253,7 +251,7 @@ class TestCompleteOnboarding:
             persisting_repo.complete_onboarding.await_args.kwargs["phase"]
             == OnboardingPhase.COMPLETED
         )
-        assert result["onboarding"]["phase"] == OnboardingPhase.COMPLETED.value
+        assert result.onboarding.phase == OnboardingPhase.COMPLETED.value
 
     async def test_queues_no_job_and_seeds_nothing(
         self,
@@ -297,11 +295,11 @@ class TestCompleteOnboarding:
         composed = seed.await_args.args[1]
         assert composed.question == "You're an engineer. What's first?"
         mock_repo.set_first_conversation_id.assert_awaited_once_with(sample_user_id, "conv-1")
-        assert result["onboarding"][GETTING_STARTED_CONVERSATION_ID_FIELD] == "conv-1"
+        assert result.onboarding.getting_started_conversation_id == "conv-1"
         # The legacy holo-card field is a different conversation; the seed must
         # not squat on it. It is now a declared field on OnboardingSubdocument,
         # so it serializes as null rather than being absent.
-        assert result["onboarding"][FIRST_CONVERSATION_ID_FIELD] is None
+        assert result.onboarding.first_message_conversation_id is None
 
     async def test_the_closing_question_is_resolved_for_this_user_and_these_answers(
         self,
@@ -390,8 +388,8 @@ class TestCompleteOnboarding:
         ):
             result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert result["user_id"] == sample_user_id
-        assert result["onboarding"]["completed"] is True
+        assert result.user_id == sample_user_id
+        assert result.onboarding.completed is True
         mock_repo.set_first_conversation_id.assert_not_awaited()
 
     async def test_a_seed_that_returned_no_id_writes_nothing(
@@ -407,7 +405,7 @@ class TestCompleteOnboarding:
         with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value=None)):
             result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert result["user_id"] == sample_user_id
+        assert result.user_id == sample_user_id
         mock_repo.set_first_conversation_id.assert_not_awaited()
 
     async def test_captures_the_completion_event_once(
@@ -546,7 +544,7 @@ class TestCompleteOnboarding:
 
         result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert result["_id"] == sample_user_id
+        assert result.user_id == sample_user_id
 
     async def test_sets_timezone(
         self,
@@ -1370,8 +1368,7 @@ class TestUpdateOnboardingPreferences:
         prefs = OnboardingPreferences(profession="Designer", response_style="brief")
         result = await update_onboarding_preferences(sample_user_id, prefs)
 
-        assert result["_id"] == sample_user_id
-        assert result["user_id"] == sample_user_id
+        assert result.user_id == sample_user_id
 
     async def test_user_not_found(self, mock_repo: MagicMock, sample_user_id: str) -> None:
         mock_repo.update_onboarding_preferences.return_value = None
@@ -1446,7 +1443,7 @@ class TestOnboardingServiceLogPins:
         with patch(f"{SERVICE}.log") as log:
             result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert result["_id"] == sample_user_id
+        assert result.user_id == sample_user_id
         mock_repo.get.assert_awaited_once_with(sample_user_id)
         log.info.assert_called_once_with(
             f"{LogTag.ONBOARDING} complete_onboarding replay — onboarding already submitted",

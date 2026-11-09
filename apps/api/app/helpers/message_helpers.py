@@ -59,9 +59,8 @@ def build_current_time_message(
 ) -> HumanMessage:
     """Return a tiny HumanMessage carrying the current UTC + local time.
 
-    Kept out of system_instruction and put in contents instead: Gemini's
-    implicit cache matches the longest common prefix, and a per-minute-ticking
-    byte in system_instruction would push the cache boundary back every call.
+    Written into the thread with the turn it dates and kept there, so a later
+    turn's request extends this one instead of rewriting a shared clock.
     """
     utc_now = datetime.now(UTC).strftime("%A, %B %d, %Y, %H:%M UTC")
     parts = [f"[Current UTC Time: {utc_now}]"]

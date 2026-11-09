@@ -15,9 +15,13 @@ import pytest
 
 from app.agents.core.background.executor_channel import drain_inbox_hook
 from app.agents.core.graph_builder.build_graph import build_executor_graph
+from app.agents.core.nodes.adapt_media import adapt_media_node
+from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.agents.middleware.factory import SubagentStackOptions
 from app.agents.middleware.subagent import SubagentMiddleware, spawner_of
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
+from app.constants.general import FINISH_TASK_NAME
 
 _MOD = "app.agents.core.graph_builder.build_graph"
 _CM_MOD = "app.agents.core.graph_builder.checkpointer_manager"
@@ -53,7 +57,6 @@ def _apply_patches(stack: ExitStack, overrides: dict | None = None):
             return_value=MagicMock(get_tool_dict=MagicMock(return_value={"tool_a": MagicMock()})),
         ),
         f"{_MOD}.create_todo_tools": MagicMock(return_value=[MagicMock(name="plan_tasks")]),
-        f"{_MOD}.create_todo_pre_model_hook": MagicMock(return_value=MagicMock(name="todo_hook")),
         f"{_MOD}.create_executor_middleware": MagicMock(return_value=[]),
         f"{_MOD}.create_comms_middleware": MagicMock(return_value=[]),
         f"{_MOD}.build_executor_child_tool_runtime_config": MagicMock(return_value={}),
@@ -497,9 +500,7 @@ class TestBuildCommsGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
-            # comms agent: filter_messages_node, executor_status_hook,
-            # browser_task_status_hook, manage_system_prompts_node
-            assert len(pre_model_hooks) == 4
+            assert pre_model_hooks == [filter_messages_node, manage_system_prompts_node]
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]
@@ -567,7 +568,7 @@ class TestBuildExecutorGraph:
         assert "handoff" not in registry
 
     async def test_activate_integration_leads_the_initial_tool_set(self):
-        """activate_integration leads; the full initial set follows."""
+        """activate_integration leads, finish_task follows; the full initial set after."""
         from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
 
         with ExitStack() as stack:
@@ -579,7 +580,7 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
 
-        expected = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
+        expected = ["activate_integration", FINISH_TASK_NAME, *EXECUTOR_INITIAL_TOOL_IDS]
         assert kwargs["tools_config"].initial_tool_ids == expected
 
     async def test_no_join_tool_bound(self):
@@ -656,6 +657,7 @@ class TestBuildExecutorGraph:
             # one name survives. activate_integration leads unconditionally.
             assert kwargs["tools_config"].initial_tool_ids == [
                 "activate_integration",
+                "finish_task",
                 "execute",
                 "get_tool_schema",
                 "plan_tasks",
@@ -727,7 +729,7 @@ class TestBuildExecutorGraph:
             ),
         }
 
-    async def test_executor_pre_model_hooks_includes_todo_hook_and_the_inbox_drain(self):
+    async def test_executor_pre_model_hooks_drain_the_inbox_and_carry_no_todo_hook(self):
         with ExitStack() as stack:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
@@ -737,13 +739,14 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
-            # executor: filter_messages_node, adapt_media_node, todo_hook,
-            # drain_inbox_hook, manage_system_prompts_node
-            assert len(pre_model_hooks) == 5
-            # Named rather than counted: the drain is what lets work handed over
-            # mid-run reach the executor at all, and a count alone would stay
-            # green if it were swapped for anything else.
-            assert drain_inbox_hook in pre_model_hooks
+            # The drain is what lets work handed over mid-run reach the executor
+            # at all; the todo instructions live in its static prompt, not a hook.
+            assert pre_model_hooks == [
+                filter_messages_node,
+                adapt_media_node,
+                drain_inbox_hook,
+                manage_system_prompts_node,
+            ]
 
     async def test_a_supplied_model_is_the_one_the_graph_is_built_with(self):
         """A caller that hands in a model gets that model, not a freshly built one — rebuilding could pick a provider with no key."""

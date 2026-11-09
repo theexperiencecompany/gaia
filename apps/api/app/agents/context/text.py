@@ -35,7 +35,11 @@ BACKGROUND_EXECUTION_BANNER = (
     "   - If an integration the task needs is not connected, nobody can connect it during "
     "this run: do not retry it or search for its tools again. Record it as not connected "
     "in your result and carry on with the rest of the task.\n"
-    "   - Your output is consumed by the system, not a human. Be terse and action-only."
+    "   - Your output is consumed by the system, not a human. Be terse and action-only.\n"
+    "   - Nothing of this run reaches the user except through your result: GAIA reads it "
+    "and decides whether to message them. When they should hear something (the nudge "
+    "this run exists to give, a question, news), say what they need to hear. You cannot "
+    "know whether it gets sent, so never record it as sent, reminded or told."
 )
 
 #: Comms: pure capability awareness — it delegates via call_executor rather
