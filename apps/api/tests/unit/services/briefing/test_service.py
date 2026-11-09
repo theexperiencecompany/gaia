@@ -48,6 +48,7 @@ from app.models.briefing_models import (
     BriefingTallies,
     BriefingWeek,
     BriefingWeekDay,
+    NewStamp,
 )
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
@@ -159,6 +160,7 @@ class World:
     voice_prompt: MagicMock
     weekly_prompt: MagicMock
     recent: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
+    stamped: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
     clear_bootstrap: AsyncMock = field(default_factory=AsyncMock)
     was_delivered: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=False))
     clear_dormancy: AsyncMock = field(default_factory=AsyncMock)
@@ -223,6 +225,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
 
     monkeypatch.setattr(service, "call_agent_silent", model)
     monkeypatch.setattr(service.briefing_repository, "list_recent", w.recent)
+    monkeypatch.setattr(service.briefing_repository, "list_stamped", w.stamped)
     monkeypatch.setattr(service.briefing_repository, "upsert_briefing", w.upsert)
     monkeypatch.setattr(service.briefing_repository, "set_delivered_channels", w.set_channels)
     monkeypatch.setattr(service, "optional_short_link", w.mint)
@@ -461,6 +464,48 @@ class TestDailyBrief:
 
         assert world.bags["edition_family"] == family_before
         assert "stamp_city" not in world.bags
+
+    async def test_a_first_stamp_is_announced_on_every_channel(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(service, "hosted_stamp_weights", lambda: {"tokyo": 1})
+        self._postal_first(world)
+
+        await service.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).new_stamp == NewStamp(
+            city="Tokyo", country="Japan", collected=1, total=85
+        )
+        line = "New stamp: Tokyo, Japan. 1 of 85 collected. [See your stamps]("
+        assert line in world.post.await_args.kwargs["text"]
+        assert line in world.notify.await_args.args[0].content.body
+        assert world.capture.call_args.args[1].stamp_collected is True
+
+    async def test_a_city_already_collected_is_not_announced_again(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(service, "hosted_stamp_weights", lambda: {"tokyo": 1})
+        self._postal_first(world)
+        earlier = BriefingModel(
+            user_id=_USER,
+            date="2026-09-01",
+            payload=BriefingPayload(
+                kicker="K",
+                date="2026-09-01",
+                headline="h",
+                lede="l",
+                mood="clear",
+                caption="c",
+                stamp_city="tokyo",
+            ),
+        )
+        world.stamped.return_value = [earlier]
+
+        await service.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).stamp_city == "tokyo"
+        assert _stored_payload(world).new_stamp is None
+        assert "New stamp" not in world.post.await_args.kwargs["text"]
 
     async def test_a_non_postal_brief_draws_no_stamp(self, world: World) -> None:
         pool = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]
@@ -1097,6 +1142,7 @@ class TestTheDailyRunWiring:
                 mood="packed",
                 item_count=2,
                 channel_count=3,
+                stamp_collected=False,
             ),
         )
 

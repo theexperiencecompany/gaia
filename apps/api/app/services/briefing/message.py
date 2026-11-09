@@ -8,6 +8,7 @@ notification carry the message as it is.
 import re
 
 from app.config.settings import settings
+from app.constants.briefing import POSTMARKS_PATH
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.briefing_models import BriefingPayload
 
@@ -33,12 +34,26 @@ def brief_message(payload: BriefingPayload) -> str:
     return payload.message
 
 
+def delivered_message(payload: BriefingPayload) -> str:
+    """Return the message as every channel delivers it: GAIA's text, then any new-stamp line."""
+    stamp = payload.new_stamp
+    if stamp is None:
+        return brief_message(payload)
+    line = (
+        f"New stamp: {stamp.city}, {stamp.country}. {stamp.collected} of {stamp.total} "
+        f"collected. [See your stamps]({settings.FRONTEND_URL}{POSTMARKS_PATH})"
+    )
+    return f"{brief_message(payload)}\n\n{line}"
+
+
 def chat_text(payload: BriefingPayload, link: str) -> str:
     """Return the chat post: the headline bubble (the image's caption), then the message and link."""
-    return f"{payload.headline}{NEW_MESSAGE_BREAKER}{brief_message(payload)}\n\nFull brief: {link}"
+    return (
+        f"{payload.headline}{NEW_MESSAGE_BREAKER}{delivered_message(payload)}\n\nFull brief: {link}"
+    )
 
 
 def preheader(payload: BriefingPayload) -> str:
     """Return the inbox preview line under the subject: the message on one line, phrases unlinked."""
-    text = MESSAGE_LINK_RE.sub(r"\1", brief_message(payload))
+    text = MESSAGE_LINK_RE.sub(r"\1", delivered_message(payload))
     return " ".join(line.strip() for line in text.splitlines() if line.strip())

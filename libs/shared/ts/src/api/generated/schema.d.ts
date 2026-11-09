@@ -6873,6 +6873,8 @@ export interface components {
              * @enum {string}
              */
             mood: "clear" | "packed" | "idle" | "winback" | "weekly";
+            /** @description Set when this brief's stamp is one the user had not collected before. */
+            new_stamp: components["schemas"]["NewStamp"] | null;
             /**
              * Recipient Name
              * @description The user's name as the edition addresses them (an envelope, a memo's TO: line); None when unknown or on legacy rows.
@@ -11279,6 +11281,26 @@ export interface components {
             /**
              * Total
              * @default 0
+             */
+            total: number;
+        };
+        /**
+         * NewStamp
+         * @description A city stamp the user collected for the first time with this brief.
+         */
+        NewStamp: {
+            /** City */
+            city: string;
+            /**
+             * Collected
+             * @description Stamps collected, this one included.
+             */
+            collected: number;
+            /** Country */
+            country: string;
+            /**
+             * Total
+             * @description How many city stamps can be collected.
              */
             total: number;
         };
@@ -16567,6 +16589,7 @@ export type MoveToInboxResponse = components['schemas']['MoveToInboxResponse'];
 export type MultiURLResponse = components['schemas']['MultiURLResponse'];
 export type MyIntegrationItem = components['schemas']['MyIntegrationItem'];
 export type MyIntegrationsResponse = components['schemas']['MyIntegrationsResponse'];
+export type NewStamp = components['schemas']['NewStamp'];
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];

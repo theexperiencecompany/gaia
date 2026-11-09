@@ -92,7 +92,14 @@ from app.services.briefing.edition_email import HostedEditionImage, host_edition
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.link_tokens import LINK_TOKEN_RE, link_token, link_token_problems
-from app.services.briefing.message import brief_message, brief_path, chat_text, full_brief_url
+from app.services.briefing.message import (
+    brief_message,
+    brief_path,
+    chat_text,
+    delivered_message,
+    full_brief_url,
+)
+from app.services.briefing.postmarks import new_stamp
 from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.shuffle_bag import draw
 from app.services.briefing.voice_check import (
@@ -314,7 +321,7 @@ async def _deliver(
     that message is the edition photo, posted through post_to_platform_chat.
     """
     kind: BriefingKind = briefing.kind
-    message = brief_message(payload)
+    message = delivered_message(payload)
     # Without a heygaia.link (mint failed) the brief still goes out, pointing at
     # its in-app page, which its owner can always open.
     brief_url = await optional_short_link(
@@ -845,6 +852,8 @@ async def _publish(
     """
     family = edition.family
     draws = [*edition.draws, *_assign_edition(user, payload, family)]
+    if payload.stamp_city is not None:
+        payload.new_stamp = await new_stamp(user.id, payload.stamp_city)
     payload.recipient_name = display_name(user)
     # A fresh random key per render: the hosted URL reaches emails and public links.
     image = await host_edition_image(payload, render_key=uuid4().hex)
@@ -865,6 +874,7 @@ async def _publish(
             mood=payload.mood,
             item_count=sum(len(s.items) for s in payload.sections),
             channel_count=len(channels),
+            stamp_collected=payload.new_stamp is not None,
         ),
     )
     log.info("briefing.sent", user_id=user.id, kind=kind, channels=channels, pushed=push)

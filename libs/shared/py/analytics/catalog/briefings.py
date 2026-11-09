@@ -28,6 +28,7 @@ class BriefingSent(ServerEvent):
     mood: Identifier
     item_count: int
     channel_count: int
+    stamp_collected: bool
 
 
 class BriefingOpened(ServerEvent):

@@ -23,7 +23,7 @@ from app.constants.notifications import (
 )
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions import edition_frame, render_edition, renderer_for
-from app.services.briefing.message import MESSAGE_LINK_RE, brief_message, preheader
+from app.services.briefing.message import MESSAGE_LINK_RE, delivered_message, preheader
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
 from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
@@ -185,7 +185,7 @@ def render_edition_email(
         f'<img src="{escape(image_url)}" alt="{alt}" width="600" '
         'style="display:block;width:100%;max-width:600px;height:auto;border:0;" /></a>'
         "</td></tr></table>"
-        + _text_strip(brief_message(payload), brief_url, unsubscribe_url)
+        + _text_strip(delivered_message(payload), brief_url, unsubscribe_url)
         + "</div>"
     )
 

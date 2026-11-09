@@ -2118,6 +2118,17 @@
             "title": "Mood",
             "type": "string"
           },
+          "new_stamp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewStamp"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when this brief's stamp is one the user had not collected before."
+          },
           "recipient_name": {
             "anyOf": [
               {
@@ -2201,6 +2212,7 @@
           "hue",
           "template_family",
           "stamp_city",
+          "new_stamp",
           "recipient_name",
           "generated_at",
           "calendar",
@@ -11469,6 +11481,39 @@
           "total"
         ],
         "title": "MyIntegrationsResponse",
+        "type": "object"
+      },
+      "NewStamp": {
+        "description": "A city stamp the user collected for the first time with this brief.",
+        "properties": {
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "collected": {
+            "description": "Stamps collected, this one included.",
+            "minimum": 1.0,
+            "title": "Collected",
+            "type": "integer"
+          },
+          "country": {
+            "title": "Country",
+            "type": "string"
+          },
+          "total": {
+            "description": "How many city stamps can be collected.",
+            "minimum": 1.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "city",
+          "country",
+          "collected",
+          "total"
+        ],
+        "title": "NewStamp",
         "type": "object"
       },
       "NoteModel": {
