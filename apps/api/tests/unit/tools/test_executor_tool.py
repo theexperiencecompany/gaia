@@ -35,6 +35,8 @@ from app.constants.agents import (
 )
 from app.constants.browser import BrowserSessionStatus
 from app.constants.cache import (
+    AWAITING_CONFIRMATION_PREFIX,
+    AWAITING_CONFIRMATION_TTL,
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
@@ -272,6 +274,16 @@ class TestIrreversibleApprovalNeedsAnAsk:
 
         assert IRREVERSIBLE_APPROVED_BRIEF in first
         assert IRREVERSIBLE_UNAPPROVED_BRIEF in second
+
+    async def test_an_unanswered_question_stops_counting_as_asked_after_its_ttl(
+        self, fake_redis: AsyncRedisCommands
+    ) -> None:
+        key = f"{AWAITING_CONFIRMATION_PREFIX}{CONVERSATION_ID}"
+
+        await record_confirmation_asked(CONVERSATION_ID)
+
+        assert await fake_redis.get(key) == "1"
+        assert await fake_redis.ttl(key) == AWAITING_CONFIRMATION_TTL
 
 
 class TestCallExecutorDispatch:

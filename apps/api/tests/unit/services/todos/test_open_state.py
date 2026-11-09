@@ -1,11 +1,13 @@
 """Unit tests for the open-state rule: what an open tracked todo must say about its next step."""
 
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 
 import pytest
 
 from app.constants.todos import (
     MAX_HOLD_CHECKS,
+    MAX_NEXT_CHECK_AHEAD,
     MAX_REASKS,
     NoReplyPlan,
     WaitingOn,
@@ -15,6 +17,7 @@ from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.todos.errors import OpenStateError
 from app.services.todos.open_state import (
+    WAITING_ON_CHOICES,
     describe_open_state,
     next_check_limit,
     no_reply_plan_words,
@@ -28,6 +31,18 @@ from app.services.todos.open_state import (
 )
 
 NOW = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
+WAITING_ON_MISSING = f"waiting_on is missing: say what this todo waits for: {WAITING_ON_CHOICES}."
+SCHEDULED_AT_MISSING = (
+    "scheduled_at is missing: set when GAIA next looks at this todo, as an ISO datetime or a "
+    "duration from now. Pick it by urgency: hours ('4h') when urgent, days ('3d') for normal "
+    "work, up to '2w' for a loose idea."
+)
+QUESTION_MISSING = "waiting_on='user' needs question: the exact question you asked them."
+NO_REPLY_PLAN_MISSING = (
+    "waiting_on='user' needs if_no_reply: decide now, while you know why you asked, what "
+    "happens if they never answer: 'ask_again' (it matters: ask once more), 'proceed' (carry "
+    "out default_action), 'hold' (nothing can move without the answer)."
+)
 
 
 def _todo(**fields: object) -> TodoDocument:
@@ -59,8 +74,7 @@ class TestWhatMakesAnOpenStateValid:
     def test_a_todo_with_no_next_step_names_both_missing_answers(self):
         problems = open_state_problems(_todo(), NOW)
 
-        assert any("waiting_on is missing" in p for p in problems)
-        assert any("scheduled_at is missing" in p for p in problems)
+        assert problems == [WAITING_ON_MISSING, SCHEDULED_AT_MISSING]
 
     def test_the_waiting_on_message_lists_every_option_so_the_model_can_pick(self):
         (message, _) = open_state_problems(_todo(), NOW)
@@ -68,49 +82,81 @@ class TestWhatMakesAnOpenStateValid:
         for option in ("'time'", "'event'", "'user'", "'sub_todos'", "'unplanned'"):
             assert option in message
 
-    def test_a_check_in_the_past_is_refused(self):
-        todo = _todo(waiting_on=WaitingOn.TIME, scheduled_at=NOW - timedelta(minutes=1))
+    @pytest.mark.parametrize("before_now", [timedelta(0), timedelta(minutes=1)])
+    def test_a_check_now_or_in_the_past_is_refused(self, before_now):
+        todo = _todo(waiting_on=WaitingOn.TIME, scheduled_at=NOW - before_now)
 
-        assert any("in the past" in p for p in open_state_problems(todo, NOW))
+        assert open_state_problems(todo, NOW) == [
+            "scheduled_at is in the past: set a future next check."
+        ]
 
-    def test_a_check_exactly_at_the_limit_is_valid_and_one_day_past_it_is_not(self):
-        assert open_state_problems(_waiting(WaitingOn.TIME, 14), NOW) == []
-        problems = open_state_problems(_waiting(WaitingOn.TIME, 15), NOW)
+    def test_a_check_up_to_the_limit_and_its_slack_is_valid_and_a_second_more_is_not(self):
+        at_limit = NOW + MAX_NEXT_CHECK_AHEAD + timedelta(minutes=5)
+        past_limit = at_limit + timedelta(seconds=1)
 
-        assert any("at most 14 days" in p for p in problems)
+        assert (
+            open_state_problems(_todo(waiting_on=WaitingOn.TIME, scheduled_at=at_limit), NOW) == []
+        )
+        assert open_state_problems(
+            _todo(waiting_on=WaitingOn.TIME, scheduled_at=past_limit), NOW
+        ) == [
+            "scheduled_at is 14 days out; with waiting_on='time' the next check is at most 14 "
+            "days away. A longer wait is fine: look again by then and set the next check from "
+            "there."
+        ]
 
     def test_a_long_wait_is_explained_as_fine_if_the_todo_looks_again(self):
         (problem,) = open_state_problems(_waiting(WaitingOn.EVENT, 60), NOW)
 
-        assert "A longer wait is fine" in problem
+        assert problem == (
+            "scheduled_at is 60 days out; with waiting_on='event' the next check is at most 14 "
+            "days away. A longer wait is fine: look again by then and set the next check from "
+            "there."
+        )
+
+    def test_a_too_far_check_with_no_waiting_on_names_the_state_generically(self):
+        problems = open_state_problems(_todo(scheduled_at=NOW + timedelta(days=60)), NOW)
+
+        assert problems == [
+            WAITING_ON_MISSING,
+            "scheduled_at is 60 days out; with waiting_on='this state' the next check is at most "
+            "14 days away. A longer wait is fine: look again by then and set the next check from "
+            "there.",
+        ]
 
     def test_a_recurring_todo_needs_only_its_schedule(self):
         assert open_state_problems(_todo(recurrence="daily", scheduled_at=NOW), NOW) == []
-        assert open_state_problems(_todo(recurrence="daily"), NOW)
+        assert open_state_problems(_todo(recurrence="daily"), NOW) == [
+            "recurrence needs scheduled_at: either clear recurrence or provide scheduled_at."
+        ]
 
     def test_a_closed_or_paused_todo_has_nothing_to_wake_for(self):
         assert open_state_problems(_todo(completed=True), NOW) == []
         paused = _todo(pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED)
         assert open_state_problems(paused, NOW) == []
 
-    def test_require_open_state_raises_with_every_problem(self):
+    def test_require_open_state_raises_a_400_naming_every_problem(self):
         with pytest.raises(OpenStateError) as refused:
             require_open_state(_todo(), NOW)
 
-        assert len(refused.value.problems) == 2
+        assert refused.value.problems == [WAITING_ON_MISSING, SCHEDULED_AT_MISSING]
+        assert refused.value.message == f"{WAITING_ON_MISSING} {SCHEDULED_AT_MISSING}"
+        assert refused.value.status_code == HTTPStatus.BAD_REQUEST
+        assert refused.value.code == "open_state_invalid"
 
 
 class TestAQuestionToTheUser:
     def test_it_needs_the_question_and_the_plan_for_no_reply(self):
         problems = open_state_problems(_waiting(WaitingOn.USER, 2), NOW)
 
-        assert any("needs question" in p for p in problems)
-        assert any("needs if_no_reply" in p for p in problems)
+        assert problems == [QUESTION_MISSING, NO_REPLY_PLAN_MISSING]
 
     def test_proceed_needs_the_default_it_will_carry_out(self):
         todo = _waiting(WaitingOn.USER, 2, question="q", if_no_reply=NoReplyPlan.PROCEED)
 
-        assert any("needs default_action" in p for p in open_state_problems(todo, NOW))
+        assert open_state_problems(todo, NOW) == [
+            "if_no_reply='proceed' needs default_action: what you will do if they never answer."
+        ]
 
     def test_the_question_may_expire_in_at_most_a_week(self):
         assert open_state_problems(_asking(NoReplyPlan.PROCEED), NOW) == []
@@ -125,9 +171,10 @@ class TestAQuestionToTheUser:
         spent = _asking(NoReplyPlan.ASK_AGAIN, reasks_used=MAX_REASKS)
 
         assert open_state_problems(fresh, NOW) == []
-        (problem,) = open_state_problems(spent, NOW)
-        assert "already used its one re-ask" in problem
-        assert "'proceed'" in problem and "'hold'" in problem
+        assert open_state_problems(spent, NOW) == [
+            "if_no_reply='ask_again' is not available: this todo already used its one re-ask. "
+            "Pick 'proceed' with a default_action, or 'hold'."
+        ]
 
     def test_a_hold_that_has_started_may_check_back_monthly(self):
         holding = _waiting(
@@ -156,12 +203,22 @@ class TestChangingWhatATodoWaitsFor:
         assert normalized.default_action is None
         assert normalized.hold_checks == 0
         assert normalized.waiting_on is WaitingOn.TIME
+        assert normalized.model_fields_set == {
+            "waiting_on",
+            "question",
+            "if_no_reply",
+            "default_action",
+            "hold_checks",
+        }
 
     def test_a_new_question_restarts_the_hold_count(self):
         existing = _asking(NoReplyPlan.HOLD, hold_checks=2)
         update = TodoUpdate(question="A different question?")
 
-        assert with_waiting_normalized(existing, update).hold_checks == 0
+        normalized = with_waiting_normalized(existing, update)
+
+        assert normalized.hold_checks == 0
+        assert normalized.model_fields_set == {"question", "hold_checks"}
 
     def test_the_same_question_again_keeps_its_hold_count(self):
         existing = _asking(NoReplyPlan.HOLD, hold_checks=2)
@@ -237,6 +294,12 @@ class TestTheBudgetAnExpiryCosts:
             _waiting(WaitingOn.TIME),
             _todo(),
             _todo(recurrence="daily", scheduled_at=NOW, waiting_on=WaitingOn.USER),
+            _todo(
+                recurrence="daily",
+                scheduled_at=NOW,
+                waiting_on=WaitingOn.USER,
+                if_no_reply=NoReplyPlan.ASK_AGAIN,
+            ),
         ],
     )
     def test_nothing_else_spends_a_budget(self, todo):
@@ -270,6 +333,27 @@ class TestWhatTheModelReadsAboutATodo:
 
         assert describe_open_state(recurring, NOW) == "repeats daily, next run in 5h"
         assert describe_open_state(paused, NOW) == "paused by the system"
+
+    @pytest.mark.parametrize(
+        ("ahead", "when"),
+        [
+            (timedelta(minutes=-1), "due now"),
+            (timedelta(0), "due now"),
+            (timedelta(seconds=30), "in 1m"),
+            (timedelta(minutes=5, seconds=30), "in 5m"),
+            (timedelta(minutes=59), "in 59m"),
+            (timedelta(hours=1), "in 1h"),
+            (timedelta(minutes=90), "in 1h"),
+            (timedelta(hours=5), "in 5h"),
+            (timedelta(hours=5, minutes=30), "in 5h"),
+            (timedelta(days=1), "in 1d"),
+            (timedelta(hours=36), "in 1d"),
+        ],
+    )
+    def test_the_next_check_reads_in_the_largest_whole_unit(self, ahead, when):
+        todo = _todo(waiting_on=WaitingOn.TIME, scheduled_at=NOW + ahead)
+
+        assert describe_open_state(todo, NOW) == f"next check {when}"
 
     @pytest.mark.parametrize(
         ("plan", "words"),

@@ -5,10 +5,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.todos import TodoActivityEvent
+from app.constants.todos import NoReplyPlan, TodoActivityEvent, WaitingOn
 from app.models.todo_models import TodoUpdate, TodoUpdateRequest
 from app.services import todo_activity
-from app.services.todo_activity import activity_line, record_activity, record_field_changes
+from app.services.todo_activity import (
+    activity_line,
+    record_activity,
+    record_field_changes,
+    waiting_change_line,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -135,3 +140,38 @@ class TestRecentRunOutcomes:
     @pytest.mark.parametrize("log", [None, "", "- 2026-11-06T05:30:00+00:00 [run_started] x\n"])
     def test_a_todo_with_no_finished_run_has_none(self, log: str | None) -> None:
         assert todo_activity.recent_run_outcomes(log, limit=3) == []
+
+
+class TestWaitingChangeLine:
+    def test_every_waiting_field_set_is_named_in_one_stamped_entry(self) -> None:
+        update = TodoUpdate(
+            waiting_on=WaitingOn.USER,
+            question="Ship it?",
+            if_no_reply=NoReplyPlan.PROCEED,
+            default_action="ship on Friday",
+        )
+
+        line = waiting_change_line(update, by="GAIA", at=AT)
+
+        assert line == (
+            "- 2026-09-26T04:30:00+00:00 [waiting_changed] waiting on user, "
+            'asked "Ship it?", if no reply: proceed (ship on Friday), by GAIA'
+        )
+
+    def test_a_plan_without_a_default_action_names_only_the_plan(self) -> None:
+        line = waiting_change_line(TodoUpdate(if_no_reply=NoReplyPlan.HOLD), by="GAIA", at=AT)
+
+        assert line == "- 2026-09-26T04:30:00+00:00 [waiting_changed] if no reply: hold, by GAIA"
+
+    @pytest.mark.parametrize("field", ["waiting_on", "question", "if_no_reply", "default_action"])
+    def test_clearing_any_one_waiting_field_is_recorded(self, field: str) -> None:
+        update = TodoUpdate.model_validate({field: None})
+
+        line = waiting_change_line(update, by="GAIA", at=AT)
+
+        assert line == (
+            "- 2026-09-26T04:30:00+00:00 [waiting_changed] waiting details cleared, by GAIA"
+        )
+
+    def test_an_update_that_sets_no_waiting_field_records_nothing(self) -> None:
+        assert waiting_change_line(TodoUpdate(title="renamed"), by="GAIA", at=AT) is None

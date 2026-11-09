@@ -15,6 +15,7 @@ from app.agents.tools.todo_tool import (
     delete_checklist_item,
     update_checklist_item,
 )
+from app.constants.log_tags import LogTag
 from app.models.agent_models import RunUserMissingError
 from app.models.todo_models import (
     BulkOperationResponse,
@@ -984,7 +985,8 @@ class TestBulkDeleteTodos:
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
         mock_service.return_value = BulkOperationResponse(
             success=["t1", "t2"], failed=[], total=2, message="Deleted 2 todos"
         )
@@ -996,8 +998,10 @@ class TestBulkDeleteTodos:
             todo_ids=["t1", "t2"],
         )
 
-        assert result["success"] is True
-        assert result["error"] is None
+        assert result == {"success": True, "error": None}
+        writer.assert_called_once_with(
+            {"todo_data": {"action": "delete", "message": "Deleted 2 tasks"}}
+        )
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.bulk_delete_service", new_callable=AsyncMock)
@@ -1363,10 +1367,62 @@ _REAL = "6ae10080d5575101b9f90861"
 _SIBLING = "6ae10081d5575101b9f90862"
 # What gpt-5.6-luna sent for _REAL: the sibling's timestamp with _REAL's counter.
 _MISCOPIED = "6ae10081d5575101b9f90861"
+# MAX_MISCOPIED_ID_CHARS (4) characters from _MISCOPIED: still close enough to name.
+_EDGE = "6ae10081d5575101b9f9aaaa"
+# One character past the limit: never named.
+_FAR = "6ae10081d5575101b9faaaaa"
+_NOTE_TAIL = "Copy todo ids exactly as list_todos returns them."
+
+
+def _users_todos() -> list[MagicMock]:
+    """Return the run user's todos, the shorter id and the far one listed before every near one."""
+    return [
+        _make_todo_response(id="todo-1", title="short id"),
+        _make_todo_response(id=_FAR, title="too far"),
+        _make_todo_response(id=_EDGE, title="water the plants"),
+        _make_todo_response(id=_SIBLING, title="call the bank"),
+        _make_todo_response(id=_REAL, title="renew car insurance"),
+    ]
+
+
+_MISCOPIED_NOTE = (
+    f"{_MISCOPIED} matches none of the user's todos. Closest real ids: "
+    f'{_SIBLING} ("call the bank"), {_REAL} ("renew car insurance"), '
+    f'{_EDGE} ("water the plants"); pick by title. {_NOTE_TAIL}'
+)
 
 
 class TestAnIdThatMatchesNoTodoNamesTheOneMeant:
     """Seen live: delete_todo said only "not found", so the run retried the same miscopied id and told the user the system lost the todo."""
+
+    @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
+    async def test_update_todo_names_every_near_todo_nearest_first(
+        self,
+        mock_update: AsyncMock,
+        mock_writer_factory: MagicMock,
+        mock_list: AsyncMock,
+    ) -> None:
+        mock_update.side_effect = TodoNotFoundError(_MISCOPIED)
+        mock_list.return_value = _users_todos()
+
+        async with captured_wide_event() as event:
+            result = await cast(StructuredTool, todo_tool_module.update_todo).coroutine(
+                config=_make_config(), todo_id=_MISCOPIED, title="x"
+            )
+
+        assert result == {"error": _MISCOPIED_NOTE, "todo": None}
+        mock_list.assert_awaited_once_with(FAKE_USER_ID, limit=100)
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} update_todo got an unknown todo id",
+                "todo_id": _MISCOPIED,
+                "error_type": "TodoNotFoundError",
+                "error": f"Todo {_MISCOPIED} not found",
+            }
+        ]
+        mock_writer_factory.return_value.assert_not_called()
 
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.current_stream_writer")
@@ -1378,20 +1434,24 @@ class TestAnIdThatMatchesNoTodoNamesTheOneMeant:
         mock_list: AsyncMock,
     ) -> None:
         mock_get_todo.side_effect = TodoNotFoundError(_MISCOPIED)
-        mock_list.return_value = [
-            _make_todo_response(id=_SIBLING, title="call the bank"),
-            _make_todo_response(id=_REAL, title="renew car insurance"),
+        mock_list.return_value = _users_todos()
+
+        async with captured_wide_event() as event:
+            result = await cast(StructuredTool, todo_tool_module.delete_todo).coroutine(
+                config=_make_config(), todo_id=_MISCOPIED
+            )
+
+        assert result == {"error": _MISCOPIED_NOTE, "success": False}
+        mock_list.assert_awaited_once_with(FAKE_USER_ID, limit=100)
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} delete_todo got an unknown todo id",
+                "todo_id": _MISCOPIED,
+                "error_type": "TodoNotFoundError",
+                "error": f"Todo {_MISCOPIED} not found",
+            }
         ]
-
-        result = await cast(StructuredTool, todo_tool_module.delete_todo).coroutine(
-            config=_make_config(), todo_id=_MISCOPIED
-        )
-
-        # The miscopy is one character from both real ids, so both are named
-        # with their titles; picking one would risk deleting the wrong todo.
-        assert result["success"] is False
-        assert f'{_REAL} ("renew car insurance")' in str(result["error"])
-        assert f'{_SIBLING} ("call the bank")' in str(result["error"])
+        mock_writer_factory.return_value.assert_not_called()
 
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.current_stream_writer")
@@ -1404,15 +1464,35 @@ class TestAnIdThatMatchesNoTodoNamesTheOneMeant:
     ) -> None:
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
+        unrelated = "000000000000000000000000"
         mock_bulk.return_value = BulkOperationResponse(
-            success=[_SIBLING], failed=[_MISCOPIED], total=2, message="Deleted 1 todos"
+            success=[_SIBLING], failed=[_MISCOPIED, unrelated], total=3, message="Deleted 1 todos"
         )
         mock_list.return_value = [_make_todo_response(id=_REAL, title="renew car insurance")]
 
-        result = await cast(StructuredTool, todo_tool_module.bulk_delete_todos).coroutine(
-            config=_make_config(), todo_ids=[_SIBLING, _MISCOPIED]
-        )
+        async with captured_wide_event() as event:
+            result = await cast(StructuredTool, todo_tool_module.bulk_delete_todos).coroutine(
+                config=_make_config(), todo_ids=[_SIBLING, _MISCOPIED, unrelated]
+            )
 
-        assert result["success"] is False
-        assert _REAL in str(result["error"])
-        assert "Deleted 1 task" in str(writer.call_args)
+        assert result == {
+            "success": False,
+            "error": (
+                f"Deleted 1 of 3. {_MISCOPIED} matches none of the user's todos. "
+                f'Closest real ids: {_REAL} ("renew car insurance"); pick by title. '
+                f"{unrelated} matches none of the user's todos. {_NOTE_TAIL}"
+            ),
+        }
+        mock_bulk.assert_awaited_once_with([_SIBLING, _MISCOPIED, unrelated], FAKE_USER_ID)
+        mock_list.assert_awaited_once_with(FAKE_USER_ID, limit=100)
+        writer.assert_called_once_with(
+            {"todo_data": {"action": "delete", "message": "Deleted 1 task"}}
+        )
+        assert event["tool"] == {"name": "bulk_delete_todos", "action": "bulk_delete"}
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} bulk_delete_todos got unknown todo ids",
+                "todo_count": 3,
+                "unknown_count": 2,
+            }
+        ]

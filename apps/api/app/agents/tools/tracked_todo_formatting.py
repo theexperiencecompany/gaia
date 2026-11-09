@@ -164,7 +164,7 @@ def format_create_output(
 
 def format_open_state_refusal(problems: list[str], user_tz_name: str, *, created: bool) -> str:
     """Tell the model what next step is missing, the options, and the user's local now."""
-    local_now = datetime.now(UTC).astimezone(Timezone.parse(user_tz_name).tzinfo)
+    local_now = datetime.now(Timezone.parse(user_tz_name).tzinfo)
     verb = "Not created" if created else "Not updated"
     listed = "\n".join(f"- {problem}" for problem in problems)
     return (

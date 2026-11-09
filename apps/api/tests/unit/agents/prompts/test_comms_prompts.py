@@ -2,8 +2,8 @@
 
 import pytest
 
-from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.agents.prompts.comms_prompts import outcome_delivery_note, tracked_todo_delivery_note
+from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.comms import SILENCE_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
 
@@ -140,11 +140,17 @@ class TestTheNarratorKnowsWhatReachedTheUser:
         assert "The run cannot message the user" in note
 
     def test_gaias_record_of_earlier_runs_is_in_front_of_it(self) -> None:
-        history = ["- 2026-11-06T06:32:00+00:00 [run_finished] run r2: kept quiet: routine"]
+        history = [
+            "- 2026-11-05T06:30:00+00:00 [run_finished] run r1: sent: call dad today",
+            "- 2026-11-06T06:32:00+00:00 [run_finished] run r2: kept quiet: routine",
+        ]
         note = tracked_todo_delivery_note(
             "Call dad", None, None, runs_once=False, run_history=history
         )
-        assert history[0] in note
+        assert (
+            "GAIA's own record of what this todo's last runs did with their message:\n"
+            f"{history[0]}\n{history[1]}\n"
+        ) in note
 
     def test_with_no_earlier_runs_it_knows_nothing_has_reached_them(self) -> None:
         note = tracked_todo_delivery_note("Call dad", None, None, runs_once=False, run_history=())
@@ -153,3 +159,24 @@ class TestTheNarratorKnowsWhatReachedTheUser:
     def test_a_nudge_the_todo_exists_to_give_is_worth_repeating(self) -> None:
         note = tracked_todo_delivery_note("Call dad", None, None, runs_once=False, run_history=())
         assert "even when it repeats the last one" in note
+
+
+class TestTheOutcomeLineCommsNarratesUnder:
+    def test_a_plain_text_stop_that_broke_no_rule_adds_nothing(self) -> None:
+        assert outcome_delivery_note(None, None) == ""
+
+    def test_a_verified_outcome_gets_its_reply_shape(self) -> None:
+        assert outcome_delivery_note(OutcomeState.BLOCKED, None) == (
+            "\n\n<delivery_instructions>\nOutcome: blocked. Say plainly what did not happen "
+            "and the smallest thing needed from them.\n</delivery_instructions>\n"
+        )
+
+    @pytest.mark.parametrize("declared", [OutcomeState.DONE, None])
+    def test_an_unbacked_claim_is_reported_as_not_verified(
+        self, declared: OutcomeState | None
+    ) -> None:
+        assert outcome_delivery_note(declared, "no work call succeeded") == (
+            "\n\n<delivery_instructions>\nOutcome: NOT verified (no work call succeeded). "
+            "Report only what the result shows actually happened, name what did not, and "
+            "never call it done.\n</delivery_instructions>\n"
+        )

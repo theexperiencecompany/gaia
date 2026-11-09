@@ -317,7 +317,10 @@ def _near_todos(todos: list[TodoResponse], todo_id: str) -> list[TodoResponse]:
     for todo in todos:
         if len(todo.id) != len(todo_id):
             continue
-        diff = sum(a != b for a, b in zip(todo.id, todo_id, strict=True))
+        diff = sum(
+            a != b
+            for a, b in zip(todo.id, todo_id, strict=True)  # pragma: no mutate — lengths match here
+        )
         if diff <= MAX_MISCOPIED_ID_CHARS:
             near.append((diff, todo))
     return [todo for _, todo in sorted(near, key=lambda pair: pair[0])]

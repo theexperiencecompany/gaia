@@ -7,7 +7,12 @@ from typing import Any
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 import pytest
 
-from app.agents.core.outcome_review import review_outcome, review_run, todo_left_asleep
+from app.agents.core.outcome_review import (
+    OutcomeReview,
+    review_outcome,
+    review_run,
+    todo_left_asleep,
+)
 from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
 from app.constants.agents import OutcomeState
@@ -37,6 +42,10 @@ def _finish(outcome: str | None) -> list[AnyMessage]:
     return _call(FINISH_TASK_NAME, args, "finish")
 
 
+#: The problem a run that spent its todo's check without setting another is fed back.
+LEFT_ASLEEP = "the todo was left open with no next check, so nothing will look at it again"
+
+
 def _task() -> HumanMessage:
     return HumanMessage(content="remind me friday about the visa documents")
 
@@ -59,12 +68,16 @@ class TestReviewOutcome:
             [_task(), *_call("create_todo", {}, "c1", error=True), *_finish("done")]
         )
 
-        assert review.problem is not None
+        assert review == OutcomeReview(
+            OutcomeState.DONE, "done was declared but no work call succeeded"
+        )
 
     def test_done_with_only_discovery_is_not_verified(self) -> None:
         review = review_outcome([_task(), *_call("retrieve_tools", {}, "c1"), *_finish("done")])
 
-        assert review.problem is not None
+        assert review == OutcomeReview(
+            OutcomeState.DONE, "done was declared but no work call succeeded"
+        )
 
     def test_a_reminder_does_not_back_schedule(self) -> None:
         """A reminder pings the user and never wakes GAIA, so it cannot be GAIA's follow-up."""
@@ -72,7 +85,10 @@ class TestReviewOutcome:
             [_task(), *_call("create_reminder_tool", {"payload": {}}, "c1"), *_finish("schedule")]
         )
 
-        assert review.problem is not None
+        assert review == OutcomeReview(
+            OutcomeState.SCHEDULE,
+            "schedule was declared but no tracked todo was scheduled to wake GAIA",
+        )
 
     def test_a_reminder_backs_done_for_a_plain_remind_me(self) -> None:
         review = review_outcome(
@@ -129,7 +145,9 @@ class TestReviewOutcome:
             [_task(), *_call("subscribe_todo_to_trigger", {}, "c1"), *_finish("subscribe")]
         )
 
-        assert unbacked.problem is not None
+        assert unbacked == OutcomeReview(
+            OutcomeState.SUBSCRIBE, "subscribe was declared but no trigger watch was set"
+        )
         assert backed.verified
 
     @pytest.mark.parametrize("outcome", ["ask", "blocked"])
@@ -165,8 +183,7 @@ class TestATodoIsNeverLeftAsleep:
     def test_a_run_that_only_reads_must_close_or_rearm_the_todo(self) -> None:
         asleep = [self.BRIEFED, *_call("read", {"path": "canvas.md"}, "c1"), *_finish("ask")]
 
-        assert todo_left_asleep(asleep) is not None
-        assert not review_outcome(asleep).verified
+        assert review_outcome(asleep) == OutcomeReview(OutcomeState.ASK, LEFT_ASLEEP)
 
     @pytest.mark.parametrize(
         "ending",
@@ -210,6 +227,10 @@ class TestATodoIsNeverLeftAsleep:
 
         assert todo_left_asleep(delegation) is not None
 
+    def test_a_delegation_that_does_not_open_with_its_task_is_never_flagged(self) -> None:
+        assert todo_left_asleep([*_call("read", {"path": "canvas.md"}, "c1")]) is None
+        assert todo_left_asleep([]) is None
+
     def test_an_unbriefed_run_is_never_flagged(self) -> None:
         """Creating a todo with no next step is refused by the tool itself, not judged here."""
         assert todo_left_asleep([_task(), *_call("create_todo", {}, "c1")]) is None
@@ -220,8 +241,7 @@ class TestATodoIsNeverLeftAsleep:
     def test_a_plain_text_ending_that_strands_a_todo_still_reports_why(self) -> None:
         review = review_outcome([self.BRIEFED, *_call("read", {"path": "canvas.md"}, "c1")])
 
-        assert review.declared is None
-        assert review.problem is not None
+        assert review == OutcomeReview(None, LEFT_ASLEEP)
 
 
 def _wakes_again_task() -> HumanMessage:

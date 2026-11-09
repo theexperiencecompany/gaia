@@ -53,6 +53,7 @@ from app.db.repositories.users import user_repository
 from app.memory.ingestion import RetainedMemory
 from app.models.chat_models import ToolDataEntry
 from app.models.hil_models import (
+    ApprovalScope,
     HILApprovalRecord,
     HILApprovalStatus,
     HILApprovalUpdate,
@@ -67,9 +68,10 @@ from app.services.chat import stream as chat_stream
 from app.services.hil import resolution
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from tests.e2e._harness.background import drain_background_runs, drain_publishes
+from tests.e2e._harness.graph_run import call
 from tests.e2e._harness.saved_messages import SavedToolData
 from tests.e2e._harness.transcript import Frame, Transcript
-from tests.e2e.test_agent_chain import StreamingScriptedModel, call, streaming_model
+from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("hil_barrier_mode")]
 
@@ -321,7 +323,7 @@ class HilWorld:
         self,
         kind: resolution.DecisionKind,
         *,
-        scope: str = "once",
+        scope: ApprovalScope = "once",
         tool: str | None = None,
         call_id: str | None = None,
     ) -> HILApprovalRecord:
@@ -458,6 +460,7 @@ async def hil_world(
         _note: str,
         *,
         tool_data: list[ToolDataEntry] | None,
+        outcome_note: str = "",
     ) -> tuple[str, str]:
         world.delivered.append((text, result_type))
         return text, "executor-message-1"

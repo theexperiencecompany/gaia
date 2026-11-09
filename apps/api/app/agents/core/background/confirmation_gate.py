@@ -17,15 +17,9 @@ def _key(conversation_id: str) -> str:
 
 async def record_confirmation_asked(conversation_id: str) -> None:
     """Note that this conversation's executor just asked the user to confirm."""
-    if redis_cache.client:
-        await redis_cache.client.set(_key(conversation_id), "1", ex=AWAITING_CONFIRMATION_TTL)
+    await redis_cache.client.set(_key(conversation_id), "1", ex=AWAITING_CONFIRMATION_TTL)
 
 
 async def spend_confirmation(conversation_id: str) -> bool:
-    """Return whether a confirmation was pending, consuming it.
-
-    Fails closed: without Redis no approval can be proven, so none is granted.
-    """
-    if not redis_cache.client:
-        return False
+    """Return whether a confirmation was pending, consuming it."""
     return bool(await redis_cache.client.getdel(_key(conversation_id)))

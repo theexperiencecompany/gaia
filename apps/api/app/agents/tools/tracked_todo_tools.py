@@ -515,7 +515,9 @@ async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: 
     )
     if problems:
         return format_open_state_refusal(
-            problems, await get_user_tz(existing.user_id), created=False
+            problems,
+            await get_user_tz(existing.user_id),
+            created=False,  # pragma: no mutate — None reads as False: the same "Not updated"
         )
     if await todo_repository.update(existing.id, user_id=existing.user_id, update=update) is None:
         return f"Error: tracked todo {existing.id} not found or not a tracked todo."

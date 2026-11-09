@@ -48,7 +48,8 @@ async def record_activity(
 def recent_run_outcomes(activity: str | None, limit: int) -> list[str]:
     """Return the last limit finish entries GAIA wrote to a todo's log, oldest first."""
     tag = f"[{TodoActivityEvent.RUN_FINISHED.value}]"
-    finished = [line for line in (activity or "").splitlines() if tag in line]
+    lines = (activity or "").splitlines()  # pragma: no mutate — no fallback holds the tag
+    finished = [line for line in lines if tag in line]
     return finished[-limit:]
 
 

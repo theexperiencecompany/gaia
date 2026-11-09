@@ -68,6 +68,7 @@ from app.constants.todos import (
     INBOX_DESK_RECURRENCE,
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
+    MAX_HOLD_CHECK_AHEAD,
     MAX_HOLD_CHECKS,
     MAX_RETRY_ATTEMPTS,
     OBSERVATIONS_PROMPT_MAX_CHARS,
@@ -1257,9 +1258,11 @@ class TestExecuteTodoWithRetrySuccess:
         result, repo, pool = await self._run(woke)
 
         assert result == "success:todo-1"
+        assert repo.update_if_scheduled_at.await_args.args == ("todo-1", OWNER_ID)
         ((expected, payload),) = _schedule_writes(repo)
         assert expected == stale
-        assert payload.pop("scheduled_at") > datetime.now(UTC) + OPEN_STATE_REPAIR_CHECK / 2
+        next_check = payload.pop("scheduled_at")
+        assert next_check > datetime.now(UTC) + OPEN_STATE_REPAIR_CHECK / 2
         assert payload == {
             "gaia_retry_count": 0,
             "waiting_on": WaitingOn.UNPLANNED,
@@ -1268,9 +1271,31 @@ class TestExecuteTodoWithRetrySuccess:
             "default_action": None,
             "hold_checks": 0,
         }
-        pool.enqueue_job.assert_awaited_once()
+        pool.enqueue_job.assert_awaited_once_with(
+            "execute_tracked_todo", "todo-1", **_scheduled(next_check), _defer_until=next_check
+        )
         repaired.assert_awaited_once()
         assert repaired.await_args.args[0] is woke
+        assert repaired.await_args.args[1] == next_check
+        # The park wrote the retry count with the schedule; no second write follows.
+        repo.update.assert_not_awaited()
+
+    async def test_a_one_shot_rescheduled_while_it_ran_keeps_that_schedule_unparked(
+        self, repaired: AsyncMock
+    ) -> None:
+        woke = _doc(
+            scheduled_at=datetime.now(UTC) - timedelta(minutes=5),
+            recurrence=None,
+            waiting_on=WaitingOn.TIME,
+        )
+        result, repo, pool = await self._run(woke, rescheduled_meanwhile=True)
+
+        assert result == "success:todo-1"
+        repo.update.assert_awaited_once_with(
+            "todo-1", user_id=OWNER_ID, update=TodoUpdate(gaia_retry_count=0)
+        )
+        pool.enqueue_job.assert_not_awaited()
+        repaired.assert_not_awaited()
 
     async def test_a_run_that_closed_its_todo_leaves_it_closed(self, repaired):
         woke = _doc(scheduled_at=datetime.now(UTC) - timedelta(minutes=5), recurrence=None)
@@ -1292,6 +1317,9 @@ class TestExecuteTodoWithRetrySuccess:
 
         assert result == "success:todo-1"
         repo.update_if_scheduled_at.assert_not_awaited()
+        repo.update.assert_awaited_once_with(
+            "todo-1", user_id=OWNER_ID, update=TodoUpdate(gaia_retry_count=0)
+        )
         pool.enqueue_job.assert_not_awaited()
         repaired.assert_not_awaited()
 
@@ -1304,13 +1332,21 @@ class TestExecuteTodoWithRetrySuccess:
             hold_checks=MAX_HOLD_CHECKS + 1,
         )
         archive = AsyncMock(return_value=True)
-        with patch.object(tracked_todo_service, "archive_tracked_todo", archive):
+        with (
+            patch.object(tracked_todo_service, "archive_tracked_todo", archive),
+            patch(f"{MODULE}.log") as log_mock,
+        ):
             result, repo, pool = await self._run(woke)
 
         assert result == "success:todo-1"
-        archive.assert_awaited_once()
-        assert str(MAX_HOLD_CHECKS) in archive.await_args.kwargs["reason"]
+        archive.assert_awaited_once_with(
+            "todo-1",
+            OWNER_ID,
+            reason=f"the question went unanswered through {MAX_HOLD_CHECKS} checks",
+        )
+        log_mock.warning.assert_any_call("tracked_todo.unanswered_hold_closed", todo_id="todo-1")
         repo.update_if_scheduled_at.assert_not_awaited()
+        repo.update.assert_not_awaited()
         pool.enqueue_job.assert_not_awaited()
 
     async def test_a_todo_paused_during_its_run_just_ends_the_check_it_spent(self, repaired):
@@ -1932,14 +1968,20 @@ class TestBuildExecutionPrompt:
         )
         assert "this is the todo's one re-ask" in _prompt(doc)
 
-    def test_a_hold_check_counts_the_checks_left(self):
+    def test_a_hold_check_counts_the_checks_left_and_how_far_out_the_next_may_be(self):
         doc = _doc(
             waiting_on=WaitingOn.USER,
             question="Ship it?",
             if_no_reply=NoReplyPlan.HOLD,
             hold_checks=2,
         )
-        assert f"check 2 of {MAX_HOLD_CHECKS}" in _prompt(doc)
+        assert _rearm(
+            WakeReason.HOLD_CHECK,
+            question="Ship it?",
+            hold_checks=2,
+            max_hold_checks=MAX_HOLD_CHECKS,
+            hold_days=MAX_HOLD_CHECK_AHEAD.days,
+        ) in _prompt(doc)
 
     def test_the_last_hold_check_tells_the_run_to_close_the_todo(self):
         doc = _doc(
@@ -3497,6 +3539,59 @@ class TestExecuteOnExecutor:
         with pytest.raises(RuntimeError, match="mongo is down"):
             await self._execute()
 
+        self.run.assert_not_awaited()
+
+    async def test_a_scheduled_hold_check_spends_its_check_before_the_run_reads_it(self) -> None:
+        held = _doc(
+            waiting_on=WaitingOn.USER,
+            question="Ship it?",
+            if_no_reply=NoReplyPlan.HOLD,
+            hold_checks=1,
+        )
+        spent = held.model_copy(update={"hold_checks": 2})
+        update = AsyncMock(return_value=spent)
+        with patch(f"{MODULE}.todo_repository.update", update):
+            await self._execute(held)
+
+        update.assert_awaited_once_with(
+            "todo-1", user_id=OWNER_ID, update=TodoUpdate(hold_checks=2)
+        )
+        assert f"(check 2 of {MAX_HOLD_CHECKS})" in self._request().task
+
+    @pytest.mark.parametrize(
+        ("retry_count", "origin"), [(1, None), (0, _GMAIL_ORIGIN)], ids=["retry", "triggered"]
+    )
+    async def test_a_retry_or_a_triggered_run_spends_no_check(
+        self, retry_count: int, origin: TriggerOrigin | None
+    ) -> None:
+        held = _doc(
+            waiting_on=WaitingOn.USER,
+            question="Ship it?",
+            if_no_reply=NoReplyPlan.HOLD,
+            hold_checks=1,
+            gaia_retry_count=retry_count,
+        )
+        update = AsyncMock()
+        with patch(f"{MODULE}.todo_repository.update", update):
+            await self._execute(held, origin=origin)
+
+        update.assert_not_awaited()
+        self.run.assert_awaited_once()
+
+    async def test_a_todo_gone_before_its_check_is_spent_never_runs(self) -> None:
+        held = _doc(
+            waiting_on=WaitingOn.USER,
+            question="Ship it?",
+            if_no_reply=NoReplyPlan.HOLD,
+            hold_checks=1,
+        )
+        with (
+            patch(f"{MODULE}.todo_repository.update", AsyncMock(return_value=None)),
+            pytest.raises(LookupError) as vanished,
+        ):
+            await self._execute(held)
+
+        assert str(vanished.value) == "tracked todo todo-1 vanished before its run"
         self.run.assert_not_awaited()
         assert self._entries() == []
 

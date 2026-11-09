@@ -70,12 +70,12 @@ def state_after(existing: TodoDocument, update: TodoUpdate) -> TodoDocument:
 def with_waiting_normalized(existing: TodoDocument | None, update: TodoUpdate) -> TodoUpdate:
     """Clear the question fields when the todo stops waiting on the user; a new question resets holds."""
     fields = update.model_fields_set
-    extra: dict[str, object] = {}
+    extra: dict[str, object]
     if "waiting_on" in fields and update.waiting_on is not WaitingOn.USER:
         extra = {"question": None, "if_no_reply": None, "default_action": None, "hold_checks": 0}
     elif "question" in fields and (existing is None or existing.question != update.question):
         extra = {"hold_checks": 0}
-    if not extra:
+    else:
         return update
     return TodoUpdate.model_validate({**update.model_dump(exclude_unset=True), **extra})
 
@@ -206,9 +206,9 @@ def _relative(at: datetime, now: datetime) -> str:
     if delta <= timedelta(0):
         return "due now"
     if delta < timedelta(hours=1):
-        return f"in {max(1, int(delta.total_seconds() // 60))}m"
+        return f"in {max(1, delta // timedelta(minutes=1))}m"
     if delta < timedelta(days=1):
-        return f"in {int(delta.total_seconds() // 3600)}h"
+        return f"in {delta // timedelta(hours=1)}h"
     return f"in {delta.days}d"
 
 

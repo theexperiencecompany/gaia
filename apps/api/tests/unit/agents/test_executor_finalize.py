@@ -19,7 +19,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from prometheus_client import REGISTRY
 import pytest
@@ -33,6 +33,7 @@ from app.agents.core.background import (
     running_registry,
     workflow_platform_delivery as wpd,
 )
+from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_capture import (
     await_executor_done,
     drain_executor_tool_data,
@@ -54,7 +55,8 @@ from app.agents.core.background.session import (
 )
 from app.agents.core.nodes import executor_status
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.agents.prompts.comms_prompts import outcome_delivery_note
+from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_INBOX_PREFIX
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
@@ -65,6 +67,7 @@ from app.constants.executor import (
     INBOX_ENTRY_ID,
     INTERRUPTION_NOTICE,
 )
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
@@ -306,6 +309,69 @@ class TestCompletedRouting:
         boundaries.deliver.assert_not_awaited()
         boundaries.record_cancel.assert_not_awaited()
         boundaries.persist_cancelled.assert_not_awaited()
+
+
+def _tool_turn(name: str, args: dict[str, str], call_id: str) -> list[AnyMessage]:
+    return [
+        AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id}]),
+        ToolMessage(content="ok", tool_call_id=call_id, name=name, status="success"),
+    ]
+
+
+def _delegation(*work: list[AnyMessage], outcome: str) -> list[AnyMessage]:
+    finish = _tool_turn(FINISH_TASK_NAME, {"result": "report", "outcome": outcome}, "finish")
+    return [HumanMessage(content=TASK), *(m for turn in work for m in turn), *finish]
+
+
+@pytest.mark.usefixtures("fake_redis")
+class TestTheRunsDeclaredOutcomeIsCheckedAtFinalize:
+    """The outcome the executor declares is checked against its own thread before comms voices it."""
+
+    async def _finalize(
+        self, boundaries: _Boundaries, thread: list[AnyMessage]
+    ) -> tuple[str, dict[str, Any]]:
+        ctx = _executor_ctx()
+        create_session("s1", RunKind.QUEUED)
+        read = AsyncMock(side_effect=lambda c: thread if c is ctx else [])
+        with patch.object(er, "thread_messages", read):
+            async with log_context("executor_finalize_test"):
+                await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final", ctx)
+                event = dict(log.get())
+        return boundaries.deliver.await_args.kwargs["outcome_note"], event
+
+    async def test_a_verified_ask_is_voiced_as_an_ask_and_awaits_the_users_answer(
+        self, boundaries: _Boundaries
+    ) -> None:
+        note, event = await self._finalize(boundaries, _delegation(outcome="ask"))
+
+        assert note == outcome_delivery_note(OutcomeState.ASK, None)
+        assert event["executor"] == {"outcome": "ask", "outcome_verified": True}
+        assert await spend_confirmation("conv-1") is True
+
+    async def test_an_unbacked_done_is_voiced_as_not_verified_and_named_in_the_wide_event(
+        self, boundaries: _Boundaries
+    ) -> None:
+        problem = "done was declared but no work call succeeded"
+
+        note, event = await self._finalize(boundaries, _delegation(outcome="done"))
+
+        assert note == outcome_delivery_note(OutcomeState.DONE, problem)
+        assert event["executor"] == {"outcome": "done", "outcome_verified": False}
+        assert [(w["msg"], w["problem"]) for w in event["warnings"]] == [
+            (f"{LogTag.AGENT} Executor outcome not verified", problem)
+        ]
+        assert await spend_confirmation("conv-1") is False
+
+    async def test_a_verified_done_is_not_taken_for_a_question_to_the_user(
+        self, boundaries: _Boundaries
+    ) -> None:
+        thread = _delegation(_tool_turn("create_todo", {"title": "visa"}, "c1"), outcome="done")
+
+        note, event = await self._finalize(boundaries, thread)
+
+        assert note == outcome_delivery_note(OutcomeState.DONE, None)
+        assert "warnings" not in event
+        assert await spend_confirmation("conv-1") is False
 
 
 class TestDoneSignalAndOrdering:

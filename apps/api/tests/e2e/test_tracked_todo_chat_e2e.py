@@ -22,7 +22,7 @@ from contextlib import (
     contextmanager,
 )
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -177,9 +177,11 @@ async def _binding_index(mongo_db: AsyncIOMotorDatabase) -> None:
     Dropped first: the test database outlives a run, and an index left by an older
     spec would otherwise stand in for the one under test.
     """
+    binding = indexes.CONVERSATION_TODO_BINDING_KEYS
+    assert not isinstance(binding, str)
     collection = mongo_db["conversations"]
     for spec in await collection.list_indexes().to_list(None):
-        if dict(spec["key"]) == dict(indexes.CONVERSATION_TODO_BINDING_KEYS):
+        if dict(spec["key"]) == dict(binding):
             await collection.drop_index(spec["name"])
     await collection.create_index(
         indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
@@ -297,9 +299,25 @@ def open_stack(
     return opened
 
 
+def _daily_watch() -> TodoUpdate:
+    """Return a valid open state: a daily watch, whose recurrence wakes it so no run must re-arm it."""
+    return TodoUpdate(recurrence="daily", scheduled_at=datetime.now(UTC) + timedelta(days=1))
+
+
 async def _new_tracked_todo(owner: AuthenticatedUser, title: str = TITLE) -> str:
-    created = await TrackedTodoService.create_tracked_todo(owner.user_id, title)
+    created = await TrackedTodoService.create_tracked_todo(
+        owner.user_id, title, schedule=_daily_watch()
+    )
     return created.id
+
+
+async def _new_due_tracked_todo(owner: AuthenticatedUser, due: datetime) -> str:
+    """Create a todo whose next check the clock has reached: valid at creation, then due."""
+    todo_id = await _new_tracked_todo(owner)
+    await todo_repository.update(
+        todo_id, user_id=owner.user_id, update=TodoUpdate(scheduled_at=due)
+    )
+    return todo_id
 
 
 async def _run(todo_id: str, owner: AuthenticatedUser) -> None:
@@ -612,7 +630,7 @@ class TestAFollowUpKnowsTheRunsAboveIt:
         """Regression: a run the user was not told of left its report only in the chat's history, so asking about it got an answer that never saw it."""
         todo_id = (
             await TrackedTodoService.create_tracked_todo(
-                owner.user_id, TITLE, notify_on_run=notify_on_run
+                owner.user_id, TITLE, notify_on_run=notify_on_run, schedule=_daily_watch()
             )
         ).id
         comms = [NARRATED, FOLLOW_UP_REPLY] if notify_on_run else [FOLLOW_UP_REPLY]
@@ -941,11 +959,7 @@ class TestARunThatFindsItsChatBusyWaits:
     ) -> None:
         """Regression: the scheduled run counted the user's own follow-up as a failed attempt and retried an hour later."""
         due = datetime.now(UTC)
-        todo_id = (
-            await TrackedTodoService.create_tracked_todo(
-                owner.user_id, TITLE, schedule=TodoUpdate(scheduled_at=due)
-            )
-        ).id
+        todo_id = await _new_due_tracked_todo(owner, due)
         conversation_id = (await client.post(f"/api/v1/todos/{todo_id}/conversation")).json()[
             "conversation_id"
         ]
@@ -995,11 +1009,7 @@ class TestStoppingARunFromItsChat:
     ) -> None:
         """Regression: Stop ended the run as a silent success: no outcome logged, nothing delivered, schedule moved on as done."""
         due = datetime.now(UTC)
-        todo_id = (
-            await TrackedTodoService.create_tracked_todo(
-                owner.user_id, TITLE, schedule=TodoUpdate(scheduled_at=due)
-            )
-        ).id
+        todo_id = await _new_due_tracked_todo(owner, due)
         conversation_id = await get_or_create_todo_conversation(owner.user_id, todo_id, TITLE)
         full = [
             {"type": "bot", "response": f"run {n}", "message_id": f"seed-{n}", "date": "2026"}
@@ -1128,7 +1138,7 @@ class TestTheChatFollowsItsTodo:
         self, open_stack: OpenStack, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
     ) -> None:
         created = await TrackedTodoService.create_tracked_todo(
-            owner.user_id, TITLE, notify_on_run=False
+            owner.user_id, TITLE, notify_on_run=False, schedule=_daily_watch()
         )
 
         async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
@@ -1164,7 +1174,10 @@ class TestNoChatOutlivesItsTodo:
         parent = await _new_tracked_todo(owner)
         child = (
             await TrackedTodoService.create_tracked_todo(
-                owner.user_id, "Watch the migrations", parent_todo_id=parent
+                owner.user_id,
+                "Watch the migrations",
+                parent_todo_id=parent,
+                schedule=_daily_watch(),
             )
         ).id
         for todo_id in (parent, child):

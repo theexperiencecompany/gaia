@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+import time_machine
 
 from app.constants import todos as todo_constants
 from app.constants.todos import (
@@ -20,6 +21,7 @@ from app.constants.todos import (
     CANVAS_SECTIONS,
     GAIA_TRACKED_LABEL,
     INBOX_DESK_WATCH_WINDOW_SECONDS,
+    SUB_TODO_PARENT_WAKE_DELAY,
     NoReplyPlan,
     TodoActivityEvent,
     WaitingOn,
@@ -408,15 +410,35 @@ class TestCreateTrackedTodo:
         await TrackedTodoService.create_tracked_todo(
             USER_ID,
             "Hidden per-todo chat",
-            done_when=["the feature is live for users", " "],
+            done_when=["the feature is live for users", " ", "the changelog names it"],
             evidence="the release notes on the changelog page",
         )
 
         canvas = mock_repo.update.await_args.kwargs["update"].canvas_content
-        assert section_body(canvas, CANVAS_DONE_WHEN_SECTION) == "- the feature is live for users"
+        assert section_body(canvas, CANVAS_DONE_WHEN_SECTION) == (
+            "- the feature is live for users\n- the changelog names it"
+        )
         assert section_body(canvas, CANVAS_EVIDENCE_SECTION) == (
             "the release notes on the changelog page"
         )
+
+    async def test_the_next_step_rule_judges_the_todo_as_it_will_be_created(
+        self, mock_repo, mock_deps
+    ):
+        mock_deps.create.return_value = _todo_response()
+        at = datetime.now(UTC) + timedelta(days=1)
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID,
+            "Prepare Q3 report",
+            labels=["work"],
+            schedule=TodoUpdate(waiting_on=WaitingOn.TIME, scheduled_at=at),
+        )
+
+        checked: TodoDocument = mock_deps.open_state.call_args.args[0]
+        assert (checked.user_id, checked.title) == (USER_ID, "Prepare Q3 report")
+        assert checked.labels == ["work", GAIA_TRACKED_LABEL]
+        assert (checked.waiting_on, checked.scheduled_at) == (WaitingOn.TIME, at)
 
     async def test_a_clean_initial_canvas_sets_no_activity(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
@@ -821,15 +843,19 @@ class TestACompletedSubTodoWakesAParentThatWaitsOnIt:
         self, mock_repo, mock_deps, parents, armed
     ):
         """Seen in real use: a parent waiting on its sub-todos only heard of a finished one at its next run."""
-        backup = datetime.now(UTC) + timedelta(days=5)
-        parents[_PARENT_ID] = _parent(waiting_on=WaitingOn.SUB_TODOS, scheduled_at=backup)
+        frozen = datetime(2026, 11, 6, 9, 0, tzinfo=UTC)
+        parents[_PARENT_ID] = _parent(
+            waiting_on=WaitingOn.SUB_TODOS, scheduled_at=frozen + timedelta(days=5)
+        )
 
-        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+        with time_machine.travel(frozen, tick=False):
+            await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
 
-        woken = mock_repo.update.await_args_list[-1]
-        assert woken.args[0] == _PARENT_ID
-        wake_at = woken.kwargs["update"].scheduled_at
-        assert datetime.now(UTC) < wake_at < datetime.now(UTC) + timedelta(minutes=2)
+        wake_at = frozen + SUB_TODO_PARENT_WAKE_DELAY
+        assert call(_PARENT_ID, user_id=USER_ID) in mock_repo.get.await_args_list
+        assert mock_repo.update.await_args_list[-1] == call(
+            _PARENT_ID, user_id=USER_ID, update=TodoUpdate(scheduled_at=wake_at)
+        )
         armed.assert_awaited_once_with(_PARENT_ID, wake_at)
 
     async def test_a_parent_waiting_on_something_else_is_left_alone(
@@ -854,6 +880,20 @@ class TestACompletedSubTodoWakesAParentThatWaitsOnIt:
         await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
 
         armed.assert_not_awaited()
+
+    async def test_a_parent_due_exactly_at_the_wake_time_is_left_as_it_is(
+        self, mock_repo, mock_deps, parents, armed
+    ):
+        frozen = datetime(2026, 11, 6, 9, 0, tzinfo=UTC)
+        parents[_PARENT_ID] = _parent(
+            waiting_on=WaitingOn.SUB_TODOS, scheduled_at=frozen + SUB_TODO_PARENT_WAKE_DELAY
+        )
+
+        with time_machine.travel(frozen, tick=False):
+            await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+
+        armed.assert_not_awaited()
+        assert _PARENT_ID not in [c.args[0] for c in mock_repo.update.await_args_list]
 
     async def test_a_parent_that_is_already_closed_is_left_alone(
         self, mock_repo, mock_deps, parents, armed
@@ -1512,15 +1552,20 @@ class TestACreatedTodoNeedsANextStep:
 
     async def test_the_waiting_fields_are_saved_and_on_the_timeline(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
+        fixed = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
         schedule = TodoUpdate(
             waiting_on=WaitingOn.USER,
             question="Should I ignore Raj's email?",
             if_no_reply=NoReplyPlan.PROCEED,
             default_action="archive the thread",
-            scheduled_at=datetime.now(UTC) + timedelta(days=2),
+            scheduled_at=fixed + timedelta(days=2),
         )
 
-        await TrackedTodoService.create_tracked_todo(USER_ID, "Raj", schedule=schedule)
+        with patch(f"{_MOD}.datetime") as m_now:
+            m_now.now.return_value = fixed
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Raj", source_conversation_id="00f7c88f-4ac1-4169", schedule=schedule
+            )
 
         update = mock_repo.update.await_args.kwargs["update"]
         assert (update.waiting_on, update.question) == (
@@ -1531,5 +1576,8 @@ class TestACreatedTodoNeedsANextStep:
             NoReplyPlan.PROCEED,
             "archive the thread",
         )
-        assert "[waiting_changed] waiting on user" in update.activity_content
-        assert "if no reply: proceed (archive the thread)" in update.activity_content
+        assert update.activity_content.splitlines()[-1] == (
+            "- 2026-09-13T12:00:00+00:00 [waiting_changed] waiting on user, "
+            'asked "Should I ignore Raj\'s email?", if no reply: proceed (archive the thread), '
+            "by GAIA in conversation 00f7c88f"
+        )
