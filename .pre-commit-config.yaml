@@ -128,6 +128,15 @@ repos:
         language: system
         files: \.(js|jsx|ts|tsx|mjs|cjs)$
         exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
+
+      - id: bot-handles
+        name: Every bot link points at the live handle
+        # Repo-wide, never staged-file scoped: the copies live in the README, the
+        # docs and the API prompt, and the one that drifts is the one nobody edited.
+        entry: node scripts/ci/checks.mjs bot-handles
+        language: system
+        pass_filenames: false
+        always_run: true
   - repo: local
     hooks:
       - id: react-doctor

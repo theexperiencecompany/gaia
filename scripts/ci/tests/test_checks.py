@@ -10,6 +10,7 @@ file list with `git ls-files` relative to the working directory, so pointing it
 at a sandbox repo scopes the whole gate without stubbing anything.
 """
 
+import json
 import os
 from pathlib import Path
 import shutil
@@ -738,3 +739,131 @@ def test_a_baselined_raw_client_import_does_not_fail(tmp_path: Path) -> None:
     process = _run(repo, "api-client-imports")
 
     assert process.returncode == 0, process.stdout
+
+
+# ---------------------------------------------------------------------------
+# bot-handles: one canonical handle per platform, every spoken-of link agrees
+# ---------------------------------------------------------------------------
+
+BOT_HANDLES_SOURCE = "libs/shared/bot-identity.json"
+WHATSAPP = "12038429512"
+TELEGRAM = "heygaia_bot"
+DISCORD = "puRWnQ7hV5"
+
+
+def _handles_repo(
+    tmp_path: Path,
+    whatsapp: str = WHATSAPP,
+    telegram: str = TELEGRAM,
+    discord: str = DISCORD,
+) -> Path:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        BOT_HANDLES_SOURCE,
+        json.dumps(
+            {
+                "whatsappNumber": whatsapp,
+                "telegramUsername": telegram,
+                "discordInviteCode": discord,
+                "discordCommunityUrl": "https://discord.heygaia.io",
+            }
+        ),
+    )
+    return repo
+
+
+def test_matching_links_pass(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "README.md", "[WhatsApp](https://wa.me/12038429512)\n")
+    _add_text(repo, "docs/telegram.mdx", "[Telegram](https://t.me/heygaia_bot)\n")
+    _add_text(repo, "docs/GAIA.md", "[Discord](https://discord.com/invite/puRWnQ7hV5)\n")
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 0, process.stderr
+
+
+def test_a_stale_whatsapp_link_fails_and_names_the_file(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "docs/quick-start.mdx", "[WhatsApp](https://wa.me/12762088737)\n")
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 1
+    assert "docs/quick-start.mdx" in process.stderr
+    assert "12762088737" in process.stderr
+
+
+def test_a_stale_telegram_username_fails(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "README.md", "[Telegram](https://t.me/some_other_bot)\n")
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 1
+    assert "some_other_bot" in process.stderr
+
+
+def test_a_stale_discord_invite_fails(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "libs/help.ts", 'url: "https://discord.gg/gaia"\n')
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 1
+    assert "gaia" in process.stderr
+
+
+def test_telegram_usernames_compare_case_insensitively(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "README.md", "[Telegram](https://t.me/HeyGaia_Bot)\n")
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 0, process.stderr
+
+
+def test_changing_a_canonical_handle_flags_every_copy(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "README.md", "[Telegram](https://t.me/heygaia_bot)\n")
+    _add_text(
+        repo,
+        BOT_HANDLES_SOURCE,
+        json.dumps(
+            {
+                "whatsappNumber": WHATSAPP,
+                "telegramUsername": "other_bot",
+                "discordInviteCode": DISCORD,
+                "discordCommunityUrl": "https://discord.heygaia.io",
+            }
+        ),
+    )
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 1
+    assert "README.md" in process.stderr
+
+
+def test_api_test_fixtures_are_not_treated_as_links(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(
+        repo,
+        "apps/api/tests/unit/services/test_platform_link_service.py",
+        'assert result == "https://wa.me/15551234567"\n',
+    )
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 0, process.stderr
+
+
+def test_a_missing_canonical_handle_fails_loudly(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, "README.md", "[Telegram](https://t.me/heygaia_bot)\n")
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 1
+    assert BOT_HANDLES_SOURCE in process.stderr
