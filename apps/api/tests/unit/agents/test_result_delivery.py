@@ -308,7 +308,7 @@ TODO_CHAT = "todo-chat-1"
 WAKE = TodoRunWake(kind=TodoWakeKind.TRIGGER, trigger_names=["github_push"], approval_summary=None)
 
 
-def _todo_run(**fields: object) -> ExecutorRun:
+def _todo_run() -> ExecutorRun:
     return ExecutorRun(
         stream_id="stream-1",
         conversation_id=TODO_CHAT,
@@ -322,7 +322,6 @@ def _todo_run(**fields: object) -> ExecutorRun:
             trigger_type=TriggerType.SCHEDULED_TODO,
             message_class=ProactiveMessageClass.ROUTINE,
         ),
-        **fields,
     )
 
 
@@ -470,3 +469,36 @@ class TestARunsWakeLeadsItInItsChat:
             await record_todo_run_wake(TODO_CHAT, USER, WAKE)
 
         ws.broadcast_to_user.assert_not_awaited()
+
+
+class TestCommsNarratesARunsResultUnderItsOutcomeNote:
+    async def _narrated_input(self, outcome_note: str | None) -> str:
+        run = ExecutorRun(
+            stream_id="stream-1",
+            conversation_id="conv-1",
+            user=USER,
+            kind=RunKind.QUEUED,
+            task_id="task-1",
+            user_message_id=None,
+        )
+        convo_repo = MagicMock(get_source=AsyncMock(return_value=ConversationSource.WEB))
+        with (
+            patch(
+                f"{MODULE}.narrate_executor_result", new_callable=AsyncMock, return_value="ok"
+            ) as narrate,
+            patch(f"{MODULE}.generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
+            patch(f"{MODULE}.conversation_repository", convo_repo),
+            patch(f"{MODULE}.websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
+        ):
+            if outcome_note is None:
+                await deliver_result(run, "raw", "final", tool_data=None)
+            else:
+                await deliver_result(run, "raw", "final", tool_data=None, outcome_note=outcome_note)
+        return str(narrate.await_args.args[0])
+
+    async def test_a_result_with_no_outcome_note_is_narrated_as_it_came(self) -> None:
+        assert await self._narrated_input(None) == "raw"
+
+    async def test_the_outcome_note_follows_the_result(self) -> None:
+        assert await self._narrated_input("\n\nOutcome: ask") == "raw\n\nOutcome: ask"

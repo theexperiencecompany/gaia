@@ -35,10 +35,16 @@ from app.models.usage_models import (
     UsagePeriod,
     UserUsageSnapshot,
 )
-from app.services.limit_upsell import LimitHitOrigin, current_limit_origin, schedule_limit_upsell
+from app.services.limit_upsell import (
+    LimitHitOrigin,
+    capture_limit_hit,
+    current_limit_origin,
+    schedule_limit_upsell,
+)
 from app.services.usage_activity import counts_as_activity, record_activity
 from app.services.usage_service import UsageService
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
 from shared.py.wide_events import log, spawn_logged_task
 
 # UsageInfo is imported (not defined here) but re-exported for callers that
@@ -102,10 +108,15 @@ class CostBudgetExceededException(RateLimitExceededException):
         plan_required: str | None = None,
         reset_time: datetime | None = None,
         current_plan: str | None = None,
+        *,
+        message: str = "You've used today's AI usage allowance.",
+        period: RateLimitPeriod = RateLimitPeriod.DAY,
     ):
-        budget_message = "You've used today's AI usage allowance."
+        budget_message = message
         if plan_required:
             budget_message += f" Upgrade to {plan_required.capitalize()} for higher limits."
+        self.period = period
+        self.message = budget_message
         super().__init__(
             feature, plan_required, reset_time, message=budget_message, current_plan=current_plan
         )
@@ -148,6 +159,7 @@ class TieredRateLimiter:
         try:
             return await self._check_and_increment(user_id, feature_key, user_plan)
         except RateLimitExceededException:
+            capture_limit_hit(UserId(user_id), feature_key, user_plan, origin=origin)
             schedule_limit_upsell(user_id, feature_key, user_plan, origin)
             raise
 

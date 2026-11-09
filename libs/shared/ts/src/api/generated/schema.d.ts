@@ -11836,13 +11836,8 @@ export interface components {
              * @description Whether onboarding was successful
              */
             success: boolean;
-            /**
-             * User
-             * @description Updated user data
-             */
-            user: {
-                [key: string]: unknown;
-            } | null;
+            /** @description Updated user data */
+            user: components["schemas"]["OnboardingUser"];
         };
         /**
          * OnboardingStatusResponse
@@ -11872,6 +11867,15 @@ export interface components {
          * @enum {string}
          */
         OnboardingStep: "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
+        /**
+         * OnboardingUser
+         * @description The user an onboarding write updated: its id and the onboarding state it left.
+         */
+        OnboardingUser: {
+            onboarding: components["schemas"]["OnboardingStatusResponse"];
+            /** User Id */
+            user_id: string;
+        };
         /**
          * PaginatedNotificationsResponse
          * @description Response model for paginated notifications
@@ -16788,6 +16792,7 @@ export type OnboardingResetResponse = components['schemas']['OnboardingResetResp
 export type OnboardingResponse = components['schemas']['OnboardingResponse'];
 export type OnboardingStatusResponse = components['schemas']['OnboardingStatusResponse'];
 export type OnboardingStep = components['schemas']['OnboardingStep'];
+export type OnboardingUser = components['schemas']['OnboardingUser'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];

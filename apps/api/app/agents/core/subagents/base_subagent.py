@@ -41,7 +41,7 @@ from app.agents.tools.instructions_tools import (
 )
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.research_tool import deep_research
-from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
+from app.agents.tools.todo_tools import create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
@@ -209,7 +209,6 @@ class SubAgentFactory:
             if cfg.authoring_only
             else create_todo_tools(source=provider, source_label=cfg.source_label)
         )
-        todo_hook = None if cfg.authoring_only else create_todo_pre_model_hook(source=provider)
         todo_tool_names: list[str] = []
         for todo_tool in todo_tools:
             scoped_tool_dict[todo_tool.name] = todo_tool
@@ -222,7 +221,7 @@ class SubAgentFactory:
             # No memory hook: extraction runs once per comms turn, and a
             # subagent sees the same thread comms already ingested.
             "hooks_config": HookConfig(
-                pre_model_hooks=worker_pre_model_hooks(todo_hook, drains_subagent_inbox=True),
+                pre_model_hooks=worker_pre_model_hooks(drains_subagent_inbox=True),
                 end_graph_hooks=[],
             ),
         }

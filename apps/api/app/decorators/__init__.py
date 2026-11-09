@@ -10,7 +10,7 @@ from .entitlements import (
 from .rate_limiting import (
     LangChainRateLimitError,
     clear_user_context,
-    enforce_daily_cost_budget,
+    enforce_cost_budget,
     enforce_rate_limit,
     enforce_tiered_limit,
     get_current_rate_limit_info,
@@ -26,7 +26,7 @@ __all__ = [
     "tiered_rate_limit",
     "enforce_rate_limit",
     "enforce_tiered_limit",
-    "enforce_daily_cost_budget",
+    "enforce_cost_budget",
     "LangChainRateLimitError",
     "set_user_context",
     "clear_user_context",

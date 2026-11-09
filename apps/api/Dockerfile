@@ -281,7 +281,7 @@ COPY apps/api/pyproject.toml ./apps/api/
 # `shared` / `shared.py.*`. This drops libs/shared/ts (1.2 MB of TypeScript)
 # and libs/wake-word (880 KB), neither of which is a Python package.
 COPY libs/pyproject.toml ./libs/
-COPY libs/shared/__init__.py libs/shared/py.typed ./libs/shared/
+COPY libs/shared/__init__.py libs/shared/py.typed libs/shared/bot-identity.json ./libs/shared/
 COPY libs/shared/py ./libs/shared/py
 COPY libs/shared/assets ./libs/shared/assets
 

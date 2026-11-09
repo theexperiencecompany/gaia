@@ -841,7 +841,11 @@ def test_an_action_todo_is_due_on_its_deadline_or_today_and_gets_no_draft() -> N
     step = "\n".join(_step(THREAD_TODO_STEP))
 
     assert f'labels=["{ACTION_NEEDED_LABEL}"], due_date=the deadline the line names' in step
-    assert "otherwise today, no scheduled_at" in step
+    # an open todo needs a next step: the thread watch, with the due date as its backup check
+    assert (
+        "otherwise today, waiting_on='event' (the thread watch wakes it) with "
+        "scheduled_at=that due date as its backup check (tomorrow when it is today)"
+    ) in step
     assert _mail_step("e").startswith(
         "Save every draft in one turn, as parallel calls. For each TO_REPLY thread:"
     )

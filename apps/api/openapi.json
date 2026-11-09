@@ -12897,17 +12897,8 @@
             "type": "boolean"
           },
           "user": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Updated user data",
-            "title": "User"
+            "$ref": "#/components/schemas/OnboardingUser",
+            "description": "Updated user data"
           }
         },
         "required": [
@@ -12995,6 +12986,24 @@
         ],
         "title": "OnboardingStep",
         "type": "string"
+      },
+      "OnboardingUser": {
+        "description": "The user an onboarding write updated: its id and the onboarding state it left.",
+        "properties": {
+          "onboarding": {
+            "$ref": "#/components/schemas/OnboardingStatusResponse"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "onboarding"
+        ],
+        "title": "OnboardingUser",
+        "type": "object"
       },
       "PaginatedNotificationsResponse": {
         "description": "Response model for paginated notifications",

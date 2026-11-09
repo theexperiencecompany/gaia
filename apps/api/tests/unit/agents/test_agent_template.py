@@ -2,8 +2,10 @@
 
 import pytest
 
+from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.agents.templates.agent_template import (
     COMMS_PROMPT_BY_SOURCE,
+    EXECUTOR_PROMPT_TEMPLATE,
     _text_only_addendum,
     get_comms_static_prompt,
     get_executor_prompt,
@@ -58,9 +60,11 @@ class TestExecutorPrompt:
         assert "You activate one, then do" in prompt
 
     def test_default_matches_env_template(self) -> None:
-        from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
-
         assert get_executor_prompt() == EXECUTOR_PROMPT_TEMPLATE
+
+    def test_planning_rules_ride_the_static_prompt(self) -> None:
+        # The todo rules used to be re-sent before every model call; they are static, so they cache.
+        assert TODO_SYSTEM_PROMPT in EXECUTOR_PROMPT_TEMPLATE
 
     def test_prompt_never_points_at_a_card(self) -> None:
         # The executor is channel-blind: it must not describe UI-only approval

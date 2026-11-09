@@ -155,8 +155,7 @@ class AgentConfigurable(TypedDict, total=False):
     selected_tool: str | None
     tool_category: str | None
     #: True only for comms_narrator re-voicing a finished executor result. It never
-    #: dispatches: call_executor refuses and the live status frame stays out, since
-    #: the narrated run still holds the busy lock.
+    #: dispatches: call_executor refuses, since the narrated run still holds the busy lock.
     is_result_narration: bool
     subagent_id: str | None
     #: Shared VFS session, held constant across the executor and the

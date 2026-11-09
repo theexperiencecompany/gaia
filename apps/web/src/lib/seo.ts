@@ -1,3 +1,4 @@
+import { BOT_URLS } from "@shared/constants/bots";
 import type { Metadata } from "next";
 import type {
   AboutPage,
@@ -20,7 +21,6 @@ import type {
   WebSite,
   WithContext,
 } from "schema-dts";
-
 import SEO_SNIPPET from "@/config/seoSnippet.json";
 import {
   ADVERTISED_PRO_MONTHLY,
@@ -50,7 +50,7 @@ export const siteConfig = {
     twitter: "https://x.com/trygaia",
     github: "https://github.com/theexperiencecompany",
     repo: "https://github.com/theexperiencecompany/gaia",
-    discord: "https://discord.heygaia.io",
+    discord: BOT_URLS.discord,
     linkedin: "https://www.linkedin.com/company/heygaia",
     whatsapp: "https://whatsapp.heygaia.io",
   },

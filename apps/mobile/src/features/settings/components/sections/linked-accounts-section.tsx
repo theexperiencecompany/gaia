@@ -1,3 +1,4 @@
+import { BOT_URLS } from "@shared/ts/src/constants/bots";
 import * as Linking from "expo-linking";
 import { Button, Card } from "heroui-native";
 import { useState } from "react";
@@ -21,7 +22,7 @@ const PLATFORMS: Platform[] = [
     description: "Receive notifications and messages via Telegram bot",
     icon: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Telegram_2019_Logo.svg/120px-Telegram_2019_Logo.svg.png",
     authType: "bot_link",
-    botUrl: "https://t.me/gaia_assistant_bot",
+    botUrl: BOT_URLS.telegram,
   },
 ];
 

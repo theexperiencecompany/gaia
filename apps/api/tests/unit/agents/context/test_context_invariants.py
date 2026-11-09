@@ -8,6 +8,7 @@ and they hold across every tier.
 
 from contextlib import AbstractContextManager
 from dataclasses import replace
+from itertools import takewhile
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
@@ -39,10 +40,11 @@ from app.agents.context.assemble import (
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import (
     DYNAMIC_CONTEXT_MARKER,
+    LEADING_SLOTS,
     LEGACY_DYNAMIC_MARKER,
     MEMORY_RECALL_MARKER,
     PromptSlot,
-    request_slot_order,
+    is_gaia_authored_note,
     slot_of,
 )
 from app.agents.context.text import VOLATILE_BLOCK_TRUNC_MARKER
@@ -61,86 +63,64 @@ RICH_SOURCES = ContextSources(
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )
 
-#: A checkpointed thread's worth of prior turns, carrying a stale copy of every
-#: slot a tier can produce. The collapse invariants are only interesting here —
-#: a first turn has nothing to collapse.
+#: A checkpointed thread's worth of a prior turn, carrying an earlier copy of every
+#: slot a turn writes, plus a background report older code wrote as a system message.
 STALE_THREAD: list[AnyMessage] = [
     SystemMessage(content="stale static"),
     SystemMessage(content="stale dynamic", additional_kwargs={"dynamic_context": True}),
     SystemMessage(content="stale recall", additional_kwargs={"memory_recall": True}),
-    SystemMessage(content="stale todo", additional_kwargs={"todo_context": True}),
-    SystemMessage(content="stale bg", name="background_executor"),
-    SystemMessage(content="stale status", additional_kwargs={"executor_status": True}),
     HumanMessage(content="an earlier question"),
-    AIMessage(content="an earlier answer"),
     HumanMessage(content="stale clock", additional_kwargs={"time_context": True}),
+    AIMessage(content="an earlier answer"),
+    SystemMessage(content="stale bg", name="background_executor"),
 ]
 
 
 @pytest.mark.unit
-class TestSystemBlockIsLeadingAndContiguous:
-    """langchain-google-genai keeps a SystemMessage as system_instruction only while the system block leads and is unbroken; every later system message is silently dropped once broken.
+class TestTheThreadIsSentAsWritten:
+    """Every call must begin with the previous one, so only the leading slots move.
 
-    Binds on the GEMINI lane only — the OpenAI wire has no such rule (see TestTheTailLayoutOnTheOpenAIWire).
+    The same on every provider: an earlier turn's recall, clock and reports stay
+    where that turn wrote them, and this turn's follow the earlier answer.
     """
 
+    @pytest.mark.parametrize(
+        "provider", [LLMProviderName.OPENAI, LLMProviderName.OPENROUTER, LLMProviderName.GEMINI]
+    )
     @pytest.mark.parametrize("tier", list(AgentTier))
-    @pytest.mark.parametrize("multi_turn", [False, True])
-    async def test_no_system_message_follows_a_non_system_message(
-        self, tier: AgentTier, multi_turn: bool
+    async def test_an_earlier_turn_keeps_its_place_and_this_turn_follows_it(
+        self, tier: AgentTier, provider: LLMProviderName
     ) -> None:
         messages = await effective_context(
             tier,
             ContextSeed(
                 sources=RICH_SOURCES,
-                prior_messages=list(STALE_THREAD) if multi_turn else None,
-                configurable_overrides=bound_for(LLMProviderName.GEMINI),
+                prior_messages=list(STALE_THREAD),
+                configurable_overrides=bound_for(provider),
             ),
         )
 
-        first_non_system = next(
-            (index for index, m in enumerate(messages) if m.type != "system"), len(messages)
-        )
-        trailing_system = [m for m in messages[first_non_system:] if m.type == "system"]
-        assert not trailing_system, (
-            f"{len(trailing_system)} system message(s) sit after the conversation begins; "
-            "Gemini would drop every one of them"
-        )
-
-
-@pytest.mark.unit
-class TestTheTailLayoutOnTheOpenAIWire:
-    """What the default (OpenRouter) lane does instead, and why.
-
-    OpenRouter applies a system message wherever it appears, so the per-turn slots
-    sort BEHIND the conversation and the cacheable prefix grows to cover the
-    history — measured 97% against 83% for the leading-block layout. Nothing here
-    is safe on Gemini, nor on OpenAI, which reuses only a whole earlier request,
-    so the layout is chosen per provider rather than globally.
-    """
+        texts = [text_of(m) for m in messages]
+        earlier_turn = ["stale recall", "an earlier question", "stale clock", "an earlier answer"]
+        positions = [texts.index(text) for text in earlier_turn]
+        assert positions == sorted(positions)
+        assert texts.index("stale bg") == positions[-1] + 1
+        this_turn = [i for i, m in enumerate(messages) if slot_of(m) is PromptSlot.MEMORY_RECALL]
+        assert this_turn[-1] > texts.index("stale bg")
 
     @pytest.mark.parametrize("tier", list(AgentTier))
-    async def test_the_per_turn_slots_sit_behind_the_conversation(self, tier: AgentTier) -> None:
+    async def test_the_leading_slots_lead_once_each_with_their_latest_copy(
+        self, tier: AgentTier
+    ) -> None:
         messages = await effective_context(
             tier, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
 
         slots = slots_of(messages)
-        conversation_at = slots.index(PromptSlot.CONVERSATION)
-        assert PromptSlot.MEMORY_RECALL in slots
-        assert slots.index(PromptSlot.MEMORY_RECALL) > conversation_at
-
-    @pytest.mark.parametrize("tier", list(AgentTier))
-    async def test_the_stable_block_still_leads(self, tier: AgentTier) -> None:
-        """If a stable slot slipped behind the conversation, the prefix would end at the static prompt again."""
-        messages = await effective_context(
-            tier, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
-        )
-
-        slots = slots_of(messages)
-        conversation_at = slots.index(PromptSlot.CONVERSATION)
-        assert slots.index(PromptSlot.STATIC) < conversation_at
-        assert slots.index(PromptSlot.DYNAMIC_STABLE) < conversation_at
+        lead = sum(1 for _ in takewhile(lambda slot: slot in LEADING_SLOTS, slots))
+        assert slots[:lead] == [PromptSlot.STATIC, PromptSlot.DYNAMIC_STABLE]
+        assert LEADING_SLOTS.isdisjoint(slots[lead:])
+        assert not any(text_of(m).startswith("stale ") for m in messages[:lead])
 
 
 @pytest.mark.unit
@@ -189,7 +169,7 @@ class TestStaticPromptIsUserIndependent:
 
 @pytest.mark.unit
 class TestClockPlacement:
-    """The clock rides a HumanMessage at the tail of contents, not system_instruction, so its per-minute tick doesn't push back the cache boundary."""
+    """The clock rides a HumanMessage after the turn it dates and stays there, so its tick never rewrites an earlier request."""
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_clock_is_the_final_message_and_is_human(self, tier: AgentTier) -> None:
@@ -210,72 +190,30 @@ class TestClockPlacement:
                     "on every call"
                 )
 
-    async def test_only_the_latest_clock_survives_a_multi_turn_thread(self) -> None:
+    async def test_each_turn_keeps_its_own_clock_and_this_turn_s_is_last(self) -> None:
         messages = await effective_context(
             AgentTier.EXECUTOR, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
 
-        clocks = [m for m in messages if m.additional_kwargs.get("time_context")]
-        assert len(clocks) == 1
-        assert FIXED_NOW.strftime("%H:%M") in text_of(clocks[0])
+        clocks = [text_of(m) for m in messages if m.additional_kwargs.get("time_context")]
+        assert clocks[0] == "stale clock"
+        assert FIXED_NOW.strftime("%H:%M") in clocks[-1]
+        assert messages[-1].additional_kwargs.get("time_context")
 
 
 @pytest.mark.unit
-class TestOneMessagePerSlot:
-    @pytest.mark.parametrize("tier", list(AgentTier))
-    async def test_every_singleton_slot_holds_at_most_one_message(self, tier: AgentTier) -> None:
-        messages = await effective_context(
-            tier, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
-        )
-
-        slots = slots_of(messages)
-        for slot in PromptSlot:
-            if slot is PromptSlot.CONVERSATION:
-                continue
-            assert slots.count(slot) <= 1, f"{slot.name} survived {slots.count(slot)} times"
-
-    @pytest.mark.parametrize("tier", list(AgentTier))
-    async def test_the_survivor_is_the_latest(self, tier: AgentTier) -> None:
-        """Only slots the current turn actually produces are checked — the background-executor and executor-status frames have no current-turn copy to displace."""
-        messages = await effective_context(
-            tier, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
-        )
-
-        refilled = {PromptSlot.STATIC, PromptSlot.DYNAMIC_STABLE, PromptSlot.TIME}
-        for message in messages:
-            if slot_of(message) in refilled:
-                assert not text_of(message).startswith("stale "), (
-                    f"a stale {message.content!r} outlived the current turn's copy"
-                )
-
-    @pytest.mark.parametrize(
-        "provider", [LLMProviderName.OPENROUTER, LLMProviderName.OPENAI, LLMProviderName.GEMINI]
-    )
-    @pytest.mark.parametrize("tier", list(AgentTier))
-    async def test_slots_appear_in_canonical_order(
-        self, tier: AgentTier, provider: LLMProviderName
-    ) -> None:
-        """Canonical means the order this provider's layout declares — the two providers differ."""
-        messages = await effective_context(
-            tier,
-            ContextSeed(
-                sources=RICH_SOURCES,
-                prior_messages=list(STALE_THREAD),
-                configurable_overrides=bound_for(provider),
-            ),
-        )
-
-        order = request_slot_order(provider)
-        slots = slots_of(messages)
-        assert slots == sorted(slots, key=order.index)
-
+class TestConversationIsNeverCollapsed:
     async def test_conversation_history_is_preserved_in_order(self) -> None:
-        """Collapsing slots must never collapse the conversation."""
+        """Lifting the leading slots must never reorder the conversation."""
         messages = await effective_context(
             AgentTier.EXECUTOR, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
 
-        turns = [text_of(m) for m in messages if m.type in ("human", "ai")]
+        turns = [
+            text_of(m)
+            for m in messages
+            if m.type in ("human", "ai") and not is_gaia_authored_note(m)
+        ]
         assert turns[:2] == ["an earlier question", "an earlier answer"]
 
 
@@ -473,7 +411,7 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
             assert declared_volatile in volatile
             assert declared_volatile not in stable
 
-    async def test_the_whole_memory_core_sits_behind_the_conversation(
+    async def test_the_whole_memory_core_stays_out_of_the_leading_block(
         self,
     ) -> None:
         """Measured on the real graph: consolidation runs DURING a conversation, so leaving the memory-core documents in the cached prefix evicted the conversation behind them; moving them out trades their own caching for the conversation's, paying comms 46.0% -> 59.3%, executor 64.8% -> 75.8%, total 48.4% -> 59.3%."""
@@ -491,7 +429,7 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
         assert "Prefers short answers" not in stable
         assert "Current agenda" not in stable
         assert "Recent activity" not in stable
-        # All of it still reaches the model, behind the conversation.
+        # All of it still reaches the model, in the turn's own recall block.
         assert "Prefers short answers" in volatile
         assert "Ship the merge by Friday" in volatile
         assert "Asked about the invoice at 14:02" in volatile

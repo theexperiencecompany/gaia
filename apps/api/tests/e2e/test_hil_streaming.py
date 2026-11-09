@@ -460,6 +460,7 @@ async def hil_world(
         _note: str,
         *,
         tool_data: list[ToolDataEntry] | None,
+        outcome_note: str = "",
     ) -> tuple[str, str]:
         world.delivered.append((text, result_type))
         return text, "executor-message-1"

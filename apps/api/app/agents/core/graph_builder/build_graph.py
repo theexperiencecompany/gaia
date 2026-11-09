@@ -42,14 +42,16 @@ from app.agents.tools.core.tool_runtime_config import (
 )
 from app.agents.tools.discovery_tools import find_integration, search_public_workflows
 from app.agents.tools.executor_tool import call_executor, cancel_executor
+from app.agents.tools.finish_task_tool import finish_task
 from app.agents.tools.subagent_control_tool import (
     cancel_subagent,
     list_running_subagents,
     message_subagent,
 )
-from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
+from app.agents.tools.todo_tools import create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.agent_config import (
@@ -129,11 +131,13 @@ async def build_executor_graph(
     tool_dict.update({t.name: t for t in todo_tools})
 
     tool_dict.update({ACTIVATE_INTEGRATION_TOOL_NAME: activate_integration})
+    # The executor ends through finish_task too: its outcome is what the run's
+    # review checks against the tool calls that actually ran.
+    tool_dict.update({FINISH_TASK_NAME: finish_task})
     # Executor-only tools to steer or cancel a specific running subagent by id.
     tool_dict.update(
         {t.name: t for t in (list_running_subagents, message_subagent, cancel_subagent)}
     )
-    todo_hook = create_todo_pre_model_hook(source="executor")
 
     # Spawned subagents must not see executor-only orchestration tools, and
     # activate_integration is executor-level: a spawn inherits the tools the
@@ -173,9 +177,9 @@ async def build_executor_graph(
         subagent_mw.set_store(store)
         subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
-    pre_model_hooks = worker_pre_model_hooks(todo_hook, drains_inbox=True)
+    pre_model_hooks = worker_pre_model_hooks(drains_inbox=True)
 
-    initial_tools = [ACTIVATE_INTEGRATION_TOOL_NAME, *EXECUTOR_INITIAL_TOOL_IDS]
+    initial_tools = [ACTIVATE_INTEGRATION_TOOL_NAME, FINISH_TASK_NAME, *EXECUTOR_INITIAL_TOOL_IDS]
 
     builder = create_agent(
         chat_llm,

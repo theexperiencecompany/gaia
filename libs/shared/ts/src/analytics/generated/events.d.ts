@@ -126,6 +126,7 @@ export type ServerEventName =
   | "todos:created"
   | "todos:deleted"
   | "todos:inbox_desk_provisioned"
+  | "todos:open_state_repaired"
   | "todos:run_result_delivered"
   | "todos:subscription_failed"
   | "todos:subscription_registered"
@@ -1144,6 +1145,7 @@ export interface EventProperties {
     "feature": string;
     "plan": string;
     "origin"?: string;
+    "window"?: "day" | "month" | "request" | "burst";
   };
   "reddit:post_viewed": {
     "subreddit": string;
@@ -1386,6 +1388,13 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
+  "todos:open_state_repaired": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "todo_id": string;
+    "waiting_on"?: string;
   };
   "todos:run_result_delivered": {
     "actor": "user" | "agent";

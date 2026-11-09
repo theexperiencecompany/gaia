@@ -1,5 +1,4 @@
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import HTTPException
 
@@ -18,6 +17,7 @@ from app.models.user_models import (
     OnboardingRequest,
     OnboardingStatusResponse,
     OnboardingSubdocument,
+    OnboardingUser,
     UserDocument,
 )
 from app.services.analytics_service import capture, identify_user
@@ -48,23 +48,27 @@ from shared.py.analytics.catalog.onboarding import (
 from shared.py.wide_events import log
 
 
-def _serialize_user(user: UserDocument) -> dict[str, Any]:
-    """Return the JSON-serializable user dict the onboarding endpoints return.
+def _onboarding_status(user: UserDocument) -> OnboardingStatusResponse:
+    """Return the client-facing onboarding state of user, with self-host's completion synthesized."""
+    onboarding_data = with_local_onboarding_completed(user.onboarding or OnboardingSubdocument())
+    return OnboardingStatusResponse(
+        completed=onboarding_data.completed,
+        completed_at=onboarding_data.completed_at,
+        phase=onboarding_data.phase,
+        preferences=onboarding_data.preferences or OnboardingPreferences.model_validate({}),
+        first_message_conversation_id=onboarding_data.first_message_conversation_id,
+        getting_started_conversation_id=onboarding_data.getting_started_conversation_id,
+    )
 
-    dict[str, Any] is deliberate: UserDocument is extra="allow" so this can spread
-    undeclared fields into the response the frontend's UserInfo reads — narrowing
-    it would silently drop production fields (Type Safety item 14).
-    """
-    data = user.model_dump(mode="json", exclude={"id"})
-    data["_id"] = user.id
-    data["user_id"] = user.id
-    return data
+
+def _onboarding_user(user: UserDocument) -> OnboardingUser:
+    return OnboardingUser(user_id=user.id, onboarding=_onboarding_status(user))
 
 
 async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
-) -> dict[str, Any]:
+) -> OnboardingUser:
     """Complete a user's onboarding submission.
 
     Idempotent under concurrent retries via an atomic onboarding.completed gate.
@@ -101,7 +105,7 @@ async def complete_onboarding(
                 user_id=user_id,
                 phase=existing.onboarding.phase if existing.onboarding else None,
             )
-            return _serialize_user(existing)
+            return _onboarding_user(existing)
 
         # The wizard submits only once the chosen platform's link has landed
         # (or the user went on without one), so the link is on this document.
@@ -130,7 +134,7 @@ async def complete_onboarding(
         )
 
         log.info(f"{LogTag.ONBOARDING} Onboarding completed successfully for user", user_id=user_id)
-        return _serialize_user(seeded_user or updated_user)
+        return _onboarding_user(seeded_user or updated_user)
 
     except HTTPException:
         raise
@@ -209,20 +213,7 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
 
-        onboarding_data = user.onboarding or OnboardingSubdocument()
-
-        # Self-host has no onboarding pipeline: force completed via the shared
-        # synthesis helper so both surfaces agree.
-        onboarding_data = with_local_onboarding_completed(onboarding_data)
-
-        return OnboardingStatusResponse(
-            completed=onboarding_data.completed,
-            completed_at=onboarding_data.completed_at,
-            phase=onboarding_data.phase,
-            preferences=onboarding_data.preferences or OnboardingPreferences.model_validate({}),
-            first_message_conversation_id=onboarding_data.first_message_conversation_id,
-            getting_started_conversation_id=onboarding_data.getting_started_conversation_id,
-        )
+        return _onboarding_status(user)
 
     except HTTPException:
         raise
@@ -239,7 +230,7 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
 
 async def update_onboarding_preferences(
     user_id: str, preferences: OnboardingPreferences
-) -> dict[str, Any]:
+) -> OnboardingUser:
     """Update a user's onboarding preferences (for the settings page)."""
     try:
         # PATCH semantics: the repository writes only fields the caller set, each
@@ -254,7 +245,7 @@ async def update_onboarding_preferences(
             user_id=user_id,
         )
 
-        return _serialize_user(updated_user)
+        return _onboarding_user(updated_user)
 
     except HTTPException:
         raise
@@ -269,7 +260,7 @@ async def update_onboarding_preferences(
         raise HTTPException(status_code=500, detail="Failed to update preferences") from e
 
 
-async def save_onboarding_answers(user_id: str, answers: OnboardingAnswers) -> dict[str, Any]:
+async def save_onboarding_answers(user_id: str, answers: OnboardingAnswers) -> OnboardingUser:
     """Store the wizard's Q1 and Q2 the moment they are confirmed, and stamp questions_answered.
 
     Written long before completion: the platform-link opener and the seeded
@@ -294,7 +285,7 @@ async def save_onboarding_answers(user_id: str, answers: OnboardingAnswers) -> d
         name=f"prewarm_first_question:{user_id}",
     )
     await record_onboarding_step(user_id, OnboardingStep.QUESTIONS_ANSWERED, answers=answers)
-    return _serialize_user(updated_user)
+    return _onboarding_user(updated_user)
 
 
 async def record_onboarding_step(

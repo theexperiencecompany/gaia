@@ -82,6 +82,11 @@ def _iso_layout(placeholder: re.Match[str]) -> str:
     return ISO_DATE_LAYOUT if date_only else ISO_DATETIME_LAYOUT
 
 
+def _is_iso_layout(layout: str, placeholder: re.Match[str]) -> bool:
+    """Whether layout is the placeholder's ISO rendering; a trailing Z is the +00:00 offset."""
+    return _UTC_DESIGNATOR.sub("%:z", layout) == _iso_layout(placeholder)
+
+
 def renders_inside(placeholder: re.Match[str], example: object) -> bool:
     """Whether a time placeholder written inside text renders like the date that text held.
 
@@ -89,7 +94,13 @@ def renders_inside(placeholder: re.Match[str], example: object) -> bool:
     text with no date at all has no layout to break.
     """
     found = _dated(example)
-    return found is None or found[1] == _iso_layout(placeholder)
+    return found is None or _is_iso_layout(found[1], placeholder)
+
+
+def renders_whole(placeholder: re.Match[str], example: object) -> bool:
+    """Whether a whole time placeholder, rendered as ISO 8601, is in example's layout or it has none."""
+    layout = detect_layout(example)
+    return layout is None or _is_iso_layout(layout, placeholder)
 
 
 def time_slot_layout(placeholder: re.Match[str], example: object) -> str | None:
