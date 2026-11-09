@@ -1199,3 +1199,23 @@ async def test_a_folded_turn_s_recall_and_clock_fold_with_it_and_are_never_summa
     assert "answer 2" in prompt
     for note in ("recall 1", "clock 1", "recall 2", "clock 2"):
         assert note not in prompt
+
+
+async def test_a_run_that_opens_the_thread_keeps_its_request_when_the_clock_ends_it() -> None:
+    # The opening walk must stop at the thread's start: wrapping to the last message
+    # (this turn's clock, a note) would fold the running request away.
+    mw = _middleware(trigger=("messages", 4), keep=("messages", 2), archive=None)
+    history: list[AnyMessage] = [
+        HumanMessage("the task", id="task"),
+        *_tool_step(1),
+        *_tool_step(2),
+        *_tool_step(3),
+        HumanMessage("[clock]", additional_kwargs={"time_context": True}, id="clock"),
+    ]
+
+    result = await mw.abefore_model(cast(AgentState[object], {"messages": history}), _runtime())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "call1"
+    assert "task" not in {r.id for r in removals}

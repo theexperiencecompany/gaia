@@ -13,6 +13,7 @@ silently destroys the prompt cache.
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import StrEnum
 
 from app.agents.context.fetchers import (
     build_active_todo_banner,
@@ -55,11 +56,36 @@ from shared.py.wide_events import log
 SectionFetch = Callable[[SectionContext], Awaitable[str]]
 
 
+class SectionId(StrEnum):
+    """Every section, named once: the table declares by it and readers look a section up by it."""
+
+    PLATFORM_BANNER = "platform_banner"
+    EXECUTOR_PLATFORM = "executor_platform"
+    USER_IDENTITY = "user_identity"
+    USER_PREFS = "user_prefs"
+    GLOBAL_INSTRUCTIONS = "global_instructions"
+    NEW_USER_GUIDANCE = "new_user_guidance"
+    WORKSPACE_SESSION = "workspace_session"
+    INTEGRATIONS_MANIFEST = "integrations_manifest"
+    CONNECTED_DEVICES = "connected_devices"
+    SKILLS = "skills"
+    OPEN_PENDINGS = "open_pendings"
+    CORE_MEMORY = "core_memory"
+    AGENDA_ACTIVITY = "agenda_activity"
+    MEMORY_RECALL = "memory_recall"
+    GAIA_KNOWLEDGE = "gaia_knowledge"
+    TRACKED_TODOS = "tracked_todos"
+    EXECUTOR_STATUS = "executor_status"
+    BROWSER_TASK = "browser_task"
+    BG_BANNER = "bg_banner"
+    ACTIVE_TODO_BANNER = "active_todo_banner"
+
+
 @dataclass(frozen=True)
 class Section:
     """One declared piece of context."""
 
-    id: str
+    id: SectionId
     slot: PromptSlot
     applies_to: frozenset[AgentTier]
     #: Position within the slot. Sparse so a section can be inserted between two
@@ -213,48 +239,54 @@ async def _skills(ctx: SectionContext) -> str:
 #: immediately before the conversation begins.
 SECTIONS: tuple[Section, ...] = (
     Section(
-        "platform_banner",
+        SectionId.PLATFORM_BANNER,
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.COMMS}),
         5,
         _platform_banner,
     ),
     Section(
-        "executor_platform",
+        SectionId.EXECUTOR_PLATFORM,
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.EXECUTOR}),
         5,
         _executor_platform,
     ),
-    Section("user_identity", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 10, _user_identity),
-    Section("user_prefs", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 20, _user_prefs),
-    Section("global_instructions", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 22, _global_instructions),
+    Section(SectionId.USER_IDENTITY, PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 10, _user_identity),
+    Section(SectionId.USER_PREFS, PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 20, _user_prefs),
+    Section(
+        SectionId.GLOBAL_INSTRUCTIONS,
+        PromptSlot.DYNAMIC_STABLE,
+        ALL_TIERS,
+        22,
+        _global_instructions,
+    ),
     # Comms only: the executor never opens a conversation. Stable rather than
     # volatile since it's a pure function of signup answers plus a slow
     # counter, byte-identical until the user outgrows it.
     Section(
-        "new_user_guidance",
+        SectionId.NEW_USER_GUIDANCE,
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.COMMS}),
         25,
         build_new_user_guidance_block,
     ),
     Section(
-        "workspace_session",
+        SectionId.WORKSPACE_SESSION,
         PromptSlot.DYNAMIC_STABLE,
         WORKER_TIERS,
         30,
         build_workspace_session_banner,
     ),
     Section(
-        "integrations_manifest",
+        SectionId.INTEGRATIONS_MANIFEST,
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.COMMS, AgentTier.EXECUTOR}),
         40,
         _integrations_manifest,
     ),
     Section(
-        "connected_devices",
+        SectionId.CONNECTED_DEVICES,
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.COMMS, AgentTier.EXECUTOR}),
         45,
@@ -263,40 +295,62 @@ SECTIONS: tuple[Section, ...] = (
     # Capability info, not retrieval: pure function of user + agent, Redis-
     # cached 12h (was re-read every worker call in the volatile slot). Same
     # once-per-change prefix-invalidation trade integrations_manifest makes.
-    Section("skills", PromptSlot.DYNAMIC_STABLE, WORKER_TIERS, 70, _skills),
+    Section(SectionId.SKILLS, PromptSlot.DYNAMIC_STABLE, WORKER_TIERS, 70, _skills),
     # Open approval pendings: ledger state that changes on user/agent decisions,
     # not per turn — same stability trade as integrations_manifest above.
     Section(
-        "open_pendings", PromptSlot.DYNAMIC_STABLE, WORKER_TIERS, 75, build_open_pendings_block
+        SectionId.OPEN_PENDINGS,
+        PromptSlot.DYNAMIC_STABLE,
+        WORKER_TIERS,
+        75,
+        build_open_pendings_block,
     ),
     # The memory core's documents, not the whole core: the agenda and the
     # activity journal are split off into their own volatile section, because
     # they are rewritten every turn and would otherwise churn the cached prefix.
-    Section("core_memory", PromptSlot.MEMORY_RECALL, ALL_TIERS, 5, build_core_memory_block),
+    Section(SectionId.CORE_MEMORY, PromptSlot.MEMORY_RECALL, ALL_TIERS, 5, build_core_memory_block),
     Section(
-        "agenda_activity", PromptSlot.MEMORY_RECALL, ALL_TIERS, 10, build_agenda_and_activity_block
+        SectionId.AGENDA_ACTIVITY,
+        PromptSlot.MEMORY_RECALL,
+        ALL_TIERS,
+        10,
+        build_agenda_and_activity_block,
     ),
-    Section("memory_recall", PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, build_memory_recall_block),
-    Section("gaia_knowledge", PromptSlot.MEMORY_RECALL, ALL_TIERS, 30, build_gaia_knowledge_block),
-    Section("tracked_todos", PromptSlot.MEMORY_RECALL, ALL_TIERS, 50, build_tracked_todos_block),
+    Section(
+        SectionId.MEMORY_RECALL, PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, build_memory_recall_block
+    ),
+    Section(
+        SectionId.GAIA_KNOWLEDGE,
+        PromptSlot.MEMORY_RECALL,
+        ALL_TIERS,
+        30,
+        build_gaia_knowledge_block,
+    ),
+    Section(
+        SectionId.TRACKED_TODOS, PromptSlot.MEMORY_RECALL, ALL_TIERS, 50, build_tracked_todos_block
+    ),
     # Live state of work running beside the chat, read once as the turn starts.
     Section(
-        "executor_status",
+        SectionId.EXECUTOR_STATUS,
         PromptSlot.MEMORY_RECALL,
         frozenset({AgentTier.COMMS}),
         54,
         build_executor_status_block,
     ),
     Section(
-        "browser_task",
+        SectionId.BROWSER_TASK,
         PromptSlot.MEMORY_RECALL,
         frozenset({AgentTier.COMMS}),
         56,
         build_browser_task_block,
     ),
-    Section("bg_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 60, build_background_banner),
+    Section(SectionId.BG_BANNER, PromptSlot.MEMORY_RECALL, ALL_TIERS, 60, build_background_banner),
     Section(
-        "active_todo_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 70, build_active_todo_banner
+        SectionId.ACTIVE_TODO_BANNER,
+        PromptSlot.MEMORY_RECALL,
+        ALL_TIERS,
+        70,
+        build_active_todo_banner,
     ),
 )
 

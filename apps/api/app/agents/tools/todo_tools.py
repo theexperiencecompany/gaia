@@ -105,6 +105,61 @@ def _with_plan(summary: str, todos: list[Todo]) -> str:
     return f"{summary}\n\n{plan}" if plan else summary
 
 
+def _by_id(todos: list[Todo]) -> dict[str, Todo]:
+    """Return the plan's tasks keyed by id."""
+    by_id: dict[str, Todo] = {}
+    for todo in todos:
+        task: Todo = todo
+        by_id[task["id"]] = task
+    return by_id
+
+
+def _batch_problems(updates: list[TaskUpdate], todo_map: dict[str, Todo]) -> list[str]:
+    """Return why a batch cannot apply, checked whole: a partial apply would land valid additions twice on retry."""
+    problems: list[str] = []
+    if not updates:
+        problems.append("the updates list was empty")
+    for entry in updates:
+        update: TaskUpdate = entry
+        task_id = update.get("task_id")
+        if task_id:
+            if task_id not in todo_map:
+                problems.append(f"no task with id '{task_id}' exists")
+            elif not update.get("status"):
+                problems.append(f"task '{task_id}' was given no status to apply")
+        elif not update.get("content"):
+            problems.append("an entry had neither a task_id to update nor content to add")
+    return problems
+
+
+def _apply_updates(updates: list[TaskUpdate], todos: list[Todo]) -> tuple[list[Todo], str]:
+    """Return the plan with a validated batch applied, and a summary of what changed."""
+    now = datetime.now(UTC).isoformat()
+    updated_todos: list[Todo] = [t.copy() for t in todos]
+    todo_map = _by_id(updated_todos)
+    summary_parts: list[str] = []
+    added: list[str] = []
+    for entry in updates:
+        update: TaskUpdate = entry
+        task_id = update.get("task_id")
+        content = update.get("content")
+        status = update.get("status")
+        if task_id:
+            if task_id in todo_map and status:
+                todo_map[task_id]["status"] = status
+                summary_parts.append(f"{task_id}→{status}")
+        elif content:
+            new_todo: Todo = Todo(
+                id=str(uuid4())[:8], content=content, status="pending", created_at=now
+            )
+            updated_todos.append(new_todo)
+            todo_map[new_todo["id"]] = new_todo
+            added.append(content)
+    if added:
+        summary_parts.append(f"added: {', '.join(added)}")
+    return updated_todos, "; ".join(summary_parts) if summary_parts else "no changes"
+
+
 def create_todo_tools(source: str = "executor", source_label: str | None = None) -> list[BaseTool]:
     """Create plan_tasks and update_tasks tools with `source` baked in.
 
@@ -168,31 +223,8 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         todos: Annotated[list[Todo], InjectedState("todos")],
     ) -> Command[str]:
         """Update task statuses and/or add new tasks in a single call."""
-        now = datetime.now(UTC).isoformat()
-        updated_todos: list[Todo] = [t.copy() for t in todos]
-        todo_map: dict[str, Todo] = {t["id"]: t for t in updated_todos}
-
-        summary_parts: list[str] = []
-        added: list[str] = []
-
-        # Validate the whole batch before applying any of it: a partial apply
-        # would make the model's retry non-idempotent (valid additions landing
-        # twice once it resends the corrected batch).
-        problems: list[str] = []
-        if not updates:
-            problems.append("the updates list was empty")
-        for entry in updates:
-            task_id = entry.get("task_id")
-            content = entry.get("content")
-            status = entry.get("status")
-            if task_id:
-                if task_id not in todo_map:
-                    problems.append(f"no task with id '{task_id}' exists")
-                elif not status:
-                    problems.append(f"task '{task_id}' was given no status to apply")
-            elif not content:
-                problems.append("an entry had neither a task_id to update nor content to add")
-
+        todo_map = _by_id(todos)
+        problems = _batch_problems(updates, todo_map)
         if problems:
             return Command(
                 update={
@@ -213,32 +245,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
                 }
             )
 
-        for entry in updates:
-            task_id = entry.get("task_id")
-            content = entry.get("content")
-            status = entry.get("status")
-
-            if task_id:
-                # Update existing task
-                if task_id in todo_map and status:
-                    todo_map[task_id]["status"] = status
-                    summary_parts.append(f"{task_id}→{status}")
-            elif content:
-                # Add new task
-                new_todo: Todo = Todo(
-                    id=str(uuid4())[:8],
-                    content=content,
-                    status="pending",
-                    created_at=now,
-                )
-                updated_todos.append(new_todo)
-                todo_map[new_todo["id"]] = new_todo
-                added.append(content)
-
-        if added:
-            summary_parts.append(f"added: {', '.join(added)}")
-
-        summary = "; ".join(summary_parts) if summary_parts else "no changes"
+        updated_todos, summary = _apply_updates(updates, todos)
         _emit_todo_progress(updated_todos, source, source_label)
 
         return Command(

@@ -48,8 +48,8 @@ async def build_executor_status_block(ctx: SectionContext) -> str:
             if progress:
                 text = f"{text} What it has done so far:\n{progress}"
         return text
-    except Exception as e:
-        log.error(f"{LogTag.AGENT} Executor status unavailable", error_type=type(e).__name__)
+    except Exception:
+        log.error(f"{LogTag.AGENT} Executor status unavailable")
         return ""
 
 
@@ -83,10 +83,8 @@ async def build_browser_task_block(ctx: SectionContext) -> str:
     )
     try:
         tasks = await chat_browser_tasks(turn)
-    except Exception as e:
-        log.error(
-            f"{LogTag.BROWSER} Browser task status unavailable", error_type=type(e).__name__
-        )
+    except Exception:
+        log.error(f"{LogTag.BROWSER} Browser task status unavailable")
         return ""
     if not tasks.running:
         return ""

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from langchain_core.messages import SystemMessage
 
 from app.agents.context.section_context import SectionContext
-from app.agents.context.sections import Section, sections_for
+from app.agents.context.sections import Section, SectionId, sections_for
 from app.agents.context.slots import (
     DYNAMIC_CONTEXT_MARKER,
     LEGACY_DYNAMIC_MARKER,
@@ -67,7 +67,7 @@ def _bounded(volatile_text: str) -> str:
     )
 
 
-async def _render_section(section: Section, ctx: SectionContext) -> tuple[str, str]:
+async def _render_section(section: Section, ctx: SectionContext) -> tuple[SectionId, str]:
     """Return a section's id alongside its rendered text.
 
     The id travels WITH the result so nothing downstream has to re-derive
@@ -116,10 +116,10 @@ async def _gather_sections(ctx: SectionContext) -> AssembledContext:
         dynamic_context={
             "tier": ctx.tier.value,
             "source": ctx.source or "web",
-            "has_core_memory": bool(rendered.get("core_memory")),
-            "has_memories": bool(rendered.get("memory_recall")),
-            "has_gaia_knowledge": bool(rendered.get("gaia_knowledge")),
-            "has_skills": bool(rendered.get("skills")),
+            "has_core_memory": bool(rendered.get(SectionId.CORE_MEMORY)),
+            "has_memories": bool(rendered.get(SectionId.MEMORY_RECALL)),
+            "has_gaia_knowledge": bool(rendered.get(SectionId.GAIA_KNOWLEDGE)),
+            "has_skills": bool(rendered.get(SectionId.SKILLS)),
             "has_active_todo": bool(ctx.active_todo_id),
             "execution_mode": ctx.execution_mode,
             "stable_chars": len(stable_text),
