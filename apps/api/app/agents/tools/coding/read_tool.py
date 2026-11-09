@@ -45,6 +45,9 @@ MAX_LIMIT = 10_000
 # Native-dev sandbox-read fallback slurps the whole file into memory (no
 # server-side range read), so cap it to avoid OOMing the worker on a huge file.
 MAX_SANDBOX_READ_BYTES = 10 * 1024 * 1024  # 10 MB
+# A page also stops at this many characters (about 25k tokens): a line can be a
+# whole record, and 400 JSONL lines of email came back as 1.2M characters.
+MAX_READ_OUTPUT_CHARS = 100_000
 
 
 @dataclass(frozen=True)
@@ -255,6 +258,23 @@ def _format_text_read(
     return _format_read(abs_path, sliced, len(all_lines), offset, limit, session_id)
 
 
+def _within_output_cap(numbered: list[str]) -> tuple[list[str], bool]:
+    """The leading numbered lines within MAX_READ_OUTPUT_CHARS, and whether any were held back.
+
+    A first line longer than the cap is cut, so a page always advances.
+    """
+    kept: list[str] = []
+    used = 0
+    for entry in numbered:
+        if used + len(entry) > MAX_READ_OUTPUT_CHARS:
+            if not kept:
+                kept.append(f"{entry[:MAX_READ_OUTPUT_CHARS]} ...[line cut]")
+            return kept, True
+        kept.append(entry)
+        used += len(entry) + 1
+    return kept, False
+
+
 def _format_read(
     abs_path: str,
     lines: list[str],
@@ -263,12 +283,19 @@ def _format_read(
     limit: int,
     session_id: str | None,
 ) -> str:
-    """Number the sliced lines and append a paging footer (shared by both paths)."""
+    """Number the sliced lines, stop at MAX_READ_OUTPUT_CHARS, and append a paging footer."""
     start, end = page_bounds(offset, limit)
-    numbered = "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(lines))
+    shown, capped = _within_output_cap([f"{start + i:>6}\t{line}" for i, line in enumerate(lines)])
+    numbered = "\n".join(shown)
 
     footer = ""
-    if total_lines > end:
+    if capped:
+        last = start + len(shown) - 1
+        footer = (
+            f"\n\n... [showing lines {start}-{last} of {total_lines}, output capped at "
+            f"{MAX_READ_OUTPUT_CHARS} characters; call again with offset={last + 1} for more]"
+        )
+    elif total_lines > end:
         footer = (
             f"\n\n... [showing lines {start}-{min(end, total_lines)} of "
             f"{total_lines}; call again with offset={end + 1} for more]"
@@ -279,7 +306,7 @@ def _format_read(
             "file_data": {
                 "operation": "read",
                 "path": abs_path,
-                "lines_returned": len(lines),
+                "lines_returned": len(shown),
             }
         },
         session_id=session_id,

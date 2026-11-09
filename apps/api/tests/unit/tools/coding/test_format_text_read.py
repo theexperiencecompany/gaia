@@ -77,3 +77,29 @@ def test_lone_carriage_return_is_a_line_break() -> None:
     out = _format_text_read("/workspace/x", "a\rb\rc", 0, 2000, None)
     assert len(_numbered_lines(out)) == 3
     assert "\r" not in out
+
+
+def test_a_page_of_long_lines_stops_at_the_output_cap_and_offers_the_next_offset() -> None:
+    """Regression: 400 JSONL lines of whole emails came back as 1.2M chars (a 386k-token call)."""
+    from app.agents.tools.coding import read_tool
+
+    line = "x" * 3_000
+    text = "\n".join(f"{index}{line}" for index in range(400))
+
+    out = read_tool._format_text_read("/workspace/mail.jsonl", text, 0, 400, None)
+
+    shown = _numbered_lines(out)
+    assert len(out) <= read_tool.MAX_READ_OUTPUT_CHARS + 200
+    assert 0 < len(shown) < 400
+    assert f"offset={len(shown) + 1}" in out
+
+
+def test_a_single_line_longer_than_the_cap_is_cut_and_paging_still_advances() -> None:
+    from app.agents.tools.coding import read_tool
+
+    text = "y" * (read_tool.MAX_READ_OUTPUT_CHARS * 2) + "\nnext"
+
+    out = read_tool._format_text_read("/workspace/one.jsonl", text, 0, 10, None)
+
+    assert len(out) <= read_tool.MAX_READ_OUTPUT_CHARS + 200
+    assert "offset=2" in out

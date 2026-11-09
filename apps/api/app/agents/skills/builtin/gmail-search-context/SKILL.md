@@ -68,10 +68,12 @@ Mine the file with `query_json` rather than reading it, e.g.
 `query_json(path=<path>, where=[{"field":"from","op":"contains","value":"github"}], fields=["subject"])`,
 or `query_json(path=<path>, group_count_by="from_address")` to count per sender; the body
 is searchable too (`{"field":"body","op":"contains","value":"invoice"}`). Use `grep` for
-free-text matches. When every message needs reading, split the file's lines across
+free-text matches. Each line is one whole message with its body, so narrow first: pull
+`id`, `from`, `subject` and `time` for the whole file, then read bodies only for the
+messages that need it. When every message needs reading, split the file's lines across
 parallel `spawn_subagent` calls in ONE turn, each told to `read(<path>, offset=<line>,
-limit=<count>)` its range and return only a distilled result, never raw bodies; then
-merge, deduping by `threadId`/`id`.
+limit=<count>)` its range a few dozen lines at a time and return only a distilled result,
+never raw bodies; then merge, deduping by `threadId`/`id`.
 
 ## Step 3: Progressive Search (when a query comes back empty)
 1. Start specific: `"quarterly report from:finance@company.com after:2025/01/01 has:attachment"`
