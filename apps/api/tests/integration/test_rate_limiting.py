@@ -10,7 +10,7 @@ Uses fakeredis so no external Redis instance is required.
 """
 
 import asyncio
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timezone
 from unittest.mock import AsyncMock, patch
@@ -69,14 +69,19 @@ def frozen_time(iso: str) -> Generator[datetime, None, None]:
         yield frozen
 
 
-def _make_limiter_with_fake_redis() -> tuple[TieredRateLimiter, fakeredis.aioredis.FakeRedis]:
-    """Create a TieredRateLimiter backed by fakeredis."""
+def _detail(exc: RateLimitExceededException) -> dict[str, str]:
+    """Return the 429's detail, which RateLimitExceededException always builds as a dict."""
+    assert isinstance(exc.detail, dict)
+    return exc.detail
+
+
+@contextmanager
+def _limiter_with_fake_redis() -> Iterator[tuple[TieredRateLimiter, fakeredis.aioredis.FakeRedis]]:
+    """Yield a TieredRateLimiter whose redis_cache is a duck-typed stand-in over fakeredis."""
     fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     limiter = TieredRateLimiter()
-    # Replace the redis_cache proxy with a duck-typed object that exposes
-    # the same .get / .redis interface the limiter relies on.
-    limiter.redis = _FakeRedisCache(fake_redis)
-    return limiter, fake_redis
+    with patch.object(limiter, "redis", _FakeRedisCache(fake_redis)):
+        yield limiter, fake_redis
 
 
 class _FakeRedisCache:
@@ -199,8 +204,9 @@ class TestTieredRateLimiterCheckAndIncrement:
     """Test the core check_and_increment method with fakeredis."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, self.fake_redis):
+            yield
 
     async def test_first_call_increments_counter(self) -> None:
         with (
@@ -261,8 +267,8 @@ class TestTieredRateLimiterCheckAndIncrement:
                 )
 
         assert exc_info.value.status_code == 429
-        assert exc_info.value.detail["feature"] == "generate_image"
-        assert exc_info.value.detail["code"] == "rate_limit_exceeded"
+        assert _detail(exc_info.value)["feature"] == "generate_image"
+        assert _detail(exc_info.value)["code"] == "rate_limit_exceeded"
 
     async def test_premium_user_gets_higher_limits(self) -> None:
         """Pro user should be able to make more requests than free."""
@@ -334,8 +340,9 @@ class TestRateLimitRecovery:
     """Verify that limits reset when the time window rolls over."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, self.fake_redis):
+            yield
 
     async def test_daily_limit_resets_next_day(self) -> None:
         """Exhaust limit on day 1, then advance clock to day 2 and verify reset."""
@@ -402,8 +409,9 @@ class TestPerFeatureIndependence:
     """Verify that rate limit counters are per-feature, not global."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, self.fake_redis):
+            yield
 
     async def test_exhausting_one_feature_does_not_affect_another(self) -> None:
         with (
@@ -468,18 +476,18 @@ class TestRateLimitExceptionDetail:
     def test_basic_exception_detail(self) -> None:
         exc = RateLimitExceededException(feature="generate_image")
         assert exc.status_code == 429
-        assert exc.detail["feature"] == "generate_image"
-        assert exc.detail["code"] == "rate_limit_exceeded"
+        assert _detail(exc)["feature"] == "generate_image"
+        assert _detail(exc)["code"] == "rate_limit_exceeded"
 
     def test_exception_with_plan_required(self) -> None:
         exc = RateLimitExceededException(feature="generate_image", plan_required="pro")
-        assert exc.detail["plan_required"] == "pro"
-        assert "Upgrade to Pro" in exc.detail["message"]
+        assert _detail(exc)["plan_required"] == "pro"
+        assert "Upgrade to Pro" in _detail(exc)["message"]
 
     def test_exception_with_reset_time(self) -> None:
         reset = datetime(2026, 4, 2, 0, 0, 0, tzinfo=UTC)
         exc = RateLimitExceededException(feature="generate_image", reset_time=reset)
-        assert exc.detail["reset_time"] == reset.isoformat()
+        assert _detail(exc)["reset_time"] == reset.isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -492,8 +500,9 @@ class TestConcurrentRequests:
     """Verify that concurrent calls increment the counter atomically."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, self.fake_redis):
+            yield
 
     async def test_concurrent_increments_are_atomic(self) -> None:
         """Fire exactly the daily allowance concurrently; every one succeeds and the counter lands precisely on the limit."""
@@ -564,8 +573,9 @@ class TestRedisKeyStructure:
     """Verify Redis key format used by the limiter."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, _ = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, _):
+            yield
 
     def test_daily_key_format(self) -> None:
         with frozen_time("2026-04-01T14:00:00"):
@@ -595,8 +605,9 @@ class TestPlanGatedFeatures:
     """Verify that the exception indicates when a plan upgrade is needed."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, self.fake_redis):
+            yield
 
     async def test_rate_limit_exceeded_on_free_suggests_upgrade(self) -> None:
         """When a free user is rate-limited on a feature with a 0 free limit, the exception includes plan_required='pro'."""
@@ -619,4 +630,4 @@ class TestPlanGatedFeatures:
 
         # Free daily limit for generate_image is 1 (not 0), so plan_required
         # should be None (it is only set when the free limit for that period is 0).
-        assert exc_info.value.detail.get("plan_required") is None
+        assert _detail(exc_info.value).get("plan_required") is None

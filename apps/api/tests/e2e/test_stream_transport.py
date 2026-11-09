@@ -18,7 +18,7 @@ HTTP request and still runs to completion and persists.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, MutableMapping
 import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -77,10 +77,8 @@ def _pro_subscription() -> Iterator[None]:
 async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
     """Point the module singleton at an in-process Redis with real Streams."""
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    original = redis_cache.redis
-    redis_cache.redis = client
-    yield client
-    redis_cache.redis = original
+    with patch.object(redis_cache, "redis", client):
+        yield client
     await client.flushall()
     await client.connection_pool.disconnect()
 
@@ -544,7 +542,7 @@ class TestClientDisconnect:
             await disconnect.wait()
             return {"type": "http.disconnect"}
 
-        async def send(message: dict[str, Any]) -> None:
+        async def send(message: MutableMapping[str, Any]) -> None:
             if message["type"] == "http.response.start":
                 headers.update({k.decode().lower(): v.decode() for k, v in message["headers"]})
             elif message["type"] == "http.response.body" and message.get("body"):
