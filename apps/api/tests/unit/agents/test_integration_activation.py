@@ -684,6 +684,7 @@ class TestActivateIntegrationTool:
         """A follow-up or a retry after a failed call must not re-send 40-odd schemas still in history."""
         activate_tools = AsyncMock(return_value=ActivatedTools(40, ["query_json"], [], "DOCS"))
         with (
+            patch(f"{_MOD}.register_integration_tools", new=AsyncMock()),
             patch(f"{_MOD}._activate_tools", new=activate_tools),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="CTX")),
         ):
@@ -705,12 +706,40 @@ class TestActivateIntegrationTool:
         assert self._bound(again) == []
         assert event["activation"] == {"integration": "gmail", "already_active": True}
 
+    @pytest.mark.regression
+    async def test_an_already_active_reply_registers_its_tools_in_a_fresh_process(
+        self, connected: AsyncMock
+    ) -> None:
+        """Regression: on a restarted process or another replica the reply skipped registration."""
+        activate_tools = AsyncMock(return_value=ActivatedTools(40, ["query_json"], [], "DOCS"))
+        register = AsyncMock(return_value="gmail")
+        with (
+            patch(f"{_MOD}._activate_tools", new=activate_tools),
+            patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="CTX")),
+        ):
+            call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="gmail")
+            first = await activate_integration.ainvoke(call, run_cfg)
+            call, run_cfg = self._invoke(
+                {"user_id": "u1"},
+                history=self._history_after(first, "gmail", "call1"),
+                call_id="call2",
+                integration_id="gmail",
+            )
+            with patch(f"{_MOD}.register_integration_tools", new=register):
+                again = await activate_integration.ainvoke(call, run_cfg)
+
+        register.assert_awaited_once_with(connected.return_value)
+        assert self._text(again) == integration_activation.ALREADY_ACTIVE_REPLY.format(
+            integration_id="gmail"
+        )
+
     async def test_an_integration_preloaded_into_a_spawn_counts_as_active(
         self, connected: AsyncMock
     ) -> None:
         """A spawn that calls activate_integration on what it was spawned with must not reload it."""
         activate_tools = AsyncMock(return_value=ActivatedTools(40, ["query_json"], [], "DOCS"))
         with (
+            patch(f"{_MOD}.register_integration_tools", new=AsyncMock()),
             patch(f"{_MOD}._activate_tools", new=activate_tools),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="CTX")),
         ):
@@ -1118,3 +1147,11 @@ def test_another_tools_artifact_never_reads_as_an_activation() -> None:
     )
 
     assert integration_activation._still_active([foreign], "gmail") is False
+
+
+def test_only_registry_backed_integrations_are_registered() -> None:
+    custom = CustomMcpSubagent(id="abc123", name="Wiki", managed_by="mcp")
+    gmail = _subagent()
+
+    assert integration_activation._registry_backed(custom) is None
+    assert integration_activation._registry_backed(gmail) is gmail

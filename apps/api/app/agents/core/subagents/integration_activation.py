@@ -375,11 +375,19 @@ def _activation_header(integration_id: str, activated: ActivatedTools, stamped: 
     return " ".join(header_parts) + "\n\n"
 
 
+def _registry_backed(target: Subagent | CustomMcpSubagent) -> Subagent | None:
+    """Target when its tools live in the global registry; None when its MCP server issues them per user."""
+    if isinstance(target, CustomMcpSubagent) or is_per_user_mcp(target):
+        return None
+    return target
+
+
 async def _connect_and_activate(
     target: Subagent | CustomMcpSubagent, user_id: str | None
 ) -> ActivatedTools | str:
     """Activate target's tools, or return the reply text when it cannot be activated."""
-    if isinstance(target, CustomMcpSubagent) or is_per_user_mcp(target):
+    registry_target = _registry_backed(target)
+    if registry_target is None:
         # The server issues these tools per user: they never enter the global
         # registry, so they are connected in the user's MCP client and run via execute.
         if not user_id:
@@ -398,10 +406,10 @@ async def _connect_and_activate(
             return await _mcp_failure_text(target, user_id, e)
     # Registering an unconnected integration's tools would bind tools that fail at
     # call time with an auth error, and the check is what renders the connect card.
-    if target.managed_by not in ("mcp", "internal") and user_id:
-        if connect_prompt := await check_integration_connection(target.id, user_id):
+    if registry_target.managed_by not in ("mcp", "internal") and user_id:
+        if connect_prompt := await check_integration_connection(registry_target.id, user_id):
             return connect_prompt
-    return await _activate_tools(target, user_id)
+    return await _activate_tools(registry_target, user_id)
 
 
 def _still_active(messages: Sequence[AnyMessage], integration_id: str) -> bool:
@@ -468,6 +476,10 @@ async def load_integration(
 
     if _still_active(history, target.id):
         log.set(activation={"integration": target.id, "already_active": True})
+        # The reply is in the thread, but this process may not hold the tools (a
+        # restart, another replica); registering is a no-op when it already does.
+        if registry_target := _registry_backed(target):
+            await register_integration_tools(registry_target)
         return IntegrationLoad(text=ALREADY_ACTIVE_REPLY.format(integration_id=target.id))
 
     activated = await _connect_and_activate(target, user_id)
