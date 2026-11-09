@@ -58,10 +58,16 @@ from typing import Any
 
 DEFAULT_REPLY = "ok (llm-stub)"
 CALL_EXECUTOR_TOOL = "call_executor"
-# call_executor requires acceptance_criteria, so a scripted hand-off has to send
-# something. Exported rather than inlined so the stub's tests pin the real value
-# instead of a copy that can drift.
+# call_executor's required args beyond the task, so a scripted hand-off is a call
+# the real tool accepts. Exported rather than inlined so the stub's tests pin the
+# real value instead of a copy that can drift; the API suite validates the whole
+# hand-off against call_executor's own schema.
 SCRIPTED_CRITERIA = ["scripted directives executed"]
+SCRIPTED_HAND_OFF_ARGS: dict[str, Any] = {
+    "acceptance_criteria": SCRIPTED_CRITERIA,
+    "desired_outcome": "the scripted directives run",
+    "time_horizon": "one_shot",
+}
 # The bigtool executor binds tools at inference: when a scripted tool is not yet
 # bound, the stub first emits retrieve_tools(exact_tool_names=[name]) so the
 # graph binds it, then emits the tool itself on the next invocation.
@@ -483,10 +489,8 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
         # Only the executor tier runs a tool itself, so the execute/retrieve
         # fallbacks live in _resolve_work. Comms forwards and is done.
         if nxt.name not in available_tools and CALL_EXECUTOR_TOOL in available_tools:
-            # acceptance_criteria became required with the structured handoff.
             return ToolCallResponse(
-                name=CALL_EXECUTOR_TOOL,
-                args={"task": task_text, "acceptance_criteria": SCRIPTED_CRITERIA},
+                name=CALL_EXECUTOR_TOOL, args={"task": task_text, **SCRIPTED_HAND_OFF_ARGS}
             )
         return ToolCallResponse(name=nxt.name, args=nxt.args)
     return _terminal(closing)

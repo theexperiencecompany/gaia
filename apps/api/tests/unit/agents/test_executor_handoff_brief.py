@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from pydantic import BaseModel
 import pytest
 
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
@@ -333,6 +334,22 @@ class TestTheSimStubRunsABriefsScriptOnce:
             name="create_reminder", args={"title": "stretch"}
         )
         assert stub.resolve_response(after_one, tools) == stub.SayResponse(text="Reminder set!")
+
+
+@pytest.mark.regression
+def test_the_stubs_scripted_hand_off_is_a_call_the_real_tool_accepts() -> None:
+    """Regression: call_executor gained required args the stub never sent, so --sim and the browser stack started nothing."""
+    stub = load_llm_stub_module("directives")
+    script = '[[tool:create_reminder {"title": "x"}]] [[say:ok]]'
+
+    hand_off = stub.resolve_response(
+        [{"role": "user", "content": script}], frozenset({stub.CALL_EXECUTOR_TOOL})
+    )
+
+    schema = call_executor.tool_call_schema
+    assert isinstance(schema, type) and issubclass(schema, BaseModel)
+    assert hand_off.name == call_executor.name
+    schema.model_validate(hand_off.args)
 
 
 if __name__ == "__main__":
