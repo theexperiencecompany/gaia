@@ -100,7 +100,8 @@ def test_a_single_line_longer_than_the_cap_is_cut_and_paging_still_advances() ->
 
     out = read_tool._format_text_read("/workspace/one.jsonl", text, 0, 10, None)
 
-    assert len(out) <= read_tool.MAX_READ_OUTPUT_CHARS + 200
+    assert len(out) <= read_tool.MAX_READ_OUTPUT_CHARS + 300
+    assert "...[line cut: the rest of this line is not shown; use grep or query_json for it]" in out
     assert "offset=2" in out
 
 

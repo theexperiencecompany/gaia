@@ -73,7 +73,10 @@ free-text matches. Each line is one whole message with its body, so narrow first
 messages that need it. When every message needs reading, split the file's lines across
 parallel `spawn_subagent` calls in ONE turn, each told to `read(<path>, offset=<line>,
 limit=<count>)` its range a few dozen lines at a time and return only a distilled result,
-never raw bodies; then merge, deduping by `threadId`/`id`.
+never raw bodies; then merge, deduping by `id` and grouping by `threadId`. Without
+`spawn_subagent` (you are a subagent), read your own range the same way, and report any
+lines you could not cover. A message cut at the read cap ("[line cut]") was not fully read:
+pull its `body` with `query_json` on its `id`, or say it was not covered.
 
 ## Step 3: Progressive Search (when a query comes back empty)
 1. Start specific: `"quarterly report from:finance@company.com after:2025/01/01 has:attachment"`

@@ -268,7 +268,10 @@ def _within_output_cap(numbered: list[str]) -> tuple[list[str], bool]:
     for entry in numbered:
         if used + len(entry) > MAX_READ_OUTPUT_CHARS:
             if not kept:
-                kept.append(f"{entry[:MAX_READ_OUTPUT_CHARS]} ...[line cut]")
+                kept.append(
+                    f"{entry[:MAX_READ_OUTPUT_CHARS]} ...[line cut: the rest of this line is not "
+                    "shown; use grep or query_json for it]"
+                )
             return kept, True
         kept.append(entry)
         used += len(entry) + 1
