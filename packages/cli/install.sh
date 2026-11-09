@@ -4,12 +4,58 @@ set -e
 # GAIA CLI Installer
 # Usage: curl -fsSL https://heygaia.io/install.sh | sh
 # Beta:  curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh
+# A CLI build that is not on npm (`mise run cli:try` serves one):
+#        curl -fsSL http://<host>/install.sh | GAIA_CLI_TARBALL=http://<host>/heygaia-cli.tgz sh
+# When the package manager's bin folder is not on your PATH (Node.js installed
+# here through nvm, say), a small gaia launcher goes into GAIA_BIN_DIR
+# (default /usr/local/bin, with sudo when it needs it).
 #
 # NOTE: Do not rename this file. The web app serves it at heygaia.io/install.sh
 # by fetching it from GitHub using this exact path: packages/cli/install.sh
 
-# Colour only on a terminal that wants it.
-if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+# The colour level (0-3) the gaia CLI paints at, by the same rule as its
+# src/lib/colour-level.ts (a test holds the two together): TERM decides when
+# COLORTERM is missing, as it is over SSH. $1 is "tty" when stdout is a terminal.
+colour_level() {
+  if [ -n "${FORCE_COLOR+set}" ]; then
+    case "$FORCE_COLOR" in
+      '' | true | 1) COLOUR_LEVEL=1 ;;
+      false | 0) COLOUR_LEVEL=0 ;;
+      2 | 3) COLOUR_LEVEL=$FORCE_COLOR ;;
+      *)
+        printf 'FORCE_COLOR="%s" is not one of 0-3, true or false\n' "$FORCE_COLOR" >&2
+        exit 1
+        ;;
+    esac
+    return 0
+  fi
+  COLOUR_LEVEL=0
+  if [ -n "${NO_COLOR:-}" ] || [ "$1" != tty ] || [ "${TERM:-}" = dumb ]; then
+    return 0
+  fi
+  case "${COLORTERM:-}" in
+    truecolor | 24bit) COLOUR_LEVEL=3; return 0 ;;
+  esac
+  case "${TERM_PROGRAM:-}" in
+    Apple_Terminal) COLOUR_LEVEL=2; return 0 ;;
+    iTerm.app | WezTerm | vscode | ghostty) COLOUR_LEVEL=3; return 0 ;;
+  esac
+  case "${TERM:-}" in
+    *-256 | *-256color | *-direct | *-truecolor | tmux* | xterm-kitty | xterm-ghostty | alacritty* | wezterm* | foot* | contour*)
+      COLOUR_LEVEL=3 ;;
+    screen* | xterm* | vt100* | vt220* | rxvt* | *color* | *ansi* | *cygwin* | *linux*)
+      COLOUR_LEVEL=1 ;;
+    *)
+      if [ -n "${COLORTERM:-}" ]; then COLOUR_LEVEL=1; fi ;;
+  esac
+}
+
+# Read here, not inside $(…), where stdout is always a pipe.
+STDOUT_TTY=""
+if [ -t 1 ]; then STDOUT_TTY=tty; fi
+colour_level "$STDOUT_TTY"
+
+if [ "$COLOUR_LEVEL" -gt 0 ]; then
   BOLD='\033[1m'
   DIM='\033[2m'
   GREEN='\033[0;32m'
@@ -20,6 +66,106 @@ if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
 else
   BOLD='' DIM='' GREEN='' CYAN='' YELLOW='' RED='' NC=''
 fi
+
+# BEGIN GENERATED LOGO (packages/cli/scripts/bake-logo.mjs; do not edit)
+LOGO_WIDTH=26
+LOGO_TRUECOLOR='      \033[38;2;5;156;218m▄▄▄\033[39m\033[48;2;5;156;218m        \033[49m\033[38;2;5;156;218m▄▄▄\033[39m      
+    \033[38;2;15;83;124m▄\033[39m\033[38;2;5;156;218m\033[48;2;15;83;124m▀▀\033[49m\033[39m\033[48;2;15;83;124m  \033[49m\033[38;2;5;156;218m\033[48;2;15;83;124m▀▀▀\033[49m\033[39m\033[48;2;5;156;218m  \033[49m\033[38;2;5;156;218m\033[48;2;2;189;255m▀▀▀\033[49m\033[39m\033[48;2;2;189;255m  \033[49m\033[38;2;5;156;218m\033[48;2;2;189;255m▀▀\033[49m\033[39m\033[38;2;2;189;255m▄\033[39m    
+   \033[48;2;15;83;124m       \033[49m\033[38;2;15;83;124m▀▀▀\033[39m \033[38;2;2;189;255m▀▀\033[39m\033[48;2;2;189;255m       \033[49m   
+ \033[38;2;2;189;255m▄▄▄\033[39m                  \033[38;2;15;83;124m▄▄▄\033[39m 
+\033[38;2;5;156;218m▄\033[39m\033[48;2;2;189;255m    \033[49m                \033[48;2;15;83;124m    \033[49m\033[38;2;5;156;218m▄\033[39m
+\033[48;2;5;156;218m \033[49m\033[38;2;2;189;255m\033[48;2;5;156;218m▀\033[49m\033[39m\033[48;2;2;189;255m    \033[49m              \033[48;2;15;83;124m    \033[49m\033[38;2;15;83;124m\033[48;2;5;156;218m▀\033[49m\033[39m\033[48;2;5;156;218m \033[49m
+\033[48;2;5;156;218m  \033[49m\033[38;2;2;189;255m\033[48;2;5;156;218m▀▀\033[49m\033[39m\033[48;2;2;189;255m  \033[49m              \033[48;2;15;83;124m   \033[49m\033[38;2;15;83;124m\033[48;2;5;156;218m▀\033[49m\033[39m\033[48;2;5;156;218m  \033[49m
+ \033[48;2;5;156;218m    \033[49m\033[38;2;2;189;255m\033[48;2;5;156;218m▀\033[49m\033[39m\033[38;2;15;83;124m▄▄\033[39m           \033[38;2;2;189;255m▄\033[39m\033[38;2;15;83;124m\033[48;2;5;156;218m▀\033[49m\033[39m\033[48;2;5;156;218m    \033[49m 
+  \033[48;2;5;156;218m    \033[49m\033[48;2;15;83;124m   \033[49m\033[38;2;15;83;124m▄\033[39m      \033[38;2;2;189;255m▄\033[39m\033[48;2;2;189;255m   \033[49m\033[48;2;5;156;218m    \033[49m  
+   \033[38;2;5;156;218m▀\033[39m\033[48;2;5;156;218m  \033[49m\033[38;2;15;83;124m\033[48;2;5;156;218m▀\033[49m\033[39m\033[48;2;15;83;124m    \033[49m\033[38;2;15;83;124m▄\033[39m  \033[38;2;2;189;255m▄\033[39m\033[48;2;2;189;255m    \033[49m\033[38;2;2;189;255m\033[48;2;5;156;218m▀\033[49m\033[39m\033[48;2;5;156;218m  \033[49m\033[38;2;5;156;218m▀\033[39m   
+     \033[38;2;5;156;218m▀▀\033[39m\033[48;2;5;156;218m \033[49m\033[38;2;15;83;124m\033[48;2;5;156;218m▀\033[49m\033[39m\033[48;2;15;83;124m   \033[49m  \033[48;2;2;189;255m   \033[49m\033[38;2;2;189;255m\033[48;2;5;156;218m▀\033[49m\033[39m\033[48;2;5;156;218m \033[49m\033[38;2;5;156;218m▀▀\033[39m     '
+LOGO_ANSI256='      \033[38;5;38m▄▄▄\033[39m\033[48;5;38m        \033[49m\033[38;5;38m▄▄▄\033[39m      
+    \033[38;5;24m▄\033[39m\033[38;5;38m\033[48;5;24m▀▀\033[49m\033[39m\033[48;5;24m  \033[49m\033[38;5;38m\033[48;5;24m▀▀▀\033[49m\033[39m\033[48;5;38m  \033[49m\033[38;5;38m\033[48;5;39m▀▀▀\033[49m\033[39m\033[48;5;39m  \033[49m\033[38;5;38m\033[48;5;39m▀▀\033[49m\033[39m\033[38;5;39m▄\033[39m    
+   \033[48;5;24m       \033[49m\033[38;5;24m▀▀▀\033[39m \033[38;5;39m▀▀\033[39m\033[48;5;39m       \033[49m   
+ \033[38;5;39m▄▄▄\033[39m                  \033[38;5;24m▄▄▄\033[39m 
+\033[38;5;38m▄\033[39m\033[48;5;39m    \033[49m                \033[48;5;24m    \033[49m\033[38;5;38m▄\033[39m
+\033[48;5;38m \033[49m\033[38;5;39m\033[48;5;38m▀\033[49m\033[39m\033[48;5;39m    \033[49m              \033[48;5;24m    \033[49m\033[38;5;24m\033[48;5;38m▀\033[49m\033[39m\033[48;5;38m \033[49m
+\033[48;5;38m  \033[49m\033[38;5;39m\033[48;5;38m▀▀\033[49m\033[39m\033[48;5;39m  \033[49m              \033[48;5;24m   \033[49m\033[38;5;24m\033[48;5;38m▀\033[49m\033[39m\033[48;5;38m  \033[49m
+ \033[48;5;38m    \033[49m\033[38;5;39m\033[48;5;38m▀\033[49m\033[39m\033[38;5;24m▄▄\033[39m           \033[38;5;39m▄\033[39m\033[38;5;24m\033[48;5;38m▀\033[49m\033[39m\033[48;5;38m    \033[49m 
+  \033[48;5;38m    \033[49m\033[48;5;24m   \033[49m\033[38;5;24m▄\033[39m      \033[38;5;39m▄\033[39m\033[48;5;39m   \033[49m\033[48;5;38m    \033[49m  
+   \033[38;5;38m▀\033[39m\033[48;5;38m  \033[49m\033[38;5;24m\033[48;5;38m▀\033[49m\033[39m\033[48;5;24m    \033[49m\033[38;5;24m▄\033[39m  \033[38;5;39m▄\033[39m\033[48;5;39m    \033[49m\033[38;5;39m\033[48;5;38m▀\033[49m\033[39m\033[48;5;38m  \033[49m\033[38;5;38m▀\033[39m   
+     \033[38;5;38m▀▀\033[39m\033[48;5;38m \033[49m\033[38;5;24m\033[48;5;38m▀\033[49m\033[39m\033[48;5;24m   \033[49m  \033[48;5;39m   \033[49m\033[38;5;39m\033[48;5;38m▀\033[49m\033[39m\033[48;5;38m \033[49m\033[38;5;38m▀▀\033[39m     '
+LOGO_ANSI16='      \033[36m▄▄▄\033[39m\033[46m        \033[49m\033[36m▄▄▄\033[39m      
+    \033[34m▄\033[39m\033[36m\033[44m▀▀\033[49m\033[39m\033[44m  \033[49m\033[36m\033[44m▀▀▀\033[49m\033[39m\033[46m  \033[49m\033[36m\033[106m▀▀▀\033[49m\033[39m\033[106m  \033[49m\033[36m\033[106m▀▀\033[49m\033[39m\033[96m▄\033[39m    
+   \033[44m       \033[49m\033[34m▀▀▀\033[39m \033[96m▀▀\033[39m\033[106m       \033[49m   
+ \033[96m▄▄▄\033[39m                  \033[34m▄▄▄\033[39m 
+\033[36m▄\033[39m\033[106m    \033[49m                \033[44m    \033[49m\033[36m▄\033[39m
+\033[46m \033[49m\033[96m\033[46m▀\033[49m\033[39m\033[106m    \033[49m              \033[44m    \033[49m\033[34m\033[46m▀\033[49m\033[39m\033[46m \033[49m
+\033[46m  \033[49m\033[96m\033[46m▀▀\033[49m\033[39m\033[106m  \033[49m              \033[44m   \033[49m\033[34m\033[46m▀\033[49m\033[39m\033[46m  \033[49m
+ \033[46m    \033[49m\033[96m\033[46m▀\033[49m\033[39m\033[34m▄▄\033[39m           \033[96m▄\033[39m\033[34m\033[46m▀\033[49m\033[39m\033[46m    \033[49m 
+  \033[46m    \033[49m\033[44m   \033[49m\033[34m▄\033[39m      \033[96m▄\033[39m\033[106m   \033[49m\033[46m    \033[49m  
+   \033[36m▀\033[39m\033[46m  \033[49m\033[34m\033[46m▀\033[49m\033[39m\033[44m    \033[49m\033[34m▄\033[39m  \033[96m▄\033[39m\033[106m    \033[49m\033[96m\033[46m▀\033[49m\033[39m\033[46m  \033[49m\033[36m▀\033[39m   
+     \033[36m▀▀\033[39m\033[46m \033[49m\033[34m\033[46m▀\033[49m\033[39m\033[44m   \033[49m  \033[106m   \033[49m\033[96m\033[46m▀\033[49m\033[39m\033[46m \033[49m\033[36m▀▀\033[39m     '
+LOGO_PLAIN='      ▄▄▄████████▄▄▄      
+    ▄████████████████▄    
+   ███████▀▀▀ ▀▀███████   
+ ▄▄▄                  ▄▄▄ 
+▄████                ████▄
+██████              ██████
+██████              ██████
+ █████▄▄           ▄█████ 
+  ███████▄      ▄███████  
+   ▀███████▄  ▄███████▀   
+     ▀▀█████  █████▀▀     '
+# END GENERATED LOGO
+
+LOGO_TEXT_GAP=3
+HEADER_TITLE="GAIA installer"
+
+# The logo variant for the CLI's colour level (truecolor, 256 or 16 colours, or
+# plain blocks); nothing (the one-line header) when piped or on a terminal too
+# narrow for the logo beside its text.
+logo_variant() {
+  [ -n "$STDOUT_TTY" ] || return 0
+  COLS="${COLUMNS:-$(tput cols 2>/dev/null || true)}"
+  case "$COLS" in
+    ''|*[!0-9]*) COLS=80 ;;
+  esac
+  [ "$COLS" -ge $((2 + LOGO_WIDTH + LOGO_TEXT_GAP + ${#HEADER_TITLE} + 8)) ] || return 0
+  case "$COLOUR_LEVEL" in
+    3) echo truecolor ;;
+    2) echo ansi256 ;;
+    1) echo ansi16 ;;
+    *) echo plain ;;
+  esac
+}
+
+# The logo with the title and $1 (what is being installed) centred beside it.
+print_header() {
+  VARIANT=$(logo_variant)
+  if [ -z "$VARIANT" ]; then
+    printf "\n  ${BOLD}%s${NC}\n\n" "$HEADER_TITLE"
+    return 0
+  fi
+  case "$VARIANT" in
+    truecolor) LOGO="$LOGO_TRUECOLOR" ;;
+    ansi256) LOGO="$LOGO_ANSI256" ;;
+    ansi16) LOGO="$LOGO_ANSI16" ;;
+    *) LOGO="$LOGO_PLAIN" ;;
+  esac
+  LOGO_ROWS=$(printf '%s\n' "$LOGO" | wc -l)
+  TEXT_ROW=$(( (LOGO_ROWS - 2) / 2 ))
+  ROW=0
+  printf '\n'
+  while IFS= read -r LOGO_LINE; do
+    printf "  $LOGO_LINE"
+    case "$ROW" in
+      "$TEXT_ROW") printf "%${LOGO_TEXT_GAP}s${BOLD}%s${NC}" "" "$HEADER_TITLE" ;;
+      "$((TEXT_ROW + 1))") printf "%${LOGO_TEXT_GAP}s${DIM}%s${NC}" "" "$1" ;;
+    esac
+    printf '\n'
+    ROW=$((ROW + 1))
+  done <<EOF
+$LOGO
+EOF
+  printf '\n'
+}
 
 # A live spinner line only where a person watches it; a pipe or log gets the ✓ lines alone.
 ANIMATE=""
@@ -32,10 +178,27 @@ SIGINT_EXIT_CODE=130
 NVM_INSTALLER_URL="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh"
 LOG_TAIL_LINES=20
 
-# The same marks the gaia CLI uses: the mark carries the colour, not the text.
+# A step row as the gaia CLI draws its own (src/ui/components/StepList.tsx), so
+# `gaia up` carries on the same list: the mark, the label column, then the time
+# right-aligned in its column. The mark carries the colour, not the text.
+LABEL_WIDTH=36
+TIME_WIDTH=8
+# Spaces a label longer than the column still keeps before the time.
+LABEL_GAP=2
+
+# The label padded to the column in characters, not bytes: printf's %-Ns counts
+# bytes, so a "·" (two bytes) would pull the time one column left.
+label_cell() {
+  CELL_BYTES=$(printf '%s' "$1" | wc -c | tr -d ' ')
+  CELL_EXTRA=$(printf '%s' "$1" | LC_ALL=C tr -d '\000-\177\300-\377' | wc -c | tr -d ' ')
+  CELL_WIDTH=$LABEL_WIDTH
+  [ $((CELL_BYTES - CELL_EXTRA + LABEL_GAP)) -le "$CELL_WIDTH" ] || CELL_WIDTH=$((CELL_BYTES - CELL_EXTRA + LABEL_GAP))
+  printf "%-$((CELL_WIDTH + CELL_EXTRA))s" "$1"
+}
+
 done_line() {
   stop_spinner
-  printf "  ${GREEN}✓${NC} %-34s ${DIM}%s${NC}\n" "$1" "$2"
+  printf "  ${GREEN}✓${NC} %s${DIM}%${TIME_WIDTH}s${NC}\n" "$(label_cell "$1")" "$2"
 }
 warn() { printf "  ${YELLOW}!${NC} %s\n" "$1"; }
 error() {
@@ -76,15 +239,16 @@ spin() {
   trap - EXIT
   SPIN_LABEL="$1"
   SPIN_PROBE="$2"
-  SPIN_TEXT="$SPIN_LABEL"
   TICK=0
   set -- ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
   while :; do
-    if [ -n "$SPIN_PROBE" ] && [ $((TICK % 10)) -eq 0 ]; then
-      SPIN_TEXT=$("$SPIN_PROBE") || SPIN_TEXT=""
+    if [ "$TICK" -eq 0 ] || { [ -n "$SPIN_PROBE" ] && [ $((TICK % 10)) -eq 0 ]; }; then
+      SPIN_TEXT=""
+      [ -z "$SPIN_PROBE" ] || SPIN_TEXT=$("$SPIN_PROBE") || SPIN_TEXT=""
       [ -n "$SPIN_TEXT" ] || SPIN_TEXT="$SPIN_LABEL"
+      SPIN_CELL=$(label_cell "$SPIN_TEXT")
     fi
-    printf "\r\033[K  ${CYAN}%s${NC} %-34s ${DIM}%s${NC}" "$1" "$SPIN_TEXT" "$(step_took)"
+    printf "\r\033[K  ${CYAN}%s${NC} ${BOLD}%s${NC}${DIM}%${TIME_WIDTH}s${NC}" "$1" "$SPIN_CELL" "$(step_took)"
     FRAME="$1"
     shift
     set -- "$@" "$FRAME"
@@ -143,15 +307,41 @@ download_and_run_nvm_installer() {
   printf '%s\n' "$NVM_INSTALLER" | bash
 }
 
-# Where `nvm install` is, from its own output: the curl bar's percentage while
-# Node downloads, then the unpacking that follows the checksum.
+# Bytes in the Node.js tarball at $1, asked once with a HEAD request and kept in
+# NODE_SIZE_FILE ("unknown" when the server doesn't say), since each probe is a subshell.
+node_tarball_bytes() {
+  if [ ! -s "$NODE_SIZE_FILE" ]; then
+    SIZE=$(curl --proto '=https' --tlsv1.2 -fsSIL "$1" 2>/dev/null | tr -d '\r' | sed -n 's/^[Cc]ontent-[Ll]ength: *\([0-9][0-9]*\)$/\1/p' | tail -n 1)
+    printf '%s\n' "${SIZE:-unknown}" >"$NODE_SIZE_FILE"
+  fi
+  cat "$NODE_SIZE_FILE"
+}
+
+# "12 / 27 MB" from a percentage (45.0) of a size in bytes, rounded as the CLI's bars round.
+byte_progress() {
+  case "$1" in
+    *.*) PERCENT_TENTHS=$(( ${1%%.*} * 10 + $(printf '%.1s' "${1#*.}0") )) ;;
+    *) PERCENT_TENTHS=$(( $1 * 10 )) ;;
+  esac
+  printf '%s / %s MB' $(( ($2 * PERCENT_TENTHS / 1000 + 500000) / 1000000 )) $(( ($2 + 500000) / 1000000 ))
+}
+
+# Where `nvm install` is, from its own output: how much of Node has downloaded
+# (the curl bar's percentage of the tarball's size), then the unpacking that
+# follows the checksum.
 node_install_progress() {
   NVM_OUTPUT=$(tail -c +$((NODE_LOG_START + 1)) "$LOG_FILE" | tr '\r' '\n')
   case "$NVM_OUTPUT" in
     *"Checksums matched"*) printf 'Unpacking Node.js' ;;
     *"Downloading https://"*)
-      PERCENT=$(printf '%s\n' "$NVM_OUTPUT" | grep -o '[0-9][0-9.]*%' | tail -n 1)
-      printf 'Downloading Node.js%s' "${PERCENT:+ · $PERCENT}"
+      URL=$(printf '%s\n' "$NVM_OUTPUT" | grep -o 'https://[^ ]*\.tar\.[a-z]*' | tail -n 1)
+      PERCENT=$(printf '%s\n' "$NVM_OUTPUT" | grep -o '[0-9][0-9.]*%' | tail -n 1 | tr -d '%')
+      BYTES=$(node_tarball_bytes "$URL")
+      if [ -n "$PERCENT" ] && [ "$BYTES" != "unknown" ]; then
+        printf 'Downloading Node.js · %s' "$(byte_progress "$PERCENT" "$BYTES")"
+      else
+        printf 'Downloading Node.js'
+      fi
       ;;
   esac
 }
@@ -166,7 +356,9 @@ install_node() {
   # shellcheck source=/dev/null
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   [ -z "$ANIMATE" ] || NODE_LOG_START=$(wc -c <"$LOG_FILE" | tr -d ' ')
+  NODE_SIZE_FILE="$LOG_FILE.node-size"
   run_step "Finding the latest Node.js" node_install_progress nvm install --lts
+  rm -f "$NODE_SIZE_FILE"
   if ! check_command node; then
     error "Node.js didn't install. Install it from https://nodejs.org, then run this installer again."
   fi
@@ -187,7 +379,7 @@ npm_install_progress() {
   KB=$(npm_cache_kb)
   [ -n "$KB" ] || return 0
   MB=$(( (KB - NPM_CACHE_START_KB) / 1024 ))
-  [ "$MB" -gt 0 ] && printf 'Installing the GAIA CLI · %s MB downloaded' "$MB"
+  [ "$MB" -gt 0 ] && printf 'Installing the GAIA CLI · %s MB' "$MB"
   return 0
 }
 
@@ -199,6 +391,63 @@ global_bin_dir() {
   esac
 }
 
+LAUNCHER_MARK="# Written by the GAIA installer"
+
+is_launcher() {
+  grep -q "^$LAUNCHER_MARK" "$1" 2>/dev/null
+}
+
+# True when the folder $1 is one of the PATH entries in $2.
+dir_on_path() {
+  case ":$2:" in
+    *":$1:"*) return 0 ;;
+  esac
+  return 1
+}
+
+# $1 in single quotes, for a line of sh.
+sh_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+# Run "$@" as root only when LAUNCHER_DIR is not this user's to write.
+as_launcher_owner() {
+  if [ -d "$LAUNCHER_DIR" ] && [ -w "$LAUNCHER_DIR" ]; then
+    "$@"
+  else
+    sudo -p "  [sudo] password for %u, to add gaia to $LAUNCHER_DIR: " "$@"
+  fi
+}
+
+# The launcher runs GAIA_BIN with the node it was installed with, so a later
+# nvm use, a new default Node.js or an unloaded nvm never loses it.
+launcher_script() {
+  NODE_DIR=""
+  if check_command node; then
+    NODE_DIR=$(command -v node)
+    NODE_DIR=${NODE_DIR%/*}
+  fi
+  printf '#!/bin/sh\n%s (https://heygaia.io/install.sh): runs the GAIA CLI with its own Node.js.\n' "$LAUNCHER_MARK"
+  printf 'GAIA_CLI=%s\n' "$(sh_quote "$GAIA_BIN")"
+  printf '[ -x "$GAIA_CLI" ] || { echo "gaia: the GAIA CLI is no longer at $GAIA_CLI. Install it again: curl -fsSL https://heygaia.io/install.sh | sh" >&2; exit 127; }\n'
+  if [ -n "$NODE_DIR" ]; then
+    printf 'PATH=%s:"$PATH" exec "$GAIA_CLI" "$@"\n' "$(sh_quote "$NODE_DIR")"
+  else
+    printf 'exec "$GAIA_CLI" "$@"\n'
+  fi
+}
+
+# Put gaia where the shell that ran this installer, and every later one, finds
+# it. Returns non-zero when LAUNCHER_DIR is not on that PATH or can't be written.
+install_launcher() {
+  dir_on_path "$LAUNCHER_DIR" "$ORIGINAL_PATH" || return 1
+  if ! { [ -d "$LAUNCHER_DIR" ] && [ -w "$LAUNCHER_DIR" ]; }; then
+    check_command sudo || return 1
+  fi
+  launcher_script | as_launcher_owner sh -c \
+    'mkdir -p "$1" && rm -f "$1/gaia" && cat >"$1/gaia" && chmod 755 "$1/gaia"' sh "$LAUNCHER_DIR"
+}
+
 # Offer to run the first command right away when there is a person at a terminal to
 # answer; the installer already knows where gaia is, so no PATH step is needed.
 offer_setup() {
@@ -208,8 +457,15 @@ offer_setup() {
   { true </dev/tty; } 2>/dev/null || return 0
   printf "\n  Set up GAIA now? [Y/n] "
   read -r ANSWER </dev/tty || return 0
+  # The answered question and the blank line above it leave the screen: a yes
+  # makes way for gaia's own rows, which carry on this list under this header
+  # (so gaia draws none); a no for the next step, which says how to set up later.
+  printf '\033[1A\033[2K\033[1A\033[2K\r'
   case "$ANSWER" in
-    ""|y|Y|yes|YES) exec "$GAIA_BIN" "$FIRST_COMMAND" </dev/tty ;;
+    ""|y|Y|yes|YES)
+      export GAIA_CONTINUES_INSTALLER=1
+      exec "$GAIA_BIN" "$FIRST_COMMAND" </dev/tty
+      ;;
   esac
 }
 
@@ -223,12 +479,23 @@ next_step() {
 }
 
 main() {
+  # The PATH of the shell that ran this, before nvm adds to it.
+  ORIGINAL_PATH="$PATH"
+  LAUNCHER_DIR="${GAIA_BIN_DIR:-/usr/local/bin}"
   exec 3>&1
   trap on_interrupt INT
   trap stop_spinner EXIT
-  printf "\n  ${BOLD}GAIA installer${NC}\n\n"
-
   OS=$(detect_os)
+  if [ "$OS" = "windows" ]; then
+    stop_spinner
+    printf "  ${RED}✗${NC} %s\n" "GAIA runs on Windows inside WSL 2 (Ubuntu), with Docker Desktop."
+    printf "    %s\n" \
+      "1. In PowerShell as Administrator: wsl --install -d Ubuntu (then restart)" \
+      "2. Install Docker Desktop: https://docs.docker.com/desktop/setup/install/windows-install/" \
+      "3. In Docker Desktop: Settings > Resources > WSL integration, turn on Ubuntu" \
+      "4. In the Ubuntu terminal: curl -fsSL https://heygaia.io/install.sh | sh"
+    exit 1
+  fi
   if [ "$OS" = "unknown" ]; then
     error "This installer supports Linux and macOS ($(uname -s) isn't one of them)."
   fi
@@ -240,6 +507,20 @@ main() {
     *) error "GAIA_CHANNEL must be 'latest' or 'beta', got '$CHANNEL'" ;;
   esac
   PACKAGE="@heygaia/cli@$CHANNEL"
+  if [ -n "${GAIA_CLI_TARBALL:-}" ]; then
+    print_header "custom build"
+  else
+    print_header "$CHANNEL"
+  fi
+  # An unreleased build instead of npm's: said out loud, never silently.
+  if [ -n "${GAIA_CLI_TARBALL:-}" ]; then
+    case "$GAIA_CLI_TARBALL" in
+      http://*.tgz|https://*.tgz|/*.tgz) ;;
+      *) error "GAIA_CLI_TARBALL must be an http(s) URL or absolute path ending in .tgz, got '$GAIA_CLI_TARBALL'" ;;
+    esac
+    PACKAGE="$GAIA_CLI_TARBALL"
+    warn "GAIA CLI from GAIA_CLI_TARBALL: ${GAIA_CLI_TARBALL##*/}"
+  fi
   LOG_FILE=$(mktemp "${TMPDIR:-/tmp}/gaia-install.XXXXXX")
 
   # Determine package manager: prefer npm, then pnpm, then bun
@@ -257,6 +538,10 @@ main() {
     NODE_INSTALLED_VIA_NVM="1"
     PKG_MGR="npm"
   fi
+  # The journey's first row either way: Node.js installed above, or already here.
+  if [ -z "$NODE_INSTALLED_VIA_NVM" ] && check_command node; then
+    done_line "Node.js $(node --version | sed 's/^v//') found" ""
+  fi
 
   step_start
   case "$PKG_MGR" in
@@ -273,33 +558,35 @@ main() {
   esac
   rm -f "$LOG_FILE"
 
-  if check_command gaia; then
+  # An earlier run's launcher points at that run's install, not this one.
+  if check_command gaia && ! is_launcher "$(command -v gaia)"; then
     GAIA_BIN=$(command -v gaia)
   else
     BIN_DIR=$(global_bin_dir "$PKG_MGR")
     GAIA_BIN="$BIN_DIR/gaia"
     [ -x "$GAIA_BIN" ] || error "$PKG_MGR installed @heygaia/cli, but $GAIA_BIN doesn't exist."
   fi
-  done_line "GAIA CLI $("$GAIA_BIN" --version 2>/dev/null) installed" "$(step_took)"
-
   # CLIs before 0.7.0 have no `up`; they start with `init`. Read the command list:
-  # an unknown command's `--help` still exits 0.
+  # an unknown command's `--help` still exits 0. Read under the running spinner,
+  # so the screen never sits still between the CLI's row and the question.
   FIRST_COMMAND="init"
   "$GAIA_BIN" --help 2>/dev/null | grep -Eq '^[[:space:]]+up([[:space:]]|$)' && FIRST_COMMAND="up"
+  done_line "GAIA CLI $("$GAIA_BIN" --version 2>/dev/null) installed" "$(step_took)"
 
+  # The shell that piped this in finds gaia already, or through the launcher.
+  if dir_on_path "${GAIA_BIN%/*}" "$ORIGINAL_PATH" || install_launcher; then
+    offer_setup "$GAIA_BIN"
+    next_step "gaia $FIRST_COMMAND" ""
+    return
+  fi
   # nvm only changed this installer's PATH, never the shell that piped it in.
   if [ "$NODE_INSTALLED_VIA_NVM" = "1" ]; then
     offer_setup "$GAIA_BIN"
     next_step ". \"$NVM_DIR/nvm.sh\" && gaia $FIRST_COMMAND" "(this terminal needs nvm loaded first; new terminals find gaia on their own)"
     return
   fi
-  if [ -n "${BIN_DIR:-}" ]; then
-    offer_setup "$GAIA_BIN"
-    next_step "export PATH=\"$BIN_DIR:\$PATH\" && gaia $FIRST_COMMAND" "(to keep it, add that export line to ~/.bashrc or ~/.zshrc)"
-    return
-  fi
   offer_setup "$GAIA_BIN"
-  next_step "gaia $FIRST_COMMAND" ""
+  next_step "export PATH=\"${GAIA_BIN%/*}:\$PATH\" && gaia $FIRST_COMMAND" "(to keep it, add that export line to ~/.bashrc or ~/.zshrc)"
 }
 
 main

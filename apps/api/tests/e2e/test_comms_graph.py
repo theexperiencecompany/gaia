@@ -29,7 +29,10 @@ from langchain_core.messages import (
 from langgraph.graph.state import CompiledStateGraph
 import pytest
 
-from app.agents.context.slots import BROWSER_TASK_MARKER
+from app.agents.context.live_work import build_browser_task_block
+from app.agents.context.section_context import SectionContext
+from app.agents.context.slots import MEMORY_RECALL_MARKER, mark
+from app.agents.context.tiers import AgentTier
 from app.constants.browser import HandoffStatus
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.schemas.browser import NewHandoff
@@ -89,6 +92,29 @@ class TestCommsToolSurface:
         assert not result.startswith("Error"), result
         assert "task_id" in result, f"the handoff was never dispatched: {result!r}"
 
+    @pytest.mark.regression
+    async def test_a_handoff_missing_a_required_argument_is_corrected_then_dispatched(self):
+        """A dropped acceptance_criteria comes back naming the field to fix, and the retry runs."""
+        incomplete = {"name": "call_executor", "args": {"task": "sign me in"}, "id": "c1"}
+        retry = call("call_executor", {"task": "sign me in"}, call_id="c2")
+        async with comms_graph([incomplete, retry, "On it."]) as graph:
+            run = await run_graph(graph, "sign me in to github", thread_id=f"retry-{uuid4()}")
+
+        results = {
+            event.message.tool_call_id: event.message
+            for event in run.events
+            if isinstance(event.message, ToolMessage)
+        }
+        rejection = results["c1"]
+        assert rejection.status == "error"
+        assert str(rejection.content).startswith("Error: ToolInvocationError"), rejection.content
+        assert "acceptance_criteria" in str(rejection.content)
+        assert any(
+            isinstance(message, ToolMessage) and message.tool_call_id == "c1"
+            for message in run.prompts[1]
+        ), "the model never saw the correction"
+        assert "task_id" in str(results["c2"].content), results["c2"].content
+
     @pytest.mark.parametrize("tool", ["plan_tasks", "handoff", "read", "bash", "deep_research"])
     async def test_an_executor_tool_is_not_reachable_from_comms(self, tool: str):
         async with comms_graph([call(tool, {}, call_id="c1"), "ok"]) as graph:
@@ -129,7 +155,8 @@ class TestCommsToolSurface:
 
 class TestBrowserTaskReply:
     async def test_a_done_reaches_the_paused_step_comms_was_shown(self):
-        """The frame tells the model what the task waits on, and its tool settles that very step."""
+        # The real browser-task section, seeded as the turn's recall block the way the
+        # chat service writes it; the rest of turn assembly is not run here.
         async with comms_graph(
             [call("browser_step_done", {}, call_id="b1"), "Carrying on."]
         ) as graph:
@@ -149,14 +176,28 @@ class TestBrowserTaskReply:
                     reply_to="conv-browser",
                 ),
             )
-            run = await run_graph(graph, "done, signed in", thread_id="conv-browser")
+            turn_context = await build_browser_task_block(
+                SectionContext(tier=AgentTier.COMMS, user_id="u-1", conversation_id="conv-browser")
+            )
+            run = await run_graph(
+                graph,
+                "done, signed in",
+                thread_id="conv-browser",
+                state={
+                    "messages": [
+                        mark(SystemMessage(content=turn_context), MEMORY_RECALL_MARKER),
+                        HumanMessage(content="done, signed in"),
+                    ],
+                    "todos": [],
+                },
+            )
             record = await get_handoff("h1")
 
         [frame] = [
             message
             for message in run.prompts[0]
             if isinstance(message, SystemMessage)
-            and message.additional_kwargs.get(BROWSER_TASK_MARKER)
+            and message.additional_kwargs.get(MEMORY_RECALL_MARKER)
         ]
         assert "Sign in to opentable.com" in str(frame.content)
         assert record is not None
@@ -179,19 +220,26 @@ class TestMemoryTools:
 
 
 class TestReplyShape:
-    async def test_a_comms_reply_carries_the_message_break_marker(self):
-        """The client splits a comms turn into bubbles on this marker; the executor's text never carries it."""
-        async with comms_graph(["Hi there."]) as graph:
+    async def test_a_comms_reply_is_stored_without_edge_breaks(self):
+        """Breaks separate bubbles; one at the edge is history the model copies and grows."""
+        async with comms_graph(
+            [f"{NEW_MESSAGE_BREAKER * 2}Hi there.{NEW_MESSAGE_BREAKER}"]
+        ) as graph:
             run = await run_graph(graph, "hello")
 
-        assert run.final_text() == f"Hi there.{NEW_MESSAGE_BREAKER}"
+        assert run.final_text() == "Hi there."
 
     async def test_an_empty_model_reply_is_replaced_with_something_sayable(self):
         async with comms_graph([AIMessage(content="")]) as graph:
             run = await run_graph(graph, "hello")
 
-        assert run.final_text().replace(NEW_MESSAGE_BREAKER, "")
-        assert "Empty response" in run.final_text()
+        assert run.final_text() == "Empty response from model."
+
+    async def test_a_break_only_reply_is_replaced_with_something_sayable(self):
+        async with comms_graph([AIMessage(content=NEW_MESSAGE_BREAKER * 50)]) as graph:
+            run = await run_graph(graph, "hello")
+
+        assert run.final_text() == "Empty response from model."
 
 
 class TestEndOfTurnHooks:

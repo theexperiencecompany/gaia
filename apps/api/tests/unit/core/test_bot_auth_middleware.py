@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI, Request, Response
 from httpx import ASGITransport, AsyncClient
-from jose import JWTError
+from jwt import InvalidTokenError
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
@@ -18,6 +18,7 @@ from app.constants.cache import TEN_MINUTES_TTL
 from app.constants.log_tags import LogTag
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.bot_token_service import BotSessionClaims
 from app.utils.log_identifiers import hash_platform_user_id
 
 # ---------------------------------------------------------------------------
@@ -31,11 +32,11 @@ FAKE_USER_DATA = UserDocument(
     picture="https://example.com/pic.png",
 )
 
-FAKE_JWT_PAYLOAD: dict[str, Any] = {
-    "user_id": "user_abc123",
-    "platform": "discord",
-    "platform_user_id": "disc_999",
-}
+FAKE_JWT_PAYLOAD = BotSessionClaims(
+    user_id="user_abc123",
+    platform="discord",
+    platform_user_id="disc_999",
+)
 
 
 def _build_app(
@@ -318,8 +319,8 @@ class TestJWTAuth:
         mock_verify: MagicMock,
         app: FastAPI,
     ) -> None:
-        """JWTError should be caught; request proceeds unauthenticated."""
-        mock_verify.side_effect = JWTError("expired")
+        """An invalid token is caught; request proceeds unauthenticated."""
+        mock_verify.side_effect = InvalidTokenError("expired")
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="https://test") as client:
@@ -341,11 +342,11 @@ class TestJWTAuth:
         app: FastAPI,
     ) -> None:
         """Token payload missing required fields should not authenticate."""
-        mock_verify.return_value = {
-            "user_id": None,
-            "platform": "discord",
-            "platform_user_id": "disc_999",
-        }
+        mock_verify.return_value = BotSessionClaims(
+            user_id=None,
+            platform="discord",
+            platform_user_id="disc_999",
+        )
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="https://test") as client:
@@ -374,11 +375,11 @@ class TestJWTAuth:
         app: FastAPI,
     ) -> None:
         """If JWT user_id doesn't match the linked user's id, authentication fails."""
-        mock_verify.return_value = {
-            "user_id": "different_user_id",
-            "platform": "discord",
-            "platform_user_id": "disc_999",
-        }
+        mock_verify.return_value = BotSessionClaims(
+            user_id="different_user_id",
+            platform="discord",
+            platform_user_id="disc_999",
+        )
         mock_get_cache.return_value = None
         mock_platform.return_value = FAKE_USER_DATA  # id = "user_abc123"
 
@@ -864,7 +865,7 @@ class TestAFailedJwtFallsThroughToTheApiKey:
     @pytest.mark.parametrize(
         "verify",
         [
-            MagicMock(side_effect=JWTError("expired")),
+            MagicMock(side_effect=InvalidTokenError("expired")),
             MagicMock(side_effect=RuntimeError("redis down")),
             # A valid token for a platform account no GAIA user is linked to.
             MagicMock(return_value=FAKE_JWT_PAYLOAD),

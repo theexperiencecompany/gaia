@@ -3,6 +3,7 @@
 
 import { Command } from "commander";
 import { CLI_COMMAND_DESCRIPTIONS } from "../../../../../libs/shared/ts/src/cli/command-manifest.js";
+import { runAction } from "../../lib/command-action.js";
 import { ensureConnectBinary } from "./binary.js";
 import { runConnectBinary } from "./run.js";
 
@@ -34,13 +35,6 @@ Flags forwarded to gaia-connect:
   --list              with --json: list browsers, or sessions with --browser
 `,
   )
-  .action(async (args: string[]) => {
-    try {
-      process.exit(await runConnect(args));
-    } catch (error) {
-      console.error(
-        `Error: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      process.exit(1);
-    }
-  });
+  .action((args: string[]) =>
+    runAction(async () => process.exit(await runConnect(args))),
+  );

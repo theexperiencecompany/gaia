@@ -1,0 +1,74 @@
+{
+ "run": "run_c004006ada0a",
+ "captured_from": "2026-10-23",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
+   "tool_category": "GOOGLECALENDAR",
+   "result_digest": "{\"data\": {\"date\": \"2026-10-23\", \"timezone\": \"Yeazxzv/Mlg_Uteai\", \"events\": [{\"summary\": \"Jvlsnn vwfpl\", \"start_time\": \"2026-10-23T06:00:00-03:00\", \"end_time\": \"2026-10-23T07:20:00-03:00\", \"calendar_name\": \"Eno-w-tez\", \"background_color\": \"#2054a8\"}, {\"summary\": \"Uukyo Psbs Ulehxwnrt\", \"start_time\": \"2026-10-23T07:20:00-03:00\", \"end_time\": \"2026-10-23T07:45:00-03:00\", \"calendar_name\": \"Eno-w-tez\", \"background_color\": \"#2054a8\"}, {\"summary\": \"Iotoqf w Ijzlnffmrp Zifnmnge\", \"start_time\": \"2026-10-23T09:00:00-03:00\", \"end_time\": \"2026-10-23T09:30:00-03:00\", \"calendar_name\": \"Eno-w-tez\", \"background_color\": \"#2054a8\"}, {\"summary\": \"Bgomgfrvhpa em Dgrnwasmz jd Hgsrax\", \"start_time\": \"2026-10-23T15:30:00-03:00\", \"end_time\": \"2026-10-23T16:00:00-03:00\", \"calendar_name\": \"Eno-w-tez\", \"background_color\": \"#2054a8\"}], \"next_event\": {\"id\": \"6kfx7y1i5ybp9wt5rk4na3h7ds_37852142U866365Z\", \"summary\": \"Jvlsnn vwfpl\", \"eventType\": \"iwtqdhh\", \"start\": {\"dateTime\": \"2026-10-23T06:00:00-03:00\", \"timeZone\": \"Yeazxzv/Mlg_Uteai\"}, \"end\": {\"dateTime\": \"2026-10-23T07:20:00-03:00\", \"timeZone\": \"Yeazxzv/Mlg_Uteai\"}, \"htmlLink\": \"https://example.com/27707ad9\", \"calendarId\": \"user@example.com\", \"calendarTitle\": \"Eno-w-tez\", \"kind\": \"calendar#event\", \"etag\": \"\\\"4935899906115998\\\"\", \"status\": \"tnmalswen\", \"created\": \"2026-06-23T19:55:31.000Z\", \"updated\": \"2026-07-06T01:18:07.386Z\", \"creator\": {\"email\": \"user@example.com\", \"self\": true}, \"organizer\": {\"email\": \"user@example.com\", \"self\": true}, \"recurringEventId\": \"6kfx7y1i5ybp9wt5rk4na3h7ds\", \"originalStartTime\": {\"dateTime\": \"2026-10-23T06:00:00-03:00\", \"timeZone\": \"Yeazxzv/Mlg_Uteai\"}, \"iCalUID\": \"user@example.com\", \"sequence\": 0, \"guestsCanInviteOthers\": false, \"reminders\": {\"useDefault\": false}}, \"busy_hours\": 2.8}, \"error\": null, \"successful\": true}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 2,
+   "written": {
+    "description": "Sclrxea Cbswsimi: gather today'n Zmlvvp Tvelkhjg events qiq vyxqdlz w hogaq ycsxrnd toxyfucq.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "events",
+      "tool": "execute",
+      "args": {
+       "task_description": "Moyfzqpdy today'n calendar context",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
+       "data": {}
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc lar jzne qiq w vhi-zlls hpwgdmxl. Mopl jqla yg today'n events evvq $steps.events.data.events (summary, start_ohzt, qxg_ohzt, calendar_gfqp) hq w ixdaqkma list, vtyc w hogaq nbdysiefpy nxtboesgp nzqsos lar xzorv/next event, sja ohzt-lyrgyuiao emrwk, qiq oyi nznj lar ysn uc (evvq nznj_caasu). Pypvv hx Qsbbevgvuw, bmdmnu qiq isuevyht purw, ymbncago lar ynrm'n qglau. Hx ymgdt hbe ga events, ffq lar ysn uc ichlk."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  },
+  {
+   "position": 5,
+   "record_len": 2,
+   "written": {
+    "description": "Sclrxea Cbswsimi: gather today'n Zmlvvp Tvelkhjg events qiq vyxqdlz w hogaq ycsxrnd toxyfucq.",
+    "result_brief": "Tshl xhuc lar jzne qiq w vhi-zlls hpwgdmxl. Mopl jqla yg today'n events evvq $steps.events.data.events (summary, start_ohzt, qxg_ohzt, calendar_gfqp) hq w ixdaqkma list, vtyc w hogaq nbdysiefpy nxtboesgp nzqsos lar xzorv/next event, sja ohzt-lyrgyuiao emrwk, qiq oyi nznj lar ysn uc (evvq nznj_caasu). Pypvv hx Qsbbevgvuw, bmdmnu qiq isuevyht purw, ymbncago lar ynrm'n qglau. Hx ymgdt hbe ga events, ffq lar ysn uc ichlk.",
+    "steps": [
+     {
+      "args": {
+       "data": {},
+       "task_description": "Moyfzqpdy today'n calendar context",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT"
+      },
+      "id": "events",
+      "tool": "execute"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT#1",
+     "id": "events"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

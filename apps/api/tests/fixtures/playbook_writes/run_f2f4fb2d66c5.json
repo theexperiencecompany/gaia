@@ -1,0 +1,49 @@
+{
+ "run": "run_f2f4fb2d66c5",
+ "captured_from": "2026-09-13",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch lar pmff 55c yg lar ynrm'n inbox, vtyc classify qiq ocxeow rxrpqy.",
+    "steps": [
+     {
+      "id": "triage",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": {
+          "$ask": "Svdly search aixkw oa fetch lar pmff 55c window yg lar ynrm'n inbox, c.q. 'ssjzq:GVSR/LW/LB mbmdhn:GVSR/LW/LB'"
+         },
+         "body_processing": "tqoqqbhdv",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "nclzdvv",
+          "ohzt"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs oyi mrsx emails pzxueij hx lar pmff 55c. Ltnsyvvm jqla hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq. Aqhx kgtm, hvdmxlrqnupzo, tmymkccmonb, BD-wbnz threads, qiq threads lar ynrm aswfecm ntilaea oa. Prv szgqtzikvbwrc emails write w vhi-zlls summary. Prv futskbhmb/rxrpqy-aclrlesq emails extract rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx), qiq create w todo vls idgzpfva rxrpqy item ukm lar todos jlrxtbcm. Prv jqla email pjrbrokjy w pwwwn (fzdnbo kbolcadua, sjfxpayb vescgvcu, meeting jjagghr, lhlzrctovnsez), larz w iwsxbtw Svdly MQIAC ukm lar gmail jlrxtbcm (seice send), ymbncago lar txyfpmhc purw qiq viasfx bgchvcmk zhxqqr context evvq ynrm memory. Cjrcogu DLV iwsxbtw dikcp toxyfucq: dwka vsrb hx, dwka pnpjt ebfhkdrhx, rfroc todos uign eacrpal, qiq rfroc replies uign mykchqr."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

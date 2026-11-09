@@ -2,12 +2,14 @@
 
 import asyncio
 from collections.abc import Callable
+import inspect
 import threading
 from unittest.mock import patch
 import uuid
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import (
     LazyLoader,
     MissingKeyStrategy,
@@ -15,7 +17,8 @@ from app.core.lazy_loader import (
     lazy_provider,
     providers,
 )
-from app.utils.exceptions import ConfigurationError
+from app.utils.exceptions import ConfigurationError, ProviderNotConfiguredError
+from tests.helpers import captured_wide_event
 
 
 def _uid(prefix: str = "test") -> str:
@@ -1047,3 +1050,150 @@ class TestMissingKeyStrategy:
         assert MissingKeyStrategy.WARN.value == "warn"
         assert MissingKeyStrategy.WARN_ONCE.value == "warn_once"
         assert MissingKeyStrategy.SILENT.value == "silent"
+
+
+class TestAnUnconfiguredProviderIsNotAFault:
+    """A loader whose credentials do not resolve is an optional feature switched off."""
+
+    @staticmethod
+    def _unconfigured() -> None:
+        raise ProviderNotConfiguredError("no key")
+
+    def test_it_warns_once_and_never_logs_an_error(self):
+        loader = LazyLoader(
+            self._unconfigured, strategy=MissingKeyStrategy.WARN, provider_name=_uid("off")
+        )
+
+        with patch("app.core.lazy_loader.log") as mock_log:
+            assert loader.get() is None
+            assert loader.get() is None
+
+        mock_log.error.assert_not_called()
+        assert mock_log.warning.call_count == 1
+
+    async def test_aget_on_an_async_loader_is_quiet_too(self):
+        async def unconfigured() -> None:
+            raise ProviderNotConfiguredError("no key")
+
+        loader = LazyLoader(unconfigured, strategy=MissingKeyStrategy.WARN)
+
+        with patch("app.core.lazy_loader.log") as mock_log:
+            assert await loader.aget() is None
+
+        mock_log.error.assert_not_called()
+
+    def test_an_error_strategy_provider_still_refuses(self):
+        loader = LazyLoader(self._unconfigured, strategy=MissingKeyStrategy.ERROR)
+
+        with pytest.raises(ConfigurationError, match="not configured"):
+            loader.get()
+
+    def test_a_real_loader_failure_still_logs_an_error(self):
+        def broken() -> None:
+            raise RuntimeError("SDK exploded")
+
+        loader = LazyLoader(broken, strategy=MissingKeyStrategy.WARN)
+
+        with patch("app.core.lazy_loader.log") as mock_log:
+            assert loader.get() is None
+
+        mock_log.error.assert_called_once()
+
+
+def _unconfigured() -> None:
+    raise ProviderNotConfiguredError("no key")
+
+
+class TestDefaults:
+    """What a loader and a registered provider do when no option is passed."""
+
+    def test_a_bare_loader_is_a_lazy_error_strategy_instance_provider(self):
+        loader = LazyLoader(lambda: 1)
+
+        assert loader.strategy is MissingKeyStrategy.ERROR
+        assert loader.is_global_context is False
+        assert loader.auto_initialize is False
+
+    def test_a_bare_loader_refuses_when_unconfigured(self):
+        with pytest.raises(ConfigurationError, match="is not configured: no key"):
+            LazyLoader(_unconfigured, provider_name=_uid()).get()
+
+    async def test_a_registered_provider_warns_at_registration_and_answers_none(self):
+        registry = ProviderRegistry()
+        name = _uid("reg")
+
+        async with captured_wide_event() as event:
+            provider = registry.register(name, _unconfigured, required_keys=[None])
+
+        assert provider.strategy is MissingKeyStrategy.WARN
+        assert provider.provider_name == name
+        assert [w["reason"] for w in event["warnings"]] == [
+            f"Registration warning: Provider '{name}' missing required values at index 0: [None]"
+        ]
+
+
+class TestNotConfiguredWarning:
+    """The one warning an optional provider with no credentials leaves on the wide event."""
+
+    async def test_it_names_the_provider_and_the_loader_reason(self):
+        name = _uid("off")
+        loader = LazyLoader(_unconfigured, provider_name=name, strategy=MissingKeyStrategy.WARN)
+
+        async with captured_wide_event() as event:
+            assert loader.get() is None
+
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.STARTUP} Provider not configured",
+                "provider_name": name,
+                "reason": "no key",
+                "error_type": "ProviderNotConfiguredError",
+                "error": "no key",
+            }
+        ]
+
+    async def test_a_configured_warning_message_replaces_the_loader_reason(self):
+        loader = LazyLoader(
+            _unconfigured,
+            strategy=MissingKeyStrategy.WARN,
+            warning_message="Set FOO_API_KEY to enable foo",
+        )
+
+        async with captured_wide_event() as event:
+            assert loader.get() is None
+
+        assert [w["reason"] for w in event["warnings"]] == ["Set FOO_API_KEY to enable foo"]
+
+
+class TestLoaderShapeMismatch:
+    """A loader that returns the wrong kind of value for its sync/async lane fails loud."""
+
+    def test_a_sync_loader_returning_a_coroutine_is_refused(self):
+        async def build() -> int:
+            return 1
+
+        pending: list[object] = []
+
+        def loader() -> object:
+            coro = build()
+            pending.append(coro)
+            return coro
+
+        name = _uid("sync")
+        with pytest.raises(
+            ConfigurationError,
+            match=f"Sync initialization called on async loader function for '{name}'",
+        ):
+            LazyLoader(loader, provider_name=name).get()
+        for coro in pending:
+            coro.close()
+
+    async def test_an_async_loader_returning_a_plain_value_is_refused(self):
+        name = _uid("async")
+        loader = inspect.markcoroutinefunction(lambda: 1)
+
+        with pytest.raises(
+            ConfigurationError,
+            match=f"Expected coroutine from async loader function for '{name}'",
+        ):
+            await LazyLoader(loader, provider_name=name).aget()

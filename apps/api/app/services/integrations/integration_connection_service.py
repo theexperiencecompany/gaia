@@ -1,21 +1,26 @@
 """Integration connection service - handles connect/disconnect logic."""
 
-from functools import lru_cache
-from typing import Literal
+from dataclasses import dataclass
+from typing import Literal, TypedDict, Unpack
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
 from pydantic import BaseModel, ConfigDict
 import pymongo.errors
 
 from app.config.oauth_config import (
-    OAUTH_INTEGRATIONS,
+    CatalogCached,
+    all_integrations,
     get_integration_by_id,
     get_integration_scopes,
 )
 from app.config.token_repository import token_repository
-from app.constants.integrations import INTEGRATION_STATUS_CONNECTED, MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import (
+    INTEGRATION_STATUS_CONNECTED,
+    MAX_ACCOUNTS_PER_INTEGRATION,
+    NOT_SET_UP_ON_INSTANCE,
+)
 from app.constants.log_tags import LogTag
-from app.helpers.mcp_helpers import get_api_base_url
+from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.composio import ComposioConnectLink
 from app.models.mcp_config import McpAuthChallenge, McpProbeResult
@@ -25,10 +30,14 @@ from app.schemas.integrations.responses import (
     IntegrationsConfigResponse,
     IntegrationSuccessResponse,
 )
+from app.services.composio.auth_config_resolver import auth_config_id_for
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.custom_crud import delete_custom_integration
 from app.services.integrations.integration_accounts import at_account_limit, get_account_record
-from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.integrations.integration_resolver import (
+    IntegrationResolver,
+    ResolvedIntegration,
+)
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
@@ -38,6 +47,7 @@ from app.services.integrations.user_integrations import (
 )
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.mcp.mcp_client import MCPClient, get_mcp_client
+from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import attach_connected_account, create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
@@ -52,11 +62,11 @@ class _CustomIntegrationOwner(BaseModel):
     created_by: str | None = None
 
 
-@lru_cache(maxsize=1)
+@CatalogCached
 def build_integrations_config() -> IntegrationsConfigResponse:
     """Build cached integrations configuration response."""
     integration_configs = []
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if integration.managed_by == "internal":
             continue
 
@@ -86,6 +96,8 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                     integration.mcp_config.requires_auth if integration.mcp_config else False
                 ),
                 slug=integration.id,  # Platform integrations use ID as slug
+                origin=integration.origin,
+                icon_url=integration.icon_url,
             )
         )
     return IntegrationsConfigResponse(integrations=integration_configs)
@@ -99,9 +111,10 @@ async def _redirect_to_oauth(
     challenge_data: McpAuthChallenge | None = None,
 ) -> ConnectIntegrationResponse:
     """Build the provider OAuth URL and wrap it in a redirect response."""
-    auth_url = await mcp_client.build_oauth_auth_url(
+    auth_url = await build_oauth_auth_url(
+        mcp_client.token_store,
         integration_id=integration_id,
-        redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+        redirect_uri=get_mcp_oauth_redirect_uri(),
         redirect_path=redirect_path,
         challenge_data=challenge_data,
     )
@@ -122,26 +135,33 @@ async def _redirect_to_oauth(
     )
 
 
+@dataclass(frozen=True)
+class _McpConnectTarget:
+    """The user and MCP integration one connect attempt is for."""
+
+    user_id: str
+    integration_id: str
+    integration_name: str
+    redirect_path: str
+    is_platform: bool
+
+
 async def _handle_auth_required(
-    user_id: str,
-    integration_id: str,
-    integration_name: str,
-    redirect_path: str,
+    target: _McpConnectTarget,
+    mcp_client: MCPClient,
     *,
-    is_platform: bool,
     detected_auth_type: str | None,
     probe_result: McpProbeResult | None,
-    mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
     """Return bearer_required for bearer servers; everything else gets the OAuth redirect."""
-    if not is_platform:
-        await update_user_integration_status(user_id, integration_id, "created")
+    if not target.is_platform:
+        await update_user_integration_status(target.user_id, target.integration_id, "created")
 
     if detected_auth_type == "bearer":
         return ConnectIntegrationResponse(
             status="error",
-            integration_id=integration_id,
-            name=integration_name,
+            integration_id=target.integration_id,
+            name=target.integration_name,
             error="bearer_required",
             message="This integration requires an API key.",
         )
@@ -150,37 +170,53 @@ async def _handle_auth_required(
     # passing the whole result dropped `initial_scope` and re-fetched the PRM.
     return await _redirect_to_oauth(
         mcp_client,
-        integration_id,
-        integration_name,
-        redirect_path,
+        target.integration_id,
+        target.integration_name,
+        target.redirect_path,
         challenge_data=probe_result.get("oauth_challenge") if probe_result else None,
     )
 
 
+def connect_failure_copy(integration_name: str) -> str:
+    """User-facing copy for a failed connect; the provider's exception text stays in the logs."""
+    return f"Couldn't connect {integration_name}. Please try again."
+
+
 async def _handle_connect_failure(
-    user_id: str,
-    integration_id: str,
-    integration_name: str,
-    is_platform: bool,
-    error: Exception,
+    target: _McpConnectTarget, error: Exception
 ) -> ConnectIntegrationResponse:
     """Surface a connection failure as a structured error, never a 500."""
-    if not is_platform:
-        await update_user_integration_status(user_id, integration_id, "created")
+    if not target.is_platform:
+        await update_user_integration_status(target.user_id, target.integration_id, "created")
     log.warning(
         f"{LogTag.INTEGRATION} MCP connection failed for",
-        integration_id=integration_id,
+        integration_id=target.integration_id,
         error=error,
-        user_id=user_id,
+        user_id=target.user_id,
     )
-    log.set(integration={"provider": integration_name, "action": "connect_mcp", "status": "error"})
+    log.set(
+        integration={
+            "provider": target.integration_name,
+            "action": "connect_mcp",
+            "status": "error",
+        }
+    )
     return ConnectIntegrationResponse(
         status="error",
-        integration_id=integration_id,
-        name=integration_name,
-        error=str(error),
+        integration_id=target.integration_id,
+        name=target.integration_name,
+        error=connect_failure_copy(target.integration_name),
         message="Connection failed",
     )
+
+
+class McpConnectOptions(TypedDict, total=False):
+    """Optional connect_mcp_integration() inputs; is_platform defaults to False."""
+
+    server_url: str | None
+    is_platform: bool
+    probe_result: McpProbeResult | None
+    bearer_token: str | None
 
 
 async def connect_mcp_integration(
@@ -189,20 +225,25 @@ async def connect_mcp_integration(
     integration_name: str,
     requires_auth: bool,
     redirect_path: str,
-    server_url: str | None = None,
-    is_platform: bool = False,
-    probe_result: McpProbeResult | None = None,
-    bearer_token: str | None = None,
+    **options: Unpack[McpConnectOptions],
 ) -> ConnectIntegrationResponse:
     """Handle MCP integration connection."""
+    server_url = options.get("server_url")
+    probe_result: McpProbeResult | None = options.get("probe_result")
+    bearer_token = options.get("bearer_token")
+    target = _McpConnectTarget(
+        user_id=user_id,
+        integration_id=integration_id,
+        integration_name=integration_name,
+        redirect_path=redirect_path,
+        is_platform=options.get("is_platform", False),  # pragma: no mutate — only read as `not`
+    )
     log.set(integration={"provider": integration_name, "action": "connect_mcp"})
     mcp_client = await get_mcp_client(user_id=user_id)
 
     # Bearer token flow - store and connect directly
     if bearer_token:
-        return await _connect_with_bearer_token(
-            user_id, integration_id, integration_name, bearer_token, mcp_client
-        )
+        return await _connect_with_bearer_token(target, bearer_token, mcp_client)
 
     # Use provided probe_result or perform probe if needed
     if server_url and not requires_auth and probe_result is None:
@@ -219,14 +260,7 @@ async def connect_mcp_integration(
 
     if requires_auth:
         return await _handle_auth_required(
-            user_id,
-            integration_id,
-            integration_name,
-            redirect_path,
-            is_platform=is_platform,
-            detected_auth_type=detected_auth_type,
-            probe_result=probe_result,
-            mcp_client=mcp_client,
+            target, mcp_client, detected_auth_type=detected_auth_type, probe_result=probe_result
         )
 
     try:
@@ -234,19 +268,10 @@ async def connect_mcp_integration(
     except OAuthAuthenticationError:
         # mcp-use only learned auth was needed at connect time — route to OAuth.
         return await _handle_auth_required(
-            user_id,
-            integration_id,
-            integration_name,
-            redirect_path,
-            is_platform=is_platform,
-            detected_auth_type=None,
-            probe_result=None,
-            mcp_client=mcp_client,
+            target, mcp_client, detected_auth_type=None, probe_result=None
         )
     except Exception as e:
-        return await _handle_connect_failure(
-            user_id, integration_id, integration_name, is_platform, e
-        )
+        return await _handle_connect_failure(target, e)
 
     tools_count = len(tools) if tools else 0
     await invalidate_user_integration_caches(user_id)
@@ -270,56 +295,41 @@ async def connect_mcp_integration(
 
 
 async def _connect_with_bearer_token(
-    user_id: str,
-    integration_id: str,
-    integration_name: str,
+    target: _McpConnectTarget,
     bearer_token: str,
     mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
     """Store bearer token and attempt connection."""
-    token_store = MCPTokenStore(user_id)
-    await token_store.store_bearer_token(integration_id, bearer_token)
+    token_store = MCPTokenStore(target.user_id)
+    await token_store.store_bearer_token(target.integration_id, bearer_token)
+    log.set(integration={"auth_type": "bearer"})
 
     try:
-        tools = await mcp_client.connect(integration_id)
+        tools = await mcp_client.connect(target.integration_id)
         # Busts the full per-user integration cache set (status + tools:user:*).
-        await update_user_integration_status(user_id, integration_id, "connected")
-        tools_count = len(tools) if tools else 0
-        log.set(
-            integration={
-                "provider": integration_name,
-                "action": "connect_mcp",
-                "auth_type": "bearer",
-                "status": "connected",
-                "tools_count": tools_count,
-            }
-        )
-        return ConnectIntegrationResponse(
-            status="connected",
-            integration_id=integration_id,
-            name=integration_name,
-            tools_count=tools_count,
-            message="Integration connected successfully",
-        )
+        await update_user_integration_status(target.user_id, target.integration_id, "connected")
     except Exception as e:
         # Rollback: clean up stored credentials on connection failure
-        await token_store.delete_credentials(integration_id)
-        await invalidate_user_integration_caches(user_id)
-        log.set(
-            integration={
-                "provider": integration_name,
-                "action": "connect_mcp",
-                "auth_type": "bearer",
-                "status": "error",
-            }
-        )
-        return ConnectIntegrationResponse(
-            status="error",
-            integration_id=integration_id,
-            name=integration_name,
-            error=str(e),
-            message="Connection failed",
-        )
+        await token_store.delete_credentials(target.integration_id)
+        await invalidate_user_integration_caches(target.user_id)
+        return await _handle_connect_failure(target, e)
+
+    tools_count = len(tools) if tools else 0
+    log.set(
+        integration={
+            "provider": target.integration_name,
+            "action": "connect_mcp",
+            "status": "connected",
+            "tools_count": tools_count,
+        }
+    )
+    return ConnectIntegrationResponse(
+        status="connected",
+        integration_id=target.integration_id,
+        name=target.integration_name,
+        tools_count=tools_count,
+        message="Integration connected successfully",
+    )
 
 
 def _composio_connect_target(
@@ -353,6 +363,15 @@ async def connect_composio_integration(
 ) -> ConnectIntegrationResponse:
     """Start a Composio sign-in: a new account, or a fresh one for an expired account in place."""
     log.set(integration={"provider": provider, "action": "connect_composio"})
+    integration = get_integration_by_id(integration_id)
+    if integration is None or await auth_config_id_for(integration) is None:
+        log.set(integration={"provider": provider, "status": "not_set_up"})
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            name=integration_name,
+            error=f"{integration_name} {NOT_SET_UP_ON_INSTANCE}",
+        )
     composio_service = get_composio_service()
 
     record = await get_account_record(user_id, integration_id)
@@ -457,22 +476,18 @@ async def connect_self_integration(
 
 async def initiate_integration_connection(
     user_id: str,
-    integration_id: str,
+    resolved: ResolvedIntegration,
     *,
     user_email: str = "",
     redirect_path: str = "/integrations",
     bearer_token: str | None = None,
     reconnect_account_id: str | None = None,
-) -> ConnectIntegrationResponse | None:
-    """Resolve an integration and start its connect flow.
+) -> ConnectIntegrationResponse:
+    """Start a resolved integration's connect flow; shared by POST /connect and /connect-link.
 
-    Shared by POST /connect/{id} and the login-free POST /connect-link.
-    Returns None when the integration does not exist (callers map that to
-    404); otherwise redirect_url is the provider OAuth URL.
+    A raised failure is logged with the provider's text and answered with connect_failure_copy.
     """
-    resolved = await IntegrationResolver.resolve(integration_id)
-    if not resolved:
-        return None
+    integration_id = resolved.integration_id
 
     def _error(message: str) -> ConnectIntegrationResponse:
         return ConnectIntegrationResponse(
@@ -502,20 +517,18 @@ async def initiate_integration_connection(
                 is_platform=resolved.source == "platform",
                 bearer_token=bearer_token,
             )
-        if resolved.managed_by == "composio":
+        if resolved.managed_by in ("composio", "self"):
             if not provider:
                 return _error("Provider not configured")
-            return await connect_composio_integration(
-                user_id=user_id,
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                provider=provider,
-                redirect_path=redirect_path,
-                reconnect_account_id=reconnect_account_id,
-            )
-        if resolved.managed_by == "self":
-            if not provider:
-                return _error("Provider not configured")
+            if resolved.managed_by == "composio":
+                return await connect_composio_integration(
+                    user_id=user_id,
+                    integration_id=integration_id,
+                    integration_name=resolved.name,
+                    provider=provider,
+                    redirect_path=redirect_path,
+                    reconnect_account_id=reconnect_account_id,
+                )
             return await connect_self_integration(
                 user_id=user_id,
                 user_email=user_email,
@@ -533,7 +546,8 @@ async def initiate_integration_connection(
             error_type=type(e).__name__,
             user_id=user_id,
         )
-        return _error(str(e))
+        log.set(integration={"id": integration_id, "status": "error"})
+        return _error(connect_failure_copy(resolved.name))
 
 
 async def disconnect_integration(user_id: str, integration_id: str) -> IntegrationSuccessResponse:

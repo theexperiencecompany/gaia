@@ -16,6 +16,7 @@ from tests.helpers import local_timezone
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, WEEK_LIST_LIMIT, WINBACK_THRESHOLD
 from app.constants.todos import (
+    ACTION_NEEDED_LABEL,
     BLOCKING_LABEL,
     FAILED_LABEL,
     GAIA_TRACKED_LABEL,
@@ -159,7 +160,7 @@ class TestTrackedWork:
     async def test_a_thread_the_user_owes_needs_them_and_one_awaiting_others_does_not(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The inbox desk's thread todos are its findings: needs-reply waits on the user."""
+        """The inbox desk's thread todos are its findings: needs-reply and action-needed wait on the user."""
         monkeypatch.setattr(
             context.todo_repository, "list_completed_since", AsyncMock(return_value=[])
         )
@@ -170,6 +171,7 @@ class TestTrackedWork:
                 return_value=[
                     _todo("n1", "Priya · pitch deck", GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL),
                     _todo("a1", "Add Arjun call", GAIA_TRACKED_LABEL, WAITING_FOR_APPROVAL_LABEL),
+                    _todo("k1", "Kotak · card declined", GAIA_TRACKED_LABEL, ACTION_NEEDED_LABEL),
                     _todo("w1", "Dhruv · offer", GAIA_TRACKED_LABEL, WAITING_FOR_REPLY_LABEL),
                 ]
             ),
@@ -177,7 +179,7 @@ class TestTrackedWork:
 
         work = await context.gather_tracked_work(_USER, datetime.now(UTC))
 
-        assert [d.id for d in work.blocked] == ["n1", "a1"]
+        assert [d.id for d in work.blocked] == ["n1", "a1", "k1"]
         assert [d.id for d in work.running] == ["w1"]
 
     async def test_the_inbox_desk_is_reported_through_its_findings_not_as_work(

@@ -7,8 +7,10 @@ build.yml's master concurrency group the whole time, and every later push's
 image build queued behind it and was cancelled by the next one — four merges
 never reached production with every gate green.
 
-Only ``gh`` is stubbed: the jq filters, the age arithmetic and the
-force-cancel decision all run for real.
+Only ``gh`` and ``sleep`` are stubbed: the jq filters, the age arithmetic and
+the force-cancel decision all run for real. The stub sleep advances a simulated
+clock (every stubbed job's started_at moves back by the seconds slept), so no
+age a test asserts on depends on how fast the machine runs the script.
 """
 
 from __future__ import annotations
@@ -115,6 +117,25 @@ def run_unwedge(tmp_path: Path, scenario: Scenario) -> Outcome:
     gh.write_text(stub)
     gh.chmod(0o755)
 
+    sleep = bin_dir / "sleep"
+    sleep.write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            echo "$1" >> "{tmp_path}/slept"
+            for f in "{tmp_path}"/jobs-*.json; do
+              [[ -e "$f" ]] || continue
+              jq --argjson s "$1" \\
+                '.jobs |= map(.started_at |= ((fromdateiso8601 - $s) | todateiso8601))' \\
+                "$f" > "$f.tmp"
+              mv -f "$f.tmp" "$f"
+            done
+            """
+        )
+    )
+    sleep.chmod(0o755)
+
     output = tmp_path / "github_output"
     output.touch()
     env = {
@@ -174,19 +195,23 @@ def test_gate_with_wait_timer_is_left_alone(tmp_path: Path) -> None:
 
 def test_young_wedge_is_reaped_once_it_crosses_the_limit(tmp_path: Path) -> None:
     # A push that lands 10 min into a wedge must not exit and leave its own deploy queued behind it.
-    out = run_unwedge(tmp_path, Scenario({42: ([gate()], [waiting_job(ago(1))])}, limit=3))
+    out = run_unwedge(tmp_path, Scenario({42: ([gate()], [waiting_job(ago(1))])}))
     assert out.proc.returncode == 0, out.proc.stderr
     assert out.posted == [cancel_url(42)]
     assert out.reaped == "42"
+    assert len((tmp_path / "slept").read_text().split()) == 1
 
 
 def test_young_gate_that_clears_while_waiting_is_not_reaped(tmp_path: Path) -> None:
     out = run_unwedge(
-        tmp_path, Scenario({42: ([gate()], [waiting_job(ago(1))])}, listings=[[42], []], limit=3)
+        tmp_path, Scenario({42: ([gate()], [waiting_job(ago(1))])}, listings=[[42], []])
     )
     assert out.proc.returncode == 0, out.proc.stderr
     assert out.posted == []
     assert out.reaped == ""
+    # It waited once, for the gate to reach the limit, rather than leaving at once.
+    [slept] = (tmp_path / "slept").read_text().split()
+    assert 0 < int(slept) <= LIMIT_SECS
 
 
 def test_failed_listing_fails_loud(tmp_path: Path) -> None:

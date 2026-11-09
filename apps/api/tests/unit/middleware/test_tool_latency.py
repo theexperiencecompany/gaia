@@ -4,12 +4,17 @@ import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import ToolMessage
+from langchain.agents.middleware import AgentMiddleware, AgentState
+from langchain_core.messages import ToolCall, ToolMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
 from langgraph.errors import GraphBubbleUp
+from langgraph.prebuilt.tool_node import ToolCallRequest
 from prometheus_client import REGISTRY
 import pytest
 
 from app.agents.middleware.executor import MiddlewareExecutor, _tool_metric_name
+from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
 
 
 def _count(tool_name: str, status: str) -> float:
@@ -30,12 +35,23 @@ def _sum(tool_name: str, status: str) -> float:
     )
 
 
-class _RegularTool:
+class _RegularTool(BaseTool):
     """A non-MCP tool: no tool_connector, so it keeps its own name."""
 
+    name: str = "web_search"
+    description: str = "A regular tool."
 
-class _McpTool:
-    tool_connector = object()
+    def _run(self) -> None:
+        return None
+
+
+class _McpTool(BaseTool):
+    name: str = "user_defined_thing"
+    description: str = "An MCP tool."
+    tool_connector: object = object()
+
+    def _run(self) -> None:
+        return None
 
 
 def test_metric_name_keeps_a_regular_tools_own_name() -> None:
@@ -53,21 +69,19 @@ def test_metric_name_falls_back_to_unknown_without_a_name() -> None:
 
 async def _invoke(
     executor: MiddlewareExecutor,
-    tool_call: dict[str, Any],
+    tool_call: ToolCall,
     tool: Any,
     invoke_fn: Any,
 ) -> Any:
-    state = {"messages": []}
-    config: dict[str, Any] = {"configurable": {"user_id": "6812f0b3c9a14e2b7d5a91cc"}}
-    with (
-        patch("app.agents.middleware.executor.create_tool_call_request"),
-        patch(
-            "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-            return_value=MagicMock(),
-        ),
-        patch("app.agents.middleware.executor.capture"),
-    ):
-        return await executor.wrap_tool_invocation(tool_call, tool, state, config, None, invoke_fn)
+    config: RunnableConfig = {"configurable": {"user_id": "6812f0b3c9a14e2b7d5a91cc"}}
+    request = ToolCallRequest(
+        tool_call=tool_call,
+        tool=tool,
+        state={"messages": []},
+        runtime=BigtoolToolRuntime.from_graph_context(config),
+    )
+    with patch("app.agents.middleware.executor.capture"):
+        return await executor.wrap_tool_invocation(request, invoke_fn)
 
 
 async def test_successful_call_observes_tool_span() -> None:
@@ -165,10 +179,8 @@ async def test_failing_call_records_exact_seconds() -> None:
 
 async def test_hil_pause_is_neither_success_nor_error() -> None:
     """A gate interrupt propagates and leaves no span: the pause is HIL wait, not tool time."""
-    from langchain.agents.middleware import AgentMiddleware
-    from langchain.agents.middleware.types import ToolCallRequest
 
-    class _Gate(AgentMiddleware):  # type: ignore[type-arg] -- test double uses the unparameterized middleware base
+    class _Gate(AgentMiddleware[AgentState[Any], Any]):
         async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
             raise GraphBubbleUp("paused")
 
@@ -186,17 +198,14 @@ async def test_hil_pause_is_neither_success_nor_error() -> None:
 
 async def test_middleware_chain_routes_through_each_wrapper() -> None:
     """A wrapper wired to None must still route through the middleware, not call the tool directly."""
-    from langchain.agents.middleware import AgentMiddleware
-    from langchain.agents.middleware.types import ToolCallRequest
-
     seen: list[str] = []
 
-    class _Recorder(AgentMiddleware):  # type: ignore[type-arg] -- test double uses the unparameterized middleware base
+    class _Recorder(AgentMiddleware[AgentState[Any], Any]):
         async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
             seen.append("async")
             return await handler(request)
 
-    class _SyncRecorder(AgentMiddleware):  # type: ignore[type-arg] -- test double uses the unparameterized middleware base
+    class _SyncRecorder(AgentMiddleware[AgentState[Any], Any]):
         def wrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
             seen.append("sync")
 
@@ -224,10 +233,8 @@ async def test_middleware_chain_routes_through_each_wrapper() -> None:
 
 async def test_pre_tool_failure_records_exact_error_seconds_and_never_runs_the_tool() -> None:
     """A pre-tool break is refused, not retried, and records the elapsed seconds as an error."""
-    from langchain.agents.middleware import AgentMiddleware
-    from langchain.agents.middleware.types import ToolCallRequest
 
-    class _PreToolBreak(AgentMiddleware):  # type: ignore[type-arg] -- test double uses the unparameterized middleware base
+    class _PreToolBreak(AgentMiddleware[AgentState[Any], Any]):
         async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
             raise RuntimeError("pre-tool middleware broke")
 
@@ -251,10 +258,8 @@ async def test_pre_tool_failure_records_exact_error_seconds_and_never_runs_the_t
 
 async def test_post_tool_middleware_failure_still_records_success() -> None:
     """A middleware that breaks after the tool succeeded is still a successful tool call; the status label is the tool's outcome."""
-    from langchain.agents.middleware import AgentMiddleware
-    from langchain.agents.middleware.types import ToolCallRequest
 
-    class _PostToolBreak(AgentMiddleware):  # type: ignore[type-arg] -- test double uses the unparameterized middleware base
+    class _PostToolBreak(AgentMiddleware[AgentState[Any], Any]):
         async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
             await handler(request)  # the tool runs and succeeds here
             raise RuntimeError("post-tool middleware broke")

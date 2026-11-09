@@ -10,13 +10,12 @@ I/O boundaries (MongoDB, Redis).
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from httpx import ASGITransport, AsyncClient
-from jose import JWTError, jwt
+from httpx import ASGITransport, AsyncClient, Response
 from posthog.contexts import get_context_distinct_id
 import pytest
 from starlette.testclient import TestClient
@@ -25,19 +24,18 @@ from app.api.v1.endpoints.bot import require_bot_api_key, router as bot_router
 from app.api.v1.middleware.logging import LoggingMiddleware
 from app.config.settings import settings
 from app.constants import error_codes
-from app.constants.auth import JWT_ALGORITHM
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.core.exception_handlers import register_exception_handlers
 from app.core.middleware import configure_middleware
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.bot_token_service import (
-    BOT_SESSION_TOKEN_EXPIRY_MINUTES,
     create_bot_session_token,
     verify_bot_session_token,
 )
 from shared.py.analytics.catalog.attribution import EntrySurface
 import shared.py.logging as shared_logging
+from tests.helpers import JOSE_MINTED_BOT_TOKEN, bot_jwt_claims, forge_jwt, hostile_jwts
 
 # ---------------------------------------------------------------------------
 # Test constants
@@ -149,125 +147,6 @@ async def _noop_call_next(request: Request) -> MagicMock:
 
 
 @pytest.mark.integration
-class TestBotTokenService:
-    """Tests for the bot session token create/verify cycle."""
-
-    def test_create_and_verify_token(self) -> None:
-        """Create a bot session token and verify it returns correct payload."""
-        token = create_bot_session_token(
-            user_id=TEST_USER_ID,
-            platform=TEST_PLATFORM,
-            platform_user_id=TEST_PLATFORM_USER_ID,
-        )
-
-        payload = verify_bot_session_token(token)
-
-        assert payload["user_id"] == TEST_USER_ID
-        assert payload["platform"] == TEST_PLATFORM
-        assert payload["platform_user_id"] == TEST_PLATFORM_USER_ID
-
-    def test_token_contains_correct_claims(self) -> None:
-        """Verify the raw JWT claims include role=bot, correct sub, and expiry."""
-        token = create_bot_session_token(
-            user_id=TEST_USER_ID,
-            platform="slack",
-            platform_user_id="U999",
-            expires_minutes=10,
-        )
-
-        raw = jwt.decode(token, TEST_BOT_SESSION_SECRET, algorithms=[JWT_ALGORITHM])
-
-        assert raw["sub"] == TEST_USER_ID
-        assert raw["platform"] == "slack"
-        assert raw["platform_user_id"] == "U999"
-        assert raw["role"] == "bot"
-        assert "exp" in raw
-        assert "iat" in raw
-
-    def test_expired_token_rejected(self) -> None:
-        """A token created with a past expiry is rejected on verification."""
-        token = create_bot_session_token(
-            user_id=TEST_USER_ID,
-            platform=TEST_PLATFORM,
-            platform_user_id=TEST_PLATFORM_USER_ID,
-            expires_minutes=-1,  # Already expired
-        )
-
-        with pytest.raises(JWTError, match="Token verification failed"):
-            verify_bot_session_token(token)
-
-    def test_tampered_token_rejected(self) -> None:
-        """A token signed with a different secret is rejected."""
-        wrong_secret = "b" * 64
-        expire = datetime.now(UTC) + timedelta(minutes=15)
-        payload = {
-            "sub": TEST_USER_ID,
-            "platform": TEST_PLATFORM,
-            "platform_user_id": TEST_PLATFORM_USER_ID,
-            "role": "bot",
-            "exp": expire,
-            "iat": datetime.now(UTC),
-        }
-        bad_token = jwt.encode(payload, wrong_secret, algorithm=JWT_ALGORITHM)
-
-        with pytest.raises(JWTError, match="Token verification failed"):
-            verify_bot_session_token(bad_token)
-
-    def test_wrong_role_rejected(self) -> None:
-        """A token with role != 'bot' is rejected even if otherwise valid."""
-        expire = datetime.now(UTC) + timedelta(minutes=15)
-        payload = {
-            "sub": TEST_USER_ID,
-            "platform": TEST_PLATFORM,
-            "platform_user_id": TEST_PLATFORM_USER_ID,
-            "role": "agent",  # Wrong role
-            "exp": expire,
-            "iat": datetime.now(UTC),
-        }
-        token = jwt.encode(payload, TEST_BOT_SESSION_SECRET, algorithm=JWT_ALGORITHM)
-
-        with pytest.raises(JWTError, match="Invalid token role"):
-            verify_bot_session_token(token)
-
-    def test_missing_secret_raises_value_error(self) -> None:
-        """Creating a token without BOT_SESSION_TOKEN_SECRET configured raises ValueError."""
-        with patch.object(settings, "BOT_SESSION_TOKEN_SECRET", None):
-            with pytest.raises(ValueError, match="BOT_SESSION_TOKEN_SECRET is required"):
-                create_bot_session_token(
-                    user_id=TEST_USER_ID,
-                    platform=TEST_PLATFORM,
-                    platform_user_id=TEST_PLATFORM_USER_ID,
-                )
-
-    def test_short_secret_raises_value_error(self) -> None:
-        """A secret shorter than 32 characters is rejected."""
-        with patch.object(settings, "BOT_SESSION_TOKEN_SECRET", "short"):
-            with pytest.raises(ValueError, match="must be at least 32 characters"):
-                create_bot_session_token(
-                    user_id=TEST_USER_ID,
-                    platform=TEST_PLATFORM,
-                    platform_user_id=TEST_PLATFORM_USER_ID,
-                )
-
-    def test_default_expiry_is_15_minutes(self) -> None:
-        """Default token expiry matches BOT_SESSION_TOKEN_EXPIRY_MINUTES constant."""
-        assert BOT_SESSION_TOKEN_EXPIRY_MINUTES == 15
-
-        token = create_bot_session_token(
-            user_id=TEST_USER_ID,
-            platform=TEST_PLATFORM,
-            platform_user_id=TEST_PLATFORM_USER_ID,
-        )
-        raw = jwt.decode(token, TEST_BOT_SESSION_SECRET, algorithms=[JWT_ALGORITHM])
-
-        iat = datetime.fromtimestamp(raw["iat"], tz=UTC)
-        exp = datetime.fromtimestamp(raw["exp"], tz=UTC)
-        delta = exp - iat
-        # Allow 2 seconds of clock drift between iat and exp computation
-        assert timedelta(minutes=14, seconds=58) <= delta <= timedelta(minutes=15, seconds=2)
-
-
-@pytest.mark.integration
 class TestBotAuthMiddlewareAPIKey:
     """Tests for API key verification in BotAuthMiddleware."""
 
@@ -358,6 +237,40 @@ class TestBotAuthMiddlewareJWT:
         assert request.state.authenticated is True
         # Cache was hit, so set_cache should not have been called
         mock_redis_cache["set"].assert_not_called()
+
+    async def test_a_bot_token_minted_by_python_jose_authenticates(
+        self, mock_redis_cache: dict
+    ) -> None:
+        cached_user = AuthenticatedUser(
+            user_id="u-jose",
+            email="jose@example.com",
+            name="Jose User",
+            auth_provider="bot:telegram",
+            bot_authenticated=True,
+        )
+        mock_redis_cache["get"].return_value = cached_user
+        request = _make_mock_request(headers={"Authorization": f"Bearer {JOSE_MINTED_BOT_TOKEN}"})
+
+        await BotAuthMiddleware(app=MagicMock()).dispatch(request, _noop_call_next)
+
+        assert request.state.authenticated is True
+        assert request.state.user == cached_user
+        assert mock_redis_cache["get"].await_args.args[0] == "bot_user:telegram:tg-jose"
+
+    @pytest.mark.parametrize("kind", sorted(hostile_jwts({}, "s")))
+    async def test_a_hostile_bot_token_authenticates_nobody(
+        self, mock_redis_cache: dict, kind: str
+    ) -> None:
+        token = hostile_jwts(
+            bot_jwt_claims(TEST_USER_ID, TEST_PLATFORM, TEST_PLATFORM_USER_ID),
+            TEST_BOT_SESSION_SECRET,
+        )[kind]
+        request = _make_mock_request(headers={"Authorization": f"Bearer {token}"})
+
+        await BotAuthMiddleware(app=MagicMock()).dispatch(request, _noop_call_next)
+
+        assert not hasattr(request.state, "authenticated")
+        mock_redis_cache["get"].assert_not_awaited()
 
     async def test_invalid_jwt_falls_through_to_api_key(self, mock_redis_cache: dict) -> None:
         """Invalid JWT does not set authenticated, falls through to API key check."""
@@ -785,9 +698,9 @@ class TestBotAuthFullChain:
                 platform_user_id=f"{platform}-user-42",
             )
             payload = verify_bot_session_token(token)
-            assert payload["platform"] == platform
-            assert payload["platform_user_id"] == f"{platform}-user-42"
-            assert payload["user_id"] == TEST_USER_ID
+            assert payload.platform == platform
+            assert payload.platform_user_id == f"{platform}-user-42"
+            assert payload.user_id == TEST_USER_ID
 
 
 @pytest.mark.integration
@@ -861,6 +774,83 @@ class TestSessionTokenFastPathReachesBotRoutes:
             )
 
         assert response.status_code == 401
+
+
+TELEGRAM_USER_ID = "4242424242"
+
+
+@pytest.mark.integration
+class TestTelegramClientSessionToken:
+    """The token the Telegram bot stores from its first stream frame, sent back as the bot client sends it.
+
+    The client also sends X-Bot-Platform-User-Id, and with it the API-key
+    fallback authenticates even when the JWT is refused, so a decoder that
+    refuses every token never shows on Telegram. These requests leave that
+    header off, so only the JWT can name the user.
+    """
+
+    @pytest.fixture
+    def guarded_app(self) -> FastAPI:
+        app = FastAPI()
+        app.add_middleware(BotAuthMiddleware)
+
+        @app.get("/api/v1/bot/guarded", dependencies=[Depends(require_bot_api_key)])
+        async def guarded(request: Request) -> dict[str, object]:
+            user = getattr(request.state, "user", None)
+            if user is None:
+                return {"user_id": None, "auth_provider": None}
+            return {"user_id": user.user_id, "auth_provider": user.auth_provider}
+
+        return app
+
+    async def _send(self, app: FastAPI, token: str) -> Response:
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get(
+                "/api/v1/bot/guarded",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Bot-API-Key": TEST_BOT_API_KEY,
+                    "X-Bot-Platform": "telegram",
+                },
+            )
+
+    async def test_a_minted_telegram_session_token_names_the_linked_user(
+        self,
+        guarded_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+    ) -> None:
+        mock_platform_lookup.return_value = TEST_USER_DOC
+        token = create_bot_session_token(
+            user_id=TEST_USER_ID, platform="telegram", platform_user_id=TELEGRAM_USER_ID
+        )
+
+        response = await self._send(guarded_app, token)
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {"user_id": TEST_USER_ID, "auth_provider": "bot:telegram"}
+        mock_platform_lookup.assert_awaited_once_with("telegram", TELEGRAM_USER_ID)
+
+    @pytest.mark.parametrize("kind", [*sorted(hostile_jwts({}, "s")), "not_a_bot_role"])
+    async def test_a_bad_telegram_session_token_names_nobody(
+        self,
+        guarded_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+        kind: str,
+    ) -> None:
+        mock_platform_lookup.return_value = TEST_USER_DOC
+        claims = bot_jwt_claims(TEST_USER_ID, "telegram", TELEGRAM_USER_ID)
+        tokens = {
+            **hostile_jwts(claims, TEST_BOT_SESSION_SECRET),
+            "not_a_bot_role": forge_jwt({**claims, "role": "agent"}, TEST_BOT_SESSION_SECRET),
+        }
+
+        response = await self._send(guarded_app, tokens[kind])
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {"user_id": None, "auth_provider": None}
 
 
 @pytest.mark.integration

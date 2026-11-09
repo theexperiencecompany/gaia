@@ -16,7 +16,7 @@ step limit). Triggers: per-tool (exceeds max_output_chars) or thread-level
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 import hashlib
 import json
@@ -35,8 +35,10 @@ from langchain_core.messages import (
 from langgraph.types import Command
 
 from app.agents.llm.client import SILENT_LLM_CONFIG
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.agents.workspace.offload import (
     OffloadInfo,
+    extract_offload_records,
     mark_offload,
     read_offload,
     sniff_offload_fmt,
@@ -81,6 +83,7 @@ class _AttributeToolCall(Protocol):
 
     name: str
     id: str | None
+    args: dict[str, object]
 
 
 def estimate_context_usage(messages: Sequence[AnyMessage], context_window: int) -> float:
@@ -104,12 +107,13 @@ def should_compact_output(
     compaction_threshold: float,
     always_persist: bool,
     excluded: bool,
+    max_records: int | None = None,
 ) -> tuple[bool, str]:
     """Decide whether a tool output should be spilled to the workspace.
 
     tool_name is intentionally unused — callers already resolve it into
-    always_persist/excluded, kept for call-site readability. Returns
-    (should_compact, reason); reason is empty when not compacting.
+    always_persist/excluded/max_records, kept for call-site readability.
+    Returns (should_compact, reason); reason is empty when not compacting.
     """
     del tool_name
     if excluded:
@@ -117,6 +121,10 @@ def should_compact_output(
     size = len(content_str)
     if always_persist:
         return True, "always_persist_tool"
+    if max_records is not None:
+        extracted = extract_offload_records(content_str)
+        if extracted is not None and len(extracted.records) > max_records:
+            return True, f"record_limit ({len(extracted.records)} records)"
     if size < MIN_COMPACTION_SIZE:
         return False, ""
     if size > max_output_chars:
@@ -127,6 +135,14 @@ def should_compact_output(
 
 
 def _summarize_output(content: str, tool_name: str) -> str:
+    extracted = extract_offload_records(content)
+    if extracted is not None:
+        # The spilled file holds only the records, so the fields around them stay here.
+        return (
+            f"[{tool_name}] Returned {len(extracted.records)} records "
+            f"(alongside {json.dumps(extracted.metadata)}). "
+            f"Preview: {json.dumps(extracted.records[:3])[:200]}..."
+        )
     try:
         data = json.loads(content)
         if isinstance(data, list):
@@ -239,9 +255,18 @@ async def _write_raw_output(
     """Write the RAW output to the workspace; return (fmt, sandbox_path).
 
     The raw content (not a metadata wrapper) is written so query_json/grep can
-    mine it directly. Raises on any storage failure — callers own the fallback.
+    mine it directly; an enveloped record list (a Composio {"data": ...} result)
+    is written as its records, one JSONL line each, so query_json filters the
+    records rather than the envelope. Raises on any storage failure.
     """
-    fmt = sniff_offload_fmt(content_str)
+    extracted = extract_offload_records(content_str)
+    fmt: OffloadFmt
+    if extracted is not None:
+        fmt = "jsonl"
+        file_content = "\n".join(json.dumps(record) for record in extracted.records)
+    else:
+        fmt = sniff_offload_fmt(content_str)
+        file_content = content_str
     ext = {"json": "json", "jsonl": "jsonl", "text": "txt"}[fmt]
     content_hash = hashlib.md5(content_str.encode(), usedforsecurity=False).hexdigest()[:8]  # nosec B324
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
@@ -251,7 +276,7 @@ async def _write_raw_output(
         user_id=user_id,
         conversation_id=conversation_id,
         relative_path=relative_path,
-        content=content_str,
+        content=file_content,
     )
     return fmt, sandbox_path
 
@@ -352,6 +377,10 @@ def _summarized_compact_message(
     summary stands alone. spilled is (fmt, sandbox_path) from _write_raw_output.
     """
     body = f"[{tool_name} compacted: {reason}] {summary}"
+    extracted = extract_offload_records(content_str)
+    if extracted is not None and extracted.metadata:
+        # The spilled file holds only the records, and the digest may drop these fields.
+        body += f"\n\n[Envelope fields: {json.dumps(extracted.metadata)}]"
     additional: dict[str, object] = {
         **existing_additional_kwargs,
         "original_length": len(content_str),
@@ -472,6 +501,7 @@ async def compact_tool_output(
     status: str = "success",
     always_persist: bool = False,
     excluded: bool = False,
+    max_records: int | None = None,
     existing_additional_kwargs: dict[str, object] | None = None,
     summary_llm: LanguageModelLike | None = None,
 ) -> ToolMessage | None:
@@ -498,6 +528,7 @@ async def compact_tool_output(
         compaction_threshold=compaction_threshold,
         always_persist=always_persist,
         excluded=excluded,
+        max_records=max_records,
     )
     if not should:
         return None
@@ -634,6 +665,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         context_window: int = DEFAULT_MAX_TOKENS,
         excluded_tools: set[str] | None = None,
         summary_llm: LanguageModelLike | None = None,
+        max_output_records: Mapping[str, int] | None = None,
     ) -> None:
         super().__init__()
         self.compaction_threshold = compaction_threshold
@@ -641,6 +673,8 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         self.always_persist_tools = always_persist_tools or []
         self.context_window = context_window
         self.excluded_tools = excluded_tools or set()
+        # Per tool: spill once its output carries more records than this, whatever its size.
+        self.max_output_records: Mapping[str, int] = max_output_records or {}
         # The graph's chat LLM. Invoked with the request's configurable bound
         # (same as the model node), so digests ride the conversation's model.
         self.summary_llm = summary_llm
@@ -664,11 +698,16 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         # attribute form; the union keeps the else-branch from being narrowed away.
         tool_call: ToolCall | _AttributeToolCall = request.tool_call
         if isinstance(tool_call, dict):
-            tool_name = tool_call.get("name", "")
+            call_name = tool_call["name"]
+            call_args = tool_call.get("args") or {}
             tool_call_id = tool_call.get("id", "")
         else:
-            tool_name = tool_call.name
+            call_name = tool_call.name
+            call_args = tool_call.args
             tool_call_id = tool_call.id
+        # Integration tools run behind execute: exclusion, persistence and the
+        # file's producer are the real tool's, never the proxy's.
+        tool_name, _ = unwrap_execute_call(call_name, call_args)
 
         configurable: AgentConfigurable = runtime_configurable(request)
         thread_id = configurable.get("thread_id")
@@ -691,14 +730,15 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             status=message.status,
             always_persist=tool_name in self.always_persist_tools,
             excluded=tool_name in self.excluded_tools,
+            max_records=self.max_output_records.get(tool_name),
             existing_additional_kwargs=message.additional_kwargs,
             summary_llm=summary_llm,
         )
-        message = compacted if compacted is not None else message
+        if compacted is not None:
+            # The reply keeps the call's own name (execute), which providers match to the call.
+            message = compacted.model_copy(update={"name": message.name})
 
-        # Whether we offloaded the output or the tool self-offloaded (gmail, which
-        # is excluded from compaction), surface the file-mining tools on any marker.
-        # Keyed on the offload itself, so it covers every producer uniformly.
+        # Surface the file-mining tools on any offload marker the message carries.
         bound = self._bind_offload_tools(message, request)
         if command is None:
             return bound

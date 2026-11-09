@@ -7,7 +7,7 @@ stamps this onto the briefing workflows' crons, and a change to the schedule,
 quiet hours or timezone moves the workflows with it.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
@@ -25,12 +25,11 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
 from app.models.briefing_models import BriefingKind, BriefingSchedule
-from app.models.notification.notification_models import QuietHours
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import UserDocument
 from app.models.workflow_models import UpdateWorkflowRequest, Workflow
 from app.services.analytics_service import capture
 from app.services.briefing import context
-from app.services.delivery.quiet_hours import contains_hour
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
@@ -58,7 +57,9 @@ _FREQUENCY_DESCRIPTIONS: dict[BriefingFrequency, str] = {
 
 def daily_briefing_hour(schedule: BriefingSchedule, quiet_hours: QuietHours) -> int:
     """Return the daily brief's local hour: the user's, or the end of quiet hours covering it."""
-    return quiet_hours.end_hour if contains_hour(quiet_hours, schedule.hour) else schedule.hour
+    # Quiet hours read only the hour on the clock; any day stands in for the brief's.
+    slot = datetime.min.replace(hour=schedule.hour, tzinfo=UTC)
+    return quiet_hours.end_after(slot).hour
 
 
 def daily_briefing_cron(schedule: BriefingSchedule, quiet_hours: QuietHours) -> str:
@@ -73,14 +74,14 @@ def daily_briefing_cron(schedule: BriefingSchedule, quiet_hours: QuietHours) -> 
 
 def describe_briefing_schedule(user: UserDocument) -> str:
     """Say in plain words which briefs the user gets and when the daily one lands."""
-    hour = daily_briefing_hour(user.briefing_schedule, user.quiet_hours)
+    hour = daily_briefing_hour(user.briefing_schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
     return _FREQUENCY_DESCRIPTIONS[user.briefing_schedule.frequency].format(time=f"{hour:02d}:00")
 
 
 def briefing_cron(key: str, user: UserDocument) -> str:
     """Return the cron the user's profile gives the briefing workflow under key."""
     return (
-        daily_briefing_cron(user.briefing_schedule, user.quiet_hours)
+        daily_briefing_cron(user.briefing_schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
         if key == DAILY_BRIEFING_WORKFLOW_KEY
         else WEEKLY_DIGEST_CRON
     )

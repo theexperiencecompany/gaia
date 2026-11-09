@@ -56,10 +56,9 @@ services:
       # every default user runs on, which Obscura runs also fall back to.
       BROWSER_HOST_URL: http://browser-host:8930
       BROWSER_FALLBACK_HOST_URL: http://browser-host-chrome:8931
-      # Public base for the recap and step-screenshot links (served by THIS api).
-      # Left unset so it falls back to HOST; a friendly vhost such as
-      # browser.heygaia.io must reverse-proxy here, never to the browser host.
-      # BROWSER_LIVE_VIEW_BASE_URL: https://browser.heygaia.io
+      # A custom MCP server added as localhost runs on the developer's machine,
+      # which this container reaches as host.docker.internal.
+      LOOPBACK_HOST_ALIAS: host.docker.internal
       # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
       # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
       # unset — the storage helper short-circuits gracefully in that case).
@@ -98,6 +97,9 @@ services:
       JUICEFS_META_URL_TEMPLATE: redis://jfs-meta-redis:6379/{shard}
     env_file:
       - ../../apps/api/.env
+    # host.docker.internal on Linux too (Docker Desktop defines it already).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../../apps/api/app:/app/apps/api/app
       # Live-mount scripts so mount_juicefs.sh edits (shipped into the sandbox at
@@ -270,14 +272,18 @@ services:
       # Required for Linux kernel 7.x: block rseq (ENOSYS) so TCMalloc falls
       # back from per-CPU caches to a safe path. Using rseq on kernel 7.x causes
       # a SIGSEGV in mongo:8's TCMalloc ~30s after startup (SERVER-121912).
-      - seccomp:seccomp-mongo.json
+      - seccomp:../../packages/cli/selfhost/seccomp-mongo.json
     ports:
       - "${MONGO_HOST_PORT:-27017}:27017"
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 10s
+      # A TCP probe, not mongosh: each mongosh run boots a Node.js shell (3-5s of
+      # CPU, past the timeout under load). mongod only listens once it is ready.
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/27017"]
+      interval: 30s
+      timeout: 5s
       retries: 5
+      start_period: 60s
+      start_interval: 2s
     networks:
       - gaia_network
 
@@ -294,10 +300,14 @@ services:
       - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
     restart: always
     healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
+      # A TCP probe, not rabbitmqctl: each CLI run boots an Erlang VM (~10s of
+      # CPU). The AMQP listener only opens once the broker has finished booting.
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/5672"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 5
+      start_period: 60s
+      start_interval: 2s
     networks:
       - gaia_network
 
@@ -320,6 +330,7 @@ services:
       - SEARXNG_BASE_URL=http://searxng:8080
       - BROWSER_HOST_URL=http://browser-host:8930
       - BROWSER_FALLBACK_HOST_URL=http://browser-host-chrome:8931
+      - LOOPBACK_HOST_ALIAS=host.docker.internal
       - ARQ_METRICS_PORT=9100
       - JUICEFS_HOST_MOUNT_PATH=/mnt/jfs
       - UV_NO_SYNC=1
@@ -334,6 +345,8 @@ services:
       - JUICEFS_META_URL_TEMPLATE=redis://jfs-meta-redis:6379/{shard}
     expose:
       - "9100"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: ["python", "-m", "arq", "app.worker.WorkerSettings", "--custom-log-dict", "app.workers.config.log_config.ARQ_LOG_CONFIG"]
     restart: always
     volumes:
@@ -745,7 +758,8 @@ services:
   # gaia-browser-host — our own browser hosts for browser automation, two of them
   # off the same image: browser-host runs Obscura (a self-contained Rust CDP
   # server baked into the image) for users who opted in, and browser-host-chrome
-  # runs Chromium (headless-shell under /opt/browsers) for every default user,
+  # runs Chromium (headless-shell under /opt/browsers; Fortress, the image's
+  # Chromium fork, with BROWSER_HOST_FORTRESS=true) for every default user,
   # and takes Obscura runs that fall back. Each runs one long-lived engine, one
   # isolated context per session, a per-session CDP-filtering proxy and an
   # authenticated screencast live view. The API + worker reach them over the
@@ -828,8 +842,14 @@ services:
       BROWSER_ENGINE: chromium
       BROWSER_HOST_URL: http://browser-host-chrome:8931
       BROWSER_HOST_PORT: 8931
-      PLAYWRIGHT_BROWSERS_PATH: /opt/browsers
       BROWSER_HOST_KEY: ${BROWSER_HOST_KEY:-}
+      # Off by default. On, Fortress presents one pinned persona; a deployment sets
+      # the timezone and languages to its egress country's (blank: the persona's own).
+      BROWSER_HOST_FORTRESS: ${BROWSER_HOST_FORTRESS:-false}
+      FORTRESS_TIMEZONE: ${FORTRESS_TIMEZONE:-}
+      FORTRESS_LANGUAGES: ${FORTRESS_LANGUAGES:-}
+      # Fortress's license: set, its v3 engine; empty, its public v1 engine.
+      TILION_LICENSE_KEY: ${TILION_LICENSE_KEY:-}
     networks:
       - gaia_browser_net
     # Chromium writes its shared memory to /tmp (--disable-dev-shm-usage), so /dev/shm

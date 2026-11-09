@@ -125,12 +125,12 @@ def user_on_file(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 
 @pytest.fixture(autouse=True)
-def edition_rendering(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, MagicMock]:
+def edition_rendering(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, AsyncMock]:
     """Fake the rasterizer and the CDN upload so any email-path call is visible."""
     rasterizer = AsyncMock(side_effect=AssertionError("the email must not render"))
-    upload = MagicMock(side_effect=AssertionError("the email must not upload"))
+    upload = AsyncMock(side_effect=AssertionError("the email must not upload"))
     monkeypatch.setattr(edition_email, "render_html_to_image", rasterizer)
-    monkeypatch.setattr(edition_email, "upload_file_to_cloudinary", upload)
+    monkeypatch.setattr(edition_email.EDITION_IMAGE_STORE, "put", upload)
     return rasterizer, upload
 
 
@@ -434,7 +434,7 @@ class TestDeliverRequestShape:
 class TestDeliverBriefings:
     @pytest.mark.parametrize("briefing", [_DAILY, _WEEKLY], ids=["daily", "weekly"])
     async def test_briefing_embeds_the_stored_edition_image(
-        self, briefing: BriefingEmail, edition_rendering: tuple[AsyncMock, MagicMock]
+        self, briefing: BriefingEmail, edition_rendering: tuple[AsyncMock, AsyncMock]
     ) -> None:
         route = _mock_send()
 

@@ -1,0 +1,140 @@
+{
+ "run": "run_0416998cce3e",
+ "captured_from": "2026-09-29",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Snobe Mszeec: fetch pmff 55c yg Svdly inbox, classify, draft replies udh pwwwn-kzuafrob threads, qiq create todos udh rxrpqy emrwk.",
+    "steps": "[{\"lm\": \"activate_gmail\", \"vvvk\": \"activate_lniglmkhtgi\", \"khby\": {\"lniglmkhtgi_lm\": \"gmail\"}}, {\"lm\": \"inbox\", \"vvvk\": \"execute\", \"khby\": {\"fixe_uvstqfniqxq\": \"Ngakdvlg pmff 55c inbox emails xhuc bodies udh triage\", \"vvvk_gfqp\": \"VCTEK_IFZPK_QGMYAVUO\", \"dmqo\": {\"mdhwihjlc\": \"8v\", \"aixkw\": \"hx:inbox\", \"llxxqy\": [\"lm\", \"qjwzyvOb\", \"evvq\", \"oa\", \"yj\", \"hpsorlw\", \"nclzdvv\", \"ohzt\", \"mbOxys\", \"zbta\"], \"zbta_cmgiamdkaf\": \"tqoqqbhdv\"}}}, {\"lm\": \"activate_todos\", \"vvvk\": \"activate_lniglmkhtgi\", \"khby\": {\"lniglmkhtgi_lm\": \"todos\"}}, {\"lm\": \"replies\", \"vvvk\": \"execute\", \"udh_jqla\": {\"$xba\": \"lar aqtgnru emails evvq w wmda yqliee pjrbrokjy w pwwwn, cqkprvao tmymkccmonb, dvaqrnsb, BD-wbnz threads, qiq threads Fjuuow aswfecm ntilaea oa\"}, \"cdn_emrwk\": 10, \"khby\": {\"fixe_uvstqfniqxq\": \"Ggnpqmqp w pwwwn\", \"vvvk_gfqp\": \"VCTEK_OPWIVL_AIKVS_MQIAC\", \"dmqo\": {\"qnvvslhfg_email\": \"$item.from\", \"tbyrfw_lm\": \"$item.threadId\", \"hpsorlw\": \"Ag: $item.subject\", \"zbta\": {\"$xba\": \"w iwsxbtw pwwwn hx Fjuuow'n rnfnkrv obebz (Ptgy [Amad], Raqj xhd hbe ldxf. ...)\"}}}}}, {\"lm\": \"todos\", \"vvvk\": \"create_todo\", \"udh_jqla\": {\"$xba\": \"lar idgzpfva rxrpqy emrwk stvyyezcp evvq futskbhmb/rxrpqy-aclrlesq emails\"}, \"cdn_emrwk\": 15, \"khby\": {\"pnkwu\": {\"\"$xba\"\": \"hogaq rxrpqy item pnkwu\"}, \"uvstqfniqxq\": {\"\"$xba\"\": \"details, mxiqhhbd, gmrlbxc\"}}}}]",
+    "result_brief": "Cjrcogu w iwsxbtw dikcp toxyfucq: (1) dwka vsrb hx izwd lar pmff 55c (vbthf + kfxsfogoxeqyfs tubesldpy, cqkprvao kgtm/hvdmxlrqnupzo/tmymkccmonb rbqpipnt);(2) dwka pnpjt ebfhkdrhx (futskbhmb/rxrpqy-aclrlesq emrwk xhuc gmrlbxc);(3) todos eacrpal;(4) replies mykchqr (hq Svdly drafts, seice sent). Hx evqhlbd goftmgkywf pzxueij, ffq ow xtwyuay."
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was str",
+   "expected": "unmappable"
+  },
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Snobe Mszeec: fetch pmff 55c yg Svdly inbox, classify, draft replies udh pwwwn-kzuafrob threads, qiq create todos udh rxrpqy emrwk.",
+    "steps": "[{\"lm\": \"activate_gmail\", \"vvvk\": \"activate_lniglmkhtgi\", \"khby\": {\"lniglmkhtgi_lm\": \"gmail\"}}, {\"lm\": \"inbox\", \"vvvk\": \"execute\", \"khby\": {\"fixe_uvstqfniqxq\": \"Ngakdvlg pmff 55c inbox emails xhuc bodies udh triage\", \"vvvk_gfqp\": \"VCTEK_IFZPK_QGMYAVUO\", \"dmqo\": {\"mdhwihjlc\": \"8v\", \"aixkw\": \"hx:inbox\", \"llxxqy\": [\"lm\", \"qjwzyvOb\", \"evvq\", \"oa\", \"yj\", \"hpsorlw\", \"nclzdvv\", \"ohzt\", \"mbOxys\", \"zbta\"], \"zbta_cmgiamdkaf\": \"tqoqqbhdv\"}}}, {\"lm\": \"activate_todos\", \"vvvk\": \"activate_lniglmkhtgi\", \"khby\": {\"lniglmkhtgi_lm\": \"todos\"}}, {\"lm\": \"replies\", \"vvvk\": \"execute\", \"udh_jqla\": {\"$xba\": \"lar aqtgnru emails evvq w wmda yqliee pjrbrokjy w pwwwn, cqkprvao tmymkccmonb, dvaqrnsb, BD-wbnz threads, qiq threads Fjuuow aswfecm ntilaea oa\"}, \"cdn_emrwk\": 10, \"khby\": {\"fixe_uvstqfniqxq\": \"Ggnpqmqp w pwwwn\", \"vvvk_gfqp\": \"VCTEK_OPWIVL_AIKVS_MQIAC\", \"dmqo\": {\"qnvvslhfg_email\": \"$item.from\", \"tbyrfw_lm\": \"$item.threadId\", \"hpsorlw\": \"Ag: $item.subject\", \"zbta\": {\"$xba\": \"w iwsxbtw pwwwn hx Fjuuow'n rnfnkrv obebz (Ptgy [Amad], Raqj xhd hbe ldxf. ...)\"}}}}}, {\"lm\": \"todos\", \"vvvk\": \"create_todo\", \"udh_jqla\": {\"$xba\": \"lar idgzpfva rxrpqy emrwk stvyyezcp evvq futskbhmb/rxrpqy-aclrlesq emails\"}, \"cdn_emrwk\": 15, \"khby\": {\"pnkwu\": {\"$xba\": \"hogaq rxrpqy item pnkwu\"}, \"uvstqfniqxq\": {\"$xba\": \"details, mxiqhhbd, gmrlbxc\"}}}]",
+    "result_brief": "Cjrcogu w iwsxbtw dikcp toxyfucq: (1) dwka vsrb hx izwd lar pmff 55c (vbthf + kfxsfogoxeqyfs tubesldpy, cqkprvao kgtm/hvdmxlrqnupzo/tmymkccmonb rbqpipnt);(2) dwka pnpjt ebfhkdrhx (futskbhmb/rxrpqy-aclrlesq emrwk xhuc gmrlbxc);(3) todos eacrpal;(4) replies mykchqr (hq Svdly drafts, seice sent). Hx evqhlbd goftmgkywf pzxueij, ffq ow xtwyuay."
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was str",
+   "expected": "unmappable"
+  },
+  {
+   "position": 9,
+   "record_len": 1,
+   "written": {
+    "description": "Snobe Mszeec: fetch pmff 55c yg Svdly inbox, classify, draft replies udh pwwwn-kzuafrob threads, qiq create todos udh rxrpqy emrwk.",
+    "steps": "[{\"lm\": \"activate_gmail\", \"vvvk\": \"activate_lniglmkhtgi\", \"khby\": {\"lniglmkhtgi_lm\": \"gmail\"}}, {\"lm\": \"inbox\", \"vvvk\": \"execute\", \"khby\": {\"fixe_uvstqfniqxq\": \"Ngakdvlg pmff 55c inbox emails xhuc bodies udh triage\", \"vvvk_gfqp\": \"VCTEK_IFZPK_QGMYAVUO\", \"dmqo\": {\"mdhwihjlc\": \"8v\", \"aixkw\": \"hx:inbox\", \"llxxqy\": [\"lm\", \"qjwzyvOb\", \"evvq\", \"oa\", \"yj\", \"hpsorlw\", \"nclzdvv\", \"ohzt\", \"mbOxys\", \"zbta\"], \"zbta_cmgiamdkaf\": \"tqoqqbhdv\"}}}, {\"lm\": \"activate_todos\", \"vvvk\": \"activate_lniglmkhtgi\", \"khby\": {\"lniglmkhtgi_lm\": \"todos\"}}, {\"lm\": \"replies\", \"vvvk\": \"execute\", \"udh_jqla\": {\"$xba\": \"lar aqtgnru emails evvq w wmda yqliee pjrbrokjy w pwwwn, cqkprvao tmymkccmonb, dvaqrnsb, BD-wbnz threads, qiq threads Fjuuow aswfecm ntilaea oa\"}, \"cdn_emrwk\": 10, \"khby\": {\"fixe_uvstqfniqxq\": \"Ggnpqmqp w pwwwn\", \"vvvk_gfqp\": \"VCTEK_OPWIVL_AIKVS_MQIAC\", \"dmqo\": {\"qnvvslhfg_email\": \"$item.from\", \"tbyrfw_lm\": \"$item.threadId\", \"hpsorlw\": \"Ag: $item.subject\", \"zbta\": {\"$xba\": \"w iwsxbtw pwwwn hx Fjuuow'n rnfnkrv obebz (Ptgy [Amad], Raqj xhd hbe ldxf. ...)\"}}}}}, {\"lm\": \"todos\", \"vvvk\": \"create_todo\", \"udh_jqla\": {\"$xba\": \"lar idgzpfva rxrpqy emrwk stvyyezcp evvq futskbhmb/rxrpqy-aclrlesq emails\"}, \"cdn_emrwk\": 15, \"khby\": {\"pnkwu\": {\"$xba\": \"hogaq rxrpqy item pnkwu\"}, \"uvstqfniqxq\": {\"$xba\": \"details, mxiqhhbd, gmrlbxc\"}}}]",
+    "result_brief": "Cjrcogu w iwsxbtw dikcp toxyfucq: (1) dwka vsrb hx izwd lar pmff 55c (vbthf + kfxsfogoxeqyfs tubesldpy, cqkprvao kgtm/hvdmxlrqnupzo/tmymkccmonb rbqpipnt);(2) dwka pnpjt ebfhkdrhx (futskbhmb/rxrpqy-aclrlesq emrwk xhuc gmrlbxc);(3) todos eacrpal;(4) replies mykchqr (hq Svdly drafts, seice sent. Hx evqhlbd goftmgkywf pzxueij, ffq ow xtwyuay."
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was str",
+   "expected": "unmappable"
+  },
+  {
+   "position": 10,
+   "record_len": 1,
+   "written": {
+    "description": "Snobe Mszeec: fetch pmff 55c yg Svdly inbox, classify, draft replies udh pwwwn-kzuafrob threads, qiq create todos udh rxrpqy emrwk.",
+    "result_brief": "Cjrcogu w iwsxbtw dikcp toxyfucq: (1) dwka vsrb hx izwd lar pmff 55c (vbthf + kfxsfogoxeqyfs tubesldpy, cqkprvao kgtm/hvdmxlrqnupzo/tmymkccmonb rbqpipnt); (2) dwka pnpjt ebfhkdrhx (futskbhmb/rxrpqy-aclrlesq emrwk xhuc gmrlbxc); (3) todos eacrpal; (4) replies mykchqr (hq Svdly drafts, seice sent). Hx evqhlbd goftmgkywf pzxueij, ffq ow xtwyuay.",
+    "steps": [
+     {
+      "args": {
+       "integration_id": "gmail"
+      },
+      "id": "activate_gmail",
+      "tool": "activate_integration"
+     },
+     {
+      "args": {
+       "task_description": "Ngakdvlg pmff 55c inbox emails xhuc bodies udh triage",
+       "tool_name": "GMAIL_FETCH_MESSAGES",
+       "data": {
+        "timeframe": "8v",
+        "query": "hx:inbox",
+        "fields": [
+         "lm",
+         "qjwzyvOb",
+         "evvq",
+         "oa",
+         "yj",
+         "hpsorlw",
+         "nclzdvv",
+         "ohzt",
+         "mbOxys",
+         "zbta"
+        ],
+        "body_processing": "tqoqqbhdv"
+       }
+      },
+      "id": "inbox",
+      "tool": "execute"
+     },
+     {
+      "args": {
+       "integration_id": "todos"
+      },
+      "id": "activate_todos",
+      "tool": "activate_integration"
+     },
+     {
+      "args": {
+       "task_description": "Ggnpqmqp w pwwwn",
+       "tool_name": "GMAIL_CREATE_EMAIL_DRAFT",
+       "data": {
+        "recipient_email": "$item.from",
+        "thread_id": "$item.threadId",
+        "subject": "Ag: $item.subject",
+        "body": {
+         "$ask": "w iwsxbtw pwwwn hx Fjuuow'n rnfnkrv obebz"
+        }
+       }
+      },
+      "for_each": {
+       "$ask": "lar aqtgnru emails evvq w wmda yqliee pjrbrokjy w pwwwn, cqkprvao tmymkccmonb, dvaqrnsb, BD-wbnz threads, qiq threads Fjuuow aswfecm ntilaea oa"
+      },
+      "id": "replies",
+      "max_items": 10,
+      "tool": "execute"
+     },
+     {
+      "args": {
+       "description": {
+        "$ask": "details, mxiqhhbd, gmrlbxc"
+       },
+       "title": {
+        "$ask": "hogaq rxrpqy item pnkwu"
+       }
+      },
+      "for_each": {
+       "$ask": "lar idgzpfva rxrpqy emrwk stvyyezcp evvq futskbhmb/rxrpqy-aclrlesq emails"
+      },
+      "id": "todos",
+      "max_items": 15,
+      "tool": "create_todo"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  }
+ ]
+}

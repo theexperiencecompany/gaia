@@ -1,0 +1,20 @@
+/* @openuidev/react-ui styles, loaded with the generic library so only pages
+   that render OpenUI pay for them. The layer order repeats globals.css's: the
+   first statement in document order wins, so this file slots openui between
+   Tailwind's base and GAIA's components/utilities whichever loads first. */
+@layer theme, base, openui, components, utilities;
+
+/* Token defaults (unlayered, vars only) + layered component styles (scoped to
+   @layer openui). Themed at runtime via <ThemeProvider darkTheme={gaiaOpenUITheme}>. */
+@import "@openuidev/react-ui/defaults.css";
+@import "@openuidev/react-ui/layered/styles/index.css";
+
+/* GAIA overrides for adopted react-ui components — same @layer openui as the
+   imported react-ui styles, declared later so source order wins. */
+@layer openui {
+  /* The "clear" Card variant is a bare wrapper (e.g. section headers); it
+     should sit flush with no padding. */
+  .openui-card-clear {
+    padding: 0;
+  }
+}

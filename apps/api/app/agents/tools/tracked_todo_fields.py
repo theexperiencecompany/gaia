@@ -6,6 +6,7 @@ compose these; nothing here does I/O except the user-timezone lookup.
 """
 
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from langchain_core.runnables import RunnableConfig
 
@@ -13,7 +14,11 @@ from app.constants.scheduling import SCHEDULE_REJECTION_SUGGESTION
 from app.constants.todos import (
     CANVAS_STANDING_RULES_SECTION,
     GAIA_TRACKED_LABEL,
+    NEXT_CHECK_DURATION,
+    NEXT_CHECK_DURATION_UNITS,
     TODO_RECURRENCE_SHORTCUTS,
+    NoReplyPlan,
+    WaitingOn,
 )
 from app.models.agent_models import read_agent_configurable
 from app.models.todo_models import (
@@ -85,11 +90,19 @@ def parse_iso_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, 
     return parsed, None
 
 
-def parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
-    """Parse an ISO datetime; require it to be in the future. Returns (parsed, error)."""
-    parsed, error = parse_iso_datetime(iso_str, field_name)
+def parse_next_check(value: str, field_name: str) -> tuple[datetime | None, str | None]:
+    """Parse a future time: an ISO datetime with offset, or a duration from now ('4h', '3d', '1w')."""
+    if duration := NEXT_CHECK_DURATION.fullmatch(value.strip()):
+        amount = int(duration[1])
+        if amount == 0:
+            return None, f"Error: {field_name} must be in the future."
+        return datetime.now(UTC) + NEXT_CHECK_DURATION_UNITS[duration[2]] * amount, None
+    parsed, error = parse_iso_datetime(value, field_name)
     if parsed is None:
-        return None, error
+        return (
+            None,
+            f"{error} Pass an ISO datetime with offset, or a duration like '4h', '3d', '1w'.",
+        )
     if parsed <= datetime.now(UTC):
         return None, f"Error: {field_name} must be in the future."
     return parsed, None
@@ -135,12 +148,54 @@ def resolve_first_fire(
                     "or use a cron expression that fully specifies when to fire."
                 ),
             )
-        parsed, error = parse_iso_future_datetime(scheduled_at, "scheduled_at")
+        parsed, error = parse_next_check(scheduled_at, "scheduled_at")
         return parsed, [], error
     if scheduled_at:
-        parsed, error = parse_iso_future_datetime(scheduled_at, "scheduled_at")
+        parsed, error = parse_next_check(scheduled_at, "scheduled_at")
         return parsed, [], error
     return None, [], None
+
+
+def waiting_fields(
+    waiting_on: WaitingOn | None,
+    question: str | None,
+    if_no_reply: NoReplyPlan | None,
+    default_action: str | None,
+) -> dict[str, object]:
+    """The waiting fields a create or update call passed, by field name."""
+    passed = {
+        "waiting_on": waiting_on,
+        "question": question,
+        "if_no_reply": if_no_reply,
+        "default_action": default_action,
+    }
+    return {name: value for name, value in passed.items() if value is not None}
+
+
+class CreationSchedule(NamedTuple):
+    """What a create resolved its scheduling inputs to: the first fire, its notes, the update to save."""
+
+    first_fire: datetime | None
+    notes: list[str]
+    update: TodoUpdate | None
+
+
+def plan_creation_schedule(
+    recurrence: str | None,
+    scheduled_at: str | None,
+    due_date: str | None,
+    expires_at: str | None,
+    waiting: dict[str, object],
+    user_tz_name: str,
+) -> CreationSchedule | str:
+    """Resolve a create's scheduling inputs, or the error to hand the model."""
+    first_fire, notes, error = resolve_first_fire(recurrence, scheduled_at, user_tz_name)
+    if error:
+        return error
+    update, error = creation_field_update(first_fire, recurrence, due_date, expires_at, waiting)
+    if error:
+        return error
+    return CreationSchedule(first_fire, notes, update)
 
 
 def creation_field_update(
@@ -148,13 +203,14 @@ def creation_field_update(
     recurrence: str | None,
     due_date: str | None,
     expires_at: str | None,
+    waiting: dict[str, object],
 ) -> tuple[TodoUpdate | None, str | None]:
     """Validate the scheduling fields a create saves with its insert, before anything is saved.
 
     Returns (update, error); update is None when there is nothing to set. An empty
     date means unset here, not the update tool's clear.
     """
-    fields: dict[str, object] = {}
+    fields: dict[str, object] = dict(waiting)
     if parsed_scheduled_at:
         fields["scheduled_at"] = parsed_scheduled_at
     if recurrence:
@@ -222,20 +278,15 @@ def build_priority_update(
 def build_scheduled_at_update(
     scheduled_at: str | None, update_fields: dict[str, object]
 ) -> str | None:
-    """Apply a scheduled_at update (must be in the future) or clear it."""
+    """Apply a scheduled_at update (a future time, see parse_next_check) or clear it."""
     if scheduled_at is None:
         return None
     if scheduled_at == "":
         update_fields["scheduled_at"] = None
         return None
-    try:
-        parsed_at = datetime.fromisoformat(scheduled_at)
-    except ValueError:
-        return f"Error: invalid scheduled_at format '{scheduled_at}'."
-    if parsed_at.tzinfo is None:
-        return f"Error: scheduled_at '{scheduled_at}' must include a timezone offset."
-    if parsed_at <= datetime.now(UTC):
-        return "Error: scheduled_at must be in the future."
+    parsed_at, error = parse_next_check(scheduled_at, "scheduled_at")
+    if parsed_at is None:
+        return error
     update_fields["scheduled_at"] = parsed_at
     return None
 

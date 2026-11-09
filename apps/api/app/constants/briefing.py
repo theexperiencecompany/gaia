@@ -107,6 +107,13 @@ WEEKLY_FAMILY: Final[str] = "weekly"
 POSTAL_FAMILY: Final[str] = "postal"
 
 
+class BriefItemSource(StrEnum):
+    """What held a result for the user's next brief instead of sending it."""
+
+    WORKFLOW = "workflow"
+    TODO = "todo"
+
+
 class BriefingBag(StrEnum):
     """The per-user shuffle bags kept on the user doc (briefing_shuffle_bags)."""
 

@@ -1,4 +1,4 @@
-# Weekly PostHog contract check. The PR lane (code-quality.yml: analytics-check)
+# Weekly PostHog contract check. The PR lane (ci.yml: lint-mixed, analytics-check)
 # only runs when the catalog or config/posthog/ changes; a dashboard edited in
 # the PostHog UI breaks the contract without touching either.
 name: PostHog analytics drift
@@ -21,6 +21,14 @@ jobs:
         with:
           persist-credentials: false
       - name: Check PostHog insights, settings and actions against the catalog
+        id: analytics-check
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         env:
           POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
         run: python3 scripts/ci/analytics.py check
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: analytics-check

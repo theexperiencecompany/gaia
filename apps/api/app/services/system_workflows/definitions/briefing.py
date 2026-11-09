@@ -16,7 +16,7 @@ from app.constants.briefing import (
 )
 from app.constants.workflows import WorkflowDelivery
 from app.models.briefing_models import BriefingSchedule
-from app.models.notification.notification_models import default_quiet_hours
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -43,7 +43,7 @@ def _daily_briefing() -> CreateWorkflowRequest:
         trigger_config=TriggerConfig(
             type=TriggerType.SCHEDULE,
             # The default schedule's slot; provisioning stamps the user's own.
-            cron_expression=daily_briefing_cron(BriefingSchedule(), default_quiet_hours()),
+            cron_expression=daily_briefing_cron(BriefingSchedule(), DEFAULT_QUIET_HOURS),
         ),
         steps=[
             WorkflowStep(

@@ -7,6 +7,8 @@ and kept in memory), or an input of a secret's bare name fails and types nothing
 
 Reads: find_elements and search_page results are flagged read-once, or the model
 sees only their count; extract's result carries the page's real title.
+Code boxes: when jev is registered, an input into one box of a code split one
+character per box types nothing and points the agent to jev.
 Pinned to browser-use==0.11.13.
 """
 
@@ -18,15 +20,18 @@ from urllib.parse import urlsplit
 
 from browser_use.agent.views import ActionResult
 from browser_use.browser.session import BrowserSession
+from browser_use.dom.views import EnhancedDOMTreeNode
 from browser_use.filesystem.file_system import FileSystem
 from browser_use.llm.base import BaseChatModel
 from browser_use.tools.registry.views import ActionModel
 from browser_use.tools.service import Tools
 from browser_use.utils import match_url_with_domain_pattern
-from pydantic import TypeAdapter
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 from typing_extensions import override
 
+from app.constants.browser import BROWSER_CODE_BOXES_TO_JEV, BROWSER_CODE_MIN_BOXES
 from app.services.browser.browser_use_session import GaiaBrowserSession
+from app.services.browser.jev.tool import JEV_ACTION
 from app.utils.sites import PLACEHOLDER
 
 #: The one action whose typed text Browser-Use logs only by its placeholder name.
@@ -94,6 +99,55 @@ def _refusal(
     return f"{'; '.join(refused)}; nothing was typed." if refused else None
 
 
+class _InputTarget(BaseModel):
+    """Browser-Use's input action, read for the element it types into."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    index: int | None = None
+
+
+class _BoxAttributes(BaseModel):
+    """The one DOM attribute that makes a field a one-character code box."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    maxlength: str | None = None
+
+
+def _is_code_box(node: EnhancedDOMTreeNode) -> bool:
+    attributes = _BoxAttributes.model_validate(node.attributes)
+    return node.node_name.upper() == "INPUT" and attributes.maxlength == "1"
+
+
+def _form_of(node: EnhancedDOMTreeNode) -> EnhancedDOMTreeNode | None:
+    """Return the form a field sits in, else its parent: where a code's boxes are siblings."""
+    ancestor = node.parent_node
+    while ancestor is not None and ancestor.node_name.upper() != "FORM":
+        ancestor = ancestor.parent_node
+    return ancestor or node.parent_node
+
+
+def _descendants(node: EnhancedDOMTreeNode) -> list[EnhancedDOMTreeNode]:
+    found: list[EnhancedDOMTreeNode] = []
+    pending = list(node.children_nodes or [])
+    while pending:
+        child = pending.pop()
+        found.append(child)
+        pending.extend(child.children_nodes or [])
+    return found
+
+
+async def _code_boxes(browser_session: BrowserSession, params: object) -> int:
+    """Return how many one-character boxes the input's target belongs to; 0 for an ordinary field."""
+    index = _InputTarget.model_validate(params).index
+    node = await browser_session.get_element_by_index(index) if index is not None else None
+    if node is None or not _is_code_box(node) or (form := _form_of(node)) is None:
+        return 0
+    count = sum(1 for d in _descendants(form) if _is_code_box(d))
+    return count if count >= BROWSER_CODE_MIN_BOXES else 0
+
+
 class GaiaTools(Tools[None]):
     """The run's actions: secrets only where they are typed, and reads shown in full."""
 
@@ -113,6 +167,12 @@ class GaiaTools(Tools[None]):
         url = _focused_url(browser_session)
         if refused := _refusal(name, params, sensitive_data or {}, url):
             return ActionResult(error=refused)
+        if (
+            name == _SECRET_TYPING_ACTION
+            and JEV_ACTION in self.registry.registry.actions
+            and (boxes := await _code_boxes(browser_session, params))
+        ):
+            return ActionResult(error=BROWSER_CODE_BOXES_TO_JEV.format(count=boxes))
         result = await super().act(
             action=action,
             browser_session=browser_session,

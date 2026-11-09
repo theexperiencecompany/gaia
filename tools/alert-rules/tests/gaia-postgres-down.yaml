@@ -21,7 +21,7 @@ tests:
             exp_annotations:
               description: >-
                 The langgraph database is the LangGraph checkpointer holding conversation thread state. While it is unreachable every chat turn fails to check out a connection and silently falls back to in-memory state, so users lose thread continuity with no error shown. The connection-saturation rule cannot see this — its metric disappears along with the database. This is the database, not its exporter: the exporter is still up and answering scrapes. Check the postgres container and its logs first.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-postgres-down
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-postgres-down
 
   - name: gaia-postgres-down stays quiet when pg_up reports 1
     interval: 1m

@@ -14,10 +14,7 @@ instead of the model silently going stale.
 from pydantic import ValidationError
 import pytest
 
-from app.models.user_models import (
-    AuthenticatedUser,
-    UserDocument,
-)
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.utils.auth_utils import build_user_context
 from tests.user_document_factories import user_document_sample_values
 
@@ -63,7 +60,7 @@ def test_authenticated_user_declares_no_unknown_fields() -> None:
 def test_build_user_context_copies_every_document_field() -> None:
     """A field build_user_context forgets to copy is declared yet never set, the drift this guards."""
     values = user_document_sample_values()
-    doc = UserDocument(id="507f1f77bcf86cd799439011", **values)
+    doc = UserDocument.model_validate({"id": "507f1f77bcf86cd799439011", **values})
 
     user = build_user_context(doc, auth_provider="workos")
 
@@ -77,7 +74,7 @@ def test_authenticated_user_is_frozen_and_closed() -> None:
     with pytest.raises(ValidationError):
         user.user_id = "u2"
     with pytest.raises(ValidationError):
-        AuthenticatedUser(user_id="u1", _id="legacy")
+        AuthenticatedUser.model_validate({"user_id": "u1", "_id": "legacy"})
     assert user.with_timezone("Asia/Kolkata").timezone == "Asia/Kolkata"
     assert user.timezone is None
 

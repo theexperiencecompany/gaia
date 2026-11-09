@@ -20,10 +20,14 @@ from datetime import UTC, datetime
 
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
+    CANVAS_DONE_WHEN_SECTION,
+    CANVAS_EVIDENCE_SECTION,
     CANVAS_STANDING_RULES_SECTION,
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
+    SUB_TODO_PARENT_WAKE_DELAY,
     TodoActivityEvent,
+    WaitingOn,
 )
 from app.db.repositories.todos import todo_repository
 from app.models.scheduler_models import DeactivationReason
@@ -34,8 +38,13 @@ from app.models.todo_models import (
     TodoModel,
     TodoResponse,
     TodoUpdate,
+    default_notify_on_run,
 )
-from app.services.canvas_markdown import canvas_problems, normalize_canvas
+from app.services.canvas_markdown import (
+    canvas_problems,
+    normalize_canvas,
+    with_section_appended,
+)
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.storage._vfs_common import folder_name
 from app.services.todo_activity import (
@@ -43,6 +52,7 @@ from app.services.todo_activity import (
     agent_actor,
     field_change_lines,
     record_activity,
+    waiting_change_line,
 )
 from app.services.todo_canvas_storage import (
     append_log,
@@ -55,6 +65,11 @@ from app.services.todos.errors import (
     UnwatchedTodoKeptError,
 )
 from app.services.todos.external_ref_watch import watch_external_ref
+from app.services.todos.open_state import (
+    describe_open_state,
+    require_open_state,
+    with_waiting_normalized,
+)
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.triggers.todo_trigger_window import release_trigger_events_held_while_paused
@@ -69,6 +84,12 @@ CANVAS_TEMPLATE = """# {title}
 ## Standing rules
 <!-- the user's instructions for how this todo behaves, one line each with the date given; every run obeys them over its defaults; never removed unless the user retracts one -->
 
+## Done when
+<!-- the checkable conditions that make this done, one per line; every run checks them before closing -->
+
+## Evidence
+<!-- where proof of each condition will show up and how to check it (a connected service, a thread, a page, the user's word) -->
+
 ## Key Details
 <!-- email addresses, thread IDs, calendar IDs, issue IDs: everything needed to take action -->
 
@@ -81,6 +102,17 @@ CANVAS_TEMPLATE = """# {title}
 ## Learnings
 <!-- written on completion: what worked, what did not, timing insights, reusable patterns -->
 """
+
+
+def _with_ownership(canvas: str, done_when: Sequence[str], evidence: str | None) -> str:
+    """Write the todo's done conditions and its evidence source into their sections."""
+    conditions = [c.strip() for c in done_when if c.strip()]
+    if conditions:
+        lines = "\n".join(f"- {c}" for c in conditions)
+        canvas = with_section_appended(canvas, CANVAS_DONE_WHEN_SECTION, lines)
+    if evidence and evidence.strip():
+        canvas = with_section_appended(canvas, CANVAS_EVIDENCE_SECTION, evidence.strip())
+    return canvas
 
 
 def starting_canvas(title: str, standing_rules: Sequence[str] = ()) -> str:
@@ -211,6 +243,7 @@ def _format_tracked_todo_line(
     return (
         f'  {prefix}"{doc.title}"{labels_str}{_format_due_string(doc.due_date, now)}'
         f" ({age_days}d old, updated {last_update}d ago){family}"
+        f" | {describe_open_state(doc, now)}"
         f" | ID: {doc.id} | files: /workspace/gaia-tasks/{folder_name(doc.id, doc.title)}/"
     )
 
@@ -237,21 +270,32 @@ class TrackedTodoService:
         references: list[str] | None = None,
         parent_todo_id: str | None = None,
         schedule: TodoUpdate | None = None,
+        done_when: Sequence[str] = (),
+        evidence: str | None = None,
     ) -> TodoResponse:
-        """Create a todo with its canvas, activity and log, indexed in ChromaDB.
+        """Create a todo with its canvas (done_when / evidence in their sections), activity and log.
 
         schedule is saved with the insert; external_ref makes it that object's one open, watching
-        todo; a sub-todo's runs reach the user only on request. Raises ExternalRefTakenError,
-        SubTodoParentError, CanvasShapeError and UnwatchedTodoKeptError (watch and rollback failed).
+        todo; a sub-todo's runs reach the user only on request, unless its ref's kind speaks.
+        Raises OpenStateError (no valid next step), ExternalRefTakenError, SubTodoParentError,
+        CanvasShapeError and UnwatchedTodoKeptError (watch and rollback failed).
         """
         if parent_todo_id is not None:
             await require_sub_todo_parent(user_id, parent_todo_id)
         if notify_on_run is None:
-            notify_on_run = parent_todo_id is None
-        schedule = schedule or TodoUpdate()
+            notify_on_run = default_notify_on_run(
+                parent_todo_id=parent_todo_id, external_ref=external_ref
+            )
+        schedule = with_waiting_normalized(None, schedule or TodoUpdate())
         all_labels = list(labels or [])
         if GAIA_TRACKED_LABEL not in all_labels:
             all_labels.append(GAIA_TRACKED_LABEL)
+        require_open_state(
+            TodoDocument(user_id=user_id, title=title, labels=all_labels).model_copy(
+                update=schedule.model_dump(exclude_unset=True)
+            ),
+            datetime.now(UTC),
+        )
 
         todo = TodoModel(
             title=title,
@@ -270,6 +314,7 @@ class TrackedTodoService:
         # Models still compose an "## Activity Log" (or skip a section) inside
         # initial_canvas; keep canvas.md in the template's shape from the first write.
         canvas_content, moved_activity = normalize_canvas(canvas_content)
+        canvas_content = _with_ownership(canvas_content, done_when, evidence)
         if problems := canvas_problems(canvas_content):
             raise CanvasShapeError(problems)
         result = await TodoService.create_todo(
@@ -283,10 +328,13 @@ class TrackedTodoService:
         # creation entries stay last so an edit-append has a line to anchor on,
         # and models reach for edit before write.
         origin = f"from conversation {source_conversation_id[:8]}" if source_conversation_id else ""
+        actor = agent_actor(source_conversation_id)
+        waiting_line = waiting_change_line(schedule, by=actor, at=now)
         created = "\n".join(
             [
                 activity_line(TodoActivityEvent.CREATED, origin, at=now),
-                *field_change_lines(schedule, by=agent_actor(source_conversation_id), at=now),
+                *field_change_lines(schedule, by=actor, at=now),
+                *([waiting_line] if waiting_line else []),
             ]
         )
         activity_content = "\n\n".join(p for p in (moved_activity, created) if p)
@@ -301,6 +349,10 @@ class TrackedTodoService:
                 activity_content=activity_content,
                 log_content=log_content,
                 source_conversation_id=source_conversation_id,
+                waiting_on=schedule.waiting_on,
+                question=schedule.question,
+                if_no_reply=schedule.if_no_reply,
+                default_action=schedule.default_action,
             ),
         )
 
@@ -380,10 +432,25 @@ class TrackedTodoService:
                 TodoActivityEvent.SUB_TODO_COMPLETED,
                 f'"{doc.title}" ({todo_id}): {summary}',
             )
+            await TrackedTodoService._wake_waiting_parent(doc.parent_todo_id, user_id)
 
         log.info("tracked_todo.completed", todo_id=todo_id, user_id=user_id, summary=summary)
         schedule_gaia_tasks_sync(user_id)
         return True
+
+    @staticmethod
+    async def _wake_waiting_parent(parent_id: str, user_id: str) -> None:
+        """Run a parent that waits on its sub-todos soon after one of them completes."""
+        parent = await todo_repository.get(parent_id, user_id=user_id)
+        if parent is None or parent.completed or parent.waiting_on is not WaitingOn.SUB_TODOS:
+            return
+        wake_at = datetime.now(UTC) + SUB_TODO_PARENT_WAKE_DELAY
+        if parent.scheduled_at is not None and parent.scheduled_at <= wake_at:
+            return
+        await todo_repository.update(
+            parent_id, user_id=user_id, update=TodoUpdate(scheduled_at=wake_at)
+        )
+        await TrackedTodoService.schedule_execution(parent_id, wake_at)
 
     @staticmethod
     async def _complete_open_sub_todos(parent: TodoDocument, summary: str) -> None:

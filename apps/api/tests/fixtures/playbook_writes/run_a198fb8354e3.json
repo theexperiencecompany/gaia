@@ -1,0 +1,47 @@
+{
+ "run": "run_a198fb8354e3",
+ "captured_from": "2026-09-04",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Pmzu-Bygwd Oqupzav: fetch recent Svdly inbox, triage rfroc emails uudabbu w pwwwn, qiq draft replies hx Nxamwx'n Gbppsqgm Wnkwjo qglau (drafts wbnz, seice send).",
+    "steps": [
+     {
+      "id": "triage",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "wfjho_wqbg:5u",
+         "max_messages": 30,
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "mbOxys"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs lar triage outcome. Prv jqla email uzku zoxjupeeb w pwwwn, list lar draft eacrpal (lm, evvq, hpsorlw) qiq lar pwwwn fqqibmc. Prv hsuyioc emails, avloxtnrc lar ewbu pkfhjvo (newsletter, edhihwgks, mrppkqdwp hyahbzzhloek, yj-wbnz, ga xba, aswfecm ntilaea, up pkcjeujp evvq Nxamwx). Hx ga email zoxjupeeb w pwwwn, kfhta xtwyuay uzku ga drafts uign eacrpal smpw ahapp qiq uzku evqhlbd eto sent. Indqt udvfe w draft eto eacrpal up nm email sent ofliee w vvvk wdqbckhh gxrbwril uzku."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -11,7 +11,7 @@ export default function Hero() {
       <div className="absolute inset-0 -z-10">
         <ProgressiveImage
           webpSrc="/images/wallpapers/bands_gradient_1.webp"
-          pngSrc="/images/wallpapers/bands_gradient_1.png"
+          pngSrc="/images/wallpapers/bands_gradient_1.webp"
           alt="Gradient background"
           className="object-cover"
           shouldHaveInitialFade
@@ -45,8 +45,8 @@ export default function Hero() {
         transition={{ duration: 0.7, ease, delay: 0.2 }}
         className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
       >
-        GAIA connects to your inbox, Slack, calendar, CRM, and 30+ tools, then
-        does the grunt work for you, automatically.
+        GAIA connects to your inbox, Slack, calendar, CRM, and the rest of your
+        tools, then does the grunt work for you, automatically.
       </m.p>
       <m.div
         initial={{ opacity: 0, y: 16 }}
@@ -57,7 +57,7 @@ export default function Hero() {
         <GetStartedButton
           text="See it in action"
           btnColor="#000000"
-          classname="text-white! text-base h-12 rounded-2xl"
+          classname="text-base h-12 rounded-2xl"
         />
       </m.div>
     </section>

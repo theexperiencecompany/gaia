@@ -263,7 +263,7 @@ export class TurnSession {
     try {
       this.cancelFlush();
       if (this.conversationId && this.botMessageId) {
-        const record = this.buildRecord("sent");
+        const record = this.buildRecord("sent", null, true);
         if (record) {
           useChatStore.getState().addOrUpdateMessage(record);
           await db.putMessage(record);
@@ -707,6 +707,7 @@ export class TurnSession {
   private buildRecord(
     status: IMessage["status"],
     error: string | null = null,
+    stopped = false,
   ): ReturnType<typeof buildTurnMessageRecord> | null {
     if (!this.conversationId || !this.botMessageId) return null;
     const meta: TurnMessageMeta = {
@@ -721,6 +722,7 @@ export class TurnSession {
       status,
       error,
       this.reactionAck,
+      stopped,
     );
   }
 

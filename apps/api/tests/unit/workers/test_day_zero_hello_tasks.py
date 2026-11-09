@@ -186,7 +186,7 @@ class TestDelivery:
 
         post = seams.post.await_args.kwargs
         assert post["channel"] == ChatChannel(
-            source=ConversationSource.TELEGRAM, platform_user_id="42"
+            source=ConversationSource.TELEGRAM, platform_user_id="42", basis="priority"
         )
         assert post["text"] == f"Hi Ada!{NEW_MESSAGE_BREAKER}Brief at 8."
         assert post["origin"] == "day-zero hello"

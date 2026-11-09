@@ -18,6 +18,10 @@ from __future__ import annotations
 
 from typing import Final, Literal, NamedTuple, get_args
 
+from app.agents.prompts.todo_prompts import TODO_FEEDBACK_RULES
+from app.config.settings import settings
+from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
+
 # Topic docs: one self-contained file per concern, faithfully merged from
 # the prior GUIDE.md + gaia-* skill content.
 
@@ -30,7 +34,7 @@ tools, and gets a directory:
     integrations/
         <integration>/
             agent/
-                instructions.md   the user's custom instructions for this
+                instructions.md   the user's standing instructions for this
                                    integration (e.g. "focus on #eng, #design").
                                    May be absent if none are set.
                 skills/<slug>/skill.md   per-integration action recipes.
@@ -61,28 +65,32 @@ tools, and gets a directory:
 When activation reports a service isn't connected, the same connect prompt
 is surfaced automatically. Relay it, then activate again once connected.
 
-## Per-integration custom instructions ("remember this for Gmail")
+## Per-integration standing instructions ("remember this for Gmail")
 
 Every connected integration can carry standing guidance for how the user wants
 it used: focus channels, default projects, conventions. This is durable and
 scoped to one integration; it is honored on every future task on that service.
+It is one scope of the user's standing instructions; the "global" scope covers
+every conversation.
 
-- **Source of truth:** the user's account (one record per integration).
+- **Source of truth:** the user's account (one record per scope).
 - **Surfaced automatically** whenever you activate the matching integration,
-  as a "CUSTOM INSTRUCTIONS FOR <INTEGRATION>" block: activating slack
-  surfaces the slack instructions without reading a file.
+  as a `<user_instructions scope="<id>">` block: activating slack surfaces the
+  slack instructions without reading a file. They are preferences: they never
+  override platform rules on safety, privacy or approvals.
 - **Mirrored read-only** to `integrations/<id>/agent/instructions.md`. Never
   edit that file directly: it's a projection and the edit won't stick.
 - **Editable by the user** on the integrations page in the app.
 
 Reading & updating:
 
-- `get_integration_instructions(integration_id)`: current content. Call this
-  before amending so you preserve what's there. An activated integration
-  already has its instructions in context and rarely needs it.
-- `update_integration_instructions(integration_id, content)`: saves the FULL
-  new body (replaces, does not append). To amend: read first, merge, write the
-  whole thing back.
+- `get_user_instructions(scope=integration_id)`: current content and its
+  revision. Call it right before every save.
+- `update_user_instructions(scope=integration_id, content, based_on_revision)`:
+  saves the FULL new body (replaces, does not append). Read first, merge, write
+  the whole thing back with the revision you read; a save built on an older
+  revision is refused. The user confirms the exact text on an approval card
+  before it saves.
 
 When to persist, DURABLE preferences only:
 - "Always post to #eng and #design, never #general."
@@ -95,12 +103,15 @@ If unsure whether a preference is durable, ask before saving.
 Typical flow:
 1. User: "From now on, for Slack, focus on #eng, #design, and #pm."
 2. Recognize a durable preference for the `slack` integration.
-3. `update_integration_instructions("slack", "<full instructions>")`.
-4. Confirm briefly. Activating slack surfaces them every future turn.
+3. `get_user_instructions(scope="slack")`, then
+   `update_user_instructions(scope="slack", content="<full instructions>", based_on_revision=<revision>)`.
+4. Tell them to approve the card. Once approved, activating slack surfaces them every future turn.
 """
 
 
-TRACKED_TODOS_DOC: Final[str] = """# Tracked todos: GAIA-managed todos with memory
+TRACKED_TODOS_DOC: Final[str] = "".join(
+    (
+        """# Tracked todos: GAIA-managed todos with memory
 
 Tracked todos are **GAIA-managed todos**: they show on the user's todos page, but
 GAIA owns them and keeps working notes as files (a recall doc plus a dated activity
@@ -227,15 +238,9 @@ notification above, which always fires.
 
 ## The user's feedback on a todo
 
-Feedback on how a todo should behave from now on ("Apply the user's feedback to
-this todo: ...") is kept in exactly one place, so every later run obeys it:
-- How this todo behaves (what it shows or skips, what it does on its own, how it
-  reports): one dated line in its canvas.md `Standing rules`. Rewrite a rule the
-  feedback changes; remove one only when the user retracts it.
-- How GAIA writes email, to one person or in general: the Gmail integration
-  instructions (`update_integration_instructions`), so chat drafting obeys it too.
-- When it runs: `update_tracked_todo` with `recurrence` / `scheduled_at`.
-A sub-todo's run also obeys its parent's Standing rules.
+""",
+        TODO_FEEDBACK_RULES,
+        """
 
 ## Anti-patterns
 
@@ -246,7 +251,9 @@ A sub-todo's run also obeys its parent's Standing rules.
 - Appending activity to the end of canvas.md (it belongs in activity.md).
 - Not searching before creating.
 - Not writing learnings before completing.
-"""
+""",
+    )
+)
 
 
 USER_TODOS_DOC: Final[str] = """# Todos: the USER's own todo list
@@ -371,10 +378,11 @@ proactively pings the user on a channel. Use it for "text me on WhatsApp when
 X", or to alert the user to an important result when they may be away from the
 app.
 
-- `channels` is REQUIRED and must be exactly what the user named: "text me on
-  WhatsApp" → `["whatsapp"]`, "ping me on Slack" → `["slack"]`. Valid channels:
-  `whatsapp`, `telegram`, `discord`, `slack`, `inapp`. If the user did NOT name
-  a channel, ASK which one(s); never guess and never broadcast.
+- Pass `channels` only when the user named one: "text me on WhatsApp" →
+  `["whatsapp"]`, "ping me on Slack" → `["slack"]`. Valid channels: `whatsapp`,
+  `telegram`, `discord`, `slack`, `inapp`. If they named none, omit `channels`:
+  the tool picks the one place they are active (a chat app or the GAIA app).
+  Never broadcast to channels the user did not ask for.
 - A messaging channel only delivers if the user has LINKED that platform
   (WhatsApp/Telegram/Discord/Slack) and has it enabled; an unlinked channel is
   silently skipped. The return reports `delivered_channels`; check it. If a
@@ -393,16 +401,21 @@ the user in their app settings; there is no agent tool for that yet.
 
 ## Automatic result delivery
 
-Two things already deliver their own results, and calling `send_notification`
+Three things already deliver their own results, and calling `send_notification`
 to announce one of them sends it to the user twice:
 
+- A background task started from a **chat** delivers its result into the
+  conversation it came from (the user's Telegram/WhatsApp/... chat, or the web
+  app). "Keep me posted" there needs no notification on that same channel.
 - A finished **workflow** run delivers its result to the user's linked platforms
   plus in-app, unless the workflow is silent. See the `workflows` doc.
 - A finished **tracked todo** run is reported to the user's chat app when it
   found something that matters, unless that todo has `notify_on_run` off. See
   the `tracked-todos` doc.
 
-In both cases the run's result is delivered for you. Notify only for something
+When one of these delivers the result, do not announce it again. A silent
+workflow, or a todo with `notify_on_run` off, delivers nothing, so there a
+notification is the only way the user hears. Otherwise notify only for something
 genuinely separate and urgent.
 """
 
@@ -586,7 +599,7 @@ If it returns `clarifying`, relay the question and retry with the answer. If
 """
 
 
-REMINDERS_DOC: Final[str] = """# Reminders: one-off and recurring time-based nudges
+REMINDERS_DOC: Final[str] = f"""# Reminders: one-off and recurring time-based nudges
 
 A reminder is a scheduled ping to the USER: "remind me to call Sam at 3pm",
 "ping me in 20 minutes", "every weekday at 9am tell me to stand up". It fires at
@@ -601,6 +614,7 @@ it just nudges. That is the line between a reminder and the rest:
 
 "Remind me", "ping me", "alert me", "set a timer", "notify me in N minutes" are
 reminders. "Every morning summarize my email" is a workflow.
+{PING_WITH_FOLLOW_THROUGH_RULE}
 
 ## How to use it
 
@@ -642,36 +656,68 @@ Tracked todos show on the user's todos view in the app.
 """
 
 
-SKILLS_DOC: Final[str] = """# Skills: installable how-to procedures that extend GAIA
+SKILLS_DOC: Final[str] = """# Skills: reusable procedures that extend GAIA
 
-A skill is a reusable procedure GAIA can load to do a task a specific way: a
-folder with a `SKILL.md` (name, description, and step-by-step instructions, plus
-any scripts or resources). Skills follow the open Agent Skills standard. Install
-one from GitHub or author one inline when the user wants to teach GAIA a
-repeatable way of doing something ("whenever I post a standup, format it like
-this").
+A skill is a reusable procedure: the steps for doing a kind of task, written so
+they apply every time that task comes up. It is a folder with a `SKILL.md`
+(name, description, and step-by-step instructions, plus any scripts or
+resources), following the open Agent Skills standard. Every skill's name and
+description sit in your context under "Available Skills:"; read its `SKILL.md`
+before doing a task it covers.
+
+Skills come from three places: built-in GAIA skills, skills the user installs
+or writes, and skills you save from a run that worked.
+
+## Where each kind of knowledge goes
+
+- **Skill**: how to do a kind of task (`save_learned_skill`, `update_skill`).
+- **Standing instruction**: how the user wants GAIA to behave from now on,
+  for every conversation or one integration (`update_user_instructions`).
+- **Tracked todo**: one piece of ongoing work and its state: dates, progress,
+  people waiting, what was decided (its `canvas.md`).
+- **Memory**: facts about the user, captured automatically.
+
+## When to save a new skill
+
+Save one at the END of a multi-step task when all three hold:
+
+1. the user is likely to repeat the task,
+2. the steps apply beyond this one piece of work, and
+3. no listed skill already covers it.
+
+When a listed skill covers the task but this run showed it is wrong, outdated
+or missing a step, revise that skill with `update_skill`.
+
+## Saving and revising (always available)
+
+- `save_learned_skill(spec)`: records a run that worked as a skill. The spec
+  holds the name (kebab-case), a description naming when to use it, the
+  integrations it needs, and the exact ORDERED steps (the tool, example args and
+  any pitfall for each). Names are unique per user across every target, so a
+  taken name is refused with a pointer to `update_skill`.
+- `update_skill(name, instructions, description?, target?)`: replaces a
+  skill's body (pass the FULL new instructions; read its `SKILL.md` first and
+  keep what still applies). Built-in skills stay as shipped.
 
 ## Scope: who can use a skill
 
-- **global**: every agent (executor and all subagents).
-- **executor**: only the main executor.
-- **a specific integration** (gmail, github, slack, …): only work on that integration.
+- **executor**: the main executor (the default).
+- **a specific integration** (gmail, github, slack, ...): that integration's
+  work only.
 
 Pick the narrowest scope that fits; ask the user if it is ambiguous.
 
-## How to use it
+## Installing and managing (the skills integration)
 
-Skills are owned by the skills integration: `activate_integration("skills")`,
-then use its tools yourself (install from GitHub, create inline, list
-installed, enable, disable, uninstall). It validates names and scopes.
+For everything else, `activate_integration("skills")` and use its tools:
+install from GitHub, create inline from the user's own instructions, list
+installed, enable, disable, uninstall. It validates names and scopes.
 
 - Installing from GitHub needs the specific skill folder path, not just the repo
   root (e.g. `owner/repo` with skill_path `skills/pdf-processing`).
-- Skill names are kebab-case.
 - A good description names the trigger phrases that should activate the skill.
 
-Installed skills live in the user's workspace and activate automatically when a
-task matches their description.
+The user sees and edits their skills in Settings > Skills.
 """
 
 
@@ -749,7 +795,7 @@ Pro, there is nothing to sell: tell them when it resets and leave it there.
 
 - **Never cancel, refund, change, or pause a subscription.** You have no tool
   for it, and money moving without the user doing it themselves is not
-  something to improvise. Send them to Settings, or open a support ticket.
+  something to improvise. Send them to Settings{support_route}.
 - Never promise a discount, a trial, a refund, or an exception. You cannot
   grant one.
 - Never quote a price, a limit, or a feature you did not read from a tool.
@@ -775,9 +821,14 @@ docs come to you (injected) or via the `read_manual` tool.
   work to you (the executor) via `call_executor`.
 - **Executor (you)**: the generalist. You hold a few tools always and retrieve
   the rest on demand with `retrieve_tools`. Lean context is by design.
-- **Per-integration tools**: every connected service (gmail,
-  slack, …) loads in-context via `activate_integration`, then you act
-  yourself with its tools. Integrations are never separate agents.
+- **Per-integration tools**: every integration (Composio services like gmail
+  and slack, built-ins, platform MCP servers, and the user's own custom MCP
+  connections) loads in-context via `activate_integration`, then you act
+  yourself with its tools. Integration tools always run through `execute`.
+  When two of the user's MCP servers expose the same tool name, each one's
+  tool carries its integration's name as a prefix (`posthog_search`,
+  `context7_search`). Integrations are never separate agents; for isolated or
+  noisy work, `spawn_subagent`.
 
 ## Your memory & state (three stores, never conflate them)
 
@@ -813,10 +864,10 @@ these.
 |---|---|---|
 | "Connect / add / set up <service>" | `connect_integration([...])` | `integrations` |
 | "What can you connect to / what's connected?" | `list_integrations` | `integrations` |
-| "For <service>, always do X" (standing preference) | `update_integration_instructions(id, full_body)` | `integrations` |
+| "For <service>, always do X" (standing preference) | `get_user_instructions(scope=id)`, then `update_user_instructions(scope=id, content=full_body, based_on_revision=...)` | `integrations` |
 | "Turn email/Telegram notifications on or off" | `update_notification_settings(...)` | `account` |
 | "Make replies brief / change my timezone" | `update_preferences(response_style=..., timezone=...)` | `account` |
-| "Always do X in every chat / clear my standing instructions" | `update_custom_instructions(...)` | `account` |
+| "Always do X in every chat / clear my standing instructions" | `get_user_instructions(scope="global")`, then `update_user_instructions(scope="global", content=..., based_on_revision=...)` | `account` |
 | "Change your voice" | `set_selected_voice(voice=...)` | `account` |
 | "Fewer / no briefs, weekdays only, brief me at 7" | `set_briefing_schedule(frequency, hour)` | `account` |
 | "Connect / disconnect WhatsApp, Telegram, Discord, Slack, iMessage" | `manage_linked_account(platform, action=...)` | `account` |
@@ -847,10 +898,10 @@ sessions/artifacts, notifications, workflows, memory, billing), read that topic'
 context. It is cheap and keeps you from guessing how your own machinery works.
 
 - `account`: view and manage the user's account: notification channels,
-  response style and timezone, custom instructions, voice, linked platforms;
+  response style and timezone, standing instructions, voice, linked platforms;
   the read-only `account/` projections and the account tools.
 - `integrations`: discover, connect, and configure integrations; per-
-  integration custom instructions; the activation model.
+  integration standing instructions; the activation model.
 - `tracked-todos`: create / search / update / schedule / complete tracked
   todos; canvas conventions; recurrence; institutional memory.
 - `user-todos`: the user's own todo list and external task providers.
@@ -866,8 +917,8 @@ context. It is cheap and keeps you from guessing how your own machinery works.
   what `create_workflow` does and doesn't do; result delivery.
 - `memory`: your long-term memory about the user. the `/workspace/memory/`
   layout, journal, core documents, and the memory tools.
-- `skills`: install (from GitHub) or author skills inline, scope them, and
-  manage them; how skills extend GAIA (the skills integration).
+- `skills`: what a skill is, when to save or revise one from a run, how skills
+  relate to standing instructions and tracked todos; installing and managing.
 - `documents`: generate downloadable files (PDF, Word, slides, spreadsheets,
   CSV) from a request and its data (the docgen integration).
 - `billing`: the user's plan and payment history, handing them a checkout link
@@ -908,13 +959,16 @@ settings - plus a set of mutation tools that change the real thing.
 |---|---|---|
 | Notification channels (email/telegram/discord/whatsapp/slack) | `account/notifications.json` | `update_notification_settings` |
 | Response style + home timezone | `account/preferences.json` | `update_preferences` |
-| Standing custom instructions | `account/custom-instructions.json` | `update_custom_instructions` |
+| Standing instructions (every conversation) | `account/custom-instructions.json` | `update_user_instructions(scope="global", ...)` |
 | Voice for spoken replies | `account/voices/*.json` | `set_selected_voice` |
 | Brief frequency (daily/weekdays/weekly_only/off) + daily brief hour | - | `set_briefing_schedule(frequency, hour)` |
 | Linked messaging platforms | `account/linked-accounts/<platform>.json` | `manage_linked_account(platform, action=...)` |
 
-Every tool asks the user to confirm before it runs - ALWAYS, regardless of
-their approval settings. Tell them what you're about to change first.
+Every account tool asks the user to confirm before it runs - ALWAYS, regardless
+of their approval settings. Tell them what you're about to change first.
+`update_user_instructions` is not an account tool, but it asks the same way:
+the user confirms the exact text before it saves, and can edit it later in
+settings.
 
 `generate_link` returns a URL or instructions the user follows to connect a
 platform; `disconnect` removes an existing link (and confirms first).
@@ -961,9 +1015,10 @@ A connected device gives you two DIFFERENT capabilities, reached two different w
 1. Its MCP servers' tools. When a device MCP server is added it is connected and
    its tools are indexed into tool-retrieval exactly like any other integration -
    so they surface through `retrieve_tools` (semantic search over all connected
-   tools) and you use them by handing off to that server's subagent, the SAME as
-   a cloud MCP. You do NOT shell out to an MCP server. `list_devices` shows each
-   server, its integration_id (the handoff target), and whether its tools are
+   tools) and you use them by calling `activate_integration` on that server's
+   integration_id and running its tools via `execute`, the SAME as a cloud MCP.
+   You do NOT shell out to an MCP server. `list_devices` shows each
+   server, its integration_id (what you activate), and whether its tools are
    synced yet (a server GAIA never reached has none). Indexing runs in the
    background once the device is online, so a just-added server can take a moment
    to appear in `retrieve_tools`.
@@ -992,7 +1047,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             title="Account - managing the user's account",
             description=(
                 "View and manage the user's account: notification channels, response "
-                "style and timezone, custom instructions, voice, linked platforms; "
+                "style and timezone, standing instructions, voice, linked platforms; "
                 "read the account/ projections and change settings with the account "
                 "tools (billing is read-only)."
             ),
@@ -1003,7 +1058,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             title="Integrations: connecting and configuring services",
             description=(
                 "Discover, connect, and configure integrations; per-integration "
-                "custom instructions ('remember this for Gmail'); the activation model."
+                "standing instructions ('remember this for Gmail'); the activation model."
             ),
             body=INTEGRATIONS_DOC,
         ),
@@ -1077,10 +1132,11 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
         ),
         ManualDoc(
             name="skills",
-            title="Skills: installable how-to procedures that extend GAIA",
+            title="Skills: reusable procedures that extend GAIA",
             description=(
-                "Install (from GitHub) or author skills inline, set their scope, and "
-                "manage them; how skills extend GAIA (the skills integration)."
+                "What a skill is, when to save or revise one from a run "
+                "(save_learned_skill, update_skill), how skills relate to standing "
+                "instructions and tracked todos; installing and managing them."
             ),
             body=SKILLS_DOC,
         ),
@@ -1150,9 +1206,21 @@ def manual_topics() -> list[ManualDoc]:
     return list(MANUAL_DOCS.values())
 
 
+# Where the support route sits in a doc; filled per deployment at read time.
+_SUPPORT_ROUTE_SLOT: Final[str] = "{support_route}"
+_SUPPORT_ROUTE: Final[str] = ", or open a support ticket"
+
+
 def get_manual(name: str) -> ManualDoc | None:
-    """Return one manual doc by name, or None if unknown."""
-    return MANUAL_DOCS.get(name.strip().lower())
+    """Return one manual doc by name, or None if unknown.
+
+    A deployment without GAIA's support desk (self-host) gets no support route.
+    """
+    doc = MANUAL_DOCS.get(name.strip().lower())
+    if doc is None:
+        return None
+    route = _SUPPORT_ROUTE if settings.deployment.gaia_support else ""
+    return doc._replace(body=doc.body.replace(_SUPPORT_ROUTE_SLOT, route))
 
 
 def manual_index_text() -> str:

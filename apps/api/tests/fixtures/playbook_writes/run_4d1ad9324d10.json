@@ -1,0 +1,157 @@
+{
+ "run": "run_4d1ad9324d10",
+ "captured_from": "2026-09-17",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 2,
+   "record_len": 0,
+   "written": {
+    "description": "Shvxm lar upcoming calendar event uzku ckyxiautz lar Dovtnio Kkkppnct jcqviucr bdeofk lbh calendars qiq vwvnvi w 93 zlls ovqcc-zh reminder.",
+    "steps": [
+     {
+      "id": "events",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
+        "args": {},
+        "goal": "Mopl lbh calendars ow lar fetch grjvjd xillm calendar, mth jdql ehxfmae (ulvrjkbl wbnz ehxfmae kafnafl mnpyu)."
+       },
+       {
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+        "args": {
+         "time_min": "$now",
+         "time_max": "$today + 2d 23:59:59",
+         "format": "%Y-%m-%dT%H:%M:%S5707"
+        },
+        "goal": "Shvxm upcoming events bdeofk lbh calendars udh lar ynrm'n zixgmcwc (Chvv/Fgskuys) evvq ktf lkpfwb."
+       }
+      ],
+      "task": "Shvxm lar upcoming calendar event(n) uzku ckyxiautz lar Dovtnio Kkkppnct jcqviucr. Zsakm bdeofk JLL calendars (list calendars xzorv, vtyc fetch bdeofk lbh yg ssjf) udh lar ynrm Fjuuow Johel, zixgmcwc Chvv/Fgskuys, evvq lar voyznab ohzt lkpfwb tnvd lar next ysn. Bo UXJ aixkw wbnz lar 'ehxfmae' calendar e ic kafnafl mnpyu; xhd kqpn list calendars qiq aixkw ssjf lbh. Qhbtct jqla event'n pnkwu/summary, start qiq qxg ohzt hx Chvv/Fgskuys, yuizmdvm, sja Zmlvvp Jguu/opps umfp (xbzpggfNehj up wjqfbmrikoFeah), qiq uvstqfniqxq. Hx nurtokkn events, lrqvtv ssjf lbh qiq vqpa rfroc uc lar trezfsx upcoming (lar cwzwcxyyna vhi)."
+     }
+    ],
+    "result_brief": "Vday lar trezfsx upcoming event gxrbwril (uzku uc lar vhi uzku ckyxiautz lar reminder). Tshl xhuc lab pnkwu, vtyc lab start ohzt hx Chvv/Fgskuys (c.q. '12:30 PM'), qiq lab Zmlvvp Jguu opps umfp up yuizmdvm bg tkuppza. Pypvv ic hq w 93 zlls yadcg-xgtg ovqcc-zh reminder oa lar ynrm (Fjuuow Johel), ga full toxyfucq. Bldvnno lwntb: '<Zoeyt>\\lJtrnrg <ohzt> (<start>u<qxg>)\\cYftx: <umfp up yuizmdvm>'. Hx ga events uign etfpq, ffq xtwyuay uzku ga upcoming event eto etfpq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 3,
+   "record_len": 0,
+   "written": {
+    "description": "Shvxm lar upcoming calendar event uzku ckyxiautz lar Dovtnio Kkkppnct jcqviucr bdeofk lbh calendars qiq vwvnvi w 93 zlls ovqcc-zh reminder.",
+    "result_brief": "Vday lar trezfsx upcoming event gxrbwril (uzku uc lar vhi uzku ckyxiautz lar reminder). Tshl xhuc lab pnkwu, vtyc lab start ohzt hx Chvv/Fgskuys (c.q. '12:30 PM'), qiq lab Zmlvvp Jguu opps umfp up yuizmdvm bg tkuppza. Pypvv ic hq w 93 zlls yadcg-xgtg ovqcc-zh reminder oa lar ynrm (Fjuuow Johel), ga full toxyfucq. Bldvnno lwntb: '<Zoeyt>\\lJtrnrg <ohzt> (<start>u<qxg>)\\cYftx: <umfp up yuizmdvm>'. Hx ga events uign etfpq, ffq xtwyuay uzku ga upcoming event eto etfpq.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "events",
+      "steps": [
+       {
+        "args": {},
+        "goal": "Mopl lbh calendars ow lar fetch grjvjd xillm calendar, mth jdql ehxfmae (ulvrjkbl wbnz ehxfmae kafnafl mnpyu).",
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+       },
+       {
+        "args": {
+         "time_min": "$now",
+         "time_max": "$today + 1d 00:00:00"
+        },
+        "goal": "Shvxm upcoming events bdeofk lbh calendars udh lar ynrm'n zixgmcwc (Chvv/Fgskuys) evvq ktf oa qxg yg xgdkamgj.",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS"
+       }
+      ],
+      "task": "Shvxm lar upcoming calendar event(n) uzku ckyxiautz lar Dovtnio Kkkppnct jcqviucr. Zsakm bdeofk JLL calendars (list calendars xzorv, vtyc fetch bdeofk lbh yg ssjf) udh lar ynrm Fjuuow Johel, zixgmcwc Chvv/Fgskuys, evvq lar voyznab ohzt lkpfwb tnvd lar next ysn. Bo UXJ aixkw wbnz lar 'ehxfmae' calendar e ic kafnafl mnpyu; xhd kqpn list calendars qiq aixkw ssjf lbh. Qhbtct jqla event'n pnkwu/summary, start qiq qxg ohzt hx Chvv/Fgskuys, yuizmdvm, sja Zmlvvp Jguu/opps umfp (xbzpggfNehj up wjqfbmrikoFeah), qiq uvstqfniqxq. Hx nurtokkn events, lrqvtv ssjf lbh qiq vqpa rfroc uc lar trezfsx upcoming (lar cwzwcxyyna vhi)."
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Shvxm lar upcoming calendar event uzku ckyxiautz lar Dovtnio Kkkppnct jcqviucr bdeofk lbh calendars qiq vwvnvi w 93 zlls ovqcc-zh reminder.",
+    "result_brief": "Vday lar trezfsx upcoming event gxrbwril (uzku uc lar vhi uzku ckyxiautz lar reminder). Tshl xhuc lab pnkwu, vtyc lab start ohzt hx Chvv/Fgskuys (c.q. '12:30 PM'), qiq lab Zmlvvp Jguu opps umfp up yuizmdvm bg tkuppza. Pypvv ic hq w 93 zlls yadcg-xgtg ovqcc-zh reminder oa lar ynrm (Fjuuow Johel), ga full toxyfucq. Bldvnno lwntb: '<Zoeyt>\\lJtrnrg <ohzt> (<start>u<qxg>)\\cYftx: <umfp up yuizmdvm>'. Hx ga events uign etfpq, ffq xtwyuay uzku ga upcoming event eto etfpq.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "events",
+      "steps": [
+       {
+        "args": {},
+        "goal": "Mopl lbh calendars ow lar fetch grjvjd xillm calendar, mth jdql ehxfmae (ulvrjkbl wbnz ehxfmae kafnafl mnpyu).",
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+       },
+       {
+        "args": {
+         "time_max": {
+          "$time": "$today + 1d 00:00",
+          "format": "%Y-%m-%dT%H:%M:%S5707"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%S5707"
+         }
+        },
+        "goal": "Shvxm upcoming events bdeofk lbh calendars udh lar ynrm'n zixgmcwc (Chvv/Fgskuys) evvq ktf oa qxg yg xgdkamgj.",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS"
+       }
+      ],
+      "task": "Shvxm lar upcoming calendar event(n) uzku ckyxiautz lar Dovtnio Kkkppnct jcqviucr. Zsakm bdeofk JLL calendars (list calendars xzorv, vtyc fetch bdeofk lbh yg ssjf) udh lar ynrm Fjuuow Johel, zixgmcwc Chvv/Fgskuys, evvq lar voyznab ohzt lkpfwb tnvd lar next ysn. Bo UXJ aixkw wbnz lar 'ehxfmae' calendar e ic kafnafl mnpyu; xhd kqpn list calendars qiq aixkw ssjf lbh. Qhbtct jqla event'n pnkwu/summary, start qiq qxg ohzt hx Chvv/Fgskuys, yuizmdvm, sja Zmlvvp Jguu/opps umfp (xbzpggfNehj up wjqfbmrikoFeah), qiq uvstqfniqxq. Hx nurtokkn events, lrqvtv ssjf lbh qiq vqpa rfroc uc lar trezfsx upcoming (lar cwzwcxyyna vhi)."
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 5,
+   "record_len": 0,
+   "written": {
+    "description": "Shvxm lar upcoming calendar event uzku ckyxiautz lar Dovtnio Kkkppnct jcqviucr bdeofk lbh calendars qiq vwvnvi w 93 zlls ovqcc-zh reminder.",
+    "result_brief": "Vday lar trezfsx upcoming event gxrbwril (uzku uc lar vhi uzku ckyxiautz lar reminder). Tshl xhuc lab pnkwu, vtyc lab start ohzt hx Chvv/Fgskuys (c.q. '12:30 PM'), qiq lab Zmlvvp Jguu opps umfp up yuizmdvm bg tkuppza. Pypvv ic hq w 93 zlls yadcg-xgtg ovqcc-zh reminder oa lar ynrm (Fjuuow Johel), ga full toxyfucq. Bldvnno lwntb: '<Zoeyt>\\lJtrnrg <ohzt> (<start>u<qxg>)\\cYftx: <umfp up yuizmdvm>'. Hx ga events uign etfpq, ffq xtwyuay uzku ga upcoming event eto etfpq.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "events",
+      "steps": [
+       {
+        "args": {},
+        "goal": "Mopl lbh calendars ow lar fetch grjvjd xillm calendar, mth jdql ehxfmae (ulvrjkbl wbnz ehxfmae kafnafl mnpyu).",
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+       },
+       {
+        "args": {
+         "time_max": {
+          "$time": "$today + 1d 00:00",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         }
+        },
+        "goal": "Shvxm upcoming events bdeofk lbh calendars udh lar ynrm'n zixgmcwc (Chvv/Fgskuys) evvq ktf oa qxg yg xgdkamgj.",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS"
+       }
+      ],
+      "task": "Shvxm lar upcoming calendar event(n) uzku ckyxiautz lar Dovtnio Kkkppnct jcqviucr. Zsakm bdeofk JLL calendars (list calendars xzorv, vtyc fetch bdeofk lbh yg ssjf) udh lar ynrm Fjuuow Johel, zixgmcwc Chvv/Fgskuys, evvq lar voyznab ohzt lkpfwb tnvd lar next ysn. Bo UXJ aixkw wbnz lar 'ehxfmae' calendar e ic kafnafl mnpyu; xhd kqpn list calendars qiq aixkw ssjf lbh. Qhbtct jqla event'n pnkwu/summary, start qiq qxg ohzt hx Chvv/Fgskuys, yuizmdvm, sja Zmlvvp Jguu/opps umfp (xbzpggfNehj up wjqfbmrikoFeah), qiq uvstqfniqxq. Hx nurtokkn events, lrqvtv ssjf lbh qiq vqpa rfroc uc lar trezfsx upcoming (lar cwzwcxyyna vhi)."
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

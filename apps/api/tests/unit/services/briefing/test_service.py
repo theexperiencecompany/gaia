@@ -31,13 +31,14 @@ from app.constants.briefing import (
     BriefingBag,
     BriefingFrequency,
     BriefingRunOutcome,
+    BriefItemSource,
 )
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
     ProactiveMessageClass,
 )
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL
 from app.constants.user_activity import ActivityStatus
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
@@ -54,7 +55,7 @@ from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationStatus,
 )
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import (
     BriefingBootstrap,
     BriefingDormancy,
@@ -65,7 +66,7 @@ from app.services.briefing import context, service
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
-from app.services.delivery.chat_channel import ChatChannel
+from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.outbound_delivery import OutboundResult
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.analytics import UserId
@@ -80,7 +81,7 @@ _DAY_START = datetime(2026, 10, 12, 18, 30, tzinfo=UTC)
 # Monday 12 Oct, local midnight: the weekly digest counts from the start of the week.
 _WEEK_START = datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
 _EVENT = BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia")
-_CHAT = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1")
+_CHAT = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="priority")
 _EDITION = HostedEditionImage(
     display_url="https://cdn.example/f_auto/brief", chat_url="https://cdn.example/f_jpg/brief"
 )
@@ -132,8 +133,9 @@ def _held(item_id: str, title: str, text: str) -> PendingBriefItemDocument:
     return PendingBriefItemDocument(
         id=item_id,
         user_id=_USER,
-        workflow_id=f"wf-{item_id}",
-        workflow_title=title,
+        source=BriefItemSource.WORKFLOW,
+        source_id=f"wf-{item_id}",
+        source_title=title,
         conversation_id=f"conv-{item_id}",
         text=text,
     )
@@ -188,7 +190,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
             return_value=SimpleNamespace(channels=[_delivered(c) for c in _ORCHESTRATED])
         ),
         post=AsyncMock(return_value=OutboundResult.PUBLISHED),
-        host_image=AsyncMock(side_effect=lambda payload, *, render_key: _EDITION),
+        host_image=AsyncMock(side_effect=lambda payload, *, owner_id, render_key: _EDITION),
         consume=AsyncMock(),
         capture=MagicMock(),
         voice_prompt=MagicMock(wraps=service.build_briefing_voice_prompt),
@@ -225,8 +227,12 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(service.notification_service, "create_notification", w.notify)
     monkeypatch.setattr(
         service,
-        "resolve_chat_channel",
-        AsyncMock(side_effect=lambda user_id: w.chat if user_id == _USER else None),
+        "resolve_proactive_target",
+        AsyncMock(
+            side_effect=lambda user_id: (
+                w.chat if user_id == _USER and w.chat else InApp(reason="no_chat_app")
+            )
+        ),
     )
     monkeypatch.setattr(service, "host_edition_image", w.host_image)
     monkeypatch.setattr(service, "post_to_platform_chat", w.post)
@@ -950,6 +956,26 @@ class TestOneSubjectIsOneItem:
 
         items = [(it.text, it.count) for s in _stored_payload(world).sections for it in s.items]
         assert items == [("Approve the Acme MSA", 2)]
+
+    async def test_threads_the_inbox_desk_opened_are_one_item_each(self, world: World) -> None:
+        world.work = context.TrackedWork(
+            blocked=[
+                TodoDocument(
+                    id=f"t{n}",
+                    user_id=_USER,
+                    title=title,
+                    labels=[GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL],
+                    parent_todo_id="desk",
+                    external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=f"th{n}"),
+                )
+                for n, title in enumerate(["Priya · pitch deck", "Arjun · contract"])
+            ]
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        items = [(it.text, it.count) for s in _stored_payload(world).sections for it in s.items]
+        assert items == [("Priya · pitch deck", 1), ("Arjun · contract", 1)]
 
 
 def _brief_work() -> context.TrackedWork:

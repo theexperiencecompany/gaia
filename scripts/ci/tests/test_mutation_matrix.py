@@ -6,7 +6,6 @@ it should check. These tests pin the AST-based detection against fixture
 trees so the logic is proven without running mutmut.
 """
 
-import importlib.util
 import io
 import json
 from pathlib import Path
@@ -15,12 +14,7 @@ import subprocess
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-_SPEC = importlib.util.spec_from_file_location(
-    "mutation_matrix", REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_matrix.py"
-)
-assert _SPEC is not None and _SPEC.loader is not None
-mm = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(mm)
+from lib import mutation_matrix as mm
 
 
 def _write(root: Path, rel: str, content: str) -> None:
@@ -564,7 +558,7 @@ def test_a_deletion_only_module_is_dropped_from_the_matrix(
 ) -> None:
     """It has nothing to mutate, and passing it on would FAIL the shard.
 
-    `mutation.sh module` refuses an empty line scope with exit 2 — deliberately,
+    `mutation.py module` refuses an empty line scope with exit 2 — deliberately,
     because an empty scope buckets every survivor as out-of-scope and exits 0.
     So the module has to be dropped by the planner rather than handed down, the
     same way a comment-only diff is.

@@ -120,8 +120,8 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
             raise h.render_error
         return h.image
 
-    def fake_upload(public_id: str, file_data: bytes | None = None, **kwargs: Any) -> str:
-        h.upload_calls.append({"public_id": public_id, "file_data": file_data})
+    async def fake_upload(owner_id: str, public_id: str, content: bytes, **kwargs: Any) -> str:
+        h.upload_calls.append({"public_id": public_id, "file_data": content})
         if h.upload_error is not None:
             raise h.upload_error
         return h.image_url
@@ -129,7 +129,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     monkeypatch.setattr(edition_email, "render_edition", fake_render_edition)
     monkeypatch.setattr(edition_email, "renderer_for", fake_renderer_for)
     monkeypatch.setattr(edition_email, "render_html_to_image", fake_render_html_to_image)
-    monkeypatch.setattr(edition_email, "upload_file_to_cloudinary", fake_upload)
+    monkeypatch.setattr(edition_email.EDITION_IMAGE_STORE, "put", fake_upload)
     monkeypatch.setattr(settings, "FRONTEND_URL", FRONTEND_URL)
     monkeypatch.setattr(cloudinary.config(), "cloud_name", CLOUD_NAME)
     return h
@@ -149,7 +149,7 @@ RENDER_KEY = uuid4().hex
 
 
 async def host(payload: BriefingPayload) -> HostedEditionImage:
-    return await host_edition_image(payload, render_key=RENDER_KEY)
+    return await host_edition_image(payload, owner_id="user-1", render_key=RENDER_KEY)
 
 
 @pytest.mark.unit

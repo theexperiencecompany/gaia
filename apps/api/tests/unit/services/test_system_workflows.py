@@ -19,10 +19,11 @@ from app.constants.briefing import (
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
 from app.constants.log_tags import LogTag
-from app.models.notification.notification_models import QuietHours
 from app.models.payment_models import PlanType
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
+from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 
 MODULE = "app.services.system_workflows.provisioner"
 
@@ -357,6 +358,66 @@ class TestResetSystemWorkflowToDefault:
 
         result = await reset_system_workflow_to_default("wf-1", "user-1")
         assert result is False
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_a_reset_that_wrote_nothing_fails_and_stores_no_recipe(
+        self, mock_repo: MagicMock, install: AsyncMock
+    ) -> None:
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(
+                key="calendar:meeting_reminder", composio_trigger_ids=None, trigger_name=None
+            )
+        )
+        mock_repo.reset_system_workflow = AsyncMock(return_value=None)
+        request = _make_workflow_request()
+        request.trigger_config = TriggerConfig(type=TriggerType.MANUAL, timezone="UTC")
+
+        with patch.dict(
+            f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY",
+            {"calendar:meeting_reminder": MagicMock(return_value=request)},
+        ):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is False
+        install.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_a_reset_stores_the_recipe_against_the_reset_workflow(
+        self, mock_repo: MagicMock, install: AsyncMock
+    ) -> None:
+        """The reset rewrites prompt and steps, so the old playbook's hash is stale; the shipped recipe replaces it."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(
+                key="calendar:meeting_reminder", composio_trigger_ids=None, trigger_name=None
+            )
+        )
+        reset_doc = MagicMock()
+        mock_repo.reset_system_workflow = AsyncMock(return_value=reset_doc)
+        request = _make_workflow_request()
+        request.trigger_config = TriggerConfig(type=TriggerType.MANUAL, timezone="UTC")
+
+        with patch.dict(
+            f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY",
+            {"calendar:meeting_reminder": MagicMock(return_value=request)},
+        ):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        install.assert_awaited_once_with(
+            "calendar:meeting_reminder", "wf-1", "user-1", reset_doc.prompt, reset_doc.steps
+        )
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.workflow_repository")
@@ -907,6 +968,40 @@ class TestResetSystemWorkflowToDefault:
         )
 
     @pytest.mark.asyncio
+    @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
+    @patch("app.services.user_service.get_user_by_id")
+    @patch(f"{MODULE}.workflow_scheduler")
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_a_failed_recipe_install_still_leaves_the_reset_schedule_armed(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+        mock_scheduler: MagicMock,
+        mock_get_user: MagicMock,
+        install: AsyncMock,
+    ) -> None:
+        """The recipe is only a shortcut: its failure surfaces, but the reset workflow still has its next fire queued."""
+        existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
+        existing.activated = True
+        mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
+        mock_repo.reset_system_workflow = AsyncMock()
+        mock_get_user.return_value = UserDocument(timezone="UTC")
+        mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
+        install.side_effect = RuntimeError("recipe store down")
+        trigger_config = self._schedule_trigger_config()
+        mock_ensure.return_value = trigger_config
+        factory = MagicMock(return_value=_make_workflow_request())
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"sched_wf": factory}):
+            with pytest.raises(RuntimeError, match="recipe store down"):
+                await reset_system_workflow_to_default("wf-1", "user-1")
+
+        mock_scheduler.schedule_workflow_execution.assert_awaited_once_with(
+            "wf-1", trigger_config.next_run, repeat="0 8 * * *"
+        )
+
+    @pytest.mark.asyncio
     @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
@@ -1225,6 +1320,7 @@ class TestActivationForPayingUsers:
             "error_type": "RuntimeError",
         }
 
+    @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
     @patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
     @patch(f"{MODULE}.WorkflowService")
@@ -1235,6 +1331,7 @@ class TestActivationForPayingUsers:
         mock_service: MagicMock,
         activate: AsyncMock,
         _notify: AsyncMock,
+        install: AsyncMock,
     ) -> None:
         from app.services.system_workflows.provisioner import provision_system_workflows
 
@@ -1253,6 +1350,9 @@ class TestActivationForPayingUsers:
             )
 
         activate.assert_awaited_once_with("wf-created", "user-1", "calendar:meeting_prep")
+        install.assert_awaited_once_with(
+            "calendar:meeting_prep", "wf-created", "user-1", created.prompt, created.steps
+        )
 
 
 class TestTheDailyBriefFollowsQuietHours:
@@ -1262,8 +1362,8 @@ class TestTheDailyBriefFollowsQuietHours:
     @pytest.mark.parametrize(
         ("quiet_hours", "cron"),
         [
-            (QuietHours(start_hour=22, end_hour=8), "0 8 * * *"),
-            (QuietHours(start_hour=0, end_hour=10), "0 10 * * *"),
+            (QuietHours(enabled=True, start_hour=22, end_hour=8), "0 8 * * *"),
+            (QuietHours(enabled=True, start_hour=0, end_hour=10), "0 10 * * *"),
         ],
         ids=["default", "quiet-until-10"],
     )
@@ -1332,7 +1432,9 @@ class TestTheDailyBriefFollowsQuietHours:
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
         mock_users.get = AsyncMock(
-            return_value=UserDocument(quiet_hours=QuietHours(start_hour=0, end_hour=10))
+            return_value=UserDocument(
+                quiet_hours=QuietHours(enabled=True, start_hour=0, end_hour=10)
+            )
         )
         mock_timezone.return_value = MagicMock(value="UTC")
 

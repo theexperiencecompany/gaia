@@ -1,6 +1,36 @@
 """Constants for platform account linking (Discord, Slack, Telegram, WhatsApp, iMessage)."""
 
 from datetime import timedelta
+from enum import Enum
+
+
+class Platform(str, Enum):
+    """Supported platforms for account linking.
+
+    Lives in the leaf constants module so models can read it without importing
+    the linking service (a model importing a service is an import cycle).
+    """
+
+    DISCORD = "discord"
+    SLACK = "slack"
+    TELEGRAM = "telegram"
+    WHATSAPP = "whatsapp"
+    IMESSAGE = "imessage"
+
+    @classmethod
+    def is_valid(cls, platform: str) -> bool:
+        """Check if platform is supported."""
+        try:
+            cls(platform)
+            return True
+        except ValueError:
+            return False
+
+    @classmethod
+    def values(cls) -> list[str]:
+        """Get list of all platform values."""
+        return [p.value for p in cls]
+
 
 # How long a Photon shared-pool registration may sit unlinked before the sweep
 # releases it. Registering assigns the number a seat in the project's pool, so a
@@ -17,3 +47,9 @@ PLATFORM_LINK_CODE_FEATURE_KEY = "platform_link_code"
 # other on the user's own GAIA account (see platform_link_completion).
 LINK_CONFLICT_PLATFORM_TAKEN = "platform_account_taken"
 LINK_CONFLICT_ACCOUNT_HAS_OTHER = "account_has_other_platform_account"
+
+# Platforms whose linked account has a DM chat the web app can open; Slack/Discord
+# DMs are addressed through their workspace, so they are left out.
+CHAT_LINK_PLATFORMS: frozenset[str] = frozenset(
+    {Platform.TELEGRAM.value, Platform.WHATSAPP.value, Platform.IMESSAGE.value}
+)

@@ -63,7 +63,7 @@ threshold. `condition: C`.
       {{ if $values.B }}...{{ else }}...{{ end }}
     description: >-
       What breaks for users, and the first thing to check.
-    runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-thing-broken
+    runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-thing-broken
     __dashboardUid__: gaia-overview
     __panelId__: "3"
   labels:
@@ -126,7 +126,7 @@ target vanished); a counter going NoData usually just means no traffic. Setting
 
 ### 5. Write the runbook
 
-Every rule links to `https://docs.lab.heygaia.io/production/runbooks/<uid>`,
+Every rule links to `https://internal.lab.heygaia.io/production/runbooks/<uid>`,
 sourced from `theexperiencecompany/internal-docs` at
 `docs/production/runbooks/<uid>.mdx`. A rule without a runbook is unfinished —
 the alert tells you something is wrong, the runbook is what makes it

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import TypeAdapter
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.repositories.integrations import integration_repository
@@ -62,7 +62,7 @@ async def get_public_integration(
         # 1. Check platform (native) integrations first — in-memory, instant
         # Platform integrations use their ID as slug (e.g., "googlecalendar", "slack")
         native = next(
-            (i for i in OAUTH_INTEGRATIONS if i.id == identifier and i.managed_by != "internal"),
+            (i for i in all_integrations() if i.id == identifier and i.managed_by != "internal"),
             None,
         )
         if native:

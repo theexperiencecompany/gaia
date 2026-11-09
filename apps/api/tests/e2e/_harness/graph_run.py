@@ -11,7 +11,7 @@ Assertions go through :class:GraphRun, never through raw event tuples.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
@@ -191,7 +191,7 @@ class GraphRun:
 class RecordingFakeModel(BindableToolsFakeModel):
     """A scripted model that also remembers what it was shown.
 
-    Pre-model hooks (todo context, system-prompt management, message filtering)
+    Pre-model hooks (system-prompt management, message filtering, media adaptation)
     rewrite the message list on its way to the model and that rewrite is
     ephemeral — it never lands in the checkpoint. So the only way to assert on a
     hook's effect is to record the prompt the model actually received.
@@ -243,9 +243,13 @@ class RecordingFakeModel(BindableToolsFakeModel):
         return self._generate(messages, *args, **kwargs)
 
 
-#: What a scripted hand-off sends for call_executor's required
-#: acceptance_criteria, filled here so one schema change doesn't rewrite fifty scripts by hand.
+#: What a scripted hand-off sends for call_executor's required args, filled
+#: here so one schema change doesn't rewrite fifty scripts by hand.
 SCRIPTED_ACCEPTANCE_CRITERIA = ["scripted e2e hand-off"]
+SCRIPTED_HANDOFF_DEFAULTS: dict[str, Any] = {
+    "desired_outcome": "scripted e2e outcome",
+    "time_horizon": "one_shot",
+}
 
 
 #: One scripted tool-call payload, shared by every helper that models the
@@ -263,8 +267,10 @@ def call(name: str, args: dict[str, Any] | None = None, call_id: str = "c1") -> 
     became required and every one of them broke at once.
     """
     call_args = dict(args or {})
-    if name == "call_executor" and "acceptance_criteria" not in call_args:
-        call_args["acceptance_criteria"] = list(SCRIPTED_ACCEPTANCE_CRITERIA)
+    if name == "call_executor":
+        call_args.setdefault("acceptance_criteria", list(SCRIPTED_ACCEPTANCE_CRITERIA))
+        for key, value in SCRIPTED_HANDOFF_DEFAULTS.items():
+            call_args.setdefault(key, value)
     return {"name": name, "args": call_args, "id": call_id}
 
 
@@ -332,7 +338,7 @@ class CallAllToolsModel(RecordingFakeModel):
 
 @asynccontextmanager
 async def executor_graph(
-    script: Sequence[dict[str, Any] | str],
+    script: Sequence[Mapping[str, object] | str],
     store: InMemoryStore | None = None,
     model: RecordingFakeModel | None = None,
 ) -> AsyncIterator[Any]:
@@ -409,8 +415,8 @@ async def comms_graph(
     memory.recall = AsyncMock(return_value=MagicMock(entries=[], episodes=[]))
 
     # A real (fake) Redis, not none: call_executor takes a busy lock through
-    # it and executor_status_hook reads it every turn, so without one every
-    # comms test's delegation silently returns a ConnectionError string.
+    # it, so without one every comms test's delegation silently returns a
+    # ConnectionError string.
     redis_client = fakeredis.aioredis.FakeRedis(decode_responses=True)
 
     with (

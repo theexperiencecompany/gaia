@@ -8,7 +8,10 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
-import { toTriggerConfig } from "@/features/workflows/triggers/types";
+import {
+  isIntegrationTrigger,
+  toTriggerConfig,
+} from "@/features/workflows/triggers/types";
 import { useRouter } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -24,6 +27,7 @@ import {
   workflowToFormData,
 } from "../../schemas/workflowFormSchema";
 import { findTriggerSchema } from "../../triggers/utils";
+import { gateEditFor } from "../../utils/gateEdit";
 import { mentionedIntegrationIds } from "../../utils/integrationMentions";
 import { missingIntegrationsMessage } from "../shared/workflowCardHelpers";
 import type { WorkflowModalUiAction, WorkflowModalUiState } from "./modalState";
@@ -256,6 +260,11 @@ export function useWorkflowModalActions({
       icon: data.icon ?? undefined,
       icon_color: data.icon_color ?? undefined,
       trigger_config: toTriggerConfig(data.trigger_config),
+      // The server refuses a condition on a trigger with no event to read.
+      runs_only_when:
+        isIntegrationTrigger(data.trigger_config) && data.gate.enabled
+          ? data.gate.condition.trim() || undefined
+          : undefined,
       // When predefined steps are supplied (from a community/featured
       // workflow), forward them so the backend reuses them instead of
       // regenerating a fresh plan.
@@ -407,7 +416,12 @@ export function useWorkflowModalActions({
 
       const updatedWorkflow = await workflowApi.updateWorkflow(
         currentWorkflow.id,
-        updateRequest,
+        {
+          ...updateRequest,
+          gate: isIntegrationTrigger(data.trigger_config)
+            ? gateEditFor(currentWorkflow.gate, data.gate)
+            : undefined,
+        },
       );
 
       if (updatedWorkflow?.workflow) {

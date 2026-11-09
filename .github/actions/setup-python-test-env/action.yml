@@ -4,8 +4,7 @@ description: >
   install Node + pnpm deps (the device-bridge e2e tests drive the real
   `gaia bridge` CLI via tsx) when requested, sync Python deps with uv, and start
   PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers on the local Docker
-  daemon. Mirrors the topology of `dagger call test-python` so the suite runs
-  identically in CI and in the local Dagger harness.
+  daemon.
 
 inputs:
   services:
@@ -73,21 +72,28 @@ runs:
       # release. Versions are hash-pinned via --frozen, so sdist builds run
       # the same audited code as every other install path.
       # Self-hosted: .venv persists in the workspace; skip the sync when the
-      # marker the previous sync left still matches (scripts/ci/runner.sh dep-marker
+      # marker the previous sync left still matches (scripts/ci/runner.py dep-marker
       # keys it on uv.lock AND the pyproject files, ~10-20s saved) and the env
       # still holds exactly that lock: a job syncing outside this composite (another
       # branch's python-mypy) can change the .venv under an unchanged marker.
+      # `--check` reads the installed packages, so a venv that lost its
+      # site-packages fails it and is re-synced. It does NOT read pyvenv.cfg:
+      # without that file `--check` still passes while the interpreter no longer
+      # sees the venv's packages at all, so the skip requires it too.
       run: |
         set -euo pipefail
-        MARK="$(bash scripts/ci/runner.sh dep-marker python)"
-        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -x .venv/bin/python ] &&
+        source scripts/ci/lib/runner-host.sh
+        MARK="$(python3 scripts/ci/runner.py dep-marker python)"
+        if ci_on_the_box && [ -f "$MARK" ] && [ -x .venv/bin/python ] &&
+           [ -f .venv/pyvenv.cfg ] &&
            uv sync --frozen --package gaia --group backend --group dev --check > /dev/null 2>&1; then
           echo ".venv already synced ($MARK) — skipping uv sync"
           exit 0
         fi
-        bash scripts/ci/runner.sh heal-venv .venv
+        # Withdrawn before the sync, so an interrupted one leaves no marker behind.
+        rm -f .venv/.gaia-synced-*
+        python3 scripts/ci/runner.py heal-venv .venv
         uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
-        rm -f .venv/.gaia-synced-* 2>/dev/null || true
         touch "$MARK"
 
     # Join the background boot, then claim this lane's namespace and export its
@@ -109,10 +115,11 @@ runs:
     - name: Export test-suite environment
       shell: bash
       run: |
-        # ~1.3 GB of ONNX weights. On an ephemeral GitHub runner they have to
-        # come through actions/cache every run; on the self-hosted box they
-        # persist on local disk, so the transfer is skipped entirely.
-        if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+        source scripts/ci/lib/runner-host.sh
+        # ~1.3 GB of ONNX weights. On an ephemeral runner they have to come
+        # through actions/cache every run; on the box they persist on local
+        # disk, so the transfer is skipped entirely.
+        if ci_on_the_box; then
           MODEL_CACHE_DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/fastembed"
         else
           MODEL_CACHE_DIR=/tmp/fastembed_cache
@@ -146,7 +153,7 @@ runs:
     # where a failure is loud and names itself, and cache them so the download
     # happens once per key rather than on every run.
     - name: Restore embedding models
-      if: inputs.services == 'true' && inputs.restore-models == 'true' && runner.environment != 'self-hosted'
+      if: inputs.services == 'true' && inputs.restore-models == 'true' && !startsWith(runner.name, 'gaia-home-')
       id: model-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -205,7 +212,7 @@ runs:
     # Only reached when the prefetch above succeeded, so a poisoned partial
     # download is never what gets cached for every later run.
     - name: Save embedding models
-      if: inputs.services == 'true' && inputs.restore-models == 'true' && (runner.environment != 'self-hosted' && steps.model-cache.outputs.cache-hit != 'true')
+      if: inputs.services == 'true' && inputs.restore-models == 'true' && (!startsWith(runner.name, 'gaia-home-') && steps.model-cache.outputs.cache-hit != 'true')
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ env.MODEL_CACHE_DIR }}

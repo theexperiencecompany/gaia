@@ -25,9 +25,8 @@ from app.constants.workflows import WorkflowDelivery
 from app.models.briefing_models import BriefingSchedule
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import (
+    OnboardingAnswers,
     OnboardingNeed,
-    OnboardingPhase,
-    OnboardingPhaseUpdateRequest,
     OnboardingRequest,
 )
 from app.models.webhook_models import (
@@ -47,6 +46,7 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import OnboardingStep
 
 from .posthog_api import REPO_ROOT
 
@@ -121,23 +121,42 @@ def mint(stack: Stack) -> None:
     stack.user_id = UserId(str(minted.json()["id"]))
 
 
+#: Every phase_completed the wizard walk below produces, in the order it reaches them.
+ONBOARDING_PHASES = (
+    OnboardingStep.QUESTIONS_ANSWERED,
+    OnboardingStep.PAYWALL_REACHED,
+    OnboardingStep.PAID_REVEAL_SEEN,
+    OnboardingStep.FIRST_CHAT_OPENED,
+)
+
+
 def onboarding(stack: Stack) -> None:
-    """Submit onboarding and advance its phase, as the browser does."""
-    request = OnboardingRequest(
-        profession="engineer", needs=[OnboardingNeed.INBOX], other_need=None, timezone="UTC"
-    )
-    phase = OnboardingPhaseUpdateRequest(phase=OnboardingPhase.GETTING_STARTED)
+    """Walk the wizard as the browser does, reporting the start twice as a reload would."""
+    answers = OnboardingAnswers(profession="engineer", needs=[OnboardingNeed.INBOX])
+    request = OnboardingRequest(**answers.model_dump(), timezone="UTC")
     with stack.client() as api:
+
+        def report(step: OnboardingStep) -> None:
+            _expect(
+                api.post("/onboarding/phase", json={"phase": step.value}, headers=stack.browser()),
+                HTTPStatus.OK,
+            )
+
+        report(OnboardingStep.STARTED)
+        report(OnboardingStep.STARTED)
+        _expect(
+            api.put(
+                "/onboarding/answers", json=answers.model_dump(mode="json"), headers=stack.browser()
+            ),
+            HTTPStatus.OK,
+        )
+        report(OnboardingStep.PAYWALL_REACHED)
+        report(OnboardingStep.PAID_REVEAL_SEEN)
         _expect(
             api.post("/onboarding", json=request.model_dump(mode="json"), headers=stack.browser()),
             HTTPStatus.OK,
         )
-        _expect(
-            api.post(
-                "/onboarding/phase", json=phase.model_dump(mode="json"), headers=stack.browser()
-            ),
-            HTTPStatus.OK,
-        )
+        report(OnboardingStep.FIRST_CHAT_OPENED)
 
 
 def _chat_request() -> dict[str, object]:
