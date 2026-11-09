@@ -437,7 +437,7 @@ def accepted_turn(owned_conversations: set[tuple[str, str]]) -> Iterator[MagicMo
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("app.api.v1.endpoints.chat.enforce_daily_cost_budget", new_callable=AsyncMock),
+        patch("app.api.v1.endpoints.chat.enforce_cost_budget", new_callable=AsyncMock),
         patch("app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock),
         patch("app.api.v1.endpoints.chat.stream_manager.subscribe_stream", new=_fake_subscribe),
         patch("app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock),
@@ -448,6 +448,17 @@ def accepted_turn(owned_conversations: set[tuple[str, str]]) -> Iterator[MagicMo
         patch("app.api.v1.endpoints.chat.capture") as mock_capture,
     ):
         yield mock_capture
+
+
+class TestChatCostGate:
+    async def test_a_turn_is_gated_on_this_users_chat_budget(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        with patch("app.api.v1.endpoints.chat.enforce_cost_budget", new_callable=AsyncMock) as gate:
+            response = await client.post("/api/v1/chat-stream", json=_DESKTOP_TURN)
+
+        assert response.status_code == 200, response.text
+        gate.assert_awaited_once_with(FAKE_USER.user_id, feature_key="chat_messages")
 
 
 class TestChatMessageSubmitted:

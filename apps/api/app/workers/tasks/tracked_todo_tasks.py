@@ -31,6 +31,7 @@ from app.agents.core.background.todo_run_delivery import (
     hand_unfinished_run_to_job,
     report_unfinished_run,
 )
+from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
@@ -51,7 +52,7 @@ from app.constants.todos import (
     TodoWakeKind,
 )
 from app.db.repositories.todos import todo_repository
-from app.decorators import enforce_daily_cost_budget
+from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.agent_models import SpawnJob
 from app.models.message_models import TodoRunWake
@@ -336,8 +337,6 @@ async def _execute_todo_with_retry(
         return owner
     user_data, user_tz = owner
 
-    await _begin_run(doc, origin, coalesced)
-
     outcome = "success"
     try:
         await _execute_on_executor(
@@ -375,8 +374,8 @@ async def _execute_todo_with_retry(
 
 async def _begin_run(
     doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
-) -> None:
-    """Settle what a run answers for before any LLM work.
+) -> str | None:
+    """Settle what a run answers for before any LLM work; return the result of a walled run.
 
     A trigger run opens its window, then meets the cost wall, so a walled run still
     counts as its window's one run: a trigger fire is not a user action. A desk's
@@ -385,10 +384,23 @@ async def _begin_run(
     if origin is not None:
         log.set(trigger_events=1 + len(coalesced))
         await open_trigger_window(trigger_window(doc))
-        await enforce_daily_cost_budget(doc.user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+        try:
+            await enforce_cost_budget(doc.user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+        except CostBudgetExceededException as walled:
+            return await _walled_result(doc.id, doc.user_id, walled)
     elif _answers_held_events(doc):
         answered = await drain_todo_trigger_events(doc.id)
         log.set(trigger_events_answered=len(answered or []))
+    return None
+
+
+async def _walled_result(todo_id: str, user_id: str, walled: CostBudgetExceededException) -> str:
+    """Skip a run the cost wall refused, naming when it lifts: expected while spent, never a failed job."""
+    await record_activity(
+        todo_id, user_id, TodoActivityEvent.RUN_SKIPPED, f"skipped: {walled.message}"
+    )
+    log.set(tracked_todo={"walled": walled.period.value})
+    return f"walled:{todo_id}"
 
 
 async def _schedule_retry(
@@ -463,6 +475,8 @@ async def _owner_ready_to_run(
         return withheld
     if paused := await _paused_result(doc, user_tz, origin, coalesced):
         return paused
+    if walled := await _begin_run(doc, origin, coalesced):
+        return walled
     return user_data, user_tz
 
 
@@ -848,7 +862,7 @@ async def _resume_holding_lock(
     user_id = doc.user_id
 
     try:
-        await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+        await enforce_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
         message = (
             f"Approval {approval_id} was granted: {receipt} "
@@ -876,6 +890,8 @@ async def _resume_holding_lock(
     except ExecutorBusyError:
         # Never started, so nothing failed: the caller defers the resume.
         raise
+    except CostBudgetExceededException as walled:
+        return await _walled_result(todo_id, user_id, walled)
     except TodoRunCancelledError:
         await record_activity(
             todo_id, user_id, TodoActivityEvent.RUN_CANCELLED, "approval resume stopped by the user"

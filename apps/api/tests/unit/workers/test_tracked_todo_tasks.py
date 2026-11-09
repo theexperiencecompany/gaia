@@ -55,6 +55,8 @@ from app.agents.prompts.todo_prompts import (
     SUB_TODOS_LABEL,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
+from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
+from app.config.rate_limits import RateLimitPeriod
 from app.constants import todos as todo_constants
 from app.constants.hil import HIL_JEV_URL
 from app.constants.integrations import GMAIL_INTEGRATION_ID
@@ -135,6 +137,7 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
+from shared.py.wide_events import log
 from tests.helpers import (
     UNKNOWN_USER_ID,
     FakeEmailVerdicts,
@@ -899,6 +902,22 @@ class TestDeliveryContractInThePrompt:
         assert DELIVERED_REPORT_FORM not in prompt
 
 
+_MONTHLY_STOP = (
+    "You've used this month's AI usage allowance, so chat, workflows and tracked "
+    "todos are paused until December 1, when it resets."
+)
+
+
+def _monthly_wall() -> CostBudgetExceededException:
+    return CostBudgetExceededException(
+        feature=TRIGGER_TODO_FEATURE_KEY,
+        reset_time=datetime(2099, 12, 1, tzinfo=UTC),
+        current_plan="pro",
+        message=_MONTHLY_STOP,
+        period=RateLimitPeriod.MONTH,
+    )
+
+
 class TestTriggeredExecutionGating:
     """The budget wall and the origin hand-off, on the retry helper."""
 
@@ -910,23 +929,35 @@ class TestTriggeredExecutionGating:
     def _origin() -> TriggerOrigin:
         return TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
 
-    async def _run(self, origin):
+    async def _run(self, origin, budget=None):
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=_doc())
         repo.update = AsyncMock()
         repo.update_if_scheduled_at = AsyncMock(return_value=_doc())
         via_agent = AsyncMock()
-        budget = AsyncMock()
+        budget = budget or AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", via_agent),
-            patch(f"{MODULE}.enforce_daily_cost_budget", budget),
+            patch(f"{MODULE}.enforce_cost_budget", budget),
             patch(f"{MODULE}._execute_on_executor", via_agent),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
-            await _execute_todo_with_retry("todo-1", origin)
+            self.result = await _execute_todo_with_retry("todo-1", origin)
         return budget, via_agent
+
+    async def test_a_triggered_run_the_monthly_wall_stops_skips_cleanly_naming_the_reset(
+        self, activity: AsyncMock
+    ):
+        """A capped month refuses every fire until it resets: each must end as a skip, not a failed job."""
+        log.reset()
+        _, via_agent = await self._run(self._origin(), AsyncMock(side_effect=_monthly_wall()))
+
+        assert self.result == "walled:todo-1"
+        assert log.get()["tracked_todo"] == {"walled": "month"}
+        via_agent.assert_not_awaited()
+        assert (TodoActivityEvent.RUN_SKIPPED, f"skipped: {_MONTHLY_STOP}") in _recorded(activity)
 
     async def test_a_triggered_run_takes_the_cost_wall_first(self):
         # A chatty subscription must not be able to spend a user's whole day of
@@ -965,7 +996,7 @@ class TestTriggeredExecutionGating:
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("boom"))),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(f"{MODULE}._mark_todo_failed", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             _serving(pool),
@@ -988,7 +1019,7 @@ class TestTriggeredExecutionGating:
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("boom"))),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             _serving(pool),
         ):
@@ -1260,7 +1291,7 @@ class TestExecuteTodoWithRetrySuccess:
                 LOAD_USER,
                 AsyncMock(side_effect=_user_context(timezone=tz)),
             ),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             _serving(pool),
         ):
             result = await _execute_todo_with_retry("todo-1", origin)
@@ -1391,7 +1422,7 @@ class TestExecuteTodoWithRetryFailure:
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=failure)),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             patch(f"{MODULE}._mark_todo_failed", mark_failed),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             _serving(pool),
         ):
             result = await _execute_todo_with_retry("todo-1", origin)
@@ -1537,7 +1568,7 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
             ),
             patch(f"{MODULE}.notification_service.create_notification", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             _serving(pool),
         ):
             result = await _execute_todo_with_retry("todo-1", origin)
@@ -2247,7 +2278,7 @@ class TestStaleScheduledFire:
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", run),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             _serving(_pool()),
         ):
@@ -2416,7 +2447,7 @@ class TestOneRunPerOccurrence:
             patch(f"{MODULE}.todo_repository", row),
             patch("app.workers.tasks.todo_run_context.todo_repository", row),
             patch(f"{MODULE}._execute_on_executor", run),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(f"{MODULE}._mark_todo_failed", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
@@ -2816,7 +2847,7 @@ class TestTriggerEventsCoalesce:
             patch("app.workers.tasks.todo_run_context.todo_repository", row),
             patch(f"{_DISPATCH}.todo_repository", row),
             patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.enforce_daily_cost_budget", self.budget),
+            patch(f"{MODULE}.enforce_cost_budget", self.budget),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             patch(f"{_DISPATCH}.record_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
@@ -3098,7 +3129,7 @@ class TestQuietHoursHoldAGatedTodosWindow:
             patch("app.workers.tasks.todo_run_context.todo_repository", row),
             patch(f"{_DISPATCH}.todo_repository", row),
             patch(f"{MODULE}.run_todo_on_executor", AsyncMock(side_effect=run)),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="Asia/Kolkata"))),
             patch(f"{_DISPATCH}.record_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
@@ -3675,6 +3706,7 @@ class TestResumeTrackedTodo:
         doc: TodoDocument | None = None,
         lock_acquired: bool = True,
         agent: AsyncMock | None = None,
+        budget: AsyncMock | None = None,
     ) -> _ResumeRun:
         pool = _pool()
         pool.set = AsyncMock(return_value=True if lock_acquired else None)
@@ -3687,7 +3719,7 @@ class TestResumeTrackedTodo:
             repo=repo,
             user=user,
             load_user=AsyncMock(return_value=(user, MagicMock())),
-            budget=AsyncMock(),
+            budget=budget or AsyncMock(),
             agent=agent or AsyncMock(),
             timeline=AsyncMock(return_value=True),
             enqueue=AsyncMock(),
@@ -3702,7 +3734,7 @@ class TestResumeTrackedTodo:
             patch(f"{MODULE}.todo_repository", run.repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", run.repo),
             patch(f"{MODULE}._load_user_with_tz", run.load_user),
-            patch(f"{MODULE}.enforce_daily_cost_budget", run.budget),
+            patch(f"{MODULE}.enforce_cost_budget", run.budget),
             patch(f"{MODULE}.run_todo_on_executor", run.agent),
             patch(f"{MODULE}.record_activity", run.timeline),
             patch(f"{MODULE}.enqueue_worker_job", run.enqueue),
@@ -3717,9 +3749,10 @@ class TestResumeTrackedTodo:
         doc: TodoDocument | None = None,
         lock_acquired: bool = True,
         agent: AsyncMock | None = None,
+        budget: AsyncMock | None = None,
     ) -> _ResumeRun:
         """Resume the job (todo, conversation, approval, receipt) through the real task."""
-        run = self._build(doc=doc, lock_acquired=lock_acquired, agent=agent)
+        run = self._build(doc=doc, lock_acquired=lock_acquired, agent=agent, budget=budget)
         with self._patched(run):
             run.result = await resume_tracked_todo(
                 {}, job.todo_id, job.conversation_id, job.approval_id, job.receipt, job.attempt
@@ -3763,6 +3796,18 @@ class TestResumeTrackedTodo:
         run.load_user.assert_awaited_once_with("user-7")
         run.budget.assert_awaited_once_with("user-7", feature_key=TRIGGER_TODO_FEATURE_KEY)
         run.log.set.assert_any_call(todo_id="todo-1", approval_id="ap_1")
+
+    async def test_a_resume_the_monthly_wall_stops_skips_cleanly_naming_the_reset(self) -> None:
+        run = await self._resume(
+            _ResumeJob("conv-parked", "Send briefing"),
+            budget=AsyncMock(side_effect=_monthly_wall()),
+        )
+
+        assert run.result == "walled:todo-1"
+        run.agent.assert_not_awaited()
+        run.timeline.assert_awaited_once_with(
+            "todo-1", "user-7", TodoActivityEvent.RUN_SKIPPED, f"skipped: {_MONTHLY_STOP}"
+        )
 
     async def test_it_holds_the_todos_execution_lock_for_the_run(self) -> None:
         """Same key as execute_tracked_todo, or a scheduled run and a resume overlap on one todo."""
@@ -3973,7 +4018,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", execute),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context())),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(f"{MODULE}.capture_paywall_block") as capture,
             _serving(_pool()),
         ):

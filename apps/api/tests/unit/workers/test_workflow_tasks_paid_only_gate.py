@@ -67,7 +67,7 @@ class TestPaidOnlyGateBlocksFreeUsers:
             patch(f"{MODULE}.is_paid", AsyncMock(return_value=False)),
             patch(f"{MODULE}.execute_workflow_as_chat", mock_execute_chat),
             patch(f"{MODULE}.create_execution", mock_create_execution),
-            patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock),
+            patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock),
             patch(f"{MODULE}.log") as mock_log,
         ):
             result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
@@ -169,7 +169,7 @@ class TestTheBlockReachesTheFunnel:
             p_scheduler,
             patch(f"{MODULE}.is_paid", AsyncMock(return_value=True)),
             patch(f"{MODULE}._admit_fire", AsyncMock(return_value=None)),
-            patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock),
+            patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock),
             patch(
                 f"{MODULE}._drain_trigger_events",
                 AsyncMock(return_value=({"trigger_type": "schedule"}, "drained-for-test")),
@@ -200,7 +200,7 @@ class TestTheGateReadsTheRowWhenTheCacheSaysFree:
             ),
             patch("app.decorators.entitlements.invalidate_plan_cache", new_callable=AsyncMock),
             patch(f"{MODULE}._admit_fire", AsyncMock(return_value=None)),
-            patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock),
+            patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock),
             patch(
                 f"{MODULE}._drain_trigger_events",
                 AsyncMock(return_value=({"trigger_type": "schedule"}, "drained-for-test")),
@@ -222,7 +222,7 @@ class TestPaidOnlyGateLetsProUsersThrough:
         with (
             p_scheduler,
             patch(f"{MODULE}.is_paid", AsyncMock(return_value=True)),
-            patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock),
+            patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock),
             patch(
                 f"{MODULE}.create_execution",
                 new_callable=AsyncMock,

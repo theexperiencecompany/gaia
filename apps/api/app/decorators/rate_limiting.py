@@ -1,5 +1,6 @@
 """Rate limiting decorators for API endpoints and LangChain tools, keyed on user plan."""
 
+import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -30,12 +31,21 @@ from app.models.agent_models import current_stream_writer
 from app.models.chat_models import ToolDataEntry
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
-from app.services.analytics_service import capture
-from app.services.cost_budget import get_cost, is_daily_budget_exhausted
-from app.services.limit_upsell import LimitHitOrigin, current_limit_origin, schedule_limit_upsell
+from app.services.cost_budget import (
+    get_cost,
+    is_daily_budget_exhausted,
+    is_monthly_budget_exhausted,
+    monthly_allowance_window,
+    monthly_budget_stop_text,
+)
+from app.services.limit_upsell import (
+    LimitHitOrigin,
+    capture_limit_hit,
+    current_limit_origin,
+    schedule_limit_upsell,
+)
 from app.services.payments.payment_service import payment_service
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.billing import RateLimitHit
 from shared.py.wide_events import log
 
 # The LangChain-injected parameter every @with_rate_limiting tool must declare:
@@ -171,14 +181,6 @@ def _limit_hit_exception(
         error=str(e),
         error_type=type(e).__name__,
     )
-    if user_plan != PlanType.FREE:
-        # FREE hits are already captured by the limit-upsell seam
-        # (schedule_limit_upsell fires on every exceed for free users); paid
-        # plans have no such side effect, so their hits are captured here.
-        capture(
-            UserId(user_id),
-            RateLimitHit(feature=actual_feature_key, plan=plan_label(user_plan)),
-        )
     detail: RateLimitDetail = {}
     # HTTPException.detail is typed `str` by Starlette, but
     # RateLimitExceededException always sets it to a dict at runtime — held as
@@ -349,19 +351,13 @@ async def enforce_tiered_limit(
     origin = origin or current_limit_origin()
     subscription = await payment_service.get_user_subscription_status(user_id)
     user_plan = subscription.plan_type or PlanType.FREE
-    try:
-        await tiered_limiter.check_and_increment(
-            user_id=user_id,
-            feature_key=feature_key,
-            user_plan=user_plan,
-            origin=origin,
-        )
-    except RateLimitExceededException:
-        # FREE hits are captured by the limit-upsell seam; capture the
-        # paid-plan hits here so every wall produces one event.
-        if user_plan != PlanType.FREE:
-            capture(UserId(user_id), RateLimitHit(feature=feature_key, plan=user_plan.value))
-        raise
+    # The limiter records the hit (capture_limit_hit) itself before it raises.
+    await tiered_limiter.check_and_increment(
+        user_id=user_id,
+        feature_key=feature_key,
+        user_plan=user_plan,
+        origin=origin,
+    )
 
 
 def tiered_rate_limit(
@@ -447,10 +443,10 @@ async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageI
     )
 
 
-async def enforce_daily_cost_budget(
+async def enforce_cost_budget(
     user_id: str, feature_key: str, *, origin: LimitHitOrigin | None = None
 ) -> None:
-    """Block when the user's rolling daily USD cost budget is exhausted.
+    """Block when the user's daily or (pro) monthly USD cost budget is exhausted.
 
     Caps HOW EXPENSIVE a user's requests were (vs. the count limiter's HOW
     MANY). Raises the same RateLimitExceededException (429) as the count
@@ -463,7 +459,9 @@ async def enforce_daily_cost_budget(
     # The tier this request was priced against, on the wide event — this gate is
     # the one place on the chat path that resolves the plan before any work runs.
     log.set(user_plan=plan_type.value)
-    spent = await get_cost(user_id, RateLimitPeriod.DAY)
+    spent, month_spent = await asyncio.gather(
+        get_cost(user_id, RateLimitPeriod.DAY), get_cost(user_id, RateLimitPeriod.MONTH)
+    )
     if is_daily_budget_exhausted(spent, plan_type):
         log.warning(
             f"{LogTag.API} Daily cost budget exhausted",
@@ -472,12 +470,30 @@ async def enforce_daily_cost_budget(
             spent_usd=round(spent, 6),
             feature_key=feature_key,
         )
+        capture_limit_hit(UserId(user_id), feature_key, plan_type, origin=origin, window="day")
         schedule_limit_upsell(user_id, feature_key, plan_type, origin)
         raise CostBudgetExceededException(
             feature=feature_key,
             plan_required=PlanType.PRO.value if plan_type == PlanType.FREE else None,
             reset_time=get_reset_time(RateLimitPeriod.DAY),
             current_plan=plan_type.value,
+        )
+    if is_monthly_budget_exhausted(month_spent, plan_type):
+        log.warning(
+            f"{LogTag.API} Monthly cost budget exhausted",
+            user={"id": user_id},
+            user_plan=plan_type.value,
+            spent_usd=round(month_spent, 6),
+            feature_key=feature_key,
+        )
+        _, reset = await monthly_allowance_window(user_id)
+        capture_limit_hit(UserId(user_id), feature_key, plan_type, origin=origin, window="month")
+        raise CostBudgetExceededException(
+            feature=feature_key,
+            reset_time=reset,
+            current_plan=plan_type.value,
+            message=monthly_budget_stop_text(reset),
+            period=RateLimitPeriod.MONTH,
         )
 
 
