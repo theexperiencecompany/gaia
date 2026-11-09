@@ -15,6 +15,7 @@ The browser block tells comms what the chat's browser task is doing, and only
 on turns answering the user's own message.
 """
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
@@ -26,7 +27,11 @@ from app.agents.context import live_work
 from app.agents.context.live_work import build_browser_task_block, build_executor_status_block
 from app.agents.context.section_context import ExecutionMode, SectionContext
 from app.agents.context.tiers import AgentTier
-from app.agents.core.background.executor_queue import build_lock_value, hold_run_alive
+from app.agents.core.background.executor_queue import (
+    build_lock_value,
+    hold_run_alive,
+    read_executor_activity,
+)
 from app.agents.core.background.running_registry import RunningSubagents
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -36,6 +41,7 @@ from app.constants.cache import (
 from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
 from app.models.agent_models import RunningSubagent
+from app.models.executor_activity_models import ExecutorActivitySnapshot
 from app.schemas.browser import NewHandoff
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus, BrowserJobStopped
 from app.services.browser.handoff import bot_chat_address, create_pending_handoff
@@ -178,6 +184,31 @@ async def test_progress_is_appended_only_while_the_run_holds_the_lock(
     assert "done so far" not in subagent_only
 
 
+async def test_the_lock_and_the_subagent_registry_are_read_together(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Each read waits for the other to start, so reading them one after the other never finishes.
+    started = {"lock": asyncio.Event(), "registry": asyncio.Event()}
+    read_registry = RunningSubagents.live
+
+    async def lock(conversation_id: str) -> ExecutorActivitySnapshot:
+        started["lock"].set()
+        await started["registry"].wait()
+        return await read_executor_activity(conversation_id)
+
+    async def registry(self: RunningSubagents) -> list[RunningSubagent]:
+        started["registry"].set()
+        await started["lock"].wait()
+        return await read_registry(self)
+
+    monkeypatch.setattr(live_work, "read_executor_activity", lock)
+    monkeypatch.setattr(RunningSubagents, "live", registry)
+
+    block = await asyncio.wait_for(build_executor_status_block(_ctx()), timeout=1)
+
+    assert block == IDLE_TEXT
+
+
 async def test_a_chat_without_a_conversation_gets_no_status(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
@@ -186,12 +217,18 @@ async def test_a_chat_without_a_conversation_gets_no_status(
     assert await build_executor_status_block(_ctx(conversation_id=None)) == ""
 
 
+@pytest.mark.parametrize(
+    ("target", "attr"),
+    [(live_work, "read_executor_activity"), (RunningSubagents, "live")],
+    ids=["busy-lock", "subagent-registry"],
+)
 async def test_a_failing_status_read_yields_nothing_and_says_why(
-    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+    target: object,
+    attr: str,
 ) -> None:
-    monkeypatch.setattr(
-        live_work, "read_executor_activity", AsyncMock(side_effect=ConnectionError("down"))
-    )
+    monkeypatch.setattr(target, attr, AsyncMock(side_effect=ConnectionError("down")))
 
     async with captured_wide_event() as event:
         block = await build_executor_status_block(_ctx())

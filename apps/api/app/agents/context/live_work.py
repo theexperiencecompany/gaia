@@ -6,6 +6,8 @@ now: the facts are written into the thread with that turn, so the request stays
 append-only and every later turn keeps them as history.
 """
 
+import asyncio
+
 from app.agents.context.section_context import SectionContext
 from app.agents.core.background.executor_progress import describe_progress, read_progress
 from app.agents.core.background.executor_queue import read_executor_activity
@@ -39,8 +41,10 @@ async def build_executor_status_block(ctx: SectionContext) -> str:
     if not ctx.conversation_id:
         return ""
     try:
-        snapshot = await read_executor_activity(ctx.conversation_id)
-        subagents = await RunningSubagents(ctx.conversation_id).live()
+        snapshot, subagents = await asyncio.gather(
+            read_executor_activity(ctx.conversation_id),
+            RunningSubagents(ctx.conversation_id).live(),
+        )
         running = snapshot.activity is ExecutorActivity.RUNNING or bool(subagents)
         text = executor_status_text(snapshot.activity, snapshot.task_id, running)
         if snapshot.activity is ExecutorActivity.RUNNING:
