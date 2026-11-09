@@ -245,7 +245,7 @@ def _refused_create_text(
 ) -> str:
     """Tell the model why the service refused the create."""
     if isinstance(refused, OpenStateError):
-        return format_open_state_refusal(refused.problems, user_tz_name, created=True)
+        return format_open_state_refusal(refused.problems, user_tz_name, refused="created")
     return format_refused_create_output(refused)
 
 
@@ -560,9 +560,7 @@ async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: 
     )
     if problems:
         return format_open_state_refusal(
-            problems,
-            await get_user_tz(existing.user_id),
-            created=False,  # pragma: no mutate — None reads as False: the same "Not updated"
+            problems, await get_user_tz(existing.user_id), refused="updated"
         )
     if await todo_repository.update(existing.id, user_id=existing.user_id, update=update) is None:
         return f"Error: tracked todo {existing.id} not found or not a tracked todo."

@@ -5,6 +5,7 @@ model-facing strings the @tool entry points in tracked_todo_tools return.
 """
 
 from datetime import UTC, datetime
+from typing import Literal
 
 from app.agents.tools.tracked_todo_fields import format_first_fire_note
 from app.constants.todos import (
@@ -162,13 +163,14 @@ def format_create_output(
     return out
 
 
-def format_open_state_refusal(problems: list[str], user_tz_name: str, *, created: bool) -> str:
+def format_open_state_refusal(
+    problems: list[str], user_tz_name: str, *, refused: Literal["created", "updated"]
+) -> str:
     """Tell the model what next step is missing, the options, and the user's local now."""
     local_now = datetime.now(Timezone.parse(user_tz_name).tzinfo)
-    verb = "Not created" if created else "Not updated"
     listed = "\n".join(f"- {problem}" for problem in problems)
     return (
-        f"{verb}: an open tracked todo needs a next step, so it can never be forgotten.\n"
+        f"Not {refused}: an open tracked todo needs a next step, so it can never be forgotten.\n"
         f"{listed}\n"
         f"Now: {local_now.strftime('%a %d %b %Y, %H:%M %Z')}. Nothing was saved."
     )
