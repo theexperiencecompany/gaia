@@ -941,7 +941,7 @@ async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[s
     """Run the factory with every collaborator recorded.
 
     Returns a dict with: create_agent kwargs (agent_kwargs), the middleware
-    factory kwargs (middleware_kwargs), the todo-tool/hook factory calls
+    factory kwargs (middleware_kwargs), the todo-tool factory call
     (todo_calls), and the worker_pre_model_hooks stand-in (worker).
     """
     full_tools = {"normal_tool": normal_tool, "vfs_read": vfs_read}
@@ -961,16 +961,11 @@ async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[s
         captured["middleware_kwargs"].update(kwargs)
         return []
 
-    hook_sentinel = object()
     pre_model_hooks_sentinel = object()
 
     def _fake_todo_tools(**kwargs: Any) -> list[BaseTool]:
         captured["todo_calls"]["tools"] = kwargs
         return []
-
-    def _fake_todo_hook(**kwargs: Any) -> object:
-        captured["todo_calls"]["hook"] = kwargs
-        return hook_sentinel
 
     worker = MagicMock(return_value=pre_model_hooks_sentinel)
 
@@ -997,10 +992,6 @@ async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[s
             new=_fake_todo_tools,
         ),
         patch(
-            "app.agents.core.subagents.base_subagent.create_todo_pre_model_hook",
-            new=_fake_todo_hook,
-        ),
-        patch(
             "app.agents.core.subagents.base_subagent.worker_pre_model_hooks",
             new=worker,
         ),
@@ -1017,24 +1008,20 @@ async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[s
 
 
 @pytest.mark.asyncio
-async def test_todo_factories_receive_the_provider_identity_exactly():
+async def test_the_todo_factory_receives_the_provider_identity_exactly():
     """source/source_label key the todo tools' progress events; a dropped kwarg falls back to a generic label."""
     captured = await _run_factory_recording_wiring(config=SubAgentToolConfig(source_label="Gmail"))
 
     assert captured["todo_calls"]["tools"] == {"source": "provider", "source_label": "Gmail"}
-    assert captured["todo_calls"]["hook"] == {"source": "provider"}
 
 
 @pytest.mark.asyncio
-async def test_the_todo_hook_reaches_hooks_config_through_worker_pre_model_hooks():
-    """A None in either position silently un-hooks the subagent's pre-model pass."""
+async def test_the_worker_chain_reaches_hooks_config_unaltered():
+    """Anything but the shared chain itself would un-hook or reorder the subagent's pre-model pass."""
     captured = await _run_factory_recording_wiring(config=SubAgentToolConfig())
 
     worker = captured["worker"]
     assert worker.call_count == 1
-    assert len(worker.call_args.args) == 1
-    # The argument is exactly what create_todo_pre_model_hook returned.
-    assert worker.call_args.args[0] is not None
     assert captured["agent_kwargs"]["hooks_config"].pre_model_hooks is worker.return_value
 
 

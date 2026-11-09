@@ -24,6 +24,9 @@ from langgraph.errors import GraphRecursionError
 from prometheus_client import REGISTRY
 import pytest
 
+from app.agents.context.live_work import build_executor_status_block, executor_status_text
+from app.agents.context.section_context import SectionContext
+from app.agents.context.tiers import AgentTier
 from app.agents.core.background import (
     executor_channel as ec,
     executor_progress,
@@ -53,7 +56,6 @@ from app.agents.core.background.session import (
     get_session,
     mark_executor_spawned,
 )
-from app.agents.core.nodes import executor_status
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
 from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
@@ -73,8 +75,8 @@ from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
 from app.models.chat_models import SourceCategory
+from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
-from app.override.langgraph_bigtool.utils import State
 from app.services.delivery.chat_channel import InApp
 from app.services.hil import bridge
 from shared.py.wide_events import log, log_context
@@ -735,10 +737,9 @@ class _FakeRedisCache:
 
 @contextmanager
 def _real_lock_lifecycle(cache: _FakeRedisCache):
-    """Drive finalize with the REAL lock functions over an in-memory Redis, so what the status hook reads afterwards is what the lock actually says."""
+    """Drive finalize with the REAL lock functions over an in-memory Redis, so what the turn-start status reads afterwards is what the lock actually says."""
     with ExitStack() as stack:
         stack.enter_context(patch.object(eq, "redis_cache", cache))
-        stack.enter_context(patch.object(executor_status, "redis_cache", cache))
         stack.enter_context(patch.object(running_registry, "redis_cache", cache))
         stack.enter_context(patch.object(executor_progress, "redis_cache", cache))
         stack.enter_context(patch.object(er, "StreamManager")).is_cancelled = AsyncMock(
@@ -754,11 +755,10 @@ def _real_lock_lifecycle(cache: _FakeRedisCache):
         yield
 
 
-async def _status_frames(thread_id: str) -> list[str]:
-    state = await executor_status.executor_status_hook(
-        State(messages=[]), {"configurable": {"thread_id": thread_id}}, store=None
+async def _status(conversation_id: str) -> str:
+    return await build_executor_status_block(
+        SectionContext(tier=AgentTier.COMMS, conversation_id=conversation_id)
     )
-    return [str(m.content) for m in state["messages"]]
 
 
 class TestTheBusyLockDoesNotOutliveTheResult:
@@ -769,15 +769,19 @@ class TestTheBusyLockDoesNotOutliveTheResult:
     delivered — and anything that raised on the way there left it held for the full 30-minute TTL.
     """
 
-    async def test_the_status_frame_is_gone_once_the_result_is_delivered(self) -> None:
+    async def test_the_status_reads_idle_once_the_result_is_delivered(self) -> None:
         cache = _FakeRedisCache()
         cache.client.store[f"{EXECUTOR_BUSY_PREFIX}conv-1"] = build_lock_value("s1", "task-1")
         create_session("s1", RunKind.LIVE)
 
         with _real_lock_lifecycle(cache):
-            assert await _status_frames("conv-1"), "the lock must read as running before finalize"
+            assert await _status("conv-1") == executor_status_text(
+                ExecutorActivity.RUNNING, "task-1", running=True
+            ), "the lock must read as running before finalize"
             await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "8 todos created", "final")
-            assert await _status_frames("conv-1") == []
+            assert await _status("conv-1") == executor_status_text(
+                ExecutorActivity.IDLE, "", running=False
+            )
 
     async def test_the_lock_is_released_even_when_the_handoff_blows_up(self) -> None:
         cache = _FakeRedisCache()

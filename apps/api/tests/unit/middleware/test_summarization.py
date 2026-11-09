@@ -16,9 +16,9 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
-from langchain.agents import AgentState, create_agent
-from langchain.agents.middleware.types import InputAgentState
-from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain.agents import create_agent
+from langchain.agents.middleware.types import AgentState
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import (
     AIMessage,
@@ -26,11 +26,13 @@ from langchain_core.messages import (
     AnyMessage,
     BaseMessage,
     HumanMessage,
+    SystemMessage,
     ToolMessage,
     get_buffer_string,
 )
 from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.outputs import ChatResult
+from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 from pydantic import Field
 import pytest
@@ -173,7 +175,8 @@ def test_provider_reported_tokens_trigger_the_archive_too() -> None:
 
 def test_an_empty_history_never_triggers_an_archive() -> None:
     assert _middleware()._should_trigger_summarization({"messages": []}) is False
-    assert _middleware()._should_trigger_summarization(cast("AgentState[Any]", {})) is False
+    # Deliberately outside AgentState's declared shape: pins the hook's missing-key default.
+    assert _middleware()._should_trigger_summarization(cast(AgentState[object], {})) is False
 
 
 def test_a_failing_token_counter_surfaces_instead_of_silently_skipping() -> None:
@@ -264,7 +267,8 @@ async def test_archive_of_a_state_without_messages_archives_an_empty_history(
 
     monkeypatch.setattr(summarization_module, "write_session_file", fake_write)
     with _graph_config(user_id="u1", thread_id="c1"):
-        await _middleware()._archive({"messages": []})
+        # Deliberately outside AgentState's declared shape: pins the missing-key default.
+        await _middleware()._archive(cast(AgentState[object], {}))
 
     assert json.loads(captured["content"]) == []
 
@@ -380,7 +384,8 @@ def test_the_archive_path_is_appended_to_the_summary_message() -> None:
     summary = HumanMessage(content="Here is a summary")
     summarization_module._inject_archive_path(summary, "/workspace/a.json", "read_tool")
 
-    assert summary.text.startswith("Here is a summary")
+    assert isinstance(summary.content, str)
+    assert summary.content.startswith("Here is a summary")
     assert "/workspace/a.json" in summary.content
     assert "`read` tool" in summary.content
     assert summary.additional_kwargs["archive_path"] == "/workspace/a.json"
@@ -390,7 +395,8 @@ def test_the_archive_pointer_asks_the_executor_when_the_agent_cannot_read() -> N
     summary = HumanMessage(content="Here is a summary")
     summarization_module._inject_archive_path(summary, "/workspace/a.json", "executor")
 
-    assert summary.text.startswith("Here is a summary")
+    assert isinstance(summary.content, str)
+    assert summary.content.startswith("Here is a summary")
     assert "/workspace/a.json" in summary.content
     assert "`call_executor`" in summary.content
     assert "ask the executor to read that file" in summary.content
@@ -399,7 +405,7 @@ def test_the_archive_pointer_asks_the_executor_when_the_agent_cannot_read() -> N
 
 
 def test_injection_leaves_block_style_content_intact_but_still_records_the_path() -> None:
-    content: list[str | dict[Any, Any]] = [{"type": "text", "text": "summary"}]
+    content: list[str | dict[str, str]] = [{"type": "text", "text": "summary"}]
     summary = HumanMessage(content=content)
     summarization_module._inject_archive_path(summary, "/workspace/a.json", "read_tool")
 
@@ -553,8 +559,8 @@ async def test_the_summary_call_streams_silent_and_the_reply_does_not() -> None:
     agent = create_agent(model=model, tools=[], middleware=[mw])
 
     streamed: dict[str, list[bool]] = {"SUMMARY": [], "REPLY": []}
-    state: InputAgentState = {"messages": [*_humans(6)]}
-    async for chunk, metadata in agent.astream(state, stream_mode="messages"):
+    async for chunk, metadata in agent.astream({"messages": [*_humans(6)]}, stream_mode="messages"):
+        assert isinstance(metadata, dict)
         if isinstance(chunk, AIMessageChunk) and chunk.text in streamed:
             assert isinstance(metadata, dict)
             streamed[chunk.text].append(bool(metadata.get("silent")))
@@ -570,16 +576,20 @@ class _RecordingModel(GenericFakeChatModel):
     prompts: list[str] = Field(default_factory=list)
     call_metadata: list[dict[str, Any]] = Field(default_factory=list)
 
-    def _generate(
-        self,
-        messages: list[BaseMessage],
-        stop: list[str] | None = None,
-        run_manager: CallbackManagerForLLMRun | None = None,
-        **kwargs: Any,
-    ) -> ChatResult:
+    def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
         self.prompts.append(str(messages[-1].content))
-        self.call_metadata.append(dict(run_manager.metadata) if run_manager else {})
-        return super()._generate(messages, stop, run_manager, **kwargs)
+        return super()._generate(messages, *args, **kwargs)
+
+    async def ainvoke(
+        self,
+        input: LanguageModelInput,  # noqa: A002 -- BaseChatModel.ainvoke's own parameter name
+        config: RunnableConfig | None = None,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> AIMessage:
+        self.call_metadata.append(dict((config or {}).get("metadata") or {}))
+        return await super().ainvoke(input, config, stop=stop, **kwargs)
 
 
 def _recording_model(max_input_tokens: int = MAX_INPUT_TOKENS) -> _RecordingModel:
@@ -608,7 +618,7 @@ async def test_a_large_tool_output_never_drops_the_previous_summary() -> None:
     )
     call = AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}])
     huge = ToolMessage(content="x " * 20_000, tool_call_id="c1", id="t1")
-    state: AgentState[Any] = {
+    state: AgentState[object] = {
         "messages": [
             previous,
             call,
@@ -631,7 +641,7 @@ async def test_an_id_less_message_is_left_in_place_with_its_tool_pair() -> None:
     mw = _middleware(trigger=("messages", 4), keep=("messages", 1), archive=None)
     call = AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}])
     legacy_result = ToolMessage(content="interrupted", tool_call_id="c1")
-    state: AgentState[Any] = {
+    state: AgentState[object] = {
         "messages": [
             HumanMessage("first", id="h1"),
             call,
@@ -748,7 +758,8 @@ async def test_the_running_turn_stays_verbatim_while_older_history_exists() -> N
     assert result is not None
     summary, *removals = result["messages"]
     assert summary.id == "h0"
-    assert summary.text.endswith("NEW SUMMARY")
+    assert isinstance(summary.content, str)
+    assert summary.content.endswith("NEW SUMMARY")
     # The produced summary must be recognisable as one, or the next fold cannot
     # tell it apart from a real user turn.
     assert is_conversation_summary(summary)
@@ -863,10 +874,12 @@ async def test_a_presence_note_ahead_of_the_task_is_not_history_that_stops_the_s
     result = await mw.abefore_model({"messages": history}, _runtime())
 
     assert result is not None
-    _, *removals = result["messages"]
+    summary, *removals = result["messages"]
     removed = {r.id for r in removals}
-    assert "task" not in removed
-    assert {"call1", "res1", "call2", "res2"} <= removed
+    # The note opens the running turn, so it stays with the task; the steps fold.
+    assert summary.id == "call1"
+    assert {"res1", "call2", "res2"} <= removed
+    assert {"note", "task"}.isdisjoint(removed)
     assert "the task" not in model.prompts[0]
 
 
@@ -1249,3 +1262,63 @@ def test_the_running_requests_steps_are_rendered_as_the_same_xml_as_older_histor
     )
 
     assert f"<progress>\n{get_buffer_string(steps, format='xml')}\n</progress>" in rendered
+
+
+async def test_a_folded_turn_s_recall_and_clock_fold_with_it_and_are_never_summarized() -> None:
+    # Each turn's recall block and clock stay in the thread with that turn. Folding
+    # the turn removes them too, and their text never reaches the summary, where a
+    # stale fact restated would read as current.
+    model = _recording_model(ROOMY_WINDOW)
+    mw = WorkspaceArchivingSummarizationMiddleware(
+        model=model, trigger=("messages", 4), keep=("messages", 1), archive=None
+    )
+    recall = {"memory_recall": True}
+    clock = {"time_context": True}
+    state: AgentState[object] = {
+        "messages": [
+            SystemMessage("static prompt", id="s"),
+            SystemMessage("recall 1", additional_kwargs=recall, id="r1"),
+            HumanMessage("question 1", id="h1"),
+            HumanMessage("clock 1", additional_kwargs=clock, id="t1"),
+            AIMessage("answer 1", id="a1"),
+            SystemMessage("recall 2", additional_kwargs=recall, id="r2"),
+            HumanMessage("question 2", id="h2"),
+            HumanMessage("clock 2", additional_kwargs=clock, id="t2"),
+            AIMessage("answer 2", id="a2"),
+            SystemMessage("recall 3", additional_kwargs=recall, id="r3"),
+            HumanMessage("question 3", id="h3"),
+            HumanMessage("clock 3", additional_kwargs=clock, id="t3"),
+        ]
+    }
+
+    result = await mw.abefore_model(state, _runtime())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "r1"
+    assert {r.id for r in removals} == {"h1", "t1", "a1", "r2", "h2", "t2", "a2"}
+    [prompt] = model.prompts
+    assert "question 1" in prompt
+    assert "answer 2" in prompt
+    for note in ("recall 1", "clock 1", "recall 2", "clock 2"):
+        assert note not in prompt
+
+
+async def test_a_run_that_opens_the_thread_keeps_its_request_when_the_clock_ends_it() -> None:
+    # The opening walk must stop at the thread's start: wrapping to the last message
+    # (this turn's clock, a note) would fold the running request away.
+    mw = _middleware(trigger=("messages", 4), keep=("messages", 2), archive=None)
+    history: list[AnyMessage] = [
+        HumanMessage("the task", id="task"),
+        *_tool_step(1),
+        *_tool_step(2),
+        *_tool_step(3),
+        HumanMessage("[clock]", additional_kwargs={"time_context": True}, id="clock"),
+    ]
+
+    result = await mw.abefore_model(cast(AgentState[object], {"messages": history}), _runtime())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "call1"
+    assert "task" not in {r.id for r in removals}

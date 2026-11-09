@@ -6,19 +6,18 @@ graph but never executes a tool. So the tier that owns every tool in the product
 a tool call changes anything.
 
 The assertions here are about the graph's own contracts: which tools it will run without
-retrieval, what a tool call does to the todos channel, what the pre-model hook puts in front of
-the model, and how the run terminates.
+retrieval, what a tool call does to the todos channel, how the plan reaches the model, and how the
+run terminates.
 """
 
 from __future__ import annotations
 
-from itertools import takewhile
 import logging
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.errors import GraphRecursionError
 import pytest
@@ -211,49 +210,39 @@ class TestTodoState:
         assert run.ran("plan_tasks")
 
 
-class TestTodoContextHook:
-    """The todo pre-model hook re-renders the plan into a SystemMessage before every model call.
+class TestPlanInTheThread:
+    """The plan reaches the model as plan_tasks' result, written into the thread where it was set.
 
-    The rewrite is ephemeral — it never lands in the checkpoint — so the only
-    place to observe it is the prompt the model actually received.
+    No hook re-renders it before each call: the next request extends the
+    previous one, so the plan the model reads is the ToolMessage itself.
     """
 
     async def test_the_current_plan_is_put_in_front_of_the_model(self):
         async with executor_graph([plan("draft the email", "send it"), "Planned."]) as graph:
             run = await run_graph(graph, "email my landlord")
 
-        context = run.system_slot("todo_context")
-        assert context is not None, "the model was never shown the todo context"
-        assert "draft the email" in context
-        assert "send it" in context
+        [plan_result] = [
+            m for m in run.last_prompt() if isinstance(m, ToolMessage) and m.name == "plan_tasks"
+        ]
+        assert "draft the email" in str(plan_result.content)
+        assert "send it" in str(plan_result.content)
 
     async def test_the_plan_appears_exactly_once(self):
-        """The hook must strip its previous copy before inserting a fresh one."""
+        """Only the tool result states the plan; no system message carries a second copy."""
+        async with executor_graph([plan("one task", "two task"), "Planned."]) as graph:
+            run = await run_graph(graph, "do two things")
+
+        holding = [m for m in run.last_prompt() if "two task" in str(m.content)]
+        assert len(holding) == 1
+        assert isinstance(holding[0], ToolMessage)
+
+    async def test_the_next_call_extends_the_previous_request(self):
+        """Every provider's prompt cache reuses only a shared prefix, so nothing may be rewritten ahead of the new tail."""
         async with executor_graph([plan("one", "two"), "Planned."]) as graph:
             run = await run_graph(graph, "do two things")
 
-        slots = [
-            m
-            for m in run.last_prompt()
-            if isinstance(m, SystemMessage) and m.additional_kwargs.get("todo_context")
-        ]
-        assert len(slots) == 1
-
-    async def test_a_run_with_no_plan_still_gets_the_todo_instructions(self):
-        """The slot is always injected, even before anything has been planned."""
-        async with executor_graph(["Nothing to plan."]) as graph:
-            run = await run_graph(graph, "just answer me")
-
-        assert run.system_slot("todo_context") is not None
-
-    async def test_the_context_leads_the_prompt_so_gemini_keeps_it(self):
-        """Gemini only promotes the leading contiguous SystemMessage run into system_instruction."""
-        async with executor_graph([plan("one", "two"), "Planned."]) as graph:
-            run = await run_graph(graph, "do two things")
-
-        prompt = run.last_prompt()
-        leading = list(takewhile(lambda m: isinstance(m, SystemMessage), prompt))
-        assert any(m.additional_kwargs.get("todo_context") for m in leading)
+        first, second = run.prompts
+        assert second[: len(first)] == first
 
 
 class TestTermination:

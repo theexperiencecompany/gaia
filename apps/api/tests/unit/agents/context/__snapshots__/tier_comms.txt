@@ -141,6 +141,7 @@
     Tasks in flight. How background work behaves:
     - One executor works per chat at a time, and it remembers everything it has done in this conversation. It messages you when it is done: its result arrives here on its own, so you never need to chase it. A call while it runs reaches that run, and after it finishes it reaches an executor that knows everything that run completed, so it does not redo finished work.
     - The background-work status note in your context says what is running right now. The history only shows what was dispatched, not whether it is still going.
+    - A hand-off with no result in the history while nothing is running has ended without its result reaching you. To say what it did, ask the executor with call_executor; never guess or say you are checking without calling it.
     - Never cancel a finished task.
     - A new request while one runs joins it. Acknowledge it like any hand-off: a reaction, or a few words ("folding that in").
     - Redirect ("no, do gmail instead", "wrong one"): cancel_executor([the in-flight id], message=<what they want instead, with every detail>). The stop and the new instruction travel together; no separate call_executor.
@@ -580,10 +581,7 @@
     Connected integrations (the executor can act on these when you delegate via call_executor). Each can hold several accounts. If they ask to connect one already listed here, tell them which accounts it has and ask whether they want to add another; when they clearly want another, delegate it ("add another Gmail account"):
     - Gmail (gmail)
 
-[2] human
-    summarise my unread mail
-
-[3] system markers=memory_recall
+[2] system markers=memory_recall
     What you remember about this user (memory core):
     - Prefers short answers.
     
@@ -594,6 +592,11 @@
     - GAIA can run scheduled workflows.
     
     Tracked: ship the context refactor
+    
+    No background work is running right now. Every earlier hand-off in this chat has finished or stopped, even one whose result you have not seen.
+
+[3] human
+    summarise my unread mail
 
 [4] human markers=time_context
     [Current UTC Time: Tuesday, March 17, 2026, 14:30 UTC]

@@ -12,7 +12,6 @@
 # keep a touched file's known violation from failing until that date (CI
 # warns instead). Past the date it fails again: fix it, or renew the deferral
 # with a fresh reason. --update keeps the field.
-apps/api/app/agents/context/assemble.py	TB002
 apps/api/app/agents/core/nodes/adapt_media.py	TB002
 apps/api/app/agents/core/nodes/filter_messages.py	TB002
 apps/api/app/agents/core/subagents/call_record.py	TB002
@@ -63,8 +62,6 @@ apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
 apps/api/app/scripts/sync_user_workspaces.py	TB002
 apps/api/app/services/_vfs_scheduler.py	TB002
-apps/api/app/services/bot_token_service.py	TB001
-apps/api/app/services/bot_token_service.py	TB002
 apps/api/app/services/chat/artifact_forwarder.py	TB001
 apps/api/app/services/chat/artifact_forwarder.py	TB002
 apps/api/app/services/chat/artifacts_registry.py	TB001
@@ -74,7 +71,6 @@ apps/api/app/services/chat/state.py	TB002
 apps/api/app/services/composio/proxy_client.py	TB001	deferred-until=2027-01-07; proxy_request(_sync) return the provider JSON as Any by design: typing it object costs 47 mypy errors across 16 custom-tool files (see its docstring); needs per-provider response models, its own PR
 apps/api/app/services/desktop/releases.py	TB002
 apps/api/app/services/device/bridge.py	TB001
-apps/api/app/services/device/device_auth.py	TB002
 apps/api/app/services/device/revoke_listener.py	TB002
 apps/api/app/services/device/up_listener.py	TB002
 apps/api/app/services/device_token_service.py	TB002
