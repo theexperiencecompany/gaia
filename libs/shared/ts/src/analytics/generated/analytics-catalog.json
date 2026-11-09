@@ -5554,14 +5554,14 @@
       "class": "RateLimitHit",
       "owner": "server",
       "domain": "rate_limit",
-      "description": "A user ran into a tiered rate limit.",
+      "description": "A request was refused by a usage limit: a feature count, a cost budget or a burst limit.",
       "previous_names": ["rate_limit_hit"],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user ran into a tiered rate limit.",
+        "description": "A request was refused by a usage limit: a feature count, a cost budget or a burst limit.",
         "properties": {
           "feature": {
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
@@ -5569,9 +5569,16 @@
             "type": "string"
           },
           "plan": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Plan",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
           },
           "origin": {
             "anyOf": [
@@ -5585,6 +5592,19 @@
             ],
             "default": null,
             "title": "Origin"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "enum": ["day", "month", "request", "burst"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Window"
           }
         },
         "required": ["feature", "plan"],
@@ -6946,6 +6966,44 @@
         "description": "The user's Inbox desk tracked todo exists and its first morning run is armed.",
         "properties": {},
         "title": "TodosInboxDeskProvisioned",
+        "type": "object"
+      }
+    },
+    {
+      "event": "todos:open_state_repaired",
+      "class": "TodosOpenStateRepaired",
+      "owner": "server",
+      "domain": "todos",
+      "description": "A tracked todo run ended with no next step even after being sent back, so code set one.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A tracked todo run ended with no next step even after being sent back, so code set one.",
+        "properties": {
+          "todo_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Todo Id",
+            "type": "string"
+          },
+          "waiting_on": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Waiting On"
+          }
+        },
+        "required": ["todo_id"],
+        "title": "TodosOpenStateRepaired",
         "type": "object"
       }
     },

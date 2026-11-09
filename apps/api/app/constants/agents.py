@@ -159,6 +159,65 @@ DONE_EVIDENCE_RULE = (
     "only by a tool call in this run. A memory, or an earlier run of the same task, never meets it."
 )
 
+
+class TimeHorizon(StrEnum):
+    """How long a delegated request needs attention; comms sets it on call_executor."""
+
+    ONE_SHOT = "one_shot"
+    DEADLINE = "deadline"
+    ONGOING = "ongoing"
+
+
+class OutcomeState(StrEnum):
+    """How an executor run left the user's request, declared on finish_task."""
+
+    DONE = "done"
+    SCHEDULE = "schedule"
+    SUBSCRIBE = "subscribe"
+    ASK = "ask"
+    BLOCKED = "blocked"
+
+
+#: The calls whose success backs a declared outcome (outcome_review.review_outcome).
+#: Only a tracked todo with a schedule or a recurrence wakes GAIA again; a
+#: reminder just notifies the user, so it backs done, never schedule.
+OUTCOME_CREATE_TODO_TOOL = "create_tracked_todo"
+OUTCOME_TRACKED_TODO_TOOLS = frozenset({OUTCOME_CREATE_TODO_TOOL, "update_tracked_todo"})
+OUTCOME_SCHEDULE_ARGS = ("scheduled_at", "recurrence")
+OUTCOME_SUBSCRIBE_TOOL = "subscribe_todo_to_trigger"
+OUTCOME_COMPLETE_TOOL = "complete_tracked_todo"
+
+#: Opens a scheduled tracked todo run's brief: the run spent the check that woke
+#: it and must close the todo or set a new one. outcome_review reads it off the
+#: task turn, so the brief and the check cannot drift apart on a string.
+TODO_REARM_TAG = "<todo_rearm>"
+#: Opens the brief of a run whose todo wakes GAIA again on its own (its recurrence,
+#: or the watch that fired it): that wake backs a schedule outcome without a new check.
+TODO_WAKES_AGAIN_TAG = "<todo_wakes_again>"
+
+
+#: What the executor brief tells the run each horizon demands before it may finish.
+TIME_HORIZON_BRIEF: dict[TimeHorizon, str] = {
+    TimeHorizon.ONE_SHOT: "one_shot: finish it in this run.",
+    TimeHorizon.DEADLINE: (
+        "deadline: unless it is fully done in this run, leave a tracked todo scheduled "
+        "to wake you before the date."
+    ),
+    TimeHorizon.ONGOING: (
+        "ongoing: it needs attention after this run. Leave a tracked todo with a schedule, "
+        "recurrence or trigger watch before you finish."
+    ),
+}
+
+IRREVERSIBLE_APPROVED_BRIEF = (
+    "Irreversible actions: the user approved them for this request. Do exactly what was "
+    "approved, nothing broader."
+)
+IRREVERSIBLE_UNAPPROVED_BRIEF = (
+    "Irreversible actions: NOT approved. Deleting, bulk-changing, sending or posting needs the "
+    "user's yes first: prepare it (the draft, the exact items) and finish with outcome ask."
+)
+
 #: What a delegator reads when a worker ended with no answer. Silence is not success:
 #: the literal "Task completed" once stood in here and comms told the user it was done.
 NO_ANSWER_NOTICE = (

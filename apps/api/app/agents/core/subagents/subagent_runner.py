@@ -1,6 +1,7 @@
 """Shared logic for subagent invocation, used by delegation.py and executor_tool.py."""
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 import time
 from typing import Any, TypedDict, cast
@@ -40,7 +41,10 @@ from app.agents.prompts.workflow_prompts import (
 )
 from app.constants.agents import (
     DONE_EVIDENCE_RULE,
+    IRREVERSIBLE_APPROVED_BRIEF,
+    IRREVERSIBLE_UNAPPROVED_BRIEF,
     NO_ANSWER_NOTICE,
+    TIME_HORIZON_BRIEF,
     AgentTag,
     wrap_agent_payload,
 )
@@ -50,7 +54,7 @@ from app.constants.general import (
     FINISH_TASK_NAME,
 )
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
-from app.constants.llm import EXECUTOR_RECURSION_LIMIT
+from app.constants.llm import BUDGET_STOP_METADATA_KEY, EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread, build_agent_config
@@ -69,6 +73,7 @@ from app.models.agent_models import (
     run_analytics_context,
 )
 from app.models.hil_models import HilInterruptPayload, HilResumeDecision
+from app.models.ownership_models import ExecutorIntent
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
 from app.services.files import FileService
@@ -303,6 +308,8 @@ class _StreamRun:
     subagent_id: str | None
     #: The finish_task return value, which is the answer over anything the run said.
     finish_result: str | None = None
+    #: The budget wall's stop text: it answers in place of a model, so no token streams it.
+    budget_stop: str | None = None
     held: HeldReplies = field(default_factory=HeldReplies)
     emitted_tool_calls: set[str] = field(default_factory=set)
     tool_ran: bool = False
@@ -316,9 +323,11 @@ class _StreamRun:
 
     @property
     def complete_message(self) -> str:
-        """What the run answered: finish_task's result, else the replies that called no tool."""
+        """What the run answered: finish_task's result, the budget stop, else the replies that called no tool."""
         if self.finish_result is not None:
             return self.finish_result
+        if self.budget_stop is not None:
+            return self.budget_stop
         return self.held.reply_text()
 
 
@@ -374,6 +383,13 @@ def _process_messages_payload(
             run.stream_writer({"tool_output": tool_output_payload.model_dump(exclude_none=True)})
 
 
+def _note_budget_stop(run: _StreamRun, messages: Sequence[AnyMessage]) -> None:
+    """Keep the budget wall's stop text: it answers in place of a model, so no token streams it."""
+    for msg in messages:
+        if isinstance(msg, AIMessage) and msg.response_metadata.get(BUDGET_STOP_METADATA_KEY):
+            run.budget_stop = extract_text_content(msg.content)
+
+
 async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) -> None:
     """Handle one "updates"-mode stream event: record a pause, or emit tool_data.
 
@@ -399,6 +415,7 @@ async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) 
         # streams them as partial chunks. Captured for the call record.
         if isinstance(state_update, dict):
             agent_update: _MessagesChannel = cast(_MessagesChannel, state_update)
+            _note_budget_stop(run, agent_update.get("messages", []))
             announcing = [
                 msg for msg in agent_update.get("messages", []) if getattr(msg, "tool_calls", None)
             ]
@@ -446,6 +463,7 @@ def _finalize_run(run: _StreamRun) -> SubagentOutcome:
     # The executor is nobody's delegate; its words are its answer (collection runs report).
     if (
         run.ctx.integration_id != EXECUTOR_INTEGRATION_ID
+        and run.budget_stop is None
         and not run.tool_ran
         and not run.emitted_tool_calls
     ):
@@ -782,6 +800,23 @@ def paused_approval_ids(payload: HilInterruptPayload) -> tuple[str, ...]:
     return (str(single),) if single else ()
 
 
+def _render_intent(intent: ExecutorIntent) -> str:
+    lines = [
+        f"Outcome the user actually wants: {intent.desired_outcome.strip()}",
+        f"Time horizon: {TIME_HORIZON_BRIEF[intent.time_horizon]}",
+    ]
+    defaults = [d.strip() for d in intent.defaults_assumed if d.strip()]
+    if defaults:
+        lines.append("Defaults assumed (name them in your report):")
+        lines.extend(f"- {d}" for d in defaults)
+    lines.append(
+        IRREVERSIBLE_APPROVED_BRIEF
+        if intent.irreversible_approved
+        else IRREVERSIBLE_UNAPPROVED_BRIEF
+    )
+    return "\n".join(lines)
+
+
 def compose_executor_brief(
     task: str,
     acceptance_criteria: list[str],
@@ -789,8 +824,9 @@ def compose_executor_brief(
     verbatim_request: str | None = None,
     last_run: str | None = None,
     playbook_check: str | None = None,
+    intent: ExecutorIntent | None = None,
 ) -> str:
-    """Fold the definition-of-done (and verbatim request, previous run) into the brief.
+    """Fold the intent, definition-of-done (and verbatim request, previous run) into the brief.
 
     last_run is a workflow's rendered previous run — its memory now that
     checkpoint threads drop before each fire. playbook_check rides in the brief
@@ -804,6 +840,8 @@ def compose_executor_brief(
     parts.append(task)
     if last_run:
         parts.append(last_run.strip())
+    if intent is not None:
+        parts.append(_render_intent(intent))
     if criteria:
         lines = "\n".join(f"- {c}" for c in criteria)
         parts.append(

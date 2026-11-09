@@ -49,7 +49,7 @@ const MINTED = {
   handoff_text: `${FIRST_MESSAGE} #${CODE}`,
   links: {
     telegram: `https://t.me/heygaia_bot?start=${CODE}`,
-    whatsapp: `https://wa.me/12762088737?text=encoded%20${CODE}`,
+    whatsapp: `https://wa.me/12038429512?text=encoded%20${CODE}`,
   },
 };
 

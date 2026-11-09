@@ -87,6 +87,8 @@ export type {
   QuickAddResult,
 } from "./quickAdd";
 export { parseQuickAdd } from "./quickAdd";
+export type { RateLimitResetInfo } from "./rateLimitReset";
+export { rateLimitResetInfo } from "./rateLimitReset";
 export type { ReactionBadge, ReactionFoldable } from "./reactions";
 export { foldReactionAcks, groupReactions, isReactionAck } from "./reactions";
 export type { SimilarityConfig } from "./similarity";

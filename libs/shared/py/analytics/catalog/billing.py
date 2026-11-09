@@ -14,6 +14,7 @@ __all__ = [
     "PaymentSucceeded",
     "PaywallBlocked",
     "PaywallModalViewed",
+    "LimitWindow",
     "PaywallSource",
     "RateLimitHit",
     "SubscriptionActivated",
@@ -27,6 +28,10 @@ __all__ = [
     "SubscriptionRenewed",
     "UsageQueried",
 ]
+
+#: Which limit refused the request: a cost budget's day or month, one request's token
+#: ceiling, or the bots' per-sender burst limit. None is a count limit on a feature.
+LimitWindow = Literal["day", "month", "request", "burst"]
 
 #: Which surface put the paid-only wall on screen; every member is a call site this repo owns.
 PaywallSource = Literal[
@@ -248,15 +253,17 @@ class PaywallModalViewed(WebEvent):
 
 
 class RateLimitHit(ServerEvent):
-    """A user ran into a tiered rate limit."""
+    """A request was refused by a usage limit: a feature count, a cost budget or a burst limit."""
 
     event: ClassVar[str] = "rate_limit:hit"
     budget_per_user_day: ClassVar[int] = 500
     previous_names: ClassVar[tuple[str, ...]] = ("rate_limit_hit",)
 
     feature: Identifier
-    plan: Identifier
+    #: None only where the refusal comes before the sender is resolved to a user (bot burst limit).
+    plan: Identifier | None
     origin: Identifier | None = None
+    window: LimitWindow | None = None
 
 
 class UsageQueried(ServerEvent):

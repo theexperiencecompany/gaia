@@ -2,6 +2,7 @@
 
 import json
 
+from app.constants.agents import TODO_REARM_TAG, TODO_WAKES_AGAIN_TAG
 from app.constants.desk_buckets import DeskBucket
 from app.constants.email import MessageFieldLiteral
 from app.constants.todos import (
@@ -30,6 +31,7 @@ from app.constants.todos import (
     OBSERVATIONS_SENDERS_SECTION,
     WAITING_FOR_REPLY_LABEL,
     InboxDeskAsk,
+    WakeReason,
 )
 
 # Where the user's feedback on a todo is kept: the executor's prompt and the tracked-todos manual both carry it.
@@ -68,9 +70,12 @@ files (/workspace/gaia-tasks/<folder>/canvas.md and activity.md, edited with the
 like Todoist, Google Tasks, Apple Reminders, etc.).
 Create only when GAIA itself performs or schedules a real action on an external system that it
 needs to remember, follow up on, or repeat (sent an email, created an issue, posted to Slack,
-scheduled recurring work). Judge the work by what it does, not by what it reports: work that
-only reads (fetching, listing, searching, or summarizing data) never creates a tracked todo, no
-matter how complex it is or how often it runs, and saving a summary as a todo is not tracking.
+scheduled recurring work), and when the user asked GAIA to follow up, check back, keep an eye on
+something or make sure a dated thing happens: that is a commitment GAIA owns, and the todo, with a
+schedule, recurrence or trigger watch, is what wakes it. Judge the rest by what it does, not by
+what it reports: work that only reads (fetching, listing, searching, or summarizing data) and that
+nobody asked to follow up never creates a tracked todo, no matter how complex it is or how often
+it runs, and saving a summary as a todo is not tracking.
 Recurring work that also writes on the user's behalf does qualify even when its final message is
 a summary (an inbox desk that opens a todo per email thread and saves reply drafts, then briefs
 the user). One todo per initiative. A todo about one email thread is created with its
@@ -99,6 +104,36 @@ arrived and is handled, the user confirmed it), close it out yourself in the
 same turn: write Learnings in canvas.md, then call complete_tracked_todo. Do
 not wait for the user to report it or ask for closure. Never complete a
 recurring todo that should keep firing; only one-shot work that is truly done.
+OWNERSHIP: a tracked todo is a promise GAIA keeps until it is closed, so every one
+you create says how it will be closed and what will wake you to check:
+  - done_when: what the user actually needs to be true, checkable ("the feature is live
+    for users", not "work on it"). evidence: where that proof will show up and how a run
+    reads it, chosen from what this user actually uses (their connected services, a
+    thread, a page, their own word). Never assume a service they have not connected.
+  - Every open todo without a recurrence has a next step, enforced in code: waiting_on
+    (what it waits for) plus scheduled_at (when GAIA next looks, a duration like '3d'
+    works). Size the next check to the work: hours when urgent, days for a quick task,
+    up to two weeks for a project. A wait of months is fine; it just looks again within
+    that. When the proof will arrive somewhere with a trigger, also watch it
+    (subscribe_todo_to_trigger, waiting_on='event'): the watch wakes it early, the next
+    check is the backup in case the event never comes.
+  - Waiting on the user (waiting_on='user') means you asked one specific question; pass
+    it as question, and decide right then what happens if they never answer
+    (if_no_reply): ask_again (it matters), proceed with a default_action, or hold
+    (nothing can move without it). The run woken by the expiry carries that out.
+  - Captured with no plan yet ("track it", a brain dump): waiting_on='unplanned' with
+    scheduled_at as the date to plan it by.
+  - Each run checks Done when against Evidence and leaves the todo one of three ways:
+    closed with the proof in Learnings; still open with its next step set (partial
+    progress moves the next check to the next milestone); or, when only the user can
+    tell, one specific question to them ("the inbox desk change: no sign it shipped.
+    still on it, done, or drop it?") as waiting_on='user'.
+  - Learn how this user's work gets done. Before setting evidence, check their skills
+    and standing instructions for a route that fits. When a check finds a reliable route
+    (where their work shows up as done, what they count as done), or the user tells you
+    one, save it: a procedure goes in a learned skill (save_learned_skill, or update_skill
+    when one covers it); a rule for how GAIA should behave for them ("close my feature
+    todos once they ship") is a standing instruction (update_user_instructions).
 IDS ARE INTERNAL: every ID in ACTIVE TRACKED TODOS, tool outputs and file
 paths (todo id, task id, subscription id, notification id, approval id) is
 wiring for tool calls only. Never repeat one in user-visible text. Refer to
@@ -189,6 +224,68 @@ PARENT_NEXT_RUN_LINE = "\"{title}\", this todo's parent, runs next on {when}, th
 # Names the running todo, so a run can pass its own id as a sub-todo's parent_todo_id.
 TODO_ID_LINE = "This todo's id: {todo_id}."
 
+# Added to a scheduled run's brief when the todo has no recurrence: the check that woke
+# this run is spent, so the run must close the todo or give it a new next step.
+TODO_REARM_BRIEF = (
+    f"{TODO_REARM_TAG}\n"
+    "WHY YOU WOKE: {why}\n"
+    "This run used up the check that woke it. Check the canvas's Done when against its "
+    "Evidence, then end the run one of these ways: done or no longer worth doing, so "
+    "complete_tracked_todo with the proof in Learnings; or still open, so "
+    "update_tracked_todo with waiting_on and a new scheduled_at ('3d' works). A run that "
+    "ends without one is sent back once; after that GAIA parks the todo as unplanned for "
+    "tomorrow and records that it had to."
+)
+
+TODO_WAKES_AGAIN_BRIEF = (
+    f"{TODO_WAKES_AGAIN_TAG}\n"
+    "This todo wakes you again on its own (its recurrence, or the watch that woke this run), "
+    "so it needs no new check. Do this run's part once, then end it: complete_tracked_todo "
+    "when Done when is met, otherwise finish_task with outcome schedule."
+)
+
+# What woke a scheduled run, by WakeReason; filled with the todo's own fields.
+WAKE_REASON_TEXT: dict[WakeReason, str] = {
+    WakeReason.SCHEDULED_CHECK: "your scheduled check came up.",
+    WakeReason.BACKUP_CHECK: (
+        "your backup check came up and the event this todo watches for has not woken it. "
+        "Look for it yourself. If it still has not happened, keep waiting with a new "
+        "backup check, ask the user one question, or close the todo if it no longer matters."
+    ),
+    WakeReason.SUB_TODO_CHECK: (
+        "a sub-todo finished or your backup check came up. Read your sub-todos and "
+        "activity: when all the work is done, close this todo; otherwise set the next check."
+    ),
+    WakeReason.PLAN_IT: (
+        "this todo was captured without a plan and the date to plan it came up. Decide what "
+        "it waits on and set it (waiting_on plus scheduled_at), ask the user one short "
+        "question if only they can say, or close it if it no longer matters."
+    ),
+    WakeReason.REASK_DUE: (
+        'your question expired unanswered: "{question}". You chose to ask again, and this '
+        "is the todo's one re-ask: ask once more, briefly, then set waiting_on='user' with "
+        "if_no_reply 'proceed' (and a default_action) or 'hold'."
+    ),
+    WakeReason.DEFAULT_DUE: (
+        'your question expired unanswered: "{question}". You decided then: {plan}. Carry it '
+        "out, tell the user in one line what you did, then close the todo or set its next step."
+    ),
+    WakeReason.HOLD_CHECK: (
+        'your question is still unanswered: "{question}" (check {hold_checks} of '
+        "{max_hold_checks}). Nothing could move without it. Remind the user in one short "
+        "line, then keep waiting_on='user' and set the next check, up to {hold_days} days out."
+    ),
+    WakeReason.HOLD_LAST_CHECK: (
+        'your question went unanswered through {max_hold_checks} checks: "{question}". '
+        "Close the todo with complete_tracked_todo and tell the user in one line that you "
+        "closed it and why."
+    ),
+    WakeReason.QUESTION_EXPIRED: (
+        'your question expired unanswered: "{question}". Decide now: ask once more, act on '
+        "a sensible default and tell the user, or hold until they answer."
+    ),
+}
+
 # Heads a parent's open sub-todos in its run: they report here instead of to the user.
 SUB_TODOS_LABEL = (
     "Your open sub-todos. They report to you, so their news reaches the user through your "
@@ -232,24 +329,17 @@ SANDBOX_RUN_EVENT_GUIDANCE = (
 # reads the run's final report and messages the user only when it matters, so
 # the run must neither notify on its own nor decide delivery for the user.
 DELIVERED_RESULT_RULES = (
-    "REPORTING: GAIA reads your final report and messages the user only if it matters. Do "
-    "NOT call send_notification to announce this run's outcome, because that sends it "
-    "a second time. Notify only for something separate and urgent that cannot wait. "
-    "Leave this todo's delivery settings alone: whether its runs reach the user is "
-    "the user's choice. "
-    "If this run proved the todo's goal is fully achieved (the fix is live and "
-    "verified, the watched event arrived and is handled), update canvas.md Learnings "
-    "and call complete_tracked_todo in the same run instead of leaving it open. "
-    "Do not wait for the user to report it."
+    "REPORTING: never call send_notification for this run or change this todo's delivery "
+    "settings. When this run proves the goal is fully achieved, write Learnings in "
+    "canvas.md and call complete_tracked_todo in this run; never wait for the user to "
+    "report it."
 )
 
 # The report's form for a todo whose own guidance sets none. Placed last, it beat the
 # Inbox desk's briefing form, so the desk gets the rules alone.
 DELIVERED_REPORT_FORM = (
-    "End with a factual report of this run: what you checked or did, what "
-    "is new since the last run (or that nothing is), and anything the user must decide. "
-    "Say when the todo's notes show the user already knows about an open question, and "
-    "when they asked to hear every result. Write it for GAIA, not as a message to them."
+    "In your result, say when the user already knows an open question or asked to hear "
+    "every result."
 )
 
 DELIVERED_RESULT_GUIDANCE = f"{DELIVERED_RESULT_RULES} {DELIVERED_REPORT_FORM}"
@@ -371,7 +461,7 @@ INBOX_DESK_RUN_GUIDANCE = f"""INBOX DESK: you are the user's inbox desk, and the
 1. Your canvas.md and observations.md are in this prompt: canvas.md's Standing rules (the user's instructions) beat the conclusions in observations.md (patterns you learned), and both beat every default below; canvas.md's Current State holds the last processed time of each Gmail account, under its id. Every connected Gmail account is yours, as CONNECTED INTEGRATIONS lists them, unless a Standing rule leaves one out; a thread is only ever read, drafted and tracked in the account it was fetched from, and a sender's mail in several accounts is still one sender.
 2. Spawn every account's mail subagent in one turn: spawn_subagent, background=False, its task this text with every <placeholder> filled in for that account. The window is newer_than:1d when Current State has no last processed time for the account, otherwise after:<last processed time as Unix seconds>, like after:1790000000: never a date or a clock time, which Gmail matches nothing for. Standing rules may widen or narrow the fetch after the window. The low-priority senders are the addresses observations.md concludes are low priority; never turn one into a -from:<address> exclusion, since learned priority steers the skip, never the fetch, so a sender that starts asking the user for a reply is still fetched and triaged. The tracked thread ids are those of your open sub-todos in that account. The task:
 {INBOX_DESK_MAIL_TASK}
-3. For each TO_REPLY or AWAITING_REPLY thread line that none of your open sub-todos owns (they are listed in this prompt; list_tracked_todos(gmail_thread_id=...) when unsure): create_tracked_todo(gmail_thread_id, gmail_account=<its account id>, parent_todo_id=this todo's id, labels=["{NEEDS_REPLY_LABEL}"] or ["{WAITING_FOR_REPLY_LABEL}"], scheduled_at=its first follow-up: 2 business days out for {NEEDS_REPLY_LABEL}, 3 for {WAITING_FOR_REPLY_LABEL}, initial_canvas with "## Key Details" naming the participants and the ask and "## Current State" holding the line's draft (its id, the date it was saved, what it says) or what only the user can supply, or for AWAITING_REPLY what they wait for). For each ACTION_NEEDED thread line none of them owns: create_tracked_todo the same way, with labels=["{ACTION_NEEDED_LABEL}"], due_date=the deadline the line names when it is still ahead, otherwise today, no scheduled_at, and "## Current State" saying what the user must do. A create that returns an existing todo means that todo owns the thread: leave it.
+3. For each TO_REPLY or AWAITING_REPLY thread line that none of your open sub-todos owns (they are listed in this prompt; list_tracked_todos(gmail_thread_id=...) when unsure): create_tracked_todo(gmail_thread_id, gmail_account=<its account id>, parent_todo_id=this todo's id, labels=["{NEEDS_REPLY_LABEL}"] or ["{WAITING_FOR_REPLY_LABEL}"], scheduled_at=its first follow-up: 2 business days out for {NEEDS_REPLY_LABEL}, 3 for {WAITING_FOR_REPLY_LABEL}, waiting_on='time' for {NEEDS_REPLY_LABEL} (the user owes the reply; the follow-up checks on it) or 'event' for {WAITING_FOR_REPLY_LABEL} (the thread watch wakes it; the follow-up is the backup), initial_canvas with "## Key Details" naming the participants and the ask and "## Current State" holding the line's draft (its id, the date it was saved, what it says) or what only the user can supply, or for AWAITING_REPLY what they wait for). For each ACTION_NEEDED thread line none of them owns: create_tracked_todo the same way, with labels=["{ACTION_NEEDED_LABEL}"], due_date=the deadline the line names when it is still ahead, otherwise today, waiting_on='event' (the thread watch wakes it) with scheduled_at=that due date as its backup check (tomorrow when it is today), and "## Current State" saying what the user must do. A create that returns an existing todo means that todo owns the thread: leave it.
 4. Note what the mail puts on the user, from the thread and confirmation lines: events (flights, bookings, invites), deadlines, and tasks (something to pay, sign, send or renew). Only if CONNECTED INTEGRATIONS lists Google Calendar: add the user's own events confirmed by the provider's own confirmation mail and not yet on the calendar; propose everything else (events with other people, dates a person merely mentions) in the briefing; skip mail carrying an invite file. Never add or propose an event whose date has already passed. Without Google Calendar call no calendar tool. Only while a Standing rule says the user wants mail's tasks on their todo list: add each new task there with create_todo, after search_todos shows it is not there yet, and complete one with update_todo when mail shows it done.
 5. Rewrite observations.md whole, in one write, in the block format its comment shows. Senders, from every account's sweep line: for each address with an entry already, or whose messages today reach {OBSERVATION_MIN_MESSAGES}, add today's count to today's figure in its daily counts (a later run the same day adds to it) and make today its last seen; an address gets its entry the first day it reaches {OBSERVATION_MIN_MESSAGES}, never for a one-off; keep the {OBSERVATION_DAILY_COUNT_DAYS} most recent days and fold older ones into earlier. Recurring from the counts and subjects, People from the thread lines. Change a conclusion only when the evidence has moved for several days, like a volume that held for 3 or more; raise its confidence as consistent days accumulate and lower it when they disagree. Suggest at most one entry: high confidence, held {INBOX_DESK_SUGGEST_AFTER_DAYS} days or more, no suggested date yet; set its suggested date to today. Keep the file under {OBSERVATIONS_MAX_CHARS} characters by dropping the entries seen least recently.
 6. Last write, once every thread is handled: set each account's last processed time to the fetched_at its subagent returned, even when it found nothing. Only an account whose fetch failed keeps its old time; a failed sweep does not stop its account's mail being triaged or its time advancing. Until then leave them unchanged.
@@ -414,8 +504,8 @@ GMAIL_THREAD_RUN_GUIDANCE = f"""EMAIL THREAD: this todo owns Gmail thread {{ref_
 - The user's own sent reply woke you: fetch the thread, since its whole history decides, not that one message, and re-classify it. This todo is {NEEDS_REPLY_LABEL} while the user still owes something, including what that reply promised ("I'll send the lease tomorrow"), or {WAITING_FOR_REPLY_LABEL} if they asked or requested something. Complete this todo only when nobody owes anything.
 - Your schedule woke you, so a follow-up is due: if the user sent the last message and is still waiting, draft a nudge and record it in Current State, unless Current State says the user discarded the nudge for it.
 - One live draft per thread: before saving a draft, delete the one named in Current State while the thread still has it (GMAIL_DELETE_DRAFT with its draft_id), then record the new id and the date you saved it there.
-- Whenever a reply thread stays open, set the next check with update_tracked_todo scheduled_at: 3 business days out for {WAITING_FOR_REPLY_LABEL}, 2 for {NEEDS_REPLY_LABEL}.
-- An {ACTION_NEEDED_LABEL} todo gets no draft and no follow-up: complete it when the thread shows the action done (a later "payment successful"), otherwise leave it for the user.
+- Whenever a reply thread stays open, set the next check with update_tracked_todo scheduled_at: 3 business days out for {WAITING_FOR_REPLY_LABEL} with waiting_on='event' (the thread watch wakes you; this is the backup), 2 for {NEEDS_REPLY_LABEL} with waiting_on='time'.
+- An {ACTION_NEEDED_LABEL} todo gets no draft and no follow-up: complete it when the thread shows the action done (a later "payment successful"), otherwise leave it for the user with its next check 3 business days out (waiting_on='event').
 - Everything is answered and nobody is waiting: delete your draft while the thread still has it, then complete_tracked_todo.
 Your final report is {INBOX_MAIL_ALERT_FORM} only when the user has to act before the desk's next briefing (its time is in this prompt when the desk is this todo's parent, otherwise the next morning): someone needs an answer today, a time they were offered is about to pass, a deadline moved up. News alone, like an answer they were waiting on, waits for the briefing, and so does anything that arrives at night and can be handled in the morning. Otherwise your report is only that nothing needs the user now: the briefing lists this thread while it stays open, nudge and draft included.
 Keep canvas.md current: the participants and the ask under Key Details; the deadline, the draft id with the date it was saved (or that the user discarded it) and the next follow-up date under Current State."""
