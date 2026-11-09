@@ -569,7 +569,7 @@ async def _finalize_executor_run(
         )
 
     # Release the busy lock now, not at end of finalize: held longer, comms'
-    # executor_status hook keeps reading "still running," and a mid-finalize
+    # turn-start executor status keeps reading "still running," and a mid-finalize
     # exception would strand it for the full 30-min TTL. Ownership-checked.
     try:
         await release_lock_if_owned(run.conversation_id, run.stream_id, run.task_id)

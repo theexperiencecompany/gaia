@@ -12,32 +12,27 @@ no class — just pure functions with closures over `source`.
 Streaming: Each mutation emits a `todo_progress` event via
 current_stream_writer() so the frontend renders progress in real-time.
 
-Pre-model hook: `create_todo_pre_model_hook()` injects current task
-context into the latest non-memory SystemMessage before each LLM call.
+Each result carries the whole plan as it now stands, so the thread holds the
+current plan where it last changed; the instructions live in the executor's
+static prompt (TODO_SYSTEM_PROMPT).
 """
 
-from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from langchain.tools import InjectedToolCallId
-from langchain_core.messages import SystemMessage, ToolMessage
-from langchain_core.runnables import RunnableConfig
+from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool, tool
 from langgraph.prebuilt import InjectedState
-from langgraph.store.base import BaseStore
 from langgraph.types import Command
 from typing_extensions import TypedDict
 
-from app.agents.context.slots import TODO_CONTEXT_MARKER, mark
 from app.agents.prompts.todo_prompts import (
     PLAN_TASKS_DESCRIPTION,
-    TODO_SYSTEM_PROMPT,
     UPDATE_TASKS_DESCRIPTION,
 )
 from app.models.agent_models import current_stream_writer
-from app.override.langgraph_bigtool.utils import State
 
 TODO_TOOL_NAMES: set[str] = {"plan_tasks", "update_tasks"}
 
@@ -86,7 +81,7 @@ def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None
 
 
 def _format_todos(todos: list[Todo]) -> str:
-    """Format todos for context injection."""
+    """Render the plan as a tool result states it."""
     if not todos:
         return ""
 
@@ -104,6 +99,12 @@ def _format_todos(todos: list[Todo]) -> str:
     return "\n".join(lines)
 
 
+def _with_plan(summary: str, todos: list[Todo]) -> str:
+    """Return a tool result's summary followed by the plan as it now stands, when there is one."""
+    plan = _format_todos(todos)
+    return f"{summary}\n\n{plan}" if plan else summary
+
+
 def create_todo_tools(source: str = "executor", source_label: str | None = None) -> list[BaseTool]:
     """Create plan_tasks and update_tasks tools with `source` baked in.
 
@@ -119,10 +120,6 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
     Returns:
         List of two BaseTool instances
     """
-
-    # TODO: Remove these tool calls from the conversation history, we are tracking
-    # the tasks in state and these tool calls are just for updating the state.
-    # We should not be adding these tool calls to the conversation history.
 
     @tool(description=PLAN_TASKS_DESCRIPTION)
     async def plan_tasks(
@@ -152,7 +149,10 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
                 "todos": new_todos,
                 "messages": [
                     ToolMessage(
-                        content=f"Created plan with {len(new_todos)} tasks. Starting: {first_task}",
+                        content=_with_plan(
+                            f"Created plan with {len(new_todos)} tasks. Starting: {first_task}",
+                            new_todos,
+                        ),
                         tool_call_id=tool_call_id,
                         name="plan_tasks",
                         additional_kwargs={"todo_tool": True, "todo_source": source},
@@ -246,7 +246,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
                 "todos": updated_todos,
                 "messages": [
                     ToolMessage(
-                        content=f"Updated tasks: {summary}",
+                        content=_with_plan(f"Updated tasks: {summary}", updated_todos),
                         tool_call_id=tool_call_id,
                         name="update_tasks",
                         additional_kwargs={"todo_tool": True, "todo_source": source},
@@ -256,34 +256,3 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         )
 
     return [plan_tasks, update_tasks]
-
-
-def create_todo_pre_model_hook(
-    source: str = "executor",
-) -> Callable[[State, RunnableConfig, BaseStore], State]:
-    """Pre-model hook that emits a fresh ``todo_context`` SystemMessage each step.
-
-    Appends and marks; where the message lands, and which older copy it replaces,
-    is ``manage_system_prompts_node``'s job — this hook runs before it. Placing
-    the message itself is what used to make its position depend on which other
-    slots happened to be occupied that turn.
-    """
-    del source  # intentionally unused — kept for signature stability
-
-    def todo_pre_model_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- LangChain injects config/store via the tool-call signature
-        messages = list(state.get("messages", []))
-        if not messages:
-            return state
-
-        todos = state.get("todos", [])
-        parts = [TODO_SYSTEM_PROMPT]
-        if todos:
-            parts.append(_format_todos(todos))
-
-        todo_msg = mark(
-            SystemMessage(content="\n\n".join(parts)),
-            TODO_CONTEXT_MARKER,
-        )
-        return cast(State, {**state, "messages": [*messages, todo_msg]})
-
-    return todo_pre_model_hook

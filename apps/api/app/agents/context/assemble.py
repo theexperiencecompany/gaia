@@ -35,9 +35,9 @@ class AssembledContext:
     """The two system messages a tier's dynamic context becomes.
 
     stable holds what changes only when the user edits a preference or
-    connects an integration, and sits inside the cacheable prefix. volatile
-    holds what was retrieved against this turn and sits at the tail of the system
-    block, so it can never shift the bytes ahead of it. volatile is None
+    connects an integration, and leads every request. volatile holds what was
+    retrieved against this turn and is written into the thread with the turn,
+    so later requests extend it rather than replace it. volatile is None
     when there is nothing per-turn to say.
     """
 
@@ -48,9 +48,9 @@ class AssembledContext:
         return [self.stable] if self.volatile is None else [self.stable, self.volatile]
 
 
-#: Backstop against a pathological volatile block blowing the context window
-#: and the bill (not a caching mechanism — that's slot ORDER, see ``slots``).
-#: Head (agenda/journal) and tail (todo/run-binding directives) are kept.
+#: Backstop against a pathological volatile block: every turn's block stays in the
+#: thread until summarization folds it. Head (agenda/journal) and tail
+#: (todo/run-binding directives) are kept.
 VOLATILE_BLOCK_MAX_CHARS = 8_000
 VOLATILE_BLOCK_HEAD_CHARS = 4_000
 VOLATILE_BLOCK_TAIL_CHARS = 4_000

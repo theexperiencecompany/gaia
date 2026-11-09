@@ -1,27 +1,18 @@
 """Where each message sits in the request the model receives.
 
-The order below is the whole cache contract in one place. Three constraints fix it:
-
-* langchain-google-genai promotes a SystemMessage to system_instruction only
-  while the system block is leading and CONTIGUOUS; later ones are dropped.
-* Gemini and OpenRouter cache the longest common prefix, so byte-stable slots
-  sort ahead of per-turn churn, with the clock last so it never moves the boundary.
-* OpenAI reuses an earlier request only whole, so each call must begin with the
-  previous one byte for byte: the request there is an append-only log.
-
-request_slot_order picks the slot layout for the slot-ordered providers:
-OpenRouter-wire providers move their per-turn slots BEHIND the conversation,
-Gemini keeps them in the leading block. OpenAI (is_append_only) is not
-slot-ordered at all: only LEADING_SLOTS lead, everything else stays where it
-happened in the thread.
+Every provider's prompt cache reuses the longest prefix an earlier request
+shared, and OpenAI only a whole earlier request. So each call must begin with
+the previous call on its thread, byte for byte: the request is the thread,
+append-only. Only LEADING_SLOTS — text that changes when the user edits a
+setting, never per turn — are lifted to the front, latest copy only. Every
+other message, the per-turn recall and clock included, is sent where the turn
+wrote it and is never pruned or reordered (docs/llm-cache-measurements.md).
 """
 
 from enum import IntEnum
 from typing import TypedDict, TypeVar, cast
 
 from langchain_core.messages import AnyMessage, BaseMessage
-
-from app.constants.llm import LLMProviderName
 
 #: ``mark`` returns the message it was given, so it must preserve the concrete
 #: type — a caller stamping a ``SystemMessage`` gets a ``SystemMessage`` back,
@@ -32,9 +23,6 @@ M = TypeVar("M", bound=BaseMessage)
 #: it does not rely on where an emitter happened to put it.
 DYNAMIC_CONTEXT_MARKER = "dynamic_context"
 MEMORY_RECALL_MARKER = "memory_recall"
-TODO_CONTEXT_MARKER = "todo_context"
-EXECUTOR_STATUS_MARKER = "executor_status"
-BROWSER_TASK_MARKER = "browser_task"
 TIME_CONTEXT_MARKER = "time_context"
 #: Written only by the retired onboarding prompt; replayed checkpoints still carry it.
 ONBOARDING_MARKER = "onboarding_context"
@@ -70,90 +58,21 @@ def is_conversation_summary(message: BaseMessage) -> bool:
 
 
 class PromptSlot(IntEnum):
-    """Canonical position of a message. Declaration order IS request order."""
+    """What a message is. Declaration order is the order the leading slots are sent in."""
 
     STATIC = 0
     DYNAMIC_STABLE = 1
     ONBOARDING = 2
-    TODO_CONTEXT = 3
-    BACKGROUND_EXECUTOR = 4
-    EXECUTOR_STATUS = 5
-    BROWSER_TASK = 6
-    MEMORY_RECALL = 7
-    CONVERSATION = 8
-    TIME = 9
+    MEMORY_RECALL = 3
+    CONVERSATION = 4
+    TIME = 5
 
 
-#: Slots holding exactly one message, so a long thread doesn't stack copies
-#: and shatter the cache prefix. ``CONVERSATION`` is the only accumulator.
-SINGLETON_SLOTS = frozenset(slot for slot in PromptSlot if slot is not PromptSlot.CONVERSATION)
-
-#: Slots whose text changes every request. Where allowed they sort behind the
-#: conversation (:func:`request_slot_order`); ahead of it they'd move the
-#: cache boundary every turn and re-send the whole history uncached.
-TAIL_VOLATILE_SLOTS: frozenset[PromptSlot] = frozenset(
-    {
-        PromptSlot.TODO_CONTEXT,
-        PromptSlot.BACKGROUND_EXECUTOR,
-        PromptSlot.EXECUTOR_STATUS,
-        PromptSlot.BROWSER_TASK,
-        PromptSlot.MEMORY_RECALL,
-    }
-)
-
-#: OpenAI-wire providers whose cache matches the longest common prefix. Gemini
-#: stays off this list for caching, not content loss: moving volatile slots
-#: back would fold per-turn bytes INTO its cached block.
-TAIL_VOLATILE_PROVIDERS: frozenset[LLMProviderName] = frozenset(
-    {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
-)
-
-#: Providers whose cache reuses an earlier request only whole: with anything trailing the
-#: conversation OpenAI cached 23,814 of 37,708 tokens per call, with nothing 37,641.
-#: Leading per-turn slots fail the same way one turn later — the swapped recall and
-#: clock moved the boundary to the static prompt, re-billing the whole history (30%).
-WHOLE_REQUEST_CACHE_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
-
-#: Slots an append-only request lifts to the front, latest copy only. They change
-#: only when the user edits a setting, so leading costs one cold call per edit.
+#: Lifted to the front of every request, latest copy only, stale copies pruned
+#: from the thread. They change only on a settings edit, which costs one cold call.
 LEADING_SLOTS: frozenset[PromptSlot] = frozenset(
     {PromptSlot.STATIC, PromptSlot.DYNAMIC_STABLE, PromptSlot.ONBOARDING}
 )
-
-#: Slots a pre-model hook rebuilds before every call instead of the turn writing them
-#: into the thread. On an append-only request a frame is committed to the thread when
-#: its text changes, so the next call still begins with this one.
-PER_CALL_SLOTS: frozenset[PromptSlot] = frozenset(
-    {PromptSlot.TODO_CONTEXT, PromptSlot.EXECUTOR_STATUS, PromptSlot.BROWSER_TASK}
-)
-
-
-def is_append_only(provider: str | None) -> bool:
-    """Whether a request bound for provider must extend the previous one byte for byte."""
-    return provider in WHOLE_REQUEST_CACHE_PROVIDERS
-
-
-def request_slot_order(provider: str | None) -> tuple[PromptSlot, ...]:
-    """Return the slot order a request bound for a slot-ordered provider is emitted in.
-
-    Gemini gets the declaration order; OpenRouter-wire providers move per-turn slots
-    behind the conversation (35.2% -> 94.9% cached, docs/llm-cache-measurements.md).
-    Append-only providers have no slot order; asking for one is a caller bug.
-    """
-    if is_append_only(provider):
-        raise ValueError(f"{provider} requests are append-only, not slot-ordered")
-    if provider not in TAIL_VOLATILE_PROVIDERS:
-        return tuple(PromptSlot)
-    return (
-        *(
-            slot
-            for slot in PromptSlot
-            if slot < PromptSlot.CONVERSATION and slot not in TAIL_VOLATILE_SLOTS
-        ),
-        PromptSlot.CONVERSATION,
-        *(slot for slot in PromptSlot if slot in TAIL_VOLATILE_SLOTS),
-        *(slot for slot in PromptSlot if slot > PromptSlot.CONVERSATION),
-    )
 
 
 def has_marker(message: AnyMessage, name: str) -> bool:
@@ -171,8 +90,16 @@ def has_marker(message: AnyMessage, name: str) -> bool:
 
 
 def is_gaia_authored_note(message: AnyMessage) -> bool:
-    """Whether message is a note GAIA wrote into the conversation rather than something the user said."""
-    return has_marker(message, PRESENCE_NOTE_MARKER)
+    """Whether message is a note GAIA wrote into a turn rather than something the user said.
+
+    The presence note, the per-turn recall block and the clock: true for the turn
+    that wrote them, so they stay inline with it and fold away with it, never
+    restated as summary text that would read as current.
+    """
+    return has_marker(message, PRESENCE_NOTE_MARKER) or slot_of(message) in (
+        PromptSlot.MEMORY_RECALL,
+        PromptSlot.TIME,
+    )
 
 
 def mark(message: M, *names: str) -> M:
@@ -184,10 +111,7 @@ def mark(message: M, *names: str) -> M:
 
 #: A system message's slot by the first marker it carries, in this order.
 _SLOT_BY_MARKER: tuple[tuple[str, PromptSlot], ...] = (
-    (EXECUTOR_STATUS_MARKER, PromptSlot.EXECUTOR_STATUS),
-    (BROWSER_TASK_MARKER, PromptSlot.BROWSER_TASK),
     (MEMORY_RECALL_MARKER, PromptSlot.MEMORY_RECALL),
-    (TODO_CONTEXT_MARKER, PromptSlot.TODO_CONTEXT),
     (ONBOARDING_MARKER, PromptSlot.ONBOARDING),
     (DYNAMIC_CONTEXT_MARKER, PromptSlot.DYNAMIC_STABLE),
     (LEGACY_DYNAMIC_MARKER, PromptSlot.DYNAMIC_STABLE),
@@ -197,17 +121,16 @@ _SLOT_BY_MARKER: tuple[tuple[str, PromptSlot], ...] = (
 def slot_of(message: AnyMessage) -> PromptSlot:
     """Which slot message belongs in.
 
-    Order of the checks is load-bearing where markers overlap: the legacy
-    combined message carries dynamic_context *and* memory_message, and a
-    volatile block must be read as MEMORY_RECALL even if a future emitter
-    also stamps it dynamic.
+    Check order is load-bearing: a block marked both volatile and dynamic is
+    MEMORY_RECALL, and a background report older code wrote as a system message
+    is conversation, never the static prompt.
     """
     if message.type != "system":
         return (
             PromptSlot.TIME if has_marker(message, TIME_CONTEXT_MARKER) else PromptSlot.CONVERSATION
         )
     if message.name == BACKGROUND_EXECUTOR_NAME:
-        return PromptSlot.BACKGROUND_EXECUTOR
+        return PromptSlot.CONVERSATION
     return next(
         (slot for marker, slot in _SLOT_BY_MARKER if has_marker(message, marker)),
         PromptSlot.STATIC,

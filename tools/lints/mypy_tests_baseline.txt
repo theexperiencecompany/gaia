@@ -33,7 +33,6 @@ apps/api/tests/e2e/test_executor_channel_matrix.py	arg-type
 apps/api/tests/e2e/test_executor_channel_matrix.py	return-value
 apps/api/tests/e2e/test_executor_interaction_scale.py	return-value
 apps/api/tests/e2e/test_executor_interjection.py	return-value
-apps/api/tests/e2e/test_executor_progress_e2e.py	arg-type
 apps/api/tests/e2e/test_hil_spawn_e2e.py	arg-type
 apps/api/tests/e2e/test_hil_spawn_e2e.py	attr-defined
 apps/api/tests/e2e/test_hil_spawn_e2e.py	call-overload
@@ -50,7 +49,6 @@ apps/api/tests/e2e/test_webhook_fanout_e2e.py	arg-type
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	func-returns-value
 apps/api/tests/factories.py	arg-type
 apps/api/tests/integration/agents/conftest.py	attr-defined
-apps/api/tests/integration/agents/test_agent_graph_checkpointing.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_delivery.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_relay.py	attr-defined
 apps/api/tests/integration/agents/test_executor_queue_roundtrip.py	arg-type
@@ -107,12 +105,8 @@ apps/api/tests/unit/agents/context/test_todo_feedback_context.py	arg-type
 apps/api/tests/unit/agents/middleware/test_completion.py	arg-type
 apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	arg-type
 apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	attr-defined
-apps/api/tests/unit/agents/nodes/test_manage_system_prompts.py	arg-type
-apps/api/tests/unit/agents/nodes/test_manage_system_prompts.py	typeddict-item
 apps/api/tests/unit/agents/nodes/test_memory_node.py	arg-type
-apps/api/tests/unit/agents/nodes/test_pre_model_hooks.py	arg-type
 apps/api/tests/unit/agents/test_active_integrations.py	misc
-apps/api/tests/unit/agents/test_browser_task_status_hook.py	arg-type
 apps/api/tests/unit/agents/test_call_record.py	arg-type
 apps/api/tests/unit/agents/test_comms_narrator.py	attr-defined
 apps/api/tests/unit/agents/test_comms_narrator.py	return-value
@@ -128,8 +122,6 @@ apps/api/tests/unit/agents/test_email_processor.py	method-assign
 apps/api/tests/unit/agents/test_executor_channel.py	arg-type
 apps/api/tests/unit/agents/test_executor_channel.py	misc
 apps/api/tests/unit/agents/test_executor_channel.py	var-annotated
-apps/api/tests/unit/agents/test_executor_progress.py	arg-type
-apps/api/tests/unit/agents/test_executor_progress.py	attr-defined
 apps/api/tests/unit/agents/test_executor_queue.py	attr-defined
 apps/api/tests/unit/agents/test_executor_queue.py	misc
 apps/api/tests/unit/agents/test_executor_queue.py	typeddict-item
@@ -138,7 +130,6 @@ apps/api/tests/unit/agents/test_executor_runner_delivery.py	attr-defined
 apps/api/tests/unit/agents/test_executor_runner_delivery.py	func-returns-value
 apps/api/tests/unit/agents/test_executor_runner_delivery.py	list-item
 apps/api/tests/unit/agents/test_executor_runner_delivery.py	return-value
-apps/api/tests/unit/agents/test_executor_status_hook.py	arg-type
 apps/api/tests/unit/agents/test_github_discovery.py	arg-type
 apps/api/tests/unit/agents/test_held_replies.py	arg-type
 apps/api/tests/unit/agents/test_hil_approval_middleware.py	arg-type
@@ -265,11 +256,6 @@ apps/api/tests/unit/memory/test_user_time.py	attr-defined
 apps/api/tests/unit/middleware/test_loop_guard.py	union-attr
 apps/api/tests/unit/middleware/test_rate_limiter_middleware.py	arg-type
 apps/api/tests/unit/middleware/test_request_timeout.py	arg-type
-apps/api/tests/unit/middleware/test_summarization.py	arg-type
-apps/api/tests/unit/middleware/test_summarization.py	attr-defined
-apps/api/tests/unit/middleware/test_summarization.py	call-overload
-apps/api/tests/unit/middleware/test_summarization.py	typeddict-item
-apps/api/tests/unit/middleware/test_summarization.py	union-attr
 apps/api/tests/unit/middleware/test_unhandled_exception_middleware.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	call-arg
@@ -490,7 +476,6 @@ apps/api/tests/unit/tools/test_skill_tools.py	typeddict-item
 apps/api/tests/unit/tools/test_subagent_control_tool.py	arg-type
 apps/api/tests/unit/tools/test_subscription_tool.py	attr-defined
 apps/api/tests/unit/tools/test_support_tool.py	attr-defined
-apps/api/tests/unit/tools/test_todo_tools.py	attr-defined
 apps/api/tests/unit/tools/test_twitter_tool.py	call-arg
 apps/api/tests/unit/tools/test_weather_tool.py	attr-defined
 apps/api/tests/unit/tools/test_weather_tool.py	call-arg

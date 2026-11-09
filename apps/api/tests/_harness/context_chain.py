@@ -37,7 +37,6 @@ from app.agents.core.subagents.subagent_runner import ThreadSeed, build_initial_
 from app.agents.llm.lane import ModelLane
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
-from app.agents.tools.todo_tools import create_todo_pre_model_hook
 from app.config.settings import settings
 from app.constants.llm import DEFAULT_MAX_TOKENS, LLMProviderName
 from app.helpers.agent_helpers import (
@@ -142,11 +141,7 @@ def hooks_for(tier: AgentTier) -> list[HookType]:
     """Return that tier's real pre-model hook chain, from the builders the graphs use."""
     if tier is AgentTier.COMMS:
         return comms_pre_model_hooks()
-    if tier in (AgentTier.SPAWN, AgentTier.WORKFLOW_AUTHORING):
-        # A spawn owns no todo list; the workflow author is authoring-only and
-        # must not plan or execute. Neither wires the todo hook.
-        return worker_pre_model_hooks()
-    return worker_pre_model_hooks(cast(HookType, create_todo_pre_model_hook(source="executor")))
+    return worker_pre_model_hooks()
 
 
 def bound_for(provider: LLMProviderName) -> AgentConfigurable:
@@ -309,17 +304,11 @@ class ContextSeed:
 
 
 async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) -> list[AnyMessage]:
-    """Seed tier and return the request its real pre-model hooks build — see hooked_state."""
-    return list((await hooked_state(tier, seed))["messages"])
-
-
-async def hooked_state(tier: AgentTier, seed: ContextSeed | None = None) -> State:
     """Seed tier and run it through that tier's real pre-model hooks.
 
     ContextSeed.prior_messages are prepended to the seed to model a checkpointed
-    thread, where stale slot copies accumulate; run_messages are appended to it
-    to model a later model call of the same run, after its own tool turns. The
-    whole state comes back, so a test can read what the model node would commit.
+    thread, where earlier turns accumulate; run_messages are appended to it
+    to model a later model call of the same run, after its own tool turns.
     """
     spec = seed or ContextSeed()
     resolved_user = spec.user or HarnessUser()
@@ -347,7 +336,8 @@ async def hooked_state(tier: AgentTier, seed: ContextSeed | None = None) -> Stat
                 "todos": [],
             },
         )
-        return await execute_hooks(hooks_for(tier), state, config, InMemoryStore())
+        result = await execute_hooks(hooks_for(tier), state, config, InMemoryStore())
+    return list(result["messages"])
 
 
 async def seed_only(

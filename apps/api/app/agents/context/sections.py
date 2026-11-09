@@ -5,9 +5,9 @@ and how to fetch its text. Tier differences are rows in :data:SECTIONS
 rather than branches in five separate builders.
 
 The slot each section declares is correctness-critical: text depending on
-the current query/turn is volatile (MEMORY_RECALL, tail of system block);
-text that only changes on preference/integration edits is stable
-(DYNAMIC_STABLE, inside the cacheable prefix). Getting that backwards
+the current query/turn is volatile (MEMORY_RECALL, written into the thread
+with its turn); text that only changes on preference/integration edits is
+stable (DYNAMIC_STABLE, leading every request). Getting that backwards
 silently destroys the prompt cache.
 """
 
@@ -28,6 +28,7 @@ from app.agents.context.fetchers import (
     build_tracked_todos_block,
     build_workspace_session_banner,
 )
+from app.agents.context.live_work import build_browser_task_block, build_executor_status_block
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import (
@@ -278,6 +279,21 @@ SECTIONS: tuple[Section, ...] = (
     Section("memory_recall", PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, build_memory_recall_block),
     Section("gaia_knowledge", PromptSlot.MEMORY_RECALL, ALL_TIERS, 30, build_gaia_knowledge_block),
     Section("tracked_todos", PromptSlot.MEMORY_RECALL, ALL_TIERS, 50, build_tracked_todos_block),
+    # Live state of work running beside the chat, read once as the turn starts.
+    Section(
+        "executor_status",
+        PromptSlot.MEMORY_RECALL,
+        frozenset({AgentTier.COMMS}),
+        54,
+        build_executor_status_block,
+    ),
+    Section(
+        "browser_task",
+        PromptSlot.MEMORY_RECALL,
+        frozenset({AgentTier.COMMS}),
+        56,
+        build_browser_task_block,
+    ),
     Section("bg_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 60, build_background_banner),
     Section(
         "active_todo_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 70, build_active_todo_banner

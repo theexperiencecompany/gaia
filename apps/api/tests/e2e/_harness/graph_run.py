@@ -191,7 +191,7 @@ class GraphRun:
 class RecordingFakeModel(BindableToolsFakeModel):
     """A scripted model that also remembers what it was shown.
 
-    Pre-model hooks (todo context, system-prompt management, message filtering)
+    Pre-model hooks (system-prompt management, message filtering, media adaptation)
     rewrite the message list on its way to the model and that rewrite is
     ephemeral — it never lands in the checkpoint. So the only way to assert on a
     hook's effect is to record the prompt the model actually received.
@@ -409,8 +409,8 @@ async def comms_graph(
     memory.recall = AsyncMock(return_value=MagicMock(entries=[], episodes=[]))
 
     # A real (fake) Redis, not none: call_executor takes a busy lock through
-    # it and executor_status_hook reads it every turn, so without one every
-    # comms test's delegation silently returns a ConnectionError string.
+    # it, so without one every comms test's delegation silently returns a
+    # ConnectionError string.
     redis_client = fakeredis.aioredis.FakeRedis(decode_responses=True)
 
     with (

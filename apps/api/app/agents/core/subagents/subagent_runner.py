@@ -205,7 +205,7 @@ async def build_initial_messages(
     task: str,
     seed: ThreadSeed,
 ) -> list[AnyMessage]:
-    """Seed a worker tier's thread, in canonical slot order.
+    """Seed a worker tier's thread: static prompt, context, the task, then the clock.
 
     system_message must be STATIC (no per-user/per-time content) so the cache
     prefix stays shared across users. seed.retrieval_query defaults to task, but
@@ -276,8 +276,8 @@ def _with_current_time(resume: Command, configurable: AgentConfigurable) -> Comm
     """Re-clock a resumed run.
 
     A resume replaces initial_state, so the thread keeps the clock from when it
-    STARTED — a HIL pause can leave it hours stale. Appending is safe mid
-    tool-call: manage_system_prompts_node lifts the latest time message to the tail, untouched pairing.
+    STARTED — a HIL pause can leave it hours stale. The new clock is appended
+    where the resume happens, after the tool pairing it follows.
     """
     update: _MessagesChannel = (
         cast(_MessagesChannel, {**resume.update}) if isinstance(resume.update, dict) else {}

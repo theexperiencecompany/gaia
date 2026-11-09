@@ -1,8 +1,9 @@
-"""plan_tasks: the plan it streams to the UI and the message it hands back to the model."""
+"""plan_tasks / update_tasks: the plan streamed to the UI and the rendered plan handed back to the model."""
 
 from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import ToolMessage
+from langchain_core.tools import StructuredTool
 import pytest
 
 from app.agents.tools.todo_tools import create_todo_tools
@@ -14,6 +15,7 @@ WRITER = "app.agents.tools.todo_tools.current_stream_writer"
 
 async def _plan(contents: list[str]) -> tuple[dict, MagicMock]:
     plan_tasks = create_todo_tools(source="mcp-42", source_label="Linear")[0]
+    assert isinstance(plan_tasks, StructuredTool) and plan_tasks.coroutine is not None
     writer = MagicMock()
     with patch(WRITER, return_value=writer):
         command = await plan_tasks.coroutine(
@@ -43,7 +45,13 @@ async def test_a_plan_is_streamed_and_starts_on_its_first_task() -> None:
     )
     (message,) = update["messages"]
     assert isinstance(message, ToolMessage)
-    assert message.content == "Created plan with 2 tasks. Starting: Draft the brief"
+    first, second = (t["id"] for t in todos)
+    assert message.content == (
+        "Created plan with 2 tasks. Starting: Draft the brief\n\n"
+        "## Current Tasks\n"
+        f"[\u2192] 1. ({first}) Draft the brief\n"
+        f"[ ] 2. ({second}) Send it"
+    )
 
 
 async def test_an_empty_plan_says_it_starts_on_nothing() -> None:
@@ -54,6 +62,7 @@ async def test_an_empty_plan_says_it_starts_on_nothing() -> None:
 
 async def test_an_update_moves_a_task_and_adds_a_new_one() -> None:
     update_tasks = create_todo_tools()[1]
+    assert isinstance(update_tasks, StructuredTool) and update_tasks.coroutine is not None
     todos = [
         {"id": "t1", "content": "Draft", "status": "in_progress", "created_at": "2026-01-01"},
     ]
@@ -69,12 +78,19 @@ async def test_an_update_moves_a_task_and_adds_a_new_one() -> None:
         ("Draft", "completed"),
         ("Send it", "pending"),
     ]
-    assert command.update["messages"][0].content == "Updated tasks: t1→completed; added: Send it"
+    added_id = updated[1]["id"]
+    assert command.update["messages"][0].content == (
+        "Updated tasks: t1→completed; added: Send it\n\n"
+        "## Current Tasks\n"
+        "[\u2713] 1. (t1) Draft\n"
+        f"[ ] 2. ({added_id}) Send it"
+    )
     assert todos[0]["status"] == "in_progress"
 
 
 async def test_an_update_naming_an_unknown_task_lists_the_real_ids() -> None:
     update_tasks = create_todo_tools()[1]
+    assert isinstance(update_tasks, StructuredTool) and update_tasks.coroutine is not None
     todos = [{"id": "t1", "content": "Draft", "status": "pending", "created_at": "2026-01-01"}]
 
     command = await update_tasks.coroutine(

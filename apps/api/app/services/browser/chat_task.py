@@ -1,7 +1,7 @@
 """The browser tasks a chat controls, as the turn answering the user's message reads and steers them.
 
-Comms is the one reader of what the user says to a browser task: a frame
-tells it what runs or waits (nodes/browser_task_status.py) and its tools act
+Comms is the one reader of what the user says to a browser task: its turn
+context says what runs or waits (context/live_work.py) and its tools act
 on it (tools/browser_chat_tools.py). Every job here is found from the turn
 itself, never from an id the model wrote.
 """
