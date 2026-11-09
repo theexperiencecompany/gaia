@@ -44,7 +44,6 @@ export type {
   NotificationActionConfig,
   PlatformLink,
   PlatformLinksResponse,
-  QuietHours,
 } from "./notification";
 export {
   NotificationActionStyle,
@@ -88,7 +87,7 @@ export type {
   TodoLabel,
   TodoListResponse,
   TodoUpdate,
-  TriggerSubscription,
+  TriggerSubscriptionView,
 } from "./todo";
 export {
   ConditionMatch,

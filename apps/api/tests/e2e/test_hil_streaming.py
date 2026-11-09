@@ -26,11 +26,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import fakeredis.aioredis
-from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-from langchain_core.outputs import ChatGenerationChunk
+from langchain_core.messages import HumanMessage
 from langgraph.store.memory import InMemoryStore
-from pydantic import PrivateAttr
 import pytest
 
 from app.agents.core.background.session import teardown_session
@@ -38,7 +35,6 @@ from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.subagents import spawn_agent
-from app.agents.prompts.spawn_subagent_prompts import SPAWN_SUBAGENT_SYSTEM_PROMPT
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, HIL_DECIDED_UNRESUMED_GRACE_SECONDS
 from app.constants.memory import ReconcileOutcome
@@ -71,7 +67,11 @@ from tests.e2e._harness.background import drain_background_runs, drain_publishes
 from tests.e2e._harness.graph_run import call
 from tests.e2e._harness.saved_messages import SavedToolData
 from tests.e2e._harness.transcript import Frame, Transcript
-from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
+from tests.e2e.test_agent_chain import (
+    TierRoutedModel,
+    streaming_model,
+    tier_routed_model,
+)
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("hil_barrier_mode")]
 
@@ -1407,42 +1407,6 @@ class TestAnUngatedCallAcrossTwoResumes:
 # ---------------------------------------------------------------------------
 
 SPAWN_TASK = "draw the flowchart of how an approved action reaches the user"
-
-
-class TierRoutedModel(StreamingScriptedModel):
-    """The executor and the spawns it runs share one model object; each tier replays its own script.
-
-    A background spawn's model calls interleave with the executor's in scheduling
-    order, so one shared script would hand responses to whichever tier asked first.
-    """
-
-    _spawn: StreamingScriptedModel | None = PrivateAttr(default=None)
-
-    async def _astream(
-        self,
-        messages: list[BaseMessage],
-        stop: list[str] | None = None,
-        run_manager: AsyncCallbackManagerForLLMRun | None = None,
-        **kwargs: Any,
-    ) -> AsyncIterator[ChatGenerationChunk]:
-        spawned = any(
-            isinstance(m, SystemMessage) and SPAWN_SUBAGENT_SYSTEM_PROMPT in str(m.content)
-            for m in messages
-        )
-        model: StreamingScriptedModel = self._spawn if spawned and self._spawn else self
-        stream = (
-            model._astream(messages, stop, run_manager, **kwargs)
-            if model is not self
-            else super()._astream(messages, stop, run_manager, **kwargs)
-        )
-        async for chunk in stream:
-            yield chunk
-
-
-def tier_routed_model(executor: Sequence[Any], spawn: Sequence[Any]) -> TierRoutedModel:
-    model = TierRoutedModel(responses=streaming_model(executor).responses)
-    model._spawn = streaming_model(spawn)
-    return model
 
 
 def background_spawn_executor_script() -> list[Any]:

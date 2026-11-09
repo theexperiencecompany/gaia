@@ -25,6 +25,7 @@ from app.constants.cache import (
     WORKFLOW_LIMIT_NOTICE_PREFIX,
     WORKFLOW_LIMIT_NOTICE_TTL,
 )
+from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import (
@@ -33,6 +34,7 @@ from app.models.scheduler_models import (
     TaskRearm,
     _Unset,
 )
+from app.models.trigger_gate_models import GateSkipRecord
 from app.models.workflow_models import (
     PublicWorkflowRow,
     SystemWorkflowDefinition,
@@ -452,6 +454,20 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             ops["$set"] = {"activated": False}
         return await self._apply_raw_update(
             {"_id": workflow_id, "user_id": user_id}, ops, scope=REPO_GLOBAL_SCOPE
+        )
+
+    async def remember_gate_skip(
+        self, workflow_id: str, user_id: str, skip: GateSkipRecord
+    ) -> None:
+        """Count skip on the user's workflow gate and keep it among the newest few."""
+        pushed = {"$each": [skip.model_dump()], "$slice": -GATE_RECENT_SKIPS_KEPT}
+        # Workflows keep no entity cache (cache_policy is None), so the seam's cache knobs
+        # are inert here: no mutation of them could be observed.
+        await self._apply_raw_update(  # pragma: no mutate
+            {"_id": workflow_id, "user_id": user_id, "gate": {"$ne": None}},
+            {"$push": {"gate.recent_skips": pushed}, "$inc": {"gate.skipped_count": 1}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
         )
 
     async def set_error_message(

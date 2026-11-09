@@ -37,25 +37,8 @@ export type ServerEventName =
   | "device:approved"
   | "device:revoked"
   | "device:self_paired"
-  | "email:archived"
-  | "email:draft_composed"
-  | "email:draft_created"
-  | "email:draft_deleted"
-  | "email:draft_updated"
-  | "email:label_applied"
-  | "email:label_created"
-  | "email:label_deleted"
-  | "email:label_removed"
-  | "email:label_updated"
-  | "email:marked_read"
-  | "email:marked_unread"
-  | "email:moved_to_inbox"
   | "email:replied"
   | "email:sent"
-  | "email:starred"
-  | "email:trashed"
-  | "email:unstarred"
-  | "email:untrashed"
   | "feature:toggled"
   | "feature_flag:evaluated"
   | "feedback:message_submitted"
@@ -126,6 +109,7 @@ export type ServerEventName =
   | "settings:chat_channel_priority_updated"
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
+  | "settings:quiet_hours_updated"
   | "skill:disabled"
   | "skill:enabled"
   | "skill:installed"
@@ -152,6 +136,7 @@ export type ServerEventName =
   | "tool:execute_failed"
   | "tool:used"
   | "trigger:gate_decided"
+  | "trigger:gate_edited"
   | "usage:queried"
   | "user:active"
   | "user:logged_in"
@@ -651,77 +636,6 @@ export interface EventProperties {
     "client": string;
     "platform": string;
   };
-  "email:archived": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:draft_composed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:draft_created": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:draft_deleted": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:draft_updated": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:label_applied": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:label_created": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:label_deleted": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:label_removed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:label_updated": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "email:marked_read": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:marked_unread": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:moved_to_inbox": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
   "email:replied": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -735,31 +649,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "has_attachments"?: boolean;
     "attachment_count"?: number;
-    "recipient_count"?: number;
-  };
-  "email:starred": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:trashed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:unstarred": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
-  };
-  "email:untrashed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "message_count": number;
   };
   "error:occurred": {
     "error_type": "global_error" | "react_error_boundary" | "chunk_load";
@@ -1256,6 +1145,7 @@ export interface EventProperties {
     "feature": string;
     "plan": string;
     "origin"?: string;
+    "window"?: "day" | "month" | "request" | "burst";
   };
   "reddit:post_viewed": {
     "subreddit": string;
@@ -1348,6 +1238,14 @@ export interface EventProperties {
     "mode"?: string;
     "tool_name"?: string;
     "require_approval"?: boolean;
+  };
+  "settings:quiet_hours_updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "enabled": boolean;
+    "start_hour": number;
+    "end_hour": number;
   };
   "skill:disabled": {
     "actor": "user" | "agent";
@@ -1515,7 +1413,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "trigger_name": string;
-    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "registration_failed" | "no_trigger_instance";
+    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "invalid_subscription" | "registration_failed" | "no_trigger_instance";
   };
   "todos:subscription_registered": {
     "actor": "user" | "agent";
@@ -1596,6 +1494,14 @@ export interface EventProperties {
     "urgent_choice"?: "incident" | "service_down" | "meeting";
     "enforced": boolean;
     "latency_ms"?: number;
+  };
+  "trigger:gate_edited": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "owner_type": "workflow" | "todo";
+    "action": "added" | "edited" | "disabled" | "enabled" | "removed";
+    "gate_kind": "authored" | "system";
   };
   "ui:sidebar_collapsed": Record<string, never>;
   "ui:sidebar_expanded": Record<string, never>;

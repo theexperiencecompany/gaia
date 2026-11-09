@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { formatDate } from "@shared/utils";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -27,6 +28,23 @@ describe("RateLimitCard", () => {
     expect(screen.getByText(TASK_SIZE_STOP)).toBeDefined();
     expect(screen.queryByText(/calls\s+for today/)).toBeNull();
     expect(screen.queryByText(/Resets in/)).toBeNull();
+  });
+
+  it("names the day a monthly pause lifts instead of counting hundreds of hours", () => {
+    const reset = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
+    render(
+      <RateLimitCard
+        data={{
+          feature: "monthly_usage",
+          current_plan: "pro",
+          reset_time: reset,
+          message: "You've used this month's AI usage allowance.",
+        }}
+      />,
+    );
+
+    expect(screen.getByText(`Resets on ${formatDate(reset)}`)).toBeDefined();
+    expect(screen.queryByText(/hours/)).toBeNull();
   });
 
   it("falls back to the daily-count copy when the backend sends no message", () => {

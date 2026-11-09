@@ -12,6 +12,8 @@ structured error onto the wide event so it appears in the final log.
 
 from dataclasses import dataclass, field
 
+from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
+
 
 @dataclass
 class AppError(Exception):
@@ -66,6 +68,42 @@ def create_error(
     )
 
 
+class IntegrationNotConnectedError(AppError):
+    """No connection of an integration can act on this call; only the user can fix it.
+
+    grant_died is True when the call's own grant died just now (a provider 401 after
+    the refresh failed, a connected account the provider no longer holds), so the
+    stored account must be expired; False when nothing usable was connected.
+    integration_name is None when the raiser knows only the id (an MCP tool).
+    """
+
+    def __init__(
+        self,
+        *,
+        integration_id: str,
+        integration_name: str | None,
+        why: str,
+        toolkit: str | None = None,
+        grant_died: bool = False,
+        meta: dict[str, object] | None = None,
+    ) -> None:
+        name = integration_name or integration_id
+        # 403, not 401: a 401 trips the web client's session-expiry interceptor.
+        super().__init__(
+            message=f"{name} is not connected. Reconnect it to continue.",
+            why=why,
+            fix=f"Reconnect {name}",
+            status_code=403,
+            code=INTEGRATION_NOT_CONNECTED,
+            # The web keys its reconnect toast on toolkit and starts the connect from integration_id.
+            public={"integration_id": integration_id, **({"toolkit": toolkit} if toolkit else {})},
+            meta=meta or {},
+        )
+        self.integration_id = integration_id
+        self.integration_name = integration_name
+        self.grant_died = grant_died
+
+
 @dataclass
 class EmptyUpdateError(AppError):
     """An update model carried no set fields — a silent no-op write is a bug."""
@@ -76,4 +114,10 @@ class RepositoryMisconfiguredError(AppError):
     """A repository subclass is missing required ClassVars (raised at import)."""
 
 
-__all__ = ["AppError", "EmptyUpdateError", "RepositoryMisconfiguredError", "create_error"]
+__all__ = [
+    "AppError",
+    "EmptyUpdateError",
+    "IntegrationNotConnectedError",
+    "RepositoryMisconfiguredError",
+    "create_error",
+]

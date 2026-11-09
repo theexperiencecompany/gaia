@@ -28,7 +28,7 @@ def turn_runner() -> Iterator[AsyncMock]:
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("app.api.v1.endpoints.chat.enforce_daily_cost_budget", new_callable=AsyncMock),
+        patch("app.api.v1.endpoints.chat.enforce_cost_budget", new_callable=AsyncMock),
         patch("app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock),
         patch("app.api.v1.endpoints.chat.stream_manager.subscribe_stream", new=_no_frames),
         patch("app.api.v1.endpoints.chat.redis_cache.redis", new=MagicMock()),

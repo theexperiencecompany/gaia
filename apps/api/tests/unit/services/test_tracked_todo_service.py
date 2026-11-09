@@ -20,7 +20,6 @@ from app.constants.todos import (
     CANVAS_EVIDENCE_SECTION,
     CANVAS_SECTIONS,
     GAIA_TRACKED_LABEL,
-    INBOX_DESK_WATCH_WINDOW_SECONDS,
     SUB_TODO_PARENT_WAKE_DELAY,
     NoReplyPlan,
     TodoActivityEvent,
@@ -212,10 +211,10 @@ class TestCreateThreadTodo:
         mock_repo.update.side_effect = lambda *a, **k: order.append("setup")
 
         async def register(
-            *, trigger_name: str, conditions: list[SubscriptionCondition], **rest: object
+            *, trigger_name: str, conditions: list[SubscriptionCondition], **_: object
         ) -> tuple[TriggerSubscription, None, bool]:
             order.append(trigger_name)
-            return await _registered(trigger_name=trigger_name, conditions=conditions, **rest)
+            return await _registered(trigger_name=trigger_name, conditions=conditions)
 
         watch.register.side_effect = register
 
@@ -228,7 +227,7 @@ class TestCreateThreadTodo:
         await TrackedTodoService.create_tracked_todo(USER_ID, "Reply")
         watch.register.assert_not_awaited()
 
-    async def test_a_new_inbox_desk_watches_its_mailbox_for_new_mail(
+    async def test_a_new_inbox_desk_runs_on_its_schedule_and_watches_no_mail(
         self, mock_repo: MagicMock, mock_deps: MagicMock, watch: SimpleNamespace
     ) -> None:
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
@@ -237,9 +236,7 @@ class TestCreateThreadTodo:
         await TrackedTodoService.create_tracked_todo(USER_ID, "Inbox desk", external_ref=desk)
 
         assert mock_deps.create.await_args.kwargs["external_ref"] == desk
-        (call,) = watch.register.await_args_list
-        assert call.kwargs["trigger_name"] == GMAIL_NEW_MESSAGE_TRIGGER_NAME
-        assert call.kwargs["cooldown_seconds"] == INBOX_DESK_WATCH_WINDOW_SECONDS
+        watch.register.assert_not_awaited()
 
     async def test_a_watch_that_fails_takes_the_todo_with_it(self, mock_repo, mock_deps, watch):
         """An unwatched thread todo would hold the thread's key, so every retry would get it back."""
@@ -724,6 +721,20 @@ class TestCreateSubTodo:
         )
 
         assert mock_deps.create.call_args.args[0].notify_on_run is False
+
+    @pytest.mark.regression
+    async def test_a_thread_sub_todo_tells_the_user_itself_by_default(
+        self, mock_repo, mock_deps, watch
+    ):
+        """Regression: the desk's thread todos were silent, so a reply that could not wait reached nobody."""
+        mock_repo.get.return_value = _parent()
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID, external_ref=_THREAD
+        )
+
+        assert mock_deps.create.call_args.args[0].notify_on_run is True
 
     async def test_a_sub_todo_can_still_ask_to_message_the_user(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _parent()

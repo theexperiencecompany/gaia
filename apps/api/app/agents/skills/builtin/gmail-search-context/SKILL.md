@@ -49,7 +49,7 @@ To reconstruct full conversations, take the `threadId`s from the results and cal
 `GMAIL_FETCH_THREAD(thread_ids=[...])`. It returns each thread's messages in order,
 shaped exactly like `GMAIL_FETCH_MESSAGES` (normalized body, attachment metadata,
 same `fields`/`body_processing`), inline for small sets or saved to a file for large ones.
-Contact lookup is lightweight, call directly: `GMAIL_SEARCH_PEOPLE(query="Sarah", pageSize=10)`.
+Contact lookup is lightweight, call directly: `GMAIL_SEARCH_PEOPLE(query="Sarah", page_size=10)`.
 
 It comes back one of two ways:
 - **Inline** (`{"messages": [...]}`): a small inbox. Use the messages directly.

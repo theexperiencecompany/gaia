@@ -183,7 +183,6 @@ async def _fire_if_matching(
         payload=payload,
     )
     if isinstance(verdict, GateSkip):
-        await record_activity(todo.id, todo.user_id, TodoActivityEvent.RUN_SKIPPED, verdict.summary)
         return False
     if not isinstance(verdict, GateRun):
         # Quiet hours decide when it runs: at their end, or now because it cannot wait.

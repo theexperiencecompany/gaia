@@ -30,6 +30,7 @@ SubscriptionFailureReason = Literal[
     "todo_not_found",
     "invalid_conditions",
     "invalid_config",
+    "invalid_subscription",
     "registration_failed",
     "no_trigger_instance",
 ]

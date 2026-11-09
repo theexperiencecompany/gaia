@@ -38,9 +38,9 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
 )
 from app.agents.llm.lane import AgentRole
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.agents import NO_ANSWER_NOTICE, AgentTag, wrap_agent_payload
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
-from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
+from app.constants.llm import BUDGET_STOP_METADATA_KEY, DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
@@ -359,10 +359,10 @@ class TestExecuteSubagentStream:
             result = await execute_subagent_stream(ctx)
 
         assert not result.paused
-        assert result.text == "Task completed"  # default when no content
+        assert result.answered is False
 
     @pytest.mark.asyncio
-    async def test_empty_message_returns_default(self):
+    async def test_a_run_with_no_answer_is_reported_as_unconfirmed(self):
         async def _fake_astream(*args, **kwargs):
             return
             yield  # NOSONAR — intentionally unreachable: makes this an async generator
@@ -375,7 +375,8 @@ class TestExecuteSubagentStream:
             result = await execute_subagent_stream(ctx)
 
         assert not result.paused
-        assert result.text == "Task completed"
+        assert result.answered is False
+        assert result.text == NO_ANSWER_NOTICE.format(name=f"The {ctx.agent_name} run")
 
     @pytest.mark.asyncio
     async def test_tool_message_emits_tool_output(self):
@@ -572,7 +573,7 @@ class TestExecuteSubagentStream:
 
         # Should not raise
         assert not result.paused
-        assert result.text == "Task completed"
+        assert result.answered is False
 
     @pytest.mark.asyncio
     async def test_cancellation_breaks_stream(self):
@@ -801,6 +802,20 @@ class TestProcessUpdatesPayload:
         assert run.run_messages == []
 
     @pytest.mark.asyncio
+    async def test_a_budget_stop_is_the_runs_answer_not_a_silent_end(self):
+        """The wall answers without a model, so no token streams: its stop text must still be the result."""
+        stop = "You've used this month's AI usage allowance, so chat, workflows and tracked todos are paused until December 8, when it resets."
+        wall = AIMessage(content=stop, response_metadata={BUDGET_STOP_METADATA_KEY: True})
+        run = _make_run()
+
+        with patch("app.agents.core.subagents.subagent_runner.log"), self._entries([]):
+            await _process_updates_payload(run, {"agent": {"messages": [wall]}})
+            outcome = _finalize_run(run)
+
+        assert outcome.text == stop
+        assert outcome.answered
+
+    @pytest.mark.asyncio
     async def test_only_tool_bearing_messages_are_captured(self):
         """The filter reads tool_calls defensively: some messages in an update carry no such attribute at all."""
         ai = AIMessage(content="", tool_calls=[{"name": "web_search", "args": {}, "id": "tc-1"}])
@@ -897,6 +912,11 @@ class TestProcessUpdatesPayload:
 # ---------------------------------------------------------------------------
 
 
+# The thread _make_ctx gives a run, as build_agent_config stamps it on that run's chunks.
+_OWN: dict[str, object] = {"agent_thread_id": "t1"}
+_SPAWN_THREAD = "spawn_conv_call_1"
+
+
 class TestConsumeStreamEvent:
     """The "messages" branch hands the run and the payload to the handler, which decides where the chunk's output is routed."""
 
@@ -937,6 +957,58 @@ class TestConsumeStreamEvent:
         assert writer.call_args == call(
             {"tool_output": {"tool_call_id": "tc-1", "output": "3 unread", "subagent_id": "sub-1"}}
         )
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_a_spawned_subagents_finish_is_never_the_runs_answer(self):
+        """Regression: a desk's briefing was dropped and its subagent's finish_task result delivered instead."""
+        run = _make_run()
+
+        await _consume_stream_event(
+            run,
+            "messages",
+            (
+                ToolMessage(content="thread: 1a2b | ...", tool_call_id="tc-9", name="finish_task"),
+                {"agent_thread_id": _SPAWN_THREAD},
+            ),
+        )
+        await _consume_stream_event(
+            run, "messages", (AIMessageChunk(content="2 need you", id="m-1"), _OWN)
+        )
+
+        assert run.complete_message == "2 need you"
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_a_spawned_subagents_reply_is_never_part_of_the_runs_answer(self):
+        """Regression: a desk's subagents' replies were delivered glued in front of its briefing."""
+        run = _make_run()
+
+        await _consume_stream_event(
+            run,
+            "messages",
+            (
+                AIMessageChunk(content="fetched_at: 1793963246", id="m-9"),
+                {"agent_thread_id": _SPAWN_THREAD},
+            ),
+        )
+        await _consume_stream_event(
+            run, "messages", (AIMessageChunk(content="2 need you", id="m-1"), _OWN)
+        )
+
+        assert run.complete_message == "2 need you"
+
+    @pytest.mark.asyncio
+    async def test_the_runs_own_finish_is_its_answer(self):
+        run = _make_run()
+
+        await _consume_stream_event(
+            run,
+            "messages",
+            (ToolMessage(content="the answer", tool_call_id="tc-1", name="finish_task"), _OWN),
+        )
+
+        assert run.complete_message == "the answer"
 
 
 # ---------------------------------------------------------------------------
@@ -2135,7 +2207,7 @@ class TestTheExecutorsCancel:
 
         outcome = await _drive(_cancellable_run(_SUPERSTEP))
 
-        assert outcome.text == "Task completed"
+        assert outcome.answered is False
         assert await SubagentCancel("spawn_c1_call-2").is_requested() is True
 
     async def test_a_run_with_no_stream_is_not_cancellable(self, fake_redis):
@@ -2143,7 +2215,7 @@ class TestTheExecutorsCancel:
 
         outcome = await _drive(_cancellable_run(_SUPERSTEP, stream_id=None))
 
-        assert outcome.text == "Task completed"
+        assert outcome.answered is False
         assert await SubagentCancel(SUBAGENT_THREAD).is_requested() is True
 
     async def test_the_stopped_segment_is_timed_as_cancelled_under_its_label(self, fake_redis):

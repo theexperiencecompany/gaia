@@ -35,8 +35,8 @@ class ToolRun(TypedDict):
     ran: Annotated[list[str], operator.add]
 
 
-class ToolCall(TypedDict):
-    """What each Send hands the tools node: the one call it runs."""
+class _ToolCall(TypedDict):
+    """The Send payload: the one tool a tools-node task runs."""
 
     tool: str
 
@@ -86,7 +86,7 @@ class ToolCallSimulator:
             """Two frames deep — handoff -> resume_for_gate -> interrupt."""
             pause_for(name)
 
-        def tools(state: ToolCall) -> ToolRun:
+        def tools(state: _ToolCall) -> ToolRun:
             name = state["tool"]
             if name in self.gated:
                 if self.nested:

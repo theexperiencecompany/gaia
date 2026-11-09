@@ -9,7 +9,11 @@ from uuid import UUID, uuid4
 from bson import ObjectId
 import pytest
 
-from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.api.v1.middleware.tiered_rate_limiter import (
+    CostBudgetExceededException,
+    RateLimitExceededException,
+)
+from app.config.rate_limits import RateLimitPeriod
 from app.constants.agents import WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
@@ -35,6 +39,7 @@ from app.utils.errors import AppError
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
 from app.workers.tasks.workflow_tasks import (
     AGENT_RUN_SUMMARY,
+    _rate_limit_failure_content,
     execute_workflow_as_chat,
     execute_workflow_by_id,
     generate_workflow_steps,
@@ -97,6 +102,7 @@ def _make_workflow(
     wf.steps = steps or [WorkflowStep(id="s1", title="Step 1", description="Do it")]
     wf.is_todo_workflow = is_todo_workflow
     wf.source_todo_id = source_todo_id
+    wf.gate = None
     wf.model_dump = MagicMock(return_value={"id": wf.id, "title": wf.title})
     return wf
 
@@ -2054,7 +2060,7 @@ class _FirePatches:
                 MagicMock(increment_execution_count=self.increment),
             ),
             patch(f"{MODULE}.execute_workflow_as_chat", self.chat),
-            patch(f"{MODULE}.enforce_daily_cost_budget", self.cost_budget),
+            patch(f"{MODULE}.enforce_cost_budget", self.cost_budget),
             patch(f"{MODULE}.drain_trigger_batch", self.drain),
             patch(f"{MODULE}.reschedule_if_refilled", self.reschedule),
             patch(f"{MODULE}.coalesce_window_seconds", self.coalesce),
@@ -2592,3 +2598,34 @@ class TestFireAttribution:
 
         [attribution] = [ctx.attribution for ctx in seen]
         assert (attribution.actor, attribution.trigger, attribution.surface) == expected
+
+
+class TestCostWallCopy:
+    """A run the monthly allowance stopped names the day it resumes, not 'today'."""
+
+    async def test_a_monthly_wall_names_the_reset_day(self) -> None:
+        reset = datetime(2026, 12, 1, tzinfo=UTC)
+        error = CostBudgetExceededException(
+            feature="workflow_executions",
+            reset_time=reset,
+            current_plan="pro",
+            message="You've used this month's AI usage allowance.",
+            period=RateLimitPeriod.MONTH,
+        )
+
+        body, action = await _rate_limit_failure_content(error, _make_workflow())
+
+        assert "December 1" in body
+        assert "today" not in body
+        assert action is None
+
+    async def test_a_daily_wall_keeps_the_daily_copy(self) -> None:
+        error = CostBudgetExceededException(
+            feature="workflow_executions",
+            reset_time=datetime(2026, 11, 4, tzinfo=UTC),
+            current_plan="pro",
+        )
+
+        body, _ = await _rate_limit_failure_content(error, _make_workflow())
+
+        assert "for today" in body

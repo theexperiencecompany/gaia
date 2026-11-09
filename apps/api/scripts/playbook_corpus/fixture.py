@@ -19,12 +19,14 @@ CORPUS_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "playb
 
 #: Refusals of what the author explicitly asked for, which no server can reinterpret:
 #: a call that returned nothing (the run should decline no_work_today), a field
-#: or step that does not exist, a time the placeholder vocabulary cannot say.
+#: or step that does not exist, a time the placeholder vocabulary cannot say, a
+#: time in a layout the tool was not sent (the refusal names the slot to write).
 AUTHOR_CHOICE_REFUSALS = frozenset(
     {
         PlaybookRefusal.EMPTY_RESULT,
         PlaybookRefusal.STEP_REFERENCE,
         PlaybookRefusal.TIME_EXPRESSION,
+        PlaybookRefusal.TIME_LAYOUT,
     }
 )
 

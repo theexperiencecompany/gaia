@@ -299,12 +299,12 @@ class TestTermination:
         # takes its one nudge and then ends in plain text.
         assert run.nodes() == [AGENT_NODE, NUDGE_NODE, AGENT_NODE]
 
-    async def test_finish_task_without_a_result_still_terminates(self):
-        """A missing result must yield a usable completion message, not an empty one."""
+    async def test_finish_task_without_a_result_terminates_with_no_answer(self):
+        """A missing result ends the run with no answer, which is never reported as done."""
         async with executor_graph([call("finish_task", {}, call_id="f1")]) as graph:
             run = await run_graph(graph, "wrap up")
 
-        assert run.results_from(FINISH_NODE) == ["Task completed."]
+        assert run.results_from(FINISH_NODE) == [""]
 
 
 class TestRecursionWrapup:

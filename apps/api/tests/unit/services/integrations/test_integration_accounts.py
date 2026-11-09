@@ -20,9 +20,10 @@ from app.services.integrations.integration_accounts import (
     pick_primary,
     primary_connected_account_id,
     set_account_nickname,
+    toolkit_not_connected,
 )
 from app.services.triggers.base import primary_account_for_trigger
-from app.utils.errors import AppError
+from app.utils.errors import AppError, IntegrationNotConnectedError
 from app.utils.exceptions import TriggerRegistrationError
 
 USER_ID = "u1"
@@ -120,17 +121,21 @@ class TestPrimaryConnectedAccountId:
         repo.get_for_user.assert_awaited_once_with(USER_ID, "gmail")
 
     async def test_no_accounts_is_the_reconnect_error(self, repo: MagicMock) -> None:
-        with pytest.raises(AppError) as exc:
+        # Typed so the Composio tool wrapper can answer it with the connect card.
+        with pytest.raises(IntegrationNotConnectedError) as exc:
             await primary_connected_account_id(USER_ID, "GMAIL")
 
-        assert exc.value == AppError(
-            message="No active GMAIL connection",
-            why="This integration has no connected account",
-            fix="Reconnect the GMAIL integration",
-            status_code=403,
-            code=INTEGRATION_NOT_CONNECTED,
-            public={"toolkit": "GMAIL"},
-        )
+        assert exc.value.status_code == 403
+        assert exc.value.to_dict() == {
+            "message": "Gmail is not connected. Reconnect it to continue.",
+            "why": "This integration has no connected account",
+            "fix": "Reconnect Gmail",
+            "code": INTEGRATION_NOT_CONNECTED,
+            # The web's Reconnect starts this integration's connect flow from it.
+            "integration_id": "gmail",
+            "toolkit": "GMAIL",
+        }
+        assert exc.value.grant_died is False
 
     async def test_an_expired_primary_is_named_in_the_reconnect_error(
         self, repo: MagicMock
@@ -144,7 +149,7 @@ class TestPrimaryConnectedAccountId:
             await primary_connected_account_id(USER_ID, "GMAIL")
 
         assert exc.value.code == INTEGRATION_NOT_CONNECTED
-        assert exc.value.public == {"toolkit": "GMAIL"}
+        assert exc.value.public == {"toolkit": "GMAIL", "integration_id": "gmail"}
         assert exc.value.why == "The primary Gmail account (ca_1@acme.com) expired"
 
     async def test_an_unknown_toolkit_is_a_server_error(self, repo: MagicMock) -> None:
@@ -240,3 +245,11 @@ class TestPrimaryAccountForTrigger:
     async def test_a_slug_no_integration_owns_fails_registration(self) -> None:
         with pytest.raises(TriggerRegistrationError):
             await primary_account_for_trigger(USER_ID, "WEATHER_ALERT")
+
+
+class TestToolkitNotConnected:
+    def test_a_toolkit_with_no_gaia_integration_is_named_after_itself(self) -> None:
+        error = toolkit_not_connected("NOT_A_TOOLKIT", "gone", meta={"cause": "404"})
+
+        assert (error.integration_id, error.integration_name) == ("not_a_toolkit", "NOT_A_TOOLKIT")
+        assert error.meta == {"cause": "404"}

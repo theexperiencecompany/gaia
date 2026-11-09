@@ -80,17 +80,10 @@ class OpenRouterReasoning(TypedDict):
     effort: OpenRouterEffort
 
 
-class OpenRouterProviderRouting(TypedDict, total=False):
-    """OpenRouter's provider-routing block: a soft order, or a hard only-these pin.
+class OpenRouterProviderRouting(TypedDict):
+    """OpenRouter's provider-routing block, as GAIA sends it: a hard only-these pin."""
 
-    total=False because the two uses set different keys: the client's
-    OPENROUTER_PROVIDER_ORDER writes order + allow_fallbacks, a dev-menu pin
-    writes only.
-    """
-
-    order: list[str]
     only: list[str]
-    allow_fallbacks: bool
 
 
 class OpenRouterModelKwargs(TypedDict):
@@ -112,8 +105,6 @@ class DevModelOption:
     provider: LLMProviderName
     #: None = pin no model; the client's own default serves the request.
     model: str | None
-    #: The OpenRouter provider-routing pin the lane carries as model_kwargs.
-    provider_pin: OpenRouterModelKwargs | None
     reasoning: bool
 
 
@@ -173,6 +164,9 @@ AGENT_RECURSION_LIMIT = 40  # Comms + workers (routing / focused work)
 # the accounting middleware's denominator read this, so they stay in sync.
 EXECUTOR_RECURSION_LIMIT = 100
 SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
+# The Inbox desk's mail pass: six turns whatever the thread count (batched reads, parallel drafts);
+# it measures 18 supersteps with the wrap-up window, and 30 leaves room for window splits and retries.
+INBOX_MAIL_SUBAGENT_RECURSION_LIMIT = 30
 # The workflow authoring subagent only discovers integrations/triggers then emits
 # JSON, never executes, so a handful of discovery calls is plenty. On hitting the
 # limit the runner forces a final answer instead of crashing ("stop wandering").
@@ -313,6 +307,12 @@ AUX_MODEL_NAME = DEFAULT_MODEL_NAME
 OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT: dict[str, bool] = {
     DEFAULT_MODEL_NAME: False,
 }
+# Provider routing belongs to the model it was chosen for: a pin naming providers that
+# do not serve a model fails every call to it. A model absent here gets no provider block.
+OPENROUTER_PROVIDER_ROUTING: dict[str, OpenRouterModelKwargs] = {
+    "minimax/minimax-m3": {"provider": {"only": ["minimax"]}},
+    "z-ai/glm-5.2": {"provider": {"only": ["z-ai"]}},
+}
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
@@ -447,25 +447,21 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "minimax-m3": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="minimax/minimax-m3",
-        provider_pin={"provider": {"only": ["minimax"]}},
         reasoning=True,
     ),
     "glm-5.2": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="z-ai/glm-5.2",
-        provider_pin={"provider": {"only": ["z-ai"]}},
         reasoning=True,
     ),
     "gemini-3.5-flash": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="google/gemini-3.5-flash",
-        provider_pin=None,
         reasoning=False,
     ),
     "deepseek-v4": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="deepseek/deepseek-v4-pro",
-        provider_pin=None,
         reasoning=False,
     ),
     "deepseek-v4-flash": DevModelOption(
@@ -474,9 +470,6 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # identical model for A/B-ing routes.
         provider=LLMProviderName.OPENROUTER,
         model="deepseek/deepseek-v4-flash-0731",
-        # Deliberately unpinned — the pin measured worse on the real graph
-        # (see the paid-lane rationale above).
-        provider_pin=None,
         reasoning=False,
     ),
     DEV_CUSTOM_MODEL_OPTION: DevModelOption(
@@ -484,13 +477,11 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # one here; the client's own default (DEV_LLM_MODEL) serves the request.
         provider=LLMProviderName.CUSTOM,
         model=None,
-        provider_pin=None,
         reasoning=False,
     ),
     "gemini-3.1-flash-lite": DevModelOption(
         provider=LLMProviderName.GEMINI,
         model="gemini-3.1-flash-lite",
-        provider_pin=None,
         reasoning=False,
     ),
 }
@@ -513,9 +504,12 @@ PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
 BUDGET_WRAPUP_REMAINING_FRACTION = 0.2
 
 # Rolling monthly USD cost budget for pro: the ECONOMIC guard, ~1x the
-# subscription price. On exhaustion pro is NOT blocked — routing degrades to
-# the free-tier model for the rest of the month.
+# subscription price. Reaching it pauses chat, bots, workflow runs and tracked
+# todos until the month resets, the same wall as the daily budget.
 PRO_MONTHLY_COST_BUDGET_USD = 25.00  # TUNE
+# The one-time heads-up fires here; mirrors USAGE_WARN_THRESHOLD (libs/shared/ts/src/constants/usage.ts),
+# where the usage page turns amber.
+PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION = 0.75
 
 # TTLs for the budget Redis keys: sized just past their window so keys expire
 # on their own (26h > 24h day, 32d > 31d month) even with clock skew.

@@ -367,7 +367,6 @@ ignore_imports = [
   # runtime — for these the import IS the work.
   "app.utils.agent_utils -> langchain_core",
   "app.utils.chat_utils -> langchain_core",
-  "app.utils.embedding_utils -> langchain_core",
   "app.utils.file_utils -> langchain_core",
   "app.utils.mcp_utils -> langchain_core",
   "app.utils.multimodal -> langchain_core",
@@ -404,5 +403,4 @@ ignore_imports = [
   "app.utils.stream_publishers -> app.models.stream_events",
   "app.utils.agent_utils -> app.models.stream_events",
   "app.utils.canvas_vector_utils -> app.db.chroma.chromadb",
-  "app.utils.embedding_utils -> app.db.chroma.chromadb",
 ]

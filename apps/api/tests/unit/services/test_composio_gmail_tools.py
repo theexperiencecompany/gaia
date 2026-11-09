@@ -8,8 +8,8 @@ import base64
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 import re
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import Any, ClassVar
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, ValidationError
@@ -19,6 +19,7 @@ import time_machine
 from app.agents.prompts import todo_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
 from app.agents.tools.execute.dispatch import dispatch_config_for
+from app.constants.desk_buckets import DeskBucket
 from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.models.agent_config import ComposioAccountSelection
@@ -27,6 +28,7 @@ from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
     FetchMessagesInput,
     FetchThreadInput,
+    GmailMessageView,
 )
 from app.services.composio import account_scope as account_scope_module
 from app.services.composio.custom_tools import gmail_tools as gmail_tools_module
@@ -45,6 +47,7 @@ from app.services.composio.custom_tools.gmail_tools import (
 )
 from app.services.composio.proxy_client import ProxyRequest
 from app.utils.concurrency import ContextThreadPoolExecutor
+from app.utils.errors import AppError
 from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
@@ -925,10 +928,123 @@ class TestTheDesksSweep:
         assert {m["threadId"] for m in result["messages"]} == {"thread-1"}
         assert result["messages"][0]["body"] == "y"
 
+    def test_a_flat_thread_read_still_names_the_threads_gmail_no_longer_has(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        size = OFFLOAD_MIN_MESSAGES + 1
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            if request.endpoint.endswith("/threads/gone"):
+                raise AppError(message="gmail API error (404)", status_code=404)
+            return {
+                "id": "thread-1",
+                "messages": [{"id": f"m{i}", "threadId": "thread-1"} for i in range(size)],
+            }
+
+        mock_proxy.side_effect = _serve
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(thread_ids=["thread-1", "gone"], fields=["id"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result["fetched_count"] == size
+        assert result["missing_thread_ids"] == ["gone"]
+
 
 # ---------------------------------------------------------------------------
 # Whose mailbox, and what was asked of it
 # ---------------------------------------------------------------------------
+
+
+class TestATodoRunsFetchIsBucketed:
+    """A tracked todo's mail fetch is handed to the desk bucketer; a body-less count never is."""
+
+    DESK_RUN: ClassVar[dict[str, Any]] = {"configurable": {"active_todo_id": "desk-1"}}
+
+    def _fetch(
+        self, mock_proxy: MagicMock, bucketer: AsyncMock | None, **request: Any
+    ) -> dict[str, Any]:
+        mock_proxy.side_effect = _one_message_mailbox()
+        with (
+            patch(f"{GMAIL_TOOLS}.current_run_config", return_value=self.DESK_RUN),
+            patch(f"{GMAIL_TOOLS}.installed_fetched_mail_bucketer", return_value=bucketer),
+        ):
+            return _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", **request),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+    @staticmethod
+    def _bucketing(bucket: DeskBucket) -> AsyncMock:
+        async def bucketed(
+            user_id: str, todo_id: str, views: list[GmailMessageView]
+        ) -> list[GmailMessageView]:
+            return [view.model_copy(update={"bucket": bucket}) for view in views]
+
+        return AsyncMock(side_effect=bucketed)
+
+    def test_each_message_carries_the_bucket_the_desk_judge_gave_it(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        bucketer = self._bucketing(DeskBucket.ACT)
+
+        result = self._fetch(mock_proxy, bucketer)
+
+        (user_id, todo_id, views), _ = bucketer.await_args
+        assert (user_id, todo_id) == (AUTH_CREDS["user_id"], "desk-1")
+        assert [v.id for v in views] == ["msg-1"]
+        assert [m["bucket"] for m in result["messages"]] == ["act"]
+
+    def test_the_bucket_rides_on_a_fetch_that_projects_its_fields(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        result = self._fetch(mock_proxy, self._bucketing(DeskBucket.FYI), fields=["id", "subject"])
+
+        (message,) = result["messages"]
+        assert set(message) == {"id", "subject", "bucket"}
+        assert message["bucket"] == "fyi"
+
+    def test_a_count_only_sweep_is_never_bucketed(self, mock_proxy: MagicMock) -> None:
+        bucketer = self._bucketing(DeskBucket.JUNK)
+
+        result = self._fetch(
+            mock_proxy,
+            bucketer,
+            fields=list(todo_prompts.INBOX_DESK_SWEEP_FIELDS),
+            body_processing="none",
+        )
+
+        bucketer.assert_not_awaited()
+        assert "bucket" not in result["messages"][0]
+
+    def test_a_process_with_no_bucketer_installed_keeps_the_mail_and_says_so(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        with patch(f"{GMAIL_TOOLS}.log") as log:
+            result = self._fetch(mock_proxy, None)
+
+        assert len(result["messages"]) == 1
+        assert "bucket" not in result["messages"][0]
+        log.error.assert_called_once_with(
+            "[TOOL] GMAIL_FETCH_MESSAGES: no mail bucketer installed", todo_id="desk-1"
+        )
+
+    def test_a_fetch_outside_any_todo_run_is_never_bucketed(self, mock_proxy: MagicMock) -> None:
+        bucketer = self._bucketing(DeskBucket.JUNK)
+        mock_proxy.side_effect = _one_message_mailbox()
+
+        with patch(f"{GMAIL_TOOLS}.installed_fetched_mail_bucketer", return_value=bucketer):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000"),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        bucketer.assert_not_awaited()
+        assert "bucket" not in result["messages"][0]
 
 
 def _one_message_mailbox(
@@ -1585,6 +1701,62 @@ class TestAPartialThreadRead:
         assert result["partial"] is True
         assert [message["id"] for message in result["messages"]] == ["m1"]
         assert set(result["messages"][0]) == {"id"}
+
+    @pytest.mark.parametrize("gone", ["thread-1", "thread-2", "thread-3"])
+    def test_a_thread_gmail_no_longer_has_is_skipped_and_the_rest_come_back(
+        self, mock_proxy: MagicMock, gone: str
+    ) -> None:
+        """Gmail's 404 on one thread of a batch drops that thread, never the batch."""
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            thread_id = re.search(r"/users/me/threads/([^/]+)$", request.endpoint).group(1)
+            if thread_id == gone:
+                raise AppError(message="gmail API error (404)", status_code=404)
+            return {"id": thread_id, "messages": [{"id": f"m-{thread_id}", "threadId": thread_id}]}
+
+        mock_proxy.side_effect = _serve
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(
+                thread_ids=["thread-1", "thread-2", "thread-3"], fields=["id"]
+            ),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert "partial" not in result
+        assert {request.method for (request,), _ in mock_proxy.call_args_list} == {"GET"}
+        kept = [
+            thread_id for thread_id in ["thread-1", "thread-2", "thread-3"] if thread_id != gone
+        ]
+        assert [thread["id"] for thread in result["threads"]] == kept
+        assert result["missing_thread_ids"] == [gone]
+
+    def test_a_batch_whose_every_thread_is_gone_returns_empty_not_an_error(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = AppError(message="gmail API error (404)", status_code=404)
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(thread_ids=["thread-1", "thread-2"], fields=["id"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result["threads"] == []
+        assert result["missing_thread_ids"] == ["thread-1", "thread-2"]
+
+    def test_any_other_gmail_error_on_a_thread_still_fails_the_read(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = AppError(message="gmail API error (500)", status_code=500)
+
+        with pytest.raises(AppError):
+            _register_and_get_tools()["FETCH_THREAD"](
+                request=FetchThreadInput(thread_ids=["thread-1"], fields=["id"]),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
 
 
 class TestAPartialFetchStaysProjected:

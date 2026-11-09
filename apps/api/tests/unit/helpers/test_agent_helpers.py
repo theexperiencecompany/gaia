@@ -102,6 +102,22 @@ class TestBuildAgentConfig:
         )
         assert config["metadata"][LLM_LABEL_METADATA_KEY] == "executor_agent"
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(("thread_id", "stamped"), [(None, CONV_ID), ("spawn_x", "spawn_x")])
+    async def test_metadata_stamps_the_runs_own_thread_on_every_chunk(
+        self, thread_id: str | None, stamped: str
+    ):
+        """Regression: a spawned subagent's chunks, unstamped, became its parent run's answer."""
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor_agent"
+            ),
+            thread=AgentThread(thread_id=thread_id),
+        )
+
+        assert config["metadata"]["agent_thread_id"] == stamped
+        assert config["configurable"]["thread_id"] == stamped
+
     async def test_a_root_run_stamps_the_users_identity_and_its_own_conversation(self):
         config = await build_agent_config(
             identity=AgentIdentity(
@@ -1644,6 +1660,24 @@ class TestBuildAgentConfigWorkflowInheritance:
         assert configurable["workflow_id"] == "wf_123"
         assert configurable["workflow_title"] == ""
         assert configurable["workflow_notify_on_completion"] is True
+
+
+class TestBuildAgentConfigSpawnBudget:
+    async def test_the_executor_keeps_the_spawn_job_its_todo_run_stamped(self):
+        """Regression: dropped here, the desk's mail passes ran on the focused budget and ran out."""
+        config = await build_agent_config(
+            identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
+            thread=AgentThread(base_configurable={"spawn_job": "inbox_mail"}),
+        )
+
+        assert config["configurable"]["spawn_job"] == "inbox_mail"
+
+    async def test_a_run_with_no_spawn_job_stamps_none(self):
+        config = await build_agent_config(
+            identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
+        )
+
+        assert "spawn_job" not in config["configurable"]
 
 
 class TestBuildAgentConfigPresence:

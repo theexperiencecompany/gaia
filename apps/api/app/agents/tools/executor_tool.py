@@ -318,8 +318,8 @@ async def _dispatch_executor(
             )
             return (
                 "It's been added to the work already in progress and will be "
-                "covered in the same answer. Confirm briefly in plain words — "
-                "never mention runs, task ids, queues, or waiting."
+                "covered in the same answer. Acknowledge it with a reaction or a few plain "
+                "words; never mention runs, task ids, queues, or waiting."
             )
 
     # MCP tools load lazily inside each subagent's first use — the old eager

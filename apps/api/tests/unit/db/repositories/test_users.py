@@ -27,7 +27,8 @@ from app.constants.first_steps import (
     FIRST_STEPS_COLLAPSED_FIELD,
 )
 from app.db.repositories.users import UserRepository
-from app.models.user_models import OnboardingPreferences, StartingJobs
+from app.models.quiet_hours_models import QuietHours
+from app.models.user_models import OnboardingPreferences, StartingJobs, UserDocument
 from shared.py.analytics.catalog.onboarding import OnboardingStep
 from tests.helpers import captured_wide_event
 
@@ -295,6 +296,20 @@ async def test_the_drafted_jobs_write_evicts_the_global_user_cache() -> None:
     raw.assert_awaited_once_with(
         {"_id": ObjectId(user_id)},
         {"$set": {"onboarding.starting_jobs": jobs.model_dump()}},
+        scope=REPO_GLOBAL_SCOPE,
+    )
+
+
+async def test_the_quiet_hours_write_sets_them_and_returns_the_updated_user() -> None:
+    repo = UserRepository()
+    hours = QuietHours(enabled=False, start_hour=23, end_hour=6)
+    stored = UserDocument(id=USER_ID, quiet_hours=hours)
+    with patch.object(repo, "_apply_raw_update", new=AsyncMock(return_value=stored)) as raw:
+        assert await repo.set_quiet_hours(USER_ID, hours) is stored
+
+    raw.assert_awaited_once_with(
+        {"_id": ObjectId(USER_ID)},
+        {"$set": {"quiet_hours": {"enabled": False, "start_hour": 23, "end_hour": 6}}},
         scope=REPO_GLOBAL_SCOPE,
     )
 

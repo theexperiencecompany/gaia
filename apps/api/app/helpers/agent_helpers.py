@@ -707,6 +707,10 @@ async def build_agent_config(
     if plan := (inherited.plan_type or (resolved_plan.value if resolved_plan else None)):
         configurable["plan_type"] = plan
 
+    # A tracked todo run stamps what its spawns do on its root; the executor inherits it.
+    if spawn_job := inherited.spawn_job:
+        configurable["spawn_job"] = spawn_job
+
     # A workflow fire stamps its workflow on the comms configurable; the executor
     # and its handoff subagents inherit it whole, the way root_request_id is.
     if workflow_id := inherited.workflow_id:
@@ -718,6 +722,8 @@ async def build_agent_config(
         "user_id": acting_user.user_id,
         "source_category": source_category,
         "source_channel": source_channel,
+        # Read back as StreamChunkMetadata, telling a nested run's chunks from this run's own.
+        "agent_thread_id": configurable["thread_id"],
         # Lane identity for the TTFT callback, which reads it back as LlmCallMetadata.
         # llm_label defaults to this run's agent tier so the graph's own streaming
         # calls never land on "unknown"; ainvoke_llm overrides it per side call.

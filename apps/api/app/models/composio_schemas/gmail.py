@@ -9,6 +9,7 @@ from typing import Annotated, Any, Literal, NotRequired, Self, TypedDict, get_ar
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints
 
+from app.constants.desk_buckets import DeskBucket
 from app.constants.email import (
     DEFAULT_SUMMARY_FIELDS,
     MESSAGE_FIELD_SYNONYMS,
@@ -21,9 +22,9 @@ from app.constants.email import (
 
 
 class GmailNewMessagePayload(BaseModel):
-    """Payload for GMAIL_NEW_GMAIL_MESSAGE trigger.
+    """Payload for GMAIL_NEW_GMAIL_MESSAGE trigger at the pinned toolkit 20261105_00.
 
-    Field set verified against Composio triggers_types API (2026-08).
+    Field set verified against Composio triggers_types API (2026-11).
     """
 
     attachment_list: list[Any] | None = Field(
@@ -64,15 +65,18 @@ class GmailNewMessageEvent(GmailNewMessagePayload):
 
 
 class GmailEmailSentPayload(BaseModel):
-    """Payload for GMAIL_EMAIL_SENT_TRIGGER at the pinned toolkit 20260107_00.
+    """Payload for GMAIL_EMAIL_SENT_TRIGGER at the pinned toolkit 20261105_00.
 
-    Field set verified against Composio triggers_types API (2026-09); the pinned
-    version carries no message body or attachment list.
+    Field set verified against Composio triggers_types API (2026-11).
     """
 
+    attachment_list: list[Any] | None = Field(
+        None, description="List of attachments in the message"
+    )
     bcc: str | None = Field(None, description="Bcc recipients")
     cc: str | None = Field(None, description="Cc recipients")
     message_id: str | None = Field(None, description="Gmail message ID")
+    message_text: str | None = Field(None, description="Text content of the message")
     message_timestamp: str | None = Field(None, description="When it was sent, ISO 8601")
     payload: dict[str, Any] | None = Field(None, description="Raw Gmail payload")
     recipients: str | None = Field(
@@ -263,14 +267,6 @@ class GmailResourceId(BaseModel):
     id: str | None = None
 
 
-class GmailDraftEntry(BaseModel):
-    """One ``GMAIL_LIST_DRAFTS`` draft, read only for the message it wraps."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    message: dict[str, object] | None = None
-
-
 class GmailMessagePart(BaseModel):
     """One node of a Gmail message's MIME tree.
 
@@ -330,6 +326,10 @@ class GmailMessageView(BaseModel):
     content: GmailMessageContent | None = Field(
         default=None, exclude_if=lambda content: content is None
     )
+    # Read by the desk bucket's signals (List-Unsubscribe, Precedence); never on the wire.
+    headers: list[GmailHeader] = Field(default_factory=list, exclude=True)
+    # Set only on an Inbox desk run's own fetch, and kept whatever fields the fetch asked for.
+    bucket: DeskBucket | None = Field(default=None, exclude_if=lambda bucket: bucket is None)
 
 
 class GmailMessageRef(BaseModel):
@@ -505,3 +505,11 @@ class GmailFetchThreadResult(TypedDict):
     total_messages: int
     truncated: bool
     threads: list[GmailThreadResult]
+    #: Asked-for threads Gmail answered 404 for (deleted, or moved since they were listed).
+    missing_thread_ids: list[str]
+
+
+class GmailFetchThreadInlineResult(GmailFetchInlineResult):
+    """GMAIL_FETCH_THREAD past the offload size: every message flat, and the threads Gmail no longer has."""
+
+    missing_thread_ids: list[str]

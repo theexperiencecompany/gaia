@@ -18,6 +18,7 @@ from app.services.bot_service import (
     build_bot_message_request,
 )
 from app.services.browser.job_stop import RequesterChat
+from shared.py.analytics import PlatformIdentity
 
 
 def _conv(messages: list[dict]) -> ConversationDocument:
@@ -120,10 +121,26 @@ class TestEnforceRateLimit:
     async def test_rate_limit_exceeded(self, mock_redis: MagicMock) -> None:
         mock_redis.redis.incr = AsyncMock(return_value=BOT_RATE_LIMIT + 1)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with (
+            patch("app.services.bot_service.capture_limit_hit") as hit,
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await BotService.enforce_rate_limit("telegram", "user789")
 
         assert exc_info.value.status_code == 429
+        hit.assert_called_once_with(
+            PlatformIdentity("telegram", "user789"), "chat_messages", None, window="burst"
+        )
+
+    async def test_a_message_under_the_burst_limit_records_no_refusal(
+        self, mock_redis: MagicMock
+    ) -> None:
+        mock_redis.redis.incr = AsyncMock(return_value=BOT_RATE_LIMIT)
+
+        with patch("app.services.bot_service.capture_limit_hit") as hit:
+            await BotService.enforce_rate_limit("telegram", "user789")
+
+        hit.assert_not_called()
 
     async def test_rate_limit_at_boundary_passes(self, mock_redis: MagicMock) -> None:
         mock_redis.redis.incr = AsyncMock(return_value=BOT_RATE_LIMIT)
@@ -663,7 +680,16 @@ class TestLoadConversationHistory:
         mock_conversations.get = AsyncMock(
             return_value=_conv([{"type": "bot", "response": long_reply}])
         )
-        body = BotChatRequest(message="hello?", platform="telegram", platform_user_id="1685738115")
+        body = BotChatRequest(
+            message="hello?",
+            platform="telegram",
+            platform_user_id="1685738115",
+            channel_id=None,
+            is_dm=False,
+            file_ids=None,
+            file_data=None,
+            platform_message_id=None,
+        )
 
         request = await build_bot_message_request(body, "conv1", "user1")
 

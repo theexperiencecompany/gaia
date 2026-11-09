@@ -25,7 +25,7 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
 )
 from app.models.trigger_configs import TriggerConfigData
-from app.models.trigger_gate_models import AuthoredGateEdit, TriggerGate
+from app.models.trigger_gate_models import GateCondition, GateEdit, TriggerGate, TriggerGateView
 from app.schemas.common import ResponseModel
 from app.utils.cron_utils import get_next_run_time
 from app.utils.schedule import validate_recurring_schedule
@@ -374,6 +374,10 @@ class WorkflowWithIntegrations(Workflow):
         default=None,
         description="Required integrations the user has not connected yet.",
     )
+    gate: TriggerGateView | None = Field(
+        default=None,
+        description="The check a fired integration event must pass before this workflow runs",
+    )
 
 
 class CreateWorkflowRequest(BaseModel):
@@ -394,6 +398,10 @@ class CreateWorkflowRequest(BaseModel):
         description="Hex color for the user-chosen icon",
     )
     trigger_config: NewTriggerConfig = Field(description="Trigger configuration")
+    runs_only_when: GateCondition | None = Field(
+        default=None,
+        description="GAIA's drafted condition for an integration trigger, stored as GAIA's gate",
+    )
     steps: list[WorkflowStep] | None = Field(
         default=None,
         description="Optional pre-existing steps (e.g., from explore/community workflows). If provided, step generation will be skipped.",
@@ -444,6 +452,15 @@ class CreateWorkflowRequest(BaseModel):
             return ""
         return v.strip() if v else None
 
+    @model_validator(mode="after")
+    def runs_only_when_needs_an_event(self) -> "CreateWorkflowRequest":
+        """Refuse a drafted condition on a trigger that carries no event for it to read."""
+        if self.runs_only_when is not None and self.trigger_config.type is not (
+            TriggerType.INTEGRATION
+        ):
+            raise ValueError("runs_only_when needs an integration trigger")
+        return self
+
 
 class CreateWorkflowFromTodoRequest(BaseModel):
     """Request model for the todo → workflow migration helper.
@@ -469,7 +486,7 @@ class UpdateWorkflowRequest(BaseModel):
     icon_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     steps: list[WorkflowStep] | None = Field(default=None)
     trigger_config: NewTriggerConfig | None = Field(default=None)
-    gate: AuthoredGateEdit | None = Field(
+    gate: GateEdit | None = Field(
         default=None,
         description="Absent keeps the gate, null removes it, a value replaces it",
     )

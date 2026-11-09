@@ -5,10 +5,13 @@ The proxy attaches the user's OAuth token server-side; tools only need
 user_id from auth_credentials.
 """
 
+from collections import Counter
 from collections.abc import Sequence
 import datetime
+from http import HTTPStatus
 import re
 import time
+from typing import NamedTuple
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
@@ -23,6 +26,7 @@ from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
+from app.models.agent_config import read_agent_configurable
 from app.models.agent_models import current_run_config, current_stream_writer
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
@@ -34,6 +38,7 @@ from app.models.composio_schemas.gmail import (
     GmailContextSnapshot,
     GmailFetchInlineResult,
     GmailFetchPartialResult,
+    GmailFetchThreadInlineResult,
     GmailFetchThreadResult,
     GmailLabelCounts,
     GmailLabelDetail,
@@ -49,6 +54,7 @@ from app.models.composio_schemas.gmail import (
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.integrations.gmail import GmailThreadData
 from app.models.integrations.gmail_messages import GmailApiMessage, RelayedGmailMessage
+from app.services.composio.custom_tools.fetched_mail_buckets import installed_fetched_mail_bucketer
 from app.services.composio.custom_tools.gmail_constants import (
     _DAYS_PER_UNIT,
     FETCH_CONCURRENCY,
@@ -65,7 +71,7 @@ from app.services.composio.custom_tools.gmail_constants import (
 )
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request_sync
 from app.services.contact_service import build_contact_index
-from app.utils.concurrency import ContextThreadPoolExecutor
+from app.utils.concurrency import ContextThreadPoolExecutor, run_on_captured_loop
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
@@ -461,12 +467,39 @@ def _fetch_and_shape(
             reason=exc.reason,
         )
 
+    full_views = _bucketed_for_todo(user_id, request, full_views)
     if len(full_views) > OFFLOAD_MIN_MESSAGES:
         return _format_inline_result(_file_bound_views(full_views), truncated=truncated)
     _emit_email_card(full_views)
     return _format_inline_result(
         [project_message_view(view, request.fields) for view in full_views], truncated=truncated
     )
+
+
+def _bucketed_for_todo(
+    user_id: str, request: FetchMessagesInput, views: list[GmailMessageView]
+) -> list[GmailMessageView]:
+    """Return the views a tracked todo run fetched, bucketed where its todo buckets mail; as-is otherwise.
+
+    body_processing "none" is the desk's count sweep, so only mail it triages is bucketed.
+    """
+    todo_id = read_agent_configurable(current_run_config()).active_todo_id
+    if not todo_id or not views or request.body_processing == "none":
+        return views
+    bucketer = installed_fetched_mail_bucketer()
+    if bucketer is None:
+        log.error(
+            f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: no mail bucketer installed", todo_id=todo_id
+        )
+        return views
+    bucketed = run_on_captured_loop(bucketer(user_id, todo_id, views))
+    log.info(
+        f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: mail bucketed for its todo",
+        todo_id=todo_id,
+        fetched=len(views),
+        buckets=dict(Counter(view.bucket or "unbucketed" for view in bucketed)),
+    )
+    return bucketed
 
 
 def _file_bound_views(views: list[GmailMessageView]) -> list[dict[str, object]]:
@@ -496,20 +529,26 @@ def _thread_needs_full(request: FetchThreadInput) -> bool:
 
 def _fetch_one_thread(
     user_id: str, thread_id: str, *, needs_full: bool, body_processing: BodyProcessingLiteral
-) -> list[GmailMessageView]:
-    """Fetch one thread and return its messages as full views, in thread order.
+) -> list[GmailMessageView] | None:
+    """Fetch one thread and return its messages as full views, in thread order; None when Gmail has no such thread.
 
     Reuses build_message_view so a thread message is shaped identically to a
     GMAIL_FETCH_MESSAGES result (normalized body, attachment metadata, same
-    field contract) — one read path, not a divergent raw thread view. Lets proxy
-    exceptions propagate so the aggregator attaches partial state.
+    field contract) — one read path, not a divergent raw thread view. Lets every
+    other proxy error propagate so the aggregator attaches partial state.
     """
-    data = _gmail_proxy(
-        user_id,
-        endpoint=f"{GMAIL_API_BASE}/users/me/threads/{thread_id}",
-        method="GET",
-        query={"format": GMAIL_FORMAT_FULL if needs_full else GMAIL_FORMAT_METADATA},
-    )
+    try:
+        data = _gmail_proxy(
+            user_id,
+            endpoint=f"{GMAIL_API_BASE}/users/me/threads/{thread_id}",
+            method="GET",
+            query={"format": GMAIL_FORMAT_FULL if needs_full else GMAIL_FORMAT_METADATA},
+        )
+    except AppError as exc:
+        # A thread deleted or moved since it was listed: the batch's other threads still stand.
+        if exc.status_code == HTTPStatus.NOT_FOUND:
+            return None
+        raise
     if not isinstance(data, dict):
         return []
     return [
@@ -518,22 +557,29 @@ def _fetch_one_thread(
     ]
 
 
-def _aggregate_threads(
-    user_id: str, request: FetchThreadInput
-) -> tuple[list[tuple[str, list[GmailMessageView]]], list[GmailMessageView], bool]:
+class _ThreadBatch(NamedTuple):
+    """What one FETCH_THREAD batch read: each found thread's views, every view, and what it left out."""
+
+    threads: list[tuple[str, list[GmailMessageView]]]
+    flat_views: list[GmailMessageView]
+    truncated: bool
+    missing_thread_ids: list[str]
+
+
+def _aggregate_threads(user_id: str, request: FetchThreadInput) -> _ThreadBatch:
     """Fetch every requested thread over the bounded pool, honoring the total message cap.
 
-    Returns (threads, flat_views, truncated) where threads keeps the
-    per-thread grouping as (thread_id, views) and flat_views is every message
-    view. Raises _PartialResultError on a mid-fetch error once anything succeeded.
+    A thread Gmail no longer has is listed as missing and the rest still come back.
+    Raises _PartialResultError on any other mid-fetch error once anything succeeded.
     """
     needs_full = _thread_needs_full(request)
     cap = min(request.max_messages or MAX_ABSOLUTE_MESSAGES, MAX_ABSOLUTE_MESSAGES)
     threads: list[tuple[str, list[GmailMessageView]]] = []
     flat_views: list[GmailMessageView] = []
+    missing_thread_ids: list[str] = []
     truncated = False
 
-    def fetch(thread_id: str) -> tuple[str, list[GmailMessageView]]:
+    def fetch(thread_id: str) -> tuple[str, list[GmailMessageView] | None]:
         return thread_id, _fetch_one_thread(
             user_id, thread_id, needs_full=needs_full, body_processing=request.body_processing
         )
@@ -541,6 +587,9 @@ def _aggregate_threads(
     try:
         with ContextThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
             for thread_id, views in executor.map(fetch, request.thread_ids):
+                if views is None:
+                    missing_thread_ids.append(thread_id)
+                    continue
                 remaining = cap - len(flat_views)
                 if remaining <= 0:
                     truncated = True
@@ -561,19 +610,19 @@ def _aggregate_threads(
         )
         raise _PartialResultError(reason=str(exc), partial_messages=flat_views) from exc
 
-    return threads, flat_views, truncated
+    return _ThreadBatch(threads, flat_views, truncated, missing_thread_ids)
 
 
 def _summarize_threads(
     user_id: str, request: FetchThreadInput
-) -> GmailFetchThreadResult | GmailFetchPartialResult | GmailFetchInlineResult:
+) -> GmailFetchThreadResult | GmailFetchPartialResult | GmailFetchThreadInlineResult:
     """Top-level FETCH_THREAD orchestrator: fetch, then group by thread or return flat.
 
     Mirrors _fetch_and_shape: past OFFLOAD_MIN_MESSAGES the messages come back
     flat and whole (each carries its threadId), for compaction to file as records.
     """
     try:
-        threads, flat_views, truncated = _aggregate_threads(user_id, request)
+        threads, flat_views, truncated, missing_thread_ids = _aggregate_threads(user_id, request)
     except _PartialResultError as exc:
         return _format_partial_result(
             [project_message_view(view, request.fields) for view in exc.partial_messages],
@@ -581,7 +630,10 @@ def _summarize_threads(
         )
 
     if len(flat_views) > OFFLOAD_MIN_MESSAGES:
-        return _format_inline_result(_file_bound_views(flat_views), truncated=truncated)
+        return {
+            **_format_inline_result(_file_bound_views(flat_views), truncated=truncated),
+            "missing_thread_ids": missing_thread_ids,
+        }
 
     grouped: list[GmailThreadResult] = [
         {
@@ -597,6 +649,7 @@ def _summarize_threads(
         "total_messages": len(flat_views),
         "truncated": truncated,
         "threads": grouped,
+        "missing_thread_ids": missing_thread_ids,
     }
 
 
@@ -1025,7 +1078,7 @@ def register_gmail_custom_tools(composio: Composio) -> list[str]:
         request: FetchThreadInput,
         execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, object],
-    ) -> GmailFetchThreadResult | GmailFetchPartialResult | GmailFetchInlineResult:
+    ) -> GmailFetchThreadResult | GmailFetchPartialResult | GmailFetchThreadInlineResult:
         """Reconstruct one or more Gmail conversation threads by id.
 
         The canonical thread-read tool. Fetches each ``thread_id`` (batched,
@@ -1037,7 +1090,8 @@ def register_gmail_custom_tools(composio: Composio) -> list[str]:
         Get thread ids from the ``threadId`` on ``GMAIL_FETCH_MESSAGES``
         results. Small results render the email-list card, grouped by thread;
         large ones come back flat (each message carrying ``threadId`` to
-        regroup) for compaction to file as JSONL records.
+        regroup) for compaction to file as JSONL records. A thread Gmail no
+        longer has is named in ``missing_thread_ids``; the rest still come back.
         """
         return _summarize_threads(
             CustomToolAuthCredentials.parse(auth_credentials).user_id, request

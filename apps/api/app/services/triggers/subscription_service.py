@@ -22,6 +22,7 @@ from pydantic_core import ErrorDetails
 from app.constants.todos import TodoActivityEvent
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument
+from app.models.trigger_gate_models import TriggerGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
@@ -84,6 +85,7 @@ async def register_subscription(
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS,
     trigger_data: Mapping[str, object] | None = None,
     account_id: str | None = None,
+    gate: TriggerGate | None = None,
 ) -> tuple[TriggerSubscription, ValidationOutcome, bool]:
     """Validate, register with Composio, and store one subscription on todo_id.
 
@@ -129,6 +131,28 @@ async def register_subscription(
             f"Invalid configuration for '{trigger_name}': {first_error['msg']}",
         ) from e
 
+    # Built before Composio is called: a row its own rules refuse (a gate on a
+    # watch that starts no run) must leave no trigger instance upstream.
+    try:
+        subscription = TriggerSubscription(
+            trigger_name=trigger_name,
+            account_id=account_id,
+            conditions=outcome.conditions,
+            match=match,
+            action=action,
+            cooldown_seconds=cooldown_seconds,
+            resolution=(
+                SubscriptionResolution.TRIGGER_ID
+                if handler.registers_instances
+                else SubscriptionResolution.ACCOUNT
+            ),
+            trigger_data=dict(trigger_data or {}),
+            gate=gate,
+        )
+    except ValidationError as e:
+        refusal: ErrorDetails = e.errors()[0]
+        raise _fail("invalid_subscription", f"Invalid subscription: {refusal['msg']}") from e
+
     try:
         trigger_ids = await TriggerService.register_triggers(
             user_id, todo_id, trigger_name, config, raise_on_failure=True
@@ -145,22 +169,7 @@ async def register_subscription(
             f"Registering '{trigger_name}' returned no trigger instance, so the "
             "subscription would never fire. Check the trigger configuration.",
         )
-
-    subscription = TriggerSubscription(
-        trigger_name=trigger_name,
-        account_id=account_id,
-        conditions=outcome.conditions,
-        match=match,
-        action=action,
-        cooldown_seconds=cooldown_seconds,
-        resolution=(
-            SubscriptionResolution.TRIGGER_ID
-            if handler.registers_instances
-            else SubscriptionResolution.ACCOUNT
-        ),
-        composio_trigger_ids=trigger_ids,
-        trigger_data=dict(trigger_data or {}),
-    )
+    subscription.composio_trigger_ids = trigger_ids
 
     stored = await store_subscription(
         todo,

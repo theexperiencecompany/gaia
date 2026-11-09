@@ -201,6 +201,13 @@ IRREVERSIBLE_UNAPPROVED_BRIEF = (
     "user's yes first: prepare it (the draft, the exact items) and finish with outcome ask."
 )
 
+#: What a delegator reads when a worker ended with no answer. Silence is not success:
+#: the literal "Task completed" once stood in here and comms told the user it was done.
+NO_ANSWER_NOTICE = (
+    "{name} ended without reporting a result, so nothing confirms any of it happened. "
+    "Treat the work as not done, and never report it as done without other evidence."
+)
+
 #: The tag both playbook briefs open with. The executor's graph loop reads it
 #: off the task turn to know the run owes a decision, so the briefs and the
 #: gate cannot drift apart on a string.

@@ -1,10 +1,9 @@
 """Trigger gates: the one JEV call made about a fired event before it costs a run.
 
-The desk preset is the trigger-gate eval's V4 request, byte for byte (420
-founder-labelled emails, 0 needs_you false skips on the holdout). Skip only at
-P(not_needed) >= 0.95; every other answer, and every failure, runs. Inside the
-user's quiet hours the same call also asks the eval's urgent question: wake the
-user only at P(urgent) >= 0.80, and hold the rest, every failure included.
+An authored gate skips only at P(not_needed) >= 0.95; every other answer, and every
+failure, runs. Inside the user's quiet hours the same call also asks the eval's urgent
+question: wake the user only at P(urgent) >= 0.80, and hold the rest, every failure
+included. The desk preset asks nothing of its own: it reads the email verdict.
 """
 
 from collections.abc import Mapping
@@ -31,7 +30,7 @@ class GateAuthor(StrEnum):
 
 
 class SystemGatePreset(StrEnum):
-    """A gate whose question, criteria and wording live in code, not on the job."""
+    """A gate whose decision and wording live in code, not on the job."""
 
     INBOX_DESK = "inbox_desk"
 
@@ -41,6 +40,16 @@ class GateOwner(StrEnum):
 
     WORKFLOW = "workflow"
     TODO = "todo"
+
+
+class GateEditAction(StrEnum):
+    """What one edit did to a job's gate, as trigger:gate_edited reports it."""
+
+    ADDED = "added"
+    EDITED = "edited"
+    DISABLED = "disabled"
+    ENABLED = "enabled"
+    REMOVED = "removed"
 
 
 class GateOutcome(StrEnum):
@@ -99,30 +108,20 @@ class GateQuestion:
         return {self.run_label: self.run_meaning, self.skip_label: self.skip_meaning}
 
 
-@dataclass(frozen=True, slots=True)
-class SystemGateSpec:
-    """A preset: its question, the job text JEV reads, and the condition the user sees."""
-
-    question: GateQuestion
-    automation: str
-    condition: str
-
-
 TRIGGER_GATE_SKIP_PROBABILITY: Final = 0.95
 # p95 measured at 370 ms; a slower answer runs the job as if the gate were not there.
 TRIGGER_GATE_JEV_TIMEOUT_SECONDS: Final = 3.0
 TRIGGER_GATE_CONDITION_MAX_CHARS: Final = 300
+# How many of its latest skips a gate keeps for its panel; older ones live on only in its count.
+GATE_RECENT_SKIPS_KEPT: Final = 5
 # Each event field, the snippet included, is clipped to this before JEV reads it.
 TRIGGER_GATE_FIELD_MAX_CHARS: Final = 300
 # An owner's title and description as JEV reads them; a long todo note costs tokens on every event.
 TRIGGER_GATE_AUTOMATION_MAX_CHARS: Final = 600
 TRIGGER_GATE_QUESTION_KEY: Final = "gate"
-# The run history line: which event was skipped, the condition it missed and how sure JEV was.
-TRIGGER_GATE_SKIPPED_SUMMARY: Final = (
-    'Skipped: {event}. Not a match for "{condition}" ({certainty:.0%} sure).'
-)
 # How a skip names its event, clipped so one line stays one line.
 TRIGGER_GATE_EVENT_LABEL_MAX_CHARS: Final = 120
+TRIGGER_GATE_EVENT_LABEL_SEPARATOR: Final = " · "
 TRIGGER_GATE_UNTITLED_EVENT: Final = "a {trigger_name} event"
 
 TRIGGER_GATE_URGENT_QUESTION_KEY: Final = "urgent"
@@ -172,8 +171,8 @@ QUIET_HOURS_HELD_SUMMARY: Final = "Held until your quiet hours ended"
 QUIET_HOURS_CONTEXT_KEY: Final = "quiet_hours"
 
 # Gate kinds whose skip may stop a run; any other kind is decided and recorded, then runs.
-# Authored stays out while the eval's authored template loses needs_you mail the desk preset runs.
-ENFORCED_GATE_KINDS: Final = frozenset({GateKind.SYSTEM})
+# Authored is enforced by founder decision although its template loses needs_you mail the desk runs.
+ENFORCED_GATE_KINDS: Final = frozenset({GateKind.SYSTEM, GateKind.AUTHORED})
 
 # Every email on these continues a thread or starts one; a continued conversation runs unasked.
 GMAIL_MESSAGE_TRIGGERS: Final = frozenset(
@@ -192,37 +191,7 @@ AUTHORED_GATE_QUESTION: Final = "Does this event need the automation to run?"
 AUTHORED_GATE_RUN_LABEL: Final = "needed"
 AUTHORED_GATE_SKIP_MEANING: Final = "The event clearly does not meet that condition."
 
-_INBOX_DESK = SystemGateSpec(
-    question=GateQuestion(
-        question="Is a real person or a real obligation waiting on the user in this email?",
-        run_label="needs_you",
-        run_meaning=(
-            "A real person or a real obligation is waiting on the user: a conversation they are "
-            "part of; mail from a cofounder, teammate, user or customer; a support case awaiting "
-            "their reply; a meeting or booking of theirs; or 'action required' from a service "
-            "they actually use, such as billing past due, spend limit reached, account "
-            "verification, or a team invite from someone they work with."
-        ),
-        skip_label=TRIGGER_GATE_SKIP_LABEL,
-        # The eval's text, its lowercase "payment" included: a reworded criterion is an unmeasured gate.
-        skip_meaning=(
-            "Nothing is waiting on the user. payment received, invoice paid, budget warnings, "
-            "maintenance notices, 'we received your application or message', production "
-            "monitoring alerts, which belong to alerting rather than the inbox. Also: Cold "
-            "outreach, including fake 'Re:' threads from strangers; newsletters, marketing and "
-            "product updates; SEO, uptime and analytics digests; login codes, new-device, "
-            "password, stale-account and security notices; nags and payment reminders from "
-            "tools the user does not use."
-        ),
-    ),
-    automation=(
-        "Inbox desk: when new mail reaches the user's inbox, open a todo for every thread that "
-        "needs the user's reply or action, draft replies, and note meetings, bookings and "
-        "deadlines. Mail that needs nothing goes, at most, into the next morning briefing."
-    ),
-    condition="a real person or a real obligation is waiting on you",
-)
-
-SYSTEM_GATE_PRESETS: Final[Mapping[SystemGatePreset, SystemGateSpec]] = MappingProxyType(
-    {SystemGatePreset.INBOX_DESK: _INBOX_DESK}
+# What the user reads a system gate as; INBOX_DESK runs on the email verdict's bucket.
+SYSTEM_GATE_CONDITIONS: Final[Mapping[SystemGatePreset, str]] = MappingProxyType(
+    {SystemGatePreset.INBOX_DESK: "a real person or a real obligation is waiting on you"}
 )

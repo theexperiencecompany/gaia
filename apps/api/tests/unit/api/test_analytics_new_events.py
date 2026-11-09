@@ -5,7 +5,6 @@ after success. Each test drives the real route with the service seam mocked
 and asserts the exact event model and the UserId it is attributed to.
 """
 
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,7 +19,6 @@ from app.constants.memory import MemoryDocType
 from app.models.files_models import FileDocument
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.integration_models import Integration
-from app.models.mail_models import GmailMessageResource
 from app.models.memory_models import MemoryDocument
 from app.models.notification.notification_models import NotificationRecord
 from app.models.payment_models import PlanType
@@ -53,24 +51,6 @@ from shared.py.analytics.catalog.integrations import (
     McpConnectionTested,
     SkillDisabled,
     SkillEnabled,
-)
-from shared.py.analytics.catalog.mail import (
-    EmailArchived,
-    EmailDraftCreated,
-    EmailDraftDeleted,
-    EmailDraftUpdated,
-    EmailLabelApplied,
-    EmailLabelCreated,
-    EmailLabelDeleted,
-    EmailLabelRemoved,
-    EmailLabelUpdated,
-    EmailMarkedRead,
-    EmailMarkedUnread,
-    EmailMovedToInbox,
-    EmailStarred,
-    EmailTrashed,
-    EmailUnstarred,
-    EmailUntrashed,
 )
 from shared.py.analytics.catalog.memory import MemoryCreated, MemoryDocumentUpdated, MemoryUpdated
 from shared.py.analytics.catalog.notifications import (
@@ -526,222 +506,6 @@ class TestImageNewEvents:
             )
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(UserId(UID), ImageDescribed())
-
-
-# ---------------------------------------------------------------------------
-# Mail triage (representative sample; remaining label/draft variants share code)
-# ---------------------------------------------------------------------------
-
-MAIL = "app.api.v1.endpoints.mail"
-
-
-@pytest.fixture
-def _gmail_bypass() -> Iterator[None]:
-    with patch(
-        "app.api.v1.dependencies.google_scope_dependencies.check_integration_status",
-        new_callable=AsyncMock,
-        return_value=True,
-    ):
-        yield
-
-
-@pytest.mark.usefixtures("_gmail_bypass")
-class TestMailNewEvents:
-    async def test_mark_read_captures_count(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.mark_messages_as_read", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1"), GmailMessageResource(id="m2")]
-            resp = await client.post(
-                "/api/v1/gmail/mark-as-read", json={"message_ids": ["m1", "m2"]}
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailMarkedRead(message_count=2))
-
-    async def test_star_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.star_messages", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/star", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailStarred(message_count=1))
-
-    async def test_trash_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{MAIL}.trash_messages", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/trash", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailTrashed(message_count=1))
-
-    async def test_create_label_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailToolResult
-
-        with (
-            patch(f"{MAIL}.create_label", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = GmailToolResult.model_validate({"id": "L1", "name": "Imp"})
-            resp = await client.post("/api/v1/gmail/labels", json={"name": "Imp"})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailLabelCreated())
-
-    async def test_apply_label_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.apply_labels", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post(
-                "/api/v1/gmail/messages/apply-label",
-                json={"message_ids": ["m1"], "label_ids": ["L1"]},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailLabelApplied(message_count=1))
-
-    async def test_create_draft_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailToolResult
-
-        with (
-            patch(f"{MAIL}.create_draft", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = GmailToolResult.model_validate({"id": "d1", "message": {"id": "m1"}})
-            resp = await client.post(
-                "/api/v1/gmail/drafts",
-                json={"to": ["a@t.com"], "subject": "S", "body": "B"},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailDraftCreated())
-
-    async def test_update_draft_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailToolResult
-
-        with (
-            patch(f"{MAIL}.update_draft", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = GmailToolResult.model_validate({"id": "d1", "message": {"id": "m1"}})
-            resp = await client.put(
-                "/api/v1/gmail/drafts/d1",
-                json={"to": ["a@t.com"], "subject": "S", "body": "B"},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailDraftUpdated())
-
-    async def test_delete_draft_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{MAIL}.delete_draft", new_callable=AsyncMock, return_value=True),
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            resp = await client.delete("/api/v1/gmail/drafts/d1")
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailDraftDeleted())
-
-    async def test_mark_unread_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.mark_messages_as_unread", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/mark-as-unread", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailMarkedUnread(message_count=1))
-
-    async def test_unstar_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.unstar_messages", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/unstar", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailUnstarred(message_count=1))
-
-    async def test_untrash_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{MAIL}.untrash_messages", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/untrash", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailUntrashed(message_count=1))
-
-    async def test_archive_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.archive_messages", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/archive", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailArchived(message_count=1))
-
-    async def test_move_to_inbox_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.move_to_inbox", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/move-to-inbox", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailMovedToInbox(message_count=1))
-
-    async def test_update_label_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailToolResult
-
-        with (
-            patch(f"{MAIL}.update_label_service", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = GmailToolResult.model_validate({"id": "L1", "name": "Renamed"})
-            resp = await client.put("/api/v1/gmail/labels/L1", json={"name": "Renamed"})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailLabelUpdated())
-
-    async def test_delete_label_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{MAIL}.delete_label", new_callable=AsyncMock, return_value=True),
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            resp = await client.delete("/api/v1/gmail/labels/L1")
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailLabelDeleted())
-
-    async def test_remove_labels_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.remove_labels", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post(
-                "/api/v1/gmail/messages/remove-label",
-                json={"message_ids": ["m1"], "label_ids": ["L1"]},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailLabelRemoved(message_count=1))
 
 
 # ---------------------------------------------------------------------------

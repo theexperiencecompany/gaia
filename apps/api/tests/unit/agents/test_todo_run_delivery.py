@@ -226,7 +226,9 @@ class TestABriefingThatOwnsItsForm:
         seams.in_app.assert_not_awaited()
         assert seams.event().outcome == "silenced"
 
-    async def test_a_thread_todos_result_is_still_written_up_by_comms(self) -> None:
+    @pytest.mark.regression
+    async def test_a_thread_todos_alert_reaches_the_user_as_written(self) -> None:
+        """Regression: comms retold a thread's one-email alert, dropping its who, what and where."""
         thread = _todo(
             external_ref=todo_models.ExternalRef(
                 source=todo_models.ExternalRefSource.GMAIL_THREAD, id="t1"
@@ -235,7 +237,7 @@ class TestABriefingThatOwnsItsForm:
         with _seams(todo=thread) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
-        assert seams.in_app.await_args.args[0].content.body == "Deploy failed."
+        assert seams.in_app.await_args.args[0].content.body == "report"
 
 
 class TestAOneTimeTodoAlwaysAnswers:

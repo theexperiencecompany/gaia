@@ -177,11 +177,9 @@ async def _binding_index(mongo_db: AsyncIOMotorDatabase) -> None:
     Dropped first: the test database outlives a run, and an index left by an older
     spec would otherwise stand in for the one under test.
     """
-    binding = indexes.CONVERSATION_TODO_BINDING_KEYS
-    assert not isinstance(binding, str)
     collection = mongo_db["conversations"]
     for spec in await collection.list_indexes().to_list(None):
-        if dict(spec["key"]) == dict(binding):
+        if list(spec["key"].items()) == indexes.CONVERSATION_TODO_BINDING_KEYS:
             await collection.drop_index(spec["name"])
     await collection.create_index(
         indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
@@ -324,7 +322,7 @@ async def _run(todo_id: str, owner: AuthenticatedUser) -> None:
     """One run of the todo, through the worker's own run step."""
     doc = await todo_repository.get_by_id(todo_id)
     assert doc is not None
-    await _execute_on_executor(doc, user_data=owner, user_tz=Timezone.utc())
+    await _execute_on_executor(doc, user_tz=Timezone.utc(), user_data=owner)
 
 
 async def _chat_of(mongo_db: AsyncIOMotorDatabase, todo_id: str) -> dict[str, Any]:

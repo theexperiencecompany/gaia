@@ -1,6 +1,7 @@
 """Shared logic for subagent invocation, used by delegation.py and executor_tool.py."""
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 import time
 from typing import Any, TypedDict, cast
@@ -41,6 +42,7 @@ from app.constants.agents import (
     DONE_EVIDENCE_RULE,
     IRREVERSIBLE_APPROVED_BRIEF,
     IRREVERSIBLE_UNAPPROVED_BRIEF,
+    NO_ANSWER_NOTICE,
     TIME_HORIZON_BRIEF,
     AgentTag,
     wrap_agent_payload,
@@ -51,7 +53,7 @@ from app.constants.general import (
     FINISH_TASK_NAME,
 )
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
-from app.constants.llm import EXECUTOR_RECURSION_LIMIT
+from app.constants.llm import BUDGET_STOP_METADATA_KEY, EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread, build_agent_config
@@ -60,6 +62,7 @@ from app.helpers.message_helpers import (
     create_system_message,
     format_files_list,
 )
+from app.models.agent_config import AgentConfigurableView
 from app.models.agent_models import (
     AgentConfigurable,
     AgentRunnableConfig,
@@ -83,9 +86,8 @@ from shared.py.wide_events import log
 def _finish_task_result(chunk: ToolMessage) -> str | None:
     """Return the finish_task chunk's textual content, or None for any other tool result.
 
-    finish_task carries the final answer in its return value; capturing it makes
-    the parent handoff return the actual content instead of the literal "Task
-    completed" fallback. Subagents with include_finish_task=False never enter this branch.
+    finish_task carries the final answer in its return value, so the parent handoff
+    returns it. Subagents with include_finish_task=False never enter this branch.
     """
     if chunk.name == FINISH_TASK_NAME and isinstance(chunk.content, str):
         return chunk.content
@@ -126,6 +128,8 @@ class SubagentOutcome:
     interrupt: HilInterruptPayload | None = None
     run_messages: tuple[AnyMessage, ...] = ()
     stopped: bool = False
+    #: False when the run ended without an answer; text then says nothing confirms the work.
+    answered: bool = True
 
     @property
     def paused(self) -> bool:
@@ -303,17 +307,26 @@ class _StreamRun:
     subagent_id: str | None
     #: The finish_task return value, which is the answer over anything the run said.
     finish_result: str | None = None
+    #: The budget wall's stop text: it answers in place of a model, so no token streams it.
+    budget_stop: str | None = None
     held: HeldReplies = field(default_factory=HeldReplies)
     emitted_tool_calls: set[str] = field(default_factory=set)
     tool_ran: bool = False
     pending_approvals: list[HilInterruptPayload] = field(default_factory=list)
     run_messages: list[AnyMessage] = field(default_factory=list)
+    #: The run's own thread, which build_agent_config stamps on every chunk its model streams.
+    thread_id: str | None = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.thread_id = AgentConfigurableView.model_validate(self.ctx.configurable).thread_id
 
     @property
     def complete_message(self) -> str:
-        """What the run answered: finish_task's result, else the replies that called no tool."""
+        """What the run answered: finish_task's result, the budget stop, else the replies that called no tool."""
         if self.finish_result is not None:
             return self.finish_result
+        if self.budget_stop is not None:
+            return self.budget_stop
         return self.held.reply_text()
 
 
@@ -334,8 +347,12 @@ def _process_messages_payload(
     if metadata.get("silent"):
         return
 
+    # A spawned subagent's chunks share this stream: its reply and finish_task are its own.
+    nested = metadata.get("agent_thread_id", run.thread_id) != run.thread_id
+
     if chunk and isinstance(chunk, AIMessageChunk):
-        run.held.hold(chunk, metadata)
+        if not nested:
+            run.held.hold(chunk, metadata)
 
         # Stream reasoning token by token, carrying subagent_id for step nesting
         # (empty for non-reasoning models). Deltas are per chunk; the stream
@@ -352,7 +369,7 @@ def _process_messages_payload(
     # inline media (base64 image blocks) never streams to the frontend.
     elif chunk and isinstance(chunk, ToolMessage):
         content_str = extract_text_content(chunk.content)
-        if (finish_result := _finish_task_result(chunk)) is not None:
+        if not nested and (finish_result := _finish_task_result(chunk)) is not None:
             run.finish_result = finish_result
         if run.stream_writer and claim_tool_output(
             run.ctx.stream_id or "", chunk.tool_call_id, run.subagent_id
@@ -363,6 +380,13 @@ def _process_messages_payload(
                 subagent_id=run.subagent_id,
             )
             run.stream_writer({"tool_output": tool_output_payload.model_dump(exclude_none=True)})
+
+
+def _note_budget_stop(run: _StreamRun, messages: Sequence[AnyMessage]) -> None:
+    """Keep the budget wall's stop text: it answers in place of a model, so no token streams it."""
+    for msg in messages:
+        if isinstance(msg, AIMessage) and msg.response_metadata.get(BUDGET_STOP_METADATA_KEY):
+            run.budget_stop = extract_text_content(msg.content)
 
 
 async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) -> None:
@@ -390,6 +414,7 @@ async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) 
         # streams them as partial chunks. Captured for the call record.
         if isinstance(state_update, dict):
             agent_update: _MessagesChannel = cast(_MessagesChannel, state_update)
+            _note_budget_stop(run, agent_update.get("messages", []))
             announcing = [
                 msg for msg in agent_update.get("messages", []) if getattr(msg, "tool_calls", None)
             ]
@@ -425,13 +450,21 @@ def _finalize_run(run: _StreamRun) -> SubagentOutcome:
             run_messages=tuple(run.run_messages),
         )
 
+    if not run.complete_message:
+        log.warning("subagent_ended_without_answer", subagent_name=run.ctx.agent_name)
+        return SubagentOutcome(
+            text=NO_ANSWER_NOTICE.format(name=f"The {run.ctx.agent_name} run"),
+            run_messages=tuple(run.run_messages),
+            answered=False,
+        )
+
     # A worker that only narrated did no work: say so, so its delegator re-issues it.
     # The executor is nobody's delegate; its words are its answer (collection runs report).
     if (
         run.ctx.integration_id != EXECUTOR_INTEGRATION_ID
+        and run.budget_stop is None
         and not run.tool_ran
         and not run.emitted_tool_calls
-        and run.complete_message
     ):
         log.warning("subagent_returned_narration_only", subagent_name=run.ctx.agent_name)
         final_message = (
@@ -440,7 +473,7 @@ def _finalize_run(run: _StreamRun) -> SubagentOutcome:
             "explicit instruction to perform the action."
         )
     else:
-        final_message = run.complete_message or "Task completed"
+        final_message = run.complete_message
     initial_state: SubagentInitialState = run.ctx.initial_state
     log.set(
         subagent={
@@ -552,8 +585,8 @@ async def execute_subagent_stream(
                 observe_subagent_run(
                     time.perf_counter() - segment_start, subagent_id=label, status="cancelled"
                 )
-                # What the run said so far, not the finished-run text: that one reads
-                # "Task completed" or tells the executor to re-issue what it just stopped.
+                # What the run said so far, not the finished-run text: that one says
+                # nothing was confirmed or tells the executor to re-issue what it just stopped.
                 return replace(
                     outcome,
                     text=wrap_agent_payload(
@@ -656,7 +689,11 @@ async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutc
         )
     if not _snapshot_messages(snapshot):
         return None
-    return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
+    if final_text := _final_text_from_snapshot(snapshot):
+        return SubagentOutcome(text=final_text)
+    return SubagentOutcome(
+        text=NO_ANSWER_NOTICE.format(name=f"The {ctx.agent_name} run"), answered=False
+    )
 
 
 async def _address_resume(

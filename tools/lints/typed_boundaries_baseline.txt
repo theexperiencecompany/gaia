@@ -52,7 +52,6 @@ apps/api/app/db/chroma/public_integrations_store.py	TB001
 apps/api/app/db/chroma/public_integrations_store.py	TB002
 apps/api/app/db/repositories/usage_daily.py	TB002
 apps/api/app/memory/chroma_store.py	TB002
-apps/api/app/memory/context.py	TB002
 apps/api/app/memory/extraction.py	TB002
 apps/api/app/memory/mappers.py	TB002
 apps/api/app/memory/pg_store/_session.py	TB001
@@ -61,15 +60,12 @@ apps/api/app/models/composio_schemas/github_tools.py	TB001
 apps/api/app/models/composio_schemas/github_tools.py	TB002
 apps/api/app/models/composio_schemas/slack_tools.py	TB002
 apps/api/app/schemas/desktop_schemas.py	TB001
-apps/api/app/schemas/errors.py	TB001
-apps/api/app/schemas/errors.py	TB002
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
 apps/api/app/scripts/sync_user_workspaces.py	TB002
 apps/api/app/services/_vfs_scheduler.py	TB002
 apps/api/app/services/bot_token_service.py	TB001
 apps/api/app/services/bot_token_service.py	TB002
-apps/api/app/services/calendar_service.py	TB002
 apps/api/app/services/chat/artifact_forwarder.py	TB001
 apps/api/app/services/chat/artifact_forwarder.py	TB002
 apps/api/app/services/chat/artifacts_registry.py	TB001
@@ -89,7 +85,6 @@ apps/api/app/services/hil/notify.py	TB001
 apps/api/app/services/hil/notify.py	TB002
 apps/api/app/services/llm_metering.py	TB001	deferred-until=2026-12-31; resolve_channel takes the raw configurable Mapping[str, Any]; touched by the llm-cost single-source fix, which leaves it as it was (decided 2026-10-08)
 apps/api/app/services/llm_metering.py	TB002	deferred-until=2026-12-31; 37 string-key reads, mostly parsing provider response_metadata/usage_metadata and the wide-event fields; a typed provider-reply model is its own change, out of scope for the llm-cost single-source fix that touched the file (decided 2026-10-08)
-apps/api/app/services/mail/email_importance_service.py	TB001
 apps/api/app/services/mcp/device_connector.py	TB002
 apps/api/app/services/mcp/device_exec.py	TB002
 apps/api/app/services/mcp/resilient_adapter.py	TB001
@@ -113,8 +108,6 @@ apps/api/app/services/triggers/handlers/notion.py	TB001
 apps/api/app/services/triggers/handlers/notion.py	TB002
 apps/api/app/services/triggers/handlers/todoist.py	TB001
 apps/api/app/services/workflow/playbook/scripted_model.py	TB001
-apps/api/app/services/workflow/subagent_output.py	TB001
-apps/api/app/services/workflow/subagent_output.py	TB002
 apps/api/app/workers/config/log_config.py	TB002
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB002

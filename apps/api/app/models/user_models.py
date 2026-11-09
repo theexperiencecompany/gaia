@@ -18,6 +18,7 @@ from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
 from app.db.repositories.base import MongoDocument
 from app.models.first_steps_models import FirstStepsState
+from app.models.quiet_hours_models import QuietHours
 from app.schemas.common import ResponseModel
 from app.utils.timezone import is_valid_timezone
 from shared.py.analytics.catalog.onboarding import OnboardingStep, ReportedOnboardingStep
@@ -599,6 +600,8 @@ class UserDocument(MongoDocument):
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
+    # Unset means the default 22:00 to 08:00; read through user_service.get_quiet_hours.
+    quiet_hours: QuietHours | None = None
     # Self-host (local auth) accounts only; hosted users never carry a role.
     role: InstanceRole | None = None
 
@@ -666,6 +669,7 @@ class AuthenticatedUser(BaseModel):
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
     role: InstanceRole | None = None
+    quiet_hours: QuietHours | None = None
 
     def with_timezone(self, timezone: str) -> "AuthenticatedUser":
         """A copy carrying the resolved home timezone (the model is frozen)."""

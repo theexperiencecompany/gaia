@@ -38,6 +38,7 @@ from app.models.todo_models import (
     TodoModel,
     TodoResponse,
     TodoUpdate,
+    default_notify_on_run,
 )
 from app.services.canvas_markdown import (
     canvas_problems,
@@ -275,14 +276,16 @@ class TrackedTodoService:
         """Create a todo with its canvas (done_when / evidence in their sections), activity and log.
 
         schedule is saved with the insert; external_ref makes it that object's one open, watching
-        todo; a sub-todo's runs reach the user only on request. Raises OpenStateError (no valid
-        next step), ExternalRefTakenError, SubTodoParentError, CanvasShapeError and
-        UnwatchedTodoKeptError (watch and rollback failed).
+        todo; a sub-todo's runs reach the user only on request, unless its ref's kind speaks.
+        Raises OpenStateError (no valid next step), ExternalRefTakenError, SubTodoParentError,
+        CanvasShapeError and UnwatchedTodoKeptError (watch and rollback failed).
         """
         if parent_todo_id is not None:
             await require_sub_todo_parent(user_id, parent_todo_id)
         if notify_on_run is None:
-            notify_on_run = parent_todo_id is None
+            notify_on_run = default_notify_on_run(
+                parent_todo_id=parent_todo_id, external_ref=external_ref
+            )
         schedule = with_waiting_normalized(None, schedule or TodoUpdate())
         all_labels = list(labels or [])
         if GAIA_TRACKED_LABEL not in all_labels:

@@ -26,3 +26,6 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["shared*"]
+
+[tool.setuptools.package-data]
+shared = ["bot-identity.json"]
