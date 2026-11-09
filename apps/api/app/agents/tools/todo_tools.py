@@ -133,7 +133,11 @@ def _batch_problems(updates: list[TaskUpdate], todo_map: dict[str, Todo]) -> lis
 
 
 def _apply_updates(updates: list[TaskUpdate], todos: list[Todo]) -> tuple[list[Todo], str]:
-    """Return the plan with a validated batch applied, and a summary of what changed."""
+    """Return the plan with a validated batch applied, and a summary of what changed.
+
+    Validation guarantees every entry updates a known task or adds one, so the
+    summary is never empty.
+    """
     now = datetime.now(UTC).isoformat()
     updated_todos: list[Todo] = [t.copy() for t in todos]
     todo_map = _by_id(updated_todos)
@@ -153,11 +157,10 @@ def _apply_updates(updates: list[TaskUpdate], todos: list[Todo]) -> tuple[list[T
                 id=str(uuid4())[:8], content=content, status="pending", created_at=now
             )
             updated_todos.append(new_todo)
-            todo_map[new_todo["id"]] = new_todo
             added.append(content)
     if added:
         summary_parts.append(f"added: {', '.join(added)}")
-    return updated_todos, "; ".join(summary_parts) if summary_parts else "no changes"
+    return updated_todos, "; ".join(summary_parts)
 
 
 def create_todo_tools(source: str = "executor", source_label: str | None = None) -> list[BaseTool]:

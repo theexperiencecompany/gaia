@@ -1,5 +1,6 @@
 """plan_tasks / update_tasks: the plan streamed to the UI and the rendered plan handed back to the model."""
 
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import ToolMessage
@@ -98,3 +99,41 @@ async def test_an_update_naming_an_unknown_task_lists_the_real_ids() -> None:
     )
 
     assert command.update["messages"][0].content.endswith("Current task ids: t1")
+
+
+async def _update(updates: list[dict[str, str]], todos: list[dict[str, str]]) -> dict:
+    update_tasks = create_todo_tools()[1]
+    assert isinstance(update_tasks, StructuredTool) and update_tasks.coroutine is not None
+    with patch(WRITER, return_value=MagicMock()):
+        command = await update_tasks.coroutine(updates=updates, tool_call_id="c", todos=todos)
+    return command.update
+
+
+async def test_a_batch_that_cannot_apply_names_every_problem_and_applies_nothing() -> None:
+    todos = [{"id": "t1", "content": "Draft", "status": "pending", "created_at": "2026-01-01"}]
+
+    update = await _update([{"task_id": "t1"}, {"status": "completed"}], todos)
+
+    assert "todos" not in update
+    assert update["messages"][0].content == (
+        "Updated nothing: task 't1' was given no status to apply; an entry had neither a "
+        "task_id to update nor content to add. Nothing in this batch was applied; fix the "
+        "entry and resend the whole batch. Current task ids: t1"
+    )
+
+
+async def test_an_empty_batch_is_refused() -> None:
+    update = await _update([], [])
+
+    assert update["messages"][0].content.startswith("Updated nothing: the updates list was empty.")
+
+
+async def test_added_tasks_start_pending_with_a_short_id_and_a_utc_timestamp() -> None:
+    update = await _update([{"content": "A"}, {"content": "B", "status": "completed"}], [])
+
+    added = update["todos"]
+    assert [(t["content"], t["status"]) for t in added] == [("A", "pending"), ("B", "pending")]
+    assert all(len(t["id"]) == 8 and t["id"] != "None" for t in added)
+    assert added[0]["id"] != added[1]["id"]
+    assert all(datetime.fromisoformat(t["created_at"]).utcoffset() == timedelta(0) for t in added)
+    assert update["messages"][0].content.startswith("Updated tasks: added: A, B\n\n")
