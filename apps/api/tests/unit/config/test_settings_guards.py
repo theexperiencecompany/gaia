@@ -14,7 +14,7 @@ import pytest
 from app.agents.llm import client, dev_lane
 from app.config.browser_host_settings import BrowserHostSettings
 from app.config.capability_requirements import required_keys
-from app.config.deployment import DeploymentKind, baseline_profile, deployment_profile
+from app.config.deployment import AuthMode, DeploymentKind, baseline_profile, deployment_profile
 from app.config.settings import Settings, get_settings
 from app.config.settings_validator import settings_validator
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
@@ -239,7 +239,7 @@ def _prod_settings(**overrides):
     for name in required_keys(baseline_profile(DeploymentKind.PRODUCTION)):
         dummies[name] = 0 if Settings.model_fields[name].annotation == int | None else "x"
     dummies.update(overrides)
-    return Settings(_env_file=None, **dummies)
+    return Settings(**dummies)
 
 
 def test_production_rejects_http_dodo_base_url():
@@ -280,10 +280,7 @@ def test_development_short_links_point_at_the_configured_web_app(monkeypatch):
     monkeypatch.delenv("SHORTLINK_BASE_URL", raising=False)
     monkeypatch.setenv("FRONTEND_URL", "http://localhost:3412/")
 
-    assert (
-        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT).SHORTLINK_BASE_URL
-        == "http://localhost:3412/l"
-    )
+    assert Settings(ENV=DeploymentKind.DEVELOPMENT).SHORTLINK_BASE_URL == "http://localhost:3412/l"
 
 
 def test_an_explicit_development_short_link_base_wins(monkeypatch):
@@ -291,8 +288,7 @@ def test_an_explicit_development_short_link_base_wins(monkeypatch):
     monkeypatch.setenv("SHORTLINK_BASE_URL", "https://links.example.test/")
 
     assert (
-        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT).SHORTLINK_BASE_URL
-        == "https://links.example.test"
+        Settings(ENV=DeploymentKind.DEVELOPMENT).SHORTLINK_BASE_URL == "https://links.example.test"
     )
 
 
@@ -441,18 +437,13 @@ def test_the_custom_endpoint_defaults_to_chat_completions(monkeypatch):
     """Nous-style endpoints predate the setting and speak chat completions only."""
     monkeypatch.delenv("DEV_LLM_API", raising=False)
 
-    assert (
-        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API
-        is DevLLMApi.CHAT_COMPLETIONS
-    )
+    assert Settings(ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API is DevLLMApi.CHAT_COMPLETIONS
 
 
 def test_the_custom_endpoint_can_be_switched_to_the_responses_api(monkeypatch):
     monkeypatch.setenv("DEV_LLM_API", "responses")
 
-    assert (
-        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API is DevLLMApi.RESPONSES
-    )
+    assert Settings(ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API is DevLLMApi.RESPONSES
 
 
 def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
@@ -460,7 +451,7 @@ def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
     monkeypatch.setenv("DEV_LLM_API", "response")
 
     with pytest.raises(ValidationError, match="DEV_LLM_API"):
-        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT)
+        Settings(ENV=DeploymentKind.DEVELOPMENT)
 
 
 def _clear_required_env(monkeypatch: pytest.MonkeyPatch, kind: DeploymentKind) -> None:
@@ -476,8 +467,7 @@ def test_production_boots_with_only_the_datastores_set(
     _clear_required_env(monkeypatch, DeploymentKind.PRODUCTION)
 
     settings_obj = Settings(
-        _env_file=None,
-        ENV="production",
+        ENV=DeploymentKind.PRODUCTION,
         AUTH_MODE="workos",
         MONGO_DB="mongodb://mongo:27017",
         REDIS_URL="redis://redis:6379",
@@ -494,8 +484,7 @@ def test_selfhost_refuses_to_boot_without_its_infrastructure(
 
     with pytest.raises(RuntimeError, match="POSTGRES_URL"):
         Settings(
-            _env_file=None,
-            ENV="selfhost",
+            ENV=DeploymentKind.SELFHOST,
             MONGO_DB="mongodb://mongo:27017",
             REDIS_URL="redis://redis:6379",
         )
@@ -512,11 +501,11 @@ def test_an_env_with_no_deployment_kind_is_refused_by_name_at_boot() -> None:
     assert "'production', 'development' or 'selfhost'" in error["msg"]
 
 
-def _selfhost_settings(auth_mode: str, **overrides: object) -> Settings:
+def _selfhost_settings(auth_mode: AuthMode, **overrides: object) -> Settings:
     """Build self-host settings with every key the profile requires stubbed."""
     profile = deployment_profile(
         DeploymentKind.SELFHOST,
-        "workos" if auth_mode == "workos" else "local",
+        auth_mode,
         unlimited_usage=False,
         local_code_sandbox=False,
         blob_store=None,
@@ -525,8 +514,8 @@ def _selfhost_settings(auth_mode: str, **overrides: object) -> Settings:
         name: 0 if Settings.model_fields[name].annotation == int | None else "x"
         for name in required_keys(profile)
     }
-    return Settings(
-        _env_file=None, ENV=DeploymentKind.SELFHOST, AUTH_MODE=auth_mode, **{**dummies, **overrides}
+    return Settings.model_validate(
+        {**dummies, **overrides, "ENV": DeploymentKind.SELFHOST, "AUTH_MODE": auth_mode}
     )
 
 
@@ -568,7 +557,12 @@ def test_only_development_routes_slack_through_the_localhost_proxy(
     if env is DeploymentKind.SELFHOST:
         settings_obj = _selfhost_settings("local", HOST="https://gaia.example.com")
     else:
-        settings_obj = Settings(_env_file=None, ENV=env, HOST="https://gaia.example.com")
+        settings_obj = Settings(
+            ENV=env,
+            HOST="https://gaia.example.com",
+            MONGO_DB="mongodb://mongo:27017",
+            REDIS_URL="redis://redis:6379",
+        )
 
     assert redirect == settings_obj.SLACK_OAUTH_REDIRECT_URI
 

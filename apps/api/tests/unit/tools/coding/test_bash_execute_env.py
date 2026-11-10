@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from e2b import TimeoutException
+from langchain_core.runnables import RunnableConfig
 import pytest
 from tests.helpers import captured_wide_event
 
@@ -31,7 +32,7 @@ from shared.py.wide_events import log
 
 ARTIFACTS_MODULE = "app.agents.tools.coding._artifacts"
 MODULE = "app.agents.tools.coding.bash_tool"
-CONFIG = {"configurable": {"user_id": "u1", "stream_id": "s1"}}
+CONFIG = RunnableConfig(configurable={"user_id": "u1", "stream_id": "s1"})
 EXECUTE_ENV = {
     "GAIA_EXECUTE_URL": "https://api.test/api/v1/sandbox/execute",
     "GAIA_EXECUTE_TOKEN": "tok-1",
@@ -58,7 +59,7 @@ def _code_mode_on(mint: MagicMock) -> ExitStack:
     return stack
 
 
-def _acquire(sbx: AsyncMock) -> MagicMock:
+def _acquire(sbx: object) -> MagicMock:
     manager = MagicMock()
     manager.__aenter__ = AsyncMock(return_value=sbx)
     manager.__aexit__ = AsyncMock(return_value=False)
@@ -205,7 +206,7 @@ class TestBashExecuteEnv:
         assert mint.call_args.kwargs["command_timeout_seconds"] == BASH_MAX_TIMEOUT_SECONDS
 
 
-SESSION_CONFIG = {"configurable": {"user_id": "u1", "conversation_id": "conv1"}}
+SESSION_CONFIG = RunnableConfig(configurable={"user_id": "u1", "conversation_id": "conv1"})
 
 
 def _streaming_run(stdout: str = "out", stderr: str = "err") -> AsyncMock:
