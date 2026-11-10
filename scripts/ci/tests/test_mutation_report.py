@@ -186,6 +186,85 @@ def test_report_splits_distinct_lines(tmp_path: Path) -> None:
     assert first < second, "surviving lines must be listed in file order"
 
 
+# --- survivors ---------------------------------------------------------------
+
+
+def _record_dir(tmp_path: Path, rows: list[tuple[str, str]]) -> Path:
+    """Write the bot module's record into a directory, the way a shard's records land."""
+    verdict = _bot_verdict(tmp_path, rows)
+    out = tmp_path / "records"
+    report_lib.write_record(out / f"{BOT_SLUG}.json", verdict)
+    return out
+
+
+def test_survivors_prints_the_change_and_the_full_diff(tmp_path: Path) -> None:
+    """The red gate asks for an edit; this command shows the edit, not a mutant id."""
+    records = _record_dir(tmp_path, [(f"{BOT_PREFIX}3", f"CHANGED:{BOT_ARGS_LINE}")])
+    result = _run(["survivors", str(records)])
+
+    assert result.returncode == 0, result.stderr
+    assert f"{BOT_MODULE}  [survivors]" in result.stdout
+    assert f"apps/api/{BOT_MODULE}:{BOT_ARGS_LINE}" in result.stdout
+    assert "change:" in result.stdout
+    # The whole diff, not just the summary: that is the edit to make.
+    assert '-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True' in result.stdout
+    assert '+            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", None, nx=True' in result.stdout
+    assert "replay: python3 scripts/ci/mutation.py replay" in result.stdout
+    assert "tests/unit/api/test_bot_endpoint.py" in result.stdout
+
+
+def test_survivors_json_carries_every_diff_for_a_parser(tmp_path: Path) -> None:
+    rows = [(f"{BOT_PREFIX}{n}", f"CHANGED:{BOT_ARGS_LINE}") for n in (3, 4)]
+    records = _record_dir(tmp_path, rows)
+    result = _run(["survivors", str(records), "--json"])
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["survivor_count"] == 2
+    module = payload["modules"][0]
+    assert module["path"] == f"apps/api/{BOT_MODULE}"
+    assert [entry["change"] for entry in module["survivors"]] == [
+        '"1" → None',
+        "nx=True → nx=None",
+    ]
+    assert all(entry["diff"] for entry in module["survivors"])
+
+
+def test_survivors_reads_a_raw_shard_log_and_replays_by_mutant_id() -> None:
+    """The artifact you actually download is the log; it must be enough."""
+    result = _run(["survivors", str(SURVIVOR_LOG)])
+
+    assert result.returncode == 0, result.stderr
+    assert "8 surviving mutant(s)" in result.stdout
+    assert f"{BOT_MODULE}  [survivors]" in result.stdout
+    # Log-derived survivors have no resolved line; the mutant id is still a selector.
+    assert f"replay {SURVIVOR_LOG} {BOT_PREFIX}3" in result.stdout
+    assert "change:" in result.stdout
+
+
+def test_survivors_says_when_nothing_needs_work(tmp_path: Path) -> None:
+    verdict = _bot_verdict(tmp_path, [], status="pass")
+    out = tmp_path / "records"
+    report_lib.write_record(out / f"{BOT_SLUG}.json", verdict)
+
+    result = _run(["survivors", str(out)])
+
+    assert result.returncode == 0
+    assert "no survivors" in result.stdout
+
+
+def test_survivors_rejects_a_foreign_json_instead_of_crashing(tmp_path: Path) -> None:
+    """A shared lane verdict is not a replay artifact; name the shape it needs."""
+    foreign = tmp_path / "verdict.json"
+    foreign.write_text(json.dumps({"lane": "mutation/x", "status": "fail", "findings": []}))
+
+    result = _run(["survivors", str(foreign)])
+
+    assert result.returncode != 0
+    assert "not a mutation record" in result.stderr
+    assert "shard.verdict.json" in result.stderr
+
+
 # --- report_shard ------------------------------------------------------------
 
 
@@ -972,6 +1051,39 @@ def test_mutation_py_exposes_replay() -> None:
         cwd=REPO_ROOT,
     )
     assert "replay <verdict|dir|shard.log>" in usage.stderr
+
+
+def test_mutation_py_exposes_survivors_and_one() -> None:
+    """Both actionable commands are reachable and self-documenting from the entrypoint."""
+    survivors = subprocess.run(
+        [sys.executable, str(MUTATION_PY), "survivors"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    assert survivors.returncode == 2
+    assert "usage: mutation.py survivors" in survivors.stderr
+
+    one = subprocess.run(
+        [sys.executable, str(MUTATION_PY), "one"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    assert one.returncode == 2
+    assert "usage: mutation.py one" in one.stderr
+
+    usage = subprocess.run(
+        [sys.executable, str(MUTATION_PY), "nonsense"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    assert "survivors <verdict|dir|shard.log>" in usage.stderr
+    assert "one <mod> [tests]" in usage.stderr
 
 
 @pytest.mark.parametrize(

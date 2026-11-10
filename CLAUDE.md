@@ -373,6 +373,12 @@ One-shot gate mirror: `mise ci:local` runs the CI checks this change reaches, th
 
 **To wait on CI, run `mise ci:watch <PR|branch>` as a background run and read it when it exits.** It is `ci:remote --watch --fail-fast --max-wait 3600`: it polls for up to an hour and exits at the first red check with that check's failure printed. Never hand-write a `gh` poll loop or a foreground `sleep`: the repo's PreToolUse hook (`.claude/hooks/block_ci_polling.py`) refuses `gh run watch`, `gh run list/view` or `gh pr checks` inside a `while`/`until`/`for` loop, and any foreground `sleep` over 30s.
 
+**To read a red PR's actionable state, use `mise ci:status <PR|branch>`.** It is `ci:remote --json --compact --no-stack`: only the failing lanes, their verdict findings, the failing mutation modules and the last log lines — no passing checks, no stack, no full tail window. This is the one read for a polling or re-checking agent; never scrape `gh pr checks` or `gh run view` directly.
+
+**Mutation survivors have one actionable command: `mise mutation:survivors <source>`.** Source is any of `shard.verdict.json`, a directory of module records, or the `shard.log` from the artifact. It prints every survivor's `file:line`, the source line, the one-line change, the **full diff**, the mapped tests and a ready-to-run `mutation.py replay` selector, or the same as JSON with `--json`. For one module on this machine, `mise mutation:one app/services/x.py` runs it and prints the same view — no lane, no log to poll. Never reverse-engineer mutmut's `.mutation-N` dirs, `mutmut-stats.json` or `xǁClassǁmethod__mutmut_N` names: the record carries all of it.
+
+**A PR-watch notification is not automatically a task.** Wake and act only on a red required check or an unresolved review thread. "All required checks passed", a bot comment ping, or a duplicate CodeRabbit/Sonar notification with no new finding needs no tool call — reading it is the whole response.
+
 ### Verify with the CI command, not a lookalike
 
 **Run the gate the lane actually runs.** A local command that merely resembles CI's is worse than no check, because it reports green over work CI will reject — and the rejection costs a CI round trip, a runner, and a fix cycle. `nx run-many -t lint` is the canonical example: it lints the 15 Nx projects and **no Python at all**, while ci.yml's `lint-python` job runs 14 checks over every `.py` in the repo. An agent that runs it after editing `apps/api/app/**.py` has verified nothing.

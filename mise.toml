@@ -783,3 +783,15 @@ run = "uv run python scripts/dev/ci_remote.py"
 [tasks."ci:watch"]
 description = "Wait on a PR's CI: `mise ci:watch <PR|branch>` polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
 run = "uv run python scripts/dev/ci_remote.py --watch --fail-fast --max-wait 3600"
+
+[tasks."ci:status"]
+description = "One normalized read of a PR's CI: red lanes, verdict findings, failing mutation modules and the last log lines. Use this instead of raw `gh pr checks` / `gh run view`"
+run = "uv run python scripts/dev/ci_remote.py --json --compact --no-stack"
+
+[tasks."mutation:one"]
+description = "Run ONE changed app module locally and print its surviving mutants with file:line, full diff and mapped tests: `mise mutation:one app/services/x.py`"
+run = "uv run python scripts/ci/mutation.py one"
+
+[tasks."mutation:survivors"]
+description = "Print every surviving mutant from a shard artifact (shard.verdict.json, record dir, or shard.log) with file:line, change, full diff and tests: `mise mutation:survivors <source>`"
+run = "uv run python scripts/ci/mutation.py survivors"

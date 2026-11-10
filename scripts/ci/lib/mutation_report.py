@@ -2,9 +2,14 @@
 """mutation_report.py — the mutation gate's verdict, made triageable.
 
 Reached only through the mutation lane: `mutation.py` imports it for the
-per-module record and the shard's report to the gate, and `mutation.py replay`
-drives the one subcommand below; never an entrypoint of its own.
+per-module record and the shard's report to the gate, and drives the two
+subcommands below; never an entrypoint of its own.
 
+  survivors <source> [--json]
+           Print every surviving mutant from a shard.verdict.json, a record
+           directory, or a shard.log: `file:line`, the one-line change, the
+           full diff and the mapped tests. The actionable view of a red shard
+           without re-deriving mutmut's internals.
   replay   Re-apply one survivor's diff to a scratch copy of apps/api and run
            that module's mapped tests. mutmut's `__mutmut_13` numbering depends
            on the diff scope and cannot be regenerated on a laptop, so without
@@ -596,6 +601,88 @@ def _change_list(group: list[Survivor]) -> str:
     return "; ".join(dict.fromkeys(survivor.change for survivor in group))
 
 
+# --- the actionable view -----------------------------------------------------
+
+ACTIONABLE_STATUSES = ("survivors", "gap", "error", "timed_out")
+
+
+def is_actionable(verdict: ModuleVerdict) -> bool:
+    """Return True when this module needs a human or agent, not just a green tick."""
+    return verdict.status in ACTIONABLE_STATUSES or bool(verdict.survivors or verdict.gap_lines)
+
+
+def survivors_payload(verdicts: list[ModuleVerdict], source: Path) -> dict[str, object]:
+    """Return the JSON form: one record per actionable module, diffs included."""
+    actionable = [verdict for verdict in verdicts if is_actionable(verdict)]
+    return {
+        "schema_version": 1,
+        "source": str(source),
+        "survivor_count": sum(len(verdict.survivors) for verdict in actionable),
+        "module_count": len(actionable),
+        "modules": [verdict.to_dict() for verdict in actionable],
+    }
+
+
+def render_survivors(verdicts: list[ModuleVerdict], source: Path, verbose: bool = False) -> str:
+    """Return the actionable report: where each mutant is, what it changes, and its diff."""
+    actionable = [verdict for verdict in verdicts if is_actionable(verdict)]
+    total = sum(len(verdict.survivors) for verdict in actionable)
+    lines = [f"SURVIVORS — {total} surviving mutant(s) in {len(actionable)} module(s)  ({source})"]
+    if not actionable:
+        lines.append("  Every module passed: no survivors, no uncovered changed lines.")
+        return "\n".join(lines)
+    for verdict in actionable:
+        lines.append("")
+        if verdict.status == "survivors":
+            groups = group_by_line(verdict.survivors)
+            lines.append(
+                f"{verdict.module}  [{verdict.status}]  "
+                f"{len(verdict.survivors)} mutant(s) on {len(groups)} line(s)"
+            )
+        else:
+            lines.append(f"{verdict.module}  [{verdict.status}]  {summary_line(verdict)}")
+        if verdict.testfiles:
+            lines.append(f"  tests: {' '.join(verdict.testfiles)}")
+        if verdict.gap_lines:
+            lines.append(
+                "  changed line(s) no test reaches: "
+                + ", ".join(str(number) for number in verdict.gap_lines)
+            )
+        for line_no, group in group_by_line(verdict.survivors):
+            where = f"{verdict.path}:{line_no}" if line_no else f"{verdict.path} (line unknown)"
+            lines.append(f"  {where}")
+            if group[0].source:
+                lines.append(f"      {group[0].source.strip()}")
+            for survivor in group:
+                if survivor.change:
+                    lines.append(f"      change: {survivor.change}")
+                for diff_line in survivor.diff.splitlines():
+                    lines.append(f"      {diff_line}" if diff_line else "")
+                lines.append(f"      [{survivor.name.rsplit('.', 1)[-1]}]")
+            if line_no is not None:
+                lines.append(
+                    f"      replay: python3 scripts/ci/mutation.py replay {source} "
+                    f"{verdict.path}:{line_no}"
+                )
+            else:
+                # Recovered from a log: no resolved line, so the mutant id is the selector.
+                for survivor in group:
+                    lines.append(
+                        f"      replay: python3 scripts/ci/mutation.py replay {source} "
+                        f"{survivor.name}"
+                    )
+        if verdict.status in ("error", "timed_out") and verdict.reason:
+            lines.append(f"  {verdict.reason}")
+            lines.append(
+                f"  re-run it alone: python3 scripts/ci/mutation.py module {verdict.module}"
+            )
+        if verbose and verdict.excluded:
+            lines.append(f"  {len(verdict.excluded)} survivor(s) excluded from the verdict:")
+            for entry in verdict.excluded:
+                lines.append(f"      {entry.name.rsplit('.', 1)[-1]} — {entry.reason}")
+    return "\n".join(lines)
+
+
 def step_summary(verdicts: list[ModuleVerdict]) -> str:
     """Return the shard's own block: which modules it ran and how they came out.
 
@@ -758,9 +845,14 @@ def load_verdicts(source: Path, api_prefix: str) -> list[ModuleVerdict]:
     if source.suffix == ".json":
         data = json.loads(source.read_text())
         if not isinstance(data, dict):
-            raise SystemExit(f"mutation replay: {source} is not a mutation record")
+            raise SystemExit(f"mutation: {source} is not a mutation record")
         if "modules" in data:
             return [from_dict(item) for item in _as_list(data["modules"])]
+        if "module" not in data:
+            raise SystemExit(
+                f"mutation: {source} is not a mutation record (no 'module'/'modules' key).\n"
+                "  Pass shard.verdict.json, a directory of module records, or shard.log."
+            )
         return [from_dict(data)]
     return [
         verdict_from_section(module, section, api_prefix)
@@ -879,6 +971,20 @@ def _fallback_testfiles(repo_root: Path, module: str) -> list[str]:
     return []
 
 
+def cmd_survivors(args: argparse.Namespace) -> int:
+    """Print every surviving mutant and its diff from a shard record, dir, or log."""
+    source = Path(args.source)
+    if not source.exists():
+        print(f"mutation survivors: {source} does not exist", file=sys.stderr)
+        return 1
+    verdicts = load_verdicts(source, args.api_prefix)
+    if args.json:
+        print(json.dumps(survivors_payload(verdicts, source), indent=2, ensure_ascii=False))
+    else:
+        print(render_survivors(verdicts, source, verbose=args.verbose))
+    return 0
+
+
 def cmd_replay(args: argparse.Namespace) -> int:
     """Reproduce one survivor locally: patch a scratch copy, run its tests, restore."""
     repo_root = Path(args.repo_root)
@@ -953,6 +1059,14 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
+    survivors = subparsers.add_parser("survivors", help="list surviving mutants and their diffs")
+    survivors.add_argument("source", help="shard.verdict.json, a record dir, or shard.log")
+    survivors.add_argument("--json", action="store_true", help="machine-readable output")
+    survivors.add_argument(
+        "--verbose", action="store_true", help="also list survivors excluded as equivalent/logging"
+    )
+    survivors.add_argument("--api-prefix", default="apps/api")
+
     replay = subparsers.add_parser("replay", help="reproduce one survivor locally")
     replay.add_argument("source", help="shard.verdict.json, a record dir, or shard.log")
     replay.add_argument("selector", help="a mutant id, or file.py:LINE")
@@ -963,6 +1077,8 @@ def main(argv: list[str]) -> int:
     replay.add_argument("--api-prefix", default="apps/api")
 
     args = parser.parse_args(argv)
+    if args.subcommand == "survivors":
+        return cmd_survivors(args)
     return cmd_replay(args)
 
 
