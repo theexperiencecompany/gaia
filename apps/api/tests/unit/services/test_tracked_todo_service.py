@@ -367,30 +367,58 @@ class TestACreateForACompletedRefReopensIt:
         # A reopen is a fresh start: no retries, re-asks or holds carried from before.
         assert (update.gaia_retry_count, update.reasks_used, update.hold_checks) == (0, 0, 0)
 
-    async def test_description_references_and_priority_apply_only_when_given(
+    async def test_project_description_references_and_priority_apply_only_when_given(
         self, mock_repo, mock_deps, reopen
     ):
         schedule = TodoUpdate(waiting_on=WaitingOn.EVENT, scheduled_at=_NEXT_CHECK)
-        await TrackedTodoService.create_tracked_todo(
-            USER_ID, "Reply", external_ref=_THREAD, schedule=schedule
-        )
-        bare = reopen.await_args.args[1]
+        with patch(f"{_MOD}.require_project", new_callable=AsyncMock) as require_project:
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Reply", external_ref=_THREAD, schedule=schedule
+            )
+            bare = reopen.await_args.args[1]
+            require_project.assert_not_awaited()
 
-        await TrackedTodoService.create_tracked_todo(
-            USER_ID,
-            "Reply",
-            description="the lease thread",
-            references=["66f838cc8829054e5f10e409"],
-            priority=Priority.HIGH,
-            external_ref=_THREAD,
-            schedule=schedule,
-        )
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID,
+                "Reply",
+                project_id="66f838cc8829054e5f10e40a",
+                description="the lease thread",
+                references=["66f838cc8829054e5f10e409"],
+                priority=Priority.HIGH,
+                external_ref=_THREAD,
+                schedule=schedule,
+            )
         given = reopen.await_args.args[1]
 
-        assert {"description", "references", "priority"}.isdisjoint(bare.model_fields_set)
+        assert {"project_id", "description", "references", "priority"}.isdisjoint(
+            bare.model_fields_set
+        )
+        require_project.assert_awaited_once_with(USER_ID, "66f838cc8829054e5f10e40a")
+        assert given.project_id == "66f838cc8829054e5f10e40a"
         assert given.description == "the lease thread"
         assert given.references == ["66f838cc8829054e5f10e409"]
         assert given.priority is Priority.HIGH
+
+    async def test_a_project_the_user_does_not_have_reopens_nothing(
+        self, mock_repo, mock_deps, reopen
+    ):
+        with (
+            patch(
+                f"{_MOD}.require_project",
+                new_callable=AsyncMock,
+                side_effect=ValueError("Project 66f838cc8829054e5f10e40a not found"),
+            ),
+            pytest.raises(ValueError, match="not found"),
+        ):
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID,
+                "Reply",
+                project_id="66f838cc8829054e5f10e40a",
+                external_ref=_THREAD,
+                schedule=TodoUpdate(waiting_on=WaitingOn.EVENT, scheduled_at=_NEXT_CHECK),
+            )
+
+        reopen.assert_not_awaited()
 
     async def test_a_sub_todo_create_reopens_under_its_parent_by_gaia(
         self, mock_repo, mock_deps, reopen

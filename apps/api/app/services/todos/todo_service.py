@@ -201,6 +201,14 @@ def _refuse_a_bad_run_schedule(recurrence: str) -> None:
         raise TrackedTodoScheduleError(e) from e
 
 
+async def require_project(user_id: str, project_id: str) -> ProjectDocument:
+    """Return the user's project, or raise ValueError when they have none with that id."""
+    project = await project_repository.get(project_id, user_id=user_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+    return project
+
+
 async def _refuse_a_bulk_tracked_label_change(
     user_id: str, todo_ids: list[str], labels: list[str]
 ) -> None:
@@ -350,9 +358,8 @@ async def _refuse_a_bulk_update(request: BulkUpdateRequest, user_id: str) -> Non
         await _refuse_a_bulk_tracked_label_change(user_id, request.todo_ids, request.updates.labels)
     if request.updates.recurrence:
         await _refuse_a_bulk_bad_run_schedule(user_id, request.todo_ids, request.updates.recurrence)
-    project_id = request.updates.project_id
-    if project_id is not None and not await project_repository.get(project_id, user_id=user_id):
-        raise ValueError(f"Project {project_id} not found")
+    if request.updates.project_id is not None:
+        await require_project(user_id, request.updates.project_id)
 
 
 class _TrackedCompletion(NamedTuple):
@@ -496,9 +503,7 @@ class TodoService:
         if not todo.project_id:
             todo.project_id = await cls._get_inbox_id(user_id)
         else:
-            project = await project_repository.get(todo.project_id, user_id=user_id)
-            if not project:
-                raise ValueError(f"Project {todo.project_id} not found")
+            await require_project(user_id, todo.project_id)
 
         document = TodoDocument(
             user_id=user_id,
@@ -612,9 +617,7 @@ class TodoService:
         await _refuse_what_a_tracked_todo_cannot_take(todo_id, user_id, updates)
 
         if update.project_id is not None:
-            project = await project_repository.get(update.project_id, user_id=user_id)
-            if not project:
-                raise ValueError(f"Project {update.project_id} not found")
+            await require_project(user_id, update.project_id)
 
         # Track completion timestamp (explicit None clears it when un-completing).
         if update.completed is not None:
@@ -817,9 +820,7 @@ class TodoService:
     @classmethod
     async def bulk_move_todos(cls, request: BulkMoveRequest, user_id: str) -> BulkOperationResponse:
         """Bulk move todos to another project."""
-        project = await project_repository.get(request.project_id, user_id=user_id)
-        if not project:
-            raise ValueError(f"Project {request.project_id} not found")
+        await require_project(user_id, request.project_id)
 
         modified = await todo_repository.bulk_update(
             user_id, request.todo_ids, TodoUpdate(project_id=request.project_id)
@@ -934,9 +935,7 @@ class ProjectService:
             user_id=user_id,
             project_id=project_id,
         )
-        existing = await project_repository.get(project_id, user_id=user_id)
-        if not existing:
-            raise ValueError(f"Project {project_id} not found")
+        existing = await require_project(user_id, project_id)
         if existing.is_default:
             raise ValueError("Cannot update default Inbox project")
 
@@ -959,9 +958,7 @@ class ProjectService:
             user_id=user_id,
             project_id=project_id,
         )
-        project = await project_repository.get(project_id, user_id=user_id)
-        if not project:
-            raise ValueError(f"Project {project_id} not found")
+        project = await require_project(user_id, project_id)
         if project.is_default:
             raise ValueError("Cannot delete default Inbox project")
 

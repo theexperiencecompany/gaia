@@ -84,6 +84,7 @@ from app.services.todos.todo_service import (
     TodoService,
     raise_ref_taken,
     reopening_todos,
+    require_project,
     todo_responses,
 )
 from app.services.triggers.subscription_service import teardown_subscriptions
@@ -323,8 +324,11 @@ class TrackedTodoService:
         )
         if previous is not None and previous.completed:
             # As on a new todo, a schedule field the create leaves out ends up empty; the
-            # description, references and priority it does not give stay as they were.
+            # project, description, references and priority it does not give stay as they were.
+            if project_id is not None:
+                await require_project(user_id, project_id)
             given = {
+                "project_id": project_id,
                 "description": description,
                 "references": references,
                 "priority": None if priority is Priority.NONE else priority,
