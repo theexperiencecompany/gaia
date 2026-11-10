@@ -52,6 +52,7 @@ from app.constants.streaming import DetachedStreamKind
 from app.core.stream_manager import stream_manager
 from app.models.agent_models import (
     AgentConfigurable,
+    AgentConfigurableView,
     RunningSubagent,
     SubagentKind,
     SubagentResumeItem,
@@ -59,6 +60,8 @@ from app.models.agent_models import (
     current_stream_writer,
 )
 from app.models.hil_models import HilInterruptPayload, HilResumeDecision
+from app.models.run_trace_models import RunState
+from app.services.executor_trace.recorder import RunOwner, begin_run, end_run
 from app.services.hil.approvals_store import get_approval, mark_resumed
 from app.utils.agent_utils import (
     IntegrationMetadata,
@@ -313,6 +316,17 @@ async def _run_background(
         outcome: SubagentOutcome | None = None
         # Equivalent under mutation: read only after the except below has reassigned it.
         failure = ""  # pragma: no mutate
+        trace_owner = RunOwner.of(
+            user_id=ctx.user_id,
+            conversation_id=delegation.conversation_id,
+            run_id=stream_id,
+            parent_run_id=record.dispatched_by,
+            todo_id=AgentConfigurableView.model_validate(
+                delegation.parent_configurable
+            ).active_todo_id,
+        )
+        if trace_owner is not None:
+            await begin_run(trace_owner)
         try:
             outcome = await _execute_on_own_stream(
                 delegation, stream_id, resume=resume, parent_stream_id=record.dispatched_by
@@ -326,6 +340,8 @@ async def _run_background(
             )
             failure = SUBAGENT_FAILED_RESULT.format(name=delegation.display.name, error=e)
         finally:
+            if trace_owner is not None:
+                await end_run(trace_owner, _trace_state(outcome))
             # Released before the park looks at its decisions, so a resume can claim it.
             await RunningSubagents(delegation.conversation_id).deregister(record)
             await close_folded_stream(
@@ -352,6 +368,15 @@ async def _run_background(
             await _land(
                 delegation, _result_text(delegation, outcome.text, list(outcome.run_messages))
             )
+
+
+def _trace_state(outcome: SubagentOutcome | None) -> RunState:
+    """Return the state a background run's trace ends in; no outcome means it raised."""
+    if outcome is None:
+        return RunState.FAILED
+    if outcome.paused:
+        return RunState.PAUSED
+    return RunState.CANCELLED if outcome.stopped else RunState.FINISHED
 
 
 async def _execute_on_own_stream(

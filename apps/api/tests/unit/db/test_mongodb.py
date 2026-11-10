@@ -403,6 +403,7 @@ _INDEX_CREATORS = [
     "create_provider_credential_indexes",
     "create_tool_output_shapes_indexes",
     "create_email_verdict_indexes",
+    "create_run_trace_indexes",
 ]
 
 

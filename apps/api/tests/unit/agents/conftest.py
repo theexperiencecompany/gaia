@@ -1,5 +1,8 @@
 """Agent-specific fixtures for unit tests."""
 
+from collections.abc import Iterator
+from unittest.mock import AsyncMock, patch
+
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
@@ -12,6 +15,18 @@ from app.config.settings import settings
 
 HELPFUL_ASSISTANT_SYSTEM_PROMPT = "You are a helpful assistant."
 WEATHER_QUERY = "What is the weather today?"
+
+
+@pytest.fixture(autouse=True)
+def run_trace() -> Iterator[AsyncMock]:
+    """Stand in for the run trace's store, which these tests never reach; yields the executor's end_run."""
+    with (
+        patch("app.agents.core.background.executor_runner.begin_run", new_callable=AsyncMock),
+        patch("app.agents.core.background.executor_runner.end_run", new_callable=AsyncMock) as end,
+        patch("app.agents.core.subagents.delegation.begin_run", new_callable=AsyncMock),
+        patch("app.agents.core.subagents.delegation.end_run", new_callable=AsyncMock),
+    ):
+        yield end
 
 
 @pytest.fixture

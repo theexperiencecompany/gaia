@@ -16,6 +16,7 @@ from app.constants.delivery_alerts import (
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.run_trace import RUN_REAP_EVERY_MINUTES
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     PROVISION_INBOX_DESK_TASK,
@@ -56,6 +57,7 @@ from app.workers.tasks.delivery_alert_tasks import (
     refresh_delivery_incident_task,
 )
 from app.workers.tasks.device_tasks import warm_device_servers
+from app.workers.tasks.executor_trace_tasks import reap_abandoned_executor_runs
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.inbox_desk_tasks import (
     provision_inbox_desk_task,
@@ -88,6 +90,7 @@ init_sentry()
 _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
 _sweep_hil_approvals = arq_task(sweep_hil_approvals)
+_reap_abandoned_executor_runs = arq_task(reap_abandoned_executor_runs)
 _check_inactive_users = arq_task(check_inactive_users)
 _process_workflow_generation_task = arq_task(process_workflow_generation_task)
 _execute_workflow_by_id = arq_task(execute_workflow_by_id)
@@ -159,6 +162,7 @@ _refresh_delivery_incident = func(
 # (app.workers.browser_worker), started from the worker lifecycle.
 TASK_FUNCTIONS: list[WorkerFunction] = [
     _sweep_hil_approvals,
+    _reap_abandoned_executor_runs,
     _process_reminder,
     _cleanup_expired_reminders,
     _check_inactive_users,
@@ -201,6 +205,12 @@ WorkerSettings.cron_jobs = [
         # approval hijacks the conversation's next messages and holds the
         # executor's claim on the thread.
         _sweep_hil_approvals,
+        second=0,
+    ),
+    # A run whose process died stays "running" in its trace until this closes it.
+    cron(
+        _reap_abandoned_executor_runs,
+        minute=set(range(0, 60, RUN_REAP_EVERY_MINUTES)),
         second=0,
     ),
     # Every few seconds: a browser job whose worker died is ended, and a result no

@@ -2,8 +2,10 @@
 
 Every path that runs a tool (the graph tool node, the retrieve_tools node, the
 execute proxy's dispatch, a sandbox script's callback, an approved action run
-later) calls ``invoke_tool``, so the run record holds every call by
-construction rather than by each path remembering to report it.
+later) calls ``invoke_tool``, so the records hold every call by construction
+rather than by each path remembering to report it. Two records are written: the
+workflow run record (Redis, what a playbook replays) and, for every executor run,
+the run trace (Mongo, app.services.executor_trace).
 tests/unit/agents/tools/test_tool_invocation_paths.py fails CI on any other
 invocation of a tool.
 
@@ -13,6 +15,7 @@ through here, and that real call (name, args, result) is the record.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import json
 from typing import cast
 
@@ -37,6 +40,8 @@ from app.constants.log_tags import LogTag
 from app.models.agent_config import read_agent_configurable
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.workflow_execution_models import RecordedCall, build_result_digest, parse_result
+from app.services.executor_trace.metrics import TraceWrite, count_trace_write_failed
+from app.services.executor_trace.recorder import RunOwner, TracedCall, record_call
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.utils.errors import IntegrationNotConnectedError
 from app.utils.integration_checker import request_integration_connection
@@ -44,6 +49,9 @@ from shared.py.wide_events import log
 
 #: How a graph tool node marks its input as a ToolCall rather than plain args.
 GRAPH_TOOL_CALL_TYPE = "tool_call"
+
+RUN_RECORD_NOT_WRITTEN = f"{LogTag.TOOL} run record: a finished call was not recorded"
+RUN_TRACE_NOT_WRITTEN = f"{LogTag.TOOL} run trace: a finished call was not recorded"
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +104,11 @@ def invoke_tool_sync(
     *,
     call_args: Mapping[str, object] | None = None,
 ) -> object:
-    """Sync twin of invoke_tool, for LangGraph's sync node functions."""
+    """Sync twin of invoke_tool, for LangGraph's sync node functions.
+
+    Writes the workflow run record only: the run trace's store is async, and no graph
+    runs through its sync entry points.
+    """
     pending = _pending(tool, tool_input, config, call_args, None)
     try:
         blocked = _blocked_run(tool, config)
@@ -161,35 +173,70 @@ def _as_tool_output(tool: BaseTool, tool_input: Mapping[str, object], text: str)
     return ToolMessage(content=text, tool_call_id=call.id or "", name=tool.name, status="error")
 
 
-async def _write(
-    pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool = False
-) -> None:
-    """Record a finished call in its run; building or writing the record never raises."""
+@dataclass(frozen=True, slots=True)
+class _Pending:
+    """A call that has started and is recorded when it finishes, in every record it belongs to."""
+
+    tool_name: str
+    tool_call_id: str | None
+    args: dict[str, object]
+    started_at: datetime
+    #: The workflow run's stream id and the call before its result; None outside a workflow run.
+    workflow_call: tuple[str, RecordedCall] | None
+    #: The executor run whose trace holds the call; None when it belongs to no executor run.
+    owner: RunOwner | None
+
+
+@dataclass(frozen=True, slots=True)
+class _Outcome:
+    """What a finished call returned, as text and as the digest a replay resolves against."""
+
+    text: str
+    digest: str
+    failed: bool
+
+
+async def _write(pending: _Pending | None, output: object, *, failed: bool = False) -> None:
+    """Record a finished call in each record it belongs to; building or writing a record never raises."""
     if pending is None:
         return
+    finished_at = datetime.now(UTC)
     try:
-        await append_call(pending[0], _finished(pending[1], output, failed=failed))
+        outcome = _outcome(output, failed=failed)
     except Exception as exc:
         # The tool already ran: raising would report it failed and invite a repeat.
-        _log_unrecorded(pending[1].tool_name, exc)
-
-
-def _write_sync(
-    pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool = False
-) -> None:
-    """Sync twin of _write."""
-    if pending is None:
+        _log_unrecorded(RUN_RECORD_NOT_WRITTEN, pending.tool_name, exc)
         return
+    if pending.workflow_call is not None:
+        stream_id, call = pending.workflow_call
+        try:
+            await append_call(stream_id, _finished(call, outcome))
+        except Exception as exc:
+            _log_unrecorded(RUN_RECORD_NOT_WRITTEN, pending.tool_name, exc)
+    if pending.owner is not None:
+        try:
+            await record_call(pending.owner, _traced(pending, outcome, finished_at))
+        except Exception as exc:
+            # Same: the call ran, and the trace is not what decides whether it did.
+            count_trace_write_failed(TraceWrite.CALL)
+            _log_unrecorded(RUN_TRACE_NOT_WRITTEN, pending.tool_name, exc)
+
+
+def _write_sync(pending: _Pending | None, output: object, *, failed: bool = False) -> None:
+    """Sync twin of _write, for the workflow run record."""
+    if pending is None or pending.workflow_call is None:
+        return
+    stream_id, call = pending.workflow_call
     try:
-        append_call_sync(pending[0], _finished(pending[1], output, failed=failed))
+        append_call_sync(stream_id, _finished(call, _outcome(output, failed=failed)))
     except Exception as exc:
         # The tool already ran: raising would report it failed and invite a repeat.
-        _log_unrecorded(pending[1].tool_name, exc)
+        _log_unrecorded(RUN_RECORD_NOT_WRITTEN, pending.tool_name, exc)
 
 
-def _log_unrecorded(tool_name: str, exc: Exception) -> None:
+def _log_unrecorded(message: str, tool_name: str, exc: Exception) -> None:
     log.error(
-        f"{LogTag.TOOL} run record: a finished call was not recorded",
+        message,
         tool_name=tool_name,
         error_type=type(exc).__name__,
         exc_info=True,
@@ -202,38 +249,72 @@ def _pending(
     config: RunnableConfig | None,
     call_args: Mapping[str, object] | None,
     via: ViaExecute | None,
-) -> tuple[str, RecordedCall] | None:
-    """Return (stream id, the call before its result) for a call that belongs to a workflow run, else None."""
+) -> _Pending | None:
+    """Return the call before its result when a record wants it, else None (the execute proxy, a bare lookup)."""
     if tool.name == EXECUTE_TOOL_NAME or config is None:
         return None
     configurable: AgentConfigurable = agent_configurable(config)
     stream_id = configurable.get("stream_id")
-    # Only a workflow run reads its record back; a chat's calls are never kept.
-    if not stream_id or not configurable.get("workflow_id"):
-        return None
-    call = RecordedCall(
-        tool_name=tool.name,
-        subagent_id=configurable.get("subagent_id"),
-        args=_call_args(tool_input) if call_args is None else dict(call_args),
-        proxied=via is not None,
-        account=via.account if via is not None else None,
+    args = _call_args(tool_input) if call_args is None else dict(call_args)
+    # Only a workflow run reads its record back, so only its calls carry what a replay needs.
+    workflow_call = (
+        (
+            stream_id,
+            RecordedCall(
+                tool_name=tool.name,
+                subagent_id=configurable.get("subagent_id"),
+                args=args,
+                proxied=via is not None,
+                account=via.account if via is not None else None,
+            ),
+        )
+        if stream_id and configurable.get("workflow_id")
+        else None
     )
-    return stream_id, call
+    owner = RunOwner.from_config(config)
+    if workflow_call is None and owner is None:
+        return None
+    return _Pending(
+        tool_name=tool.name,
+        tool_call_id=_tool_call_id(tool_input),
+        args=args,
+        started_at=datetime.now(UTC),
+        workflow_call=workflow_call,
+        owner=owner,
+    )
 
 
-def _finished(call: RecordedCall, output: object, *, failed: bool) -> RecordedCall:
+def _outcome(output: object, *, failed: bool) -> _Outcome:
+    """Read a call's result as text and digest, and whether the call failed."""
+    text = _as_text(_result_payload(output))
+    digest = build_result_digest(text)
+    return _Outcome(
+        text=text,
+        digest=digest,
+        # A tool that reports its own failure under a normal return failed all the same,
+        # whether it answered with an error envelope or its own handle_tool_error.
+        failed=failed
+        or (isinstance(output, ToolMessage) and output.status == "error")
+        or is_error_envelope(parse_result(digest)),
+    )
+
+
+def _finished(call: RecordedCall, outcome: _Outcome) -> RecordedCall:
     """Return the call with what it returned, or the error it raised."""
-    digest = build_result_digest(_as_text(_result_payload(output)))
     return RecordedCall.model_validate(
-        {
-            **call.model_dump(mode="json"),
-            "result_digest": digest,
-            # A tool that reports its own failure under a normal return failed all the same,
-            # whether it answered with an error envelope or its own handle_tool_error.
-            "failed": failed
-            or (isinstance(output, ToolMessage) and output.status == "error")
-            or is_error_envelope(parse_result(digest)),
-        }
+        {**call.model_dump(mode="json"), "result_digest": outcome.digest, "failed": outcome.failed}
+    )
+
+
+def _traced(pending: _Pending, outcome: _Outcome, finished_at: datetime) -> TracedCall:
+    return TracedCall(
+        tool_name=pending.tool_name,
+        tool_call_id=pending.tool_call_id,
+        args=pending.args,
+        output_text=outcome.text,
+        failed=outcome.failed,
+        started_at=pending.started_at,
+        finished_at=finished_at,
     )
 
 
@@ -253,6 +334,12 @@ class _CommandUpdate(BaseModel):
     model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     messages: list[object] = Field(default_factory=list)
+
+
+def _tool_call_id(tool_input: Mapping[str, object]) -> str | None:
+    """Return the id the model gave the call when it arrived as a graph ToolCall."""
+    call = _GraphToolCall.model_validate(dict(tool_input))
+    return call.id if call.type == GRAPH_TOOL_CALL_TYPE else None
 
 
 def _call_args(tool_input: Mapping[str, object]) -> dict[str, object]:

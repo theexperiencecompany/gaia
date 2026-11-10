@@ -13,6 +13,12 @@ from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.constants.payments import CLAIMED_STATUS
+from app.constants.run_trace import (
+    CALL_PAYLOADS_COLLECTION,
+    RUN_CALLS_COLLECTION,
+    RUN_TRACE_RETENTION_SECONDS,
+    RUNS_COLLECTION,
+)
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.local_credentials import local_credentials_repository
@@ -125,6 +131,7 @@ async def create_all_indexes() -> None:
             create_playbook_indexes(),
             create_tool_output_shapes_indexes(),
             create_email_verdict_indexes(),
+            create_run_trace_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -166,6 +173,7 @@ async def create_all_indexes() -> None:
             "playbooks",
             "tool_output_shapes",
             "email_verdicts",
+            "run_trace",
         ]
 
         index_results = {}
@@ -1617,6 +1625,42 @@ async def create_llm_call_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Failed to create llm_calls indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_run_trace_indexes() -> None:
+    """Create indexes for the executor run trace: runs, one record per call, and call payloads.
+
+    Every collection expires on created_at after RUN_TRACE_RETENTION_SECONDS. Calls are
+    read by run (in start order) and by user (newest first); runs by user, todo and
+    conversation, and by (state, last_activity_at) for the reaper.
+    """
+    runs = get_async_collection(RUNS_COLLECTION)
+    calls = get_async_collection(RUN_CALLS_COLLECTION)
+    payloads = get_async_collection(CALL_PAYLOADS_COLLECTION)
+    try:
+        await asyncio.gather(
+            runs.create_index("run_id", unique=True),
+            runs.create_index([("user_id", 1), ("created_at", -1)]),
+            runs.create_index(
+                [("user_id", 1), ("todo_id", 1), ("started_at", -1)],
+                partialFilterExpression={"todo_id": {"$type": "string"}},
+            ),
+            runs.create_index([("user_id", 1), ("conversation_id", 1), ("started_at", -1)]),
+            runs.create_index([("state", 1), ("last_activity_at", 1)]),
+            runs.create_index("created_at", expireAfterSeconds=RUN_TRACE_RETENTION_SECONDS),
+            calls.create_index("call_id", unique=True),
+            calls.create_index([("run_id", 1), ("started_at", 1)]),
+            calls.create_index([("user_id", 1), ("created_at", -1)]),
+            calls.create_index("created_at", expireAfterSeconds=RUN_TRACE_RETENTION_SECONDS),
+            payloads.create_index("created_at", expireAfterSeconds=RUN_TRACE_RETENTION_SECONDS),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating run trace indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

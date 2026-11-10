@@ -86,9 +86,11 @@ from app.models.agent_models import (
     run_analytics_context,
 )
 from app.models.chat_models import ToolDataEntry
+from app.models.run_trace_models import RunState
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.browser.job_stop import stop_browser_job
+from app.services.executor_trace.recorder import RunOwner, begin_run, end_run
 from app.services.hil.approvals_store import set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.services.latency_metrics import (
@@ -175,6 +177,14 @@ async def _run_executor(
         queue_wait_ms = _queue_wait_ms(run, run_start, configurable, queued=queued)
         ttft_ms: float | None = None
         active_ms: float | None = None
+        trace_owner = RunOwner.of(
+            user_id=run.user.user_id,
+            conversation_id=run.conversation_id,
+            run_id=run.stream_id,
+            todo_id=run.active_todo_id,
+        )
+        # A run cut off before it has a result (cancelled mid-flight) ended without one.
+        trace_state = RunState.CANCELLED
 
         # One lifecycle per run segment; a resumed run re-enters here. Opened before
         # keep_alive so a lost liveness write is a failed run, not an untracked one.
@@ -184,6 +194,8 @@ async def _run_executor(
             alive = await keep_alive(
                 run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")
             )
+            if trace_owner is not None:
+                await begin_run(trace_owner)
             try:
                 with span() as elapsed_active:
                     result = await _execute_executor(task, configurable, run, resume)
@@ -204,6 +216,7 @@ async def _run_executor(
                     # that can't come. Fail instead: the lock releases and the sweep closes it.
                     result_text, result_type = EXECUTOR_APPROVAL_LOST_MESSAGE, "error"
                     error_type = EXECUTOR_ERROR_APPROVAL_LOST
+                trace_state = _trace_state(result_type, stopped=stopped)
                 # Cancellation and the pause-record outcome are only known here, so
                 # read both after the pause decision: the span must carry the same
                 # status finalize records, not the pre-pause guess.
@@ -228,6 +241,8 @@ async def _run_executor(
                     lifecycle.failure_reason = error_type
             finally:
                 alive.cancel()
+                if trace_owner is not None:
+                    await end_run(trace_owner, trace_state)
                 await _finalize_executor_run(
                     run, task, result_text, result_type, run_ctx, stopped=stopped
                 )
@@ -236,6 +251,15 @@ async def _run_executor(
                     # Freeing it AFTER finalize means the next decision can dispatch only
                     # once this run's pause/completion bookkeeping is fully written.
                     await release_resume_dispatch(run.conversation_id)
+
+
+def _trace_state(result_type: str, *, stopped: bool) -> RunState:
+    """Return the state a run's trace ends in, from how the run ended."""
+    if result_type == EXECUTOR_PAUSED:
+        return RunState.PAUSED
+    if result_type == "error":
+        return RunState.FAILED
+    return RunState.CANCELLED if stopped else RunState.FINISHED
 
 
 def _run_props(run: ExecutorRun) -> AgentRunStarted:

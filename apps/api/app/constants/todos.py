@@ -205,6 +205,7 @@ class TodoActivityEvent(StrEnum):
     RUN_FINISHED = "run_finished"
     RUN_FAILED = "run_failed"
     RUN_SKIPPED = "run_skipped"
+    TOOL_CALLED = "tool_called"
     RUN_CANCELLED = "run_cancelled"
     RETRY_SCHEDULED = "retry_scheduled"
     MARKED_FAILED = "marked_failed"

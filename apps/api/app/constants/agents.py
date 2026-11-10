@@ -15,8 +15,12 @@ and the site that strips one (strip_internal_agent_tags) can never disagree.
 
 from enum import StrEnum
 import re
+from typing import Final
 
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
+
+#: The user-facing tier's agent name; it has no work tools, so its calls are never run traces.
+COMMS_AGENT_NAME: Final = "comms_agent"
 
 
 class AgentTag(StrEnum):

@@ -12,10 +12,11 @@ mis-imported, every fixture here — and every test using them — fails.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import os
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from bson import ObjectId
@@ -27,12 +28,12 @@ import pytest
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.core.lazy_loader import providers
-from app.override.langgraph_bigtool.create_agent import (
+from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
     ToolRetrievalConfig,
-    create_agent,
 )
+from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import BindableToolsFakeModel, pg_advisory_lock, skip_items_without_real_services
 from tests.integration.real.db_fixtures import (
@@ -57,6 +58,19 @@ __all__ = [
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
+
+
+@pytest.fixture(autouse=True)
+def _run_trace_store() -> Iterator[None]:
+    """Stand in for the run trace's store, which these journeys never read (Mongo is a mock here)."""
+    with (
+        patch("app.agents.core.background.executor_runner.begin_run", new_callable=AsyncMock),
+        patch("app.agents.core.background.executor_runner.end_run", new_callable=AsyncMock),
+        patch("app.agents.core.subagents.delegation.begin_run", new_callable=AsyncMock),
+        patch("app.agents.core.subagents.delegation.end_run", new_callable=AsyncMock),
+        patch("app.agents.tools.invocation.record_call", new_callable=AsyncMock),
+    ):
+        yield
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
