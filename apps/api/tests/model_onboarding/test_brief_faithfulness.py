@@ -4,7 +4,8 @@ Run it before changing the check's prompt or the helper model it runs on:
 uv run pytest tests/model_onboarding/test_brief_faithfulness.py -m model_onboarding -v.
 The bad drafts are the shapes live briefs shipped (a person no fact names, an event over an
 empty calendar, a count the facts never gave); the good ones restate the facts in other words.
-Values in ⟦ ⟧ are what slots filled in, as the check sees them in production.
+Values in ⟦ ⟧ are what slots filled in, as the check sees them in production. The honest
+drafts are vague, paraphrased or reordered on purpose: the check must never flag those.
 """
 
 from dataclasses import replace
@@ -42,20 +43,51 @@ _TRUE = CheckedProse(
         "Then the Sequoia partner meeting at ⟦11:00 AM⟧, a good moment for the seed round."
     ),
 )
-_QUIET_AND_TRUE = CheckedProse(
-    headline="Two things need you before Sequoia",
-    lede="The NDA for Lena and a sync that needs a fresh HubSpot token.",
-    caption="Short list, big meeting.",
-    message=(
-        "⟦2⟧ things need you this morning: Lena's NDA and the CRM sync.\nSequoia at ⟦11:00 AM⟧."
-    ),
-)
 
 
 def _with(**prose: str) -> CheckedProse:
     return replace(_TRUE, **prose)
 
 
+# Each must pass: true, however loosely, briefly or out of order it says so.
+_HONEST = {
+    "full": _TRUE,
+    "counted by a slot": _with(
+        headline="Two things need you before Sequoia",
+        message="⟦2⟧ things need you: Lena's NDA and the CRM sync.\nSequoia at ⟦11:00 AM⟧.",
+    ),
+    "vague": _with(
+        lede="A few things need you this morning, the NDA among them.",
+        message=(
+            "A couple of things are on your plate, the NDA for Lena first.\n"
+            "Something broke in the CRM sync overnight; want me to look?\n"
+            "Sequoia later this morning."
+        ),
+    ),
+    "paraphrased": _with(
+        headline="Lena needs your signature",
+        lede="The Northwind NDA wants your signature, and HubSpot needs a fresh login.",
+        message=(
+            "Lena's waiting on your signature for the Northwind NDA.\n"
+            "The HubSpot connection behind the CRM sync lapsed, so the sync stopped.\n"
+            "Your investor note is out; Elad and Nat have already written back.\n"
+            "You meet the Sequoia partners at ⟦11:00 AM⟧."
+        ),
+    ),
+    "reordered": _with(
+        headline="Sequoia at ⟦11:00 AM⟧, NDA first",
+        message=(
+            "Sequoia partner meeting at ⟦11:00 AM⟧.\n"
+            "Before it: the investor update shipped and two investors replied.\n"
+            "Lena still needs the signed NDA, and the CRM sync needs a new HubSpot token."
+        ),
+    ),
+    "offer and wit": _with(
+        caption="Fourteen investors emailed, and only one signature left for you.",
+        message=_TRUE.message + "\nWant me to draft a note to Lena so you only have to sign?",
+    ),
+}
+# Each must fail: a specific the facts contradict or do not hold.
 _FALSE = {
     "a person no fact names": _with(headline="Arjun's contract redlines need you"),
     "an empty calendar over a meeting": _with(
@@ -71,10 +103,16 @@ _FALSE = {
         )
     ),
     "an invented deadline": _with(caption="Your lawyer needs the NDA by Friday."),
+    "done work called unfinished": _with(
+        message=_TRUE.message.replace(
+            "The investor update went out, and Elad Gil and Nat Friedman already replied.",
+            "I'm still drafting the investor update; nobody has seen it yet.",
+        )
+    ),
 }
 
 
-@pytest.mark.parametrize("draft", [_TRUE, _QUIET_AND_TRUE], ids=["full", "quiet"])
+@pytest.mark.parametrize("draft", _HONEST.values(), ids=_HONEST.keys())
 async def test_a_brief_that_restates_its_facts_passes(draft: CheckedProse) -> None:
     assert await unsupported_claims(_USER, _FACTS, draft) == []
 

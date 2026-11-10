@@ -149,10 +149,13 @@ system fills it in from the facts:
   [[fact:9.time]]").
 - ``[[fact:N.count]]``: how many requests fact N stands for, when its line says so.
 - ``[the phrase](fact:N)``: your own words for fact N, linked to what it opens when it is
-  marked ``linkable`` and plain text otherwise.
-- ``[[fact:N]]``: fact N's title exactly as listed, capital letter and all. Use it only where
-  the title stands on its own like a name; "approve the [[fact:3]]" reads "approve the
-  Approve the ...". Mostly say a fact in your own words.
+  marked ``linkable`` and plain text otherwise. This is how you refer to an item.
+- ``[[fact:N]]``: fact N's title exactly as listed. Titles are written as to-dos
+  ("Approve the Acme MSA renewal"), so "approve the [[fact:3]]" reads "approve the Approve
+  the ...". Use it only where the title reads naturally as it stands; otherwise write
+  "[approve the Acme renewal](fact:3)".
+The message must refer to every item waiting on the user and every calendar event through
+one of its slots, usually its phrase; a brief that leaves one out is sent back.
 A figure you type must stand as it is in a fact's title ("the Q3 interviews"); any other is
 said in words or left out. A slot naming no fact shown, a count not in [COUNTS] or a field
 the fact lacks is rejected. Lengths count the prose with its slots filled in: headline at

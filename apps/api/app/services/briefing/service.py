@@ -485,7 +485,8 @@ class _Facts:
     """The brief's sections and stats, the facts block the model voices, and what its slots render.
 
     deliverables maps a fact id to the todo whose deliverable it links (minted only when the
-    message links it); addresses maps a fact id to the app link it carries.
+    message links it); addresses maps a fact id to the app link it carries; must_mention are
+    the facts waiting on the user and today's events, which the message refers to.
     """
 
     sections: list[BriefingSection]
@@ -494,6 +495,7 @@ class _Facts:
     values: SlotValues
     deliverables: dict[int, str]
     addresses: dict[int, str]
+    must_mention: frozenset[int]
 
 
 def _work_stats(work: context.TrackedWork) -> list[BriefingStat]:
@@ -601,6 +603,15 @@ def _build_facts(chosen: _Chosen, sources: _FactSources, clock: UserClock) -> _F
         values=SlotValues(facts=facts, counts=counts),
         deliverables=deliverables,
         addresses=addresses,
+        must_mention=frozenset(
+            [
+                fact_id
+                for sec, picked in zip(chosen.sections, chosen.picked, strict=True)
+                for it, (fact_id, _) in zip(sec.items, picked, strict=True)
+                if it.kind in NEEDS_YOU_ITEM_KINDS
+            ]
+            + sources.event_ids
+        ),
     )
 
 
@@ -756,6 +767,8 @@ class _Writing:
 
     values: SlotValues
     context: str
+    #: The facts the message must refer to by a slot; empty for a winback or wind-down note.
+    must_mention: frozenset[int]
 
 
 _VOICED_FIELDS = ("headline", "lede", "caption", "message")
@@ -784,12 +797,17 @@ async def _held_to_facts(
 ) -> BriefVoice | list[str]:
     """Return the voice rendered from its facts, or every way it breaks them.
 
-    Slots and lengths are checked in code; the claims of the rendered prose by one model call.
+    Slots, coverage and lengths are checked in code; the rendered prose's claims by one model call.
     """
     problems = [
         problem
         for name in _VOICED_FIELDS
         for problem in slot_problems(name, getattr(voice, name), writing.values)
+    ]
+    problems += [
+        f"the message never refers to fact {fact_id} ({writing.values.facts[fact_id].title}); "
+        f"say it in your own words as [your phrase](fact:{fact_id})"
+        for fact_id in sorted(writing.must_mention - referenced_facts(voice.message))
     ]
     if problems:
         return problems
@@ -808,7 +826,7 @@ async def _held_to_facts(
         message=marked(voice.message),
     )
     claims = await unsupported_claims(user_id, writing.context, prose)
-    return claims or draft
+    return [claim.problem() for claim in claims] or draft
 
 
 async def _written_brief(
@@ -1075,7 +1093,13 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         build_user_context(user, auth_provider=None),
         clock,
         prompt,
-        _Writing(values=facts.values, context=blocks.context),
+        _Writing(
+            values=facts.values,
+            context=blocks.context,
+            must_mention=frozenset()
+            if winback.is_winback or wind_down is not None
+            else facts.must_mention,
+        ),
     )
     links = await _links_in(user_id, voice.message, facts)
     payload = _daily_payload(

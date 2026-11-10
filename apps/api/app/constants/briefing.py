@@ -98,6 +98,8 @@ RECENT_OPENINGS_SHOWN: Final[int] = 5
 MAX_VOICE_ATTEMPTS: Final[int] = 2
 #: The faithfulness check's metering label.
 BRIEF_FAITHFULNESS_LABEL: Final[str] = "brief_faithfulness_check"
+#: The check judges, it does not write: the same draft gets the same verdict.
+BRIEF_FAITHFULNESS_TEMPERATURE: Final[float] = 0.0
 
 # Rows per list in the weekly edition (shipped, handled, the week ahead).
 WEEK_LIST_LIMIT: Final[int] = 5
