@@ -1,5 +1,6 @@
 """Today's calendar events as candidates: the judge may lead with one, never file one elsewhere."""
 
+from app.constants.briefing import BriefAction
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
 from app.models.briefing_models import BriefingEvent
@@ -23,6 +24,7 @@ def calendar_candidates(events: list[BriefingEvent]) -> list[BriefCandidate]:
                 for part in (f"at {event.start}" if event.start else "all day", event.location)
                 if part
             ),
+            action=BriefAction.ATTEND,
         )
         for event in events
     ]

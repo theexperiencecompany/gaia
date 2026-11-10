@@ -7,7 +7,9 @@ the vendored JS templates read.
 from typing import Any
 
 import pytest
+from tests.factories import make_brief_item as _item
 
+from app.constants.briefing import BriefAction
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.codes import Symbology, code_geometry
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
@@ -23,10 +25,6 @@ ART: ExplorerArt = {
     "year": "1889",
     "medium": "oil on canvas",
 }
-
-
-def _item(text: str, kind: str = "note") -> dict[str, Any]:
-    return {"text": text, "kind": kind}
 
 
 def _payload(**overrides: Any) -> BriefingPayload:
@@ -182,7 +180,7 @@ class TestContent:
                     "numeral": "I",
                     "title": "NEEDS YOU",
                     "items": [
-                        _item("Approve the Priya reply", "you"),
+                        _item("Priya reply", "you", action=BriefAction.REPLY, detail="due 12:00"),
                         _item("Sync Stripe invoices", "failed"),
                     ],
                 },
@@ -245,8 +243,8 @@ class TestContent:
         content = _build(self._daily())["content"]
 
         assert content["decisions"] == [
-            {"verb": "Approve", "label": "the Priya reply", "note": None},
-            {"verb": "Retry", "label": "Sync Stripe invoices", "note": None},
+            {"verb": "Reply", "label": "Priya reply", "note": "due 12:00", "action": "reply"},
+            {"verb": "Retry", "label": "Sync Stripe invoices", "note": None, "action": "retry"},
         ]
         assert all("Stripe" not in row["label"] for row in content["today"])
 
@@ -254,11 +252,31 @@ class TestContent:
         """Regression: Air Mail filed in-progress work under "Done while you slept"."""
         content = _build(self._daily())["content"]
 
-        assert [(r["label"], r["tag"]) for r in content["overnight"]] == [
-            ("Investor update", "DONE")
+        assert [(r["label"], r["tag"], r["outcome"]) for r in content["overnight"]] == [
+            ("Investor update", "DONE", "finished")
         ]
-        assert [(r["label"], r["tag"]) for r in content["running"]] == [
-            ("Q4 hiring plan", "IN PROGRESS")
+        assert [(r["label"], r["tag"], r["outcome"]) for r in content["running"]] == [
+            ("Q4 hiring plan", "IN PROGRESS", "started")
+        ]
+
+    def test_an_item_is_filed_by_what_it_asks_or_reports_not_by_its_kind(self) -> None:
+        """A lead that is a calendar event still asks something: it is a decision."""
+        content = _build(
+            _payload(
+                sections=[
+                    {
+                        "numeral": "I",
+                        "title": "First up",
+                        "key": "lead",
+                        "items": [_item("Sequoia", "note", action=BriefAction.ATTEND)],
+                    }
+                ]
+            )
+        )["content"]
+
+        assert content["overnight"] == []
+        assert content["decisions"] == [
+            {"verb": "Attend", "label": "Sequoia", "note": None, "action": "attend"}
         ]
 
     def test_an_empty_day_leaves_every_bucket_empty_instead_of_a_fake_row(self) -> None:
@@ -277,7 +295,32 @@ class TestContent:
             _payload(sections=[{"numeral": "I", "title": "X", "items": [_item("Heads up")]}])
         )["content"]["overnight"]
 
-        assert overnight == [{"t24": None, "label": "Heads up", "note": None, "tag": ""}]
+        assert overnight == [
+            {"t24": None, "label": "Heads up", "note": None, "tag": "", "outcome": "changed"}
+        ]
+
+    def test_each_section_says_how_many_its_cap_left_out(self) -> None:
+        content = _build(
+            _payload(
+                sections=[
+                    {
+                        "numeral": "I",
+                        "title": "Needs you",
+                        "key": "needs_you",
+                        "items": [_item("Acme invoice", "you")],
+                        "more": 2,
+                    },
+                    {
+                        "numeral": "II",
+                        "title": "GAIA's work",
+                        "key": "gaia_did",
+                        "items": [_item("Deck", "lookback")],
+                    },
+                ]
+            )
+        )["content"]
+
+        assert content["more"] == {"needs_you": 2, "updates": 0, "gaia_did": 0}
 
 
 @pytest.mark.unit
@@ -314,69 +357,6 @@ class TestRecipient:
     @pytest.mark.parametrize("name", [None, "", "   "])
     def test_no_name_leaves_no_recipient(self, name: str | None) -> None:
         assert _build(_payload(recipient_name=name))["recipient"] is None
-
-
-@pytest.mark.unit
-class TestOvernightClock:
-    def test_a_leading_clock_prefix_becomes_the_rows_24_hour_time(self) -> None:
-        overnight = _build(
-            _payload(
-                sections=[
-                    {
-                        "numeral": "I",
-                        "title": "X",
-                        "items": [_item("1:30 PM — Shipped the deck", "lookback")],
-                    }
-                ]
-            )
-        )["content"]["overnight"]
-
-        assert overnight == [
-            {"t24": "13:30", "label": "Shipped the deck", "note": None, "tag": "DONE"}
-        ]
-
-
-def _asks(*texts: str) -> BriefingPayload:
-    return _payload(
-        sections=[{"numeral": "I", "title": "X", "items": [_item(t, "you") for t in texts]}]
-    )
-
-
-@pytest.mark.unit
-class TestDecisionVerbs:
-    def _decisions(self, *texts: str) -> list[dict[str, Any]]:
-        return list(_build(_asks(*texts))["content"]["decisions"])
-
-    def test_a_non_imperative_ask_is_offered_for_review_verbatim(self) -> None:
-        assert self._decisions("Lunch with Ana") == [
-            {"verb": "Review", "label": "Lunch with Ana", "note": None}
-        ]
-
-    def test_a_blank_ask_is_offered_for_review_unchanged(self) -> None:
-        assert self._decisions("   ") == [{"verb": "Review", "label": "   ", "note": None}]
-
-    def test_punctuation_after_the_verb_is_not_part_of_it(self) -> None:
-        assert self._decisions("approve: the budget") == [
-            {"verb": "Approve", "label": "the budget", "note": None}
-        ]
-
-    def test_a_dash_after_the_verb_is_dropped_from_the_label(self) -> None:
-        assert self._decisions("Approve — the budget") == [
-            {"verb": "Approve", "label": "the budget", "note": None}
-        ]
-
-    def test_the_label_keeps_its_own_leading_letters_and_trailing_dash(self) -> None:
-        assert self._decisions("Approve Xavier's expense —") == [
-            {"verb": "Approve", "label": "Xavier's expense —", "note": None}
-        ]
-
-    def test_a_bare_verb_leaves_an_empty_label(self) -> None:
-        assert self._decisions("Confirm") == [{"verb": "Confirm", "label": "", "note": None}]
-
-    def test_a_word_that_merely_contains_a_verb_is_not_one(self) -> None:
-        assert self._decisions("SENDX the file") == [
-            {"verb": "Review", "label": "SENDX the file", "note": None}
-        ]
 
 
 @pytest.mark.unit
@@ -418,7 +398,7 @@ class TestAwaiting:
             "numeral": "I",
             "title": "Needs you",
             "items": [
-                {"text": "Approve the Acme MSA renewal", "kind": "you", "count": 3},
+                _item("Acme MSA renewal", "you", action=BriefAction.APPROVE, count=3),
                 _item("Sync Stripe", "failed"),
                 _item("Investor update", "lookback"),
             ],

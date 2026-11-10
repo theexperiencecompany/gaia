@@ -64,7 +64,6 @@ from app.models.briefing_models import (
     NEEDS_YOU_ITEM_KINDS,
     BriefingEvent,
     BriefingItem,
-    BriefingItemKind,
     BriefingKind,
     BriefingModel,
     BriefingPayload,
@@ -387,34 +386,10 @@ class _Chosen:
     picked: list[list[tuple[int, BriefCandidate]]]
 
 
-def _item_kind(key: SectionKey, candidate: BriefCandidate) -> BriefingItemKind:
-    """How a kept candidate reads: its own state, unless its section says it waits on the user or not."""
-    if key is SectionKey.NEEDS_YOU and candidate.state not in NEEDS_YOU_ITEM_KINDS:
-        return "you"
-    if key in (SectionKey.UPDATES, SectionKey.GAIA_DID) and candidate.state in NEEDS_YOU_ITEM_KINDS:
-        return "note"
-    return candidate.state
-
-
-def _item(key: SectionKey, candidate: BriefCandidate, offer: str | None) -> BriefingItem:
-    return BriefingItem(
-        text=candidate.title,
-        todo_id=candidate.todo_id,
-        kind=_item_kind(key, candidate),
-        count=candidate.count,
-        app=candidate.app,
-        url=candidate.url,
-        people=list(candidate.people),
-        offer=offer if key is SectionKey.LEAD else None,
-    )
-
-
 def _chosen(selection: BriefSelection, pool: CandidatePool) -> _Chosen:
     """Lay the judge's selection out as the brief's sections, in reading order, empty ones left out."""
     filled = [
-        (key, [(i, pool[i]) for i in selection.sections[key]])
-        for key in DAILY_SECTION_ORDER
-        if selection.sections.get(key)
+        (key, selection.sections[key]) for key in DAILY_SECTION_ORDER if selection.sections.get(key)
     ]
     return _Chosen(
         sections=[
@@ -422,11 +397,12 @@ def _chosen(selection: BriefSelection, pool: CandidatePool) -> _Chosen:
                 numeral=SECTION_NUMERALS[n],
                 title=SECTION_TITLES[key],
                 key=key,
-                items=[_item(key, c, selection.offer) for _, c in picked],
+                items=[selection.items[i] for i in ids],
+                more=selection.more.get(key, 0),
             )
-            for n, (key, picked) in enumerate(filled)
+            for n, (key, ids) in enumerate(filled)
         ],
-        picked=[picked for _, picked in filled],
+        picked=[[(i, pool[i]) for i in ids] for _, ids in filled],
     )
 
 
@@ -1021,7 +997,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         candidates=len(gathered.pool),
         kept={key.value: len(ids) for key, ids in selection.sections.items()},
         dropped=len(selection.dropped),
-        capped=len(selection.capped),
+        more={key.value: count for key, count in selection.more.items()},
     )
     chosen = _chosen(selection, gathered.pool)
     remembered = _chosen_signals(chosen, scouts.remembered)

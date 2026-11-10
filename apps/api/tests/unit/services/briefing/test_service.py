@@ -19,6 +19,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, sentinel
 
 import pytest
+from tests.factories import make_brief_item
 from tests.helpers import captured_wide_event
 import time_machine
 
@@ -34,10 +35,12 @@ from app.constants.briefing import (
     MAX_BRIEF_ITEMS,
     WEEKLY_KICKER,
     WINBACK_THRESHOLD,
+    BriefAction,
     BriefingBag,
     BriefingFrequency,
     BriefingRunOutcome,
     BriefItemSource,
+    BriefOutcome,
     SectionKey,
 )
 from app.constants.notifications import (
@@ -179,22 +182,34 @@ _DIGEST_REPORT = "3 new papers on retrieval\nThe longest is 40 pages; two cite y
 
 _CANDIDATE_LINE = re.compile(r"^(\d+)\. \[[^\]]+\] (needs_you|update|gaia_did|event)", re.M)
 _FILED_UNDER = {"needs_you": "needs_you", "update": "updates", "gaia_did": "gaia_did"}
+_CANDIDATE_TITLE = re.compile(
+    r"^(\d+)\. \[[^\]]+\] [a-z_]+(?:, important)?: (.+?)(?: \| .*)?$", re.M
+)
+# How the stand-in judge words what its line does not settle: asks reply, reports changed.
+_SECTION_READS_AS = {
+    "lead": {"action": "reply"},
+    "needs_you": {"action": "reply"},
+    "updates": {"outcome": "changed"},
+    "gaia_did": {"outcome": "finished"},
+}
+
+
+def _worded(prompt: str, section: str, candidate_id: int) -> dict[str, object]:
+    """Word a kept candidate as a judge would: its own title, its section's action or outcome."""
+    titles = {int(n): title for n, title in _CANDIDATE_TITLE.findall(prompt)}
+    return {"id": candidate_id, "title": titles[candidate_id], **_SECTION_READS_AS[section]}
 
 
 def _files_by_kind(
     schema: type[BriefSelectionAnswer], prompt: str, **_: object
 ) -> BriefSelectionAnswer:
     """Stand in for the selection model: file every candidate where its producer would, in order."""
-    lists: dict[str, list[int]] = {"needs_you": [], "updates": [], "gaia_did": []}
+    lists: dict[str, list[dict[str, object]]] = {"needs_you": [], "updates": [], "gaia_did": []}
     for number, kind in _CANDIDATE_LINE.findall(prompt):
         if kind in _FILED_UNDER:
-            lists[_FILED_UNDER[kind]].append(int(number))
+            section = _FILED_UNDER[kind]
+            lists[section].append(_worded(prompt, section, int(number)))
     return schema.model_validate(lists)
-
-
-_CANDIDATE_TITLE = re.compile(
-    r"^(\d+)\. \[[^\]]+\] [a-z_]+(?:, important)?: (.+?)(?: \| .*)?$", re.M
-)
 
 
 def _judged(
@@ -206,14 +221,17 @@ def _judged(
         schema: type[BriefSelectionAnswer], prompt: str, **_: object
     ) -> BriefSelectionAnswer:
         ids = {title: int(n) for n, title in _CANDIDATE_TITLE.findall(prompt)}
-        lists = {key: [ids[title] for title in titles] for key, titles in sections.items()}
-        kept = {i for ids_ in lists.values() for i in ids_}
+        lists = {
+            key: [_worded(prompt, key, ids[title]) for title in titles]
+            for key, titles in sections.items()
+        }
+        kept = {c["id"] for chosen in lists.values() for c in chosen}
         if lead is not None:
             kept.add(ids[lead[0]])
         return schema.model_validate(
             {
                 **lists,
-                "lead": ids[lead[0]] if lead else None,
+                "lead": _worded(prompt, "lead", ids[lead[0]]) if lead else None,
                 "offer": lead[1] if lead else None,
                 "dropped": [i for i in ids.values() if i not in kept],
             }
@@ -710,6 +728,10 @@ class TestDailyBrief:
             (SectionKey.GAIA_DID, ["Running 0", "Running 1", "Running 2"]),
         ]
         assert [s.numeral for s in sections] == ["I", "II"]
+        assert [(s.key, s.more) for s in sections] == [
+            (SectionKey.NEEDS_YOU, 2),
+            (SectionKey.GAIA_DID, 3),
+        ]
 
     async def test_the_judges_lead_opens_the_brief_with_its_offer(self, world: World) -> None:
         world.work = _brief_work()
@@ -732,7 +754,9 @@ class TestDailyBrief:
     ) -> None:
         world.work = _brief_work()
         world.judge.side_effect = None
-        world.judge.return_value = BriefSelectionAnswer(needs_you=[99])
+        world.judge.return_value = BriefSelectionAnswer.model_validate(
+            {"needs_you": [{"id": 99, "action": "reply", "title": "Nobody"}]}
+        )
 
         with pytest.raises(AppError, match="selection judge broke its contract"):
             await service.run_daily_briefing(_USER)
@@ -843,7 +867,7 @@ def _weekly(item_count: int) -> dict[str, Any]:
             {
                 "numeral": "I",
                 "title": "WHAT SHIPPED",
-                "items": [{"text": f"Item {i}", "kind": "lookback"} for i in range(item_count)],
+                "items": [make_brief_item(f"Item {i}", "lookback") for i in range(item_count)],
             }
         ],
         "mood": "weekly",
@@ -2493,16 +2517,22 @@ class TestEverySourceReachesItsSection:
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
-        assert [(s.key, [(i.text, i.app, i.kind) for i in s.items]) for s in payload.sections] == [
+        assert [
+            (s.key, [(i.text, i.app, i.kind, i.action or i.outcome) for i in s.items])
+            for s in payload.sections
+        ] == [
             (
                 SectionKey.NEEDS_YOU,
                 [
-                    ("Send the invoice to Acme", "Gmail", "you"),
-                    ("CRM sync failed", "GAIA", "failed"),
-                    ("Fix the login redirect", "Linear", "you"),
+                    ("Send the invoice to Acme", "Gmail", "you", BriefAction.APPROVE),
+                    ("CRM sync failed", "GAIA", "failed", BriefAction.RETRY),
+                    ("Fix the login redirect", "Linear", "you", BriefAction.REPLY),
                 ],
             ),
-            (SectionKey.UPDATES, [("Stripe payout of 2,400 dollars landed", "Gmail", "note")]),
+            (
+                SectionKey.UPDATES,
+                [("Stripe payout of 2,400 dollars landed", "Gmail", "note", BriefOutcome.CHANGED)],
+            ),
         ]
         assert payload.sections[0].items[2].url == _LOGIN.url
         assert payload.sources_read == ["Linear", "Gmail", "Google Calendar"]

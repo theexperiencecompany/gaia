@@ -9,8 +9,8 @@ scout first looked, it wrote down how to tell what in that app needs this user:
 {criteria}
 
 Each line: its id, [app], where its producer would file it (needs_you, update, gaia_did or
-event), then its title, detail, due date and people. "important" marks what a scout already
-judged important.
+event), then its title, detail, due date and people, and its action or outcome when its source
+knows it. "important" marks what a scout already judged important.
 {items}
 
 Choose by importance to this user today, never by source or by order:
@@ -29,4 +29,13 @@ Choose by importance to this user today, never by source or by order:
   mentioned that has not moved is not news: keep it only if it still needs them.
 
 Every id that is not an event goes in exactly one list. Never invent an id.
+
+Word every id you keep in lead, needs_you, updates or gaia_did, from that line's facts alone:
+- title: a noun phrase of at most {title_max} characters, never a sentence: "Acme invoice",
+  "Priya's offsite venues", "CRM sync". Name the thing, not the action.
+- detail: at most one line of {detail_max} characters adding the one fact that matters (who,
+  when, why), or null. Never repeat the title.
+- lead and needs_you carry action, what the user does: one of {actions}. updates and
+  gaia_did carry outcome, where it got to: one of {outcomes}. A line that names its action or
+  outcome already has it: give that one.
 """
