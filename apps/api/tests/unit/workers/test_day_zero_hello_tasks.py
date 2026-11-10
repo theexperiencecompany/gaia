@@ -21,7 +21,7 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.user_models import DayZeroHello, UserDocument
-from app.services.briefing import context, service as briefing_service
+from app.services.briefing import context, silent_turn
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
 from app.workers.tasks import day_zero_hello_tasks as hello
@@ -56,7 +56,7 @@ class Seams:
         monkeypatch.setattr(user_repository, "get", self.get_user)
         monkeypatch.setattr(user_repository, "mark_day_zero_hello_sent", self.mark_sent)
         monkeypatch.setattr(context, "format_goal_block", self.goal)
-        monkeypatch.setattr(briefing_service, "call_agent_silent", self.agent)
+        monkeypatch.setattr(silent_turn, "call_agent_silent", self.agent)
         monkeypatch.setattr(hello, "post_to_platform_chat", self.post)
         monkeypatch.setattr(hello, "capture", self.capture)
         self.recorder = WideEventRecorder()
