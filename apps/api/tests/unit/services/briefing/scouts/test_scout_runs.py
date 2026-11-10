@@ -19,6 +19,7 @@ import time_machine
 
 from app.constants.scouts import SCOUT_RELEARN_BACKOFF
 from app.constants.user_activity import ActivityStatus
+from app.db.repositories.scouts import scouts_repository
 from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookBody, ToolStep
 from app.models.scout_models import (
@@ -36,6 +37,7 @@ from app.services.briefing.scouts.learn import Learned
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools
 from app.services.briefing.scouts.watch import FrozenWatch
 from app.services.mcp.mcp_errors import MCPIntegrationNotFoundError
+from app.services.payments.payment_service import payment_service
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.utils.errors import AppError
 
@@ -176,13 +178,13 @@ def scouts(monkeypatch: pytest.MonkeyPatch) -> Iterator[Scouts]:
 
     monkeypatch.setattr(service, "scout_integrations", integrations)
     monkeypatch.setattr(service, "scout_tools", tools)
-    monkeypatch.setattr(service.scouts_repository, "find_for", find_for)
-    monkeypatch.setattr(service.scouts_repository, "replace", s.replace)
+    monkeypatch.setattr(scouts_repository, "find_for", find_for)
+    monkeypatch.setattr(scouts_repository, "replace", s.replace)
     monkeypatch.setattr(service, "learn_scout", s.learn)
     monkeypatch.setattr(service, "watch", s.watch)
     monkeypatch.setattr(service, "may_learn", may_learn)
     monkeypatch.setattr(service, "activity_status_of", activity)
-    monkeypatch.setattr(service.payment_service, "get_cached_plan_type", plan)
+    monkeypatch.setattr(payment_service, "get_cached_plan_type", plan)
     with time_machine.travel(_NOW, tick=False):
         yield s
 

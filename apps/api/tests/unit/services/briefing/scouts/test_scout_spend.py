@@ -12,12 +12,12 @@ import pytest
 from tests.factories import make_user_id
 import time_machine
 
-from app.config.rate_limits import RateLimitPeriod
+from app.config.rate_limits import RateLimitPeriod, get_daily_cost_budget_usd
 from app.constants.scouts import SCOUT_DAILY_COST_CEILING_USD, SCOUT_SPEND_TTL_SECONDS
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.services.briefing.scouts.spend import ScoutSpend, may_learn
-from app.services.cost_budget import _budget_key, get_daily_cost_budget_usd
+from app.services.cost_budget import _budget_key
 from app.utils.errors import AppError
 
 USER_ID = make_user_id()

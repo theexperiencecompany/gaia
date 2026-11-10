@@ -47,6 +47,7 @@ from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
@@ -328,12 +329,12 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         AsyncMock(side_effect=lambda user: w.scouts if user.id == _USER else []),
     )
     monkeypatch.setattr(
-        service.signal_memory_repository,
+        signal_memory_repository,
         "find_for",
         AsyncMock(side_effect=lambda user_id, signals: list(w.memory) if user_id == _USER else []),
     )
-    monkeypatch.setattr(service.signal_memory_repository, "record_seen", w.seen)
-    monkeypatch.setattr(service.signal_memory_repository, "mark_shown", w.shown)
+    monkeypatch.setattr(signal_memory_repository, "record_seen", w.seen)
+    monkeypatch.setattr(signal_memory_repository, "mark_shown", w.shown)
 
     async def set_bag(user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
         assert user_id == _USER
@@ -2143,7 +2144,7 @@ class TestSignalsInTheBrief:
     async def test_a_day_with_only_signals_is_pushed_and_counted(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(service.context, "gather_calendar", AsyncMock(return_value=[]))
+        monkeypatch.setattr(context, "gather_calendar", AsyncMock(return_value=[]))
         world.scouts = _scouted(_DOCS)
         world.agent.return_value = _saying("Refresh the onboarding docs when you can.")
 

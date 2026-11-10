@@ -927,7 +927,7 @@ async def test_a_ledger_run_is_recorded_as_background_cost() -> None:
 
 
 async def test_a_ledger_run_is_not_stopped_by_the_users_budget_wall() -> None:
-    wall = AsyncMock(return_value=BudgetCheck("You've reached today's usage limit.", 9.0, None))
+    wall = AsyncMock(return_value=BudgetCheck(cost_budget.BudgetWall.DAILY_USAGE, 9.0, None))
     mw = LLMAccountingMiddleware(agent_name="brief_scout", ledger=_RecordingLedger())
     captured, handler = _recording_handler()
     with (

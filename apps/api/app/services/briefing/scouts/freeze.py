@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import json
 from typing import Any
 
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolCall, ToolMessage
 
 from app.models.playbook_models import ForEachStep, ToolStep, is_ask_slot, is_time_slot
 from app.models.workflow_execution_models import parse_result
@@ -36,13 +36,20 @@ def learn_calls(messages: Sequence[BaseMessage]) -> list[LearnCall]:
             answers[message.tool_call_id] = parse_result(
                 content if isinstance(content, str) else json.dumps(content, default=str)
             )
-    return [
-        LearnCall(tool_name=call["name"], args=dict(call["args"]), result=answers[call["id"]])
-        for message in messages
-        if isinstance(message, AIMessage)
-        for call in message.tool_calls
-        if call["name"] and call["id"] is not None and call["id"] in answers
-    ]
+    calls: list[LearnCall] = []
+    for message in messages:
+        if not isinstance(message, AIMessage):
+            continue
+        tool_calls: list[ToolCall] = message.tool_calls
+        for call in tool_calls:
+            call_id = call["id"]
+            if call["name"] and call_id is not None and call_id in answers:
+                calls.append(
+                    LearnCall(
+                        tool_name=call["name"], args=dict(call["args"]), result=answers[call_id]
+                    )
+                )
+    return calls
 
 
 def freeze_sources(
