@@ -9,7 +9,12 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
+from app.models.briefing_models import (
+    BriefingKind,
+    BriefingModel,
+    BriefingPayload,
+    EditionRender,
+)
 from app.models.short_link_models import ShortLinkTargetType
 from app.services.briefing.edition_email import HostedEditionImage, host_edition_image
 from app.services.briefing.message import full_brief_url
@@ -46,8 +51,10 @@ async def store_brief(
         kind,
         payload,
         briefing_id=briefing_id,
-        edition_image_url=image.display_url,
-        edition_fold=image.fold,
-        edition_paper=list(image.paper) if image.paper else None,
+        edition=EditionRender(
+            image_url=image.display_url,
+            fold=image.fold,
+            paper=list(image.paper) if image.paper else None,
+        ),
     )
     return StoredBrief(briefing=briefing, image=image, link=link)

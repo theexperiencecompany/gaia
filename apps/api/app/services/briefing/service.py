@@ -100,7 +100,6 @@ from app.services.briefing.candidates.pool import (
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.context import UserClock
 from app.services.briefing.conversation import post_brief_message
-from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.faithfulness import CheckedProse, unsupported_claims
@@ -122,7 +121,7 @@ from app.services.briefing.slots import (
     render_slots,
     slot_problems,
 )
-from app.services.briefing.store import store_brief
+from app.services.briefing.store import StoredBrief, store_brief
 from app.services.briefing.view import briefing_card, briefing_view
 from app.services.canvas_markdown import deliverable_size
 from app.services.delivery.chat_channel import ChatChannel, resolve_proactive_target
@@ -269,12 +268,10 @@ async def _post_to_chat(
 
 async def _deliver(
     user: UserDocument,
-    briefing: BriefingModel,
+    stored: StoredBrief,
     payload: BriefingPayload,
     notification_kind: str,
     *,
-    image: HostedEditionImage,
-    brief_url: str,
     push: bool,
 ) -> list[str]:
     """Deliver one brief in-app and, when pushed, to email and the user's chat.
@@ -282,11 +279,11 @@ async def _deliver(
     The orchestrator gets only in-app (plus email when wanted), never the chat platform:
     that message is the edition photo, posted through post_to_platform_chat.
     """
-    kind: BriefingKind = briefing.kind
+    kind: BriefingKind = stored.briefing.kind
     message = delivered_message(payload)
     target = await resolve_proactive_target(user.id) if push else None
     channel = target if isinstance(target, ChatChannel) else None
-    card = briefing_card(briefing_view(briefing))
+    card = briefing_card(briefing_view(stored.briefing))
     channels = [NotificationChannel.INAPP] + (
         [NotificationChannel.EMAIL] if push and _wants_email(user) else []
     )
@@ -307,7 +304,7 @@ async def _deliver(
                         style=ActionStyle.PRIMARY,
                         config=ActionConfig(
                             redirect=RedirectConfig(
-                                url=brief_path(briefing.id),
+                                url=brief_path(stored.briefing.id),
                                 open_in_new_tab=False,
                                 close_notification=True,
                             )
@@ -318,15 +315,15 @@ async def _deliver(
             metadata={
                 **card.model_dump(exclude={"kind"}),
                 "kind": notification_kind,
-                "brief_url": brief_url,
+                "brief_url": stored.link,
             },
         )
     )
     await post_brief_message(user.id, message, card)
     delivered = [c.channel_type for c in record.channels if c.reached_user]
     if channel:
-        text = chat_text(payload, brief_url)
-        result = await _post_to_chat(user, channel, text, image.chat_url, kind)
+        text = chat_text(payload, stored.link)
+        result = await _post_to_chat(user, channel, text, stored.image.chat_url, kind)
         if result is OutboundResult.PUBLISHED:
             delivered.append(channel.source.value)
     return delivered
@@ -936,15 +933,7 @@ async def _publish(
         payload.new_stamp = await new_stamp(user.id, payload.stamp_city)
     payload.recipient_name = display_name(user)
     stored = await store_brief(user.id, clock.date_str, kind, payload)
-    channels = await _deliver(
-        user,
-        stored.briefing,
-        payload,
-        _NOTIFICATION_KINDS[kind],
-        image=stored.image,
-        brief_url=stored.link,
-        push=push,
-    )
+    channels = await _deliver(user, stored, payload, _NOTIFICATION_KINDS[kind], push=push)
     await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
     if push:
         await _persist_draws(user.id, draws)
@@ -1048,10 +1037,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     # Idle ladder: nothing to report (no candidate beyond the calendar, no goal
     # knowledge) escalates from the goal question to a plain warning to one
     # goodbye, then dormancy. A new account's first week never climbs it.
-    first_week = dormancy.in_first_week(user, datetime.now(UTC))
-    idle = not gathered.has_news and not has_goal and not first_week
-    idle_days = await dormancy.record_idle_day(user_id, dstate, idle, clock.date_str)
-    wind_down = dormancy.wind_down_stage(idle_days) if idle else None
+    ladder = await dormancy.climb_idle_ladder(
+        user, dstate, clock.date_str, has_news=gathered.has_news, has_goal=has_goal
+    )
     # A user who stopped coming back is offered fewer briefs, never silently dropped.
     offer_lighter = await activity_status_of(user_id) == ActivityStatus.IDLE
 
@@ -1061,17 +1049,17 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         goal=goal_block,
         lookback=lookback_block,
         replies=await chat_sync.format_replies_block(user_id, since),
-        setup=await _setup_block(user, first_week=first_week, offer_lighter=offer_lighter),
+        setup=await _setup_block(user, first_week=ladder.first_week, offer_lighter=offer_lighter),
         signals=signals_block(remembered, seen_at),
     )
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
         blocks=blocks,
         situation=VoiceSituation(
-            winback=winback.is_winback and wind_down is None,
+            winback=winback.is_winback and ladder.wind_down is None,
             is_first_briefing=is_first,
-            wind_down=wind_down,
-            first_week=first_week,
+            wind_down=ladder.wind_down,
+            first_week=ladder.first_week,
             offer_lighter_cadence=offer_lighter,
         ),
         recent_openings=await _recent_openings(user_id),
@@ -1084,7 +1072,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             values=facts.values,
             context=blocks.context,
             must_mention=frozenset()
-            if winback.is_winback or wind_down is not None
+            if winback.is_winback or ladder.wind_down is not None
             else facts.must_mention,
             kind=BRIEFING_KIND_DAILY,
         ),
@@ -1117,7 +1105,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         # The idle ladder's goal question, warning and goodbye are messages in
         # their own right, so they push even on an otherwise empty day.
         _Push(
-            push=not _is_empty_day(payload, signals) or wind_down is not None or winback.is_winback,
+            push=not _is_empty_day(payload, signals)
+            or ladder.wind_down is not None
+            or winback.is_winback,
             signal_count=len(signals),
         ),
     )
@@ -1129,11 +1119,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     if carried:
         await pending_brief_items_repository.consume(user_id, carried)
     await _clear_bootstrap(user)
-
-    # The goodbye went out — pause the loop until a reactivation signal.
-    if wind_down == dormancy.WIND_DOWN_FINAL:
-        await dormancy.enter_dormancy(user_id)
-        log.info("briefing.dormancy_entered", user_id=user_id, idle_days=idle_days)
+    await dormancy.leave_idle_ladder(user_id, ladder)
     return BriefingRunOutcome.SENT
 
 
