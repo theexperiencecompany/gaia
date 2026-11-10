@@ -270,7 +270,7 @@ async def seed_dev_postmarks(user: UserDocument, count: int) -> None:
     for days_before, slug in enumerate(cities[:count]):
         day = _LAST_SEEDED_DATE - timedelta(days=days_before)
         payload = _brief_payload(day, _SEED_DAYS[days_before % len(_SEED_DAYS)], slug, user)
-        image = await host_edition_image(payload, render_key=uuid4().hex)
+        image = await host_edition_image(payload, owner_id=user.id, render_key=uuid4().hex)
         await briefing_repository.upsert_briefing(
             user.id, payload.date, BRIEFING_KIND_DAILY, payload, edition_image_url=image.display_url
         )

@@ -6,13 +6,13 @@
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.config.settings import settings
 from app.utils.search.models import SearchResponse, SearchResultItem
-from app.utils.search.providers.base import SearchProvider
+from app.utils.search.providers.base import CredentialSearchProvider
 
 _ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 _TIMEOUT = 15.0
 _MAX_COUNT = 20
+_AUTH_HEADER = "X-Subscription-Token"
 
 
 class _BraveMetaUrl(BaseModel):
@@ -54,23 +54,20 @@ class _BravePayload(BaseModel):
     web: _BraveWeb | None = None
 
 
-class BraveProvider(SearchProvider):
+class BraveProvider(CredentialSearchProvider):
     """Brave Search API — booster on Brave's own index ($5 credit/mo)."""
 
     name = "brave"
     monthly_free_limit = 1_000
 
-    def is_configured(self) -> bool:
-        """Return True when a Brave API key is configured."""
-        return bool(settings.BRAVE_API_KEY)
-
     async def search(self, query: str, count: int) -> SearchResponse:
         """Query Brave and map results to the shared search shape."""
+        api_key = await self._credential()
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.get(
                 _ENDPOINT,
                 headers={
-                    "X-Subscription-Token": settings.BRAVE_API_KEY or "",
+                    _AUTH_HEADER: api_key,
                     "Accept": "application/json",
                 },
                 params={"q": query, "count": min(count, _MAX_COUNT)},

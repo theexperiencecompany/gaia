@@ -19,13 +19,17 @@ from firecrawl import FirecrawlApp
 import html2text
 import httpx
 
-from app.config.settings import settings
 from app.constants.cache import WEBPAGE_FETCH_CACHE_TTL
+from app.constants.providers import CredentialProviderName
 from app.constants.search import (
     CRAWL4AI_PAGE_TIMEOUT_MS,
     CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
 )
 from app.decorators.caching import Cacheable
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    resolve as resolve_firecrawl_config,
+)
 from app.utils.crawl4ai_utils import CrawlBatchParams, batch_fetch_with_crawl4ai
 from app.utils.exceptions import FetchError
 from app.utils.url_safety import assert_public_http_url, open_public_http_url
@@ -106,16 +110,24 @@ class FirecrawlFetcher(WebpageFetcher):
 
     name = "firecrawl"
 
-    def __init__(self) -> None:
+    def __init__(self, api_key: str | None) -> None:
+        # Resolved per fetch chain by default_fetchers: credential store →
+        # env (resolve applies the env fallback itself).
+        self._api_key = api_key
         self._client: FirecrawlApp | None = None
 
     def is_configured(self) -> bool:
-        """Return True when a Firecrawl API key is configured."""
-        return bool(settings.FIRECRAWL_API_KEY)
+        """Report whether a Firecrawl API key is configured.
+
+        The resolved key, not the env var: a key saved in the credential store
+        reaches this fetcher through default_fetchers and would otherwise be
+        reported unconfigured.
+        """
+        return bool(self._api_key)
 
     def _get_client(self) -> FirecrawlApp:
         if self._client is None:
-            self._client = FirecrawlApp(api_key=settings.FIRECRAWL_API_KEY)
+            self._client = FirecrawlApp(api_key=self._api_key)
         return self._client
 
     async def fetch(self, url: str) -> str:
@@ -182,9 +194,16 @@ class HttpxFetcher(WebpageFetcher):
         return markdown
 
 
-def _default_fetchers() -> list[WebpageFetcher]:
-    """Return the fetch waterfall, cheapest/most-capable first."""
-    return [Crawl4aiFetcher(), FirecrawlFetcher(), HttpxFetcher()]
+async def default_fetchers() -> list[WebpageFetcher]:
+    """Return the fetch waterfall, cheapest/most-capable first.
+
+    The Firecrawl key resolves per chain through the credential store (with
+    the service's env fallback), so a key configured in Settings works without
+    a restart and wins over the environment.
+    """
+    config: ProviderConfig | None = await resolve_firecrawl_config(CredentialProviderName.FIRECRAWL)
+    firecrawl_api_key = config.api_key if config else None
+    return [Crawl4aiFetcher(), FirecrawlFetcher(firecrawl_api_key), HttpxFetcher()]
 
 
 async def _fetch_first_success(url: str, fetchers: list[WebpageFetcher] | None = None) -> str:
@@ -193,7 +212,7 @@ async def _fetch_first_success(url: str, fetchers: list[WebpageFetcher] | None =
     Records every engine attempt (outcome, latency, content length) in a single
     webpage_fetch wide-event field, keyed by host for high-cardinality drill-down.
     """
-    fetchers = fetchers if fetchers is not None else _default_fetchers()
+    fetchers = fetchers if fetchers is not None else await default_fetchers()
     host = urlparse(url).hostname or ""
     attempts: list[dict[str, Any]] = []
     errors: list[str] = []

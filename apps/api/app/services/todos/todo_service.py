@@ -12,6 +12,7 @@ from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -43,10 +44,12 @@ from app.models.todo_models import (
 )
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
+from app.services.conversation_service import delete_todo_conversations
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
     SubTodoParentError,
+    TodoNotFoundError,
     TrackedLabelChangeError,
     TrackedTodoScheduleError,
     TrackedTodoWorkflowError,
@@ -73,7 +76,7 @@ from shared.py.analytics.catalog.todos import (
     TodosToggled,
     TodosUpdated,
 )
-from shared.py.wide_events import log, spawn_logged_task
+from shared.py.wide_events import log
 
 
 async def _get_workflow_categories_for_todos(
@@ -178,7 +181,7 @@ async def _refuse_what_a_tracked_todo_cannot_take(
         return
     existing = await todo_repository.get(todo_id, user_id=user_id)
     if existing is None:
-        raise ValueError(f"Todo {todo_id} not found")
+        raise TodoNotFoundError(todo_id)
     tracked = GAIA_TRACKED_LABEL in existing.labels
     if updates.labels is not None and (GAIA_TRACKED_LABEL in updates.labels) != tracked:
         raise TrackedLabelChangeError()
@@ -395,6 +398,28 @@ def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     return TodoUpdate(**fields)
 
 
+async def _complete_if_tracked(todo_id: str, user_id: str, update: TodoUpdate) -> TodoUpdate:
+    """Complete a tracked todo through tracked_todo_service, then return update without its completion fields.
+
+    That service archives the canvas and sets the completion fields itself, so they are
+    stripped here and the update neither re-trips the guard nor clobbers vfs_path.
+    """
+    existing = await todo_repository.get(todo_id, user_id=user_id)
+    if not (existing and existing.vfs_path):
+        return update
+    try:
+        from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
+            tracked_todo_service,
+        )
+
+        await tracked_todo_service.complete_tracked_todo(
+            todo_id, user_id, summary="Completed via UI"
+        )
+    except Exception as e:
+        log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
+    return _drop_completion_fields(update)
+
+
 class TodoService:
     """Persistence + caching live in the todos/projects repositories; this layer holds orchestration only."""
 
@@ -514,42 +539,12 @@ class TodoService:
         return TodoResponse.from_document(created)
 
     @classmethod
-    async def create_todo_with_workflow(cls, todo: TodoModel, user_id: str) -> TodoResponse:
-        """Create a classic todo and queue its workflow generation; tracked todos never take this path."""
-        if GAIA_TRACKED_LABEL in todo.labels:
-            raise TrackedTodoWorkflowError()
-        created = await cls.create_todo(todo, user_id)
-
-        # Fire-and-forget: generation must not block or fail the create.
-        try:
-            # Deferred import: workflow/ARQ enqueue stack loads only when generation is actually queued
-            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
-                WorkflowQueueService,
-            )
-
-            spawn_logged_task(
-                "todo_workflow_generation",
-                WorkflowQueueService.queue_todo_workflow_generation(
-                    todo_id=created.id,
-                    user_id=user_id,
-                    title=todo.title,
-                    description=todo.description or "",
-                ),
-                user={"id": user_id},
-                todo={"id": created.id},
-            )
-            log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
-        except Exception as e:
-            log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
-        return created
-
-    @classmethod
     async def get_todo(cls, todo_id: str, user_id: str) -> TodoResponse:
         """Get a single todo by ID."""
         log.set(component="todo_service", operation="get_todo", user_id=user_id, todo_id=todo_id)
         todo = await todo_repository.get(todo_id, user_id=user_id)
         if not todo:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         (response,) = await todo_responses(user_id, [todo])
         return response
@@ -613,23 +608,13 @@ class TodoService:
         if update.completed is not None:
             update.completed_at = datetime.now(UTC) if update.completed else None
 
-        # A tracked todo (has a VFS canvas) must complete via tracked_todo_service first —
-        # it archives the canvas and sets the completion fields itself — then those fields
-        # are stripped here so this update doesn't re-trip the guard or clobber vfs_path.
         if update.completed is True:
-            existing = await todo_repository.get(todo_id, user_id=user_id)
-            if existing and existing.vfs_path:
-                try:
-                    from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
-                        tracked_todo_service,
-                    )
+            update = await _complete_if_tracked(todo_id, user_id, update)
 
-                    await tracked_todo_service.complete_tracked_todo(
-                        todo_id, user_id, summary="Completed via UI"
-                    )
-                except Exception as e:
-                    log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
-                update = _drop_completion_fields(update)
+        if update.title is not None:
+            # A tracked todo's chat carries its title, as its tab and header name it. First,
+            # so a failure here saves nothing rather than half a rename.
+            await conversation_repository.retitle_todo_chats(user_id, [todo_id], update.title)
 
         async with _watching_refs_to_reopen(
             user_id, [todo_id], reopening=update.completed is False
@@ -637,7 +622,7 @@ class TodoService:
             updated = await _persist_update(todo_id, user_id, updates.workflow_id, update)
 
         if not updated:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         try:
             await update_todo_embedding(todo_id, updated, user_id)
@@ -677,7 +662,7 @@ class TodoService:
         log.set(component="todo_service", operation="delete_todo", user_id=user_id, todo_id=todo_id)
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         # A sub-todo does not outlive its parent; each goes through this same path.
         for child in await todo_repository.find_sub_todos(user_id, [todo_id]):
@@ -696,8 +681,10 @@ class TodoService:
             except Exception as e:
                 log.warning("todo.canvas_embedding_delete_failed", todo_id=todo_id, error=str(e))
 
+        # Before the todo: a failed chat delete keeps the todo, so a retry deletes both.
+        await delete_todo_conversations(user_id, [todo_id])
         if not await todo_repository.delete(todo_id, user_id=user_id):
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         try:
             await delete_todo_embedding(todo_id)
@@ -719,6 +706,12 @@ class TodoService:
         if not update.model_fields_set:
             return BulkOperationResponse(
                 success=[], failed=[], total=len(request.todo_ids), message="No updates provided"
+            )
+
+        if update.title is not None:
+            # As in the single update: the chats first, so a failure renames nothing.
+            await conversation_repository.retitle_todo_chats(
+                user_id, request.todo_ids, update.title
             )
 
         completion = _TrackedCompletion(completed=[], failed=[], plain=request.todo_ids)
@@ -762,6 +755,7 @@ class TodoService:
     @classmethod
     async def bulk_delete_todos(cls, todo_ids: list[str], user_id: str) -> BulkOperationResponse:
         """Bulk delete multiple todos, and the sub-todos of any parent among them."""
+        requested = list(todo_ids)
         todo_ids = await with_sub_todos(user_id, todo_ids)
         todos_to_delete = await todo_repository.find_by_ids(user_id, todo_ids)
 
@@ -775,6 +769,8 @@ class TodoService:
                 except Exception as e:
                     log.warning("todo.canvas_embedding_delete_failed", todo_id=doc.id, error=str(e))
 
+        # As in the single delete: chats first, so a failure keeps their todos.
+        await delete_todo_conversations(user_id, [todo.id for todo in todos_to_delete])
         deleted = await todo_repository.bulk_delete(user_id, todo_ids)
 
         if deleted > 0:
@@ -786,10 +782,14 @@ class TodoService:
             schedule_user_todos_sync(user_id)
             capture(UserId(user_id), TodosDeleted(count=deleted))
 
+        # What was found is what was deleted: the delete is scoped to the same
+        # user's ids. A requested id that matched nothing is a failure to report,
+        # never folded into success (it once was, so a miscopied id read as deleted).
+        found = {doc.id for doc in todos_to_delete}
         return BulkOperationResponse(
-            success=todo_ids[:deleted],
-            failed=[],
-            total=len(todo_ids),
+            success=[todo_id for todo_id in todo_ids if todo_id in found],
+            failed=[todo_id for todo_id in requested if todo_id not in found],
+            total=len(requested),
             message=f"Deleted {deleted} todos",
         )
 

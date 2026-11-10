@@ -30,6 +30,7 @@ class BriefingSent(ServerEvent):
     channel_count: int
     #: Items the user's connected-app scouts found needing them.
     signal_count: int
+    stamp_collected: bool
 
 
 class BriefingOpened(ServerEvent):

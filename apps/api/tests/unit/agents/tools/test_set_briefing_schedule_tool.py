@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.tools import account_tools
@@ -10,7 +11,7 @@ from app.models.briefing_models import BriefingSchedule
 from app.models.user_models import UserDocument
 
 MODULE = "app.agents.tools.account_tools"
-CONFIG = {"metadata": {"user_id": "user-1"}}
+CONFIG = RunnableConfig(metadata={"user_id": "user-1"})
 
 
 def _user(schedule: BriefingSchedule) -> UserDocument:

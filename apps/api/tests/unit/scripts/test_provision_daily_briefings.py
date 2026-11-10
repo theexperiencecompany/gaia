@@ -4,7 +4,6 @@ Regression: the rollout reports each user's path through capture(), which needs 
 analytics context and a registered PostHog provider; without them every user failed.
 """
 
-from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,9 +16,8 @@ MODULE = "scripts.provision_daily_briefings"
 
 
 @pytest.fixture(autouse=True)
-def _analytics_context() -> Iterator[None]:
+def _analytics_context() -> None:
     """Leave the context unbound: the script is an entry point and must bind its own."""
-    return
 
 
 async def _path_needing_a_context(user_id: str) -> str:

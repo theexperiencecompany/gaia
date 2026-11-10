@@ -31,7 +31,7 @@ async def image(
 ) -> ImageData:
     """Generate an image based on the text prompt."""
     log.set(operation="generate", prompt_length=len(request.message))
-    response = await api_generate_image(request.message)
+    response = await api_generate_image(request.message, user.user_id)
     log.set(outcome="success")
     capture(UserId(user.user_id), ImageGenerated())
     return response
@@ -60,7 +60,7 @@ async def image_to_text(
 @router.post("/image/generate/stream", response_class=StreamingResponse)
 @tiered_rate_limit("generate_image")
 async def image_stream(
-    request: MessageRequest, _user: AuthenticatedUser = Depends(get_current_user)
+    request: MessageRequest, user: AuthenticatedUser = Depends(get_current_user)
 ) -> StreamingResponse:
     """Generate an image with streaming response."""
     log.set(
@@ -69,7 +69,7 @@ async def image_stream(
         outcome="success",
     )
     return StreamingResponse(
-        generate_image_stream(request.message),
+        generate_image_stream(request.message, user.user_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )

@@ -5,10 +5,11 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
+from app.config.rate_limits import PRIMARY_METERED_FEATURE
 from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversations import conversation_repository
-from app.decorators import enforce_daily_cost_budget, enforce_tiered_limit
+from app.decorators import enforce_cost_budget, enforce_tiered_limit
 from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.message_models import MessageDict, MessageRequestWithHistory
@@ -18,7 +19,8 @@ from app.services.bot_session_merge import apply_merge, plan_merge
 from app.services.browser.handoff import bot_chat_address
 from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.conversation_service import create_conversation_service
-from shared.py.analytics import UserId
+from app.services.limit_upsell import capture_limit_hit
+from shared.py.analytics import PlatformIdentity, UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import log
 
@@ -43,6 +45,12 @@ class BotService:
                 if count == 1:
                     await redis_cache.redis.expire(key, BOT_RATE_WINDOW)
                 if count > BOT_RATE_LIMIT:
+                    capture_limit_hit(
+                        PlatformIdentity(platform, platform_user_id),
+                        PRIMARY_METERED_FEATURE,
+                        None,
+                        window="burst",
+                    )
                     raise HTTPException(
                         status_code=429,
                         detail="Rate limit exceeded. Please wait before sending more messages.",
@@ -249,7 +257,7 @@ async def charge_bot_turn(user_id: str, body: BotChatRequest, stream_id: str) ->
     # Caps how EXPENSIVE the day has been (the tiered limit above caps how MANY
     # messages) — without it, an over-budget bot user got a stream that opened
     # and died partway instead of a clean refusal before any work started.
-    await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
+    await enforce_cost_budget(user_id, feature_key="chat_messages")
     # Captured past every gate, like the web endpoint: a refusal never reached
     # the agent, so counting it here would inflate volume by exactly the users
     # who hit walls most. A refusal is its own event.

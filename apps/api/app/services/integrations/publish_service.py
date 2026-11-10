@@ -8,6 +8,7 @@ from app.db.chroma.public_integrations_store import (
 from app.db.redis import delete_cache_by_pattern
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
+from app.services.integrations.integration_content_fallback import build_fallback_content
 from app.services.integrations.integration_inference_service import (
     infer_integration_category,
     infer_integration_content,
@@ -80,6 +81,21 @@ async def publish_custom_integration(
         server_url=server_url,
         category=category,
     )
+    if content is None:
+        # LLM best-effort failed: deterministic tool-grounded copy instead, so
+        # the page never serves the generic frontend templates. mcp_config is
+        # authoritative for auth; the legacy mirror covers older documents.
+        mcp_config = integration.mcp_config
+        auth_type = (
+            mcp_config.auth_type if mcp_config and mcp_config.auth_type else integration.auth_type
+        )
+        content = build_fallback_content(
+            name=integration.name,
+            description=integration.description,
+            tools=tools,
+            category=category,
+            auth_type=auth_type,
+        )
 
     slug = await integration_repository.ensure_unique_slug(
         name=integration.name,

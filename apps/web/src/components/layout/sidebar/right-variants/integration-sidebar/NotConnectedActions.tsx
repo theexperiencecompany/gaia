@@ -63,7 +63,7 @@ export function NotConnectedActions({
     return (
       <RaisedButton
         color={connect.showRetry ? "#f5a524" : "#00bbff"}
-        className="font-medium text-black!"
+        className="font-medium"
         onClick={connect.onConnect}
         disabled={connect.isPending}
       >

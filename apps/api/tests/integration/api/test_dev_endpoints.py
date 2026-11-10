@@ -19,9 +19,14 @@ import pytest
 from app.api.v1.endpoints.dev import _BRIEFING_RUNS, run_briefing_now, seed_dev_user_data
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.briefing import BriefingRunOutcome
+from app.constants.payments import DEV_PRO_PRODUCT_ID, DEV_PRO_TERM_DAYS
+from app.db.repositories.subscriptions import subscription_repository
+from app.db.repositories.users import user_repository
+from app.models.payment_models import SubscriptionStatus
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataRequest, SeedDevDataResponse
 from app.services.briefing.service import BriefingGenerationError
+from app.services.platform_link_service import PlatformLinkService
 from app.utils.errors import AppError
 from tests.helpers import captured_wide_event
 
@@ -143,9 +148,8 @@ def _ingestion_edges_stubbed(capture_metadata=None):
             return_value=user,
         ),
         patch(
-            "app.services.files.service.upload_to_cloudinary",
-            new_callable=AsyncMock,
-            return_value="https://cdn.test/file",
+            "app.services.files.service.blob_store",
+            return_value=MagicMock(put=AsyncMock(return_value="https://cdn.test/file")),
         ),
         patch(
             "app.services.files.service.insert_metadata",
@@ -211,9 +215,7 @@ class TestDevRouterMounting:
     # every one must 404-when-unmounted; nothing else keeps them off prod.
     HIGH_BLAST_RADIUS_ROUTES: ClassVar[list[tuple[str, str, dict[str, str] | None]]] = [
         ("POST", "/api/v1/dev/executor", {"email": DEV_EMAIL, "task": "noop"}),
-        ("POST", "/api/v1/dev/subagents/some_agent", {"email": DEV_EMAIL, "task": "noop"}),
         ("POST", "/api/v1/dev/attachments", None),
-        ("GET", "/api/v1/dev/subagents", None),
         ("DELETE", "/api/v1/dev/users/dev@gaia.local", None),
     ]
 
@@ -235,7 +237,7 @@ class TestDevRouterMounting:
         assert response.status_code == 404
 
     async def test_privileged_routes_mounted_with_bypass(self, monkeypatch):
-        """With the bypass set, the executor + subagent routes must be registered and reach 200."""
+        """With the bypass set, the executor route must be registered and reach 200."""
         from app.config.settings import settings as app_settings
 
         monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
@@ -254,26 +256,15 @@ class TestDevRouterMounting:
                 new_callable=AsyncMock,
                 return_value=agent_result,
             ) as mock_exec,
-            patch(
-                "app.api.v1.endpoints.dev.run_subagent_direct",
-                new_callable=AsyncMock,
-                return_value=agent_result.model_copy(update={"agent": "some_agent"}),
-            ) as mock_sub,
         ):
             client = await _client(app)
             async with client:
                 exec_response = await client.post(
                     "/api/v1/dev/executor", json={"email": DEV_EMAIL, "task": "noop"}
                 )
-                sub_response = await client.post(
-                    "/api/v1/dev/subagents/some_agent",
-                    json={"email": DEV_EMAIL, "task": "noop"},
-                )
 
         assert exec_response.status_code == 200
-        assert sub_response.status_code == 200
         mock_exec.assert_awaited_once_with(DEV_EMAIL, "noop", None, None)
-        mock_sub.assert_awaited_once_with(DEV_EMAIL, "some_agent", "noop", None, None)
 
     async def test_seed_endpoint_forwards_payload(self, monkeypatch):
         from app.config.settings import settings as app_settings
@@ -360,9 +351,7 @@ class TestDevServiceLogic:
         from app.services import dev_service
 
         oid = ObjectId()
-        user = dev_service.UserDocument.model_validate(
-            {"id": str(oid), "email": DEV_EMAIL, "name": "dev"}
-        )
+        user = UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL, "name": "dev"})
 
         with (
             patch.object(
@@ -371,9 +360,7 @@ class TestDevServiceLogic:
                 new_callable=AsyncMock,
                 side_effect=[(oid, True), (oid, False)],
             ),
-            patch.object(
-                dev_service.user_repository, "get", new_callable=AsyncMock, return_value=user
-            ),
+            patch.object(user_repository, "get", new_callable=AsyncMock, return_value=user),
         ):
             first = await dev_service.mint_dev_user(DEV_EMAIL)
             second = await dev_service.mint_dev_user(DEV_EMAIL)
@@ -397,13 +384,13 @@ class TestDevServiceLogic:
 
         with (
             patch.object(
-                dev_service.user_repository,
+                user_repository,
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch.object(dev_service.user_repository, "create", side_effect=capture_create),
-            patch.object(dev_service.user_repository, "get", side_effect=load_created),
+            patch.object(user_repository, "create", side_effect=capture_create),
+            patch.object(user_repository, "get", side_effect=load_created),
         ):
             user = await dev_service.mint_dev_user(DEV_EMAIL, name="Ada Lovelace")
 
@@ -426,13 +413,13 @@ class TestDevServiceLogic:
 
         with (
             patch.object(
-                dev_service.user_repository,
+                user_repository,
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch.object(dev_service.user_repository, "create", side_effect=capture_create),
-            patch.object(dev_service.user_repository, "get", side_effect=load_created),
+            patch.object(user_repository, "create", side_effect=capture_create),
+            patch.object(user_repository, "get", side_effect=load_created),
         ):
             user = await dev_service.mint_dev_user("ada.lovelace@gaia.local")
 
@@ -444,28 +431,24 @@ class TestDevServiceLogic:
         from app.services import dev_service
 
         oid = ObjectId()
-        user = dev_service.UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL})
+        user = UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL})
         mock_complete = AsyncMock()
         with (
             patch.object(
-                dev_service.user_repository,
+                user_repository,
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch.object(dev_service.user_repository, "complete_onboarding", mock_complete),
+            patch.object(user_repository, "complete_onboarding", mock_complete),
             patch.object(
-                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+                dev_service.TodoService, "create_todo", new_callable=AsyncMock
             ) as mock_todo,
             patch.object(
                 dev_service, "create_conversation_service", new_callable=AsyncMock
             ) as mock_convo,
-            patch.object(
-                dev_service.PlatformLinkService, "ensure_linkable", new_callable=AsyncMock
-            ),
-            patch.object(
-                dev_service.PlatformLinkService, "link_account", new_callable=AsyncMock
-            ) as mock_link,
+            patch.object(PlatformLinkService, "ensure_linkable", new_callable=AsyncMock),
+            patch.object(PlatformLinkService, "link_account", new_callable=AsyncMock) as mock_link,
             patch.object(dev_service, "seed_dev_postmarks", new_callable=AsyncMock) as mock_stamps,
         ):
             result = await dev_service.seed_dev_data(
@@ -503,7 +486,6 @@ class TestDevServiceLogic:
             needs=None,
             other_need=None,
             response_style="casual",
-            custom_instructions=None,
         )
 
     @pytest.mark.parametrize(("already_active", "expect_created"), [(False, True), (True, False)])
@@ -513,25 +495,23 @@ class TestDevServiceLogic:
         from app.services import dev_service
 
         oid = ObjectId()
-        user = dev_service.UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL})
+        user = UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL})
         existing = MagicMock() if already_active else None
         with (
             patch.object(
-                dev_service.user_repository,
+                user_repository,
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch.object(dev_service.user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(user_repository, "complete_onboarding", AsyncMock()),
             patch.object(
-                dev_service.subscription_repository,
+                subscription_repository,
                 "get_active_for_user",
                 new_callable=AsyncMock,
                 return_value=existing,
             ) as mock_active,
-            patch.object(
-                dev_service.subscription_repository, "create", new_callable=AsyncMock
-            ) as mock_create,
+            patch.object(subscription_repository, "create", new_callable=AsyncMock) as mock_create,
             patch.object(
                 dev_service, "invalidate_plan_cache", new_callable=AsyncMock
             ) as mock_invalidate,
@@ -547,15 +527,15 @@ class TestDevServiceLogic:
         if expect_created:
             created = mock_create.await_args.args[0]
             assert created.user_id == str(oid)
-            assert created.status == dev_service.SubscriptionStatus.ACTIVE.value
+            assert created.status == SubscriptionStatus.ACTIVE.value
             assert created.dodo_subscription_id == f"dev_{oid}"
-            assert created.product_id == dev_service.DEV_PRO_PRODUCT_ID
+            assert created.product_id == DEV_PRO_PRODUCT_ID
             assert created.created_at is not None
             assert created.created_at.utcoffset() == timedelta(0)
             assert created.previous_billing_date == created.created_at.isoformat()
             assert (
                 created.next_billing_date
-                == (created.created_at + timedelta(days=dev_service.DEV_PRO_TERM_DAYS)).isoformat()
+                == (created.created_at + timedelta(days=DEV_PRO_TERM_DAYS)).isoformat()
             )
             mock_invalidate.assert_awaited_once_with(str(oid))
 
@@ -583,26 +563,18 @@ class TestDevServiceLogic:
                 unlinks.append(platform)
             linked.pop((user_id, platform), None)
 
-        user = dev_service.UserDocument.model_validate(
-            {"id": user_id, "email": DEV_EMAIL, "name": "Dev"}
-        )
+        user = UserDocument.model_validate({"id": user_id, "email": DEV_EMAIL, "name": "Dev"})
         with (
             patch.object(
-                dev_service.user_repository,
+                user_repository,
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch.object(
-                dev_service.user_repository, "complete_onboarding", new_callable=AsyncMock
-            ),
-            patch.object(
-                dev_service.PlatformLinkService, "ensure_linkable", side_effect=ensure_linkable
-            ),
-            patch.object(dev_service.PlatformLinkService, "link_account", side_effect=link_account),
-            patch.object(
-                dev_service.PlatformLinkService, "unlink_account", side_effect=unlink_account
-            ),
+            patch.object(user_repository, "complete_onboarding", new_callable=AsyncMock),
+            patch.object(PlatformLinkService, "ensure_linkable", side_effect=ensure_linkable),
+            patch.object(PlatformLinkService, "link_account", side_effect=link_account),
+            patch.object(PlatformLinkService, "unlink_account", side_effect=unlink_account),
         ):
             return await dev_service.seed_dev_data(
                 DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram"]
@@ -653,16 +625,16 @@ class TestDevServiceLogic:
         from app.services import dev_service
         from app.utils.errors import AppError
 
-        user = dev_service.UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL})
+        user = UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL})
         with (
             patch.object(
-                dev_service.user_repository,
+                user_repository,
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
             ),
             patch.object(
-                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+                dev_service.TodoService, "create_todo", new_callable=AsyncMock
             ) as mock_todo,
         ):
             with pytest.raises(AppError) as exc:
@@ -680,23 +652,23 @@ class TestDevServiceLogic:
         from app.services.platform_link_service import PlatformAccountTakenError
         from app.utils.errors import AppError
 
-        user = dev_service.UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL})
+        user = UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL})
         with (
             patch.object(
-                dev_service.user_repository,
+                user_repository,
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch.object(dev_service.user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(user_repository, "complete_onboarding", AsyncMock()),
             patch.object(
-                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+                dev_service.TodoService, "create_todo", new_callable=AsyncMock
             ) as mock_todo,
             patch.object(
                 dev_service, "create_conversation_service", new_callable=AsyncMock
             ) as mock_convo,
             patch.object(
-                dev_service.PlatformLinkService,
+                PlatformLinkService,
                 "ensure_linkable",
                 AsyncMock(side_effect=PlatformAccountTakenError("held by another user")),
             ),
@@ -718,8 +690,8 @@ class TestDevServiceLogic:
         from app.utils.errors import AppError
 
         oid = str(ObjectId())
-        user = dev_service.UserDocument.model_validate({"id": oid, "email": DEV_EMAIL})
-        other_user = dev_service.UserDocument.model_validate(
+        user = UserDocument.model_validate({"id": oid, "email": DEV_EMAIL})
+        other_user = UserDocument.model_validate(
             {"id": str(ObjectId()), "email": "other@gaia.local"}
         )
 
@@ -729,12 +701,12 @@ class TestDevServiceLogic:
         repo = platform_link_service.user_repository
         with (
             patch.object(
-                dev_service.user_repository,
+                user_repository,
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch.object(dev_service.user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(user_repository, "complete_onboarding", AsyncMock()),
             patch.object(repo, "get_by_platform_id", AsyncMock(side_effect=holder)),
             patch.object(repo, "get", AsyncMock(return_value=user)),
             patch.object(repo, "link_platform", AsyncMock()) as mock_write,
@@ -752,7 +724,7 @@ class TestDevServiceLogic:
         from app.utils.errors import AppError
 
         with patch.object(
-            dev_service.user_repository, "get_by_email", new_callable=AsyncMock, return_value=None
+            user_repository, "get_by_email", new_callable=AsyncMock, return_value=None
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(

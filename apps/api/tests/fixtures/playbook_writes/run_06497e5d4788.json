@@ -1,0 +1,40 @@
+{
+ "run": "run_06497e5d4788",
+ "captured_from": "2026-09-03",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 3,
+   "record_len": 0,
+   "written": {
+    "description": "Shvxm lar next upcoming calendar event qiq txpxgnp w hogaq meeting-reminder ovqcc-zh.",
+    "steps": [
+     {
+      "id": "event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "ehxfmae",
+         "singleEvents": true,
+         "orderBy": "qkodwXshk",
+         "timeMin": "$now",
+         "timeMax": "$now + 7d",
+         "maxResults": 10
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Pypvv w bmdmnu, isuevyht 93 zlls ovqcc-zh reminder udh lar next upcoming event evvq lar aqtgnru details. Tshl xhuc w hogaq \"rghye ovqcc-zh\" osnfte, vtyc lar event pnkwu, lab start ohzt hx lar ynrm'n whdrf zixgmcwc Npzpif/Udoiflycclse (c.q. \"Friday, 4 Sep, 08:30\"), qiq lar fdxdx jpuekqdkda opps umfp bg tkuppza, up lar yuizmdvm bg uzku uc dwka uc upuwifttl. Ttue ic oa w jbo wozpf; ga full toxyfucq. Bldvnno lwntb: \"Cihvp ovqcc-zh e {pnkwu} uc fx {ysn} cu {ohzt} (MKGB). Soon umfp: {bbg}. Vqr xhd ymgdt!\""
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

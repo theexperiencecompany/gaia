@@ -36,6 +36,7 @@ EMPTY_INBOX_DAY = 5
 @dataclass
 class Seeded:
     rendered: list[tuple[BriefingPayload, str]]
+    owners: list[str]
     upsert: AsyncMock
     deliver: AsyncMock
 
@@ -53,8 +54,12 @@ def user() -> UserDocument:
 @pytest.fixture
 def seeded() -> Iterator[Seeded]:
     rendered: list[tuple[BriefingPayload, str]] = []
+    owners: list[str] = []
 
-    async def fake_host(payload: BriefingPayload, *, render_key: str) -> HostedEditionImage:
+    async def fake_host(
+        payload: BriefingPayload, *, owner_id: str, render_key: str
+    ) -> HostedEditionImage:
+        owners.append(owner_id)
         rendered.append((payload, render_key))
         return HostedEditionImage(
             display_url=f"https://cdn.test/{render_key}.png",
@@ -69,7 +74,7 @@ def seeded() -> Iterator[Seeded]:
             f"{MODULE}.briefing_repository.set_delivered_channels", new_callable=AsyncMock
         ) as deliver,
     ):
-        yield Seeded(rendered, upsert, deliver)
+        yield Seeded(rendered, owners, upsert, deliver)
 
 
 async def test_each_city_gets_one_brief_on_consecutive_days_ending_at_the_anchor(
@@ -88,6 +93,7 @@ async def test_each_city_gets_one_brief_on_consecutive_days_ending_at_the_anchor
     assert all(p.template_family == POSTAL_FAMILY for p in payloads)
     assert all(p.kicker == DAILY_KICKER for p in payloads)
     assert all(p.recipient_name == "Ada" for p in payloads)
+    assert seeded.owners == [user.id] * len(CITIES)
 
 
 async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its_own_render(

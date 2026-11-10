@@ -35,7 +35,7 @@ from app.services.briefing.scouts import service
 from app.services.briefing.scouts.learn import Learned
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools
 from app.services.briefing.scouts.watch import FrozenWatch
-from app.services.mcp.mcp_client import MCPIntegrationNotFoundError
+from app.services.mcp.mcp_errors import MCPIntegrationNotFoundError
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.utils.errors import AppError
 

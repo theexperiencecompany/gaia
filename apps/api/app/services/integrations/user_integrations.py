@@ -14,6 +14,7 @@ from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
     IntegrationResponse,
+    IntegrationToolsRecord,
     StoredIntegrationTool,
     UserIntegration,
     UserIntegrationDocument,
@@ -187,6 +188,12 @@ async def get_connected_integration_ids(user_id: str) -> set[str]:
         for d in docs
         if d.get("status") == "connected" and d.get("integration_id")
     }
+
+
+async def connected_tool_records(user_id: str) -> list[IntegrationToolsRecord]:
+    """Return the stored server tool lists of the integrations the user is connected to."""
+    connected = await get_connected_integration_ids(user_id)
+    return await integration_repository.tools_by_ids(connected) if connected else []
 
 
 async def get_connected_integrations_named(user_id: str) -> list[ConnectedIntegration]:

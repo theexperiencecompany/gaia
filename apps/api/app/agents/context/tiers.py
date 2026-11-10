@@ -15,8 +15,6 @@ class AgentTier(StrEnum):
     COMMS = "comms"
     #: Worker tier with the full registry, driven by ``call_executor``.
     EXECUTOR = "executor"
-    #: Per-user MCP worker reached through ``handoff``.
-    PROVIDER_SUBAGENT = "provider_subagent"
     #: One-shot scratch worker from ``spawn_subagent``. Owns no todo list.
     SPAWN = "spawn"
     #: Authoring-only workflow drafter. Emits a draft; never executes one.
@@ -28,7 +26,6 @@ class AgentTier(StrEnum):
 WORKER_TIERS = frozenset(
     {
         AgentTier.EXECUTOR,
-        AgentTier.PROVIDER_SUBAGENT,
         AgentTier.SPAWN,
         AgentTier.WORKFLOW_AUTHORING,
     }

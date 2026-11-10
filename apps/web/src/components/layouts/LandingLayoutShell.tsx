@@ -2,10 +2,15 @@
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 import Navbar from "@/components/navigation/Navbar";
+import {
+  MAIN_CONTENT_ID,
+  SkipToContentLink,
+} from "@/components/navigation/SkipToContentLink";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { usePathname } from "@/i18n/navigation";
 import LandingProvidersLayout from "@/layouts/LandingProvidersLayout";
+import { showsMarketingChrome } from "./marketingChrome";
 
 // Footer is always below the fold on landing pages — defer it so it doesn't
 // compete with hero-above-the-fold rendering for main-thread time.
@@ -27,15 +32,19 @@ const BLUR_CONFIG: BlurLayer[] = [
 
 export default function LandingLayoutShell({
   children,
+  selfhost,
 }: {
   children: ReactNode;
+  /** Whether this web server fronts a self-hosted instance. */
+  selfhost: boolean;
 }) {
   const pathname = usePathname();
-  const isDesktopLogin = pathname === "/desktop-login";
+  const chrome = showsMarketingChrome(pathname, selfhost);
 
   return (
     <LandingProvidersLayout>
       <div className="relative ">
+        <SkipToContentLink />
         <div
           id="navbar-backdrop"
           className="pointer-events-none fixed inset-0 z-40 bg-black/20 opacity-0 backdrop-blur-sm transition-opacity duration-300 ease-in-out"
@@ -47,14 +56,14 @@ export default function LandingLayoutShell({
         />
 
         <LazyMotionProvider>
-          {!isDesktopLogin && <Navbar />}
+          {chrome && <Navbar />}
 
-          <main id="main-content" className="min-h-screen">
+          <main id={MAIN_CONTENT_ID} className="min-h-screen">
             {children}
           </main>
         </LazyMotionProvider>
 
-        {!isDesktopLogin && <Footer />}
+        {chrome && <Footer />}
       </div>
     </LandingProvidersLayout>
   );

@@ -3,7 +3,7 @@
 from typing import Any, Literal, TypedDict
 
 from mcp.shared.auth import OAuthMetadata, OAuthToken, ProtectedResourceMetadata
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 # Auth kinds a probe can report. The extra ``unknown`` (vs MCPConfig.auth_type)
 # is what probing reports when the server could not be reached at all.
@@ -97,6 +97,14 @@ class MCPUseServerConfig(TypedDict, total=False):
     headers: dict[str, str]
 
 
+class McpToolProvenance(BaseModel):
+    """The integration the MCP client stamps on every tool it converts (tool.metadata)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    integration_id: str | None = None
+
+
 class MCPUseConfig(TypedDict):
     """The ``mcp_use`` client config: server entries keyed by integration id."""
 
@@ -171,7 +179,8 @@ class OAuthScope(BaseModel):
 class ComposioConfig(BaseModel):
     """Configuration for Composio integration."""
 
-    auth_config_id: str
+    # GAIA Cloud's auth config in its own Composio project; None for instance toolkits.
+    auth_config_id: str | None
     toolkit: str
     toolkit_version: str | None = None
 

@@ -1,0 +1,72 @@
+{
+ "run": "run_f986237c4f13",
+ "captured_from": "2026-09-01",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "googlecalendar",
+     "lwlvq",
+     "slack",
+     "cygf",
+     "linear",
+     "notion"
+    ]
+   },
+   "result_digest": "Zmlvvp Tvelkhjg: f Kze Jukrtjhyu\nFooav: f Kze Jukrtjhyu\nSearn: f Kze Jukrtjhyu\nWnem: f Kze Jukrtjhyu\nLhhiuw: f Kze Jukrtjhyu\nGceyxf: f Kze Jukrtjhyu"
+  },
+  {
+   "tool_name": "list_integrations",
+   "tool_category": "integrations",
+   "result_digest": "{\"connected\": [], \"available\": [{\"id\": \"googlecalendar\", \"name\": \"Zmlvvp Tvelkhjg\", \"description\": \"Hjloyqux meetings qiq ekatwh fnmc calendar events\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"googledocs\", \"name\": \"Zmlvvp Rtyw\", \"description\": \"Mhhetn, edit, qiq share vbvdigqpw hx fnmc pnbjjuisv\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"todos\", \"name\": \"Qnzul\", \"description\": \"Ynxmjp tasks, yulbrbpn, qiq personal gzxbvofyuhhy xhuc SD ekuzthtngf\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"reminders\", \"name\": \"Iwyzenfiy\", \"description\": \"Hjloyqux ohzt-ayvte reminders xhuc SD ekuzthtngf\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"ewdpqe\", \"name\": \"Aatcfd\", \"description\": \"Zeyefrl, create, qiq ekatwh rfpml ewdpqe evvq DpmPpp up zxpyln\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"gmail\", \"name\": \"Svdly\", \"description\": \"Ynxmjp emails, mbpsbgb messages, qiq rwnvapil fnmc inbox\", \"category\": \"dhmurajyplirk\", \"connected\": false}, {\"id\": \"notion\", \"name\": \"Gceyxf\", \"description\": \"Ynxmjp hkmhv, buhgbmmwu, qiq pnbjjuisv fqqibmc\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"ijesxut\", \"name\": \"Pwigdoh\", \"description\": \"Xdeh ansjjd, read qleombqmd, qiq ekatwh fnmc ymtktog\", \"category\": \"wzmeci_fdaxk\", \"connected\": false}, {\"id\": \"dnneopwhidbh\", \"name\": \"Zmlvvp Vhzgxt\", \"description\": \"Mhhetn, read, qiq update jnagpkjuymwf\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"oaeorwos\", \"name\": \"DlajqzLn\", \"description\": \"Fqgtm eften qiq tfdwnq xhuc fnmc aognijtpsuov bjatxaw\", \"category\": \"wzmeci_fdaxk\", \"connected\": false}, {\"id\": \"github\", \"name\": \"DpmPpp\", \"description\": \"Ynxmjp tdfrtxlpeidv, cuioau, qqdq vescgvcu, qiq xphquvpa fnmc akxnvxhttfb jcqviucr\", \"category\": \"lswzjrwmf\", \"connected\": false}, {\"id\": \"wvsqwq\", \"name\": \"Ganwwp\", \"description\": \"Xdeh fqqibmc, ekatwh pjiwpcyx, qiq tfdwnq xhuc zutgakbjohy fx Ganwwp\", \"category\": \"wzmeci_fdaxk\", \"connected\": false}, {\"id\": \"qdxgnuyn\", \"name\": \"Jvkalpdx\", \"description\": \"Mhhetn qiq ekatwh dqgrw, pqpmrm, qiq abryszo xhuc SD-hzudijy hfhprcqujm\", \"category\": \"ykntimyn\", \"connected\": false}, {\"id\": \"linear\", \"name\": \"Lhhiuw\", \"description\": \"Ynxmjp cuioau, yulbrbpn, qiq yhtoc akxnvxhttfb mhvwvqap xhuc SD ekuzthtngf\", \"category\": \"lswzjrwmf\", \"connected\": false}, {\"id\": \"slack\", \"name\": \"Searn\", \"description\": \"Exeg messages, ekatwh rsulewjh, qiq xphquvpa team dhmurajyplirk\", \"category\": \"dhmurajyplirk\", \"connected\": false}], \"suggested\": []}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 2,
+   "written": {
+    "description": "Vqdkscj indwqw meeting toxyfucq qvpuz: check lniglmkhtgi ieqyacoaoejv xzorv, vtyc juaebs gather calendar + sdnqmme dmqo up fmqk lar ga-activity nxkadezi.",
+    "steps": [
+     {
+      "id": "check_conn",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "googlecalendar",
+        "lwlvq",
+        "slack",
+        "cygf",
+        "linear",
+        "notion"
+       ]
+      },
+      "goal": "Mevgres rfroc integrations lar jcqviucr pnpjt hbe qtlgdynes mbmdhn fagrwshaly oa gather dmqo."
+     },
+     {
+      "id": "list_conn",
+      "tool": "list_integrations",
+      "args": {},
+      "goal": "Mevgres lar full yjx yg qtlgdynes integrations tcnn lar status check qyjml kjarqamwcttdhb."
+     }
+    ],
+    "synthesize": "Cvouqs lar outcome yg lar toxyfucq-gvrz jcqviucr. Hx lar aclrlesq integrations (googlecalendar, lwlvq, slack, cygf, linear, notion) hbe qtlgdynes, tcocowl oa gather today'n calendar events oa znkiciio lar indwqw meeting, vtyc qqdq sdnqmme/dhmurajyplirk activity udh uzku indwqw qiq pwlztlikjl w toxyfucq gvrz. Hx sja aclrlesq lniglmkhtgi uc zpoocckcfzvf, kfhta xtwyuay uzku ga recent activity sjuyg ku kzaveewed udh lar meeting context, list rfroc integrations hbe krpvyjr, qiq gvrz uzku axznbzqnld ssjf qiq ez-emmjhik ivkz ujlitag lar toxyfucq gvrz."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "check_conn"
+    },
+    {
+     "call": "list_integrations#1",
+     "id": "list_conn"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

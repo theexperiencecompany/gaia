@@ -35,7 +35,7 @@ def today() -> Iterator[None]:
 
 
 async def _spent_today(redis: fakeredis.aioredis.FakeRedis, usd: float) -> None:
-    await redis.set(_budget_key(USER_ID, RateLimitPeriod.DAY), str(usd))
+    await redis.set(await _budget_key(USER_ID, RateLimitPeriod.DAY), str(usd))
 
 
 class TestBook:
@@ -55,7 +55,7 @@ class TestBook:
     ) -> None:
         await ScoutSpend(USER_ID).book(0.04)
 
-        assert await fake_redis.get(_budget_key(USER_ID, RateLimitPeriod.DAY)) is None
+        assert await fake_redis.get(await _budget_key(USER_ID, RateLimitPeriod.DAY)) is None
 
 
 class TestMayLearn:

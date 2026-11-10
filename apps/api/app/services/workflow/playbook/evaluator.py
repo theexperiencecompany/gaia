@@ -17,7 +17,7 @@ tool with a hole in it.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import json
 import re
 
@@ -33,18 +33,9 @@ from app.models.playbook_models import (
     is_time_slot,
 )
 from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall, parse_result
-from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
-from app.services.workflow.playbook.time_layouts import render_iso
+from app.services.workflow.playbook.placeholders import OFFSET_UNITS, PLACEHOLDER_TOKEN
+from app.services.workflow.playbook.time_layouts import render_iso, renders_in_utc
 from app.utils.errors import AppError
-
-#: Offset suffixes ``$now``/``$today`` accept, as ``timedelta`` keywords.
-_OFFSET_UNITS: dict[str, str] = {
-    "w": "weeks",
-    "d": "days",
-    "h": "hours",
-    "m": "minutes",
-    "s": "seconds",
-}
 
 #: The only fields ``$user`` exposes.
 _USER_FIELDS = ("email", "name", "timezone")
@@ -326,7 +317,10 @@ def _render_time_slot(slot: TimeSlot, now: datetime) -> str:
             why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
             fix="write the time as $today + 1d 09:00 or similar",
         )
-    return _resolve_moment(match, now).strftime(slot.format)
+    moment = _resolve_moment(match, now)
+    if renders_in_utc(slot.format):
+        moment = moment.astimezone(UTC)
+    return moment.strftime(slot.format)
 
 
 def _resolve_token(match: re.Match[str], context: RunContext) -> object:
@@ -367,7 +361,7 @@ def _resolve_moment(match: re.Match[str], now: datetime) -> datetime:
     moment = now
     unit, amount = match.group("unit"), match.group("amount")
     if unit is not None and amount is not None:
-        offset = timedelta(**{_OFFSET_UNITS[unit]: int(amount)})
+        offset = timedelta(**{OFFSET_UNITS[unit]: int(amount)})
         moment = now - offset if match.group("sign") == "-" else now + offset
     clock = match.group("clock")
     if clock is not None:

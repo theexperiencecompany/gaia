@@ -1,7 +1,8 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  // set-commands ships in the image so a self-host install can set its own bot's command menu.
+  entry: ["src/index.ts", "src/set-commands.ts"],
   format: "esm",
   target: "node20",
   outDir: "dist",

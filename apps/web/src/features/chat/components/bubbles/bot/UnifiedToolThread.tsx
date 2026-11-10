@@ -2,14 +2,13 @@
 
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { ToolsIcon } from "@icons";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import type {
   SubagentGroupData,
   ToolCallEntry,
 } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import { type ApprovalOutcome, StepRow, SubagentRow } from "./SubagentRow";
 import { deriveTimelineItemKeys } from "./TextBubble/useSubagentSynthesis";
 
@@ -107,25 +106,6 @@ export default function UnifiedToolThread({
   approvalOutcomeByToolCallId,
 }: Readonly<UnifiedToolThreadProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { getIntegrationName: lookupName, getIntegrationIconUrl } =
-    useIntegrationLookup();
-
-  const getIconUrl = useCallback(
-    (call: ToolCallEntry): string | undefined => {
-      if (call.icon_url) return call.icon_url;
-      return getIntegrationIconUrl(call.tool_category);
-    },
-    [getIntegrationIconUrl],
-  );
-
-  const getIntegrationName = useCallback(
-    (call: ToolCallEntry): string | undefined => {
-      if (call.integration_name) return call.integration_name;
-      return lookupName(call.tool_category);
-    },
-    [lookupName],
-  );
-
   // Total tool count (root-level + all nested subagent tool calls)
   const totalToolCount = useMemo(() => {
     // Thinking steps (entries carrying `reasoning`) are not tools — exclude them
@@ -167,15 +147,12 @@ export default function UnifiedToolThread({
       seenCategories.add(cat);
       icons.push({
         category: cat,
-        iconUrl:
-          item.kind === "tool"
-            ? getIconUrl(item.data)
-            : (item.data.icon_url ?? undefined),
+        iconUrl: item.data.icon_url ?? undefined,
       });
     }
 
     return icons;
-  }, [timeline, getIconUrl]);
+  }, [timeline]);
 
   // One stable React key per timeline item — derived from stream-stable
   // structure (tool_call_id/subagent_id/anchored slot), never payload, so a
@@ -231,8 +208,6 @@ export default function UnifiedToolThread({
                     key={itemKeys[idx]}
                     call={item.data}
                     isLast={isLast}
-                    getIconUrl={getIconUrl}
-                    getIntegrationName={getIntegrationName}
                     pendingApprovalToolCallIds={pendingApprovalToolCallIds}
                     approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
                   />
@@ -245,8 +220,6 @@ export default function UnifiedToolThread({
                   group={item.data}
                   isLast={isLast}
                   isStreaming={isStreaming}
-                  getIconUrl={getIconUrl}
-                  getIntegrationName={getIntegrationName}
                   pendingApprovalToolCallIds={pendingApprovalToolCallIds}
                   approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
                 />

@@ -68,8 +68,8 @@ Once you've confirmed no existing todo covers this (see Search First above):
 Completes in this conversation. Create → delegate → document → complete.
 
 ```
-search_todo_context → (nothing relevant found) → create_tracked_todo
-→ handoff to subagent → collect activity report
+search_todo_context → (nothing relevant found) → create_tracked_todo(waiting_on="time", scheduled_at="1h")
+→ activate the integration and do the work → note ids and outcomes
 → edit activity.md (dated entry at the end) and canvas.md (Current State, Learnings)
 → complete_tracked_todo
 ```
@@ -79,7 +79,7 @@ search_todo_context → (nothing relevant found) → create_tracked_todo
 Spans conversations or needs follow-up. Create → act → update → leave open.
 
 ```
-search_todo_context → (nothing relevant found) → create_tracked_todo(scheduled_at=..., ...)
+search_todo_context → (nothing relevant found) → create_tracked_todo(waiting_on=..., scheduled_at=..., ...)
 → act → edit activity.md + canvas.md → leave open
 → (future conversation) find via active todos or search → read canvas.md → act → update
 → eventually: complete_tracked_todo with learnings
@@ -89,6 +89,33 @@ search_todo_context → (nothing relevant found) → create_tracked_todo(schedul
 - "Email Rahul about the meeting": search first; if nothing found: long-running todo.
 - "He replied, send thanks": search finds existing todo → update its files, no new todo.
 - "What's the weather?" / "Summarize my emails": no todo.
+
+An immediate todo still gets a next step (`scheduled_at="1h"`): if the turn ends before it is completed, GAIA comes back to it instead of losing it.
+
+## Every open todo has a next step
+
+Code refuses to leave an open tracked todo without one, so nothing is ever forgotten. A todo with a `recurrence` has it already. Every other open todo carries two answers:
+
+1. **What is it waiting for?** `waiting_on`
+2. **When does GAIA look again?** `scheduled_at`, an ISO datetime or a duration from now (`"30m"`, `"4h"`, `"3d"`, `"1w"`)
+
+| `waiting_on` | Use when | `scheduled_at` means | Limit |
+|---|---|---|---|
+| `time` | nothing outside to wait for; look again then | the next check | 14 days |
+| `event` | a watch or a Gmail thread will wake it (a reply, a merge, a delivery) | the backup check if the event never comes | 14 days |
+| `user` | you asked the user one specific question | when the question expires | 7 days (31 once on hold) |
+| `sub_todos` | its sub-todos do the work | the backup check; each finished sub-todo wakes it | 14 days |
+| `unplanned` | captured with no plan yet ("track it", a brain dump) | the date to plan it by | 14 days |
+
+Size the next check to urgency: hours when urgent, days for normal work, up to two weeks for a loose idea. A wait of months is fine; the todo just looks again within the limit and sets the next check from there.
+
+**Asking the user** (`waiting_on="user"`) needs `question` (what you asked) and `if_no_reply`, decided at the moment you ask, while you know why it matters:
+
+- `ask_again`: it matters, ask once more. One re-ask per todo, ever.
+- `proceed` with `default_action`: carry out the default ("archive the thread without replying") and tell the user.
+- `hold`: nothing can move without the answer. GAIA reminds the user on slow checks (up to monthly); after 3 unanswered checks it closes the todo and tells them.
+
+**A scheduled run spends the check that woke it.** Its brief opens with WHY YOU WOKE (the scheduled check, a backup check, an expired question and what you decided then, a hold check and how many are left, a plan-by date). End the run by completing the todo or giving it a new `waiting_on` + `scheduled_at`. A run that ends without one is sent back once; after that GAIA parks the todo as `unplanned` for tomorrow and records that it had to.
 
 ## canvas.md
 
@@ -130,13 +157,7 @@ edit(
 
 ## Standing rules: the user's feedback
 
-When the user tells GAIA how a todo should behave from now on (comms hands it over as "Apply the user's feedback to this todo: ..."), record it in exactly one place, so every later run obeys it:
-
-| Feedback | Where it goes |
-|---|---|
-| How this todo behaves: what it shows or skips, what it does on its own, how it reports ("stop showing me newsletters", "put flights on my calendar automatically") | one dated line in its canvas.md `## Standing rules` |
-| How GAIA writes email, to one person or in general ("write to Sarah more formally", "never draft replies to my landlord") | the Gmail integration instructions: `get_integration_instructions("gmail")`, then `update_integration_instructions` with the full text, so drafting in chat obeys it too |
-| When it runs ("brief me at 7") | `update_tracked_todo` with `recurrence` / `scheduled_at` |
+Where the user's feedback on a todo goes is "THE USER'S FEEDBACK ON A TODO" in your system prompt; follow it as written there. A Standing rule is one dated line:
 
 ```python
 edit(
@@ -146,15 +167,14 @@ edit(
 )
 ```
 
-One short line per rule. Rewrite a rule the new feedback changes instead of adding a contradicting one; remove a rule only when the user retracts it. Every run obeys its own Standing rules over its defaults, and a sub-todo's run also obeys its parent's.
 
 ## activity.md
 
-Chronological, oldest first, one dated entry per event. After subagents return, record their structured reports here:
+Chronological, oldest first, one dated entry per event. After acting (or after a spawned subagent returns), record what was done here:
 
 ```markdown
 - 2026-03-26T09:12:00+00:00 Gmail agent: sent email to rahul@example.com re: Q2 contract renewal.
-  Tools: GMAIL_CREATE_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b. Draft approved and sent.
+  Tools: GMAIL_CREATE_EMAIL_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b. Draft approved and sent.
 - 2026-03-26T09:14:00+00:00 Linear agent: created issue LIN-423 "Track Q2 contract renewal".
   Tools: LINEAR_CREATE_ISSUE. URL: https://linear.app/team/LIN-423.
 - 2026-03-27T09:00:00+00:00 [run_started] scheduled run (conversation 3f9a1c2e)
@@ -173,7 +193,9 @@ Add an entry by editing the end of the file: `read` it, then `edit` its last lin
 - `initial_canvas`: markdown content; default template if omitted
 - `labels`: list of strings; `gaia-tracked` added automatically
 - `priority`: `high` | `medium` | `low` | `none` (default `none`)
-- `scheduled_at`: ISO datetime when GAIA should auto-execute (must be future). Omit for cron recurrence; first fire is computed from the cron.
+- `scheduled_at`: when GAIA next looks: ISO datetime with offset or a duration from now (`"3d"`). Required unless there is a recurrence. Omit for cron recurrence; first fire is computed from the cron.
+- `waiting_on`: what it waits for until then (see Every open todo has a next step). Required unless there is a recurrence.
+- `question`, `if_no_reply`, `default_action`: with `waiting_on="user"`, the question asked and what happens if it expires unanswered
 - `recurrence`: repeat pattern. Cron-style works alone (no `scheduled_at` needed); shortcut values still need `scheduled_at` as anchor.
 - `due_date`: ISO datetime deadline with the user's timezone offset; may be in the past (overdue still needs doing)
 - `expires_at`: ISO datetime when todo becomes irrelevant (skipped if expired)
@@ -185,7 +207,7 @@ Add an entry by editing the end of the file: `read` it, then `edit` its last lin
 
 ### `scheduled_at`
 
-ISO datetime, must be in the future. GAIA auto-executes via background worker at that time.
+ISO datetime with offset, or a duration from now (`"30m"`, `"4h"`, `"3d"`, `"1w"`); must be in the future. GAIA auto-executes via background worker at that time.
 
 ### `recurrence`
 
@@ -206,7 +228,8 @@ ALWAYS evaluated in the user's stored timezone. Pass cron in user-local wall-clo
 
 ### Validation
 
-- `scheduled_at` must be future
+- `scheduled_at` must be future, and within its `waiting_on` limit
+- An open todo without `recurrence` needs `waiting_on` and `scheduled_at`; `waiting_on="user"` also needs `question` and `if_no_reply`
 - Shortcut `recurrence` (`daily`, `weekly`, `every_4h`, `every_1h`) requires `scheduled_at` as anchor. Cron does not.
 - Cannot clear `scheduled_at` while a shortcut `recurrence` is set
 - Cron expressions validated via croniter
@@ -219,12 +242,16 @@ ALWAYS evaluated in the user's stored timezone. Pass cron in user-local wall-clo
 - Failure: retries up to 3× with backoff (1 hour, then 4 hours)
 - After 3 failures: `failed` label added, user notified
 - Success with recurrence: `scheduled_at` advances, new job enqueued
+- Success without recurrence: the run must have completed the todo or set its next step; otherwise GAIA parks it as `unplanned` for tomorrow
 
 ### Where a run's result goes
 
 - GAIA reads the run's **final report** and messages the user's chat app
   (WhatsApp/Telegram/Discord/Slack) only when the run found something they need
-  to know or decide. A routine or no-op run sends nothing.
+  to know or decide. A routine or no-op run sends nothing. A repeating todo's
+  update that can wait until tomorrow morning goes into the user's next brief
+  instead; a one-time todo's answer, a watch the user set and a reminder they
+  timed always go now.
 - So end with a factual report (what you did, what changed, what needs them),
   and do NOT call `send_notification` to announce it — that sends it twice.
 - Every run's outcome, sent or not, is recorded in activity.md for you.
@@ -267,7 +294,7 @@ References are appended (not replaced) and must be the user's own todos. Each ru
 
 Before calling `complete_tracked_todo`, `edit` the `## Learnings` section of canvas.md. Future similar tasks will reference these.
 
-**Good:** "Sarah responds in 2-3 days", "approval takes 1 week", "batch the Linear + Notion updates in one handoff"
+**Good:** "Sarah responds in 2-3 days", "approval takes 1 week", "batch the Linear + Notion updates in one pass"
 **Bad:** "went well", restating the timeline, obvious observations
 
 ## Lifecycle
@@ -280,7 +307,7 @@ Before calling `complete_tracked_todo`, `edit` the `## Learnings` section of can
 
 ### After Acting
 
-- Add dated entries to activity.md from subagent reports
+- Add dated entries to activity.md for what you did (and from spawned subagents' results)
 - Rewrite Current State in canvas.md
 - Update properties if needed (`update_tracked_todo`)
 
@@ -305,9 +332,11 @@ user-visible text; refer to todos by title. IDs are wiring for tool calls only.
 ```python
 create_tracked_todo(
     title="Sent Q2 report to Sarah",
+    waiting_on="time",
+    scheduled_at="1h",  # only if this turn ends before it is completed
     initial_canvas="# Sent Q2 report to Sarah\n\n## Key Details\n- Recipient: sarah@example.com\n\n## Current State\n\n## Learnings\n",
 )
-# handoff to Gmail → collect report → add entry to activity.md → complete
+# activate gmail → draft, confirm, send via execute → add entry to activity.md → complete
 ```
 
 ### Long-running: follow-up with expiry
@@ -316,12 +345,23 @@ create_tracked_todo(
 create_tracked_todo(
     title="Follow up with Rahul re: contract",
     description="Sent initial email. Follow up if no reply.",
-    scheduled_at="2026-04-01T09:00:00Z",
+    waiting_on="time",
+    scheduled_at="3d",
     expires_at="2026-04-08T00:00:00Z",
     initial_canvas="# Rahul Contract Follow-up\n\n## Key Details\n- Email: rahul@example.com\n- Thread ID: 18f3a2b\n- Contract: Q2 vendor agreement\n\n## Current State\nInitial email sent. Waiting for reply.\n\n## Learnings\n",
 )
 # then record the send at the end of activity.md:
-# - 2026-03-25T14:02:00+00:00 Gmail agent: sent email re: Q2 contract. Tools: GMAIL_CREATE_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b.
+# - 2026-03-25T14:02:00+00:00 Gmail agent: sent email re: Q2 contract. Tools: GMAIL_CREATE_EMAIL_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b.
+```
+
+### Captured, no plan yet
+
+```python
+create_tracked_todo(
+    title="Rework the inbox desk instructions",
+    waiting_on="unplanned",
+    scheduled_at="3d",  # when to plan it with the user
+)
 ```
 
 ### Recurring: work that writes, then reports
@@ -346,8 +386,17 @@ create_tracked_todo(title="Weekday standup prep", recurrence="0 9 * * 1-5")
 
 ```python
 update_tracked_todo(todo_id="abc123", due_date="2026-04-15T17:00:00+05:30")
-update_tracked_todo(todo_id="abc123", scheduled_at="2026-03-30T10:00:00Z")
-update_tracked_todo(todo_id="abc123", scheduled_at="", recurrence="")  # Clear scheduling
+update_tracked_todo(todo_id="abc123", scheduled_at="2026-03-30T10:00:00+05:30")
+update_tracked_todo(todo_id="abc123", waiting_on="event", scheduled_at="3d")  # a watch wakes it; backup in 3 days
+update_tracked_todo(
+    todo_id="abc123",
+    waiting_on="user",
+    question="Should I just ignore Raj's email?",
+    if_no_reply="proceed",
+    default_action="archive the thread without replying",
+    scheduled_at="2d",
+)
+complete_tracked_todo(todo_id="abc123", summary="...", stop_recurrence=True)  # the user stopped a recurring todo
 update_tracked_todo(todo_id="abc123", labels=["gaia-tracked", "waiting-for-reply"])
 ```
 
@@ -360,3 +409,4 @@ update_tracked_todo(todo_id="abc123", labels=["gaia-tracked", "waiting-for-reply
 - **Appending activity to canvas.md** (it belongs in activity.md; canvas.md is for what is true now)
 - **Not searching** before creating: duplicates make future lookups confusing
 - **Not writing learnings** before completing: wastes institutional memory
+- **Pushing the next check back with nothing changed**: when a check finds no progress, ask the user one question or close the todo instead of setting another week

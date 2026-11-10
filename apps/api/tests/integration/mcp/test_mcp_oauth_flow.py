@@ -22,6 +22,7 @@ from app.models.integration_models import StoredIntegrationTool
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_client import MCPClient
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
+from app.services.mcp.mcp_oauth import build_oauth_auth_url, handle_oauth_callback
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_service import (
     _format_tools,
@@ -134,15 +135,15 @@ def _make_oauth_discovery(
     )
 
 
-def _make_mcp_config(**overrides) -> MCPConfig:
-    defaults = {
+def _make_mcp_config(**overrides: object) -> MCPConfig:
+    defaults: dict[str, object] = {
         "server_url": "https://mcp.example.com",
         "requires_auth": True,
         "auth_type": "oauth",
         "transport": "streamable-http",
     }
     defaults.update(overrides)
-    return MCPConfig(**defaults)
+    return MCPConfig.model_validate(defaults)
 
 
 def _stub_tool(name: str, description: str) -> MagicMock:
@@ -347,13 +348,13 @@ class TestAuthorizationURLGeneration:
                 "app.services.mcp.mcp_client.IntegrationResolver.resolve",
                 new=AsyncMock(return_value=resolved),
             ),
-            patch.object(
-                client,
-                "_discover_oauth_config",
+            patch(
+                "app.services.mcp.mcp_oauth.discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
         ):
-            url = await client.build_oauth_auth_url(
+            url = await build_oauth_auth_url(
+                client.token_store,
                 integration_id="test-int",
                 redirect_uri="https://app.example.com/callback",
             )
@@ -390,13 +391,13 @@ class TestAuthorizationURLGeneration:
                 "app.services.mcp.mcp_client.IntegrationResolver.resolve",
                 new=AsyncMock(return_value=resolved),
             ),
-            patch.object(
-                client,
-                "_discover_oauth_config",
+            patch(
+                "app.services.mcp.mcp_oauth.discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
         ):
-            url = await client.build_oauth_auth_url(
+            url = await build_oauth_auth_url(
+                client.token_store,
                 integration_id="offline-int",
                 redirect_uri="https://app.example.com/callback",
             )
@@ -421,14 +422,14 @@ class TestAuthorizationURLGeneration:
                 "app.services.mcp.mcp_client.IntegrationResolver.resolve",
                 new=AsyncMock(return_value=resolved),
             ),
-            patch.object(
-                client,
-                "_discover_oauth_config",
+            patch(
+                "app.services.mcp.mcp_oauth.discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
         ):
             with pytest.raises(ValueError, match="PKCE support"):
-                await client.build_oauth_auth_url(
+                await build_oauth_auth_url(
+                    client.token_store,
                     integration_id="no-pkce-int",
                     redirect_uri="https://app.example.com/callback",
                 )
@@ -451,13 +452,13 @@ class TestAuthorizationURLGeneration:
                 "app.services.mcp.mcp_client.IntegrationResolver.resolve",
                 new=AsyncMock(return_value=resolved),
             ),
-            patch.object(
-                client,
-                "_discover_oauth_config",
+            patch(
+                "app.services.mcp.mcp_oauth.discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
         ):
-            url = await client.build_oauth_auth_url(
+            url = await build_oauth_auth_url(
+                client.token_store,
                 integration_id="oidc-int",
                 redirect_uri="https://app.example.com/callback",
             )
@@ -478,7 +479,7 @@ class TestTokenExchange:
     """Test handle_oauth_callback: code-for-token exchange with PKCE."""
 
     async def test_successful_token_exchange_stores_tokens(self):
-        """Backgrounds the MCP connect to keep the OAuth redirect under ~1.5s; returns [] immediately without awaiting it."""
+        """Backgrounds the MCP connect to keep the OAuth redirect under ~1.5s; returns without awaiting it."""
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
 
@@ -514,16 +515,15 @@ class TestTokenExchange:
                 "app.services.mcp.mcp_client.IntegrationResolver.resolve",
                 new=AsyncMock(return_value=resolved),
             ),
-            patch.object(
-                client,
-                "_discover_oauth_config",
+            patch(
+                "app.services.mcp.mcp_oauth.discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
             patch(
-                "app.services.mcp.mcp_client.update_user_integration_status",
+                "app.services.mcp.mcp_oauth.update_user_integration_status",
                 new=AsyncMock(),
             ),
-            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http_cls,
+            patch("app.services.mcp.mcp_oauth.mcp_http_client") as mock_http_cls,
             patch.object(client, "connect", new=connect_mock),
         ):
             mock_http_instance = AsyncMock()
@@ -532,18 +532,18 @@ class TestTokenExchange:
             mock_http_instance.__aexit__ = AsyncMock(return_value=False)
             mock_http_cls.return_value = mock_http_instance
 
-            tools = await client.handle_oauth_callback(
+            await handle_oauth_callback(
+                client.token_store,
                 integration_id="exchange-int",
                 code="auth-code-123",
                 state="valid-state",
                 redirect_uri="https://app.example.com/callback",
+                connect_after_oauth=client.connect_after_oauth,
             )
             # Yield so the dispatched background connect task runs.
             await asyncio.sleep(0)
 
-        # New contract: returns immediately with an empty list while the
-        # actual MCP connect runs in the background.
-        assert tools == []
+        # The actual MCP connect runs in the background after the exchange returns.
         connect_mock.assert_awaited_once_with("exchange-int")
         # Verify tokens were stored with correct values
         client.token_store.store_oauth_tokens.assert_awaited_once()
@@ -560,11 +560,13 @@ class TestTokenExchange:
         client.token_store.verify_oauth_state = AsyncMock(return_value=(False, None))
 
         with pytest.raises(ValueError, match="Invalid OAuth state"):
-            await client.handle_oauth_callback(
+            await handle_oauth_callback(
+                client.token_store,
                 integration_id="csrf-int",
                 code="code",
                 state="bad-state",
                 redirect_uri="https://app.example.com/callback",
+                connect_after_oauth=client.connect_after_oauth,
             )
 
     async def test_token_exchange_handles_server_error(self):
@@ -591,12 +593,11 @@ class TestTokenExchange:
                 "app.services.mcp.mcp_client.IntegrationResolver.resolve",
                 new=AsyncMock(return_value=resolved),
             ),
-            patch.object(
-                client,
-                "_discover_oauth_config",
+            patch(
+                "app.services.mcp.mcp_oauth.discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
-            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http_cls,
+            patch("app.services.mcp.mcp_oauth.mcp_http_client") as mock_http_cls,
         ):
             mock_http_instance = AsyncMock()
             mock_http_instance.post = AsyncMock(return_value=error_response)
@@ -605,11 +606,13 @@ class TestTokenExchange:
             mock_http_cls.return_value = mock_http_instance
 
             with pytest.raises(ValueError, match="Token exchange failed"):
-                await client.handle_oauth_callback(
+                await handle_oauth_callback(
+                    client.token_store,
                     integration_id="error-int",
                     code="expired-code",
                     state="valid-state",
                     redirect_uri="https://app.example.com/callback",
+                    connect_after_oauth=client.connect_after_oauth,
                 )
 
     async def test_token_exchange_validates_token_type(self):
@@ -638,12 +641,11 @@ class TestTokenExchange:
                 "app.services.mcp.mcp_client.IntegrationResolver.resolve",
                 new=AsyncMock(return_value=resolved),
             ),
-            patch.object(
-                client,
-                "_discover_oauth_config",
+            patch(
+                "app.services.mcp.mcp_oauth.discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
-            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http_cls,
+            patch("app.services.mcp.mcp_oauth.mcp_http_client") as mock_http_cls,
         ):
             mock_http_instance = AsyncMock()
             mock_http_instance.post = AsyncMock(return_value=bad_token_response)
@@ -652,11 +654,13 @@ class TestTokenExchange:
             mock_http_cls.return_value = mock_http_instance
 
             with pytest.raises(ValidationError, match="token_type"):
-                await client.handle_oauth_callback(
+                await handle_oauth_callback(
+                    client.token_store,
                     integration_id="mac-int",
                     code="code",
                     state="valid-state",
                     redirect_uri="https://app.example.com/callback",
+                    connect_after_oauth=client.connect_after_oauth,
                 )
 
 
@@ -691,7 +695,7 @@ class TestTokenRefresh:
             },
         )
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_cls:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_cls:
             mock_instance = AsyncMock()
             mock_instance.post = AsyncMock(return_value=refresh_response)
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
@@ -733,7 +737,7 @@ class TestTokenRefresh:
             json={"error": "invalid_grant"},
         )
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_cls:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_cls:
             mock_instance = AsyncMock()
             mock_instance.post = AsyncMock(return_value=error_response)
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
@@ -780,7 +784,7 @@ class TestTokenRevocation:
 
         revoke_response = httpx.Response(status_code=200)
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_cls:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_cls:
             mock_instance = AsyncMock()
             mock_instance.post = AsyncMock(return_value=revoke_response)
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
@@ -815,7 +819,7 @@ class TestTokenRevocation:
         mcp_config = _make_mcp_config()
         oauth_config = _make_oauth_discovery()
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_cls:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_cls:
             mock_instance = AsyncMock()
             mock_instance.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)

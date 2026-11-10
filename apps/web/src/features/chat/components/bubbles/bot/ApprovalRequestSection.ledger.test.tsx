@@ -160,3 +160,24 @@ describe("ApprovalRequestSection ledger UX", () => {
     expect(screen.queryByText(/running/i)).toBeNull();
   });
 });
+
+describe("ApprovalRequestSection always-allow menu", () => {
+  it("offers always-allow on a card the user can waive", () => {
+    render(<ApprovalRequestSection data={card()} onDecided={noop} />);
+    expect(
+      screen.getByRole("button", { name: /more approval options/i }),
+    ).toBeDefined();
+  });
+
+  it("hides always-allow on a card that asks every time", () => {
+    render(
+      <ApprovalRequestSection
+        data={card({ always_asks: true })}
+        onDecided={noop}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /more approval options/i }),
+    ).toBeNull();
+  });
+});

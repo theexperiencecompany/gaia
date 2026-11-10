@@ -6,13 +6,19 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from fastapi import HTTPException
 import pytest
 
-from app.constants.chat import ConversationSource
-from app.models.bot_models import BotSessionDocument
+from app.constants.chat import MAX_MESSAGE_LENGTH, ConversationSource
+from app.models.bot_models import BotChatRequest, BotSessionDocument
 from app.models.conversation_models import ConversationDocument
 from app.models.user_models import AuthenticatedUser
 from app.services import bot_service as bot_service_mod
-from app.services.bot_service import BOT_RATE_LIMIT, BOT_RATE_WINDOW, BotService
+from app.services.bot_service import (
+    BOT_RATE_LIMIT,
+    BOT_RATE_WINDOW,
+    BotService,
+    build_bot_message_request,
+)
 from app.services.browser.job_stop import RequesterChat
+from shared.py.analytics import PlatformIdentity
 
 
 def _conv(messages: list[dict]) -> ConversationDocument:
@@ -115,10 +121,26 @@ class TestEnforceRateLimit:
     async def test_rate_limit_exceeded(self, mock_redis: MagicMock) -> None:
         mock_redis.redis.incr = AsyncMock(return_value=BOT_RATE_LIMIT + 1)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with (
+            patch("app.services.bot_service.capture_limit_hit") as hit,
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await BotService.enforce_rate_limit("telegram", "user789")
 
         assert exc_info.value.status_code == 429
+        hit.assert_called_once_with(
+            PlatformIdentity("telegram", "user789"), "chat_messages", None, window="burst"
+        )
+
+    async def test_a_message_under_the_burst_limit_records_no_refusal(
+        self, mock_redis: MagicMock
+    ) -> None:
+        mock_redis.redis.incr = AsyncMock(return_value=BOT_RATE_LIMIT)
+
+        with patch("app.services.bot_service.capture_limit_hit") as hit:
+            await BotService.enforce_rate_limit("telegram", "user789")
+
+        hit.assert_not_called()
 
     async def test_rate_limit_at_boundary_passes(self, mock_redis: MagicMock) -> None:
         mock_redis.redis.incr = AsyncMock(return_value=BOT_RATE_LIMIT)
@@ -648,6 +670,33 @@ class TestLoadConversationHistory:
 
         assert len(result) == 1
         assert result[0]["content"] == ""
+
+    @pytest.mark.regression
+    async def test_a_stored_reply_longer_than_an_inbound_message_still_builds_the_turn(
+        self, mock_conversations: MagicMock
+    ) -> None:
+        """Regression: one stored reply over MAX_MESSAGE_LENGTH 500'd every later bot turn in that chat."""
+        long_reply = "x" * (MAX_MESSAGE_LENGTH + 1)
+        mock_conversations.get = AsyncMock(
+            return_value=_conv([{"type": "bot", "response": long_reply}])
+        )
+        body = BotChatRequest(
+            message="hello?",
+            platform="telegram",
+            platform_user_id="1685738115",
+            channel_id=None,
+            is_dm=False,
+            file_ids=None,
+            file_data=None,
+            platform_message_id=None,
+        )
+
+        request = await build_bot_message_request(body, "conv1", "user1")
+
+        assert request.messages == [
+            {"role": "assistant", "content": long_reply},
+            {"role": "user", "content": "hello?"},
+        ]
 
     async def test_handles_empty_bot_response_field(self, mock_conversations: MagicMock) -> None:
         mock_conversations.get = AsyncMock(return_value=_conv([{"type": "bot", "response": ""}]))

@@ -13,7 +13,7 @@ rendered prompt.
 
 from collections import Counter
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.config.oauth_config import all_integrations, get_integration_by_id
 from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.trigger_configs import CalendarEventStartingSoonConfig
@@ -116,15 +116,19 @@ def _integration_name(integration_id: str) -> str:
 
 
 def _integrations_line() -> str:
-    by_category = Counter(integration.category for integration in OAUTH_INTEGRATIONS)
+    by_category = Counter(integration.category for integration in all_integrations())
     categories = ", ".join(
         f"{count} {category.replace('_', ' ')}" for category, count in by_category.most_common()
     )
     return (
-        f"INTEGRATIONS: {len(OAUTH_INTEGRATIONS)} services the user can connect ({categories}). "
+        f"INTEGRATIONS: {len(all_integrations())} services the user can connect ({categories}). "
         "GAIA can search them for what the user needs and show a connect card in chat. Nothing "
         "runs on a service before it is connected; once it is, GAIA gets that service's tools, "
-        "and the built-in workflows below switch on by themselves."
+        "and the built-in workflows below switch on by themselves. Beyond the catalog, GAIA can "
+        "add any remote MCP server by its URL (a vendor's official server or the user's own; "
+        "no auth, OAuth, or a token entered in a secure form, never in chat) and use its tools "
+        "the same way, and custom servers can be published to a community marketplace that "
+        "integration search also covers."
     )
 
 
@@ -134,19 +138,20 @@ def _channels_line() -> str:
         for source in sorted(BOT_CONVERSATION_SOURCES, key=lambda s: _CHANNEL_NAMES[s])
     )
     return (
-        f"CHANNELS: the user can text GAIA on {names} as well as the web app. A linked "
-        "platform receives workflow results, reminders and briefs there, so nothing waits for "
-        "them to open a tab."
+        f"CHANNELS: the user can text GAIA on {names} as well as the web app. Workflow results, "
+        "reminders and briefs go to the one place the user is active (a linked chat app or the "
+        "GAIA app). With no chat app to reach, they wait in the GAIA app until it is opened."
     )
 
 
 def _inbox_desk_line() -> str:
     return (
         f"INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the {INBOX_DESK_TITLE}, "
-        f"that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It triages new mail, opens a tracked "
-        "todo for every thread where the user owes a reply or is waiting on one, saves reply "
-        "drafts without sending them, puts personal events from mail on the calendar, and its "
-        "morning report becomes a section of the daily brief. The user changes when it runs or "
+        f"that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It goes through every connected "
+        "inbox, opens a tracked todo for every thread where the user owes a reply or is waiting "
+        "on one, saves reply drafts without sending them, puts personal events from mail on the "
+        "calendar, and what it finds goes into the daily brief. It organizes their Gmail or adds "
+        "mail's tasks to their todos only after they say yes. The user changes when it runs or "
         "what it does by telling GAIA, like any tracked todo."
     )
 

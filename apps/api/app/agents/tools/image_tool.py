@@ -3,6 +3,7 @@ from typing import Annotated
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.agents.tools.core.mutations import user_id_from_config
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer
@@ -19,14 +20,19 @@ async def generate_image(
         str,
         "An enhanced, detailed description for image generation. Expand from the user's request to include style, composition, lighting, mood, and other visual details for optimal results.",
     ],
-    config: RunnableConfig,  # noqa: ARG001 -- framework contract
+    config: RunnableConfig,
 ) -> dict[str, str]:
     try:
         log.set(tool={"name": "generate_image", "action": "generate"})
+        user_id = user_id_from_config(config)
+        if user_id is None:
+            raise ValueError("generate_image needs the run's user id to store the image")
         writer = current_stream_writer()
         writer({"status": "generating_image"})
 
-        image_result = await api_generate_image(message=prompt, improve_prompt=False)
+        image_result = await api_generate_image(
+            message=prompt, user_id=user_id, improve_prompt=False
+        )
 
         # Send image data to frontend via writer
         writer({"image_data": image_result.model_dump()})

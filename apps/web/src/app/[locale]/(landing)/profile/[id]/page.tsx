@@ -12,12 +12,13 @@ import {
   holoCardApi,
   type PublicHoloCardData,
 } from "@/features/onboarding/api/holoCardApi";
+import { copyWithFeedback } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 
-const handleShare = () => {
+const handleShare = async () => {
   if (typeof window === "undefined") return;
   const url = window.location.href;
-  navigator.clipboard.writeText(url);
+  if (!(await copyWithFeedback(url))) return;
   toast.success("Profile link copied to clipboard!");
 };
 

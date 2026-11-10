@@ -9,10 +9,10 @@ with no model, and each frozen result is read into signals by the paths the lear
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from app.db.repositories.base import UserScopedDocument
-from app.models.playbook_models import PlaybookBody, PlaybookHandoffStepInput
+from app.models.playbook_models import MAX_FOR_EACH_ITEMS, ForEachStep, PlaybookBody, ToolStep
 
 
 class SignalImportance(StrEnum):
@@ -78,6 +78,39 @@ class LearnedSignal(BaseModel):
     state: str | None = None
 
 
+class ScoutStep(BaseModel):
+    """One call the learn run made and wants repeated, as its report writes it."""
+
+    id: str = Field(default="", description="Name later steps and sources read this step by")
+    tool: str = Field(min_length=1, description="Exact name of the tool this step calls")
+    args: dict[str, JsonValue] = Field(
+        default_factory=dict, description="The arguments the call ran with"
+    )
+    for_each: str | None = Field(
+        default=None, description="A $steps path to a list; the call repeats once per element"
+    )
+    max_items: int | None = Field(
+        default=None, ge=1, le=MAX_FOR_EACH_ITEMS, description="Most elements a for_each runs"
+    )
+
+    def to_step(self) -> ToolStep | ForEachStep:
+        """Return the executed step this call replays as."""
+        if self.for_each is None:
+            return ToolStep(id=self.id, tool=self.tool, args=self.args)
+        if self.max_items is None:
+            raise ValueError(
+                f"step {self.id or self.tool}: for_each needs max_items, at most "
+                f"{MAX_FOR_EACH_ITEMS}, so the replay's cost is known before it runs"
+            )
+        return ForEachStep(
+            id=self.id,
+            tool=self.tool,
+            args=self.args,
+            for_each=self.for_each,
+            max_items=self.max_items,
+        )
+
+
 class ScoutReport(BaseModel):
     """The learn run's final answer: what it watches, how to repeat it, what it found today."""
 
@@ -87,7 +120,7 @@ class ScoutReport(BaseModel):
         description="How to tell which items need this user and which are important",
     )
     nothing_to_watch: bool = False
-    steps: list[PlaybookHandoffStepInput] = Field(default_factory=list)
+    steps: list[ScoutStep] = Field(default_factory=list)
     sources: list[SignalSource] = Field(default_factory=list)
     signals: list[LearnedSignal] = Field(default_factory=list)
 

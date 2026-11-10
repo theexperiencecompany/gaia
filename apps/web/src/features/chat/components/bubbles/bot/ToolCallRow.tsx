@@ -77,11 +77,9 @@ function ApprovalOutcomeChip({
 function ToolCallIcon({
   call,
   isSkill,
-  getIconUrl,
 }: Readonly<{
   call: ToolCallEntry;
   isSkill: boolean;
-  getIconUrl: (c: ToolCallEntry) => string | undefined;
 }>) {
   if (isSkill) {
     return (
@@ -95,7 +93,7 @@ function ToolCallIcon({
     getToolCategoryIcon(
       call.tool_category || "general",
       { size: 21, width: 21, height: 21 },
-      getIconUrl(call),
+      call.icon_url,
     ) || (
       <div className="p-1 bg-zinc-800 rounded-lg">
         <ToolsIcon width={21} height={21} />
@@ -196,30 +194,22 @@ function ToolCallDetails({
 export function ToolCallRow({
   call,
   isLast,
-  getIconUrl,
-  getIntegrationName,
   awaitingApproval,
   approvalOutcome,
 }: Readonly<{
   call: ToolCallEntry;
   isLast: boolean;
-  getIconUrl: (c: ToolCallEntry) => string | undefined;
-  getIntegrationName: (c: ToolCallEntry) => string | undefined;
   awaitingApproval: boolean;
   approvalOutcome?: ApprovalOutcome;
 }>) {
   const [expanded, setExpanded] = useState(false);
-  const display = deriveToolCallDisplay(call, getIntegrationName);
+  const display = deriveToolCallDisplay(call);
 
   return (
     <div className="flex items-stretch gap-2">
       <div className="flex flex-col items-center self-stretch">
         <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
-          <ToolCallIcon
-            call={call}
-            isSkill={!!display.skillLabel}
-            getIconUrl={getIconUrl}
-          />
+          <ToolCallIcon call={call} isSkill={!!display.skillLabel} />
         </div>
         {!isLast && <div className="w-px flex-1 bg-default-200 min-h-4" />}
       </div>

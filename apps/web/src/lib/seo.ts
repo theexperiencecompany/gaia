@@ -1,3 +1,4 @@
+import { BOT_URLS } from "@shared/constants/bots";
 import type { Metadata } from "next";
 import type {
   AboutPage,
@@ -5,12 +6,10 @@ import type {
   Article,
   BreadcrumbList,
   ContactPage,
-  ContactPoint,
   DefinedTerm,
   FAQPage,
   HowTo,
   HowToStep,
-  ImageObject,
   ItemList,
   ListItem,
   Offer,
@@ -22,8 +21,15 @@ import type {
   WebSite,
   WithContext,
 } from "schema-dts";
+import SEO_SNIPPET from "@/config/seoSnippet.json";
+import {
+  ADVERTISED_PRO_MONTHLY,
+  ADVERTISED_PRO_MONTHLY_PRICE,
+} from "@/features/pricing/advertisedPrice";
+import { localizePath } from "@/i18n/config";
 
 const SITE_URL = "https://heygaia.io";
+const GLOSSARY_PATH = "/learn";
 
 export function getSiteUrl(): string {
   return SITE_URL;
@@ -33,17 +39,19 @@ export function getSiteUrl(): string {
 export const siteConfig = {
   short_name: "GAIA",
   name: "GAIA - Your Personal AI Assistant",
+  /** Homepage title: leads with "GAIA AI" (the query that clicks) and says what GAIA does, since "gaia" alone names many things. */
+  homeTitle: "GAIA AI: The Personal Assistant That Acts Before You Ask",
   fullName: "GAIA - Your Personal AI Assistant from The Experience Company",
   description:
-    "GAIA is your open-source personal AI assistant to proactively manage your email, calendar, todos, workflows and all your digital tools to boost productivity.",
+    "GAIA is your source-available personal AI assistant that proactively manages your email, calendar, todos, workflows and digital tools to boost productivity.",
   url: getSiteUrl(),
   ogImage: "/og-image.webp",
   links: {
     twitter: "https://x.com/trygaia",
     github: "https://github.com/theexperiencecompany",
-    discord: "https://discord.heygaia.io",
+    repo: "https://github.com/theexperiencecompany/gaia",
+    discord: BOT_URLS.discord,
     linkedin: "https://www.linkedin.com/company/heygaia",
-    youtube: "https://youtube.com/@theexperiencecompany",
     whatsapp: "https://whatsapp.heygaia.io",
   },
   founders: [
@@ -52,15 +60,89 @@ export const siteConfig = {
       role: "Founder & CEO",
       twitter: "https://twitter.com/aryanranderiya",
       linkedin: "https://www.linkedin.com/in/aryanranderiya/",
+      github: "https://github.com/aryanranderiya",
     },
     {
       name: "Dhruv Maradiya",
       role: "Founder & CTO",
       twitter: "https://twitter.com/dhruvmaradiya",
       linkedin: "https://www.linkedin.com/in/dhruvmaradiya/",
+      github: "https://github.com/dhruv-maradiya",
     },
   ],
 } as const;
+
+/** One node per entity: every page declares the Organization and WebSite in full once and refers to them by these ids. */
+const ORGANIZATION_ID = `${SITE_URL}/#organization`;
+const WEBSITE_ID = `${SITE_URL}/#website`;
+const PRODUCT_ID = `${SITE_URL}/#product`;
+
+/** The GAIA Organization by reference, for every publisher, author and mainEntity that names it. */
+export const organizationRef = { "@id": ORGANIZATION_ID } as const;
+const websiteRef = { "@id": WEBSITE_ID } as const;
+
+export interface PersonProfile {
+  readonly name: string;
+  readonly jobTitle?: string;
+  readonly url?: string;
+  readonly sameAs?: readonly (string | undefined)[];
+}
+
+function personSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-|-$/g, "");
+}
+
+/**
+ * The canonical profile for a known person. Every page names the founders, so
+ * the founder data is the single source: a blog byline cannot drift to a
+ * different `url` or `sameAs` set than the Organization's founders array.
+ */
+function canonicalPersonProfile(profile: PersonProfile): PersonProfile {
+  const slug = personSlug(profile.name);
+  const founder = siteConfig.founders.find(
+    (candidate) => personSlug(candidate.name) === slug,
+  );
+  if (founder) {
+    return {
+      name: founder.name,
+      jobTitle: founder.role,
+      url: founder.linkedin,
+      sameAs: [founder.twitter, founder.linkedin, founder.github],
+    };
+  }
+  return {
+    name: profile.name,
+    jobTitle: profile.jobTitle,
+    url: profile.url,
+    sameAs: profile.sameAs ?? [],
+  };
+}
+
+/** A person with a stable site-level @id, so the same author on several pages is one entity. */
+export function generatePersonSchema(profile: PersonProfile): Person {
+  const { name, jobTitle, url, sameAs = [] } = canonicalPersonProfile(profile);
+  const profiles = sameAs.filter((link): link is string => Boolean(link));
+  return {
+    "@type": "Person",
+    "@id": `${SITE_URL}/#person-${personSlug(name)}`,
+    name,
+    ...(jobTitle && { jobTitle }),
+    ...(url && { url }),
+    ...(profiles.length > 0 && { sameAs: profiles }),
+  };
+}
+
+function founderSchema(founder: (typeof siteConfig.founders)[number]): Person {
+  return generatePersonSchema({
+    name: founder.name,
+    jobTitle: founder.role,
+    url: founder.linkedin,
+    sameAs: [founder.twitter, founder.linkedin, founder.github],
+  });
+}
 
 // Common keywords for all pages
 const commonKeywords = [
@@ -94,8 +176,6 @@ export interface PageMetadataOptions {
   title: string;
   description?: string;
   path: string;
-  /** Override the canonical URL — use for near-duplicate pages that should consolidate PageRank to a primary. */
-  canonicalPath?: string;
   keywords?: string[];
   image?: string;
   type?: "website" | "article" | "profile";
@@ -106,11 +186,72 @@ export interface PageMetadataOptions {
   section?: string;
 }
 
+/** Longest title a result snippet shows without truncating it. */
+const TITLE_MAX_LENGTH = SEO_SNIPPET.titleLength.max;
+/** Shortest title that still says what the page is about. */
+const TITLE_MIN_LENGTH = SEO_SNIPPET.titleLength.min;
+/** Longest meta description a result snippet shows without truncating it. */
+const DESCRIPTION_MAX_LENGTH = 160;
+const BRAND_SUFFIX = ` | ${siteConfig.short_name}`;
+const BRAND_PATTERN = new RegExp(`\\b${siteConfig.short_name}\\b`);
+
+/** Whether the layout template's " | GAIA" applies: the brand is absent and the suffixed title still fits. */
+function takesBrandSuffix(title: string): boolean {
+  return (
+    !BRAND_PATTERN.test(title) &&
+    title.length + BRAND_SUFFIX.length <= TITLE_MAX_LENGTH
+  );
+}
+
+/** The title as the result snippet shows it: suffixed with " | GAIA" when that still fits. */
+export function brandedTitle(title: string): string {
+  return takesBrandSuffix(title) ? `${title}${BRAND_SUFFIX}` : title;
+}
+
+function trimAtWord(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max + 1);
+  return cut.slice(0, cut.lastIndexOf(" ")).trimEnd();
+}
+
+/** The most descriptive candidate that still takes the brand suffix and is not too short to describe the page, else the first that fits bare. */
+export function fitTitle(candidates: readonly string[]): string {
+  const branded =
+    candidates.find(
+      (title) =>
+        takesBrandSuffix(title) &&
+        brandedTitle(title).length >= TITLE_MIN_LENGTH,
+    ) ?? candidates.find(takesBrandSuffix);
+  if (branded) return branded;
+  const bare = candidates.find((title) => title.length <= TITLE_MAX_LENGTH);
+  return bare ?? trimAtWord(candidates.at(-1) ?? "", TITLE_MAX_LENGTH);
+}
+
+function asSentence(text: string): string {
+  const trimmed = text.trim();
+  return /[.!?]["')]?$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/** Join sentences in priority order, skipping any that would run the description past the snippet. */
+export function fitDescription(sentences: readonly string[]): string {
+  const [lead = "", ...rest] = sentences
+    .filter((sentence) => sentence.trim() !== "")
+    .map(asSentence);
+  let description = lead;
+  if (description.length > DESCRIPTION_MAX_LENGTH) {
+    return `${trimAtWord(description, DESCRIPTION_MAX_LENGTH - 1)}…`;
+  }
+  for (const sentence of rest) {
+    const next = `${description} ${sentence}`;
+    if (next.length <= DESCRIPTION_MAX_LENGTH) description = next;
+  }
+  return description;
+}
+
 export function generatePageMetadata({
   title,
   description = siteConfig.description,
   path,
-  canonicalPath,
   keywords = [],
   image = siteConfig.ogImage,
   type = "website",
@@ -120,27 +261,19 @@ export function generatePageMetadata({
   noIndex = false,
   section,
 }: PageMetadataOptions): Metadata {
-  const url = getCanonicalUrl(canonicalPath ?? path);
+  const url = getCanonicalUrl(path);
 
-  // Homepage uses an absolute title (no template suffix); other pages use a
-  // simple string so the template appends "| GAIA" — but the brand must
-  // appear exactly once, so a title that already names GAIA renders as-is.
+  // The template appends " | GAIA" only where the brand is absent and the
+  // suffix still fits the result snippet; otherwise the title renders as-is.
   const isHomepage = path === "/" || title === siteConfig.name;
-  const containsBrand = new RegExp(`\\b${siteConfig.short_name}\\b`).test(
-    title,
-  );
   const pageTitle = isHomepage
-    ? { absolute: siteConfig.name }
-    : containsBrand
-      ? { absolute: title }
-      : title;
-
-  // Full title for OpenGraph (suffix only when the title doesn't already carry the brand)
-  const fullTitle = isHomepage
-    ? siteConfig.fullName
-    : containsBrand
+    ? { absolute: siteConfig.homeTitle }
+    : takesBrandSuffix(title)
       ? title
-      : `${title} | ${siteConfig.short_name}`;
+      : { absolute: title };
+
+  // Full title for OpenGraph, suffixed by the same rule
+  const fullTitle = isHomepage ? siteConfig.fullName : brandedTitle(title);
 
   const allKeywords = [...commonKeywords, ...keywords];
 
@@ -224,7 +357,7 @@ export function generateOrganizationSchema(): WithContext<Organization> {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
-    "@id": `${siteConfig.url}/#organization`,
+    "@id": ORGANIZATION_ID,
     name: siteConfig.short_name,
     alternateName: [
       "GAIA AI",
@@ -243,22 +376,13 @@ export function generateOrganizationSchema(): WithContext<Organization> {
       "@type": "Place",
       name: "India",
     },
-    founders: siteConfig.founders.map(
-      (founder): Person => ({
-        "@type": "Person",
-        name: founder.name,
-        jobTitle: founder.role,
-        sameAs: [founder.twitter, founder.linkedin].filter(Boolean),
-      }),
-    ),
+    founders: siteConfig.founders.map(founderSchema),
+    // Profiles of this organization on other sites; its own domains and invite links are not sameAs.
     sameAs: [
       siteConfig.links.twitter,
       siteConfig.links.github,
+      siteConfig.links.repo,
       siteConfig.links.linkedin,
-      siteConfig.links.youtube,
-      siteConfig.links.discord,
-      siteConfig.url,
-      "https://docs.heygaia.io",
     ],
     contactPoint: {
       "@type": "ContactPoint",
@@ -278,30 +402,28 @@ export function generateWebSiteSchema(): WithContext<WebSite> {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
+    "@id": WEBSITE_ID,
     name: siteConfig.short_name,
-    alternateName: siteConfig.name,
+    alternateName: ["GAIA AI", "heygaia"],
     url: siteConfig.url,
     description: siteConfig.description,
-    potentialAction: {
-      "@type": "SearchAction",
-      target: {
-        "@type": "EntryPoint",
-        urlTemplate: `${siteConfig.url}/use-cases?q={search_term_string}`,
-      },
-      "query-input": "required name=search_term_string",
-    } as unknown as WebSite["potentialAction"],
+    publisher: organizationRef,
   };
 }
 
-/**
- * Generate WebPage structured data (JSON-LD)
- */
+/** When the content a page shows was published and last changed; the sitemap lastmod reads the same date. */
+export interface ContentDates {
+  readonly published: string;
+  readonly modified: string;
+}
+
+/** WebPage JSON-LD; dates only when the content has them, never the render time. */
 export function generateWebPageSchema(
   title: string,
   description: string,
   url: string,
   breadcrumbs?: Array<{ name: string; url: string }>,
-  publishedDate?: string,
+  dates?: ContentDates,
 ): WithContext<WebPage> {
   const schema: WithContext<WebPage> = {
     "@context": "https://schema.org",
@@ -309,18 +431,12 @@ export function generateWebPageSchema(
     name: title,
     description,
     url,
-    author: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      url: siteConfig.url,
-    },
-    datePublished: publishedDate ?? "2025-01-01",
-    dateModified: new Date().toISOString().split("T")[0],
-    isPartOf: {
-      "@type": "WebSite",
-      url: siteConfig.url,
-      name: siteConfig.short_name,
-    },
+    author: organizationRef,
+    ...(dates && {
+      datePublished: dates.published,
+      dateModified: dates.modified,
+    }),
+    isPartOf: websiteRef,
   };
 
   if (breadcrumbs && breadcrumbs.length > 0) {
@@ -386,6 +502,27 @@ export function generateFAQSchema(
   };
 }
 
+/** The one paid plan of hosted GAIA, billed monthly at the advertised price. */
+export function generateProOffer(): Offer {
+  const price = String(ADVERTISED_PRO_MONTHLY_PRICE);
+  return {
+    "@type": "Offer",
+    name: "GAIA Pro",
+    description:
+      "Hosted GAIA, billed monthly. Self-hosting is free for non-commercial use.",
+    price,
+    priceCurrency: ADVERTISED_PRO_MONTHLY.currency,
+    priceSpecification: {
+      "@type": "UnitPriceSpecification",
+      price,
+      priceCurrency: ADVERTISED_PRO_MONTHLY.currency,
+      unitCode: "MON",
+    },
+    availability: "https://schema.org/InStock",
+    url: `${siteConfig.url}/pricing`,
+  };
+}
+
 /**
  * Generate Product/SoftwareApplication structured data (JSON-LD)
  */
@@ -393,7 +530,7 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
   return {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    "@id": `${siteConfig.url}/#product`,
+    "@id": PRODUCT_ID,
     name: siteConfig.short_name,
     applicationCategory: "ProductivityApplication",
     applicationSubCategory: "AI Assistant",
@@ -401,33 +538,12 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
     description: siteConfig.description,
     url: siteConfig.url,
     image: `${siteConfig.url}/og-image.webp`,
-    downloadUrl: "https://heygaia.io/download",
+    downloadUrl: `${siteConfig.url}/download`,
     featureList:
-      "Email management, Calendar automation, Task management, AI workflows, 50+ integrations, Open source, Self-hostable",
-    isAccessibleForFree: true,
-    sameAs: [
-      siteConfig.url,
-      "https://docs.heygaia.io",
-      siteConfig.links.twitter,
-      siteConfig.links.github,
-      siteConfig.links.discord,
-      siteConfig.links.linkedin,
-      siteConfig.links.youtube,
-      siteConfig.links.whatsapp,
-    ],
-    offers: {
-      "@type": "Offer",
-      price: "0",
-      priceCurrency: "USD",
-      availability: "https://schema.org/InStock",
-      name: "Free Plan",
-      description: "GAIA is free to use with open-source self-hosting option",
-    } as Offer,
-    author: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      url: siteConfig.url,
-    } as Organization,
+      "Email management, Calendar automation, Task management, AI workflows, Integrations, Open source, Self-hostable",
+    sameAs: [siteConfig.links.repo],
+    offers: generateProOffer(),
+    author: organizationRef,
   };
 }
 
@@ -441,7 +557,7 @@ export function generateArticleSchema(
   image: string,
   publishedDate: string,
   modifiedDate: string,
-  authors: Array<{ name: string; url?: string }>,
+  authors: readonly PersonProfile[],
   category?: string,
 ): WithContext<Article> {
   return {
@@ -453,21 +569,8 @@ export function generateArticleSchema(
     url,
     datePublished: publishedDate,
     dateModified: modifiedDate,
-    author: authors.map(
-      (author): Person => ({
-        "@type": "Person",
-        name: author.name,
-        url: author.url,
-      }),
-    ),
-    publisher: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      logo: {
-        "@type": "ImageObject",
-        url: `${siteConfig.url}/images/logos/logo.webp`,
-      } as ImageObject,
-    } as Organization,
+    author: authors.map(generatePersonSchema),
+    publisher: organizationRef,
     mainEntityOfPage: {
       "@type": "WebPage",
       "@id": url,
@@ -504,11 +607,13 @@ export function generateHowToSchema(
 }
 
 /**
- * Generate ItemList structured data for list pages (JSON-LD)
+ * Generate ItemList structured data (JSON-LD) for a summary page.
+ * Plain ListItems carrying url and name: a typed nested item (Product,
+ * SoftwareApplication) makes Google validate it as that rich result and flag
+ * the offers and reviews a list entry does not have.
  */
 export function generateItemListSchema(
-  items: Array<{ name: string; url: string; description?: string }>,
-  listType: "BlogPosting" | "Article" | "Product" = "BlogPosting",
+  items: ReadonlyArray<{ name: string; url: string }>,
 ): WithContext<ItemList> {
   return {
     "@context": "https://schema.org",
@@ -517,12 +622,8 @@ export function generateItemListSchema(
       (item, index): ListItem => ({
         "@type": "ListItem",
         position: index + 1,
-        item: {
-          "@type": listType,
-          name: item.name,
-          url: item.url,
-          ...(item.description && { description: item.description }),
-        },
+        name: item.name,
+        url: item.url,
       }),
     ),
   };
@@ -538,17 +639,7 @@ export function generateContactPageSchema(): WithContext<ContactPage> {
     name: "Contact GAIA",
     description: "Get in touch with the GAIA team",
     url: `${siteConfig.url}/contact`,
-    mainEntity: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      url: siteConfig.url,
-      contactPoint: {
-        "@type": "ContactPoint",
-        contactType: "Customer Support",
-        url: `${siteConfig.url}/contact`,
-        availableLanguage: ["English"],
-      } as ContactPoint,
-    } as Organization,
+    mainEntity: organizationRef,
   };
 }
 
@@ -562,40 +653,37 @@ export function generateAboutPageSchema(): WithContext<AboutPage> {
     name: "About GAIA",
     description: "Learn about GAIA's mission and the team behind it",
     url: `${siteConfig.url}/about`,
-    mainEntity: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      description: siteConfig.description,
-      url: siteConfig.url,
-      founders: siteConfig.founders.map(
-        (founder): Person => ({
-          "@type": "Person",
-          name: founder.name,
-          jobTitle: founder.role,
-        }),
-      ),
-    } as Organization,
+    mainEntity: organizationRef,
   };
 }
 
-/**
- * Generate DefinedTerm structured data for glossary entries (JSON-LD)
- */
-export function generateDefinedTermSchema(
-  term: string,
-  definition: string,
-  url: string,
-): WithContext<DefinedTerm> {
+/** A glossary term in one locale: each translation is its own entity, identified by its own page. */
+export function generateDefinedTermSchema({
+  term,
+  definition,
+  path,
+  locale,
+}: {
+  readonly term: string;
+  readonly definition: string;
+  readonly path: string;
+  readonly locale: string;
+}): WithContext<DefinedTerm> {
+  const url = `${SITE_URL}${localizePath(path, locale)}`;
+  const glossaryUrl = `${SITE_URL}${localizePath(GLOSSARY_PATH, locale)}`;
   return {
     "@context": "https://schema.org",
     "@type": "DefinedTerm",
+    "@id": `${url}#term`,
     name: term,
     description: definition,
     url,
     inDefinedTermSet: {
       "@type": "DefinedTermSet",
+      "@id": `${glossaryUrl}#glossary`,
       name: "GAIA AI Glossary",
-      url: `${siteConfig.url}/learn`,
+      url: glossaryUrl,
+      inLanguage: locale,
     },
   };
 }

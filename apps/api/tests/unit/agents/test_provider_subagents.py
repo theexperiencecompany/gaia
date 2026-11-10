@@ -17,14 +17,16 @@ from app.models.subagent_models import Subagent
 
 
 def _integration_doc(integration_id: str, server_url: str) -> Integration:
-    return Integration(
-        integration_id=integration_id,
-        name="Custom MCP",
-        description="",
-        category="custom",
-        managed_by="mcp",
-        source="custom",
-        mcp_config=MCPConfig(server_url=server_url),
+    return Integration.model_validate(
+        {
+            "integration_id": integration_id,
+            "name": "Custom MCP",
+            "description": "",
+            "category": "custom",
+            "managed_by": "mcp",
+            "source": "custom",
+            "mcp_config": MCPConfig(server_url=server_url),
+        }
     )
 
 
@@ -88,6 +90,7 @@ def _make_subagent(
     mcp_config: MCPConfig | None = None,
     provider: str = "test_provider",
     subagent_config: SubAgentConfig | None = None,
+    available: bool = True,
 ) -> Subagent:
     """Build a real Subagent — create_subagent/registration APIs accept Subagent directly."""
     if subagent_config is None:
@@ -99,6 +102,7 @@ def _make_subagent(
         managed_by=managed_by,  # type: ignore[arg-type]  # fixture uses a plain string for the managed_by Literal
         config=subagent_config,
         mcp_config=mcp_config,
+        available=available,
     )
 
 
@@ -414,7 +418,7 @@ class TestRegisterIntegrationTools:
         integration = _make_integration(
             "gmail",
             managed_by="composio",
-            composio_config=ComposioConfig(auth_config_id="a", toolkit="GMAIL"),  # type: ignore[arg-type]  # helper types this param as MagicMock
+            composio_config=ComposioConfig(auth_config_id="a", toolkit="GMAIL"),
         )
 
         with (
@@ -492,467 +496,6 @@ class TestRegisterIntegrationTools:
 
 
 # ---------------------------------------------------------------------------
-# create_subagent_for_user
-# ---------------------------------------------------------------------------
-
-
-class TestCreateSubagentForUser:
-    async def test_delegates_to_custom_when_integration_not_found(self):
-        from app.agents.core.subagents.provider_subagents import (
-            create_subagent_for_user,
-        )
-
-        mock_graph = MagicMock()
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
-                return_value=None,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents._create_custom_mcp_subagent",
-                new_callable=AsyncMock,
-                return_value=mock_graph,
-            ) as mock_custom,
-        ):
-            result = await create_subagent_for_user("custom_abc", "user_123")
-
-        mock_custom.assert_called_once_with("custom_abc", "user_123")
-        assert result is mock_graph
-
-    async def test_returns_none_when_not_mcp(self):
-        from app.agents.core.subagents.provider_subagents import (
-            SubagentUnavailableError,
-            create_subagent_for_user,
-        )
-
-        subagent = _make_subagent(managed_by="composio")
-        with patch(
-            "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
-            return_value=subagent,
-        ):
-            with pytest.raises(SubagentUnavailableError, match="is not an MCP integration"):
-                await create_subagent_for_user("test_int", "user_123")
-
-    async def test_mcp_with_cached_tools(self):
-        from app.agents.core.subagents.provider_subagents import (
-            create_subagent_for_user,
-        )
-
-        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
-        subagent = _make_subagent(
-            managed_by="mcp",
-            mcp_config=mcp_config,
-            subagent_config=_make_subagent_config(
-                use_direct_tools=True,
-                disable_retrieve_tools=True,
-                auto_bind_tools=["USER_AUTO_TOOL"],
-                extra_initial_tools=["USER_EXTRA_TOOL"],
-                include_finish_task=False,
-            ),
-        )
-        mock_graph = MagicMock()
-        mock_tools = [MagicMock()]
-
-        mock_registry = AsyncMock()
-        mock_registry._categories = {}
-        mock_registry._add_category = MagicMock()
-        mock_registry._index_category_tools = AsyncMock()
-
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client._tools = {"test_int": mock_tools}
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
-                return_value=subagent,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=mock_mcp_client,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.init_llm",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
-                new_callable=AsyncMock,
-                return_value=mock_graph,
-            ) as mock_factory,
-            patch("asyncio.create_task", side_effect=_noop_create_task),
-        ):
-            result = await create_subagent_for_user("test_int", "user_123")
-
-        assert result is mock_graph
-        # Should use cached tools, not call connect
-        mock_mcp_client.connect.assert_not_called()
-
-        call_kwargs = mock_factory.call_args.kwargs
-        assert call_kwargs["provider"] == "test_provider"
-        assert call_kwargs["name"] == "test_agent"
-        cfg = call_kwargs["config"]
-        assert cfg.tool_space == "test_space"
-        assert cfg.use_direct_tools is True
-        assert cfg.disable_retrieve_tools is True
-        assert cfg.auto_bind_tools == ["USER_AUTO_TOOL"]
-        assert cfg.extra_initial_tools == ["USER_EXTRA_TOOL"]
-        assert cfg.include_finish_task is False
-        # The live MCPClient tools must be the ones handed to the factory: a
-        # dropped forward builds an agent with none of the user's tools.
-        assert cfg.mcp_tools is mock_tools
-        assert cfg.source_label == subagent.name
-
-    async def test_mcp_connect_failure_returns_none(self):
-        from app.agents.core.subagents.provider_subagents import (
-            SubagentUnavailableError,
-            create_subagent_for_user,
-        )
-
-        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
-        subagent = _make_subagent(
-            managed_by="mcp",
-            mcp_config=mcp_config,
-        )
-
-        mock_registry = AsyncMock()
-        mock_registry._categories = {}
-
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client._tools = {}
-        mock_mcp_client.connect = AsyncMock(side_effect=Exception("connection fail"))
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
-                return_value=subagent,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=mock_mcp_client,
-            ),
-        ):
-            with pytest.raises(SubagentUnavailableError, match="connection fail"):
-                await create_subagent_for_user("test_int", "user_123")
-
-    async def test_mcp_no_tools_returns_none(self):
-        from app.agents.core.subagents.provider_subagents import (
-            SubagentUnavailableError,
-            create_subagent_for_user,
-        )
-
-        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
-        subagent = _make_subagent(
-            managed_by="mcp",
-            mcp_config=mcp_config,
-        )
-
-        mock_registry = AsyncMock()
-        mock_registry._categories = {}
-
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client._tools = {}
-        mock_mcp_client.connect = AsyncMock(return_value=[])
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
-                return_value=subagent,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=mock_mcp_client,
-            ),
-        ):
-            with pytest.raises(SubagentUnavailableError, match="exposed no usable tools"):
-                await create_subagent_for_user("test_int", "user_123")
-
-
-# ---------------------------------------------------------------------------
-# _create_custom_mcp_subagent
-# ---------------------------------------------------------------------------
-
-
-class TestCreateCustomMcpSubagent:
-    async def test_returns_none_when_not_found_in_mongo(self):
-        from app.agents.core.subagents.provider_subagents import (
-            SubagentUnavailableError,
-            _create_custom_mcp_subagent,
-        )
-
-        with patch(
-            "app.agents.core.subagents.provider_subagents.integration_repository"
-        ) as mock_repo:
-            mock_repo.get = AsyncMock(return_value=None)
-            with pytest.raises(SubagentUnavailableError, match="not found"):
-                await _create_custom_mcp_subagent("custom_abc", "user_123")
-
-    async def test_creates_graph_for_custom_mcp(self):
-        from app.agents.core.subagents.provider_subagents import (
-            _create_custom_mcp_subagent,
-        )
-
-        custom_doc = _integration_doc("custom_abc", "https://custom.example.com")
-        mock_graph = MagicMock()
-        mock_tools = [MagicMock() for _ in range(5)]
-
-        mock_registry = AsyncMock()
-        mock_registry._categories = {}
-        mock_registry._add_category = MagicMock()
-        mock_registry._index_category_tools = AsyncMock()
-
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client._tools = {}
-        mock_mcp_client.connect = AsyncMock(return_value=mock_tools)
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.integration_repository"
-            ) as mock_repo,
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=mock_mcp_client,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.init_llm",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
-                new_callable=AsyncMock,
-                return_value=mock_graph,
-            ) as mock_factory,
-            patch(
-                "app.agents.core.subagents.provider_subagents.derive_integration_namespace",
-                return_value="custom.example.com",
-            ),
-            patch("asyncio.create_task", side_effect=_noop_create_task),
-        ):
-            mock_repo.get = AsyncMock(return_value=custom_doc)
-            result = await _create_custom_mcp_subagent("custom_abc", "user_123")
-
-        assert result is mock_graph
-        call_kwargs = mock_factory.call_args.kwargs
-        assert call_kwargs["provider"] == "custom_abc"
-        assert call_kwargs["name"] == "custom_mcp_custom_abc"
-        cfg = call_kwargs["config"]
-        assert cfg.tool_space == "custom.example.com"
-        # 5 tools is within the 1-10 direct-binding window
-        assert cfg.use_direct_tools is True
-        assert cfg.disable_retrieve_tools is True
-        assert cfg.mcp_tools is mock_tools
-        assert cfg.source_label == custom_doc.name
-
-    async def test_uses_direct_tools_for_small_toolset(self):
-        from app.agents.core.subagents.provider_subagents import (
-            _create_custom_mcp_subagent,
-        )
-
-        custom_doc = _integration_doc("custom_abc", "https://custom.example.com")
-        mock_graph = MagicMock()
-        mock_tools = [MagicMock() for _ in range(3)]  # Small = direct tools
-
-        mock_registry = AsyncMock()
-        mock_registry._categories = {}
-        mock_registry._add_category = MagicMock()
-        mock_registry._index_category_tools = AsyncMock()
-
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client._tools = {}
-        mock_mcp_client.connect = AsyncMock(return_value=mock_tools)
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.integration_repository"
-            ) as mock_repo,
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=mock_mcp_client,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.init_llm",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
-                new_callable=AsyncMock,
-                return_value=mock_graph,
-            ) as mock_factory,
-            patch(
-                "app.agents.core.subagents.provider_subagents.derive_integration_namespace",
-                return_value="custom.example.com",
-            ),
-            patch("asyncio.create_task", side_effect=_noop_create_task),
-        ):
-            mock_repo.get = AsyncMock(return_value=custom_doc)
-            await _create_custom_mcp_subagent("custom_abc", "user_123")
-
-        cfg = mock_factory.call_args.kwargs["config"]
-        assert cfg.use_direct_tools is True
-        assert cfg.disable_retrieve_tools is True
-
-    async def test_uses_retrieve_tools_for_large_toolset(self):
-        from app.agents.core.subagents.provider_subagents import (
-            _create_custom_mcp_subagent,
-        )
-
-        custom_doc = _integration_doc("custom_abc", "https://custom.example.com")
-        mock_graph = MagicMock()
-        mock_tools = [MagicMock() for _ in range(15)]  # Large = retrieve tools
-
-        mock_registry = AsyncMock()
-        mock_registry._categories = {}
-        mock_registry._add_category = MagicMock()
-        mock_registry._index_category_tools = AsyncMock()
-
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client._tools = {}
-        mock_mcp_client.connect = AsyncMock(return_value=mock_tools)
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.integration_repository"
-            ) as mock_repo,
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=mock_mcp_client,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.init_llm",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
-                new_callable=AsyncMock,
-                return_value=mock_graph,
-            ) as mock_factory,
-            patch(
-                "app.agents.core.subagents.provider_subagents.derive_integration_namespace",
-                return_value="custom.example.com",
-            ),
-            patch("asyncio.create_task", side_effect=_noop_create_task),
-        ):
-            mock_repo.get = AsyncMock(return_value=custom_doc)
-            await _create_custom_mcp_subagent("custom_abc", "user_123")
-
-        cfg = mock_factory.call_args.kwargs["config"]
-        assert cfg.use_direct_tools is False
-        assert cfg.disable_retrieve_tools is False
-
-    async def test_connect_failure_returns_none(self):
-        from app.agents.core.subagents.provider_subagents import (
-            SubagentUnavailableError,
-            _create_custom_mcp_subagent,
-        )
-
-        custom_doc = _integration_doc("custom_abc", "https://custom.example.com")
-
-        mock_registry = AsyncMock()
-        mock_registry._categories = {}
-
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client._tools = {}
-        mock_mcp_client.connect = AsyncMock(side_effect=Exception("conn fail"))
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.integration_repository"
-            ) as mock_repo,
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=mock_mcp_client,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.derive_integration_namespace",
-                return_value="custom.example.com",
-            ),
-        ):
-            mock_repo.get = AsyncMock(return_value=custom_doc)
-            with pytest.raises(SubagentUnavailableError, match="conn fail"):
-                await _create_custom_mcp_subagent("custom_abc", "user_123")
-
-    async def test_no_tools_returns_none(self):
-        from app.agents.core.subagents.provider_subagents import (
-            SubagentUnavailableError,
-            _create_custom_mcp_subagent,
-        )
-
-        custom_doc = _integration_doc("custom_abc", "https://custom.example.com")
-
-        mock_registry = AsyncMock()
-        mock_registry._categories = {}
-
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client._tools = {}
-        mock_mcp_client.connect = AsyncMock(return_value=[])
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.integration_repository"
-            ) as mock_repo,
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=mock_mcp_client,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.derive_integration_namespace",
-                return_value="custom.example.com",
-            ),
-        ):
-            mock_repo.get = AsyncMock(return_value=custom_doc)
-            with pytest.raises(SubagentUnavailableError, match="exposed no usable tools"):
-                await _create_custom_mcp_subagent("custom_abc", "user_123")
-
-
-# ---------------------------------------------------------------------------
 # register_subagent_providers
 # ---------------------------------------------------------------------------
 
@@ -980,6 +523,57 @@ class TestRegisterSubagentProviders:
         assert count == 1
         mock_providers.register.assert_called_once()
         assert mock_providers.register.call_args.kwargs["name"] == "eligible_agent"
+
+    def test_skips_an_unavailable_integration(self):
+        """A listed-but-dead endpoint must not register: startup would dial it."""
+        from app.agents.core.subagents.provider_subagents import (
+            register_subagent_providers,
+        )
+
+        subagent = _make_subagent(
+            available=False,
+            subagent_config=_make_subagent_config(agent_name="dead_agent"),
+        )
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.all_subagents",
+                return_value=(subagent,),
+            ),
+            patch("app.agents.core.subagents.provider_subagents.providers") as mock_providers,
+        ):
+            count = register_subagent_providers()
+
+        assert count == 0
+        mock_providers.register.assert_not_called()
+
+    def test_an_unavailable_integration_does_not_stop_the_ones_after_it(self):
+        """Skipping must be a skip: a break would drop every later integration."""
+        from app.agents.core.subagents.provider_subagents import (
+            register_subagent_providers,
+        )
+
+        dead = _make_subagent(
+            integration_id="dead_int",
+            available=False,
+            subagent_config=_make_subagent_config(agent_name="dead_agent"),
+        )
+        live = _make_subagent(
+            integration_id="live_int",
+            subagent_config=_make_subagent_config(agent_name="live_agent"),
+        )
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.all_subagents",
+                return_value=(dead, live),
+            ),
+            patch("app.agents.core.subagents.provider_subagents.providers") as mock_providers,
+        ):
+            count = register_subagent_providers()
+
+        assert count == 1
+        assert mock_providers.register.call_args.kwargs["name"] == "live_agent"
 
     def test_skips_auth_required_mcp(self):
         from app.agents.core.subagents.provider_subagents import (

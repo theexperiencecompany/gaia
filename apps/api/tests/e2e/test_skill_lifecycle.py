@@ -32,7 +32,7 @@ from app.agents.skills.installer import (
     uninstall_skill_full,
     update_skill_inline,
 )
-from app.agents.skills.models import Skill, SkillUpdate
+from app.agents.skills.models import Skill, SkillAuthor, SkillInlineCreateRequest, SkillUpdate
 from app.agents.skills.registry import (
     disable_skill,
     enable_skill,
@@ -48,8 +48,9 @@ from app.utils.errors import AppError
 
 pytestmark = pytest.mark.e2e
 
-USER = "user-1"
-OTHER_USER = "user-2"
+#: Real ObjectIds: analytics attributes every skill event to the user's Mongo id.
+USER = "507f1f77bcf86cd799439011"
+OTHER_USER = "507f1f77bcf86cd799439012"
 EXECUTOR = "executor"
 GMAIL = "gmail_agent"
 
@@ -230,11 +231,11 @@ async def _install(
     target: str = EXECUTOR,
 ) -> Skill:
     return await install_from_inline(
-        user_id=user_id,
-        name=name,
-        description=description,
-        instructions=instructions,
-        target=target,
+        user_id,
+        SkillInlineCreateRequest(
+            name=name, description=description, instructions=instructions, target=target
+        ),
+        author=SkillAuthor.USER,
     )
 
 
@@ -317,20 +318,27 @@ class TestInstall:
         assert "quarterly-report" not in await _listing(EXECUTOR, user_id=OTHER_USER)
 
     async def test_installing_the_same_name_on_the_same_target_twice_is_rejected(self, stack):
-        """(user, name, target) is the uniqueness invariant enforced here."""
         _, mongo, _ = stack
         await _install()
 
-        with pytest.raises(AppError, match="already installed"):
+        with pytest.raises(AppError, match="already exists"):
             await _install()
 
         assert len(await list_skills(USER)) == 1
 
-    async def test_the_same_name_on_a_different_target_is_allowed(self, stack):
+    async def test_the_same_name_on_another_target_is_refused_and_leaves_the_file_alone(
+        self, stack
+    ):
+        """SKILL.md is stored by name alone, so a second target once overwrote the first skill's body on disk before being rejected."""
+        mount, _, _ = stack
         await _install()
-        await _install(target=GMAIL)
+        original = _skill_md(mount, "quarterly-report").read_text()
 
-        assert len(await list_skills(USER)) == 2
+        with pytest.raises(AppError, match="already exists"):
+            await _install(target=GMAIL, instructions="A different body for gmail.")
+
+        assert _skill_md(mount, "quarterly-report").read_text() == original
+        assert len(await list_skills(USER)) == 1
 
     async def test_an_invalid_name_is_rejected_before_anything_is_written(self, stack):
         """Validation runs before any write — otherwise a bad name would leave an orphan directory on JuiceFS with no Mongo record pointing at it."""
@@ -444,7 +452,9 @@ class TestUpdate:
         mount, _, _ = stack
         skill = await _install()
 
-        await update_skill_inline(USER, skill.id, instructions="Do the new thing instead.")
+        await update_skill_inline(
+            USER, skill.id, instructions="Do the new thing instead.", author=SkillAuthor.USER
+        )
 
         assert _skill_md(mount, "quarterly-report").read_text() == "Do the new thing instead."
 
@@ -454,7 +464,9 @@ class TestUpdate:
         skill = await _install()
         _skill_md(mount, "quarterly-report").write_text("SENTINEL")
 
-        updated = await update_skill_inline(USER, skill.id, description="A new description.")
+        updated = await update_skill_inline(
+            USER, skill.id, description="A new description.", author=SkillAuthor.USER
+        )
 
         assert _skill_md(mount, "quarterly-report").read_text() == "SENTINEL"
         assert updated is not None
@@ -464,7 +476,9 @@ class TestUpdate:
         skill = await _install()
         await _listing()
 
-        await update_skill_inline(USER, skill.id, description="Only for quarterly numbers.")
+        await update_skill_inline(
+            USER, skill.id, description="Only for quarterly numbers.", author=SkillAuthor.USER
+        )
 
         listing = await _listing()
         assert "Only for quarterly numbers." in listing
@@ -476,18 +490,20 @@ class TestUpdate:
         await _listing(EXECUTOR)
         await _listing(GMAIL)
 
-        await update_skill_inline(USER, skill.id, target=GMAIL)
+        await update_skill_inline(USER, skill.id, target=GMAIL, author=SkillAuthor.USER)
 
         assert "quarterly-report" not in await _listing(EXECUTOR)
         assert "quarterly-report" in await _listing(GMAIL)
 
     async def test_retargeting_onto_an_occupied_name_is_rejected(self, stack):
-        """Retargeting bypasses the install duplicate check, so this guard is the only thing stopping a collision."""
+        """Same-named skills on two targets predate per-user names; retargeting one onto the other's target must still be refused."""
+        _, mongo, _ = stack
         keeper = await _install()
-        await _install(target=GMAIL)
+        legacy = keeper.model_copy(update={"id": "legacy-gmail-copy", "target": GMAIL})
+        await mongo.create(legacy)
 
         with pytest.raises(ValueError, match="already targets"):
-            await update_skill_inline(USER, keeper.id, target=GMAIL)
+            await update_skill_inline(USER, keeper.id, target=GMAIL, author=SkillAuthor.USER)
 
         stored = await get_skill(USER, keeper.id)
         assert stored is not None
@@ -497,7 +513,9 @@ class TestUpdate:
         """Two independent guards (a target-changed gate, an exclude-self term) each prevent a re-save colliding with itself; this only goes red if both are removed."""
         skill = await _install()
 
-        updated = await update_skill_inline(USER, skill.id, target=EXECUTOR)
+        updated = await update_skill_inline(
+            USER, skill.id, target=EXECUTOR, author=SkillAuthor.USER
+        )
 
         assert updated is not None
         assert updated.target == EXECUTOR
@@ -508,7 +526,7 @@ class TestUpdate:
         skill = await _install()
 
         with pytest.raises(ValueError):
-            await update_skill_inline(USER, skill.id, description="")
+            await update_skill_inline(USER, skill.id, description="", author=SkillAuthor.USER)
 
         assert _skill_md(mount, "quarterly-report").read_text() == INSTRUCTIONS
         stored = await get_skill(USER, skill.id)
@@ -520,16 +538,26 @@ class TestUpdate:
         mount, _, _ = stack
         skill = await _install()
 
-        assert await update_skill_inline(OTHER_USER, skill.id, instructions="Owned.") is None
+        assert (
+            await update_skill_inline(
+                OTHER_USER, skill.id, instructions="Owned.", author=SkillAuthor.USER
+            )
+            is None
+        )
         assert _skill_md(mount, "quarterly-report").read_text() == INSTRUCTIONS
 
-        mine = await update_skill_inline(USER, skill.id, instructions="Mine.")
+        mine = await update_skill_inline(
+            USER, skill.id, instructions="Mine.", author=SkillAuthor.USER
+        )
 
         assert mine is not None
         assert _skill_md(mount, "quarterly-report").read_text() == "Mine."
 
     async def test_editing_a_skill_that_does_not_exist_returns_none(self, stack):
-        assert await update_skill_inline(USER, "no-such-id", description="x") is None
+        assert (
+            await update_skill_inline(USER, "no-such-id", description="x", author=SkillAuthor.USER)
+            is None
+        )
 
 
 # --------------------------------------------------------------------------
@@ -652,7 +680,9 @@ class TestGithubInstallLifecycle:
         mount, _, _ = stack
         with respx.mock:
             self._mock_repo()
-            await install_from_github(user_id=USER, repo_url="org/repo/skills/repo-skill")
+            await install_from_github(
+                user_id=USER, repo_url="org/repo/skills/repo-skill", author=SkillAuthor.USER
+            )
 
         assert _skill_md(mount, "repo-skill").read_text() == "Clone the repo, then run the checks."
         assert (_skill_dir(mount, "repo-skill") / "resources" / "reference.md").is_file()
@@ -666,7 +696,9 @@ class TestGithubInstallLifecycle:
         mount, _, _ = stack
         with respx.mock:
             self._mock_repo()
-            skill = await install_from_github(user_id=USER, repo_url="org/repo/skills/repo-skill")
+            skill = await install_from_github(
+                user_id=USER, repo_url="org/repo/skills/repo-skill", author=SkillAuthor.USER
+            )
 
         await uninstall_skill_full(USER, skill.id)
 

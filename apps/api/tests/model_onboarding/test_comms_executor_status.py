@@ -1,17 +1,18 @@
 """Onboarding gate: does comms act on the live background-work status instead of guessing from history?
 
 Run it before changing COMMS_MODEL_NAME, the comms prompt's "Tasks in flight"
-rules or the executor status frame:
+rules or the executor status section:
 uv run pytest tests/model_onboarding/test_comms_executor_status.py -m model_onboarding
 Needs OPENAI_API_KEY. One model call per case: the real comms prompt and tools,
-and the frame the real executor_status_hook writes for a lock state set up in
-fakeredis. It stops short of running the graph, so the executor never runs.
+and the turn context construct_langchain_messages seeds for a lock state set up
+in fakeredis, the executor status read once as the turn starts. Every earlier
+turn keeps the status it was seeded with, as the thread does. It stops short of
+running the graph, so the executor never runs.
 """
 
 from dataclasses import dataclass
 import os
 from typing import Any, cast
-from unittest.mock import MagicMock
 
 import fakeredis.aioredis
 from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, ToolMessage
@@ -24,9 +25,7 @@ from app.agents.core.background.executor_progress import ProgressRecorder
 from app.agents.core.background.executor_queue import build_lock_value, hold_run_alive
 from app.agents.core.graph_builder.build_graph import comms_tools
 from app.agents.core.messages import MessageScope, construct_langchain_messages
-from app.agents.core.nodes.executor_status import executor_status_hook
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
-from app.agents.llm.lane import ModelLane
 from app.agents.tools.executor_tool import handoff_message
 from app.config.settings import settings
 from app.constants.cache import (
@@ -39,9 +38,7 @@ from app.constants.llm import (
     COMMS_MODEL_NAME,
     COMMS_REASONING_EFFORT,
     DEFAULT_LLM_TEMPERATURE,
-    DEFAULT_MAX_TOKENS,
     OPENAI_MAX_OUTPUT_TOKENS,
-    LLMProviderName,
 )
 
 pytestmark = [pytest.mark.model_onboarding]
@@ -121,7 +118,7 @@ def _model() -> ChatOpenAI:
     """Comms' model at effort none: direct on OpenAI, or the same model through OpenRouter.
 
     COMMS_EVAL_VIA_OPENROUTER=1 routes it through OpenRouter, for when only that key
-    works; same model and slot order, a different transport than production.
+    works; same model and request, a different transport than production.
     """
     if os.environ.get("COMMS_EVAL_VIA_OPENROUTER") == "1":
         if not settings.OPENROUTER_API_KEY:
@@ -146,15 +143,13 @@ def _model() -> ChatOpenAI:
 
 
 def _config() -> Any:
-    """Comms' configurable on its OpenAI lane: the lane picks the slot order the request is sent in."""
-    lane = ModelLane(
-        provider=LLMProviderName.OPENAI,
-        model=COMMS_MODEL_NAME,
-        reasoning=None,
-        provider_pin=None,
-        max_input_tokens=DEFAULT_MAX_TOKENS,
-    )
-    return {"configurable": {"thread_id": CONV, "lane": lane.to_configurable()}}
+    """Comms' configurable for this conversation's thread."""
+    return {"configurable": {"thread_id": CONV}}
+
+
+def _scope() -> MessageScope:
+    """Return the web chat this conversation runs in, so its turn context reads this conversation's status."""
+    return MessageScope(source="web", conversation_id=CONV)
 
 
 async def _set_lock(client: fakeredis.aioredis.FakeRedis, lock: str) -> None:
@@ -179,7 +174,7 @@ async def _own_dispatch(model: Runnable[Any, BaseMessage]) -> list[AnyMessage]:
     A hand-written dispatch read as a sloppy brief (the request verbatim, one
     criterion) and the model "fixed" it with a second call, a fixture artifact.
     """
-    built = await construct_langchain_messages(query=REQUEST, scope=MessageScope(source="web"))
+    built = await construct_langchain_messages(query=REQUEST, scope=_scope())
     ordered = manage_system_prompts_node(cast(Any, {"messages": built}), _config(), None)
     first = cast(AIMessage, await model.ainvoke(ordered["messages"]))
     calls = [call for call in first.tool_calls if call["name"] == CALL_EXECUTOR_NAME]
@@ -194,18 +189,18 @@ async def _own_dispatch(model: Runnable[Any, BaseMessage]) -> list[AnyMessage]:
 
 
 async def _request(case: Case, dispatched: list[AnyMessage]) -> list[AnyMessage]:
-    """Assemble the request as the comms graph does: thread, builder, status hook, slot order."""
+    """Assemble the request as the comms graph does: thread, the new turn's context, slot order.
+
+    The call right after this turn's own dispatch starts no turn, so it reads no
+    fresh status: only what the hand-off result says.
+    """
     if case.message is None:
         thread: list[AnyMessage] = dispatched
     else:
-        built = await construct_langchain_messages(
-            query=case.message, scope=MessageScope(source="web")
-        )
+        built = await construct_langchain_messages(query=case.message, scope=_scope())
         # The earlier dispatch's ack, then the error the user saw, then their new message.
         thread = [*dispatched, AIMessage(content="on it"), *built]
-    config = _config()
-    framed = await executor_status_hook(cast(Any, {"messages": thread}), config, MagicMock())
-    ordered = manage_system_prompts_node(framed, config, None)
+    ordered = manage_system_prompts_node(cast(Any, {"messages": thread}), _config(), None)
     return cast(list[AnyMessage], ordered["messages"])
 
 
@@ -228,3 +223,59 @@ async def test_comms_acts_on_the_live_status(
     if not dispatched:
         said = str(reply.content).lower()
         assert not [claim for claim in case.must_not_claim if claim in said], reply.content
+
+
+#: A chat that never handed work off still carries the idle status line every turn;
+#: these must read as ordinary conversation, never as talk about background work.
+FRESH_CHAT_MESSAGES = {
+    "greeting": "hey!",
+    "small_math": "what's 15% of 240?",
+    "explain": "explain what a mutex is in one sentence",
+    "thanks": "thanks, that's all for now",
+}
+
+#: What a reply in a chat with no hand-offs has no reason to bring up.
+BACKGROUND_TALK = (
+    "background",
+    "hand-off",
+    "handoff",
+    "handed off",
+    "executor",
+    "running right now",
+    "earlier task",
+    "previous task",
+    "nothing is running",
+    "no work is running",
+)
+
+
+async def _fresh_chat(message: str, *, follow_up: bool) -> list[AnyMessage]:
+    """Return a first turn of a chat that never handed work off, or its second turn."""
+    built = await construct_langchain_messages(query=message, scope=_scope())
+    if not follow_up:
+        thread: list[AnyMessage] = built
+    else:
+        earlier = await construct_langchain_messages(query="hi, how are you?", scope=_scope())
+        thread = [*earlier, AIMessage(content="Doing well! What can I help with?"), *built]
+    ordered = manage_system_prompts_node(cast(Any, {"messages": thread}), _config(), None)
+    return cast(list[AnyMessage], ordered["messages"])
+
+
+@pytest.mark.parametrize("attempt", range(REPEATS))
+@pytest.mark.parametrize("follow_up", [False, True], ids=["first_turn", "second_turn"])
+@pytest.mark.parametrize("case_id", sorted(FRESH_CHAT_MESSAGES))
+async def test_an_idle_chat_with_no_hand_offs_is_ordinary_conversation(
+    fake_redis: fakeredis.aioredis.FakeRedis, case_id: str, follow_up: bool, attempt: int
+) -> None:
+    model = _model().bind_tools(list(comms_tools().values()))
+    request = await _fresh_chat(FRESH_CHAT_MESSAGES[case_id], follow_up=follow_up)
+    assert any("No background work is running" in str(m.content) for m in request)
+
+    reply = cast(AIMessage, await model.ainvoke(request))
+
+    dispatched = any(call["name"] == CALL_EXECUTOR_NAME for call in reply.tool_calls)
+    said = str(reply.content).lower()
+    print(f"\n[{case_id}|{follow_up}|{attempt}] dispatched={dispatched} text={reply.content!r}")
+    assert not dispatched, reply.tool_calls
+    assert said.strip(), "an ordinary message got no reply"
+    assert not [phrase for phrase in BACKGROUND_TALK if phrase in said], reply.content

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from langchain_core.messages import SystemMessage
 
 from app.agents.context.section_context import SectionContext
-from app.agents.context.sections import Section, sections_for
+from app.agents.context.sections import Section, SectionId, sections_for
 from app.agents.context.slots import (
     DYNAMIC_CONTEXT_MARKER,
     LEGACY_DYNAMIC_MARKER,
@@ -35,9 +35,9 @@ class AssembledContext:
     """The two system messages a tier's dynamic context becomes.
 
     stable holds what changes only when the user edits a preference or
-    connects an integration, and sits inside the cacheable prefix. volatile
-    holds what was retrieved against this turn and sits at the tail of the system
-    block, so it can never shift the bytes ahead of it. volatile is None
+    connects an integration, and leads every request. volatile holds what was
+    retrieved against this turn and is written into the thread with the turn,
+    so later requests extend it rather than replace it. volatile is None
     when there is nothing per-turn to say.
     """
 
@@ -48,9 +48,9 @@ class AssembledContext:
         return [self.stable] if self.volatile is None else [self.stable, self.volatile]
 
 
-#: Backstop against a pathological volatile block blowing the context window
-#: and the bill (not a caching mechanism — that's slot ORDER, see ``slots``).
-#: Head (agenda/journal) and tail (todo/run-binding directives) are kept.
+#: Backstop against a pathological volatile block: every turn's block stays in the
+#: thread until summarization folds it. Head (agenda/journal) and tail
+#: (todo/run-binding directives) are kept.
 VOLATILE_BLOCK_MAX_CHARS = 8_000
 VOLATILE_BLOCK_HEAD_CHARS = 4_000
 VOLATILE_BLOCK_TAIL_CHARS = 4_000
@@ -67,7 +67,7 @@ def _bounded(volatile_text: str) -> str:
     )
 
 
-async def _render_section(section: Section, ctx: SectionContext) -> tuple[str, str]:
+async def _render_section(section: Section, ctx: SectionContext) -> tuple[SectionId, str]:
     """Return a section's id alongside its rendered text.
 
     The id travels WITH the result so nothing downstream has to re-derive
@@ -116,10 +116,10 @@ async def _gather_sections(ctx: SectionContext) -> AssembledContext:
         dynamic_context={
             "tier": ctx.tier.value,
             "source": ctx.source or "web",
-            "has_core_memory": bool(rendered.get("core_memory")),
-            "has_memories": bool(rendered.get("memory_recall")),
-            "has_gaia_knowledge": bool(rendered.get("gaia_knowledge")),
-            "has_skills": bool(rendered.get("skills")),
+            "has_core_memory": bool(rendered.get(SectionId.CORE_MEMORY)),
+            "has_memories": bool(rendered.get(SectionId.MEMORY_RECALL)),
+            "has_gaia_knowledge": bool(rendered.get(SectionId.GAIA_KNOWLEDGE)),
+            "has_skills": bool(rendered.get(SectionId.SKILLS)),
             "has_active_todo": bool(ctx.active_todo_id),
             "execution_mode": ctx.execution_mode,
             "stable_chars": len(stable_text),

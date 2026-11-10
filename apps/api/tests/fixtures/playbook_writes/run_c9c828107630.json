@@ -1,0 +1,117 @@
+{
+ "run": "run_c9c828107630",
+ "captured_from": "2026-09-22",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "send_notification"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 1,
+   "written": {
+    "description": "Shvxm lar calendar event ngtlhhah vvuyky lar next ~15 lxqeprz qiq send lar ynrm w iwsxbtw meeting-reminder hyahbzzhloek.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_max": {
+          "$time": "$now + 15m",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        }
+       }
+      ]
+     },
+     {
+      "id": "remind",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "ltbnq"
+       ],
+       "title": {
+        "$ask": "Dovtnio Kkkppnct: <event pnkwu>"
+       },
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls meeting reminder xhuc lar event pnkwu, start ohzt, qxg ohzt, qiq opps umfp up yuizmdvm"
+       },
+       "notification_type": "vroo"
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar meeting reminder uzku eto sent: lar event pnkwu, lab start/qxg ohzt, qiq lar opps umfp up yuizmdvm jiatkuhk. Hx ga event eto etfpq hx lar window, kfhta uzku ga reminder eto sent."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Shvxm lar calendar event ngtlhhah vvuyky lar next ~15 lxqeprz qiq send lar ynrm w iwsxbtw meeting-reminder hyahbzzhloek.",
+    "result_brief": "Cvouqs lar meeting reminder uzku eto sent: lar event pnkwu, lab start/qxg ohzt, qiq lar opps umfp up yuizmdvm jiatkuhk. Hx ga event eto etfpq hx lar window, kfhta uzku ga reminder eto sent.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "fetch",
+      "steps": [
+       {
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "time_max": {
+          "$time": "$now + 15m",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "id": "events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls meeting reminder xhuc lar event pnkwu, start ohzt, qxg ohzt, qiq opps umfp up yuizmdvm"
+       },
+       "title": {
+        "$ask": "Dovtnio Kkkppnct: <event pnkwu>"
+       }
+      },
+      "id": "remind",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -30,11 +30,12 @@ from app.constants.scouts import (
 from app.models.agent_config import AgentConfigurable
 from app.models.playbook_models import PlaybookBody, ask_slots
 from app.models.scout_models import ScoutDocument, ScoutReport, ScoutStatus, Signal
+from app.services.briefing.scouts.freeze import LearnCall, freeze_sources, learn_calls
 from app.services.briefing.scouts.spend import ScoutSpend
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools, bound_tools
 from app.services.briefing.scouts.watch import FrozenWatch, read_only_space, watch
 from app.services.workflow.playbook.evaluator import PlaybookUser
-from app.services.workflow.playbook.parser import RunResults, run_results, validate_playbook
+from app.services.workflow.playbook.parser import validate_playbook
 from app.services.workflow.playbook.tool_graph import run_tool_graph
 from app.utils.errors import AppError
 from app.utils.markdown_utils import model_from_reply
@@ -52,7 +53,7 @@ class Learned:
 
 async def _run_agent(
     user_id: str, integration: ScoutIntegration, tools: dict[str, BaseTool], prompt: str
-) -> tuple[str, RunResults]:
+) -> tuple[str, list[LearnCall]]:
     """Run the read-only agent; return its final text and the calls it made."""
     configurable: AgentConfigurable = {
         "stream_id": f"scout_{uuid4().hex}",
@@ -73,7 +74,7 @@ async def _run_agent(
                 recursion_limit=SCOUT_LEARN_RECURSION_LIMIT, ledger=ScoutSpend(user_id)
             ),
         )
-    return messages[-1].text, run_results(messages)
+    return messages[-1].text, learn_calls(messages)
 
 
 def _parse_report(text: str, integration: ScoutIntegration) -> ScoutReport:
@@ -104,7 +105,7 @@ class _Freeze:
     report: ScoutReport
     body: PlaybookBody
     tools: dict[str, BaseTool]
-    results: RunResults
+    calls: list[LearnCall]
 
 
 def _report_problem(freeze: _Freeze) -> str | None:
@@ -127,14 +128,15 @@ async def _freeze_problem(
     problem = _report_problem(freeze)
     if problem is not None:
         return problem
-    # mutmut keys a call's argument mutants to this line; user_id is read only for handoffs
-    validation = await validate_playbook(  # pragma: no mutate — a ScoutReport holds no handoff
-        freeze.body,
-        user_id,
-        freeze.results,
-        space=read_only_space(freeze.tools),
-        empty_is_data=True,
-    )
+    space = read_only_space(freeze.tools)
+    # The steps are checked against the scout's tools first: a step naming a tool the
+    # scout was never given has no recorded call to match either.
+    validation = await validate_playbook(freeze.body, space=space)
+    if validation.valid:
+        sources = freeze_sources(freeze.body.steps, freeze.calls)
+        if isinstance(sources, str):
+            return sources
+        validation = await validate_playbook(freeze.body, sources, space=space, empty_is_data=True)
     if not validation.valid:
         return "; ".join(f"{issue.where}: {issue.problem}" for issue in validation.issues)
     try:
@@ -158,7 +160,7 @@ async def learn_scout(
     prompt = SCOUT_LEARN_PROMPT.format(
         app=integration.name, today=now.date().isoformat(), timezone=user.timezone
     )
-    text, results = await _run_agent(user_id, integration, bound, prompt)
+    text, calls = await _run_agent(user_id, integration, bound, prompt)
     report = _parse_report(text, integration)
     signals = [
         Signal(integration_id=integration.integration_id, app=integration.name, **s.model_dump())
@@ -177,9 +179,7 @@ async def learn_scout(
     problem = (
         "the report froze no calls"
         if body is None
-        else await _freeze_problem(
-            user, user_id, integration, _Freeze(report, body, bound, results)
-        )
+        else await _freeze_problem(user, user_id, integration, _Freeze(report, body, bound, calls))
     )
     if body is None or problem is not None:
         log.warning(

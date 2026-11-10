@@ -4,14 +4,16 @@ The API, the ARQ browser worker and two browser hosts (Chrome, and Obscura
 behind it) are child processes; the models and the two-origin fixture site are
 local servers in this process; the outbound Telegram queue is read
 as transcripts. A scenario talks to it the way the Telegram bot does: messages
-to /api/v1/bot/chat-stream, /stop to /api/v1/bot/reset-session, and the live
-view's own decision endpoint for a handoff's Done and Cancel.
+to /api/v1/bot/chat-stream and /stop to /api/v1/bot/reset-session. What a user
+opens (the live view, its Done and Cancel, recaps) goes through the self-host
+Caddy in front of the API, so it works only where a deployed proxy forwards it.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -27,7 +29,6 @@ import uuid
 
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
-from browser_use import Browser
 from bson import ObjectId
 from cryptography.fernet import Fernet
 import httpx
@@ -50,13 +51,13 @@ from app.schemas.browser import BrowserResultSnapshot
 from app.services.browser.handoff import get_handoff, get_pending_handoff_for_reply
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
 from app.services.browser.jobs import done_state, get_latest_job
-from app.services.browser.registry import get_session_entry
 from app.services.dev_service import mint_dev_user, seed_dev_data
 from app.services.feature_flags import set_user_flag
 from app.utils.redis_utils import RedisPoolManager
 from tests.helpers import pick_free_port, worker_redis_url
 from tests.integration.real.browser._stack.fake_models import FakeModels
 from tests.integration.real.browser._stack.fixture_site import FixtureSite
+from tests.integration.real.browser._stack.live_viewer import LiveViewer
 from tests.integration.real.browser._stack.observe import OutboundObserver, Transcript
 from tests.integration.real.browser._stack.processes import (
     BrowserHost,
@@ -65,6 +66,7 @@ from tests.integration.real.browser._stack.processes import (
     api_process,
     browser_host,
     child_environment,
+    proxy_process,
 )
 from tests.integration.real.browser._stack.progress import Progress
 from tests.integration.real.browser._stack.tls import FixtureTls, issue
@@ -75,11 +77,11 @@ _BOT_SESSION_SECRET = "browser-stack-session-" + "y" * 42  # pragma: allowlist s
 _FAKE_MODEL = "browser-stack-model"
 _FAKE_KEY = "browser-stack-model-key"  # pragma: allowlist secret
 _POLL_SECONDS = 0.2
+#: Where the web live view dials a live link's code: liveSocketUrl in apps/web's browserApi.ts.
+_LIVE_SOCKET_PATH = "/api/v1/browser/live/"
 #: The key a stack claims its Redis database by, and how long a claim lives unrefreshed.
 _CLAIM_KEY = "browser-stack:owner"
 _CLAIM_SECONDS = 60
-#: How long acting in the run's own page (attach, then one script) may take.
-_LIVE_PAGE_SECONDS = 30.0
 #: How long a whole browser run may take in this stack before a scenario gives up on it.
 RUN_SECONDS = 120.0
 #: One scenario's cap, the stack's boot included for a module's first: the boot's own
@@ -122,6 +124,7 @@ class BrowserStack:
         self.models = FakeModels()
         self.redis_url = worker_redis_url(settings.REDIS_URL or "redis://localhost:6379/0")
         self.api_port = pick_free_port()
+        self.proxy_port = pick_free_port()
         #: One key for both hosts: the worker presents the same BROWSER_HOST_KEY to each.
         self.host_key = secrets.token_hex(16)
         #: Encrypts the logins a run saves, as production's key does.
@@ -132,6 +135,7 @@ class BrowserStack:
         self.obscura: BrowserHost | None = None
         self.worker: BrowserWorker | None = None
         self.api: StackProcess | None = None
+        self.proxy: StackProcess | None = None
         self.redis: Redis | None = None
         self.mongo: MongoDB | None = None
         self.arq: ArqRedis | None = None
@@ -141,6 +145,11 @@ class BrowserStack:
     @property
     def api_url(self) -> str:
         return f"http://127.0.0.1:{self.api_port}"
+
+    @property
+    def public_url(self) -> str:
+        """The single origin a user reaches, through the self-host proxy."""
+        return f"http://127.0.0.1:{self.proxy_port}"
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -173,7 +182,10 @@ class BrowserStack:
             raise RuntimeError("the stack claims its Redis database before it starts the worker")
         self.worker = BrowserWorker(env, self.log_dir, self.redis)
         self.api = api_process(env, self.api_port, self.log_dir)
-        for process in (self.chrome.process, self.obscura.process, self.api):
+        self.proxy = proxy_process(
+            required_binary("CADDY_BIN", "caddy"), self.proxy_port, self.api_port, self.log_dir
+        )
+        for process in (self.chrome.process, self.obscura.process, self.api, self.proxy):
             process.start()
         say(f"processes started; logs in {self.log_dir}")
         await asyncio.gather(
@@ -181,6 +193,9 @@ class BrowserStack:
             self._phase("Obscura host answers healthz", self.obscura.wait_ready()),
             self._phase("browser worker serves its queue", self.worker.start()),
             self._phase("API serves", self.api.wait_healthy(f"{self.api_url}/health")),
+            self._phase(
+                "proxy reaches the API", self.proxy.wait_healthy(f"{self.public_url}/api/v1/ping")
+            ),
         )
         await self._lend_the_app_this_loops_clients()
         await self.observer.start()
@@ -219,6 +234,7 @@ class BrowserStack:
     async def stop(self) -> None:
         await self.observer.stop()
         processes = (
+            self.proxy,
             self.api,
             self.worker.process if self.worker else None,
             self.chrome.process if self.chrome else None,
@@ -245,6 +261,7 @@ class BrowserStack:
     def logs(self) -> str:
         """Every process's log tail, for a failing scenario's report."""
         processes = [
+            self.proxy,
             self.api,
             self.worker.process if self.worker else None,
             self.chrome.process if self.chrome else None,
@@ -273,8 +290,7 @@ class BrowserStack:
             "BROWSER_HOST_URL": self.obscura.url,
             "BROWSER_HOST_KEY": self.host_key,
             "BROWSER_FALLBACK_HOST_URL": self.chrome.url,
-            "HOST": self.api_url,
-            "BROWSER_LIVE_VIEW_BASE_URL": self.api_url,
+            "HOST": self.public_url,
             "GAIA_BOT_API_KEY": _BOT_KEY,
             "BOT_SESSION_TOKEN_SECRET": _BOT_SESSION_SECRET,
             "BROWSER_STATE_ENCRYPTION_KEY": self.state_key,
@@ -374,6 +390,10 @@ class BrowserStack:
         """Opt the user into the fast engine through the settings toggle's own path."""
         await set_user_flag(user.user_id, FeatureFlag.BROWSER_OBSCURA.value, True)
 
+    async def set_jev(self, user: BotUser) -> None:
+        """Opt the user into Jev through the settings toggle's own path; off, the agent runs alone."""
+        await set_user_flag(user.user_id, FeatureFlag.BROWSER_JEV.value, True)
+
     # --- the run --------------------------------------------------------------
 
     async def job_for(self, conversation_id: str, *, timeout: float = 30.0) -> str:
@@ -452,44 +472,10 @@ class BrowserStack:
         ]
         return list(dict.fromkeys(sessions))
 
-    async def in_live_page(self, job_id: str, script: str) -> object:
-        """Run JS in the run's own page, the way a person acts in the live view during a handoff.
-
-        Dialled with the session's own token, as the live view is: the host refuses a bare /cdp/<id>.
-        """
-        sessions = await self.sessions_of(job_id)
-        if not sessions:
-            raise AssertionError(f"job {job_id} has opened no browser session")
-        session_id = sessions[-1]
-        entry = await get_session_entry(session_id)
-        if entry is None or not entry.live_ws:
-            raise AssertionError(f"session {session_id} has no live view")
-        live = urlsplit(entry.live_ws)
-        cdp = live._replace(path=live.path.replace(f"/live/{session_id}", f"/cdp/{session_id}"))
-        browser = Browser(cdp_url=cdp.geturl())
-        async with asyncio.timeout(_LIVE_PAGE_SECONDS):
-            await browser.start()
-        try:
-            session = await browser.get_or_create_cdp_session(focus=False)
-            async with asyncio.timeout(_LIVE_PAGE_SECONDS):
-                result = await session.cdp_client.send.Runtime.evaluate(
-                    params={"expression": script, "awaitPromise": True, "returnByValue": True},
-                    session_id=session.session_id,
-                )
-            return result.get("result", {}).get("value")
-        finally:
-            await browser.stop()
-
-    async def page_reaches(self, job_id: str, path: str, *, timeout: float = 30.0) -> None:
-        """Wait until the run's page is on path, read from the page itself."""
-        deadline = time.monotonic() + timeout
-        seen: object = None
-        while time.monotonic() < deadline:
-            seen = await self.in_live_page(job_id, "location.pathname")
-            if seen == path:
-                return
-            await asyncio.sleep(_POLL_SECONDS)
-        raise AssertionError(f"the run's page never reached {path} (last on {seen})")
+    def live_view(self, live_url: str) -> AbstractAsyncContextManager[LiveViewer]:
+        """Open the live view a live link leads to, as its web page dials it: through the proxy."""
+        code = urlsplit(live_url).path.rstrip("/").rsplit("/", 1)[-1]
+        return LiveViewer.open(f"ws://127.0.0.1:{self.proxy_port}{_LIVE_SOCKET_PATH}{code}")
 
     def kill_obscura_engine(self) -> None:
         """SIGKILL the Obscura engine under its host, as an engine crash would end it."""
@@ -508,11 +494,13 @@ class BrowserStack:
     async def decide_on_live_page(self, live_url: str, decision: str) -> int:
         """Press the live view page's Done ("continue") or Cancel, as its buttons do.
 
-        The link opens the web app's page; its buttons answer on this API's /live/{code}/decision.
+        The link opens the web app's page; its buttons answer through the proxy, on {code}/decision.
         """
         code = urlsplit(live_url).path.rstrip("/").rsplit("/", 1)[-1]
-        async with httpx.AsyncClient(base_url=self.api_url, timeout=30) as client:
-            response = await client.post(f"/live/{code}/decision", json={"decision": decision})
+        async with httpx.AsyncClient(base_url=self.public_url, timeout=30) as client:
+            response = await client.post(
+                f"{_LIVE_SOCKET_PATH}{code}/decision", json={"decision": decision}
+            )
         return response.status_code
 
 

@@ -33,7 +33,7 @@ from app.services.briefing.scouts.tools import (
     scout_tools,
 )
 from app.services.briefing.scouts.watch import FrozenWatch, watch
-from app.services.mcp.mcp_client import MCPIntegrationNotFoundError
+from app.services.mcp.mcp_errors import MCPIntegrationNotFoundError
 from app.services.payments.payment_service import payment_service
 from app.services.user_activity.status import activity_status_of
 from app.services.workflow.playbook.evaluator import PlaybookUser

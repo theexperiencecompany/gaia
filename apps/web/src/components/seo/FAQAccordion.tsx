@@ -14,6 +14,7 @@ export default function FAQAccordion({ faqs }: { faqs: FAQ[] }) {
       variant="light"
       className="p-0!"
       defaultSelectedKeys={firstFaq ? [firstFaq.question] : []}
+      keepContentMounted
     >
       {faqs.map((faq) => (
         <AccordionItem

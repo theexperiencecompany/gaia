@@ -12,6 +12,7 @@ from app.agents.core.comms_directive import (
 from app.constants.comms import CommsDirectiveKind
 from app.constants.general import NEW_MESSAGE_BREAKER as BREAK
 from app.constants.log_tags import LogTag
+from app.models.agent_models import CommsDirective
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -54,6 +55,15 @@ class TestInterpretCommsOutput:
         assert d.kind == CommsDirectiveKind.SILENCE
         assert d.payload == "nothing new"
 
+    def test_a_brief_directive_carries_the_line_for_the_morning_brief(self) -> None:
+        d = interpret_comms_output("<BRIEF>Staging is green again after Tuesday's rollback</BRIEF>")
+        assert d == CommsDirective(
+            CommsDirectiveKind.BRIEF, "Staging is green again after Tuesday's rollback"
+        )
+
+    def test_an_empty_brief_directive_is_not_a_line_for_the_brief(self) -> None:
+        assert interpret_comms_output("<BRIEF></BRIEF>").kind is not CommsDirectiveKind.BRIEF
+
     def test_silence_directive(self) -> None:
         d = interpret_comms_output(
             "<SILENCE>background calendar refresh, nothing new</SILENCE><NEW_MESSAGE_BREAK>"
@@ -92,6 +102,10 @@ class TestInterpretCommsOutput:
     def test_a_silence_without_a_reason_is_still_a_silence(self) -> None:
         assert interpret_comms_output("<SILENCE></SILENCE>").kind == CommsDirectiveKind.SILENCE
 
+    def test_a_silence_never_closed_is_still_a_silence(self) -> None:
+        d = interpret_comms_output(f"<SILENCE>nothing new{BREAK}")
+        assert (d.kind, d.payload) == (CommsDirectiveKind.SILENCE, "nothing new")
+
     def test_the_pre_tag_silence_line_is_still_a_silence(self) -> None:
         d = interpret_comms_output("SILENCE: no-op wake")
         assert d.kind == CommsDirectiveKind.SILENCE
@@ -102,7 +116,7 @@ class TestInterpretCommsOutput:
         d = interpret_comms_output(text)
         if emoji is None:
             assert d.kind == CommsDirectiveKind.REPLY
-            assert d.payload == text
+            assert d.payload == visible_comms_text(text)
         else:
             assert d.kind == CommsDirectiveKind.REACT
             assert d.payload == emoji
@@ -113,7 +127,7 @@ class TestInterpretCommsOutput:
         text = "<SILENCE>is golden</SILENCE>\nBut here is the actual answer you asked for."
         d = interpret_comms_output(text)
         assert d.kind == CommsDirectiveKind.REPLY
-        assert d.payload == text
+        assert d.payload == "But here is the actual answer you asked for."
 
     def test_a_directive_before_a_message_leaves_only_the_message(self) -> None:
         d = interpret_comms_output(
@@ -124,6 +138,64 @@ class TestInterpretCommsOutput:
 
 
 PASSPORT = "Your passport expires in 13 days, on October 10, 2026. Please book your renewal."
+
+
+class TestAReactTagIsAReaction:
+    """Seen live: the reaction tag written under its old name reached the user as literal text."""
+
+    @pytest.mark.regression
+    def test_a_react_tag_is_read_as_the_reaction_it_means(self) -> None:
+        d = interpret_comms_output("<REACT>🔎</REACT>")
+
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REACT, "🔎")
+
+    @pytest.mark.regression
+    def test_a_react_tag_never_reaches_the_user_as_text(self) -> None:
+        assert visible_comms_text("<REACT>🔎</REACT>") == ""
+        assert visible_comms_text_so_far("<REACT>🔎</REA") == ""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("tag", ["REACTION", "Reaction", "reaction"])
+    def test_a_reaction_tag_is_a_reaction_too(self, tag: str) -> None:
+        """Seen live on Telegram, three turns in a row: <REACTION>👍</REACTION> sent as text."""
+        text = f"<{tag}>👍</{tag}>"
+
+        d = interpret_comms_output(text)
+
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REACT, "👍")
+        assert visible_comms_text(text) == ""
+        assert visible_comms_text_so_far(f"<{tag}>👍</REAC") == ""
+
+    def test_a_react_tag_around_a_word_stays_text(self) -> None:
+        assert interpret_comms_output("<REACT>done</REACT>").kind is CommsDirectiveKind.REPLY
+
+
+class TestABareEmojiReplyIsAReaction:
+    """Seen live on Telegram: the hand-off ack came as a bare "🙏" message instead of a reaction."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("text", ["🙏", "  👍\n", "❤️", "👨‍💻", "👍🏽"])
+    def test_a_reply_that_is_only_one_emoji_is_a_reaction(self, text: str) -> None:
+        d = interpret_comms_output(text)
+
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REACT, text.strip())
+
+    @pytest.mark.regression
+    def test_a_lone_emoji_is_held_back_while_it_streams(self) -> None:
+        assert visible_comms_text_so_far("🙏") == ""
+
+    def test_an_emoji_that_turns_into_a_sentence_is_shown(self) -> None:
+        assert visible_comms_text_so_far("🙏 sure, on it") == "🙏 sure, on it"
+
+    @pytest.mark.parametrize("text", ["Спасибо", "ок", "🙏 sure thing", "1", "™️ really"])
+    def test_a_word_or_a_sentence_is_never_mistaken_for_one(self, text: str) -> None:
+        assert interpret_comms_output(text).kind is CommsDirectiveKind.REPLY
+
+    def test_an_emoji_bubble_beside_text_stays_part_of_the_reply(self) -> None:
+        d = interpret_comms_output(f"Done, it's booked.{BREAK}🎉")
+
+        assert d.kind is CommsDirectiveKind.REPLY
+        assert "🎉" in d.payload
 
 
 class TestADirectiveBesideAReplyIsNeverDelivered:
@@ -156,6 +228,48 @@ class TestADirectiveBesideAReplyIsNeverDelivered:
         d = interpret_comms_output(f"<SILENCE>x</SILENCE>{BREAK}Re")
         assert (d.kind, d.payload) == (CommsDirectiveKind.REPLY, "Re")
 
+    @pytest.mark.regression
+    def test_a_directive_written_inside_a_reply_bubble_is_dropped(self) -> None:
+        """Regression: a daily check-in wrote prose and its silence in one bubble, and both reached the user."""
+        text = (
+            "Alex still needs a reply; the inbox fix remains unpushed. "
+            "<SILENCE>Daily check-in surfaced pending actions already noted.</SILENCE>"
+            f"{BREAK}"
+        )
+
+        d = interpret_comms_output(text)
+
+        assert (d.kind, d.payload) == (
+            CommsDirectiveKind.REPLY,
+            "Alex still needs a reply; the inbox fix remains unpushed. ",
+        )
+
+    @pytest.mark.parametrize(
+        ("text", "payload"),
+        [
+            (f"{PASSPORT}\n<SILENCE>threshold</SILENCE>", f"{PASSPORT}\n"),
+            (f"{PASSPORT}\n< SILENCE >threshold</ SILENCE >\nBook it.", f"{PASSPORT}\nBook it."),
+            ("Done <EMOJI>👍</EMOJI> and filed.", "Done and filed."),
+            ("Done. <EMOJI>👍</EMOJI>", "Done. "),
+            # A tag ending its line keeps the line break, so the next line stays its own.
+            (f"{PASSPORT} <SILENCE>threshold</SILENCE>\nBook it.", f"{PASSPORT} \nBook it."),
+            (f"{PASSPORT} <SILENCE>never closed\nBook it.", f"{PASSPORT} \nBook it."),
+            # Not a directive, so it is the model's text and stays.
+            ("Say <EMOJI>ok</EMOJI> back.", "Say <EMOJI>ok</EMOJI> back."),
+            ("Use <b>bold</b> here.", "Use <b>bold</b> here."),
+        ],
+    )
+    def test_a_directive_anywhere_in_a_bubble_never_shows(self, text: str, payload: str) -> None:
+        d = interpret_comms_output(text)
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REPLY, payload)
+
+    async def test_an_inline_directive_is_logged_as_dropped(self) -> None:
+        async with captured_wide_event() as event:
+            interpret_comms_output(f"{PASSPORT} <SILENCE>threshold</SILENCE>")
+
+        (warning,) = event["warnings"]
+        assert warning["dropped_directives"] == [{"kind": "silence", "payload": "threshold"}]
+
     async def test_the_dropped_directive_is_logged(self) -> None:
         async with captured_wide_event() as event:
             interpret_comms_output(f"{PASSPORT}{BREAK}<SILENCE>threshold</SILENCE>")
@@ -166,11 +280,18 @@ class TestADirectiveBesideAReplyIsNeverDelivered:
         )
         assert warning["dropped_directives"] == [{"kind": "silence", "payload": "threshold"}]
 
-    async def test_a_reply_with_no_directive_is_untouched(self) -> None:
+    async def test_a_reply_with_no_directive_keeps_every_bubble_it_shows(self) -> None:
         text = f"On it.{BREAK}Done.{BREAK}"
         async with captured_wide_event() as event:
-            assert interpret_comms_output(text).payload == text
+            assert interpret_comms_output(text).payload == f"On it.{BREAK}Done."
         assert "warnings" not in event
+
+    @pytest.mark.regression
+    def test_a_reply_of_only_bubble_breaks_shows_nothing(self) -> None:
+        """Regression: a looping model's 50k chars of bare breaks were saved verbatim as the reply."""
+        directive = interpret_comms_output(BREAK * 2700)
+
+        assert directive == CommsDirective(CommsDirectiveKind.REPLY, "")
 
 
 class TestVisibleCommsText:
@@ -192,7 +313,7 @@ class TestVisibleCommsText:
             ("  ", ""),
             ("<b>bold</b> reply", "<b>bold</b> reply"),
             ("<EMOJI>\n", "<EMOJI>\n"),
-            ("<EMOJI>👍</EMOJI>\nand more", "<EMOJI>👍</EMOJI>\nand more"),
+            ("<EMOJI>👍</EMOJI>\nand more", "and more"),
             ("Hello there.<NEW_MESS", "Hello there."),
             ("Hello there. <", "Hello there. "),
             (f"Hello there.{BREAK}", "Hello there."),
@@ -211,6 +332,15 @@ class TestVisibleCommsText:
             ("< SILENCE >Already rep", ""),
             (f"Hello there.{BREAK}< SILENCE >x</SILENCE>", "Hello there."),
             ("< 5 items left", "< 5 items left"),
+            # A tag inside a bubble is held while it is written, then dropped.
+            ("Noted. <SIL", "Noted. "),
+            ("Noted. <SILENCE>already rep", "Noted. "),
+            ("Noted. <SILENCE>already reported</SILEN", "Noted. "),
+            ("Noted. <SILENCE>already reported</SILENCE>", "Noted. "),
+            ("Noted. <SILENCE>x</SILENCE> More.", "Noted. More."),
+            ("Noted.\n<SILENCE>x</SILENCE>\nMore.", "Noted.\nMore."),
+            ("Noted. <b>bo", "Noted. <b>bo"),
+            ("Noted. <EMOJI>ok</EMOJI>", "Noted. <EMOJI>ok</EMOJI>"),
         ],
     )
     def test_while_streaming(self, text: str, visible: str) -> None:
@@ -230,6 +360,10 @@ class TestVisibleCommsText:
             (f"A.{BREAK}  {BREAK}C", f"A.{BREAK}C"),
             ("< SILENCE >Already reported.</SILENCE>", ""),
             (f"Hello there.{BREAK}< EMOJI >👍</ EMOJI >", "Hello there."),
+            ("Noted. <SILENCE>already reported</SILENCE>", "Noted. "),
+            ("Noted. <SILENCE>never closed", "Noted. "),
+            ("Noted.\n< SILENCE >never closed\nMore.", "Noted.\nMore."),
+            ("Noted. <SILENCE>wrong close</EMOJI>", "Noted. "),
         ],
     )
     def test_once_the_message_ended(self, text: str, visible: str) -> None:
@@ -239,10 +373,11 @@ class TestVisibleCommsText:
         """Clients append each delta; text shown early and then retracted would stay on screen."""
         text = (
             f"Hi <b>there</b>.{BREAK}  < SILENCE >no</ SILENCE >{BREAK}"
-            "Re: your trip<NEW_LINE_BREAK>ok"
+            "Re: your trip<NEW_LINE_BREAK>ok <SILENCE>dup</SILENCE> then\n"
+            "<EMOJI>👍</EMOJI>\ndone"
         )
         shown = [visible_comms_text_so_far(text[:end]) for end in range(len(text) + 1)]
         shown.append(visible_comms_text(text))
         for earlier, later in pairwise(shown):
             assert later.startswith(earlier)
-        assert shown[-1] == f"Hi <b>there</b>.{BREAK}Re: your trip<NEW_LINE_BREAK>ok"
+        assert shown[-1] == (f"Hi <b>there</b>.{BREAK}Re: your trip<NEW_LINE_BREAK>ok then\ndone")

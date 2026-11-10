@@ -39,9 +39,9 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.workflow_prompts import WORKFLOW_DELIVERY_SECTIONS
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.agents import NO_ANSWER_NOTICE, AgentTag, wrap_agent_payload
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
-from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
+from app.constants.llm import BUDGET_STOP_METADATA_KEY, DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.constants.workflows import WorkflowDelivery
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
 from app.models.agent_config import AgentConfigurable
@@ -299,26 +299,24 @@ class TestBuildInitialMessages:
 
     @pytest.mark.asyncio
     async def test_tier_and_ids_reach_the_assembler(self):
-        """The tier selects which sections apply; the wrong one silently loses provider metadata."""
+        """The tier selects which sections apply; the wrong one silently loses its sections."""
         with self._assembled() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
                 agent_name="agent",
                 task="task",
                 seed=ThreadSeed(
-                    tier=AgentTier.PROVIDER_SUBAGENT,
+                    tier=AgentTier.SPAWN,
                     configurable={},
                     user_id="uid-1",
                     subagent_id="github_agent",
-                    integration_id="github",
                 ),
             )
 
         ctx = mock_assemble.call_args.args[0]
-        assert ctx.tier is AgentTier.PROVIDER_SUBAGENT
+        assert ctx.tier is AgentTier.SPAWN
         assert ctx.user_id == "uid-1"
         assert ctx.subagent_id == "github_agent"
-        assert ctx.integration_id == "github"
 
 
 # ---------------------------------------------------------------------------
@@ -364,10 +362,10 @@ class TestExecuteSubagentStream:
             result = await execute_subagent_stream(ctx)
 
         assert not result.paused
-        assert result.text == "Task completed"  # default when no content
+        assert result.answered is False
 
     @pytest.mark.asyncio
-    async def test_empty_message_returns_default(self):
+    async def test_a_run_with_no_answer_is_reported_as_unconfirmed(self):
         async def _fake_astream(*args, **kwargs):
             return
             yield  # NOSONAR — intentionally unreachable: makes this an async generator
@@ -380,7 +378,8 @@ class TestExecuteSubagentStream:
             result = await execute_subagent_stream(ctx)
 
         assert not result.paused
-        assert result.text == "Task completed"
+        assert result.answered is False
+        assert result.text == NO_ANSWER_NOTICE.format(name=f"The {ctx.agent_name} run")
 
     @pytest.mark.asyncio
     async def test_tool_message_emits_tool_output(self):
@@ -577,7 +576,7 @@ class TestExecuteSubagentStream:
 
         # Should not raise
         assert not result.paused
-        assert result.text == "Task completed"
+        assert result.answered is False
 
     @pytest.mark.asyncio
     async def test_cancellation_breaks_stream(self):
@@ -806,6 +805,20 @@ class TestProcessUpdatesPayload:
         assert run.run_messages == []
 
     @pytest.mark.asyncio
+    async def test_a_budget_stop_is_the_runs_answer_not_a_silent_end(self):
+        """The wall answers without a model, so no token streams: its stop text must still be the result."""
+        stop = "You've used this month's AI usage allowance, so chat, workflows and tracked todos are paused until December 8, when it resets."
+        wall = AIMessage(content=stop, response_metadata={BUDGET_STOP_METADATA_KEY: True})
+        run = _make_run()
+
+        with patch("app.agents.core.subagents.subagent_runner.log"), self._entries([]):
+            await _process_updates_payload(run, {"agent": {"messages": [wall]}})
+            outcome = _finalize_run(run)
+
+        assert outcome.text == stop
+        assert outcome.answered
+
+    @pytest.mark.asyncio
     async def test_only_tool_bearing_messages_are_captured(self):
         """The filter reads tool_calls defensively: some messages in an update carry no such attribute at all."""
         ai = AIMessage(content="", tool_calls=[{"name": "web_search", "args": {}, "id": "tc-1"}])
@@ -902,40 +915,103 @@ class TestProcessUpdatesPayload:
 # ---------------------------------------------------------------------------
 
 
-class TestConsumeStreamEvent:
-    """The "messages" branch hands five positional arguments down, each deciding where the chunk's output is routed."""
+# The thread _make_ctx gives a run, as build_agent_config stamps it on that run's chunks.
+_OWN: dict[str, object] = {"agent_thread_id": "t1"}
+_SPAWN_THREAD = "spawn_conv_call_1"
 
-    @staticmethod
-    def _messages_handler() -> Any:
-        return patch(
-            "app.agents.core.subagents.subagent_runner._process_messages_payload",
-            return_value="accumulated",
-        )
+
+class TestConsumeStreamEvent:
+    """The "messages" branch hands the run and the payload to the handler, which decides where the chunk's output is routed."""
 
     @pytest.mark.asyncio
-    async def test_the_messages_handler_gets_the_runs_writer_id_and_stream(self):
+    async def test_the_messages_handler_gets_the_run_and_the_payload(self):
+        run = _make_run()
+        payload = (AIMessageChunk(content="hi"), {})
+
+        with patch(
+            "app.agents.core.subagents.subagent_runner._process_messages_payload"
+        ) as mock_handler:
+            await _consume_stream_event(run, "messages", payload)
+
+        assert mock_handler.call_args == call(run, payload)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("stream_id", "claimed_under"), [("s-1", "s-1"), (None, "")], ids=["stream", "no-stream"]
+    )
+    async def test_a_tool_result_is_claimed_under_the_runs_stream_id(
+        self, stream_id: str | None, claimed_under: str
+    ):
         writer = MagicMock()
         run = _make_run(
-            stream_writer=writer, subagent_id="sub-1", ctx_overrides={"stream_id": "s-1"}
+            stream_writer=writer, subagent_id="sub-1", ctx_overrides={"stream_id": stream_id}
         )
-        run.complete_message = "so far"
-        payload = (AIMessageChunk(content="hi"), {})
+        payload: tuple[ToolMessage, dict[str, object]] = (
+            ToolMessage(content="3 unread", tool_call_id="tc-1", name="read"),
+            {},
+        )
 
-        with self._messages_handler() as mock_handler:
+        with patch(
+            "app.agents.core.subagents.subagent_runner.claim_tool_output", return_value=True
+        ) as mock_claim:
             await _consume_stream_event(run, "messages", payload)
 
-        assert mock_handler.call_args == call(payload, "so far", writer, "sub-1", "s-1")
-        assert run.complete_message == "accumulated"
+        assert mock_claim.call_args == call(claimed_under, "tc-1", "sub-1")
+        assert writer.call_args == call(
+            {"tool_output": {"tool_call_id": "tc-1", "output": "3 unread", "subagent_id": "sub-1"}}
+        )
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_a_spawned_subagents_finish_is_never_the_runs_answer(self):
+        """Regression: a desk's briefing was dropped and its subagent's finish_task result delivered instead."""
+        run = _make_run()
+
+        await _consume_stream_event(
+            run,
+            "messages",
+            (
+                ToolMessage(content="thread: 1a2b | ...", tool_call_id="tc-9", name="finish_task"),
+                {"agent_thread_id": _SPAWN_THREAD},
+            ),
+        )
+        await _consume_stream_event(
+            run, "messages", (AIMessageChunk(content="2 need you", id="m-1"), _OWN)
+        )
+
+        assert run.complete_message == "2 need you"
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_a_spawned_subagents_reply_is_never_part_of_the_runs_answer(self):
+        """Regression: a desk's subagents' replies were delivered glued in front of its briefing."""
+        run = _make_run()
+
+        await _consume_stream_event(
+            run,
+            "messages",
+            (
+                AIMessageChunk(content="fetched_at: 1793963246", id="m-9"),
+                {"agent_thread_id": _SPAWN_THREAD},
+            ),
+        )
+        await _consume_stream_event(
+            run, "messages", (AIMessageChunk(content="2 need you", id="m-1"), _OWN)
+        )
+
+        assert run.complete_message == "2 need you"
 
     @pytest.mark.asyncio
-    async def test_a_run_with_no_stream_id_passes_the_empty_string_down(self):
-        run = _make_run(ctx_overrides={"stream_id": None})
-        payload = (AIMessageChunk(content="hi"), {})
+    async def test_the_runs_own_finish_is_its_answer(self):
+        run = _make_run()
 
-        with self._messages_handler() as mock_handler:
-            await _consume_stream_event(run, "messages", payload)
+        await _consume_stream_event(
+            run,
+            "messages",
+            (ToolMessage(content="the answer", tool_call_id="tc-1", name="finish_task"), _OWN),
+        )
 
-        assert mock_handler.call_args.args[4] == ""
+        assert run.complete_message == "the answer"
 
 
 # ---------------------------------------------------------------------------
@@ -965,7 +1041,7 @@ class TestFinalizeRun:
     def test_a_paused_run_returns_its_partial_text_the_merged_approval_and_its_messages(self):
         ai = AIMessage(content="", tool_calls=[{"name": "send_email", "args": {}, "id": "tc-1"}])
         run = _make_run()
-        run.complete_message = "partial"
+        run.held.texts["m1"] = "partial"
         run.run_messages = [ai]
         run.pending_approvals = [
             {"approval_id": "a1", "tool": "send_email"},
@@ -986,7 +1062,7 @@ class TestFinalizeRun:
 
     def test_a_narration_only_run_is_reported_as_an_actionable_failure(self):
         run = _make_run(ctx_overrides=self._ctx_overrides())
-        run.complete_message = "I will send the email"
+        run.held.texts["m1"] = "I will send the email"
 
         with patch("app.agents.core.subagents.subagent_runner.log") as mock_log:
             outcome = _finalize_run(run)
@@ -1008,7 +1084,7 @@ class TestFinalizeRun:
     def test_the_executors_plain_answer_is_its_answer(self):
         """A collection run's whole job is to report what landed, in words; nothing re-issues the executor."""
         run = _make_run(ctx_overrides={**self._ctx_overrides(), "integration_id": "executor"})
-        run.complete_message = "The report is drafted and saved."
+        run.held.texts["m1"] = "The report is drafted and saved."
 
         with patch("app.agents.core.subagents.subagent_runner.log"):
             outcome = _finalize_run(run)
@@ -1018,7 +1094,7 @@ class TestFinalizeRun:
     def test_an_announced_tool_call_makes_the_same_text_an_ordinary_result(self):
         """A run that announced a call did the work, even if no ToolMessage came back before the stream ended."""
         run = _make_run(ctx_overrides=self._ctx_overrides())
-        run.complete_message = "I will send the email"
+        run.held.texts["m1"] = "I will send the email"
         run.emitted_tool_calls.add("tc-1")
 
         with patch("app.agents.core.subagents.subagent_runner.log") as mock_log:
@@ -1514,7 +1590,7 @@ class TestPrepareExecutorExecution:
 
         assert task == "find the roadmap page"
 
-    async def test_a_per_user_mcp_category_is_handed_off(self):
+    async def test_a_per_user_mcp_category_is_activated_in_context(self):
         notion = _mcp_subagent("notion-mcp", requires_auth=True)
 
         task = await self._task_for_category("notion-mcp", notion)
@@ -1523,8 +1599,8 @@ class TestPrepareExecutorExecution:
             "find the roadmap page\n\n"
             "DIRECT EXECUTION HINT: This request should be handled by 'notion-mcp'. "
             "Skip retrieve_tools discovery and directly "
-            'handoff(subagent_id="notion-mcp", task="...") with the full request, then '
-            "use its result for the user's request."
+            'call activate_integration(integration_id="notion-mcp"), then '
+            "act on the user's request yourself with its tools."
         )
 
     async def test_an_mcp_category_needing_no_sign_in_is_activated_in_context(self):
@@ -1541,10 +1617,7 @@ class TestPrepareExecutorExecution:
 # ---------------------------------------------------------------------------
 
 
-from app.agents.core.subagents.subagent_helpers import (
-    build_subagent_system_prompt,
-    create_subagent_system_message,
-)
+from app.agents.core.subagents.subagent_helpers import build_subagent_system_prompt
 
 
 class TestBuildSubagentSystemPrompt:
@@ -1612,25 +1685,6 @@ class TestBuildSubagentSystemPrompt:
     async def test_blank_integration_id_returns_empty(self):
         with patch("app.agents.core.subagents.subagent_helpers.log"):
             assert await build_subagent_system_prompt("") == ""
-
-
-# ---------------------------------------------------------------------------
-# create_subagent_system_message
-# ---------------------------------------------------------------------------
-
-
-class TestCreateSubagentSystemMessage:
-    @pytest.mark.asyncio
-    async def test_returns_system_message(self):
-        with patch(
-            "app.agents.core.subagents.subagent_helpers.build_subagent_system_prompt",
-            new_callable=AsyncMock,
-            return_value="Test prompt",
-        ):
-            result = await create_subagent_system_message(integration_id="github")
-
-        assert isinstance(result, SystemMessage)
-        assert result.content == "Test prompt"
 
 
 # ---------------------------------------------------------------------------
@@ -2141,7 +2195,10 @@ class TestReasoningDeltaSources:
 # ---------------------------------------------------------------------------
 
 SUBAGENT_THREAD = "spawn_c1_call-1"
-_SUPERSTEP = ("updates", {"agent": {"messages": []}})
+_SUPERSTEP: tuple[str, dict[str, dict[str, list[AIMessage]]]] = (
+    "updates",
+    {"agent": {"messages": []}},
+)
 
 
 def _cancellable_run(*events: tuple[str, Any], stream_id: str | None = "s-1") -> Any:
@@ -2202,7 +2259,7 @@ class TestTheExecutorsCancel:
 
         outcome = await _drive(_cancellable_run(_SUPERSTEP))
 
-        assert outcome.text == "Task completed"
+        assert outcome.answered is False
         assert await SubagentCancel("spawn_c1_call-2").is_requested() is True
 
     async def test_a_run_with_no_stream_is_not_cancellable(self, fake_redis):
@@ -2210,7 +2267,7 @@ class TestTheExecutorsCancel:
 
         outcome = await _drive(_cancellable_run(_SUPERSTEP, stream_id=None))
 
-        assert outcome.text == "Task completed"
+        assert outcome.answered is False
         assert await SubagentCancel(SUBAGENT_THREAD).is_requested() is True
 
     async def test_the_stopped_segment_is_timed_as_cancelled_under_its_label(self, fake_redis):

@@ -31,11 +31,15 @@ export function useWebSocketConnection() {
         return;
       }
 
-      const wsUrl =
-        apiBaseUrl.replace("http://", "ws://").replace("https://", "wss://") +
-        "ws/connect";
+      // The base may be same-origin ("/api/v1/" on self-host), so resolve it
+      // against the page before switching the scheme to ws/wss.
+      const wsUrl = new URL(
+        "ws/connect",
+        new URL(apiBaseUrl, window.location.href),
+      );
+      wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
 
-      wsManager.configure({ url: wsUrl });
+      wsManager.configure({ url: wsUrl.href });
       wsManager.connect();
 
       return () => {

@@ -29,6 +29,7 @@ from app.models.message_models import FileData
 from app.models.payment_models import PlanType
 from app.services.bot.stream_frames import sse_frame
 from app.services.bot_service import build_bot_message_request
+from app.services.cost_budget import REQUEST_CEILING_STOP_PRO
 
 
 class TestBotStreamControlFrame:
@@ -143,6 +144,25 @@ class TestBotStreamPayloadFrame:
             "⏳ You've reached your this feature limit. Please try again later."
         )
 
+    @pytest.mark.regression
+    async def test_a_rate_limit_card_with_a_message_relays_that_message(self):
+        """Regression: the per-run ceiling's card reached Telegram as "your chat messages limit"."""
+        data = {
+            "tool_data": {
+                "tool_name": "rate_limit_data",
+                "data": {
+                    "feature": "task_size",
+                    "current_plan": "pro",
+                    "message": REQUEST_CEILING_STOP_PRO,
+                },
+            }
+        }
+        frame, _ = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate(data), AsyncMock()
+        )
+        payload = json.loads(frame[len("data: ") : -2])
+        assert payload["notice"]["text"] == f"⏳ {REQUEST_CEILING_STOP_PRO}"
+
     async def test_rate_limit_card_appends_an_upgrade_link_for_non_pro_users(self):
         data = {
             "tool_data": {
@@ -200,7 +220,7 @@ class TestBotStreamPayloadFrame:
     )
     async def test_web_only_fields_yield_no_frame(self, key: str):
         frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate({key: "irrelevant"}), "user-1"
+            BotWebStreamPayload.model_validate({key: "irrelevant"}), AsyncMock()
         )
         assert frame is None
         assert stop is False
@@ -220,7 +240,7 @@ class TestBotStreamPayloadFrame:
     async def test_each_web_only_field_takes_priority_over_a_response_field(self, key: str):
         """A payload carrying both a web-only field and response is dropped since the web-only check runs first; parametrized per key so a mutation to any single entry still shows a different result."""
         frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate({"response": "hello", key: "x"}), "user-1"
+            BotWebStreamPayload.model_validate({"response": "hello", key: "x"}), AsyncMock()
         )
         assert frame is None
         assert stop is False

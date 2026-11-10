@@ -19,7 +19,7 @@ from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.agents.tools.execute.schema_docs import render_tool_doc
 from app.agents.tools.execute.tool_info import contract_from
-from app.config.settings import CommonSettings, ProductionSettings, settings
+from app.config.settings import Settings, settings
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.models import agent_models
 from app.models.chat_models import ConversationSource
@@ -84,7 +84,10 @@ async def _call(exact: list[str], resolver_result: ResolvedTool | None) -> Any:
     fn = get_retrieve_tools_function()
     with (
         patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry())),
-        patch(f"{MODULE}._user_mcp_tool_names", new=AsyncMock(return_value={"NOTION_MCP_SEARCH"})),
+        patch(
+            f"{MODULE}._user_mcp_tools",
+            new=AsyncMock(return_value=retrieval._UserMcpTools({"NOTION_MCP_SEARCH"}, {})),
+        ),
         patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=resolver_result)),
     ):
         return await fn(store=MagicMock(), config=CONFIG, exact_tool_names=exact)
@@ -115,7 +118,10 @@ class TestSchemaModeCutover:
         registry.get_tool_names.return_value = ["read", "GMAIL_SEND_EMAIL", "GMAIL_FETCH_EMAILS"]
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
-            patch(f"{MODULE}._user_mcp_tool_names", new=AsyncMock(return_value=set())),
+            patch(
+                f"{MODULE}._user_mcp_tools",
+                new=AsyncMock(return_value=retrieval._UserMcpTools(set(), {})),
+            ),
             patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=None)),
         ):
             result = await fn(
@@ -167,7 +173,10 @@ class TestResolverOutageDegradation:
         fn = get_retrieve_tools_function()
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry())),
-            patch(f"{MODULE}._user_mcp_tool_names", new=AsyncMock(return_value=set())),
+            patch(
+                f"{MODULE}._user_mcp_tools",
+                new=AsyncMock(return_value=retrieval._UserMcpTools(set(), {})),
+            ),
             patch(
                 f"{MODULE}.resolve_tool",
                 new=AsyncMock(side_effect=RuntimeError("composio unreachable")),
@@ -193,7 +202,10 @@ async def _bind(exact: list[str], resolver: AsyncMock, config: dict[str, Any] | 
     fn = get_retrieve_tools_function()
     with (
         patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry())),
-        patch(f"{MODULE}._user_mcp_tool_names", new=AsyncMock(return_value=set())),
+        patch(
+            f"{MODULE}._user_mcp_tools",
+            new=AsyncMock(return_value=retrieval._UserMcpTools(set(), {})),
+        ),
         patch(f"{MODULE}.resolve_tool", new=resolver),
     ):
         return await fn(store=MagicMock(), config=config or CONFIG, exact_tool_names=exact)
@@ -211,9 +223,8 @@ def _tool_with_output(output: dict[str, Any]) -> StructuredTool:
 
 @pytest.mark.unit
 class TestDocsCarryReturnShapes:
-    @pytest.mark.parametrize("settings_class", [CommonSettings, ProductionSettings])
-    def test_inline_returns_ship_off(self, settings_class: type[CommonSettings]) -> None:
-        assert settings_class.model_fields["ENABLE_INLINE_TOOL_RETURNS"].default is False
+    def test_inline_returns_ship_off(self) -> None:
+        assert Settings.model_fields["ENABLE_INLINE_TOOL_RETURNS"].default is False
 
     async def test_by_default_docs_carry_args_only_and_never_read_the_shape_store(
         self, no_observed_tool_shapes: AsyncMock
@@ -326,7 +337,10 @@ class TestBindingConfigSources:
         fn = get_retrieve_tools_function()
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
-            patch(f"{MODULE}._user_mcp_tool_names", new=AsyncMock(return_value=set())),
+            patch(
+                f"{MODULE}._user_mcp_tools",
+                new=AsyncMock(return_value=retrieval._UserMcpTools(set(), {})),
+            ),
             patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=None)),
         ):
             result = await fn(store=MagicMock(), config=config, exact_tool_names=["desktop_click"])
