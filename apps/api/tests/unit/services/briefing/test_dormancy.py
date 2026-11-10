@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.db.repositories.users import user_repository
 from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import BriefingDormancy, UserDocument
 from app.services.briefing import dormancy
@@ -47,7 +48,7 @@ class TestLatestActivitySince:
     @staticmethod
     def _dates(monkeypatch: pytest.MonkeyPatch, last_active_at: datetime | None) -> AsyncMock:
         read = AsyncMock(return_value=UserActivityDates(last_active_at=last_active_at))
-        monkeypatch.setattr(dormancy.user_repository, "get_activity_dates", read)
+        monkeypatch.setattr(user_repository, "get_activity_dates", read)
         return read
 
     async def test_activity_after_the_cutoff_is_returned(

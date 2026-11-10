@@ -2,6 +2,7 @@
  * Infisical secrets management for GAIA bots.
  *
  * Resolution:
+ * - If ENV is selfhost → skip always (a self-hosted instance configures locally)
  * - If all Infisical env vars are set → fetch remote secrets
  * - If partially set → warn about incomplete config
  * - If none set in dev → skip (using local .env only)
@@ -26,6 +27,9 @@ const INFISICAL_VARS = [
   "INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET",
 ] as const;
 
+/** The ENV of a self-hosted instance; mirrors SELFHOST_ENV in libs/shared/py/secrets.py. */
+const SELFHOST_ENV = "selfhost";
+
 export async function injectInfisicalSecrets(): Promise<void> {
   // ENV doubles as the Infisical environment slug. Unlike the Python loader (which defaults an
   // absent ENV to production), a bare bot checkout defaults to development: apps/bots/.env.example
@@ -37,6 +41,10 @@ export async function injectInfisicalSecrets(): Promise<void> {
   const env =
     process.env.ENV ??
     (process.env.NODE_ENV === "production" ? "production" : "development");
+  if (env === SELFHOST_ENV) {
+    wideLog.setNs("infisical", { skipped: "selfhost" });
+    return;
+  }
   const isProduction = env === "production";
 
   const present = INFISICAL_VARS.filter((k) => !!process.env[k]);

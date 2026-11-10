@@ -32,10 +32,12 @@ from langgraph.types import StreamWriter
 from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
+from app.agents.core.held_replies import HeldReplies
 from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.llm.client import init_llm
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
+from app.constants.agents import NO_ANSWER_NOTICE
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import AgentIdentity, AgentThread, build_agent_config
@@ -167,7 +169,7 @@ class WorkflowSubagentRunner:
         base_configurable is the parent (executor) configurable so the subagent
         inherits its plan tier, plan-routed model, provider pin, and root_request_id
         — keeping pro users on the paid model and the budget wall enforced across the
-        whole turn tree, exactly like other handoff subagents.
+        whole turn tree, exactly like spawned subagents.
         """
         ctx = context or SubagentRunContext()
         user_name = ctx.user_name
@@ -287,7 +289,7 @@ class WorkflowSubagentRunner:
             f"{LogTag.WORKFLOW} Completed. Response: chars",
             complete_message_count=len(complete_message),
         )
-        return complete_message or "Task completed"
+        return complete_message or NO_ANSWER_NOTICE.format(name="The workflow assistant")
 
     @staticmethod
     async def _forced_finalize(
@@ -342,17 +344,15 @@ class WorkflowSubagentRunner:
     def _consume_message_chunk(
         payload: tuple[BaseMessage, StreamChunkMetadata],
         stream_writer: StreamWriter | None,
-        complete_message: str,
-    ) -> str:
-        """Fold one messages-mode event into the running assistant text."""
+        held: HeldReplies,
+    ) -> None:
+        """Fold one messages-mode event into the held assistant text."""
         metadata: StreamChunkMetadata
         chunk, metadata = payload
         if metadata.get("silent"):
-            return complete_message
+            return
         if chunk and isinstance(chunk, AIMessageChunk):
-            content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
-            if content:
-                return complete_message + content
+            held.hold(chunk, metadata)
         elif chunk and isinstance(chunk, ToolMessage):
             if stream_writer:
                 stream_writer(
@@ -363,7 +363,6 @@ class WorkflowSubagentRunner:
                         }
                     }
                 )
-        return complete_message
 
     @staticmethod
     async def _stream_turn(
@@ -379,7 +378,7 @@ class WorkflowSubagentRunner:
         when the model exhausted its step budget without producing a final answer,
         signalling the caller to force a finalize instead of crashing.
         """
-        complete_message = ""
+        held = HeldReplies()
         try:
             async for event in subagent_graph.astream(
                 state,
@@ -397,15 +396,13 @@ class WorkflowSubagentRunner:
                         payload, stream_writer, emitted_tool_calls
                     )
                 elif stream_mode == "messages":
-                    complete_message = WorkflowSubagentRunner._consume_message_chunk(
-                        payload, stream_writer, complete_message
-                    )
+                    WorkflowSubagentRunner._consume_message_chunk(payload, stream_writer, held)
                 elif stream_mode == "custom" and stream_writer:
                     stream_writer(payload)
         except GraphRecursionError:
-            return complete_message, True
+            return held.reply_text(), True
 
-        return complete_message, False
+        return held.reply_text(), False
 
     @staticmethod
     async def _draft_correction_needed(text: str) -> str | None:

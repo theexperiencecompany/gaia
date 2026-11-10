@@ -27,6 +27,7 @@ from app.constants.log_tags import LogTag
 from app.models.hil_models import HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
 from app.services.hil.preferences import get_hil_preferences
+from app.services.hil.tool_key import hil_tool_key, mcp_tool_identity
 from app.services.hil.utils import current_tool_calls, raw_tool_call, tool_of, unpack_tool_call
 from shared.py.wide_events import log
 
@@ -77,6 +78,11 @@ def _argument_gate_hit(tool_name: str, args: Mapping[str, object] | None) -> boo
     return all(args.get(key) == value for key, value in required.items())
 
 
+async def asks_every_time(tool_name: str, args: Mapping[str, object] | None) -> bool:
+    """Whether this call asks in every mode, beyond any per-tool override's reach."""
+    return await _is_always_gated(tool_name) or _argument_gate_hit(tool_name, args)
+
+
 async def gated_tool_object(
     request: ToolCallRequest, user_id: str, tool_name: str
 ) -> BaseTool | None:
@@ -112,6 +118,17 @@ async def _real_tool(user_id: str, tool_name: str) -> BaseTool | None:
     return resolved.tool if resolved else None
 
 
+async def gated_tool_key(request: ToolCallRequest, user_id: str, tool_name: str) -> str:
+    """Return the HIL key of the real tool behind a gated call (see tool_key)."""
+    tool = await gated_tool_object(request, user_id, tool_name)
+    return hil_tool_key(tool_name, mcp_tool_identity(tool))
+
+
+async def resolved_tool_key(user_id: str, tool_name: str) -> str:
+    """Return the HIL key of the live tool a name resolves to, for callers without a request."""
+    return hil_tool_key(tool_name, mcp_tool_identity(await _real_tool(user_id, tool_name)))
+
+
 async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str) -> GatingPolicy:
     """Resolve the user's mode plus the gated set into one decision.
 
@@ -120,7 +137,7 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     calls that must never slip through).
     """
     call = unpack_tool_call(request)
-    if await _is_always_gated(tool_name) or _argument_gate_hit(tool_name, call.args):
+    if await asks_every_time(tool_name, call.args):
         return "ask"
     prefs = await _preferences(user_id)
     if prefs.mode == "always_allow":
@@ -144,17 +161,17 @@ async def is_gated(
     Otherwise the user's per-tool choice wins in both directions — even over an
     MCP destructiveHint — since it is a deliberate setting on their own account.
     """
-    if await _is_always_gated(tool_name):
+    if await asks_every_time(tool_name, args):
         return True
-    if _argument_gate_hit(tool_name, args):
-        return True
-    override = prefs.tool_overrides.get(tool_name)
+    mcp_tool = mcp_tool_identity(tool)
+    override = prefs.tool_overrides.get(hil_tool_key(tool_name, mcp_tool))
     if override is not None:
         return override
     return await is_tool_destructive(
         tool_name,
         getattr(tool, "description", "") or "",
         destructive_hint=mcp_destructive_hint(tool),
+        mcp_tool=mcp_tool,
     )
 
 
@@ -197,10 +214,8 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
 
     # Forced-ask siblings pause even when HIL is off, since the stamp isn't
     # preference-driven — checked before the always_allow fast path below.
-    registry = await _stamp_registry()
     for name, args in siblings:
-        meta = registry.get_tool_meta(name) if registry else None
-        if (meta is not None and meta.always_gate) or _argument_gate_hit(name, args or None):
+        if await asks_every_time(name, args or None):
             return True
 
     prefs = await get_hil_preferences(user_id)

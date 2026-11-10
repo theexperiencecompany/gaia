@@ -394,7 +394,12 @@ class TestComposioConnectionEvents:
         integration.id = "notion"
 
         with (
-            patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
+            patch.object(
+                _endpoint(),
+                "integration_for_auth_config",
+                new_callable=AsyncMock,
+                return_value=integration,
+            ),
             patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             response = await self._post(
@@ -439,7 +444,12 @@ class TestComposioConnectionEvents:
         )
 
         with (
-            patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
+            patch.object(
+                _endpoint(),
+                "integration_for_auth_config",
+                new_callable=AsyncMock,
+                return_value=integration,
+            ),
             patch.object(_endpoint(), "expire_account", AsyncMock(return_value=expired)),
             patch.object(_endpoint(), "announce_account_expiry", AsyncMock()) as announce,
         ):
@@ -463,7 +473,12 @@ class TestComposioConnectionEvents:
         integration.id = "notion"
 
         with (
-            patch.object(_endpoint(), "get_integration_by_config", return_value=None),
+            patch.object(
+                _endpoint(),
+                "integration_for_auth_config",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
             patch.object(
                 _endpoint(), "get_integration_by_toolkit", return_value=integration
             ) as by_toolkit,
@@ -484,7 +499,12 @@ class TestComposioConnectionEvents:
     async def test_an_unrecognised_integration_is_acked_and_dropped(self, real_redis):
         # A 4xx/5xx here would make Composio redeliver an event GAIA can never act on.
         with (
-            patch.object(_endpoint(), "get_integration_by_config", return_value=None),
+            patch.object(
+                _endpoint(),
+                "integration_for_auth_config",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
             patch.object(_endpoint(), "get_integration_by_toolkit", return_value=None),
             patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
@@ -502,7 +522,12 @@ class TestComposioConnectionEvents:
         integration.id = "notion"
 
         with (
-            patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
+            patch.object(
+                _endpoint(),
+                "integration_for_auth_config",
+                new_callable=AsyncMock,
+                return_value=integration,
+            ),
             patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             response = await self._post(
@@ -526,7 +551,12 @@ class TestComposioConnectionEvents:
         integration.id = "notion"
 
         with (
-            patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
+            patch.object(
+                _endpoint(),
+                "integration_for_auth_config",
+                new_callable=AsyncMock,
+                return_value=integration,
+            ),
             patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             response = await self._post(
@@ -558,7 +588,12 @@ class TestComposioConnectionEvents:
         webhook_id = "conn-replay-001"
 
         with (
-            patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
+            patch.object(
+                _endpoint(),
+                "integration_for_auth_config",
+                new_callable=AsyncMock,
+                return_value=integration,
+            ),
             patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             first = await self._post(real_redis, _make_connection_payload(), webhook_id=webhook_id)
@@ -608,7 +643,12 @@ class TestComposioConnectionEvents:
         integration.id = "notion"
 
         with (
-            patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
+            patch.object(
+                _endpoint(),
+                "integration_for_auth_config",
+                new_callable=AsyncMock,
+                return_value=integration,
+            ),
             patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             response = await self._post(

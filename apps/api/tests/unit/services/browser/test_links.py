@@ -1,4 +1,4 @@
-"""The base browser links are built on: the configured vhost or this host, never a trailing slash."""
+"""The base browser links are built on: this host, under the browser routers' API prefix."""
 
 import pytest
 
@@ -8,19 +8,11 @@ from app.services.browser.links import browser_link_base
 pytestmark = pytest.mark.unit
 
 
-def test_a_configured_base_is_used_without_its_trailing_slash(
+@pytest.mark.regression
+def test_links_sit_under_the_api_prefix_the_proxies_forward(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "BROWSER_LIVE_VIEW_BASE_URL", "https://browser.example.com//")
-    monkeypatch.setattr(settings, "HOST", "https://api.example.com")
-
-    assert browser_link_base() == "https://browser.example.com"
-
-
-def test_without_a_configured_base_the_links_use_this_host(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "BROWSER_LIVE_VIEW_BASE_URL", None)
+    """Regression for GAIA-715: a root-mounted link path reached no proxy that forwards to the API."""
     monkeypatch.setattr(settings, "HOST", "https://gaia.example.com/BOX/")
 
-    assert browser_link_base() == "https://gaia.example.com/BOX"
+    assert browser_link_base() == "https://gaia.example.com/BOX/api/v1/browser"

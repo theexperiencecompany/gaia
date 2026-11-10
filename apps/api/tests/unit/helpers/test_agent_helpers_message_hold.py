@@ -23,14 +23,9 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
+from app.agents.core.held_replies import HeldReplies, announces_tool_call, drop_retracted_text
 from app.constants.general import NEW_MESSAGE_BREAKER
-from app.helpers.agent_helpers import (
-    _flush_held_messages,
-    announces_tool_call,
-    drop_retracted_text,
-    execute_graph_silent,
-    execute_graph_streaming,
-)
+from app.helpers.agent_helpers import execute_graph_silent, execute_graph_streaming
 from tests.helpers import (
     GraphStreamEvent,
     ScriptedGraph,
@@ -79,15 +74,15 @@ class TestFlushHeldMessages:
 
     def test_held_text_is_appended_as_its_own_bubble(self) -> None:
         """Concatenating directly turned "fixing it." and "fixing it now" into one glued word."""
-        flushed = _flush_held_messages("first", {"m1": "second"})
+        flushed = HeldReplies(texts={"m1": "second"}).flush("first")
 
         assert flushed == f"first{NEW_MESSAGE_BREAKER}second"
 
     def test_nothing_held_leaves_the_message_untouched(self) -> None:
-        assert _flush_held_messages("first", {}) == "first"
+        assert HeldReplies().flush("first") == "first"
 
     def test_an_empty_hold_does_not_open_a_bubble(self) -> None:
-        assert _flush_held_messages("first", {"m1": ""}) == "first"
+        assert HeldReplies(texts={"m1": ""}).flush("first") == "first"
 
 
 @pytest.mark.unit
@@ -266,6 +261,41 @@ class TestBoundaryBookkeeping:
         ]
 
         assert await _run_silent(events) == f"on it.{NEW_MESSAGE_BREAKER}all done."
+
+
+_EXECUTOR_CONFIG: Any = {"agent_name": "executor_agent", "configurable": {"user_id": "u1"}}
+_WORKING_EVENTS = [
+    message_chunk_event(message_id="m1", content="working on it."),
+    agent_update_event(AIMessage(id="m1", content="working on it.")),
+]
+
+
+@pytest.mark.unit
+class TestOnlyTheReplyTierSpeaks:
+    """Only comms text is a reply: an executor run through these drivers answers through its tool results."""
+
+    async def test_a_silent_run_of_another_tier_keeps_no_text(self) -> None:
+        message, _ = await execute_graph_silent(
+            ScriptedGraph(_WORKING_EVENTS), {}, _EXECUTOR_CONFIG
+        )
+
+        assert message == ""
+
+    async def test_a_streamed_run_of_another_tier_streams_and_keeps_no_text(self) -> None:
+        frames = [
+            frame
+            async for frame in execute_graph_streaming(
+                ScriptedGraph(_WORKING_EVENTS), {}, _EXECUTOR_CONFIG
+            )
+        ]
+
+        assert _frames(frames, "response") == []
+        assert _frames(frames, "message_boundary") == []
+        assert _streamed_message(frames) == ""
+
+    async def test_the_same_events_from_comms_are_kept(self) -> None:
+        """Control: the config is the only difference between this and the two tests above."""
+        assert await _run_silent(_WORKING_EVENTS) == "working on it."
 
 
 @pytest.mark.unit

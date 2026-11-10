@@ -15,6 +15,10 @@ import { useReducer } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+// The save-failure bubble renders the chat bubble stack, which this reply test never reaches.
+vi.mock("@/features/onboarding/components/OnboardingBotBubble", () => ({
+  OnboardingBotBubble: () => null,
+}));
 
 import { QuestionsReply } from "@/features/onboarding/components/stages/Questions";
 import {
@@ -25,6 +29,8 @@ import { initialState } from "@/features/onboarding/state/initial";
 import { reducer } from "@/features/onboarding/state/reducer";
 import type { OnboardingState } from "@/features/onboarding/state/types";
 
+const IDLE_SAVE = { status: "idle", retry: () => undefined } as const;
+
 /** Renders the composer over the real reducer and exposes the live state. */
 function renderComposer(start: OnboardingState = initialState) {
   const seen: { state: OnboardingState } = { state: start };
@@ -32,7 +38,13 @@ function renderComposer(start: OnboardingState = initialState) {
   function Harness() {
     const [state, dispatch] = useReducer(reducer, start);
     seen.state = state;
-    return <QuestionsReply state={state} dispatch={dispatch} />;
+    return (
+      <QuestionsReply
+        state={state}
+        dispatch={dispatch}
+        answersSave={IDLE_SAVE}
+      />
+    );
   }
 
   render(<Harness />);

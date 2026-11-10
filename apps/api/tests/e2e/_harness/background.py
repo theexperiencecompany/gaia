@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import asyncio
 
-from app.agents.core.background.executor_runner import DETACHED_EXECUTOR_TASK_NAME
+from app.agents.core.background.executor_runner import (
+    DETACHED_EXECUTOR_TASK_NAME,
+    run_executor_background,
+)
 from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.subagents.delegation import BACKGROUND_SUBAGENT_TASK_NAME
 from app.services.hil import resolution
 from app.utils import background_tasks
+
+#: call_executor spawns its live run unnamed, so the task carries the coroutine's name.
+LIVE_EXECUTOR_TASK_NAME = run_executor_background.__qualname__
 
 
 def tasks_named(*names: str) -> list[asyncio.Task[object]]:
@@ -44,6 +50,7 @@ async def drain_background_runs() -> None:
     while pending := [
         *tasks_named(
             STREAM_PUBLISH_TASK_NAME,
+            LIVE_EXECUTOR_TASK_NAME,
             DETACHED_EXECUTOR_TASK_NAME,
             BACKGROUND_SUBAGENT_TASK_NAME,
         ),

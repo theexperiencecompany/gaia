@@ -1,0 +1,36 @@
+{
+  "category": "productivity",
+  "definition": "Siri is the voice assistant built into every iPhone, iPad, and Mac. It handles quick commands like timers, calls, and simple questions.",
+  "extendedDescription": "Siri was the first mainstream voice assistant, and it still owns the quick-command layer on Apple devices. Ask for a timer, a call, directions, or the weather, and it answers in a second.\n\nIts ceiling is well known. Multi-step requests fall apart, there is no memory across conversations, and it cannot work inside your email or project tools. Power users hit that ceiling fast.\n\nSiri runs your device. It was never built to run your workday, which is exactly the gap a proactive assistant fills.",
+  "faqs": [
+    {
+      "answer": "Siri handles quick voice commands on Apple devices: timers, calls, messages, directions, and simple questions. Complex multi-step work is beyond it.",
+      "question": "What is Siri good at?"
+    },
+    {
+      "answer": "Siri runs your device by voice. GAIA runs your work: inbox triage, calendar management, tasks, and memory across your tools. They complement more than they compete.",
+      "question": "How is Siri different from GAIA?"
+    }
+  ],
+  "howGaiaUsesIt": "GAIA does the work Siri cannot reach. It triages your inbox before you wake, prepares briefings for every meeting, creates tasks from emails and messages, and remembers your patterns across tools. Keep Siri for timers; hand GAIA the workday.",
+  "keywords": [
+    "siri",
+    "what is siri",
+    "apple siri assistant",
+    "siri voice assistant",
+    "siri limitations"
+  ],
+  "metaDescription": "Siri is Apple's built-in voice assistant for iPhone and Mac. Learn what it handles well and where a proactive assistant goes further.",
+  "metaTitle": "What Is Siri? What It Does Well and Where It Stops",
+  "relatedComparisons": [
+    "google-assistant"
+  ],
+  "relatedTerms": [
+    "ai-assistant",
+    "digital-assistant",
+    "proactive-ai",
+    "smart-notifications"
+  ],
+  "slug": "siri",
+  "term": "Siri"
+}

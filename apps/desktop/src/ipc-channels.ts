@@ -29,6 +29,8 @@ export const IPC = {
   desktopSettingsGet: "desktop-settings:get",
   desktopSettingsSetShortcut: "desktop-settings:set-shortcut",
   desktopSettingsSetIcon: "desktop-settings:set-icon",
+  desktopServerConnect: "desktop-server:connect",
+  desktopServerUseCloud: "desktop-server:use-cloud",
   bridgePair: "bridge:pair",
   bridgeStatus: "bridge:status",
   bridgeStart: "bridge:start",

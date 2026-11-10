@@ -16,7 +16,12 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCal
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
-from app.agents.context.slots import PromptSlot, is_conversation_summary, slot_of
+from app.agents.context.slots import (
+    PromptSlot,
+    is_conversation_summary,
+    is_gaia_authored_note,
+    slot_of,
+)
 from app.config.oauth_config import get_memory_extraction_prompt
 from app.constants.log_tags import LogTag
 from app.constants.memory import (
@@ -64,6 +69,7 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
             isinstance(msg, HumanMessage)
             and slot_of(msg) is PromptSlot.CONVERSATION
             and not is_conversation_summary(msg)
+            and not is_gaia_authored_note(msg)
         ):
             if len(extract_text_content(msg.content).strip()) >= MIN_USER_CONTENT_CHARS:
                 return True, "OK"
@@ -91,8 +97,8 @@ def _memory_entries(msg: AnyMessage) -> list[tuple[str, str]]:
     """Return the (role, content) rows one message contributes to the extraction transcript."""
     if isinstance(msg, HumanMessage):
         # Non-conversation slots (the re-stamped current-time message)
-        # are graph plumbing that would pollute the transcript.
-        if slot_of(msg) is not PromptSlot.CONVERSATION:
+        # are graph plumbing, and GAIA's own notes are not evidence about the user.
+        if slot_of(msg) is not PromptSlot.CONVERSATION or is_gaia_authored_note(msg):
             return []
         content = extract_text_content(msg.content)
         if not content:

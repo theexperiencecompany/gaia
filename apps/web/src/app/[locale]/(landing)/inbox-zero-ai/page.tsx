@@ -12,10 +12,13 @@ import {
 } from "@/lib/seo";
 import InboxZeroAiClient from "./InboxZeroAiClient";
 
+const PAGE_TITLE = "AI Email Triage: Reach Inbox Zero in Gmail Automatically";
+const PAGE_DESCRIPTION =
+  "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email.";
+
 export const metadata: Metadata = generatePageMetadata({
-  title: "Inbox Zero with AI: Automated Email Triage by GAIA",
-  description:
-    "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email.",
+  title: PAGE_TITLE,
+  description: PAGE_DESCRIPTION,
   path: "/inbox-zero-ai",
   keywords: [
     "inbox zero AI",
@@ -32,6 +35,11 @@ export const metadata: Metadata = generatePageMetadata({
 });
 
 const faqs = [
+  {
+    question: "How do I get to inbox zero with AI?",
+    answer:
+      "Let the AI do the first pass. Connect Gmail and GAIA labels each email by urgency, drafts replies to the ones that need you, turns requests into tasks and archives what needs nothing, so what is left in your inbox is only what needs your decision.",
+  },
   {
     question: "Does GAIA read my emails?",
     answer:
@@ -71,8 +79,8 @@ const triageSteps = [
 
 export default function InboxZeroAiPage() {
   const webPageSchema = generateWebPageSchema(
-    "Inbox Zero with AI: Automated Email Triage by GAIA",
-    "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email.",
+    PAGE_TITLE,
+    PAGE_DESCRIPTION,
     `${siteConfig.url}/inbox-zero-ai`,
     [
       { name: "Home", url: siteConfig.url },

@@ -77,11 +77,11 @@ export default function WorkflowStep({
         </div>
 
         <div className="flex flex-col items-start">
-          <h5
+          <h3
             className={`${titleTextSize} leading-relaxed font-medium text-zinc-100`}
           >
             {step.title}
-          </h5>
+          </h3>
 
           <p className={`${descriptionTextSize} leading-relaxed text-zinc-400`}>
             {step.description}

@@ -96,6 +96,11 @@ def split_message_bubbles(text: str) -> list[str]:
     return [bubble for bubble in bubbles if bubble]
 
 
+def normalize_message_breaks(text: str) -> str:
+    """Rewrite text as its bubbles joined by exactly one canonical sentinel."""
+    return NEW_MESSAGE_BREAKER.join(split_message_bubbles(text))
+
+
 _CAPTION_PARAGRAPH = "\n\n"
 
 

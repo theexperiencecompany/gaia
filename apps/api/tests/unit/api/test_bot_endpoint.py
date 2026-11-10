@@ -38,6 +38,7 @@ from app.models.payment_models import (
     ProCheckout,
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.audio_transcription_service import AudioTooLargeError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
 from shared.py.analytics.catalog.chat import ChatMessageRefused, ChatMessageSubmitted
@@ -848,7 +849,9 @@ class TestBotChatStream:
         mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
         mock_sm.start_stream = AsyncMock()
 
-        body = BotChatRequest(message="hello", platform="discord", platform_user_id="u1")
+        body = BotChatRequest.model_validate(
+            {"message": "hello", "platform": "discord", "platform_user_id": "u1"}
+        )
         request = MagicMock()
         request.state = _make_request()
 
@@ -894,7 +897,9 @@ class TestBotChatStream:
         mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
         mock_sm.start_stream = AsyncMock()
 
-        body = BotChatRequest(message="hi", platform="whatsapp", platform_user_id="wa_777")
+        body = BotChatRequest.model_validate(
+            {"message": "hi", "platform": "whatsapp", "platform_user_id": "wa_777"}
+        )
         request = MagicMock()
         request.state = _make_request()
 
@@ -934,8 +939,13 @@ class TestBotChatStream:
         mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
         mock_sm.start_stream = AsyncMock()
 
-        body = BotChatRequest(
-            message="hi", platform="discord", platform_user_id="disc_1", channel_id="chan-9"
+        body = BotChatRequest.model_validate(
+            {
+                "message": "hi",
+                "platform": "discord",
+                "platform_user_id": "disc_1",
+                "channel_id": "chan-9",
+            }
         )
         request = MagicMock()
         request.state = _make_request(
@@ -987,7 +997,9 @@ class TestBotChatStream:
         mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
         mock_sm.start_stream = AsyncMock()
 
-        body = BotChatRequest(message="hi", platform="discord", platform_user_id="disc_1")
+        body = BotChatRequest.model_validate(
+            {"message": "hi", "platform": "discord", "platform_user_id": "disc_1"}
+        )
         request = MagicMock()
         request.state = _make_request(
             user=AuthenticatedUser(user_id=MIDDLEWARE_USER_ID),
@@ -1030,7 +1042,9 @@ class TestBotChatStream:
         mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
         mock_sm.start_stream = AsyncMock()
 
-        body = BotChatRequest(message="hi", platform="discord", platform_user_id="disc_1")
+        body = BotChatRequest.model_validate(
+            {"message": "hi", "platform": "discord", "platform_user_id": "disc_1"}
+        )
         request = MagicMock()
         request.state = _make_request(user=AuthenticatedUser(user_id=MIDDLEWARE_USER_ID))
         del request.state.authenticated
@@ -1072,7 +1086,9 @@ class TestBotChatStream:
         mock_get_user.return_value = UserDocument(id=USER_ID)
         mock_session_token.return_value = "tok-77"
 
-        body = BotChatRequest(message="hello", platform="telegram", platform_user_id="tg_1")
+        body = BotChatRequest.model_validate(
+            {"message": "hello", "platform": "telegram", "platform_user_id": "tg_1"}
+        )
         request = MagicMock()
         request.state = _make_request()
 
@@ -1540,7 +1556,7 @@ class TestBotTranscribe:
         mock_transcribe: AsyncMock,
         mock_capture: MagicMock,
         client: AsyncClient,
-        fake_user: dict,
+        fake_user: AuthenticatedUser,
     ):
         """The event carries sizes, never the transcript — it is user speech."""
         audio = b"fake-audio-bytes"
@@ -1596,7 +1612,7 @@ class TestBotTranscribe:
         mock_auth: AsyncMock,
         mock_transcribe: AsyncMock,
         client: AsyncClient,
-        fake_user: dict,
+        fake_user: AuthenticatedUser,
     ):
         """The user id makes the gate a gate (asked about nobody, every caller passes), and feature is what the 402 and its metrics key on."""
         with patch(
@@ -1815,7 +1831,7 @@ class TestBotTranscribeRefusals:
     ):
         with patch(
             "app.api.v1.endpoints.bot.validate_audio_payload",
-            side_effect=bot_module.AudioTooLargeError("Audio is 9 bytes; max supported is 8."),
+            side_effect=AudioTooLargeError("Audio is 9 bytes; max supported is 8."),
         ):
             response = await client.post(f"{BOT_BASE}/transcribe", files=_VOICE_NOTE)
 
@@ -1962,7 +1978,7 @@ class TestBotChatStreamMetering:
             p[5],
             p[6],
             p[7],
-            patch("app.services.bot_service.enforce_daily_cost_budget", cost_wall),
+            patch("app.services.bot_service.enforce_cost_budget", cost_wall),
         ):
             await client.post(
                 f"{BOT_BASE}/chat-stream",
@@ -2045,9 +2061,11 @@ class TestBotChatStreamSubscriptionGate:
                     dodo_product_id="prod_pro",
                     name="Pro",
                     plan_type=PlanTier.PRO,
+                    description=None,
                     amount=3000,
                     currency="USD",
                     duration=PlanDuration.MONTHLY,
+                    max_users=None,
                     is_active=True,
                     created_at=datetime(2026, 1, 1, tzinfo=UTC),
                     updated_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -2183,9 +2201,11 @@ class TestBotRateLimitNotice:
                     dodo_product_id="prod_pro",
                     name="Pro",
                     plan_type=PlanTier.PRO,
+                    description=None,
                     amount=3000,
                     currency="USD",
                     duration=PlanDuration.MONTHLY,
+                    max_users=None,
                     is_active=True,
                     created_at=datetime(2026, 1, 1, tzinfo=UTC),
                     updated_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -2276,9 +2296,11 @@ class TestBotUpgradeLinkWindow:
                     dodo_product_id="prod_pro",
                     name="Pro",
                     plan_type=PlanTier.PRO,
+                    description=None,
                     amount=3000,
                     currency="USD",
                     duration=PlanDuration.MONTHLY,
+                    max_users=None,
                     is_active=True,
                     created_at=datetime(2026, 1, 1, tzinfo=UTC),
                     updated_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -2439,7 +2461,7 @@ class TestForwarderWiring:
             await response.aread()
 
         started_stream_id = sm.start_stream.await_args.args[0]
-        kwargs = forwarder.call_args.kwargs
+        kwargs = dict(forwarder.call_args.kwargs)
         assert callable(kwargs.pop("upgrade_url"))
         assert kwargs == {
             "stream_id": started_stream_id,

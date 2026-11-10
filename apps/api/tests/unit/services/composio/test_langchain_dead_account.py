@@ -25,15 +25,19 @@ import pytest
 
 from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
 from app.db.repositories.user_integrations import user_integration_repository
+from app.models.agent_config import ComposioAccountSelection
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.services.composio import langchain_composio_service as wrapper
-from app.services.composio.account_scope import current_selection
-from app.services.composio.dead_account import ConnectedAccountGoneError
+from app.services.composio.account_scope import current_selection, scoped_connected_account_id
 from app.services.composio.langchain_composio_service import LangchainProvider
+from app.services.integrations import integration_accounts
+from app.utils import errors
+from app.utils.errors import AppError
 from tests.factories import make_composio_not_found, make_composio_tool
 
 MODULE = "app.services.composio.langchain_composio_service"
 CHECKER = "app.utils.integration_checker"
+ACCOUNTS = "app.services.integrations.integration_accounts"
 
 DEAD_ACCOUNT_BODY = {
     "error": {
@@ -254,7 +258,9 @@ class TestDeadAccountReconciles:
         """Custom tools reach the provider through the proxy; its dead account is not a raised 404."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
-        gone = ConnectedAccountGoneError("GMAIL", 'Connected account "ca_gone" not found')
+        gone = integration_accounts.toolkit_not_connected(
+            "GMAIL", 'Connected account "ca_gone" not found', grant_died=True
+        )
         action_func = _action_func(provider, _raises(gone))
         metadata = {
             "user_id": "user-1",
@@ -319,7 +325,9 @@ class TestDeadAccountReconciles:
             "error": "The user's Gmail account work@acme.com lost its connection and must be "
             f"signed in again. {ACCOUNT_NEEDS_RECONNECT_HINT} A reconnect button has been shown "
             "to the user, so do NOT include any URL in your reply, the UI card handles it. Ask "
-            "the user to click it, then try again.",
+            "the user to click it. Nothing more can be done with Gmail until they do, so do not "
+            "call any Gmail tool again this run; finish the rest of the task and say what is "
+            "waiting on them.",
             "data": None,
         }
 
@@ -433,6 +441,12 @@ class TestNonRaisingDeadAccountResult:
 
         mock_log.warning.assert_called_once()
         assert "dead connected account" in mock_log.warning.call_args.args[0]
+        assert mock_log.warning.call_args.kwargs == {
+            "tool": "GMAIL_FETCH_MESSAGES",
+            "toolkit": "GMAIL",
+            "user_id": "user-1",
+            "err_preview": failure["error"],
+        }
 
 
 class TestASuccessfulCallIsNeverReportedDead:
@@ -574,7 +588,7 @@ class TestTheReconnectPromptIsBounded:
 class TestTheCallRunsScopedToItsAccount:
     def test_the_dispatched_account_is_in_scope_while_composio_executes(self) -> None:
         """The hook and the proxy read the scope; outside the call it must not linger."""
-        seen: dict[str, object] = {}
+        seen: dict[str, ComposioAccountSelection | None] = {}
 
         def execute_tool(_tool: str, _kwargs: dict[str, Any]) -> dict[str, Any]:
             seen["selection"] = current_selection("GMAIL")
@@ -599,15 +613,77 @@ class TestTheCallRunsScopedToItsAccount:
 class TestTheToolCallItselfIsForwarded:
     async def test_the_named_tool_and_its_arguments_reach_composio(self) -> None:
         """A dropped tool name or argument bag would execute the wrong call — a fixed-value stub would look identical to that."""
-        seen: dict[str, object] = {}
+        seen_tool: list[str] = []
+        seen_kwargs: list[dict[str, Any]] = []
 
         def execute_tool(tool: str, kwargs: dict[str, Any]) -> dict[str, Any]:
-            seen["tool"] = tool
-            seen["kwargs"] = kwargs
+            seen_tool.append(tool)
+            seen_kwargs.append(kwargs)
             return {"successful": True, "data": {}, "error": None}
 
         action_func = _action_func(LangchainProvider(), execute_tool)
         action_func(subject="hello", __runnable_config__={"metadata": {"user_id": "user-1"}})
 
-        assert seen["tool"] == "GMAIL_FETCH_MESSAGES"
-        assert seen["kwargs"]["subject"] == "hello"
+        assert seen_tool == ["GMAIL_FETCH_MESSAGES"]
+        assert seen_kwargs[0]["subject"] == "hello"
+
+
+def _pins_the_primary_account(_tool: str, _kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Run the account pin every Composio call makes, as Composio's before-execute hook does."""
+    scoped_connected_account_id("user-1", "GMAIL")
+    return {"successful": True, "data": {}, "error": None}
+
+
+class TestAnIntegrationWithNoUsableAccount:
+    """Nothing usable was connected: the wrapper expires nothing and leaves the card to invoke_tool."""
+
+    @pytest.mark.regression
+    def test_the_typed_not_connected_error_reaches_the_invocation_layer(self) -> None:
+        """Regression: it used to surface as "Error: AppError: No active GMAIL connection", no card."""
+        action_func = _action_func(LangchainProvider(), _pins_the_primary_account)
+
+        with (
+            patch(f"{ACCOUNTS}.get_account_record", AsyncMock(return_value=None)),
+            patch(f"{MODULE}.expire_account", AsyncMock()) as expire,
+            pytest.raises(errors.IntegrationNotConnectedError) as raised,
+        ):
+            action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
+
+        expire.assert_not_awaited()
+        assert raised.value.grant_died is False
+        assert (raised.value.integration_id, raised.value.integration_name) == ("gmail", "Gmail")
+
+
+class TestAProviderRejectingTheGrantShowsTheReconnectCard:
+    @pytest.mark.regression
+    async def test_a_proxied_401_expires_the_account_and_asks_for_a_reconnect(self) -> None:
+        """Composio's token was rejected and its refresh failed: the grant is dead, like a 1810."""
+        provider = LangchainProvider()
+        provider._loop = asyncio.get_running_loop()
+        rejected = integration_accounts.toolkit_not_connected(
+            "GMAIL", "token rejected", grant_died=True
+        )
+        action_func = _action_func(provider, _raises(rejected))
+        writer = MagicMock()
+
+        with (
+            patch(f"{MODULE}.expire_account", AsyncMock()) as expire,
+            _ui_chat_turn(writer),
+        ):
+            result = await asyncio.to_thread(
+                action_func, __runnable_config__={"metadata": {"user_id": "user-1"}}
+            )
+
+        expire.assert_awaited_once_with(
+            "user-1", "gmail", None, trigger="tool_execution", reason=str(rejected)
+        )
+        card = writer.call_args.args[0]["integration_connection_required"]
+        assert card["expired"] is True
+        assert result["successful"] is False
+
+    def test_an_app_error_that_is_not_about_the_connection_still_raises(self) -> None:
+        failure = AppError(message="GMAIL API error (500)", status_code=502)
+        action_func = _action_func(LangchainProvider(), _raises(failure))
+
+        with pytest.raises(AppError):
+            action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})

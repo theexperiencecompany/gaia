@@ -1,0 +1,57 @@
+{
+  "slug": "ai-assistant-vs-ai-agent",
+  "term": "AI Assistant vs AI Agent",
+  "metaTitle": "AI Assistant vs AI Agent: What Is the Difference?",
+  "metaDescription": "An AI assistant helps when you ask; an AI agent pursues a goal on its own with tools. See the differences, real examples, and when you need each one.",
+  "definition": "An AI assistant is AI that helps a person on request: you ask, it answers or carries out the task, and you stay in the loop. An AI agent is AI that is given a goal and works toward it by itself, deciding which steps to take and which tools to use along the way. Most capable AI assistants today are built on agents underneath.",
+  "extendedDescription": "The two terms describe different amounts of autonomy. An AI assistant is defined by its relationship to you: it waits for a request, responds inside a conversation, and hands control back after each turn. Siri setting a timer and ChatGPT drafting an email are assistant behaviour. An AI agent is defined by its relationship to a goal: it plans a sequence of steps, calls tools such as an inbox, a calendar or a browser, checks the result, and keeps going until the goal is met or it needs help. An agent that watches incoming email, files the action items as tasks and schedules the follow-up meeting is acting on its own between your requests. In practice the line blurs, because modern assistants increasingly use agents to do the work you ask for. A useful test is to ask who starts the work and who decides the next step. If you start it and approve each step, it is an assistant. If it starts from a goal or a trigger and chooses its own steps, it is an agent. Agents trade convenience for oversight, which is why good agent systems let a human approve risky actions such as sending, deleting or paying.",
+  "keywords": [
+    "ai assistant vs ai agent",
+    "ai agent vs ai assistant",
+    "difference between ai assistant and ai agent",
+    "ai agent vs assistant",
+    "is chatgpt an ai agent",
+    "ai assistant or ai agent",
+    "virtual assistant vs ai agent"
+  ],
+  "category": "ai-concepts",
+  "howGaiaUsesIt": "GAIA is an AI assistant on the outside and a system of AI agents underneath. You talk to one assistant that knows your context and memory. When a request needs real work, it hands the job to an executor agent that holds the tools for your email, calendar, tasks and connected apps, and that agent can bring in specialised subagents for individual integrations. Workflows push GAIA fully into agent territory: they start on a schedule or when something happens in a connected tool, such as a new email, and run without a prompt. Approval modes decide how much oversight you keep, from asking before anything is sent, deleted or posted to running what you clearly asked for.",
+  "relatedTerms": [
+    "ai-assistant",
+    "ai-agent",
+    "chatbot-vs-ai-assistant",
+    "agentic-ai",
+    "autonomous-agent",
+    "human-in-the-loop",
+    "subagent",
+    "proactive-ai"
+  ],
+  "faqs": [
+    {
+      "question": "What is the main difference between an AI assistant and an AI agent?",
+      "answer": "Autonomy. An AI assistant responds to your requests one turn at a time, and you decide what happens next. An AI agent is given a goal, plans its own steps, uses tools to carry them out, and keeps working until the goal is met or it needs your input."
+    },
+    {
+      "question": "Is ChatGPT an AI assistant or an AI agent?",
+      "answer": "In everyday use ChatGPT is an AI assistant: it answers and drafts inside a conversation when you prompt it. Features that let a model browse, call tools and take several steps toward a goal are agent behaviour, so the same product can sit on both sides of the line depending on how it is used."
+    },
+    {
+      "question": "Is Siri an AI agent?",
+      "answer": "Mostly no. Siri is a voice assistant that carries out single commands, such as setting a timer or sending a message, when you ask. It does not pursue a multi-step goal on its own."
+    },
+    {
+      "question": "Is an AI agent better than an AI assistant?",
+      "answer": "Not by default. Agents save more time on repetitive, multi-step work, but they need access to your tools and sensible limits. An assistant is enough when you want help with one thing at a time and prefer to stay in control of every step."
+    },
+    {
+      "question": "Is GAIA an AI assistant or an AI agent?",
+      "answer": "Both. You talk to GAIA as one assistant, and it uses agents to do the work: an executor agent with access to your connected tools, plus workflows that run on a schedule or when a new email or calendar event arrives. You choose how often it asks for approval before acting."
+    }
+  ],
+  "relatedComparisons": [
+    "chatgpt",
+    "lindy-ai",
+    "siri",
+    "claude"
+  ]
+}

@@ -5,6 +5,7 @@ model-facing strings the @tool entry points in tracked_todo_tools return.
 """
 
 from datetime import UTC, datetime
+from typing import Literal
 
 from app.agents.tools.tracked_todo_fields import format_first_fire_note
 from app.constants.todos import (
@@ -30,11 +31,13 @@ from app.services.todos.errors import (
     SubTodoParentError,
     UnwatchedTodoKeptError,
 )
+from app.services.todos.open_state import describe_open_state
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
 from app.services.triggers.scope_catalog import scope_fields_for
 from app.services.triggers.subscription_service import SubscriptionError
 from app.utils.canvas_vector_utils import CanvasSearchMatch
 from app.utils.general_utils import clip_text
+from app.utils.timezone import Timezone
 
 
 def build_list_detail_parts(doc: TodoDocument, now: datetime) -> list[str]:
@@ -69,6 +72,7 @@ def format_tracked_todo_full(doc: TodoDocument, now: datetime) -> str:
     parts = [
         f'- "{doc.title}"{labels_str} (ID: {doc.id})',
         f"  Priority: {doc.priority.value} | Age: {age_days}d | Last updated: {last_update}d ago",
+        f"  State: {describe_open_state(doc, now)}",
         f"  files: /workspace/gaia-tasks/{folder_name(doc.id, doc.title)}/",
     ]
     if doc.external_ref:
@@ -157,6 +161,19 @@ def format_create_output(
     if notes:
         out += "\nDetails:\n  - " + "\n  - ".join(notes)
     return out
+
+
+def format_open_state_refusal(
+    problems: list[str], user_tz_name: str, *, refused: Literal["created", "updated"]
+) -> str:
+    """Tell the model what next step is missing, the options, and the user's local now."""
+    local_now = datetime.now(Timezone.parse(user_tz_name).tzinfo)
+    listed = "\n".join(f"- {problem}" for problem in problems)
+    return (
+        f"Not {refused}: an open tracked todo needs a next step, so it can never be forgotten.\n"
+        f"{listed}\n"
+        f"Now: {local_now.strftime('%a %d %b %Y, %H:%M %Z')}. Nothing was saved."
+    )
 
 
 def format_refused_create_output(

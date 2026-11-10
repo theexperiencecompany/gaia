@@ -7,24 +7,67 @@ as "nothing left to delete" — the one failure this file exists to catch.
 
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import MagicMock, call
+import argparse
+from contextlib import ExitStack
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 from bson import ObjectId
+from chromadb.api import ClientAPI
 import pytest
 
+from app.config.settings import settings
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, object_id_filter
+from app.models.platform_models import PlatformLinkEntry
+from app.models.user_models import UserDocument
 from app.scripts.delete_user_account import (
     JFS_USERS_ROOT,
     PG_USER_TABLES,
+    _build_footprint,
     _chroma_inventory,
+    _delete_local_stores,
+    _delete_mongo_data,
+    _delete_postgres_data,
+    _delete_workos_identity,
+    _failures,
+    _Footprint,
     _mongo_inventory,
     _pg_inventory,
+    _remove_resend_contact,
+    _revoke_external_access,
+    _run,
+    _verify_removal,
 )
 
 UID = "67689b80006f6eec3f6f6df8"
 # Deliberately unnormalized: the footprint must lowercase and strip it.
 RAW_EMAIL = "User@Example.COM "
+
+
+def _user_doc(uid: str = UID, email: str = "user@example.com", **fields: Any) -> UserDocument:
+    return UserDocument.model_validate({"id": uid, "email": email, "name": "U", **fields})
+
+
+def _link(platform: str, platform_user_id: str) -> PlatformLinkEntry:
+    return {
+        "platform": platform,
+        "platformUserId": platform_user_id,
+        "username": None,
+        "displayName": None,
+        "connectedAt": None,
+    }
+
+
+@pytest.fixture
+def resolved_users():
+    """Patch the email lookup to resolve to one user; tests override return_value."""
+    with patch(
+        "app.scripts.delete_user_account.user_repository.find_by_email_ignoring_case",
+        new_callable=AsyncMock,
+        return_value=[_user_doc()],
+    ) as finder:
+        yield finder
 
 
 class FakeCollection:
@@ -51,32 +94,36 @@ class FakeClient:
         return self._collections[name]
 
 
+def _client(*collections: FakeCollection) -> ClientAPI:
+    """Pass the fake as a ClientAPI; it implements the two methods _chroma_inventory calls."""
+    return cast(ClientAPI, FakeClient(list(collections)))
+
+
 @pytest.mark.unit
 class TestChromaInventory:
     def test_counts_each_collections_matching_vectors(self) -> None:
-        client = FakeClient(
-            [
-                FakeCollection("memories", ["a", "b", "c"]),
-                FakeCollection("conversations", ["d"]),
-            ]
+        client = _client(
+            FakeCollection("memories", ["a", "b", "c"]),
+            FakeCollection("conversations", ["d"]),
         )
 
         assert _chroma_inventory(client, UID) == {"memories": 3, "conversations": 1}
 
     def test_collections_holding_nothing_are_left_out(self) -> None:
         """A zero-count collection is omitted — it would read as a surviving collection to go looking for."""
-        client = FakeClient([FakeCollection("memories", ["a"]), FakeCollection("empty", [])])
+        client = _client(FakeCollection("memories", ["a"]), FakeCollection("empty", []))
 
         assert _chroma_inventory(client, UID) == {"memories": 1}
 
     def test_every_collection_is_filtered_to_this_user(self) -> None:
         """An unfiltered read would report, and the delete pass would then act on, other people's vectors."""
         memories = FakeCollection("memories", ["a"])
-        client = FakeClient([memories])
+        client = _client(memories)
 
         _chroma_inventory(client, UID)
 
-        assert memories.calls[0]["where"] == {"user_id": UID}
+        # include=[] fetches ids only; the limit is set far past any one user's vector count.
+        assert memories.calls == [{"where": {"user_id": UID}, "limit": 200_000, "include": []}]
 
     def test_a_collection_with_no_ids_key_counts_as_empty(self) -> None:
         """Chroma omits ids rather than returning an empty list on some backends."""
@@ -85,7 +132,7 @@ class TestChromaInventory:
             def get(self, **kwargs: Any) -> dict[str, Any]:
                 return {}
 
-        assert _chroma_inventory(FakeClient([NoIds("memories", [])]), UID) == {}
+        assert _chroma_inventory(_client(NoIds("memories", [])), UID) == {}
 
 
 @pytest.mark.unit
@@ -103,13 +150,14 @@ class TestMongoInventory:
         db.list_collection_names.return_value = ["users"]
         # Non-zero on BOTH sides so the += is observable: a mutant that
         # overwrites instead of adding reports 1 rather than 3.
-        per_collection = {"users": MagicMock(), "fs.files": MagicMock()}
+        per_collection = {"users": MagicMock()}
         db.__getitem__.side_effect = per_collection.__getitem__
         per_collection["users"].count_documents.return_value = 2
         db.users.count_documents.return_value = 1
-        per_collection["fs.files"].count_documents.return_value = 0
 
-        counts = _mongo_inventory(db, UID, "user@example.com")
+        with patch("app.scripts.delete_user_account.gridfs.GridFSBucket") as bucket_cls:
+            bucket_cls.return_value.find.return_value = []
+            counts = _mongo_inventory(db, UID, "user@example.com")
 
         assert counts == {"users": 3}
         db.users.count_documents.assert_called_once_with({"_id": ObjectId(UID)})
@@ -129,15 +177,15 @@ class TestMongoInventory:
             "fs.chunks": MagicMock(),
             "support_requests": MagicMock(),
             "empty_one": MagicMock(),
-            "fs.files": MagicMock(),
         }
         db.__getitem__.side_effect = per_collection.__getitem__
         per_collection["todos"].count_documents.return_value = 3
         per_collection["support_requests"].count_documents.return_value = 2
         per_collection["empty_one"].count_documents.return_value = 0
-        per_collection["fs.files"].count_documents.return_value = 4
 
-        counts = _mongo_inventory(db, UID, email)
+        with patch("app.scripts.delete_user_account.gridfs.GridFSBucket") as bucket_cls:
+            bucket_cls.return_value.find.return_value = [object()] * 4
+            counts = _mongo_inventory(db, UID, email)
 
         assert counts == {"todos": 3, "support_requests": 2, "fs.files(gridfs)": 4}
         per_collection["todos"].count_documents.assert_called_once_with({"user_id": UID})
@@ -145,9 +193,8 @@ class TestMongoInventory:
             {"$or": [{"user_id": UID}, {"user_email": email}]}
         )
         per_collection["fs.chunks"].count_documents.assert_not_called()
-        per_collection["fs.files"].count_documents.assert_called_once_with(
-            {"metadata.user_id": UID}
-        )
+        bucket_cls.assert_called_once_with(db)
+        bucket_cls.return_value.find.assert_called_once_with({"metadata.user_id": UID})
 
 
 @pytest.mark.unit
@@ -190,9 +237,6 @@ class TestPgInventory:
 
 def _footprint(**overrides: Any) -> Any:
     """Build a _Footprint with MagicMock clients; override any field by name."""
-    from unittest.mock import AsyncMock
-
-    from app.scripts.delete_user_account import JFS_USERS_ROOT, _Footprint
 
     workos = MagicMock()
     workos.user_management.delete_user = AsyncMock()
@@ -224,8 +268,6 @@ def _footprint(**overrides: Any) -> Any:
 
 @pytest.fixture(autouse=True)
 def _clean_failures():
-    from app.scripts.delete_user_account import _failures
-
     _failures.clear()
     yield
     _failures.clear()
@@ -234,11 +276,6 @@ def _clean_failures():
 @pytest.mark.unit
 class TestRevokeExternalAccess:
     async def test_deletes_every_composio_account_then_kills_sandboxes(self) -> None:
-        from unittest.mock import AsyncMock, patch
-
-        from app.config.settings import settings
-        from app.scripts.delete_user_account import _revoke_external_access
-
         account = MagicMock()
         account.id = "acc-1"
         account.toolkit.slug = "gmail"
@@ -254,10 +291,6 @@ class TestRevokeExternalAccess:
         )
 
     async def test_a_composio_failure_is_recorded_not_raised(self) -> None:
-        from unittest.mock import AsyncMock, patch
-
-        from app.scripts.delete_user_account import _failures, _revoke_external_access
-
         account = MagicMock()
         account.id = "acc-boom"
         account.toolkit.slug = "gmail"
@@ -272,10 +305,6 @@ class TestRevokeExternalAccess:
         assert "composio:acc-boom" in _failures[0]
 
     async def test_a_sandbox_kill_failure_is_recorded_not_raised(self) -> None:
-        from unittest.mock import AsyncMock, patch
-
-        from app.scripts.delete_user_account import _failures, _revoke_external_access
-
         d = _footprint(sandbox_ids=["sbx-boom"])
         with patch("app.scripts.delete_user_account.AsyncSandbox") as sandbox:
             sandbox.kill = AsyncMock(side_effect=RuntimeError("kill failed"))
@@ -288,13 +317,8 @@ class TestRevokeExternalAccess:
 @pytest.mark.unit
 class TestDeleteMongoData:
     def test_gridfs_collections_and_users_doc_are_all_deleted(self, capsys: Any) -> None:
-        from unittest.mock import MagicMock, patch
-
-        from app.scripts.delete_user_account import _delete_mongo_data
-
         d = _footprint()
         files_col = MagicMock()
-        files_col.find.return_value = [{"_id": "file-1"}]
         todos = MagicMock()
         todos.delete_many.return_value.deleted_count = 3
         users = MagicMock()
@@ -306,12 +330,13 @@ class TestDeleteMongoData:
         d.db.list_collection_names.return_value = ["todos", "users", "fs.files", "fs.chunks"]
 
         with patch("app.scripts.delete_user_account.gridfs.GridFSBucket") as bucket_cls:
+            bucket_cls.return_value.find.return_value = [SimpleNamespace(_id="file-1")]
             _delete_mongo_data(d)
 
-        # GridFS files are deleted through the bucket, one per fs.files doc.
+        # GridFS files are deleted through the bucket, one per stored file of this user.
         bucket_cls.assert_called_once_with(d.db)
+        bucket_cls.return_value.find.assert_called_once_with({"metadata.user_id": UID})
         bucket_cls.return_value.delete.assert_called_once_with("file-1")
-        files_col.find.assert_called_once_with({"metadata.user_id": UID}, {"_id": 1})
         # The plain-collection loop skips every fs.* collection...
         files_col.delete_many.assert_not_called()
         chunks.delete_many.assert_not_called()
@@ -321,10 +346,6 @@ class TestDeleteMongoData:
         assert "[mongo] todos: deleted 3" in capsys.readouterr().out
 
     def test_support_requests_are_deleted_by_email_too(self, capsys: Any) -> None:
-        from unittest.mock import MagicMock, patch
-
-        from app.scripts.delete_user_account import _delete_mongo_data
-
         d = _footprint()
         support = MagicMock()
         support.delete_many.side_effect = [
@@ -349,16 +370,12 @@ class TestDeleteMongoData:
         # Both counts fold into one reported step.
         assert "[mongo] support_requests: deleted 3" in capsys.readouterr().out
 
+    @pytest.mark.regression
     def test_bot_sessions_also_delete_by_platform_ids(self, capsys: Any) -> None:
-        from unittest.mock import MagicMock, patch
-
-        from app.scripts.delete_user_account import _delete_mongo_data
-
         d = _footprint(
             platform_links={
-                "telegram": {"platform_user_id": "tg-1"},
-                "whatsapp": "wa-raw",
-                "slack": {"other": "x"},
+                "telegram": _link("telegram", "tg-1"),
+                "whatsapp": _link("whatsapp", "wa-1"),
             }
         )
         bots = MagicMock()
@@ -380,17 +397,16 @@ class TestDeleteMongoData:
             _delete_mongo_data(d)
 
         second = bots.delete_many.call_args_list[1]
-        # dict links contribute their platform_user_id; a raw link contributes itself.
+        # Scoped by platform too: the same id on two platforms is two accounts.
         assert second.args[0] == {
-            "platform_user_id": {"$in": ["tg-1", "wa-raw", str({"other": "x"})]}
+            "$or": [
+                {"platform": "telegram", "platform_user_id": "tg-1"},
+                {"platform": "whatsapp", "platform_user_id": "wa-1"},
+            ]
         }
         assert "[mongo] bot_sessions: deleted 6" in capsys.readouterr().out
 
     def test_bot_sessions_without_platform_links_only_delete_by_user_id(self, capsys: Any) -> None:
-        from unittest.mock import MagicMock, patch
-
-        from app.scripts.delete_user_account import _delete_mongo_data
-
         d = _footprint(platform_links={})
         bots = MagicMock()
         bots.delete_many.side_effect = [MagicMock(deleted_count=0), MagicMock(deleted_count=7)]
@@ -410,10 +426,6 @@ class TestDeleteMongoData:
         assert bots.delete_many.call_args_list == [call({"user_id": UID})]
 
     def test_zero_count_deletions_are_not_reported_as_steps(self, capsys: Any) -> None:
-        from unittest.mock import MagicMock, patch
-
-        from app.scripts.delete_user_account import _delete_mongo_data
-
         d = _footprint()
         notes = MagicMock()
         notes.delete_many.return_value.deleted_count = 0
@@ -434,14 +446,10 @@ class TestDeleteMongoData:
         assert "[mongo] notes" not in out
 
     def test_an_exception_is_recorded_as_a_failed_step(self) -> None:
-        from app.scripts.delete_user_account import _delete_mongo_data
-
         d = _footprint()
         d.db.list_collection_names.side_effect = RuntimeError("mongo down")
 
         _delete_mongo_data(d)
-
-        from app.scripts.delete_user_account import _failures
 
         assert len(_failures) == 1
         assert _failures[0].startswith("mongo:")
@@ -449,8 +457,6 @@ class TestDeleteMongoData:
 
 class TestDeletePostgresData:
     def test_user_tables_then_checkpoint_threads_are_deleted_and_committed(self) -> None:
-        from app.scripts.delete_user_account import _delete_postgres_data
-
         d = _footprint(conversation_ids=["conv-1"])
         cur = MagicMock()
         cur.rowcount = 0
@@ -482,8 +488,6 @@ class TestDeletePostgresData:
         d.pg.commit.assert_called_once()
 
     def test_the_like_pattern_escapes_wildcards_in_conversation_ids(self) -> None:
-        from app.scripts.delete_user_account import _delete_postgres_data
-
         d = _footprint(conversation_ids=["a%b_c\\d"])
         cur = MagicMock()
         cur.rowcount = 0
@@ -496,8 +500,6 @@ class TestDeletePostgresData:
         assert patterns == {"%a\\%b\\_c\\\\d%"}
 
     def test_an_exception_rolls_back_and_is_recorded(self) -> None:
-        from app.scripts.delete_user_account import _delete_postgres_data
-
         d = _footprint()
         d.pg.cursor.side_effect = RuntimeError("pg down")
 
@@ -505,7 +507,6 @@ class TestDeletePostgresData:
 
         d.pg.rollback.assert_called_once()
         d.pg.commit.assert_not_called()
-        from app.scripts.delete_user_account import _failures
 
         assert len(_failures) == 1
         assert _failures[0].startswith("postgres:")
@@ -514,10 +515,6 @@ class TestDeletePostgresData:
 @pytest.mark.unit
 class TestDeleteLocalStores:
     def test_chroma_juicefs_and_redis_are_cleared(self, tmp_path: Any, capsys: Any) -> None:
-        from unittest.mock import patch
-
-        from app.scripts.delete_user_account import _delete_local_stores
-
         ws = tmp_path / "ws"
         ws.mkdir()
         vectors = MagicMock()
@@ -538,23 +535,16 @@ class TestDeleteLocalStores:
         d.redis_client.unlink.assert_called_once_with("k1", "k2")
 
     def test_chroma_failure_is_recorded_and_the_rest_still_runs(self) -> None:
-        from app.scripts.delete_user_account import _delete_local_stores
-
         d = _footprint(chroma_counts={"vectors": 5}, redis_keys=["k1"])
         d.chroma.get_collection.side_effect = RuntimeError("chroma down")
 
         _delete_local_stores(d)
 
         d.redis_client.unlink.assert_called_once_with("k1")
-        from app.scripts.delete_user_account import _failures
 
         assert any(f.startswith("chroma:") for f in _failures)
 
     def test_a_missing_juicefs_path_is_not_rmtree_d(self) -> None:
-        from unittest.mock import patch
-
-        from app.scripts.delete_user_account import _delete_local_stores
-
         jfs = MagicMock()
         jfs.exists.return_value = False
         d = _footprint(jfs_path=jfs)
@@ -563,13 +553,10 @@ class TestDeleteLocalStores:
             _delete_local_stores(d)
 
         rmtree.assert_not_called()
-        from app.scripts.delete_user_account import _failures
 
         assert not _failures
 
     def test_redis_unlink_is_skipped_without_keys_but_still_reported(self, capsys: Any) -> None:
-        from app.scripts.delete_user_account import _delete_local_stores
-
         d = _footprint(redis_keys=[])
 
         _delete_local_stores(d)
@@ -581,10 +568,6 @@ class TestDeleteLocalStores:
 @pytest.mark.unit
 class TestRemoveResendContact:
     def test_removes_the_contact_when_an_audience_is_configured(self, capsys: Any) -> None:
-        from unittest.mock import patch
-
-        from app.scripts.delete_user_account import _remove_resend_contact
-
         with (
             patch("app.scripts.delete_user_account.resend") as resend,
             patch("app.scripts.delete_user_account.settings") as settings,
@@ -600,10 +583,6 @@ class TestRemoveResendContact:
         assert "[resend] removed contact user@example.com" in capsys.readouterr().out
 
     def test_skips_without_an_audience_id(self) -> None:
-        from unittest.mock import patch
-
-        from app.scripts.delete_user_account import _remove_resend_contact
-
         with (
             patch("app.scripts.delete_user_account.resend") as resend,
             patch("app.scripts.delete_user_account.settings") as settings,
@@ -618,8 +597,6 @@ class TestRemoveResendContact:
 @pytest.mark.unit
 class TestDeleteWorkosIdentity:
     async def test_deletes_every_workos_user(self) -> None:
-        from app.scripts.delete_user_account import _delete_workos_identity
-
         user = MagicMock()
         user.id = "wus-1"
         d = _footprint(workos_users=[user])
@@ -629,10 +606,6 @@ class TestDeleteWorkosIdentity:
         d.workos.user_management.delete_user.assert_awaited_once_with("wus-1")
 
     async def test_a_delete_failure_is_recorded_not_raised(self) -> None:
-        from unittest.mock import AsyncMock
-
-        from app.scripts.delete_user_account import _delete_workos_identity
-
         user = MagicMock()
         user.id = "wus-boom"
         d = _footprint(workos_users=[user])
@@ -640,25 +613,18 @@ class TestDeleteWorkosIdentity:
 
         await _delete_workos_identity(d)
 
-        from app.scripts.delete_user_account import _failures
-
         assert any("workos:wus-boom" in f for f in _failures)
 
 
 @pytest.mark.unit
 class TestRunGuards:
-    async def test_execute_mode_aborts_when_uid_does_not_match(self, monkeypatch: Any) -> None:
-        import argparse
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        from app.scripts.delete_user_account import _run
-
+    async def test_execute_mode_aborts_when_uid_does_not_match(
+        self, resolved_users: AsyncMock, monkeypatch: Any
+    ) -> None:
         args = argparse.Namespace(
             email="User@Example.com ", execute=True, uid="0" * 24, confirm_email="user@example.com"
         )
         db = MagicMock()
-        user = {"_id": ObjectId(UID), "email": "user@example.com", "name": "U"}
-        db.users.find.return_value = [user]
         with (
             patch(
                 "app.scripts.delete_user_account.MongoClient",
@@ -669,20 +635,13 @@ class TestRunGuards:
             with pytest.raises(SystemExit, match="does not match resolved uid"):
                 await _run(args)
 
-    async def test_dry_run_reports_without_deleting(self, monkeypatch: Any, capsys: Any) -> None:
-        import argparse
-        from contextlib import ExitStack
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        from app.config.settings import settings
-        from app.scripts.delete_user_account import _run
-
+    async def test_dry_run_reports_without_deleting(
+        self, resolved_users: AsyncMock, monkeypatch: Any, capsys: Any
+    ) -> None:
         args = argparse.Namespace(
             email="user@example.com", execute=False, uid=None, confirm_email=None
         )
         db = MagicMock()
-        user = {"_id": ObjectId(UID), "email": "user@example.com", "name": "U"}
-        db.users.find.return_value = [user]
         footprint = _footprint()
         phase_names = [
             "_revoke_external_access",
@@ -718,9 +677,7 @@ class TestRunGuards:
         mongo_client.assert_called_once_with(settings.MONGO_DB)
         fake_client.__getitem__.assert_called_once_with(MONGO_DATABASE_NAME)
         # The resolve step sees the normalized email.
-        db.users.find.assert_called_once_with(
-            {"email": {"$regex": "^user@example\\.com$", "$options": "i"}}
-        )
+        resolved_users.assert_awaited_once_with("user@example.com")
         for mock in phase_mocks.values():
             mock.assert_not_called()
         assert rc == 0
@@ -738,8 +695,6 @@ class TestRunGuards:
 @pytest.mark.unit
 class TestDeletePostgresDataSteps:
     def test_nonzero_rowcounts_are_reported_for_tables_and_checkpoints(self, capsys: Any) -> None:
-        from app.scripts.delete_user_account import _delete_postgres_data
-
         d = _footprint(conversation_ids=["conv-7"])
         cur = MagicMock()
         cur.rowcount = 4
@@ -755,10 +710,6 @@ class TestDeletePostgresDataSteps:
 @pytest.mark.unit
 class TestDeleteLocalStoresFailures:
     def test_a_juicefs_rmtree_failure_is_recorded_not_raised(self, tmp_path: Any) -> None:
-        from unittest.mock import patch
-
-        from app.scripts.delete_user_account import _delete_local_stores
-
         ws = tmp_path / "ws"
         ws.mkdir()
         d = _footprint(jfs_path=ws)
@@ -768,19 +719,13 @@ class TestDeleteLocalStoresFailures:
         ):
             _delete_local_stores(d)
 
-        from app.scripts.delete_user_account import _failures
-
         assert any(f.startswith("juicefs:") for f in _failures)
 
     def test_a_redis_unlink_failure_is_recorded_not_raised(self) -> None:
-        from app.scripts.delete_user_account import _delete_local_stores
-
         d = _footprint(redis_keys=["k1"])
         d.redis_client.unlink.side_effect = RuntimeError("redis down")
 
         _delete_local_stores(d)
-
-        from app.scripts.delete_user_account import _failures
 
         assert any(f.startswith("redis:") for f in _failures)
 
@@ -788,10 +733,6 @@ class TestDeleteLocalStoresFailures:
 @pytest.mark.unit
 class TestRemoveResendContactFailure:
     def test_a_resend_failure_is_recorded_not_raised(self) -> None:
-        from unittest.mock import patch
-
-        from app.scripts.delete_user_account import _remove_resend_contact
-
         with (
             patch("app.scripts.delete_user_account.resend") as resend,
             patch("app.scripts.delete_user_account.settings") as settings,
@@ -800,8 +741,6 @@ class TestRemoveResendContactFailure:
             settings.RESEND_AUDIENCE_ID = "aud-1"
             resend.Contacts.remove.side_effect = RuntimeError("resend down")
             _remove_resend_contact(_footprint())
-
-        from app.scripts.delete_user_account import _failures
 
         assert any(f.startswith("resend:") for f in _failures)
 
@@ -818,10 +757,6 @@ class TestVerifyRemoval:
         redis_keys: list[str] | None = None,
         jfs_exists: bool = False,
     ) -> int:
-        from unittest.mock import patch
-
-        from app.scripts.delete_user_account import _verify_removal
-
         jfs = MagicMock()
         jfs.exists.return_value = jfs_exists
         d.jfs_path = jfs
@@ -896,8 +831,6 @@ class TestVerifyRemoval:
         assert "juicefs: REMNANT True" in out
 
     async def test_composio_remnant_counts_only_active_accounts(self, capsys: Any) -> None:
-        from unittest.mock import MagicMock
-
         active = MagicMock()
         active.id = "acc-active"
         active.status = "ACTIVE"
@@ -918,8 +851,6 @@ class TestVerifyRemoval:
         assert "acc-revoked" not in out
 
     async def test_a_composio_listing_without_items_reads_as_clean(self, capsys: Any) -> None:
-        from unittest.mock import Mock
-
         d = _footprint()
         # Some backends omit `items` entirely; the sweep must treat that as
         # "no accounts left", not crash the verification pass.
@@ -931,8 +862,6 @@ class TestVerifyRemoval:
         assert "composio: CLEAN" in capsys.readouterr().out
 
     async def test_workos_remnant_lists_by_email_and_reports_ids(self, capsys: Any) -> None:
-        from unittest.mock import AsyncMock, MagicMock
-
         survivor = MagicMock()
         survivor.id = "wus-1"
         d = _footprint()
@@ -947,8 +876,6 @@ class TestVerifyRemoval:
     async def test_failed_steps_return_one_even_when_every_store_is_clean(
         self, capsys: Any
     ) -> None:
-        from app.scripts.delete_user_account import _failures
-
         _failures.append("composio:acc-1: RuntimeError: api down")
         try:
             rc = await self._verify(_footprint())
@@ -963,7 +890,7 @@ class TestVerifyRemoval:
 
 async def _run_build_footprint(
     db: Any,
-    user: Any,
+    user: UserDocument,
     *,
     uid: str = UID,
     composio_items: list[Any] | None = None,
@@ -974,10 +901,6 @@ async def _run_build_footprint(
 
     Returns the footprint plus every mock the tests need to inspect.
     """
-    import argparse
-    from unittest.mock import AsyncMock, MagicMock, patch
-
-    from app.scripts.delete_user_account import PG_USER_TABLES, _build_footprint
 
     args = argparse.Namespace(email=RAW_EMAIL)
     conn = MagicMock()
@@ -1050,11 +973,7 @@ async def _run_build_footprint(
 @pytest.mark.unit
 class TestBuildFootprint:
     async def test_opens_every_client_with_the_configured_settings(self) -> None:
-        from unittest.mock import MagicMock
-
-        from app.config.settings import settings
-
-        d, mocks = await _run_build_footprint(MagicMock(), {})
+        d, mocks = await _run_build_footprint(MagicMock(), _user_doc())
 
         mocks["pg_connect"].assert_called_once_with(settings.POSTGRES_URL)
         mocks["chroma_cls"].assert_called_once_with(
@@ -1073,9 +992,9 @@ class TestBuildFootprint:
         workos_user.id = "wus-1"
 
         db = MagicMock()
-        db.e2b_sandboxes.find.return_value = [{"sandbox_id": "sbx-1"}]
-        db.conversations.find.return_value = [{"conversation_id": "conv-1"}]
-        user = {"platform_links": {"telegram": {"platform_user_id": "tg-1"}}}
+        db.e2b_sandboxes.distinct.return_value = ["sbx-1"]
+        db.conversations.distinct.return_value = ["conv-1"]
+        user = _user_doc(platform_links={"telegram": {"id": "tg-1"}})
 
         d, mocks = await _run_build_footprint(
             db, user, composio_items=[account], workos_users=[workos_user]
@@ -1099,14 +1018,14 @@ class TestBuildFootprint:
         # ...and every field the teardown and verification phases need.
         # The email is normalized exactly like the resolve step normalizes it.
         assert d.email == "user@example.com"
-        assert d.platform_links == {"telegram": {"platform_user_id": "tg-1"}}
+        assert d.platform_links == {"telegram": _link("telegram", "tg-1")}
         assert d.sandbox_ids == ["sbx-1"]
         assert d.conversation_ids == ["conv-1"]
         assert d.composio_accounts == [account]
         assert d.workos_users == [workos_user]
         assert d.jfs_path == JFS_USERS_ROOT / UID
-        db.e2b_sandboxes.find.assert_called_once_with({"user_id": UID}, {"sandbox_id": 1})
-        db.conversations.find.assert_called_once_with({"user_id": UID}, {"conversation_id": 1})
+        db.e2b_sandboxes.distinct.assert_called_once_with("sandbox_id", {"user_id": UID})
+        db.conversations.distinct.assert_called_once_with("conversation_id", {"user_id": UID})
         mocks["composio"].connected_accounts.list.assert_called_once_with(user_ids=[UID])
         mocks["workos"].user_management.list_users.assert_awaited_once_with(email=RAW_EMAIL)
         out = capsys.readouterr().out
@@ -1122,38 +1041,32 @@ class TestBuildFootprint:
         self, capsys: Any
     ) -> None:
         """An empty postgres inventory must print "postgres: none", not "postgres: {}"."""
-        await _run_build_footprint(MagicMock(), {}, pg_counts={})
+        await _run_build_footprint(MagicMock(), _user_doc(), pg_counts={})
 
         assert "postgres: none" in capsys.readouterr().out.splitlines()
 
-    @pytest.mark.parametrize("user", [{}, {"platform_links": None}, {"other": 1}])
-    async def test_platform_links_fall_back_to_an_empty_dict(self, user: Any) -> None:
-        from unittest.mock import MagicMock
-
-        d, _ = await _run_build_footprint(MagicMock(), user)
+    @pytest.mark.parametrize(
+        "links", [None, {}, {"telegram": "legacy-raw-id"}, {"slack": {"username": "no-id"}}]
+    )
+    async def test_only_links_with_an_id_reach_the_footprint(self, links: Any) -> None:
+        """A link the app itself cannot resolve to a platform account has no bot session to erase."""
+        d, _ = await _run_build_footprint(MagicMock(), _user_doc(platform_links=links))
 
         assert d.platform_links == {}
 
     async def test_aborts_when_the_jfs_path_escapes_the_users_root(self) -> None:
-        from unittest.mock import MagicMock
-
         with pytest.raises(SystemExit, match="refusing to touch"):
-            await _run_build_footprint(MagicMock(), {}, uid="../escape")
+            await _run_build_footprint(MagicMock(), _user_doc(), uid="../escape")
 
 
 @pytest.mark.unit
 class TestRunExecuteMode:
-    async def test_aborts_when_resolved_uid_is_not_24_hex(self) -> None:
-        import argparse
-        from unittest.mock import MagicMock, patch
-
-        from app.scripts.delete_user_account import _run
-
+    async def test_aborts_when_resolved_uid_is_not_24_hex(self, resolved_users: AsyncMock) -> None:
         args = argparse.Namespace(
             email="user@example.com", execute=True, uid=UID, confirm_email="user@example.com"
         )
         db = MagicMock()
-        db.users.find.return_value = [{"_id": "not-a-hex-id", "email": "user@example.com"}]
+        resolved_users.return_value = [_user_doc(uid="not-a-hex-id")]
 
         with (
             patch(
@@ -1164,19 +1077,13 @@ class TestRunExecuteMode:
         ):
             await _run(args)
 
-    async def test_execute_mode_aborts_when_confirm_email_does_not_match(self) -> None:
-        import argparse
-        from unittest.mock import MagicMock, patch
-
-        from app.scripts.delete_user_account import _run
-
+    async def test_execute_mode_aborts_when_confirm_email_does_not_match(
+        self, resolved_users: AsyncMock
+    ) -> None:
         args = argparse.Namespace(
             email="user@example.com", execute=True, uid=UID, confirm_email="other@example.com"
         )
         db = MagicMock()
-        db.users.find.return_value = [
-            {"_id": ObjectId(UID), "email": "user@example.com", "name": "U"}
-        ]
 
         with (
             patch(
@@ -1187,16 +1094,13 @@ class TestRunExecuteMode:
         ):
             await _run(args)
 
-    async def test_execute_mode_aborts_when_confirm_email_is_missing(self) -> None:
+    async def test_execute_mode_aborts_when_confirm_email_is_missing(
+        self, resolved_users: AsyncMock
+    ) -> None:
         """Must abort even when the fallback string would coincidentally compare equal to the email."""
-        import argparse
-        from unittest.mock import MagicMock, patch
-
-        from app.scripts.delete_user_account import _run
-
         args = argparse.Namespace(email="xxxx", execute=True, uid=UID, confirm_email=None)
         db = MagicMock()
-        db.users.find.return_value = [{"_id": ObjectId(UID), "email": "xxxx", "name": "U"}]
+        resolved_users.return_value = [_user_doc(email="xxxx")]
 
         with (
             patch(
@@ -1207,19 +1111,13 @@ class TestRunExecuteMode:
         ):
             await _run(args)
 
-    async def test_execute_mode_runs_every_phase_then_verifies(self, capsys: Any) -> None:
-        import argparse
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        from app.scripts.delete_user_account import _run
-
+    async def test_execute_mode_runs_every_phase_then_verifies(
+        self, resolved_users: AsyncMock, capsys: Any
+    ) -> None:
         args = argparse.Namespace(
             email="user@example.com", execute=True, uid=UID, confirm_email="user@example.com"
         )
         db = MagicMock()
-        db.users.find.return_value = [
-            {"_id": ObjectId(UID), "email": "user@example.com", "name": "U"}
-        ]
         jfs = MagicMock()
         jfs.exists.return_value = False
         footprint = _footprint(jfs_path=jfs)
@@ -1254,13 +1152,8 @@ class TestRunExecuteMode:
         assert footprint.pg.commit.called
 
     async def test_execute_mode_runs_phases_in_order_and_returns_the_verdict(
-        self, capsys: Any
+        self, resolved_users: AsyncMock, capsys: Any
     ) -> None:
-        import argparse
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        from app.scripts.delete_user_account import _run
-
         args = argparse.Namespace(
             email="user@example.com",
             execute=True,
@@ -1268,9 +1161,6 @@ class TestRunExecuteMode:
             confirm_email="  USER@Example.COM ",
         )
         db = MagicMock()
-        db.users.find.return_value = [
-            {"_id": ObjectId(UID), "email": "user@example.com", "name": "U"}
-        ]
         jfs = MagicMock()
         jfs.exists.return_value = False
         footprint = _footprint(jfs_path=jfs)
@@ -1322,7 +1212,7 @@ class TestRunExecuteMode:
         assert rc == 7
         # Every phase operates on the SAME footprint, built from this run's
         # args, db handle, resolved user and uid.
-        build_footprint.assert_awaited_once_with(args, db, db.users.find.return_value[0], UID)
+        build_footprint.assert_awaited_once_with(args, db, resolved_users.return_value[0], UID)
         assert [name for name, _ in order] == [
             "revoke",
             "mongo",

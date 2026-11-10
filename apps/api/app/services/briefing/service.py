@@ -97,7 +97,7 @@ from app.services.briefing.voice_check import (
     voice_contradictions,
 )
 from app.services.canvas_markdown import deliverable_size
-from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
+from app.services.delivery.chat_channel import ChatChannel, resolve_proactive_target
 from app.services.integrations.user_integrations import (
     ConnectedIntegration,
     get_connected_integrations_named,
@@ -316,7 +316,8 @@ async def _deliver(
     brief_url = await optional_short_link(
         user.id, ShortLinkTargetType.BRIEFING, briefing.id
     ) or full_brief_url(briefing.id)
-    channel = await resolve_chat_channel(user.id) if push else None
+    target = await resolve_proactive_target(user.id) if push else None
+    channel = target if isinstance(target, ChatChannel) else None
     channels = [NotificationChannel.INAPP] + (
         [NotificationChannel.EMAIL] if push and _wants_email(user) else []
     )
@@ -372,7 +373,12 @@ _SECTION_NUMERALS = ("I", "II", "III")
 
 
 def _subject_key(doc: TodoDocument) -> str:
-    """Return what makes todos one thing to the user: a shared parent, else the same title."""
+    """Return what makes todos one thing to the user: the outside thing it owns, a shared parent, else the same title.
+
+    The inbox desk's threads share the desk as parent yet are one subject each.
+    """
+    if doc.external_ref is not None:
+        return f"ref:{doc.external_ref.source.value}:{doc.external_ref.id}"
     return f"parent:{doc.parent_todo_id}" if doc.parent_todo_id else _same_text_key(doc.title)
 
 
@@ -391,7 +397,7 @@ def _work_items(docs: list[TodoDocument], kind: BriefingItemKind) -> list[Briefi
 def _held_text(doc: PendingBriefItemDocument) -> str:
     """One line for a held result: where it came from and its report's first line."""
     first_line = next((line.strip() for line in doc.text.splitlines() if line.strip()), "")
-    return f"{doc.workflow_title}: {first_line}"
+    return f"{doc.source_title}: {first_line}"
 
 
 def _same_text_key(text: str) -> str:
@@ -851,7 +857,7 @@ async def _publish(
     draws = [*edition.draws, *_assign_edition(user, payload, family)]
     payload.recipient_name = display_name(user)
     # A fresh random key per render: the hosted URL reaches emails and public links.
-    image = await host_edition_image(payload, render_key=uuid4().hex)
+    image = await host_edition_image(payload, owner_id=user.id, render_key=uuid4().hex)
     briefing = await briefing_repository.upsert_briefing(
         user.id, clock.date_str, kind, payload, edition_image_url=image.display_url
     )

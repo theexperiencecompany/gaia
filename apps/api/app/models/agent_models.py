@@ -23,9 +23,11 @@ from app.models.agent_config import (
     ExecutionMode,
     RunMetadata,
     RunUserMissingError,
+    SpawnJob,
     SubagentKind,
     SubagentResumeItem,
     agent_configurable,
+    get_session_id,
     get_user_id,
     read_agent_configurable,
     read_run_metadata,
@@ -52,9 +54,11 @@ __all__ = [
     "RunUserMissingError",
     "RunningSubagent",
     "SilentRunResult",
+    "SpawnJob",
     "SubagentKind",
     "SubagentResumeItem",
     "agent_configurable",
+    "get_session_id",
     "get_user_id",
     "read_agent_configurable",
     "read_run_metadata",
@@ -185,10 +189,13 @@ class StreamChunkMetadata(TypedDict, total=False):
 
     silent is stamped by quiet LLM calls (llm/client.py, follow_up_actions_node) so their tokens never stream.
     langgraph_checkpoint_ns is LangGraph's id for the node run that produced the chunk.
+    agent_thread_id is the thread of the agent run that produced it, stamped by
+    build_agent_config: a spawned subagent's chunks stream through its parent's run too.
     """
 
     silent: bool
     langgraph_checkpoint_ns: str
+    agent_thread_id: str
 
 
 class AgentRunnableConfig(RunnableConfig):
@@ -215,6 +222,8 @@ class SilentRunResult:
 
     message: str
     tool_data: list[ToolDataEntry]
+    #: The run's stream id, which keys its run record of every tool call it made.
+    stream_id: str
 
 
 @dataclass(frozen=True, slots=True)

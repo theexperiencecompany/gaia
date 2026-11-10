@@ -86,6 +86,10 @@ EMBEDDING_SIDECAR_RETRY_AFTER_SECONDS = 5
 # mounted volume so the ~1.85GB download happens ONCE, not every redeploy
 # (measured ~148s cold-load). Unset falls back to fastembed's ephemeral default.
 MODEL_CACHE_DIR = os.getenv("MEMORY_MODEL_CACHE_DIR") or None
+# Read-only models baked into the API image at build time, one dir per HF repo id
+# (<dir>/<org>/<name>), so first boot never downloads them. A model not baked there
+# (a GAIA_EMBEDDING_MODEL override) still goes through MODEL_CACHE_DIR.
+BAKED_MODELS_DIR = os.getenv("MEMORY_BAKED_MODELS_DIR") or None
 
 # ChromaDB collections holding memory, episode, and conversation vectors.
 CHROMA_MEMORIES_COLLECTION = "gaia_memories" + _COLLECTION_SUFFIX

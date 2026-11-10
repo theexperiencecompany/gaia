@@ -24,6 +24,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import librosa
 import numpy as np
 import onnxruntime as ort
 import soundfile as sf
@@ -131,8 +132,6 @@ def _read_wav(path: Path) -> np.ndarray:
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     if sr != TARGET_SR:
-        import librosa
-
         audio = librosa.resample(audio, orig_sr=sr, target_sr=TARGET_SR)
     return audio.astype(np.float32)
 

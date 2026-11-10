@@ -21,7 +21,7 @@
 #
 set -euo pipefail
 
-# Same digest the CI lane runs (.github/workflows/code-quality.yml). Fetching
+# Same digest the CI check runs (.github/workflows/ci.yml). Fetching
 # through the pinned image rather than the host keeps the request identical to
 # the one the scanner itself would make.
 IMAGE="semgrep/semgrep@sha256:b68f9b68483955b85042dac7b4533757779625a02dcf91e470da4c2df1b430be"

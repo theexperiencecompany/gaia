@@ -1,1 +1,56 @@
-{"slug":"buffer-time","term":"Buffer Time","metaTitle":"What Is Buffer Time? Protecting Space Between Meetings","metaDescription":"Buffer time is scheduled space between meetings for preparation, transition, and processing. Learn how GAIA automatically builds buffer time into your calendar.","definition":"Buffer time is intentionally scheduled empty space between calendar events, providing time for meeting preparation, task completion, mental transition, and recovery before the next commitment.","extendedDescription":"Back-to-back meetings are one of the most common sources of professional stress and reduced effectiveness. Without buffer time between meetings, there is no opportunity to review notes, follow up on commitments, or mentally shift contexts. Many people finish one meeting and are immediately in the next, leaving every commitment from every meeting unprocessed until after hours. Buffer time is the scheduling practice that prevents this: deliberately leaving 5-15 minutes between meetings for human maintenance and task processing.","keywords":["buffer time","transition time","meeting buffer","schedule buffer","back-to-back meetings"],"category":"calendar","howGaiaUsesIt":"GAIA automatically enforces buffer time when scheduling meetings. You configure your preferred buffer duration — typically 10-15 minutes — and GAIA ensures no meetings are scheduled in that window before or after each event. For longer or more demanding meetings, GAIA can apply extended buffers to allow adequate processing time.","relatedTerms":["ai-calendar-management","availability-window","meeting-fatigue","time-blocking"],"faqs":[{"question":"How much buffer time should I schedule between meetings?","answer":"10-15 minutes is the minimum buffer for standard meetings. After intense or emotionally demanding meetings, 20-30 minutes is more appropriate. GAIA applies your configured default buffer and can apply extended buffers for specific meeting types."},{"question":"Can GAIA add buffer time to existing back-to-back meetings?","answer":"GAIA can identify back-to-back meeting patterns in your calendar and suggest adjustments to create buffer space. For ongoing scheduling, GAIA enforces your buffer preferences automatically when creating new events."}],"relatedComparisons":["reclaim","motion","clockwise","akiflow"]}
+{
+  "slug": "buffer-time",
+  "term": "Buffer Time",
+  "metaTitle": "Buffer Time: What It Means and How Much to Leave",
+  "metaDescription": "Buffer time is the gap you keep between meetings to reset and prepare. See how much to leave after each meeting type and how GAIA keeps those gaps for you.",
+  "definition": "Buffer time is empty time you leave on purpose between meetings, between tasks, or before a deadline, so that overruns, travel, prep, and follow-up have somewhere to go instead of making the next thing late. A 10-minute buffer means 10 unscheduled minutes between one commitment and the next; a buffer day is a spare day built into a plan; a buffer period is the same slack on a longer scale.",
+  "extendedDescription": "Back-to-back meetings are one of the most common sources of professional stress and reduced effectiveness. Without buffer time between meetings, there is no opportunity to review notes, follow up on commitments, or mentally shift contexts. Many people finish one meeting and are immediately in the next, leaving every commitment from every meeting unprocessed until after hours. Buffer time is the scheduling practice that prevents this: deliberately leaving 5-15 minutes between meetings for human maintenance and task processing.\n\nBuffer time, buffer day, and buffer period are the same idea at different scales. In an office, buffer time usually means the minutes between meetings. A buffer day (a \"one-day buffer\") is a spare working day placed before a deadline, after a trip, or at the end of a sprint, so one slipped task does not miss the date. Buffer period is used more broadly: in a project plan it is slack before a milestone, and in contracts, HR, and billing it often means a grace window before a rule or charge applies. A buffer date is the internal target set ahead of the real deadline. In every case the instruction is the same: plan less than the time you have and keep the difference empty on purpose.\n\nHow much to leave: 5 to 10 minutes after a 30-minute call, 15 minutes after an hour-long meeting, 30 minutes after a client presentation, an interview, or anything you have to write up, and travel time plus 10 minutes for in-person meetings. For deadlines, add 10 to 20 percent to the estimate, or keep one buffer day for each week of planned work. If the buffers keep getting used up, the estimates are wrong: fix the estimates rather than cutting the buffer.\n\nAutomatic meeting buffers can be set in three places. Google Calendar's speedy meetings setting ends the events you create a few minutes early. Booking tools such as Calendly and Cal.com add a buffer before and after each booked event, so nobody can book right up against another meeting. An AI assistant applies your buffer rule whenever it schedules for you. Booking-link buffers only protect slots booked through that link. They do nothing about invites people send you directly, which is why a weekly check for back-to-back runs is still worth doing.",
+  "keywords": [
+    "buffer time",
+    "transition time",
+    "meeting buffer",
+    "schedule buffer",
+    "back-to-back meetings"
+  ],
+  "category": "calendar",
+  "howGaiaUsesIt": "Tell GAIA your buffer rule once, for example \"always leave 15 minutes between meetings and 30 after client calls\". GAIA saves it to memory and applies it whenever it suggests times, creates events, or moves meetings in your Google Calendar. Ask it to check your week and it will point out back-to-back runs and offer to move a meeting or add a buffer block. GAIA cannot stop other people from sending invites into a gap you left open, so if you share a booking link, set the buffer in Calendly or Cal.com as well.",
+  "relatedTerms": [
+    "ai-calendar-management",
+    "availability-window",
+    "meeting-fatigue",
+    "time-blocking",
+    "travel-time"
+  ],
+  "faqs": [
+    {
+      "question": "How much buffer time should I schedule between meetings?",
+      "answer": "10-15 minutes is the minimum buffer for standard meetings. After intense or emotionally demanding meetings, 20-30 minutes is more appropriate. GAIA applies your configured default buffer and can apply extended buffers for specific meeting types."
+    },
+    {
+      "question": "Can GAIA add buffer time to existing back-to-back meetings?",
+      "answer": "GAIA can identify back-to-back meeting patterns in your calendar and suggest adjustments to create buffer space. For ongoing scheduling, GAIA enforces your buffer preferences automatically when creating new events."
+    },
+    {
+      "question": "What is buffer time?",
+      "answer": "Buffer time is empty space you leave between meetings on purpose. It gives you room to reset, prep, and follow up so back-to-back calls do not blur together. GAIA adds these gaps automatically when it schedules for you."
+    },
+    {
+      "question": "What is a buffer day?",
+      "answer": "A buffer day is a spare working day you keep free in a plan, usually right before a deadline or after travel. If everything goes to plan, you use it for cleanup or the next task. If something slips, the deadline still holds. A \"one-day buffer\" means the same thing."
+    },
+    {
+      "question": "What does buffer period mean?",
+      "answer": "A buffer period is a stretch of slack time before something is due or takes effect. In scheduling and projects it is the margin before a milestone. In contracts, HR, and billing it usually means a grace window, for example a few days after a due date before a late fee or rule applies. Its length is whatever the plan or agreement says."
+    },
+    {
+      "question": "Is there a tool that adds meeting buffers automatically?",
+      "answer": "Yes. Calendly and Cal.com add buffers before and after events booked through your link, and Google Calendar's speedy meetings setting shortens events you create. GAIA covers the meetings it schedules for you: tell it your buffer rule once and it applies it when it proposes times, creates events, or reschedules, and it can flag back-to-back runs already on your calendar."
+    }
+  ],
+  "relatedComparisons": [
+    "reclaim",
+    "motion",
+    "clockwise",
+    "akiflow"
+  ]
+}

@@ -13,10 +13,10 @@ Drive the CLI directly via bash. Do not invent flags; confirm with `opencode --h
 The run setup installs nothing; start every launch with this. The installer puts the binary in `~/.opencode/bin` (local disk, about 4s on a fresh sandbox, skipped when present); the sandbox profile already has it on PATH:
 
 ```bash
-command -v opencode >/dev/null 2>&1 || curl -fsSL https://opencode.ai/install | bash
+command -v opencode >/dev/null 2>&1 || curl -fsSL https://opencode.ai/install | bash -s -- --version 1.19.4
 ```
 
-The installer is unpinned (it installed 1.18.34 in the sandbox on 2026-10-04). The notify plugin handles both the 1.x and 2.x plugin APIs.
+Pinned to 1.19.4 (installed and started in the local sandbox on 2026-10-25). The notify plugin handles both the 1.x and 2.x plugin APIs.
 
 ## Auth (Zen key paste-back)
 

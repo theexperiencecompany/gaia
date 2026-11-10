@@ -85,7 +85,7 @@ class TestTriggerConfigUpdateNextRun:
         assert tc.update_next_run(base_time=BASE) is False
 
 
-def _stored_workflow(**overrides: object) -> WorkflowDocument:
+def _stored_workflow(last_playbook_discard: PlaybookDiscard | None = None) -> WorkflowDocument:
     return WorkflowDocument(
         delivery=WorkflowDelivery.NOW,
         id="wf_1",
@@ -93,7 +93,7 @@ def _stored_workflow(**overrides: object) -> WorkflowDocument:
         title="Daily agenda",
         steps=[],
         trigger_config=TriggerConfig(type=TriggerType.MANUAL),
-        **overrides,
+        last_playbook_discard=last_playbook_discard,
     )
 
 

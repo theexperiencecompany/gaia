@@ -17,12 +17,12 @@ from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 import pytest
 
-from app.agents.context.slots import BROWSER_TASK_MARKER
+from app.agents.context.live_work import describe_browser_tasks
+from app.agents.context.slots import MEMORY_RECALL_MARKER
 from app.agents.core.graph_builder.build_graph import comms_tools
 from app.agents.core.messages import MessageScope, construct_langchain_messages
-from app.agents.core.nodes.browser_task_status import describe_browser_tasks
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
-from app.agents.llm.dev_lane import build_custom_chat_model
+from app.agents.llm.dev_lane import build_custom_chat_model, custom_endpoint
 from app.agents.tools.executor_tool import handoff_message
 from app.config.settings import settings
 from app.constants.agents import AgentTag, wrap_agent_payload
@@ -101,6 +101,7 @@ def _model(lane: str) -> BaseChatModel:
     return build_custom_chat_model(
         temperature=DEFAULT_LLM_TEMPERATURE,
         max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+        endpoint=custom_endpoint(),
         reasoning=ReasoningLevel.OFF,
     )
 
@@ -124,14 +125,16 @@ def _frame(paused: bool) -> SystemMessage:
     text = describe_browser_tasks(ChatBrowserTasks(running=[job], paused=step))
     return SystemMessage(
         content=wrap_agent_payload(AgentTag.BROWSER_TASK, text),
-        additional_kwargs={BROWSER_TASK_MARKER: True},
+        additional_kwargs={MEMORY_RECALL_MARKER: True},
     )
 
 
 async def _request(case: Case, provider: str) -> list[AnyMessage]:
-    """Assemble the request the way the comms graph does: builder, frame, then the slot order."""
+    """Assemble the request the way the comms graph does: the turn carries the frame ahead of the user's words."""
     built = await construct_langchain_messages(query=case.message, scope=MessageScope(source="web"))
-    state: Any = {"messages": [*_started_turn(), *built, _frame(case.paused)]}
+    at = next(i for i, message in enumerate(built) if isinstance(message, HumanMessage))
+    turn = [*built[:at], _frame(case.paused), *built[at:]]
+    state: Any = {"messages": [*_started_turn(), *turn]}
     ordered = manage_system_prompts_node(state, {"configurable": {"provider": provider}}, None)
     return cast(list[AnyMessage], ordered["messages"])
 

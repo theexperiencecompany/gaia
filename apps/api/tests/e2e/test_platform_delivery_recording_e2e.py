@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage
+from langgraph.graph.state import CompiledStateGraph
 import pytest
 
 from app.agents.core.background.thread_record import record_platform_delivery
@@ -30,7 +31,7 @@ _FRAME = (
 )
 
 
-async def _thread_messages(graph: object, thread_id: str) -> list[object]:
+async def _thread_messages(graph: CompiledStateGraph, thread_id: str) -> list[object]:
     state = await graph.aget_state({"configurable": {"thread_id": thread_id}})
     return state.values.get("messages", [])
 

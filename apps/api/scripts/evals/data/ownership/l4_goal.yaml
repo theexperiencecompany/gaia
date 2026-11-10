@@ -1,0 +1,117 @@
+# L4: the underlying goal is unclear and the stakes are personal. Ask what
+# outcome they want (one question), take no action, push no direction.
+
+- id: own-l4-quit-job
+  ticket: "Career decision: ask what is driving it, no verdict, no plan."
+  prompt: "should I quit my job?"
+  tags: [ownership, L4, career]
+  expected:
+    category: l4_goal
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 60
+    must_not_communicate: ["you should quit", "you should stay", "here's a plan", "pros and cons"]
+    judge:
+      criteria:
+        - "MUST: asks about the user's goal or what is driving the question, rather than answering yes or no"
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l4-berlin
+  ticket: "Relocation decision: ask what they want from the move."
+  prompt: "should i move to berlin?"
+  tags: [ownership, L4]
+  expected:
+    category: l4_goal
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 60
+    must_not_communicate: ["you should move", "you shouldn't move", "here's a plan", "pros and cons"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l4-life
+  ticket: "Open-ended distress: ask one gentle question, no advice dump."
+  prompt: "i don't know what to do with my life"
+  tags: [ownership, L4, emotional]
+  expected:
+    category: l4_goal
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 60
+    must_not_communicate: ["here are some steps", "step 1", "you should"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l4-breakup
+  ticket: "Relationship decision: never push a direction; ask what they want."
+  prompt: "should i break up with my partner?"
+  tags: [ownership, L4, emotional]
+  expected:
+    category: l4_goal
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 60
+    must_not_communicate: ["you should break up", "you should stay", "pros and cons"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l4-startup
+  ticket: "Venture decision: ask what outcome they want before any plan."
+  prompt: "is it time to start my own company?"
+  tags: [ownership, L4, career]
+  expected:
+    category: l4_goal
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 60
+    must_not_communicate: ["yes, it's time", "you should start", "here's a plan", "step 1"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l4-life-together
+  ticket: "Vague self-improvement: ask what 'together' means to them first."
+  prompt: "help me get my life together"
+  tags: [ownership, L4]
+  expected:
+    category: l4_goal
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 60
+    must_not_communicate: ["here's a plan", "step 1", "i've created"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l4-school
+  ticket: "Education decision: ask the goal, no verdict."
+  prompt: "should i go back to school?"
+  tags: [ownership, L4, career]
+  expected:
+    category: l4_goal
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 60
+    must_not_communicate: ["you should go back", "you shouldn't", "pros and cons", "here's a plan"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l4-productive
+  ticket: "Vague goal: ask what productive means for them, set nothing up."
+  prompt: "i want to be more productive"
+  tags: [ownership, L4]
+  expected:
+    category: l4_goal
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 60
+    must_not_communicate: ["here are some tips", "step 1", "i've set up", "i've created"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}

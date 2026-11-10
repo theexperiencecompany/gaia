@@ -124,7 +124,6 @@ class Row:
     decision: str
     playbook: str
     lifecycle: str
-    declines: int
     paused: str
     cost_usd: float
     seconds: float
@@ -148,8 +147,6 @@ def _playbook(observation: Observation) -> str:
     if playbook is None:
         return "-"
     shape = "+".join(playbook.tools)
-    if playbook.has_handoff:
-        shape = f"handoff({shape})"
     if playbook.has_for_each:
         shape += " for_each"
     return shape
@@ -188,7 +185,6 @@ def _row(
         decision=_decision(observation, store) or "-",
         playbook=_playbook(observation),
         lifecycle=_lifecycle(observation),
-        declines=observation.workflow.playbook_declines,
         paused=_paused(observation),
         cost_usd=_cost(store, user_id, observation.execution.started_at),
         seconds=time.monotonic() - started,
@@ -227,7 +223,7 @@ def run_shape(
         rows.append(row)
         print(
             f"  fire {row.fire}: {row.status} mode={row.mode} decision={row.decision} "
-            f"playbook={row.playbook} {row.lifecycle} declines={row.declines} {row.paused} "
+            f"playbook={row.playbook} {row.lifecycle} {row.paused} "
             f"${row.cost_usd:.4f} {row.seconds:.0f}s",
             flush=True,
         )
@@ -276,9 +272,7 @@ def main(argv: list[str] | None = None) -> int:
         spent += sum(row.cost_usd for row in shape_rows)
 
     print(f"\n{len(rows)} fires, ${spent:.3f} spent")
-    print(
-        "shape | fire | status | mode | decision | playbook | lifecycle | declines | paused | cost | s"
-    )
+    print("shape | fire | status | mode | decision | playbook | lifecycle | paused | cost | s")
     for row in rows:
         values: Sequence[Any] = (
             row.shape,
@@ -288,7 +282,6 @@ def main(argv: list[str] | None = None) -> int:
             row.decision,
             row.playbook,
             row.lifecycle,
-            row.declines,
             row.paused or "-",
             f"${row.cost_usd:.4f}",
             f"{row.seconds:.0f}",

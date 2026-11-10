@@ -93,6 +93,21 @@ class TestInjectInfisicalSecretsProd:
                 inject_infisical_secrets()
 
 
+class TestInjectInfisicalSecretsSelfHost:
+    """A self-hosted instance never contacts the vault, whatever its env holds."""
+
+    @patch("shared.py.secrets.log")
+    def test_selfhost_with_full_identity_never_builds_a_client(self, mock_log: MagicMock):
+        mock_sdk_class = MagicMock()
+        with patch.dict(os.environ, {**_FULL_ENV, "ENV": "selfhost"}, clear=True):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
+                inject_infisical_secrets()
+
+        mock_sdk_class.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Successful SDK interaction
 # ---------------------------------------------------------------------------

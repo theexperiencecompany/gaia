@@ -157,7 +157,7 @@ export default function OpenSource() {
         <div className="flex w-full flex-col gap-3 pt-6 sm:w-auto sm:flex-row sm:pt-8 lg:pt-10">
           <Link href={"https://docs.heygaia.io"} className="w-full sm:w-auto">
             <RaisedButton
-              className="w-full justify-center rounded-xl text-white! before:rounded-xl hover:scale-110 sm:w-auto"
+              className="w-full justify-center rounded-xl before:rounded-xl hover:scale-110 sm:w-auto"
               color="#292929"
             >
               Read Docs
@@ -169,7 +169,7 @@ export default function OpenSource() {
             className="w-full sm:w-auto"
           >
             <RaisedButton
-              className="w-full justify-center rounded-xl text-black! before:rounded-xl hover:scale-110 sm:w-auto"
+              className="w-full justify-center rounded-xl before:rounded-xl hover:scale-110 sm:w-auto"
               color="#00bbff"
             >
               Star on GitHub <StarFilledIcon width={17} height={17} />

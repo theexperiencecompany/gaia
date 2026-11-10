@@ -1,1 +1,110 @@
-{"slug":"linear","name":"Linear","domain":"linear.app","category":"task-manager","tagline":"Engineering issue tracking built for teams — not personal productivity","painPoints":["Linear's cycles, projects, and triage workflows are designed for engineering sprints — solo users and non-eng teams get complexity they don't need","No email integration: action items from Gmail threads require manual copy into Linear issues","No calendar awareness — Linear doesn't know if you're in meetings all day and can't adjust workload suggestions accordingly","Pricing is per-seat, making it expensive for small teams or individuals who just want clean task management","No AI that proactively surfaces what to work on — Linear shows your backlog, but you decide priorities manually"],"metaTitle":"Linear Alternative — GAIA — AI Task Manager for Individuals & Small Teams","metaDescription":"Want Linear's clean UX without the engineering-team overhead? GAIA is an open-source AI productivity assistant that manages tasks, email, and calendar in one place. Free tier available. Self-hostable.","keywords":["linear alternative","linear alternative free","linear alternative open source","linear alternative self hosted","linear alternative reddit","linear app alternative","linear alternative 2026"],"whyPeopleLook":"Linear is widely praised for its speed and design, but its DNA is engineering issue tracking — cycles, sprints, and triage are team constructs that feel like overhead for solo developers or non-engineering users. People searching for a Linear alternative often want the clean interface and keyboard-first UX without the team-oriented structure, or they need a tool that also handles email and calendar alongside tasks.","gaiaFitScore":3,"gaiaReplaces":["Personal task lists and backlogs in Linear","Manual creation of issues from email action items","Separate reminders for Linear tasks due today","Switching between Linear and a calendar app to plan your day"],"gaiaAdvantages":["GAIA handles personal tasks, email, and calendar together — Linear handles only engineering issues","Tasks created automatically from emails and meeting action items without manual entry","Proactive workload awareness — GAIA knows your calendar is full and adjusts task surfacing","Open source and self-hostable; Linear is closed-source SaaS","Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Linear's per-seat model"],"migrationSteps":["Export your current Linear issues as CSV and import task titles and descriptions into GAIA","Connect Gmail so GAIA can auto-create tasks from emails that previously became Linear issues manually","Link Google Calendar so GAIA can surface today's tasks against your available time blocks","Use GAIA's daily briefing to replace the Linear inbox triage routine"],"faqs":[{"question":"Is GAIA a project management tool like Linear?","answer":"GAIA is a personal AI productivity assistant — it handles tasks, email, calendar, and automations for individuals and small teams. It lacks Linear's engineering-specific features like cycles, sprints, and GitHub issue sync, but covers personal productivity breadth that Linear doesn't touch."},{"question":"Can GAIA integrate with Linear?","answer":"GAIA supports 50+ integrations via MCP. While direct Linear sync depends on available MCP connectors, GAIA can capture action items from email and meetings and manage them independently, reducing your reliance on Linear for personal task tracking."},{"question":"Is there a free Linear alternative?","answer":"GAIA has a free tier and is open source — you can self-host it at no cost via Docker. Linear's free plan is limited to small teams and lacks advanced features."},{"question":"Why do solo developers leave Linear?","answer":"Solo developers often find Linear's team constructs (cycles, triage, projects) add process overhead without benefit. They want fast task capture, keyboard shortcuts, and a clean UI — but also email and calendar integration that Linear doesn't provide."}]}
+{
+  "slug": "linear",
+  "name": "Linear",
+  "domain": "linear.app",
+  "category": "task-manager",
+  "tagline": "Engineering issue tracking built for teams — not personal productivity",
+  "painPoints": [
+    "Linear's cycles, projects, and triage workflows are designed for engineering sprints — solo users and non-eng teams get complexity they don't need",
+    "No email integration: action items from Gmail threads require manual copy into Linear issues",
+    "No calendar awareness — Linear doesn't know if you're in meetings all day and can't adjust workload suggestions accordingly",
+    "Pricing is per-seat, making it expensive for small teams or individuals who just want clean task management",
+    "No AI that proactively surfaces what to work on — Linear shows your backlog, but you decide priorities manually"
+  ],
+  "metaTitle": "Linear Alternative in {{CURRENT_YEAR}}: AI Tasks for Solo Devs",
+  "metaDescription": "Linear is built for engineering sprints. GAIA handles your tasks, email, and calendar together and creates tasks from Gmail. See why.",
+  "keywords": [
+    "linear alternative",
+    "linear alternative source-available",
+    "linear alternative self hosted",
+    "linear alternative reddit",
+    "linear app alternative",
+    "linear alternative {{CURRENT_YEAR}}"
+  ],
+  "whyPeopleLook": "Linear is widely praised for its speed and design, but its DNA is engineering issue tracking — cycles, sprints, and triage are team constructs that feel like overhead for solo developers or non-engineering users. People searching for a Linear alternative often want the clean interface and keyboard-first UX without the team-oriented structure, or they need a tool that also handles email and calendar alongside tasks.",
+  "gaiaFitScore": 3,
+  "gaiaReplaces": [
+    "Personal task lists and backlogs in Linear",
+    "Manual creation of issues from email action items",
+    "Separate reminders for Linear tasks due today",
+    "Switching between Linear and a calendar app to plan your day"
+  ],
+  "gaiaAdvantages": [
+    "GAIA handles personal tasks, email, and calendar together: Linear handles only engineering issues",
+    "Tasks created automatically from emails and meeting action items without manual entry",
+    "Proactive workload awareness: GAIA knows your calendar is full and adjusts task surfacing",
+    "Source-available and self-hostable; Linear is closed-source SaaS",
+    "Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Linear's per-seat model"
+  ],
+  "migrationSteps": [
+    "Export your current Linear issues as CSV and import task titles and descriptions into GAIA",
+    "Connect Gmail so GAIA can auto-create tasks from emails that previously became Linear issues manually",
+    "Link Google Calendar so GAIA can surface today's tasks against your available time blocks",
+    "Use GAIA's daily briefing to replace the Linear inbox triage routine"
+  ],
+  "faqs": [
+    {
+      "question": "Is GAIA a project management tool like Linear?",
+      "answer": "GAIA is a personal AI productivity assistant — it handles tasks, email, calendar, and automations for individuals and small teams. It lacks Linear's engineering-specific features like cycles, sprints, and GitHub issue sync, but covers personal productivity breadth that Linear doesn't touch."
+    },
+    {
+      "question": "Can GAIA integrate with Linear?",
+      "answer": "GAIA supports deep integrations via MCP. While direct Linear sync depends on available MCP connectors, GAIA can capture action items from email and meetings and manage them independently, reducing your reliance on Linear for personal task tracking."
+    },
+    {
+      "question": "Is there a free Linear alternative?",
+      "answer": "Linear's free plan is limited to small teams and lacks advanced features. Hosted GAIA is a paid plan at ${{PRO_MONTHLY_PRICE}}/month, but it is source-available — you can self-host it free for non-commercial use (plus your own model API costs) via Docker."
+    },
+    {
+      "question": "Why do solo developers leave Linear?",
+      "answer": "Solo developers often find Linear's team constructs (cycles, triage, projects) add process overhead without benefit. They want fast task capture, keyboard shortcuts, and a clean UI — but also email and calendar integration that Linear doesn't provide."
+    }
+  ],
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "Personal workload manager across email, calendar, and tasks, where Linear covers engineering issues superbly",
+      "competitor": "Fast, opinionated issue tracker built around issues, projects, and cycles for engineering teams"
+    },
+    {
+      "feature": "Issue management",
+      "gaia": "Your personal lists and backlogs handled beside Linear, with priorities drawn from calendar and inbox",
+      "competitor": "Best-in-class issue tracking with cycles, projects, roadmaps, triage, and Git-linked status automation"
+    },
+    {
+      "feature": "Email integration",
+      "gaia": "Action items lifted from email into tracked tasks automatically, with no inbox gap",
+      "competitor": "No email integration or inbox management"
+    },
+    {
+      "feature": "AI features",
+      "gaia": "AI that executes: drafts, schedules, and follows up across tools, beyond triage suggestions and summaries",
+      "competitor": "AI triage suggestions, duplicate detection, issue summarization, and Linear AI for drafting issue descriptions"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Personal automations in plain words across tools, complementing issue workflows inside Linear",
+      "competitor": "Issue workflow automation within Linear (status changes, assignment rules, label routing) and Git-linked automations"
+    },
+    {
+      "feature": "Personal productivity",
+      "gaia": "Day planning with calendar awareness: GAIA adjusts surfacing when your calendar is full",
+      "competitor": "Focused on team issue tracking; personal task management is limited to assigned issues within the tool"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Linear itself connects as one of deep integrations, so engineering issues join the same daily briefing",
+      "competitor": "Deep GitHub and GitLab integration; Slack and Figma connectors; Linear MCP for AI tooling access"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Source-available and self-hostable, unlike a closed SaaS tracker",
+      "competitor": "Proprietary closed-source SaaS platform"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted: paid plan at ${{PRO_MONTHLY_PRICE}}/month; self-hosting free for non-commercial use (plus your own model API costs)",
+      "competitor": "Free plan and paid plans available; per-seat pricing; enterprise tiers available."
+    }
+  ]
+}

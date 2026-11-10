@@ -18,16 +18,20 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from typing import ClassVar
 
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 
 from app.constants.chat import (
+    CONVERSATION_MAX_RETAINED_PINS,
     FOLDED_CARDS_FIELD,
     FOLDED_CARDS_KEEP_SECONDS,
     SUBAGENT_GROUP_TOOL_NAME,
     USER_MESSAGE_TYPE,
 )
 from app.db.repositories.base import UserScopedRepository
+from app.db.repositories.cache import CachePolicy
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -46,9 +50,11 @@ from app.models.conversation_models import (
     ConversationSummary,
     ConversationUpdate,
     _ConversationIdRow,
+    _ConversationOwnerRow,
     _MessageProjectionRow,
     _SourceRow,
     _SystemGeneratedRow,
+    _TodoBindingRow,
 )
 
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
@@ -79,7 +85,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     update_model = ConversationUpdate
     uses_object_id = True
     identity_field = "conversation_id"
-    cache_policy = None
+    cache_policy: ClassVar[CachePolicy | None] = None
 
     # ---- conversation-list reads (projected: no messages) ----
 
@@ -87,7 +93,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Return the user's starred conversations (projected summaries, newest first)."""
         return await self._aggregate(
             [
-                {"$match": {"user_id": user_id, "starred": True, **self._non_bot()}},
+                {"$match": {"user_id": user_id, "starred": True, **self._listed()}},
                 {"$sort": {"createdAt": -1}},
                 {"$project": _SUMMARY_PROJECTION},
             ],
@@ -121,6 +127,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             {
                 "user_id": user_id,
                 "is_onboarding_demo": {"$ne": True},
+                # A tracked todo's chat is its runs' log, not a chat the user had.
+                "todo_id": None,
             }
         )
 
@@ -140,6 +148,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 }
             )
             > 0
+        )
+
+    async def owned_ids(self, user_id: str, conversation_ids: Sequence[str]) -> set[str]:
+        """Which of these conversation ids the user owns."""
+        return set(
+            await self._distinct(
+                "conversation_id",
+                {"user_id": user_id, "conversation_id": {"$in": list(conversation_ids)}},
+            )
         )
 
     async def exists(self, conversation_id: str, *, user_id: str) -> bool:
@@ -245,7 +262,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
         One atomic update: each message takes the folded cards waiting for its id
         into its tool_data, and those (and any a day stale) leave the waiting room.
-        max_messages caps stored history so per-workflow threads stay under 16MB.
+        max_messages caps stored history so per-workflow threads stay under 16MB;
+        pinned messages outlive the cap, up to CONVERSATION_MAX_RETAINED_PINS.
         """
         stored: list[dict[str, object]] = []
         message_ids: list[str] = []
@@ -256,9 +274,46 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             message_ids.append(message_id)
             stored.append(_absorbing(message_id, data))
 
-        history: dict[str, object] = {"$concatArrays": [{"$ifNull": ["$messages", []]}, stored]}
+        appended: dict[str, object] = {"$concatArrays": [{"$ifNull": ["$messages", []]}, stored]}
+        history = appended
         if max_messages is not None:
-            history = {"$slice": [history, -max_messages]}
+            # A pinned message is context the user chose to keep: trimming past
+            # it would delete the pin as a side effect of a length cap.
+            history = {
+                "$let": {
+                    "vars": {
+                        "cut": {
+                            "$max": [
+                                0,
+                                {"$subtract": [{"$size": appended}, max_messages]},
+                            ]
+                        }
+                    },
+                    "in": {
+                        "$cond": [
+                            {"$eq": ["$$cut", 0]},
+                            appended,
+                            {
+                                "$concatArrays": [
+                                    {
+                                        "$slice": [
+                                            {
+                                                "$filter": {
+                                                    "input": {"$slice": [appended, 0, "$$cut"]},
+                                                    "as": "message",
+                                                    "cond": {"$eq": ["$$message.pinned", True]},
+                                                }
+                                            },
+                                            -CONVERSATION_MAX_RETAINED_PINS,
+                                        ]
+                                    },
+                                    {"$slice": [appended, -max_messages]},
+                                ]
+                            },
+                        ]
+                    },
+                }
+            }
         matched = await self._apply_pipeline_update_unfetched(
             {"conversation_id": conversation_id},
             [
@@ -582,6 +637,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     seen.append(action)
         return seen
 
+    async def owner_ids(self, conversation_id: str) -> set[str]:
+        """Every user holding a conversation under this id; more than one means they share its agent thread."""
+        return set(await self._distinct("user_id", {"conversation_id": conversation_id}))
+
     async def is_system_generated(self, conversation_id: str) -> bool:
         """Whether GAIA created this conversation itself (workflow/email/reminder runs).
 
@@ -644,6 +703,55 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Return the user's most recent conversations."""
         return await self._find({"user_id": user_id}, sort=[("createdAt", -1)], limit=limit)
 
+    async def find_todo_conversation_id(self, user_id: str, todo_id: str) -> str | None:
+        """Return the id of the chat bound to a tracked todo, or None before its first open or run."""
+        row = await self._find_one_projected(
+            {"user_id": user_id, **_todo_binding(todo_id)},
+            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
+            {"_id": 0, "conversation_id": 1},  # pragma: no mutate
+            _ConversationIdRow,
+        )
+        return None if row is None else row.conversation_id
+
+    async def get_todo_id(self, conversation_id: str, *, user_id: str) -> str | None:
+        """Return the tracked todo this conversation belongs to, or None for any other chat."""
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
+            {"_id": 0, "todo_id": 1},  # pragma: no mutate
+            _TodoBindingRow,
+        )
+        return None if row is None else row.todo_id
+
+    async def try_create(self, doc: ConversationDocument) -> bool:
+        """Insert the conversation; False when a unique index already holds its key.
+
+        The partial unique index on (user_id, todo_id) admits one chat per tracked
+        todo, so the loser of a creation race learns it here instead of duplicating it.
+        """
+        try:
+            await self.create(doc)
+        except DuplicateKeyError:
+            return False
+        return True
+
+    async def delete_for_todos(self, user_id: str, todo_ids: Sequence[str]) -> list[str]:
+        """Delete the chats bound to these todos, returning their ids for checkpoint cleanup."""
+        query = _todo_chats(user_id, todo_ids)
+        ids = await self._distinct("conversation_id", query)
+        if ids:
+            await self._delete_many(query, scope=user_id)
+        return ids
+
+    async def retitle_todo_chats(
+        self, user_id: str, todo_ids: Sequence[str], description: str
+    ) -> None:
+        """Give the chats bound to these todos their todo's new title."""
+        for conversation_id in await self._distinct(
+            "conversation_id", _todo_chats(user_id, todo_ids)
+        ):
+            await self._set_fields(conversation_id, user_id, {"description": description})
+
     async def find_updated_since(
         self, user_id: str, items: list[ConversationSyncItem]
     ) -> list[ConversationDocument]:
@@ -692,7 +800,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """
         rows = await self._aggregate(
             [
-                {"$match": {"user_id": user_id}},
+                # A tracked todo's chat is reached from its todo, never from search.
+                {"$match": {"user_id": user_id, "todo_id": None}},
                 {
                     "$facet": {
                         "messages": [
@@ -722,6 +831,13 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         await self._delete_many({"user_id": user_id}, scope=user_id)
         return ids
 
+    async def delete_all_chats_for_user(self, user_id: str) -> list[str]:
+        """Delete the user's chats, keeping each tracked todo's, which goes only with its todo."""
+        query = {"user_id": user_id, "todo_id": None}
+        ids = await self._distinct("conversation_id", query)
+        await self._delete_many(query, scope=user_id)
+        return ids
+
     async def delete_onboarding_demos(self, user_id: str) -> int:
         """Delete the user's onboarding-demo conversations."""
         return await self._delete_many(
@@ -735,10 +851,26 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """
         return await self._distinct("conversation_id")
 
+    async def owners_of(self, conversation_ids: Sequence[str]) -> dict[str, str]:
+        """Map each existing conversation id to its owner's user id.
+
+        Intentionally unscoped (a maintenance migration that has ids but no user).
+        """
+        rows = await self._aggregate(
+            [
+                {"$match": {"conversation_id": {"$in": list(conversation_ids)}}},
+                {"$project": {"_id": 0, "conversation_id": 1, "user_id": 1}},
+            ],
+            _ConversationOwnerRow,
+        )
+        return {row.conversation_id: row.user_id for row in rows}
+
     # ---- internal helpers ----
 
-    def _non_bot(self) -> dict[str, object]:
-        return {"source": {"$nin": _BOT_SOURCE_VALUES}}
+    def _listed(self) -> dict[str, object]:
+        # Bot conversations live on their platform and a tracked todo's chat on its
+        # todo: neither is listed. {todo_id: None} matches a null AND a missing field.
+        return {"source": {"$nin": _BOT_SOURCE_VALUES}, "todo_id": None}
 
     def _active_filter(self, user_id: str) -> dict[str, object]:
         # Background runs stay out of the sidebar unless one holds a live approval
@@ -760,7 +892,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     ]
                 },
             ],
-            **self._non_bot(),
+            **self._listed(),
         }
 
     async def _set_fields(
@@ -777,6 +909,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
 
 conversation_repository = ConversationRepository()
+
+
+def _todo_binding(todo_id: str) -> dict[str, object]:
+    # $type keeps the query inside the binding index's partial filter; a bare equality is not, and scans.
+    return {"todo_id": {"$eq": todo_id, "$type": "string"}}
+
+
+def _todo_chats(user_id: str, todo_ids: Sequence[str]) -> dict[str, object]:
+    return {"user_id": user_id, "todo_id": {"$in": list(todo_ids), "$type": "string"}}
 
 
 def _waiting_for(message_id: str) -> dict[str, object]:

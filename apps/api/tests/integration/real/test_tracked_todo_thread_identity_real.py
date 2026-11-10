@@ -7,11 +7,13 @@ and the VFS projection are the patched seams.
 
 import asyncio
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
+from app.constants.todos import WaitingOn
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
@@ -21,6 +23,7 @@ from app.models.todo_models import (
     TodoDocument,
     TodoModel,
     TodoResponse,
+    TodoUpdate,
     TodoUpdateRequest,
 )
 from app.models.trigger_subscription_models import ConditionOperator, SubscriptionAction
@@ -59,7 +62,12 @@ async def _stored(mongo_db: AsyncIOMotorDatabase, user_id: str) -> list[TodoDocu
 
 async def _create(user_id: str) -> TodoResponse:
     return await TrackedTodoService.create_tracked_todo(
-        user_id, "Reply to Sam about the lease", external_ref=_THREAD
+        user_id,
+        "Reply to Sam about the lease",
+        external_ref=_THREAD,
+        schedule=TodoUpdate(
+            waiting_on=WaitingOn.EVENT, scheduled_at=datetime.now(UTC) + timedelta(days=2)
+        ),
     )
 
 

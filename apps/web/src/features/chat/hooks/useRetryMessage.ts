@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { useSendMessage } from "@/hooks/useSendMessage";
+import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { useChatStore } from "@/stores/chatStore";
 
 /**
@@ -12,7 +12,6 @@ import { useChatStore } from "@/stores/chatStore";
  */
 export const useRetryMessage = () => {
   const [isRetrying, setIsRetrying] = useState(false);
-  const sendMessage = useSendMessage();
 
   const retryMessage = useCallback(
     async (conversationId: string, messageId: string) => {
@@ -75,7 +74,7 @@ export const useRetryMessage = () => {
         setIsRetrying(false);
       }
     },
-    [isRetrying, sendMessage],
+    [isRetrying],
   );
 
   return { retryMessage, isRetrying };

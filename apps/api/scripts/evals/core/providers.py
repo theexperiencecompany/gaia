@@ -139,7 +139,12 @@ def health_check(p: ProviderConfig) -> ProviderHealth:
         return ProviderHealth(True, f"{p.lane} lane verified by key presence only")
     if not p.base_url:
         return ProviderHealth(False, f"provider '{p.name}' has no base URL")
-    url = p.base_url.rstrip("/") + "/chat/completions"
+    return _probe_chat_completions(p, p.base_url)
+
+
+def _probe_chat_completions(p: ProviderConfig, base_url: str) -> ProviderHealth:
+    """Send a 1-token chat completion to an OpenAI-compatible endpoint."""
+    url = base_url.rstrip("/") + "/chat/completions"
     try:
         r = httpx.post(
             url,
@@ -153,13 +158,19 @@ def health_check(p: ProviderConfig) -> ProviderHealth:
         )
     except httpx.HTTPError as e:
         return ProviderHealth(False, f"{p.name} unreachable: {e}")
-    if r.status_code == 401:
-        return ProviderHealth(False, f"{p.name} rejected the API key (401)")
-    if r.status_code in (429, 402):
-        return ProviderHealth(False, f"{p.name} quota exhausted ({r.status_code})")
-    if r.status_code >= 500:
-        return ProviderHealth(False, f"{p.name} server error ({r.status_code})")
-    return ProviderHealth(True)
+    failure = _probe_status_failure(p.name, r.status_code)
+    return ProviderHealth(False, failure) if failure else ProviderHealth(True)
+
+
+def _probe_status_failure(name: str, status_code: int) -> str | None:
+    """Explain why a probe's HTTP status makes the provider unusable; None when it is usable."""
+    if status_code == 401:
+        return f"{name} rejected the API key (401)"
+    if status_code in (429, 402):
+        return f"{name} quota exhausted ({status_code})"
+    if status_code >= 500:
+        return f"{name} server error ({status_code})"
+    return None
 
 
 def rotation_chain(cfg: EvalConfig, providers: list[str] | None, exclude: list[str]) -> list[str]:
@@ -175,8 +186,8 @@ def rotation_chain(cfg: EvalConfig, providers: list[str] | None, exclude: list[s
 def pin_settings(provider: ProviderConfig) -> None:
     """Pin the app's custom-LLM lane to this provider (in-process runs).
 
-    Mutates the shared settings singleton and resets the lazy provider so the
-    next graph build re-initializes against the new base URL/key/model.
+    Mutates the shared settings singleton and invalidates the custom credential so
+    the next graph build re-initializes against the new base URL/key/model.
     """
     if provider.lane != _DEFAULT_LANE:
         return
@@ -187,16 +198,14 @@ def pin_settings(provider: ProviderConfig) -> None:
     # app, would die on the environment instead of doing their (offline) job.
     # `_load_failure` exists precisely to explain that failure when a suite run
     # legitimately provokes it.
-    from app.agents.llm.dev_lane import build_custom_chat_model
     from app.config.settings import settings
-    from app.core.lazy_loader import providers
+    from app.constants.providers import CredentialProviderName
+    from app.services.providers.provider_credentials_service import invalidate_locally
 
     settings.DEV_LLM_BASE_URL = provider.base_url
     settings.DEV_LLM_API_KEY = provider.api_key
     settings.DEV_LLM_MODEL = provider.model
     if settings.GAIA_SIM_MODE:
         return
-    # One-shot models are cached per shape; a rotation must rebuild them too.
-    build_custom_chat_model.cache_clear()
-    if providers.is_initialized("custom_llm"):
-        providers.reset("custom_llm")
+    # Drops the custom lane's resolved credential and lazy client, as a saved one would.
+    invalidate_locally(CredentialProviderName.CUSTOM)

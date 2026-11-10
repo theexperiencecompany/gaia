@@ -408,5 +408,3 @@ Together, we combine product thinking, engineering depth, security awareness, an
 **[X (Twitter)](https://x.com/trygaia)** – Get quick updates, announcements, and engage with the team.
 
 **[WhatsApp](https://heygaia.io/whatsapp)** – Connect with us directly through WhatsApp.
-
-**[YouTube](https://youtube.com/@heygaiaio)** – Watch tutorials, demos, and learn how to get the most out of GAIA.

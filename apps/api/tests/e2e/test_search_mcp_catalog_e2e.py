@@ -106,7 +106,7 @@ class TestSearchWaterfall:
         assert [r.url for r in response.results] == ["https://example.com/a"]
 
     async def test_all_empty_is_an_empty_response_not_an_error(self) -> None:
-        providers = [_FakeProvider(name="p1"), _FakeProvider(name="p2")]
+        providers: list[SearchProvider] = [_FakeProvider(name="p1"), _FakeProvider(name="p2")]
         response = await SearchEngine(providers=providers).search("q", 5)
 
         assert response.results == []
@@ -164,12 +164,12 @@ class TestKeywordSearchJoinsBothRepositories:
         assert seen["pattern"] == "standup\\ \\(9:30\\)\\?"
 
 
-def _mcp_client(probe: dict, connect: object = None, oauth_url: str | None = None):
+def _mcp_client(probe: dict, connect: object = None):
     client = SimpleNamespace(
         probe_connection=AsyncMock(return_value=probe),
         connect=AsyncMock(return_value=connect if connect is not None else []),
         update_integration_auth_status=AsyncMock(),
-        build_oauth_auth_url=AsyncMock(return_value=oauth_url or "https://oauth.example/"),
+        token_store=SimpleNamespace(),
     )
     return client
 
@@ -210,16 +210,19 @@ class TestMcpConnectionMatrix:
 
     async def test_auth_required_returns_oauth_url_and_records_status(self) -> None:
         client = _mcp_client({"requires_auth": True, "auth_type": "oauth"})
+        build_url = AsyncMock(return_value="https://oauth.example/")
         with (
             patch(f"{MCP_ENDPOINT}.get_mcp_client", AsyncMock(return_value=client)),
             patch(
                 f"{MCP_ENDPOINT}.IntegrationResolver.resolve", AsyncMock(return_value=_resolved())
             ),
+            patch(f"{MCP_ENDPOINT}.build_oauth_auth_url", build_url),
         ):
             response = await mcp_endpoint.test_mcp_connection("github", FAKE_USER)
 
         assert response.status == "requires_oauth"
         assert response.oauth_url == "https://oauth.example/"
+        assert build_url.await_args.args == (client.token_store,)
         client.update_integration_auth_status.assert_awaited_once_with(
             "github", requires_auth=True, auth_type="oauth"
         )
@@ -246,7 +249,14 @@ class TestMarketplaceCatalog:
             description="Custom acme integration",
             category="developer",
             managed_by="mcp",
+            source="custom",
             is_public=True,
+            created_by=None,
+            published_at=None,
+            clone_count=0,
+            icon_url=None,
+            display_priority=0,
+            is_featured=False,
         )
         with (
             patch(f"{MARKETPLACE}.get_all_mcp_tools", AsyncMock(return_value={})),

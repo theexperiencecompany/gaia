@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from app.models.message_models import MessageRequestWithHistory
-from app.services.chat.persistence import save_bot_reply, save_user_message
+from app.services.chat.persistence import BotReply, save_bot_reply, save_user_message
 from tests.factories import make_authenticated_user
 
 
@@ -75,13 +75,7 @@ class TestSaveTurnReal:
 
         await save_user_message(body, user, conv_id, "specific-umsg")
         await save_bot_reply(
-            body=body,
-            user=user,
-            conversation_id=conv_id,
-            complete_message="Hi",
-            tool_data={},
-            metadata={},
-            bot_message_id="specific-bmsg",
+            body, user, conv_id, BotReply(complete_message="Hi", bot_message_id="specific-bmsg")
         )
 
         doc = await conversations_collection.find_one({"conversation_id": conv_id})
@@ -104,13 +98,10 @@ class TestSaveTurnReal:
         }
 
         await save_bot_reply(
-            body=body,
-            user=make_authenticated_user(user_id="save-user-4"),
-            conversation_id=conv_id,
-            complete_message="Results",
-            tool_data=tool_data,
-            metadata={},
-            bot_message_id="b",
+            body,
+            make_authenticated_user(user_id="save-user-4"),
+            conv_id,
+            BotReply(complete_message="Results", bot_message_id="b", tool_data=tool_data),
         )
 
         doc = await conversations_collection.find_one({"conversation_id": conv_id})

@@ -10,7 +10,7 @@ Uses fakeredis so no external Redis instance is required.
 """
 
 import asyncio
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timezone
 from unittest.mock import AsyncMock, patch
@@ -34,6 +34,11 @@ from app.config.rate_limits import (
 )
 from app.models.payment_models import PlanType
 from tests.helpers import effective_limit
+
+#: The limiter records each refusal against a GAIA user id, which is a Mongo ObjectId.
+USER_1 = "6812f0b3c9a14e2b7d5a9101"
+USER_2 = "6812f0b3c9a14e2b7d5a9102"
+PRO_USER = "6812f0b3c9a14e2b7d5a9103"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,14 +69,19 @@ def frozen_time(iso: str) -> Generator[datetime, None, None]:
         yield frozen
 
 
-def _make_limiter_with_fake_redis() -> tuple[TieredRateLimiter, fakeredis.aioredis.FakeRedis]:
-    """Create a TieredRateLimiter backed by fakeredis."""
+def _detail(exc: RateLimitExceededException) -> dict[str, str]:
+    """Return the 429's detail, which RateLimitExceededException always builds as a dict."""
+    assert isinstance(exc.detail, dict)
+    return exc.detail
+
+
+@contextmanager
+def _limiter_with_fake_redis() -> Iterator[tuple[TieredRateLimiter, fakeredis.aioredis.FakeRedis]]:
+    """Yield a TieredRateLimiter whose redis_cache is a duck-typed stand-in over fakeredis."""
     fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     limiter = TieredRateLimiter()
-    # Replace the redis_cache proxy with a duck-typed object that exposes
-    # the same .get / .redis interface the limiter relies on.
-    limiter.redis = _FakeRedisCache(fake_redis)
-    return limiter, fake_redis
+    with patch.object(limiter, "redis", _FakeRedisCache(fake_redis)):
+        yield limiter, fake_redis
 
 
 class _FakeRedisCache:
@@ -194,8 +204,9 @@ class TestTieredRateLimiterCheckAndIncrement:
     """Test the core check_and_increment method with fakeredis."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, self.fake_redis):
+            yield
 
     async def test_first_call_increments_counter(self) -> None:
         with (
@@ -203,7 +214,7 @@ class TestTieredRateLimiterCheckAndIncrement:
             patch.object(self.limiter, "_sync_usage_real_time", new_callable=AsyncMock),
         ):
             usage = await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
@@ -221,12 +232,12 @@ class TestTieredRateLimiterCheckAndIncrement:
             patch.object(self.limiter, "_sync_usage_real_time", new_callable=AsyncMock),
         ):
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="web_search",
                 user_plan=PlanType.FREE,
             )
             usage = await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="web_search",
                 user_plan=PlanType.FREE,
             )
@@ -242,7 +253,7 @@ class TestTieredRateLimiterCheckAndIncrement:
         ):
             # First call succeeds (uses the one allowed request)
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
@@ -250,14 +261,14 @@ class TestTieredRateLimiterCheckAndIncrement:
             # Second call should raise
             with pytest.raises(RateLimitExceededException) as exc_info:
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
 
         assert exc_info.value.status_code == 429
-        assert exc_info.value.detail["feature"] == "generate_image"
-        assert exc_info.value.detail["code"] == "rate_limit_exceeded"
+        assert _detail(exc_info.value)["feature"] == "generate_image"
+        assert _detail(exc_info.value)["code"] == "rate_limit_exceeded"
 
     async def test_premium_user_gets_higher_limits(self) -> None:
         """Pro user should be able to make more requests than free."""
@@ -267,20 +278,20 @@ class TestTieredRateLimiterCheckAndIncrement:
         ):
             # Free limit for generate_image is 1/day. Pro is 45/day.
             await self.limiter.check_and_increment(
-                user_id="pro_user",
+                user_id=PRO_USER,
                 feature_key="generate_image",
                 user_plan=PlanType.PRO,
             )
             # A second call should succeed for pro (limit is 45)
             await self.limiter.check_and_increment(
-                user_id="pro_user",
+                user_id=PRO_USER,
                 feature_key="generate_image",
                 user_plan=PlanType.PRO,
             )
 
             # Verify the counter is at 2 for the day key (must read inside frozen_time
             # so the time window key matches what was written)
-            day_key = self.limiter._get_redis_key("pro_user", "generate_image", RateLimitPeriod.DAY)
+            day_key = self.limiter._get_redis_key(PRO_USER, "generate_image", RateLimitPeriod.DAY)
             counter = await self.fake_redis.get(day_key)
             assert int(counter) == 2
 
@@ -292,28 +303,26 @@ class TestTieredRateLimiterCheckAndIncrement:
         ):
             # generate_image free: day=1, month=2
             # Manually set the monthly counter close to the limit.
-            month_key = self.limiter._get_redis_key(
-                "user1", "generate_image", RateLimitPeriod.MONTH
-            )
+            month_key = self.limiter._get_redis_key(USER_1, "generate_image", RateLimitPeriod.MONTH)
             # Set monthly usage to 1 (one away from limit of 2)
             await self.fake_redis.set(month_key, "1")
 
             # Day counter is 0 so daily check passes, but after increment
             # monthly will be at 2. Next call hits the limit.
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
 
             # Reset the day counter so the daily check passes again
-            day_key = self.limiter._get_redis_key("user1", "generate_image", RateLimitPeriod.DAY)
+            day_key = self.limiter._get_redis_key(USER_1, "generate_image", RateLimitPeriod.DAY)
             await self.fake_redis.set(day_key, "0")
 
             # Monthly is now at 2 (the limit), so next call should fail
             with pytest.raises(RateLimitExceededException) as exc_info:
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
@@ -331,8 +340,9 @@ class TestRateLimitRecovery:
     """Verify that limits reset when the time window rolls over."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, self.fake_redis):
+            yield
 
     async def test_daily_limit_resets_next_day(self) -> None:
         """Exhaust limit on day 1, then advance clock to day 2 and verify reset."""
@@ -340,13 +350,13 @@ class TestRateLimitRecovery:
             # Day 1: exhaust the limit (generate_image free = 1/day)
             with frozen_time("2026-04-01T12:00:00"):
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
                 with pytest.raises(RateLimitExceededException):
                     await self.limiter.check_and_increment(
-                        user_id="user1",
+                        user_id=USER_1,
                         feature_key="generate_image",
                         user_plan=PlanType.FREE,
                     )
@@ -355,7 +365,7 @@ class TestRateLimitRecovery:
             with frozen_time("2026-04-02T00:01:00"):
                 # Should succeed because the day key is now "20260402"
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
@@ -365,19 +375,17 @@ class TestRateLimitRecovery:
         with patch.object(self.limiter, "_sync_usage_real_time", new_callable=AsyncMock):
             with frozen_time("2026-04-30T23:00:00"):
                 month_key = self.limiter._get_redis_key(
-                    "user1", "generate_image", RateLimitPeriod.MONTH
+                    USER_1, "generate_image", RateLimitPeriod.MONTH
                 )
                 await self.fake_redis.set(month_key, "2")  # at the limit (free=2/month)
 
                 # Reset the day key so day check passes
-                day_key = self.limiter._get_redis_key(
-                    "user1", "generate_image", RateLimitPeriod.DAY
-                )
+                day_key = self.limiter._get_redis_key(USER_1, "generate_image", RateLimitPeriod.DAY)
                 await self.fake_redis.set(day_key, "0")
 
                 with pytest.raises(RateLimitExceededException):
                     await self.limiter.check_and_increment(
-                        user_id="user1",
+                        user_id=USER_1,
                         feature_key="generate_image",
                         user_plan=PlanType.FREE,
                     )
@@ -385,7 +393,7 @@ class TestRateLimitRecovery:
             # May 1: month window key changes to "202605"
             with frozen_time("2026-05-01T00:01:00"):
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
@@ -401,8 +409,9 @@ class TestPerFeatureIndependence:
     """Verify that rate limit counters are per-feature, not global."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, self.fake_redis):
+            yield
 
     async def test_exhausting_one_feature_does_not_affect_another(self) -> None:
         with (
@@ -411,20 +420,20 @@ class TestPerFeatureIndependence:
         ):
             # Exhaust generate_image (free = 1/day)
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
             with pytest.raises(RateLimitExceededException):
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
 
             # web_search (free = 10/day) should still work
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="web_search",
                 user_plan=PlanType.FREE,
             )
@@ -436,20 +445,20 @@ class TestPerFeatureIndependence:
         ):
             # Exhaust generate_image for user1
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
             with pytest.raises(RateLimitExceededException):
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
 
             # user2 should still be able to use generate_image
             await self.limiter.check_and_increment(
-                user_id="user2",
+                user_id=USER_2,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
@@ -467,18 +476,18 @@ class TestRateLimitExceptionDetail:
     def test_basic_exception_detail(self) -> None:
         exc = RateLimitExceededException(feature="generate_image")
         assert exc.status_code == 429
-        assert exc.detail["feature"] == "generate_image"
-        assert exc.detail["code"] == "rate_limit_exceeded"
+        assert _detail(exc)["feature"] == "generate_image"
+        assert _detail(exc)["code"] == "rate_limit_exceeded"
 
     def test_exception_with_plan_required(self) -> None:
         exc = RateLimitExceededException(feature="generate_image", plan_required="pro")
-        assert exc.detail["plan_required"] == "pro"
-        assert "Upgrade to Pro" in exc.detail["message"]
+        assert _detail(exc)["plan_required"] == "pro"
+        assert "Upgrade to Pro" in _detail(exc)["message"]
 
     def test_exception_with_reset_time(self) -> None:
         reset = datetime(2026, 4, 2, 0, 0, 0, tzinfo=UTC)
         exc = RateLimitExceededException(feature="generate_image", reset_time=reset)
-        assert exc.detail["reset_time"] == reset.isoformat()
+        assert _detail(exc)["reset_time"] == reset.isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -491,8 +500,9 @@ class TestConcurrentRequests:
     """Verify that concurrent calls increment the counter atomically."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, self.fake_redis):
+            yield
 
     async def test_concurrent_increments_are_atomic(self) -> None:
         """Fire exactly the daily allowance concurrently; every one succeeds and the counter lands precisely on the limit."""
@@ -508,7 +518,7 @@ class TestConcurrentRequests:
         ):
             tasks = [
                 self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key=feature,
                     user_plan=PlanType.FREE,
                 )
@@ -516,7 +526,7 @@ class TestConcurrentRequests:
             ]
             await asyncio.gather(*tasks)
 
-            day_key = self.limiter._get_redis_key("user1", feature, RateLimitPeriod.DAY)
+            day_key = self.limiter._get_redis_key(USER_1, feature, RateLimitPeriod.DAY)
             counter = await self.fake_redis.get(day_key)
             assert int(counter) == num_requests
 
@@ -534,7 +544,7 @@ class TestConcurrentRequests:
             async def _attempt() -> bool:
                 try:
                     await self.limiter.check_and_increment(
-                        user_id="user1",
+                        user_id=USER_1,
                         feature_key="deep_research",
                         user_plan=PlanType.FREE,
                     )
@@ -563,8 +573,9 @@ class TestRedisKeyStructure:
     """Verify Redis key format used by the limiter."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, _ = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, _):
+            yield
 
     def test_daily_key_format(self) -> None:
         with frozen_time("2026-04-01T14:00:00"):
@@ -594,8 +605,9 @@ class TestPlanGatedFeatures:
     """Verify that the exception indicates when a plan upgrade is needed."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
+    def _setup(self) -> Iterator[None]:
+        with _limiter_with_fake_redis() as (self.limiter, self.fake_redis):
+            yield
 
     async def test_rate_limit_exceeded_on_free_suggests_upgrade(self) -> None:
         """When a free user is rate-limited on a feature with a 0 free limit, the exception includes plan_required='pro'."""
@@ -605,17 +617,17 @@ class TestPlanGatedFeatures:
         ):
             # Exhaust generate_image (free day=1)
             await self.limiter.check_and_increment(
-                user_id="user1",
+                user_id=USER_1,
                 feature_key="generate_image",
                 user_plan=PlanType.FREE,
             )
             with pytest.raises(RateLimitExceededException) as exc_info:
                 await self.limiter.check_and_increment(
-                    user_id="user1",
+                    user_id=USER_1,
                     feature_key="generate_image",
                     user_plan=PlanType.FREE,
                 )
 
         # Free daily limit for generate_image is 1 (not 0), so plan_required
         # should be None (it is only set when the free limit for that period is 0).
-        assert exc_info.value.detail.get("plan_required") is None
+        assert _detail(exc_info.value).get("plan_required") is None

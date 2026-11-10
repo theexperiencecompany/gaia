@@ -20,6 +20,7 @@ from app.constants.payments import (
     DEV_PRO_TERM_DAYS,
     DEV_SUBSCRIPTION_PREFIX,
 )
+from app.constants.platform_links import Platform
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.subscriptions import subscription_repository
@@ -47,7 +48,6 @@ from app.services.oauth.oauth_service import store_user_info
 from app.services.payments.plan_cache import invalidate_plan_cache
 from app.services.platform_link_service import (
     AccountHasDifferentPlatformError,
-    Platform,
     PlatformAccountTakenError,
     PlatformLinkService,
     link_conflict_error,
@@ -199,7 +199,7 @@ async def seed_dev_data(
 
     await asyncio.gather(
         *(
-            TodoService.create_todo_with_workflow(TodoModel(title=f"Sample todo {i + 1}"), user_id)
+            TodoService.create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id)
             for i in range(todos)
         ),
         *(
