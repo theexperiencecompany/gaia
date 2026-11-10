@@ -215,6 +215,8 @@ ${legend}
       const svc = `${c.overnight.length ? `<span class="lbl">Services completed in transit</span>${svcRows(c.overnight)}` : ""}${c.running.length ? `<span class="lbl">Services still in progress</span>${svcRows(c.running)}` : ""}`;
       const bars = ed.codes[skin.code.symbology];
       const flight = `GA-${String(ed.editionNo).padStart(3, "0")}`;
+      const names = ed.recipient ? ed.recipient.name.toUpperCase().split(/\s+/) : [];
+      const pax = names.length > 1 ? `${names[names.length - 1]}/${names[0][0]}` : names.join("");
       return `<article class="t-boardingpass" style="--liv:${skin.livery.liv}; --acc:${skin.livery.acc}; --accOn:${skin.livery.accOn}; --paper:${skin.card.paper}; --desk:${skin.card.desk}">
 <div class="pass" data-paper>
   <div class="body">${grain("bp2-g", 0.9)}${guilloche(skin.livery.acc + "33")}
@@ -231,7 +233,7 @@ ${legend}
     <div class="sh"><b>GAIA AIR</b><span class="lbl">${flight} · seat ${ed.editionNo}A · ${pad2(ed.day)} ${esc(ed.monthShort.toUpperCase())}</span></div>
     ${svc}
     <div class="code" style="width:min(100%, ${bars.width * skin.code.modulePx}px)">${EXPLORER.code(bars, "bars")}</div>
-    <p class="codeno">GA${ed.editionNo} ${ed.time24.replace(":", "")} RANDERIYA/A</p>
+    <p class="codeno">GA${ed.editionNo} ${ed.time24.replace(":", "")}${pax ? ` ${esc(pax)}` : ""}</p>
   </div></div>
 </div></article>`;
     },
