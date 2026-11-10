@@ -3,7 +3,6 @@
 The real explorer templates and stamp catalogue (cities.json) are read.
 """
 
-from app.constants.briefing import NEEDS_YOU_SECTION_TITLE
 from app.models.briefing_models import (
     BriefingItem,
     BriefingModel,
@@ -50,17 +49,28 @@ def test_a_legacy_brief_has_no_edition_names() -> None:
     assert (view.edition_name, view.stamp_city_name) == (None, None)
 
 
-def test_needs_you_counts_only_that_sections_listed_items() -> None:
+def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section() -> None:
+    """The lead can be a needs-you item too; the editions list it with the other decisions."""
+    lead = BriefingSection(
+        numeral="I", title="First up", items=[BriefingItem(text="Reply to Priya", kind="you")]
+    )
     needs_you = BriefingSection(
-        numeral="I",
-        title=NEEDS_YOU_SECTION_TITLE,
-        items=[BriefingItem(text="Approve the MSA", count=3), BriefingItem(text="Reply to Dan")],
+        numeral="II",
+        title="Needs you",
+        items=[
+            BriefingItem(text="Approve the MSA", count=3, kind="you"),
+            BriefingItem(text="Retry the export", kind="failed"),
+        ],
     )
     gaias_work = BriefingSection(
-        numeral="II", title="GAIA's work", items=[BriefingItem(text="Drafted the memo")]
+        numeral="III",
+        title="GAIA's work",
+        items=[BriefingItem(text="Drafted the memo", kind="lookback"), BriefingItem(text="FYI")],
     )
 
-    view = briefing_view(_brief(template_family="flightplan", sections=[needs_you, gaias_work]))
+    view = briefing_view(
+        _brief(template_family="flightplan", sections=[lead, needs_you, gaias_work])
+    )
 
-    assert view.needs_you_count == 2
+    assert view.needs_you_count == 3
     assert view.edition_name == "The Blueprint"

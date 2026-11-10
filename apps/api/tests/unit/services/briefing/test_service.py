@@ -9,7 +9,7 @@ stored and delivered, and on every failure path, that nothing is.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
@@ -37,6 +37,7 @@ from app.constants.briefing import (
     BriefingFrequency,
     BriefingRunOutcome,
     BriefItemSource,
+    SectionKey,
 )
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -45,10 +46,16 @@ from app.constants.notifications import (
 )
 from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL
 from app.constants.user_activity import ActivityStatus
+from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.signal_memory import signal_memory_repository
+from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
+from app.db.repositories.workflow_executions import workflow_executions_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
     BriefingEvent,
@@ -61,6 +68,7 @@ from app.models.briefing_models import (
     NewStamp,
 )
 from app.models.chat_models import ConversationSource
+from app.models.hil_models import ApprovalLedgerDocument
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationStatus,
@@ -68,6 +76,7 @@ from app.models.notification.notification_models import (
 from app.models.scout_models import (
     ScoutOutcome,
     ScoutResult,
+    ScoutSkipReason,
     Signal,
     SignalImportance,
     SignalMemoryDocument,
@@ -80,7 +89,10 @@ from app.models.user_models import (
     ShuffleBag,
     UserDocument,
 )
+from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.services.briefing import chat_sync, context, dormancy, service, store
+from app.services.briefing.candidates import judge
+from app.services.briefing.candidates.judge import BriefSelectionAnswer
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
@@ -88,6 +100,7 @@ from app.services.briefing.scouts import service as scout_service
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
+from app.utils.errors import AppError
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
@@ -138,6 +151,51 @@ def _message_written(prompt: str, reply: str) -> str:
 
 
 _DIGEST_REPORT = "3 new papers on retrieval\nThe longest is 40 pages; two cite your draft."
+
+
+_CANDIDATE_LINE = re.compile(r"^(\d+)\. \[[^\]]+\] (needs_you|update|gaia_did|event)", re.M)
+_FILED_UNDER = {"needs_you": "needs_you", "update": "updates", "gaia_did": "gaia_did"}
+
+
+def _files_by_kind(
+    schema: type[BriefSelectionAnswer], prompt: str, **_: object
+) -> BriefSelectionAnswer:
+    """Stand in for the selection model: file every candidate where its producer would, in order."""
+    lists: dict[str, list[int]] = {"needs_you": [], "updates": [], "gaia_did": []}
+    for number, kind in _CANDIDATE_LINE.findall(prompt):
+        if kind in _FILED_UNDER:
+            lists[_FILED_UNDER[kind]].append(int(number))
+    return schema.model_validate(lists)
+
+
+_CANDIDATE_TITLE = re.compile(
+    r"^(\d+)\. \[[^\]]+\] [a-z_]+(?:, important)?: (.+?)(?: \| .*)?$", re.M
+)
+
+
+def _judged(
+    lead: tuple[str, str] | None = None, **sections: list[str]
+) -> Callable[..., BriefSelectionAnswer]:
+    """Stand in for a selection model that files candidates by title and drops the rest."""
+
+    def answer(
+        schema: type[BriefSelectionAnswer], prompt: str, **_: object
+    ) -> BriefSelectionAnswer:
+        ids = {title: int(n) for n, title in _CANDIDATE_TITLE.findall(prompt)}
+        lists = {key: [ids[title] for title in titles] for key, titles in sections.items()}
+        kept = {i for ids_ in lists.values() for i in ids_}
+        if lead is not None:
+            kept.add(ids[lead[0]])
+        return schema.model_validate(
+            {
+                **lists,
+                "lead": ids[lead[0]] if lead else None,
+                "offer": lead[1] if lead else None,
+                "dropped": [i for i in ids.values() if i not in kept],
+            }
+        )
+
+    return answer
 
 
 def _delivered(channel: str) -> ChannelDeliveryStatus:
@@ -201,6 +259,8 @@ class World:
     brief_message: AsyncMock = field(default_factory=AsyncMock)
     #: The context and repository reads the run makes, by name, as patched.
     reads: dict[str, AsyncMock] = field(default_factory=dict)
+    #: The selection model; by default it files every candidate where its producer would.
+    judge: AsyncMock = field(default_factory=lambda: AsyncMock(side_effect=_files_by_kind))
 
 
 def _seam(
@@ -354,6 +414,18 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
 
     monkeypatch.setattr(user_repository, "set_briefing_bag", set_bag)
     _seam(monkeypatch, w, context, "gather_calendar", AsyncMock(return_value=[_EVENT]))
+    monkeypatch.setattr(judge, "ainvoke_structured", w.judge)
+    for owner, name in (
+        (approval_ledger_repository, "list_pending_for_user"),
+        (hil_approval_repository, "list_pending_for_user"),
+        (reminder_repository, "find_scheduled_between"),
+    ):
+        _seam(monkeypatch, w, owner, name, AsyncMock(return_value=[]))
+    _seam(monkeypatch, w, workflow_executions_repository, "list_since", AsyncMock(return_value=[]))
+    _seam(monkeypatch, w, workflow_repository, "find_system_workflows", AsyncMock(return_value=[]))
+    _seam(
+        monkeypatch, w, todo_repository, "find_latest_by_external_ref", AsyncMock(return_value=None)
+    )
     _seam(
         monkeypatch,
         w,
@@ -585,19 +657,57 @@ class TestDailyBrief:
         assert _stored_payload(world).stamp_city is None
         assert "stamp_city" not in world.bags
 
-    async def test_brief_holds_at_most_the_cap_with_needs_you_first(self, world: World) -> None:
+    async def test_each_section_holds_at_most_its_cap_in_the_judges_order(
+        self, world: World
+    ) -> None:
+        """Regression: needs-you was truncated by a fixed order, never by what mattered."""
         world.work = context.TrackedWork(
             running=[_todo(f"r{i}", f"Running {i}") for i in range(6)],
-            blocked=[_todo(f"b{i}", f"Blocked {i}") for i in range(3)],
+            blocked=[_todo(f"b{i}", f"Blocked {i}") for i in range(5)],
             failed=[_todo("f1", "Failed one")],
+        )
+        world.judge.side_effect = _judged(
+            needs_you=["Failed one", *(f"Blocked {i}" for i in range(5))],
+            gaia_did=[f"Running {i}" for i in range(6)],
         )
 
         await service.run_daily_briefing(_USER)
 
-        items = [i for s in _stored_payload(world).sections for i in s.items]
-        assert len(items) == MAX_BRIEF_ITEMS
-        assert [i.kind for i in items[:4]] == ["you", "you", "you", "failed"]
-        assert "2 lower-priority item(s) are not in this brief" in _prompt(world)
+        sections = _stored_payload(world).sections
+        assert [(s.key, [i.text for i in s.items]) for s in sections] == [
+            (SectionKey.NEEDS_YOU, ["Failed one", "Blocked 0", "Blocked 1", "Blocked 2"]),
+            (SectionKey.GAIA_DID, ["Running 0", "Running 1", "Running 2"]),
+        ]
+        assert [s.numeral for s in sections] == ["I", "II"]
+
+    async def test_the_judges_lead_opens_the_brief_with_its_offer(self, world: World) -> None:
+        world.work = _brief_work()
+        world.judge.side_effect = _judged(
+            lead=("Approve the Priya reply", "Send the reply once you approve"),
+            gaia_did=["Investor update"],
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        lead, work = _stored_payload(world).sections
+        assert (lead.key, lead.title, lead.numeral) == (SectionKey.LEAD, "First up", "I")
+        assert [(i.text, i.kind, i.offer) for i in lead.items] == [
+            ("Approve the Priya reply", "you", "Send the reply once you approve")
+        ]
+        assert [(i.text, i.offer) for i in work.items] == [("Investor update", None)]
+
+    async def test_a_selection_the_judge_breaks_twice_fails_and_sends_nothing(
+        self, world: World
+    ) -> None:
+        world.work = _brief_work()
+        world.judge.side_effect = None
+        world.judge.return_value = BriefSelectionAnswer(needs_you=[99])
+
+        with pytest.raises(AppError, match="selection judge broke its contract"):
+            await service.run_daily_briefing(_USER)
+
+        assert world.judge.await_count == 2
+        _assert_nothing_sent(world)
 
     async def test_voice_the_agent_botched_stores_and_sends_nothing(self, world: World) -> None:
         world.agent.return_value = SimpleNamespace(message="Sorry, something went wrong.")
@@ -767,27 +877,21 @@ class TestWeeklyRecap:
 
 
 class TestHeldItemsJoinTheBrief:
-    """Results held for the brief become one section of it.
+    """Results held for the brief are candidates like any other.
 
-    The held results come from brief-delivery workflows; each
+    The held results come from brief-delivery workflows and the inbox desk; each
     appears once and is cleared once the brief went out.
     """
 
-    async def test_held_items_are_a_section_between_needs_you_and_gaias_work(
-        self, world: World
-    ) -> None:
-        world.work = context.TrackedWork(
-            blocked=[_todo("b1", "Approve the Priya reply")],
-            completed=[_todo("c1", "Investor update")],
-        )
+    async def test_a_held_result_joins_gaias_work_and_is_cleared(self, world: World) -> None:
+        world.work = _brief_work()
         world.held = [_held("h1", "Paper digest", _DIGEST_REPORT)]
 
         await service.run_daily_briefing(_USER)
 
-        assert [(s.title, [i.text for i in s.items]) for s in _stored_payload(world).sections] == [
-            ("Needs you", ["Approve the Priya reply"]),
-            ("While you were away", ["Paper digest: 3 new papers on retrieval"]),
-            ("GAIA's work", ["Investor update"]),
+        assert [(s.key, [i.text for i in s.items]) for s in _stored_payload(world).sections] == [
+            (SectionKey.NEEDS_YOU, ["Approve the Priya reply"]),
+            (SectionKey.GAIA_DID, ["Paper digest: 3 new papers on retrieval", "Investor update"]),
         ]
         # The headline and lede are voiced from the items, so a report's body never
         # reaches the prompt to be claimed from.
@@ -813,39 +917,41 @@ class TestHeldItemsJoinTheBrief:
         assert world.consume.await_args.args[0] == _USER
         assert sorted(world.consume.await_args.args[1]) == ["h1", "h2", "h3"]
 
-    async def test_held_items_the_cap_leaves_out_wait_for_the_next_brief(
+    async def test_a_held_result_the_judge_dropped_is_cleared_and_one_past_the_cap_waits(
         self, world: World
     ) -> None:
-        world.work = context.TrackedWork(
-            blocked=[_todo(f"b{i}", f"Blocked {i}") for i in range(MAX_BRIEF_ITEMS - 1)]
-        )
+        world.work = context.TrackedWork(completed=[_todo(f"c{i}", f"Done {i}") for i in range(3)])
         world.held = [_held("h1", "Digest", "first"), _held("h2", "Paper digest", "second")]
+        world.judge.side_effect = _judged(
+            gaia_did=["Done 0", "Done 1", "Done 2", "Paper digest: second"]
+        )
 
         await service.run_daily_briefing(_USER)
 
         texts = [i.text for s in _stored_payload(world).sections for i in s.items]
-        assert texts[-1] == "Digest: first"
-        assert "1 lower-priority item(s) are not in this brief" in _prompt(world)
+        assert texts == ["Done 0", "Done 1", "Done 2"]
         world.consume.assert_awaited_once_with(_USER, ["h1"])
 
-    async def test_gaias_work_fills_only_the_room_needs_you_and_held_results_leave(
-        self, world: World
+    async def test_an_inbox_desk_finding_is_a_gmail_update(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        world.work = context.TrackedWork(
-            blocked=[_todo(f"b{i}", f"Blocked {i}") for i in range(5)],
-            running=[_todo(f"r{i}", f"Running {i}") for i in range(3)],
+        desk = _todo("desk-1", "Inbox desk")
+        monkeypatch.setattr(
+            todo_repository, "find_latest_by_external_ref", AsyncMock(return_value=desk)
         )
-        world.held = [_held("h1", "Digest", "first"), _held("h2", "Paper digest", "second")]
+        finding = _held("h1", "Inbox desk", "Stripe payout of 2,400 dollars landed")
+        world.held = [
+            finding.model_copy(update={"source": BriefItemSource.TODO, "source_id": "desk-1"})
+        ]
 
         await service.run_daily_briefing(_USER)
 
-        sections = _stored_payload(world).sections
-        assert [(s.title, len(s.items)) for s in sections] == [
-            ("Needs you", 5),
-            ("While you were away", 2),
-            ("GAIA's work", 1),
+        [section] = _stored_payload(world).sections
+        assert section.key is SectionKey.UPDATES
+        assert [(i.text, i.app, i.kind) for i in section.items] == [
+            ("Stripe payout of 2,400 dollars landed", "Gmail", "note")
         ]
-        assert "2 lower-priority item(s) are not in this brief" in _prompt(world)
+        assert _stored_payload(world).sources_read == ["Gmail", "Google Calendar"]
 
     async def test_a_failed_delivery_clears_nothing(self, world: World) -> None:
         world.held = [_held("h1", "Paper digest", _DIGEST_REPORT)]
@@ -1298,7 +1404,12 @@ class TestTheDailyRunWiring:
                 item_count=2,
                 channel_count=3,
                 signal_count=0,
-                stamp_collected=False,
+                stamp_collected=payload.new_stamp is not None,
+                lead_count=0,
+                needs_you_count=1,
+                updates_count=0,
+                gaia_did_count=1,
+                source_count=1,
             ),
         )
 
@@ -1341,21 +1452,18 @@ class TestTheFactsTheModelVoices:
         await service.run_daily_briefing(_USER)
 
         assert (
-            "[COUNTS] waiting on you: 3 · done: 1 · in progress: 2 · while you were away: 1\n"
+            "[COUNTS] waiting on you: 3 · done: 1 · in progress: 1 · while you were away: 1\n"
             "[Needs you]\n"
             "- Waiting on you: Approve the reply | summary: Draft ready"
             " | artifact holds ~11 chars | waiting on you | link: (link:0)\n"
             "- Failed: Sync | artifact holds ~0 chars\n"
             "- Failed: Scrape | artifact holds ~0 chars\n"
-            "[While you were away]\n"
-            "- Note: Digest: first\n"
             "[GAIA's work]\n"
+            "- Note: Digest: first\n"
             "- Done: Deck | artifact holds ~0 chars\n"
             "- In progress: Research | artifact holds ~0 chars\n"
-            "- In progress: Outreach | artifact holds ~0 chars\n"
             "The user's own todo list is empty."
         ) in _prompt(world)
-        assert "lower-priority" not in _prompt(world)
         assert "GAIA has no tracked work" not in _prompt(world)
         assert [(s.value, s.label) for s in _stored_payload(world).stats] == [
             ("1", "done since yesterday"),
@@ -1483,7 +1591,7 @@ class TestTheFactsTheModelVoices:
 
         await service.run_daily_briefing(_USER)
 
-        assert [i.text for s in _stored_payload(world).sections for i in s.items] == ["Digest: "]
+        assert [i.text for s in _stored_payload(world).sections for i in s.items] == ["Digest"]
 
 
 def _todo_link(todo_id: str) -> str:
@@ -2121,7 +2229,11 @@ _DOCS = Signal(
 
 
 def _scouted(*signals: Signal) -> list[ScoutResult]:
-    return [ScoutResult(integration_id="linear", outcome=ScoutOutcome.REPLAYED, signals=[*signals])]
+    return [
+        ScoutResult(
+            integration_id="linear", app="Linear", outcome=ScoutOutcome.REPLAYED, signals=[*signals]
+        )
+    ]
 
 
 def _saying(text: str) -> SimpleNamespace:
@@ -2146,6 +2258,7 @@ class TestSignalsInTheBrief:
                 last_state="Todo",
             )
         ]
+        world.judge.side_effect = _judged(needs_you=[_LOGIN.title], updates=[_DOCS.title])
         world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) still needs you.")
 
         await service.run_daily_briefing(_USER)
@@ -2176,12 +2289,15 @@ class TestSignalsInTheBrief:
         self, world: World
     ) -> None:
         world.scouts = _scouted(_LOGIN, _DOCS)
+        world.judge.side_effect = _judged(needs_you=[_LOGIN.title], updates=[_DOCS.title])
         world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) is yours today.")
 
         await service.run_daily_briefing(_USER)
 
         world.shown.assert_awaited_once_with(_USER, [_LOGIN], _NOW)
         world.seen.assert_awaited_once_with(_USER, [_LOGIN, _DOCS], _NOW)
+        needs_you, updates = _stored_payload(world).sections
+        assert [(i.text, i.kind) for i in updates.items] == [(_DOCS.title, "note")]
 
     async def test_a_message_that_skips_an_important_signal_is_rejected(self, world: World) -> None:
         world.scouts = _scouted(_LOGIN)
@@ -2191,3 +2307,80 @@ class TestSignalsInTheBrief:
 
         _assert_nothing_sent(world)
         world.shown.assert_not_awaited()
+
+
+class TestEverySourceReachesItsSection:
+    """The brief is built from every source, not from tracked todos alone."""
+
+    async def test_an_app_signal_a_desk_finding_an_approval_and_a_failed_run_each_land_in_place(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        world.scouts = [
+            *_scouted(_LOGIN),
+            ScoutResult(
+                integration_id="notion",
+                app="Notion",
+                outcome=ScoutOutcome.SKIPPED,
+                skip_reason=ScoutSkipReason.FAILED,
+            ),
+        ]
+        desk = _todo("desk-1", "Inbox desk")
+        world.reads["find_latest_by_external_ref"].return_value = desk
+        world.held = [
+            _held("h1", "Inbox desk", "Stripe payout of 2,400 dollars landed").model_copy(
+                update={"source": BriefItemSource.TODO, "source_id": "desk-1"}
+            )
+        ]
+        pending = [
+            ApprovalLedgerDocument(
+                approval_id="ap_1",
+                conversation_id="conv-1",
+                user_id=_USER,
+                fingerprint="fp-1",
+                tool_name="GMAIL_SEND_EMAIL",
+                summary="Send the invoice to Acme",
+            )
+        ]
+        monkeypatch.setattr(
+            approval_ledger_repository, "list_pending_for_user", AsyncMock(return_value=pending)
+        )
+        world.reads["list_since"].return_value = [
+            WorkflowExecutionDocument(
+                execution_id="e1",
+                workflow_id="wf-sync",
+                user_id=_USER,
+                status="failed",
+                started_at=_NOW - timedelta(hours=2),
+                error_message="HubSpot token expired",
+            )
+        ]
+        monkeypatch.setattr(
+            workflow_repository,
+            "find_by_ids_for_user",
+            AsyncMock(return_value=[SimpleNamespace(id="wf-sync", title="CRM sync")]),
+        )
+        world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) is yours today.")
+
+        await service.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        assert [(s.key, [(i.text, i.app, i.kind) for i in s.items]) for s in payload.sections] == [
+            (
+                SectionKey.NEEDS_YOU,
+                [
+                    ("Send the invoice to Acme", "Gmail", "you"),
+                    ("CRM sync failed", "GAIA", "failed"),
+                    ("Fix the login redirect", "Linear", "you"),
+                ],
+            ),
+            (SectionKey.UPDATES, [("Stripe payout of 2,400 dollars landed", "Gmail", "note")]),
+        ]
+        assert payload.sections[0].items[2].url == _LOGIN.url
+        assert payload.sources_read == ["Linear", "Gmail", "Google Calendar"]
+        assert [(u.app, u.reason) for u in payload.sources_unavailable] == [
+            ("Notion", ScoutSkipReason.FAILED)
+        ]
+        event = world.capture.call_args.args[1]
+        assert (event.needs_you_count, event.updates_count, event.source_count) == (3, 1, 3)
+        world.consume.assert_awaited_once_with(_USER, ["h1"])
+        world.shown.assert_awaited_once_with(_USER, [_LOGIN], _NOW)

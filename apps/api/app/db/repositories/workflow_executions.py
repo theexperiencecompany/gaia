@@ -102,18 +102,22 @@ class WorkflowExecutionsRepository(
         *,
         exclude_workflow_ids: Sequence[str],
         limit: int,
+        status: WorkflowExecutionStatus | None = None,
     ) -> list[WorkflowExecutionDocument]:
-        """Return a user's executions started at/after since, newest first.
+        """Return a user's executions started at/after since, newest first, only of status when given.
 
         Used as the briefing engine's look-back read, which leaves out the
         briefing workflows' own runs via exclude_workflow_ids.
         """
+        filter_: dict[str, object] = {
+            "user_id": user_id,
+            "started_at": {"$gte": since},
+            "workflow_id": {"$nin": list(exclude_workflow_ids)},
+        }
+        if status is not None:
+            filter_["status"] = status
         return await self._find(
-            {
-                "user_id": user_id,
-                "started_at": {"$gte": since},
-                "workflow_id": {"$nin": list(exclude_workflow_ids)},
-            },
+            filter_,
             sort=[("started_at", -1)],
             limit=limit,
         )

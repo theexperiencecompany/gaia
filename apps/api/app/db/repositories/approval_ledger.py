@@ -189,6 +189,17 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
             ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
         ]
 
+    async def list_pending_for_user(self, user_id: str) -> list[ApprovalLedgerDocument]:
+        """Every approval still waiting on the user's decision, oldest first."""
+        cursor = (
+            self._raw_collection()
+            .find({"user_id": user_id, "state": str(LedgerState.PENDING)})
+            .sort("created_at", 1)
+        )
+        return [
+            ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
+        ]
+
     async def find_latest_denied(
         self, fingerprint: str, conversation_id: str
     ) -> ApprovalLedgerDocument | None:

@@ -433,6 +433,11 @@ export interface EventProperties {
     "channel_count": number;
     "signal_count": number;
     "stamp_collected": boolean;
+    "lead_count": number;
+    "needs_you_count": number;
+    "updates_count": number;
+    "gaia_did_count": number;
+    "source_count": number;
   };
   "browser:engine_switched": {
     "actor": "user" | "agent";

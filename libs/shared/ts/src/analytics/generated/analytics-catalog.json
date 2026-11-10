@@ -1345,6 +1345,26 @@
           "stamp_collected": {
             "title": "Stamp Collected",
             "type": "boolean"
+          },
+          "lead_count": {
+            "title": "Lead Count",
+            "type": "integer"
+          },
+          "needs_you_count": {
+            "title": "Needs You Count",
+            "type": "integer"
+          },
+          "updates_count": {
+            "title": "Updates Count",
+            "type": "integer"
+          },
+          "gaia_did_count": {
+            "title": "Gaia Did Count",
+            "type": "integer"
+          },
+          "source_count": {
+            "title": "Source Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -1354,7 +1374,12 @@
           "item_count",
           "channel_count",
           "signal_count",
-          "stamp_collected"
+          "stamp_collected",
+          "lead_count",
+          "needs_you_count",
+          "updates_count",
+          "gaia_did_count",
+          "source_count"
         ],
         "title": "BriefingSent",
         "type": "object"

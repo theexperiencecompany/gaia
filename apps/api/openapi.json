@@ -1915,6 +1915,17 @@
       "BriefingItem": {
         "description": "A single line inside a section, optionally bound to a todo.",
         "properties": {
+          "app": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App"
+          },
           "count": {
             "default": 1,
             "minimum": 1.0,
@@ -1944,6 +1955,24 @@
             ],
             "title": "Link"
           },
+          "offer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer"
+          },
+          "people": {
+            "items": {
+              "type": "string"
+            },
+            "title": "People",
+            "type": "array"
+          },
           "text": {
             "title": "Text",
             "type": "string"
@@ -1958,6 +1987,17 @@
               }
             ],
             "title": "Todo Id"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
           }
         },
         "required": [
@@ -1965,7 +2005,11 @@
           "todo_id",
           "kind",
           "link",
-          "count"
+          "count",
+          "app",
+          "url",
+          "people",
+          "offer"
         ],
         "title": "BriefingItem",
         "type": "object"
@@ -2102,6 +2146,21 @@
             "title": "Sections",
             "type": "array"
           },
+          "sources_read": {
+            "description": "The apps the brief read, by display name.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources Read",
+            "type": "array"
+          },
+          "sources_unavailable": {
+            "items": {
+              "$ref": "#/components/schemas/UnreadSource"
+            },
+            "title": "Sources Unavailable",
+            "type": "array"
+          },
           "stamp_city": {
             "anyOf": [
               {
@@ -2173,6 +2232,8 @@
           "calendar",
           "tallies",
           "week",
+          "sources_read",
+          "sources_unavailable",
           "message"
         ],
         "title": "BriefingPayload",
@@ -2206,6 +2267,16 @@
             "title": "Items",
             "type": "array"
           },
+          "key": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SectionKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "numeral": {
             "title": "Numeral",
             "type": "string"
@@ -2218,7 +2289,8 @@
         "required": [
           "numeral",
           "title",
-          "items"
+          "items",
+          "key"
         ],
         "title": "BriefingSection",
         "type": "object"
@@ -16940,6 +17012,18 @@
         "title": "ScheduledTaskStatus",
         "type": "string"
       },
+      "ScoutSkipReason": {
+        "description": "Why a scout contributed nothing to this brief.",
+        "enum": [
+          "failed",
+          "budget",
+          "backoff",
+          "no_read_only_tools",
+          "unknown_integration"
+        ],
+        "title": "ScoutSkipReason",
+        "type": "string"
+      },
       "SearchIntegrationItem": {
         "description": "Integration item in search results.",
         "properties": {
@@ -17102,6 +17186,18 @@
         ],
         "title": "SearchResultsResponse",
         "type": "object"
+      },
+      "SectionKey": {
+        "description": "What one section of a brief holds; every surface reads the key, never the title or position.",
+        "enum": [
+          "lead",
+          "needs_you",
+          "updates",
+          "gaia_did",
+          "week"
+        ],
+        "title": "SectionKey",
+        "type": "string"
       },
       "SelectedCalendarEventData": {
         "description": "Calendar event the user attached to a message.",
@@ -21042,6 +21138,24 @@
           "integrationId"
         ],
         "title": "UnpublishIntegrationResponse",
+        "type": "object"
+      },
+      "UnreadSource": {
+        "description": "A connected app the brief could not read this time, and why.",
+        "properties": {
+          "app": {
+            "title": "App",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ScoutSkipReason"
+          }
+        },
+        "required": [
+          "app",
+          "reason"
+        ],
+        "title": "UnreadSource",
         "type": "object"
       },
       "UpdateCustomIntegrationRequest": {

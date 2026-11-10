@@ -17,8 +17,10 @@ from app.constants.briefing import (
     DAILY_BRIEFING_HOUR,
     HUE_MAX,
     BriefingFrequency,
+    SectionKey,
 )
 from app.db.repositories.base import UserScopedDocument
+from app.models.scout_models import ScoutSkipReason
 from app.schemas.common import ResponseModel
 
 BriefingKind = Literal["daily", "weekly"]
@@ -40,6 +42,8 @@ BRIEFING_ITEM_STATES: dict[BriefingItemKind, str] = {
     "failed": "Failed",
     "note": "Note",
 }
+# The kinds that wait on the reader: their own asks and work that failed.
+NEEDS_YOU_ITEM_KINDS: frozenset[BriefingItemKind] = frozenset({"you", "failed"})
 
 
 class BriefingSchedule(BaseModel):
@@ -74,6 +78,13 @@ class BriefingItem(BaseModel):
     # How many tracked todos this one item stands for: todos sharing a parent or a
     # title are one thing to the user (todo_id is the first of them).
     count: int = Field(default=1, ge=1)
+    #: The app the item came from ("GitHub", "Gmail", "GAIA"); None on legacy rows.
+    app: str | None = None
+    #: A deep link into that app, when it gave one.
+    url: str | None = None
+    people: list[str] = Field(default_factory=list)
+    #: What GAIA offers to do about the item (the lead's "Let's do it"); None when nothing.
+    offer: str | None = None
 
 
 class BriefingSection(BaseModel):
@@ -84,6 +95,8 @@ class BriefingSection(BaseModel):
     numeral: str
     title: str
     items: list[BriefingItem] = Field(default_factory=list)
+    #: What the section holds; None on legacy rows and on the model-written weekly recap.
+    key: SectionKey | None = None
 
 
 class BriefingEvent(BaseModel):
@@ -93,6 +106,15 @@ class BriefingEvent(BaseModel):
     start: str | None = None  # user-local "HH:MM"; None for an all-day event
     title: str
     location: str | None = None
+
+
+class UnreadSource(BaseModel):
+    """A connected app the brief could not read this time, and why."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    app: str
+    reason: ScoutSkipReason
 
 
 class BriefingTallies(BaseModel):
@@ -187,6 +209,10 @@ class BriefingPayload(BaseModel):
     )
     tallies: BriefingTallies | None = None
     week: BriefingWeek | None = None
+    sources_read: list[str] = Field(
+        default_factory=list, description="The apps the brief read, by display name."
+    )
+    sources_unavailable: list[UnreadSource] = Field(default_factory=list)
     message: str | None = Field(
         default=None,
         description=(

@@ -1,7 +1,11 @@
 """The archive's view of a stored brief, and the folded card its notification and chat message carry."""
 
-from app.constants.briefing import NEEDS_YOU_SECTION_TITLE
-from app.models.briefing_models import BriefingCardData, BriefingModel, BriefingView
+from app.models.briefing_models import (
+    NEEDS_YOU_ITEM_KINDS,
+    BriefingCardData,
+    BriefingModel,
+    BriefingView,
+)
 from app.services.briefing.editions.explorer_render import explorer_family_names
 from app.services.briefing.editions.stamps import stamp_catalogue
 
@@ -16,9 +20,10 @@ def briefing_view(briefing: BriefingModel) -> BriefingView:
         edition_name=explorer_family_names().get(family) if family else None,
         stamp_city_name=city.name if city else None,
         needs_you_count=sum(
-            len(section.items)
+            1
             for section in payload.sections
-            if section.title == NEEDS_YOU_SECTION_TITLE
+            for item in section.items
+            if item.kind in NEEDS_YOU_ITEM_KINDS
         ),
     )
 

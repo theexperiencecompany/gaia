@@ -31,19 +31,20 @@ from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
-    HELD_SECTION_TITLE,
+    DAILY_SECTION_ORDER,
+    GAIA_APP_NAME,
     MAX_BRIEF_ITEMS,
     MAX_VOICE_ATTEMPTS,
-    NEEDS_YOU_SECTION_TITLE,
     POSTAL_FAMILY,
     RECENT_OPENINGS_SHOWN,
     SECTION_NUMERALS,
+    SECTION_TITLES,
     WEEKLY_FAMILY,
     WEEKLY_GENERATION_TIMEOUT_SECONDS,
     WEEKLY_KICKER,
-    WORK_SECTION_TITLE,
     BriefingBag,
     BriefingRunOutcome,
+    SectionKey,
     hue_for_day,
 )
 from app.constants.notifications import (
@@ -57,9 +58,10 @@ from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.users import user_repository
-from app.models.brief_models import PendingBriefItemDocument
+from app.models.brief_candidate_models import BriefCandidate
 from app.models.briefing_models import (
     BRIEFING_ITEM_STATES,
+    NEEDS_YOU_ITEM_KINDS,
     BriefingEvent,
     BriefingItem,
     BriefingItemKind,
@@ -83,12 +85,15 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     RedirectConfig,
 )
-from app.models.scout_models import Signal
+from app.models.scout_models import RememberedSignal, Signal
 from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser, ShuffleBag, UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing import chat_sync, context, dormancy
+from app.services.briefing.candidates.judge import BriefSelection, CandidatePool, select_candidates
+from app.services.briefing.candidates.pool import CandidateSources, gather_candidates
+from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.context import UserClock
 from app.services.briefing.conversation import post_brief_message
 from app.services.briefing.edition_email import HostedEditionImage
@@ -128,6 +133,7 @@ from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import build_user_context
 from app.utils.markdown_utils import decode_json_blocks, model_from_reply
 from app.utils.notification.channel_preferences import normalize_channel_preferences
+from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name, display_name
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
@@ -376,97 +382,85 @@ async def _deliver(
     return delivered
 
 
-def _subject_key(doc: TodoDocument) -> str:
-    """Return what makes todos one thing to the user: the outside thing it owns, a shared parent, else the same title.
-
-    The inbox desk's threads share the desk as parent yet are one subject each.
-    """
-    if doc.external_ref is not None:
-        return f"ref:{doc.external_ref.source.value}:{doc.external_ref.id}"
-    return f"parent:{doc.parent_todo_id}" if doc.parent_todo_id else _same_text_key(doc.title)
-
-
-def _work_items(docs: list[TodoDocument], kind: BriefingItemKind) -> list[BriefingItem]:
-    """One item per subject, counting the todos it stands for, in first-seen order."""
-    items: dict[str, BriefingItem] = {}
-    for doc in docs:
-        key = _subject_key(doc)
-        if key in items:
-            items[key].count += 1
-        else:
-            items[key] = BriefingItem(text=doc.title, todo_id=doc.id, kind=kind)
-    return list(items.values())
-
-
-def _held_text(doc: PendingBriefItemDocument) -> str:
-    """One line for a held result: where it came from and its report's first line."""
-    first_line = next((line.strip() for line in doc.text.splitlines() if line.strip()), "")
-    return f"{doc.source_title}: {first_line}"
-
-
-def _same_text_key(text: str) -> str:
-    return " ".join(text.split()).casefold()  # pragma: no mutate — spaced joins stay injective
-
-
-@dataclass
-class _Sections:
-    """The brief's code-built sections and what building them decided.
-
-    carried_ids are the held items this brief accounts for, cleared once it has gone out.
-    """
+@dataclass(frozen=True)
+class _Chosen:
+    """The brief's sections, each item beside the candidate it came from, in the same order."""
 
     sections: list[BriefingSection]
-    left_out: int
-    carried_ids: list[str]
+    picked: list[list[BriefCandidate]]
 
 
-def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocument]) -> _Sections:
-    """Code-built sections for GAIA's tracked work and held results.
+def _item_kind(key: SectionKey, candidate: BriefCandidate) -> BriefingItemKind:
+    """How a kept candidate reads: its own state, unless its section says it waits on the user or not."""
+    if key is SectionKey.NEEDS_YOU and candidate.state not in NEEDS_YOU_ITEM_KINDS:
+        return "you"
+    if key in (SectionKey.UPDATES, SectionKey.GAIA_DID) and candidate.state in NEEDS_YOU_ITEM_KINDS:
+        return "note"
+    return candidate.state
 
-    Order: needs-you (blocked, then failed), held results, then GAIA's own work, capped
-    at MAX_BRIEF_ITEMS. A held result already in the brief still counts as carried; one
-    the cap leaves out waits for the next brief.
-    """
-    needs_you = _work_items(work.blocked, "you") + _work_items(work.failed, "failed")
-    gaia_work = _work_items(work.completed, "lookback") + _work_items(work.running, "gaia")
-    seen = {_same_text_key(item.text) for item in needs_you + gaia_work}
-    held_items: list[BriefingItem] = []
-    held_ids: list[str] = []
-    duplicate_ids: list[str] = []
-    for doc in held:
-        text = _held_text(doc)
-        if _same_text_key(text) in seen:
-            duplicate_ids.append(doc.id)
-            continue
-        seen.add(_same_text_key(text))
-        held_items.append(BriefingItem(text=text))
-        held_ids.append(doc.id)
 
-    kept_needs_you = needs_you[:MAX_BRIEF_ITEMS]
-    kept_held = held_items[: MAX_BRIEF_ITEMS - len(kept_needs_you)]
-    kept_work = gaia_work[: MAX_BRIEF_ITEMS - len(kept_needs_you) - len(kept_held)]
-    filled = [
-        (title, items)
-        for title, items in (
-            (NEEDS_YOU_SECTION_TITLE, kept_needs_you),
-            (HELD_SECTION_TITLE, kept_held),
-            (WORK_SECTION_TITLE, kept_work),
-        )
-        if items
-    ]
-    kept_total = len(kept_needs_you) + len(kept_held) + len(kept_work)
-    return _Sections(
-        sections=[
-            BriefingSection(numeral=SECTION_NUMERALS[i], title=title, items=items)
-            for i, (title, items) in enumerate(filled)
-        ],
-        left_out=len(needs_you) + len(held_items) + len(gaia_work) - kept_total,
-        carried_ids=held_ids[: len(kept_held)] + duplicate_ids,
+def _item(key: SectionKey, candidate: BriefCandidate, offer: str | None) -> BriefingItem:
+    return BriefingItem(
+        text=candidate.title,
+        todo_id=candidate.todo_id,
+        kind=_item_kind(key, candidate),
+        count=candidate.count,
+        app=candidate.app,
+        url=candidate.url,
+        people=list(candidate.people),
+        offer=offer if key is SectionKey.LEAD else None,
     )
 
 
-def _fact_line(item: BriefingItem) -> str:
+def _chosen(selection: BriefSelection, pool: CandidatePool) -> _Chosen:
+    """Lay the judge's selection out as the brief's sections, in reading order, empty ones left out."""
+    filled = [
+        (key, [pool[i] for i in selection.sections[key]])
+        for key in DAILY_SECTION_ORDER
+        if selection.sections.get(key)
+    ]
+    return _Chosen(
+        sections=[
+            BriefingSection(
+                numeral=SECTION_NUMERALS[n],
+                title=SECTION_TITLES[key],
+                key=key,
+                items=[_item(key, c, selection.offer) for c in picked],
+            )
+            for n, (key, picked) in enumerate(filled)
+        ],
+        picked=[picked for _, picked in filled],
+    )
+
+
+def _carried_ids(
+    selection: BriefSelection, pool: CandidatePool, duplicates: list[str]
+) -> list[str]:
+    """Return the held results this brief accounts for: kept, dropped by the judge, or said twice.
+
+    A held result the section caps left out waits for the next brief.
+    """
+    accounted = [i for ids in selection.sections.values() for i in ids] + selection.dropped
+    return [held for i in accounted if (held := pool[i].held_id) is not None] + duplicates
+
+
+def _chosen_signals(chosen: _Chosen, remembered: list[RememberedSignal]) -> list[RememberedSignal]:
+    """Return the app signals the judge kept, with their memory, for the writer's apps block."""
+    kept = {
+        (c.signal.integration_id, c.signal.external_id)
+        for picked in chosen.picked
+        for c in picked
+        if c.signal is not None
+    }
+    return [r for r in remembered if (r.signal.integration_id, r.signal.external_id) in kept]
+
+
+def _fact_line(item: BriefingItem, detail: str | None = None) -> str:
     line = f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
+    if item.app and item.app != GAIA_APP_NAME:
+        line += f" | in {item.app}"
+    if detail:
+        line += f" | detail: {detail}"
     if item.count > 1:
         line += f" | {item.count} requests, one item"
     return line
@@ -484,16 +478,12 @@ def _work_fact_line(item: BriefingItem, art: _ArtifactFact, token: str | None) -
 
 @dataclass
 class _Facts:
-    """The brief's sections and stats, the facts block the model voices, and held items.
-
-    The held items are the ones the brief carries.
-    """
+    """The brief's sections and stats, and the facts block the model voices."""
 
     sections: list[BriefingSection]
     stats: list[BriefingStat]
     counts: VoicedCounts
     block: str
-    carried_ids: list[str]
     # Link-token number -> the todo it stands for, resolved by _link_voiced_items.
     link_targets: dict[int, str]
 
@@ -506,32 +496,30 @@ def _work_stats(work: context.TrackedWork) -> list[BriefingStat]:
         (work.blocked, "waiting on you"),
     )
     return [
-        BriefingStat(value=str(len({_subject_key(d) for d in docs})), label=label)
+        BriefingStat(value=str(len({subject_key(d) for d in docs})), label=label)
         for docs, label in figures
         if docs
     ]
 
 
 def _build_facts(
+    chosen: _Chosen,
     work: context.TrackedWork,
-    held: list[PendingBriefItemDocument],
     artifacts: dict[str, _ArtifactFact],
     open_todos: int,
     notes: str,
 ) -> _Facts:
-    """Assemble sections + stats deterministically from tracked-work state and held results.
+    """Assemble the facts block the model voices from the chosen sections.
 
-    The rendered sections come from here so the brief cannot lie. Each fact gives the
-    model a summary, whether it is big or waiting on the user, and a link token that
-    becomes the item's heygaia.link only if the voice pass writes it into the message.
+    The rendered sections come from the selection so the brief cannot lie. Each todo fact
+    gives the model a summary, whether it is big or waiting on the user, and a link token
+    that becomes the item's heygaia.link only if the voice pass writes it into the message.
+    App signals are voiced from their own block, with what earlier briefs said of them.
     """
-    built = _work_sections(work, held)
-    sections, left_out = built.sections, built.left_out
     link_targets: dict[int, str] = {}
-
-    items = [it for sec in sections for it in sec.items]
+    items = [it for sec in chosen.sections for it in sec.items]
     counts = VoicedCounts(
-        waiting_on_you=sum(1 for it in items if it.kind in ("you", "failed")),
+        waiting_on_you=sum(1 for it in items if it.kind in NEEDS_YOU_ITEM_KINDS),
         done=sum(1 for it in items if it.kind == "lookback"),
         in_progress=sum(1 for it in items if it.kind == "gaia"),
         while_away=sum(1 for it in items if it.kind == "note"),
@@ -539,11 +527,13 @@ def _build_facts(
     )
     voiced = " · ".join(f"{label}: {n}" for label, n in counts.shown())
     fact_lines: list[str] = [f"[COUNTS] {voiced}"] if voiced else []
-    for sec in sections:
+    for sec, picked in zip(chosen.sections, chosen.picked, strict=True):
         fact_lines.append(f"[{sec.title}]")
-        for it in sec.items:
+        for it, candidate in zip(sec.items, picked, strict=True):
+            if candidate.signal is not None:
+                continue
             if it.todo_id is None:
-                fact_lines.append(_fact_line(it))
+                fact_lines.append(_fact_line(it, candidate.detail))
                 continue
             art = artifacts[it.todo_id]
             token = None
@@ -551,19 +541,13 @@ def _build_facts(
                 token = link_token(len(link_targets))
                 link_targets[len(link_targets)] = it.todo_id
             fact_lines.append(_work_fact_line(it, art, token))
-    if left_out:
-        fact_lines.append(
-            f"{left_out} lower-priority item(s) are not in this brief; they are in the app."
-        )
-    if not sections:
+    if not chosen.sections:
         fact_lines.append(
             "GAIA has no tracked work and no background work ran. Do not claim anything "
             "ran, finished, or is pending beyond what is stated here."
         )
     fact_lines.append(notes)
-    return _Facts(
-        sections, _work_stats(work), counts, "\n".join(fact_lines), built.carried_ids, link_targets
-    )
+    return _Facts(chosen.sections, _work_stats(work), counts, "\n".join(fact_lines), link_targets)
 
 
 async def _link_voiced_items(
@@ -863,6 +847,10 @@ _NOTIFICATION_KINDS: dict[BriefingKind, str] = {
 }
 
 
+def _section_count(payload: BriefingPayload, key: SectionKey) -> int:
+    return sum(len(s.items) for s in payload.sections if s.key is key)
+
+
 async def _publish(
     user: UserDocument,
     clock: UserClock,
@@ -906,6 +894,11 @@ async def _publish(
             channel_count=len(channels),
             signal_count=sending.signal_count,
             stamp_collected=payload.new_stamp is not None,
+            lead_count=_section_count(payload, SectionKey.LEAD),
+            needs_you_count=_section_count(payload, SectionKey.NEEDS_YOU),
+            updates_count=_section_count(payload, SectionKey.UPDATES),
+            gaia_did_count=_section_count(payload, SectionKey.GAIA_DID),
+            source_count=len(payload.sources_read),
         ),
     )
     log.info("briefing.sent", user_id=user.id, kind=kind, channels=channels, pushed=push)
@@ -959,21 +952,36 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     completed = await context.gather_completed_since(user_id, since)
     held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
     seen_at = datetime.now(UTC)
-    remembered = await scout_signals(user, seen_at)
+    scouts = await scout_signals(user, seen_at)
+    gathered = await gather_candidates(
+        user_id, clock, since, seen_at, CandidateSources(work, held, scouts, calendar)
+    )
+    selection = await select_candidates(
+        user_id, gathered.pool, scouts.criteria, seen_at, user.timezone or Timezone.utc().value
+    )
+    log.set_ns(
+        "brief_selection",
+        candidates=len(gathered.pool),
+        kept={key.value: len(ids) for key, ids in selection.sections.items()},
+        dropped=len(selection.dropped),
+        capped=len(selection.capped),
+    )
+    chosen = _chosen(selection, gathered.pool)
+    remembered = _chosen_signals(chosen, scouts.remembered)
     signals = [item.signal for item in remembered]
     facts = _build_facts(
+        chosen,
         work,
-        held,
         artifacts,
         open_count,
         _user_todos_note(open_count, open_titles) + "\n" + _calendar_note(calendar),
     )
 
-    # Idle ladder: nothing to report (no tracked work, no held results, no goal
+    # Idle ladder: nothing to report (no candidate beyond the calendar, no goal
     # knowledge) escalates from the goal question to a plain warning to one
     # goodbye, then dormancy. A new account's first week never climbs it.
     first_week = dormancy.in_first_week(user, datetime.now(UTC))
-    idle = work.is_empty and not held and not signals and not has_goal and not first_week
+    idle = not gathered.has_news and not has_goal and not first_week
     idle_days = await dormancy.record_idle_day(user_id, dstate, idle, clock.date_str)
     wind_down = dormancy.wind_down_stage(idle_days) if idle else None
     # A user who stopped coming back is offered fewer briefs, never silently dropped.
@@ -1015,7 +1023,14 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         ),
         lambda voice: _daily_payload(
             clock, voice, facts.sections, facts.stats, winback.is_winback
-        ).model_copy(update={"calendar": calendar, "tallies": tallies}),
+        ).model_copy(
+            update={
+                "calendar": calendar,
+                "tallies": tallies,
+                "sources_read": gathered.sources_read,
+                "sources_unavailable": gathered.sources_unavailable,
+            }
+        ),
     )
     await _link_voiced_items(user_id, payload, facts.link_targets)
     family = _draw_from_bag(user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS)
@@ -1035,8 +1050,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     await signal_memory_repository.mark_shown(
         user_id, voiced_signals(payload.message, signals), datetime.now(UTC)
     )
-    if facts.carried_ids:
-        await pending_brief_items_repository.consume(user_id, facts.carried_ids)
+    carried = _carried_ids(selection, gathered.pool, gathered.duplicate_held_ids)
+    if carried:
+        await pending_brief_items_repository.consume(user_id, carried)
     await _clear_bootstrap(user)
 
     # The goodbye went out — pause the loop until a reactivation signal.

@@ -1,12 +1,13 @@
 """Run every connected integration's scout for a brief, and learn the ones that need it.
 
 Scouts are a Pro feature. Each scout replays its frozen calls with no model; every row
-they return is then judged, across all apps in one call, by the criteria each scout
-learned. A replay that fails, a result whose shape moved, or a changed tool list
+they return is then judged with the rest of the brief's candidates by the criteria each
+scout learned. A replay that fails, a result whose shape moved, or a changed tool list
 relearns that scout once; a learn that fails waits out a backoff. One scout failing is a
 typed skipped result and an error on the wide event, never a failed brief.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.constants.scouts import SCOUT_RELEARN_BACKOFF
@@ -22,7 +23,6 @@ from app.models.scout_models import (
     ScoutStatus,
 )
 from app.models.user_models import UserDocument
-from app.services.briefing.scouts.judge import judge_replayed
 from app.services.briefing.scouts.learn import learn_scout
 from app.services.briefing.scouts.memory import remember
 from app.services.briefing.scouts.spend import may_learn
@@ -53,6 +53,7 @@ def _playbook_user(user: UserDocument) -> PlaybookUser:
 def _skipped(integration: ScoutIntegration, reason: ScoutSkipReason) -> ScoutResult:
     return ScoutResult(
         integration_id=integration.integration_id,
+        app=integration.name,
         outcome=ScoutOutcome.SKIPPED,
         skip_reason=reason,
     )
@@ -105,6 +106,7 @@ async def _learn(
     nothing = learned.scout is not None and learned.scout.status is ScoutStatus.NOTHING_TO_WATCH
     return ScoutResult(
         integration_id=integration.integration_id,
+        app=integration.name,
         outcome=ScoutOutcome.NOTHING_TO_WATCH if nothing else ScoutOutcome.LEARNED,
         signals=learned.signals,
     )
@@ -136,6 +138,7 @@ async def _replay(
         return await _learn(user, integration, tools, scout)
     return ScoutResult(
         integration_id=integration.integration_id,
+        app=integration.name,
         outcome=ScoutOutcome.REPLAYED,
         signals=signals,
         criteria=scout.criteria,
@@ -156,7 +159,9 @@ async def _run_scout(user: UserDocument, integration: ScoutIntegration) -> Scout
         return await _learn(user, integration, tools, scout)
     if scout.status is ScoutStatus.NOTHING_TO_WATCH:
         return ScoutResult(
-            integration_id=integration.integration_id, outcome=ScoutOutcome.NOTHING_TO_WATCH
+            integration_id=integration.integration_id,
+            app=integration.name,
+            outcome=ScoutOutcome.NOTHING_TO_WATCH,
         )
     if scout.status is ScoutStatus.LEARN_FAILED:
         if scout.next_learn_at is not None and datetime.now(UTC) < scout.next_learn_at:
@@ -180,6 +185,7 @@ async def _scout_turn(user: UserDocument, integration: ScoutIntegration) -> Scou
         )
         return ScoutResult(
             integration_id=integration.integration_id,
+            app=integration.name,
             outcome=ScoutOutcome.SKIPPED,
             skip_reason=ScoutSkipReason.FAILED,
             error=f"{type(exc).__name__}: {exc}",
@@ -213,24 +219,27 @@ async def run_scouts(user: UserDocument) -> list[ScoutResult]:
     return results
 
 
-async def scout_signals(user: UserDocument, now: datetime) -> list[RememberedSignal]:
-    """Run the scouts, pair their signals with memory, and judge every replayed one.
+@dataclass(frozen=True)
+class ScoutSignals:
+    """What the scouts read for one brief: every signal with its memory, and how each app went.
 
-    A judge that fails costs the brief today's replayed signals, never the brief.
+    criteria maps an app's name to how its scout tells what needs the user, for the rows
+    its replay returned; the brief's selection judge reads them by it.
     """
+
+    remembered: list[RememberedSignal]
+    criteria: dict[str, str]
+    results: list[ScoutResult]
+
+
+async def scout_signals(user: UserDocument, now: datetime) -> ScoutSignals:
+    """Run the scouts and pair every signal they found with what earlier briefs remember of it."""
     results = await run_scouts(user)
     remembered = await remember(user.id, [s for r in results for s in r.signals], now)
-    try:
-        judged = await judge_replayed(
-            user.id, results, remembered, now, user.timezone or Timezone.utc().value
-        )
-    except Exception as exc:
-        # Broad on purpose, as in _scout_turn: the judge is one model call over app items.
-        log.error("briefing.signal_judge_failed", error=str(exc), error_type=type(exc).__name__)
-        replayed = {r.integration_id for r in results if r.outcome is ScoutOutcome.REPLAYED}
-        return [item for item in remembered if item.signal.integration_id not in replayed]
-    log.set_ns("scouts", judged_out=len(remembered) - len(judged))
-    return judged
+    criteria = {
+        r.app: r.criteria for r in results if r.outcome is ScoutOutcome.REPLAYED and r.criteria
+    }
+    return ScoutSignals(remembered=remembered, criteria=criteria, results=results)
 
 
 async def learn_connected_integration(

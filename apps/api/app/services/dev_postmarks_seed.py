@@ -14,12 +14,12 @@ from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
-    NEEDS_YOU_SECTION_TITLE,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
+    SECTION_TITLES,
     WEEKLY_FAMILY,
     WEEKLY_KICKER,
-    WORK_SECTION_TITLE,
+    SectionKey,
     hue_for_day,
 )
 from app.constants.notifications import NotificationChannel
@@ -236,23 +236,25 @@ def _brief_payload(
     day: date, seed: _SeedDay, user: UserDocument, family: str, city_slug: str | None = None
 ) -> BriefingPayload:
     iso_day = day.isoformat()
-    titled_items = (
-        (NEEDS_YOU_SECTION_TITLE, [BriefingItem(text=text, kind="you") for text in seed.needs_you]),
+    keyed_items = (
+        (SectionKey.NEEDS_YOU, [BriefingItem(text=text, kind="you") for text in seed.needs_you]),
         (
-            WORK_SECTION_TITLE,
+            SectionKey.GAIA_DID,
             [BriefingItem(text=text, kind="lookback") for text in seed.done]
             + [BriefingItem(text=text, kind="gaia") for text in seed.running],
         ),
     )
-    filled = [(title, items) for title, items in titled_items if items]
+    filled = [(key, items) for key, items in keyed_items if items]
     return BriefingPayload(
         kicker=DAILY_KICKER,
         date=iso_day,
         headline=seed.headline,
         lede=seed.lede,
         sections=[
-            BriefingSection(numeral=SECTION_NUMERALS[i], title=title, items=items)
-            for i, (title, items) in enumerate(filled)
+            BriefingSection(
+                numeral=SECTION_NUMERALS[i], title=SECTION_TITLES[key], key=key, items=items
+            )
+            for i, (key, items) in enumerate(filled)
         ],
         mood=seed.mood,
         caption=seed.caption,
@@ -318,7 +320,8 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
         sections=[
             BriefingSection(
                 numeral=SECTION_NUMERALS[0],
-                title=NEEDS_YOU_SECTION_TITLE,
+                title=SECTION_TITLES[SectionKey.NEEDS_YOU],
+                key=SectionKey.NEEDS_YOU,
                 items=[
                     BriefingItem(text="Confirm the offsite venue", kind="you"),
                     BriefingItem(text="Accept the new lease terms", kind="you"),
@@ -326,7 +329,8 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
             ),
             BriefingSection(
                 numeral=SECTION_NUMERALS[1],
-                title=WORK_SECTION_TITLE,
+                title=SECTION_TITLES[SectionKey.GAIA_DID],
+                key=SectionKey.GAIA_DID,
                 items=[BriefingItem(text=text, kind="lookback") for text in shipped],
             ),
         ],

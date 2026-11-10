@@ -40,17 +40,50 @@ BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
 DAILY_KICKER: Final[str] = "THE MORNING BRIEF"
 WEEKLY_KICKER: Final[str] = "THE WEEKLY DIGEST"
 
+
+class SectionKey(StrEnum):
+    """What one section of a brief holds; every surface reads the key, never the title or position."""
+
+    LEAD = "lead"
+    NEEDS_YOU = "needs_you"
+    UPDATES = "updates"
+    GAIA_DID = "gaia_did"
+    WEEK = "week"
+
+
 # Daily brief section heads, numbered in order. Display casing: every surface shows
 # these as written; an edition that sets its heads in capitals does so in its own CSS.
-NEEDS_YOU_SECTION_TITLE: Final[str] = "Needs you"
-HELD_SECTION_TITLE: Final[str] = "While you were away"
-WORK_SECTION_TITLE: Final[str] = "GAIA's work"
-SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III")
-
-# A brief is finite: at most this many items across all its sections, so it reads
-# in under a minute. The daily brief keeps the highest-priority items (needs-you
-# first); a weekly payload over the cap fails generation.
+SECTION_TITLES: Final[dict[SectionKey, str]] = {
+    SectionKey.LEAD: "First up",
+    SectionKey.NEEDS_YOU: "Needs you",
+    SectionKey.UPDATES: "From your apps",
+    SectionKey.GAIA_DID: "GAIA's work",
+    SectionKey.WEEK: "This week",
+}
+SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV")
+# The daily brief's sections in reading order, and the most items the selection judge
+# may put in each: the brief reads in under a minute.
+DAILY_SECTION_ORDER: Final[tuple[SectionKey, ...]] = (
+    SectionKey.LEAD,
+    SectionKey.NEEDS_YOU,
+    SectionKey.UPDATES,
+    SectionKey.GAIA_DID,
+)
+SECTION_CAPS: Final[dict[SectionKey, int]] = {
+    SectionKey.LEAD: 1,
+    SectionKey.NEEDS_YOU: 4,
+    SectionKey.UPDATES: 3,
+    SectionKey.GAIA_DID: 3,
+}
+# The model-written weekly payload holds at most this many items across its sections.
 MAX_BRIEF_ITEMS: Final[int] = 8
+#: Selection judge calls per brief: one more when its answer breaks the contract, then the run fails.
+MAX_SELECTION_ATTEMPTS: Final[int] = 2
+#: The selection judge's metering label.
+BRIEF_SELECTION_LABEL: Final[str] = "brief_selection_judge"
+#: What a candidate's source is when GAIA itself, not a connected app, produced it.
+GAIA_SOURCE: Final[str] = "gaia"
+GAIA_APP_NAME: Final[str] = "GAIA"
 # The written brief message is a text, not a wall: a busy day fits in about 20 short lines.
 MAX_BRIEF_MESSAGE_CHARS: Final[int] = 1500
 # Room each app signal adds to that, up to a hard ceiling however much the apps hold.

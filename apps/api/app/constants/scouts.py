@@ -57,5 +57,3 @@ SCOUT_RESULT_BRIEF: Final[str] = "Replayed without narration; its items become b
 
 #: What a learn run's graph is metered and logged as.
 SCOUT_AGENT_NAME: Final[str] = "brief_scout"
-#: What the one batched judge call over every replayed signal is metered as.
-SIGNAL_JUDGE_LABEL: Final[str] = "brief_signal_judge"

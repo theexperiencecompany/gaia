@@ -1,4 +1,4 @@
-"""Prompts for brief scouts: the learn run over one app, and the one judge over every replayed item."""
+"""The prompt for a brief scout's learn run over one app."""
 
 SCOUT_LEARN_PROMPT = """You are GAIA's scout for the user's {app} account. Today is {today} ({timezone}).
 
@@ -64,27 +64,4 @@ only when the item is overdue, due within a day, or someone is blocked on the us
 If {app} holds nothing that could ever need the user's attention (it is a reference, a utility, or
 only does things on request), set "nothing_to_watch" to true and leave the lists empty. A quiet day
 with nothing open right now is NOT that: freeze the calls anyway, with empty signals.
-"""
-
-SIGNAL_JUDGE_PROMPT = """You decide which items from the user's connected apps belong in today's brief.
-Today is {today} ({timezone}).
-
-When each app's scout first looked, it wrote down how to tell what in that app needs this user:
-{criteria}
-
-Today the scouts read these items again, every row their calls returned, so most are noise.
-Each line: its number, app, what it is, title, then state, due date, people and what earlier
-briefs remember about it.
-{items}
-
-Give EVERY number one verdict:
-- keep: true only when, by its app's criteria, it needs the user's attention now or soon: a
-  person waiting on their reply or decision, open work assigned to them, something overdue or
-  due within days. false for recurring personal routines and shopping, entertainment and
-  reference items, anything done or closed, and anything only informational.
-- importance: "high" only when a person is waiting on them, it is overdue or due within a day,
-  or real money or a commitment rides on it; otherwise "normal".
-- why: one short line, from the item itself.
-An item earlier briefs already mentioned and that has not moved is not news: keep it only if it
-still needs them, and never raise it to high because it is old. Invent nothing.
 """

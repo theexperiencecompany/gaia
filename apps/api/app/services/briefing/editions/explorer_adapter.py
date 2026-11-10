@@ -15,6 +15,7 @@ from typing import NamedTuple, TypedDict
 
 from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
 from app.models.briefing_models import (
+    NEEDS_YOU_ITEM_KINDS,
     BriefingEvent,
     BriefingItem,
     BriefingItemKind,
@@ -53,8 +54,6 @@ _GENERATED_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$")
 _OVERNIGHT_TAGS: dict[BriefingItemKind, str] = {"gaia": "IN PROGRESS", "lookback": "DONE"}
 # Work GAIA is still doing: never filed under a "done while you slept" heading.
 _RUNNING_KINDS: frozenset[BriefingItemKind] = frozenset({"gaia"})
-# What waits on the reader: their own asks and work that failed (offered as a retry).
-_DECISION_KINDS: frozenset[BriefingItemKind] = frozenset({"you", "failed"})
 _RETRY_VERB = "Retry"
 
 _IMPERATIVE_VERBS = {
@@ -340,12 +339,12 @@ class _Buckets(NamedTuple):
 def _build_buckets(sections: list[BriefingSection], calendar: list[BriefingEvent]) -> _Buckets:
     """Map items by meaning (see the module docstring); an empty bucket stays empty."""
     items = [item for section in sections for item in section.items]
-    finished = [i for i in items if i.kind not in _DECISION_KINDS | _RUNNING_KINDS]
+    finished = [i for i in items if i.kind not in NEEDS_YOU_ITEM_KINDS | _RUNNING_KINDS]
     return _Buckets(
         today=[_event_row(e) for e in calendar],
         overnight=[_overnight_row(i) for i in finished],
         running=[_overnight_row(i) for i in items if i.kind in _RUNNING_KINDS],
-        decisions=[_decision_row(i) for i in items if i.kind in _DECISION_KINDS],
+        decisions=[_decision_row(i) for i in items if i.kind in NEEDS_YOU_ITEM_KINDS],
     )
 
 
@@ -355,7 +354,7 @@ def _positive(value: int) -> int | None:
 
 def _awaiting(sections: list[BriefingSection]) -> int | None:
     return _positive(
-        sum(item.count for s in sections for item in s.items if item.kind in _DECISION_KINDS)
+        sum(item.count for s in sections for item in s.items if item.kind in NEEDS_YOU_ITEM_KINDS)
     )
 
 
