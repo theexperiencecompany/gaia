@@ -9,7 +9,7 @@ from collections.abc import Collection
 from datetime import datetime
 
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
-from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE
+from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefAction
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.hil import hil_approval_repository
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
@@ -38,6 +38,7 @@ def _candidate(source: str, app: str, summary: str, tool_name: str) -> BriefCand
         state="you",
         title=summary.strip() or f"Approve {tool_name}",
         detail="waiting for your approval",
+        action=BriefAction.APPROVE,
     )
 
 

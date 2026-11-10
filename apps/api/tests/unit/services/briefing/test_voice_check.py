@@ -8,9 +8,10 @@ the lede said "1 event today" over an empty calendar.
 from typing import Any
 
 import pytest
+from tests.factories import make_brief_item
 
 from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS
-from app.models.briefing_models import BriefingPayload
+from app.models.briefing_models import BriefingItemKind, BriefingPayload
 from app.services.briefing.voice_check import (
     VoicedCounts,
     message_contradictions,
@@ -29,7 +30,13 @@ def _payload(**overrides: Any) -> BriefingPayload:
             {
                 "numeral": "I",
                 "title": "GAIA'S WORK",
-                "items": [{"text": "Investor update draft for October", "kind": "lookback"}],
+                "items": [
+                    {
+                        "text": "Investor update draft for October",
+                        "kind": "lookback",
+                        "outcome": "finished",
+                    }
+                ],
             }
         ],
         "calendar": [],
@@ -48,8 +55,8 @@ _NEEDS_PRIYA = [
         "numeral": "I",
         "title": "NEEDS YOU",
         "items": [
-            {"text": "Priya · pitch deck", "kind": "you", "todo_id": "t1"},
-            {"text": "Dhruv · offer letter", "kind": "you", "todo_id": "t2"},
+            {"text": "Priya · pitch deck", "kind": "you", "action": "approve", "todo_id": "t1"},
+            {"text": "Dhruv · offer letter", "kind": "you", "action": "approve", "todo_id": "t2"},
         ],
     }
 ]
@@ -120,8 +127,8 @@ class TestProseThatMatchesTheItems:
         assert any("3" in p for p in problems)
 
 
-def _items(*kinds: str, text: str = "a task") -> list[dict[str, Any]]:
-    return [{"numeral": "I", "title": "WORK", "items": [{"text": text, "kind": k} for k in kinds]}]
+def _items(*kinds: BriefingItemKind, text: str = "a task") -> list[dict[str, Any]]:
+    return [{"numeral": "I", "title": "WORK", "items": [make_brief_item(text, k) for k in kinds]}]
 
 
 _NO_TALLIES = {"done_by_you": 0, "done_by_gaia": 0}
@@ -130,7 +137,10 @@ _NO_TALLIES = {"done_by_you": 0, "done_by_gaia": 0}
 class TestCounts:
     def test_each_item_kind_can_be_counted_on_its_own(self) -> None:
         payload = _payload(
-            sections=_items(*["lookback"] * 2, *["gaia"] * 3, *["note"] * 4), tallies=_NO_TALLIES
+            sections=_items(
+                "lookback", "lookback", "gaia", "gaia", "gaia", "note", "note", "note", "note"
+            ),
+            tallies=_NO_TALLIES,
         )
 
         assert (
@@ -241,7 +251,9 @@ class TestTheQuietDay:
                 {
                     "numeral": "I",
                     "title": "GAIA'S WORK",
-                    "items": [{"text": "Bike lane petition", "kind": "lookback"}],
+                    "items": [
+                        {"text": "Bike lane petition", "kind": "lookback", "outcome": "finished"}
+                    ],
                 }
             ]
         )
@@ -289,8 +301,8 @@ def _message_problems(
     )
 
 
-def _needs(text: str, kind: str = "you") -> list[dict[str, Any]]:
-    return [{"numeral": "I", "title": "NEEDS YOU", "items": [{"text": text, "kind": kind}]}]
+def _needs(text: str, kind: BriefingItemKind = "you") -> list[dict[str, Any]]:
+    return [{"numeral": "I", "title": "NEEDS YOU", "items": [make_brief_item(text, kind)]}]
 
 
 @pytest.mark.unit

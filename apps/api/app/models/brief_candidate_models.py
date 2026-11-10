@@ -10,6 +10,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.briefing_models import BriefingItemKind
 from app.models.scout_models import Signal, SignalImportance
 
@@ -32,8 +33,12 @@ class BriefCandidate(BaseModel):
     kind: CandidateKind
     #: How the item reads in an edition when it is kept (waiting on you, failed, done...).
     state: BriefingItemKind
+    #: The source's own words; the judge writes the brief's short title from them.
     title: str = Field(min_length=1)
     detail: str | None = None
+    #: What the item asks or where it got to, when its producer knows; else the judge says.
+    action: BriefAction | None = None
+    outcome: BriefOutcome | None = None
     people: list[str] = Field(default_factory=list)
     due_at: datetime | None = None
     url: str | None = None

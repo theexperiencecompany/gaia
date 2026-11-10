@@ -14,7 +14,12 @@ from zoneinfo import ZoneInfo
 import pytest
 from tests.helpers import local_timezone
 
-from app.constants.briefing import BRIEFING_KIND_DAILY, WEEK_LIST_LIMIT, WINBACK_THRESHOLD
+from app.constants.briefing import (
+    BRIEFING_KIND_DAILY,
+    WEEK_LIST_LIMIT,
+    WINBACK_THRESHOLD,
+    BriefOutcome,
+)
 from app.constants.todos import (
     ACTION_NEEDED_LABEL,
     BLOCKING_LABEL,
@@ -63,7 +68,11 @@ def _brief(mood: BriefingMood, *, items: list[str] | None = None) -> BriefingMod
             caption="C",
             sections=[
                 BriefingSection(
-                    numeral="I", title="T", items=[BriefingItem(text=t) for t in (items or [])]
+                    numeral="I",
+                    title="T",
+                    items=[
+                        BriefingItem(text=t, outcome=BriefOutcome.CHANGED) for t in (items or [])
+                    ],
                 )
             ],
         ),

@@ -7,16 +7,21 @@ are persisted in the ``briefings`` collection, one per user/date/kind.
 """
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, Self
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.briefing import (
+    ACTION_SECTIONS,
+    BRIEF_ITEM_DETAIL_MAX_CHARS,
+    BRIEF_ITEM_TITLE_MAX_CHARS,
     BRIEFING_KIND_DAILY,
     DAILY_BRIEFING_HOUR,
     HUE_MAX,
+    BriefAction,
     BriefingFrequency,
+    BriefOutcome,
     SectionKey,
 )
 from app.db.repositories.base import UserScopedDocument
@@ -64,11 +69,19 @@ class BriefingStat(BaseModel):
 
 
 class BriefingItem(BaseModel):
-    """A single line inside a section, optionally bound to a todo."""
+    """A single line inside a section, optionally bound to a todo.
+
+    It either asks something of the reader (action) or reports where a thing got to
+    (outcome), never both, under a short title and at most one detail line.
+    """
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
-    text: str
+    #: The item's title: a noun phrase, never a sentence.
+    text: str = Field(min_length=1, max_length=BRIEF_ITEM_TITLE_MAX_CHARS)
+    action: BriefAction | None = None
+    outcome: BriefOutcome | None = None
+    detail: str | None = Field(default=None, min_length=1, max_length=BRIEF_ITEM_DETAIL_MAX_CHARS)
     todo_id: str | None = None
     kind: BriefingItemKind = "note"
     # heygaia.link handle for the item's artifact (canvas), viewer-scoped. The
@@ -86,6 +99,12 @@ class BriefingItem(BaseModel):
     #: What GAIA offers to do about the item (the lead's "Let's do it"); None when nothing.
     offer: str | None = None
 
+    @model_validator(mode="after")
+    def _one_action_or_outcome(self) -> Self:
+        if (self.action is None) == (self.outcome is None):
+            raise ValueError(f"item {self.text!r} needs exactly one of action or outcome")
+        return self
+
 
 class BriefingSection(BaseModel):
     """A Roman-numeraled section of the briefing."""
@@ -97,6 +116,19 @@ class BriefingSection(BaseModel):
     items: list[BriefingItem] = Field(default_factory=list)
     #: What the section holds; None on legacy rows and on the model-written weekly recap.
     key: SectionKey | None = None
+    #: Items chosen for the section that its cap left out, for "+N more in the full brief".
+    more: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _items_fit_the_section(self) -> Self:
+        if self.key is None:
+            return self
+        asks = self.key in ACTION_SECTIONS
+        misfit = [i.text for i in self.items if (i.action is not None) != asks]
+        if misfit:
+            needed = "an action" if asks else "an outcome"
+            raise ValueError(f"{self.key.value} items need {needed}: {misfit}")
+        return self
 
 
 class BriefingEvent(BaseModel):

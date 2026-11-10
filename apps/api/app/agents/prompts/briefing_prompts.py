@@ -7,7 +7,13 @@ emits exactly one BriefingPayload JSON object as its entire final message.
 
 from dataclasses import dataclass
 
-from app.constants.briefing import MAX_BRIEF_ITEMS
+from app.constants.briefing import (
+    BRIEF_ITEM_DETAIL_MAX_CHARS,
+    BRIEF_ITEM_TITLE_MAX_CHARS,
+    MAX_BRIEF_ITEMS,
+    BriefAction,
+    BriefOutcome,
+)
 
 # How the brief's one message reads, shared by daily and weekly: every surface
 # (chat, email, the app) shows this text under the edition image.
@@ -82,7 +88,9 @@ Schema (all fields required unless marked optional):
       "numeral": "I",
       "title": "<section title>",
       "items": [
-        { "text": "<see ITEM QUALITY>", "todo_id": "<id or omit>", "kind": "gaia" }
+        { "text": "<title, see ITEM QUALITY>", "detail": "<one line or omit>",
+          "action": "<action or omit>", "outcome": "<outcome or omit>",
+          "todo_id": "<id or omit>", "kind": "gaia" }
       ]
     }
   ],
@@ -97,10 +105,7 @@ Schema (all fields required unless marked optional):
 _ITEM_KINDS = """
 Item ``kind`` is one of: ``gaia`` (GAIA is doing it), ``you`` (needs the user),
 ``lookback`` (yesterday's result), or ``note`` (a plain highlight). Set ``todo_id`` only for items bound to a real
-todo you can see or just created. When an item is anchored to a real clock time
-(a calendar event, a deadline today), START its text with that user-local time
-in "H:MM AM — " form (e.g. "1:30 PM — Design review with Dhruv"); never invent
-a time for untimed work. Never emit HTML or Markdown styling inside any
+todo you can see or just created. Never emit HTML or Markdown styling inside any
 string; the renderer owns all styling.
 """.strip()
 
@@ -111,15 +116,14 @@ _PAYLOAD_CONTRACT = f"{_PAYLOAD_SCHEMA}\n\n{_MESSAGE_VOICE}\n\n{_ITEM_KINDS}"
 _ITEM_QUALITY = f"""
 ## ITEM QUALITY (this is the whole product)
 
-A bare todo title is a failure: a title alone tells the user nothing they can
-act on. Every item is one complete, self-sufficient sentence that answers:
-what, why now, and what happens next. Shape (not content) of each kind:
-
-- "you" item: the ONE concrete action plus the reason it is today's.
-- "gaia" item: what GAIA is doing and what the user gets, with when. Work still
-  running says so ("I'm on it, drafts land by ..."); failed work is reported
-  plainly with its cause, never hidden.
-- "lookback" item: the named outcome, not the activity.
+Every item is read at a glance, so it has a fixed shape:
+- ``text`` is its title: a noun phrase of at most {BRIEF_ITEM_TITLE_MAX_CHARS} characters, never
+  a sentence ("Acme invoice", "Seed fund shortlist").
+- ``detail`` is at most one line of {BRIEF_ITEM_DETAIL_MAX_CHARS} characters with the one fact
+  that matters (who, when, why), or omitted. A clock time goes here, never in the title.
+- exactly one of ``action`` or ``outcome``. A "you" item carries ``action``, what the user
+  does: one of {", ".join(BriefAction)}. Every other item carries ``outcome``, where it got
+  to: one of {", ".join(BriefOutcome)}. Failed work is reported plainly, never hidden.
 
 TRUTH RULE, absolute: every fact in an item (names, dates, documents, people,
 deadlines, numbers) must come from the context you were given or from tool
