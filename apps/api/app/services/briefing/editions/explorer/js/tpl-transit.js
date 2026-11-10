@@ -233,6 +233,8 @@ ${legend}
       const bars = barcode(ed.editionNo, skin.code.rows, 360);
       const bh = skin.code.rows === 1 ? "64px" : "9px";
       const flight = `GA-${String(ed.editionNo).padStart(3, "0")}`;
+      const names = ed.recipient ? ed.recipient.name.toUpperCase().split(/\s+/) : [];
+      const pax = names.length > 1 ? `${names[names.length - 1]}/${names[0][0]}` : names.join("");
       return `<article class="t-boardingpass" style="--liv:${skin.livery.liv}; --acc:${skin.livery.acc}; --accOn:${skin.livery.accOn}; --paper:${skin.card.paper}; --desk:${skin.card.desk}; --bh:${bh}">
 <div class="pass">
   <div class="body">${grain("bp2-g", 0.9)}${guilloche(skin.livery.acc + "33")}
@@ -249,7 +251,7 @@ ${legend}
     <div class="sh"><b>GAIA AIR</b><span class="lbl">${flight} · seat ${ed.editionNo}A · ${pad2(ed.day)} ${esc(ed.monthShort.toUpperCase())}</span></div>
     ${svc}
     <div class="code">${bars.map((g) => `<div style="background:${g}"></div>`).join("")}</div>
-    <p class="codeno">GA${ed.editionNo} ${ed.time24.replace(":", "")} RANDERIYA/A</p>
+    <p class="codeno">GA${ed.editionNo} ${ed.time24.replace(":", "")}${pax ? ` ${esc(pax)}` : ""}</p>
   </div></div>
 </div></article>`;
     },
