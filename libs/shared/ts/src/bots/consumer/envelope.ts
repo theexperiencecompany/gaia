@@ -18,6 +18,14 @@ import { z } from "zod";
 import { isOwnApiUrl } from "../utils/own-api";
 
 /**
+ * The envelope version this consumer understands. An envelope without `v` is a
+ * v1 envelope (the API did not stamp one before versioning); anything else is
+ * dead-lettered unread, never sent. Mirrors ``OUTBOUND_ENVELOPE_VERSION`` in
+ * apps/api/app/constants/outbound.py.
+ */
+export const OUTBOUND_ENVELOPE_VERSION = 1;
+
+/**
  * A third-party URL IS the authorization for the bytes, so it must never ride a
  * cleartext hop. Our own API is not: the bot authenticates that fetch, so the
  * URL carries no secret and plain http is fine for a dev or self-hosted setup
@@ -90,8 +98,23 @@ export function outboundMessageEnvelopeSchemaFor(
 ) {
   return z
     .object({
-      /** Unique id (idempotency + tracing). */
+      /** Envelope format version; absent means v1. */
+      v: z.number().int().default(OUTBOUND_ENVELOPE_VERSION),
+      /** Unique id (tracing). */
       id: z.string().min(1),
+      /**
+       * The outbox ledger message this envelope delivers; with `part_index` it is
+       * the consumer's dedupe key and the key receipts are filed under.
+       */
+      outbox_message_id: z.string().min(1).nullish(),
+      /** GAIA conversation the message belongs to. */
+      conversation_id: z.string().min(1).nullish(),
+      /** Platform-native id of the message to quote when sending. */
+      reply_to_platform_message_id: z.string().min(1).nullish(),
+      /** Platform-native id of a sent message to replace with `text`/`text_parts`. */
+      edit_of_platform_message_id: z.string().min(1).nullish(),
+      /** Which part of the outbox message this envelope carries. */
+      part_index: z.number().int().nonnegative().default(0),
       /** Target platform — informational; each queue is already platform-specific. */
       platform: z.string().min(1),
       /**
@@ -129,6 +152,13 @@ export function outboundMessageEnvelopeSchemaFor(
       {
         message: "envelope requires text, text_parts, attachment, or reaction",
       },
+    )
+    .refine(
+      (e) =>
+        !e.edit_of_platform_message_id ||
+        Boolean(e.text) ||
+        Boolean(e.text_parts?.length),
+      { message: "an edit requires text or text_parts" },
     );
 }
 

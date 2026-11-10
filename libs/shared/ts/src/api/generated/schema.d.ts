@@ -6592,6 +6592,11 @@ export interface components {
              * @description User's ID on the platform
              */
             platform_user_id: string;
+            /**
+             * Reply To Platform Message Id
+             * @description Platform-native id of the message the user's message replies to or quotes (Telegram reply, Discord reference, Slack thread root, WhatsApp context). Persisted on the saved user message.
+             */
+            reply_to_platform_message_id?: string | null;
         };
         /**
          * BotSettingsResponse
@@ -10973,6 +10978,8 @@ export interface components {
             platform_message_id?: string | null;
             /** Reacts To Message Id */
             reacts_to_message_id?: string | null;
+            /** Reply To Platform Message Id */
+            reply_to_platform_message_id?: string | null;
             replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
             /** Response */
             response: string;
@@ -11037,6 +11044,8 @@ export interface components {
             platform_message_id?: string | null;
             /** Reacts To Message Id */
             reacts_to_message_id?: string | null;
+            /** Reply To Platform Message Id */
+            reply_to_platform_message_id?: string | null;
             replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
             /** Response */
             response: string;
@@ -11100,6 +11109,8 @@ export interface components {
             messages: components["schemas"]["MessageDict"][];
             /** Platform Message Id */
             platform_message_id?: string | null;
+            /** Reply To Platform Message Id */
+            reply_to_platform_message_id?: string | null;
             replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
             selectedCalendarEvent?: components["schemas"]["SelectedCalendarEventData"] | null;
             /** Selectedtool */

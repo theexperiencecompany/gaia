@@ -32,6 +32,23 @@ OUTBOUND_QUEUES: dict[ConversationSource, str] = {
 }
 
 
+#: Envelope format version the API publishes and the bots accept; must stay equal to
+#: ``OUTBOUND_ENVELOPE_VERSION`` in libs/shared/ts/src/bots/consumer/envelope.ts.
+OUTBOUND_ENVELOPE_VERSION = 1
+
+#: Queue the bots publish delivery receipts to; byte-identical to
+#: ``OUTBOUND_RECEIPTS_QUEUE`` in libs/shared/ts/src/bots/consumer/topology.ts.
+OUTBOUND_RECEIPTS_QUEUE = f"{OUTBOUND_QUEUE_PREFIX}receipts"
+OUTBOUND_RECEIPTS_PREFETCH = 10
+OUTBOUND_RECEIPTS_RECONNECT_MAX_SECONDS = 30.0
+#: Pause before requeueing a receipt the store could not take (Mongo down).
+OUTBOUND_RECEIPTS_REQUEUE_DELAY_SECONDS = 5.0
+#: Where the running receipt consumer is kept in the worker's ctx so shutdown can stop it.
+OUTBOUND_RECEIPTS_CTX_KEY = "outbound_receipt_consumer"
+#: Receipts expire after this long; the outbox ledger keeps the durable outcome.
+OUTBOUND_RECEIPTS_RETENTION_SECONDS = 30 * 24 * 60 * 60
+
+
 def dlq_name(queue_name: str) -> str:
     """Dead-letter queue name for a given work queue."""
     return f"{queue_name}.dlq"

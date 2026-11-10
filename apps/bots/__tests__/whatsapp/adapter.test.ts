@@ -189,6 +189,7 @@ type PrivateAdapter = {
     waId: string,
     text: string,
     messageId: string,
+    replyToMessageId?: string,
   ) => Promise<void>;
   handleStreamingMessage: (
     waId: string,
@@ -479,6 +480,22 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
     // Nothing was redeemed, so this is the user's own words: a normal turn.
     expect(vi.mocked(handleStreamingChat).mock.calls[0][1]).toMatchObject({
       message: "remind me tomorrow",
+    });
+  });
+
+  it("forwards the wamid of the message the user replied to", async () => {
+    mockMarkRead.mockResolvedValue({});
+
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "yes do it",
+      "wamid.002",
+      "wamid.001",
+    );
+
+    expect(vi.mocked(handleStreamingChat).mock.calls[0][1]).toMatchObject({
+      platformMessageId: "wamid.002",
+      replyToPlatformMessageId: "wamid.001",
     });
   });
 

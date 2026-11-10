@@ -30,6 +30,7 @@ import {
   type IncomingMedia,
   type MediaOutcome,
   type OutboundFile,
+  type OutboundSendOptions,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -231,9 +232,40 @@ export class DiscordAdapter extends BaseBotAdapter {
     destinationId: string,
     text: string,
     isChannel: boolean,
-  ): Promise<void> {
+    options?: OutboundSendOptions,
+  ): Promise<string> {
     const target = await this.resolveOutboundTarget(destinationId, isChannel);
-    await target.send(text);
+    const sent = await target.send(
+      options?.replyToPlatformMessageId
+        ? {
+            content: text,
+            reply: {
+              messageReference: options.replyToPlatformMessageId,
+              failIfNotExists: false,
+            },
+          }
+        : text,
+    );
+    return sent.id;
+  }
+
+  protected override async editOutbound(
+    destinationId: string,
+    platformMessageId: string,
+    text: string,
+    isChannel: boolean,
+  ): Promise<string> {
+    const channel = isChannel
+      ? await this.client.channels.fetch(destinationId)
+      : await (await this.client.users.fetch(destinationId)).createDM();
+    if (!channel?.isTextBased() || !("messages" in channel)) {
+      throw new Error(
+        `Discord destination ${destinationId} has no fetchable messages`,
+      );
+    }
+    const message = await channel.messages.fetch(platformMessageId);
+    const edited = await message.edit(text);
+    return edited.id;
   }
 
   /**
@@ -661,6 +693,9 @@ export class DiscordAdapter extends BaseBotAdapter {
           channelId: message.channelId,
           isDm: true,
           platformMessageId: message.id,
+          ...(message.reference?.messageId
+            ? { replyToPlatformMessageId: message.reference.messageId }
+            : {}),
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -922,6 +957,9 @@ export class DiscordAdapter extends BaseBotAdapter {
           channelId: message.channelId,
           isDm: !message.guild,
           platformMessageId: message.id,
+          ...(message.reference?.messageId
+            ? { replyToPlatformMessageId: message.reference.messageId }
+            : {}),
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),

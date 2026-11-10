@@ -150,3 +150,39 @@ describe("outboundMessageEnvelopeSchemaFor", () => {
     ).toBe(false);
   });
 });
+
+describe("outboundMessageEnvelopeSchemaFor versioning and tracking fields", () => {
+  it("reads an envelope without a version as v1", () => {
+    expect(schema.parse(valid).v).toBe(1);
+  });
+
+  it("accepts the optional tracking, reply and edit fields", () => {
+    const parsed = schema.parse({
+      ...valid,
+      v: 1,
+      outbox_message_id: "ob-1",
+      conversation_id: "conv-1",
+      reply_to_platform_message_id: "m-1",
+      edit_of_platform_message_id: "m-2",
+      part_index: 3,
+    });
+    expect(parsed).toMatchObject({
+      outbox_message_id: "ob-1",
+      conversation_id: "conv-1",
+      reply_to_platform_message_id: "m-1",
+      edit_of_platform_message_id: "m-2",
+      part_index: 3,
+    });
+  });
+
+  it("rejects a negative part_index", () => {
+    expect(schema.safeParse({ ...valid, part_index: -1 }).success).toBe(false);
+  });
+
+  it("rejects an edit that carries no text to replace the message with", () => {
+    const edit = photoEnvelope("https://cdn.example.com/a.png");
+    expect(
+      schema.safeParse({ ...edit, edit_of_platform_message_id: "m-2" }).success,
+    ).toBe(false);
+  });
+});

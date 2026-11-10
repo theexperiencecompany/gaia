@@ -29,6 +29,7 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type OutboundFile,
+  type OutboundSendOptions,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -57,6 +58,15 @@ interface SlackMessageEvent {
   channel_type?: string;
   subtype?: string;
   ts?: string;
+  thread_ts?: string;
+}
+
+/**
+ * The thread root a Slack message replies to. A thread's first message carries
+ * its own ts as `thread_ts`, so only a different value means a reply.
+ */
+function threadRootOf(ts?: string, threadTs?: string): string | undefined {
+  return threadTs && threadTs !== ts ? threadTs : undefined;
 }
 
 /** Minimal Slack Web API client shape used by the adapter. */
@@ -218,6 +228,7 @@ export class SlackAdapter extends BaseBotAdapter {
         content,
         false,
         event.ts,
+        threadRootOf(event.ts, event.thread_ts),
       );
     });
 
@@ -236,6 +247,7 @@ export class SlackAdapter extends BaseBotAdapter {
         msg.text,
         true,
         msg.ts,
+        threadRootOf(msg.ts, msg.thread_ts),
       );
     });
   }
@@ -281,16 +293,16 @@ export class SlackAdapter extends BaseBotAdapter {
    * itself for a channel/group, else the user's resolved DM channel
    * (platform_links stores the user id).
    */
-  private async sendToConversation(
+  private async sendToConversation<T>(
     destinationId: string,
     isChannel: boolean,
-    send: (channel: string) => Promise<unknown>,
-  ): Promise<void> {
+    send: (channel: string) => Promise<T>,
+  ): Promise<T> {
     const channel = isChannel
       ? destinationId
       : await this.resolveDmChannel(destinationId);
     try {
-      await send(channel);
+      return await send(channel);
     } catch (err) {
       // A cached DM channel id can go stale (conversation archived, user
       // deactivated): drop it so the next delivery re-resolves.
@@ -299,14 +311,44 @@ export class SlackAdapter extends BaseBotAdapter {
     }
   }
 
+  /** Slack replies by posting into the thread of the message it answers. */
   protected async deliverOutbound(
     destinationId: string,
     text: string,
     isChannel: boolean,
-  ): Promise<void> {
-    await this.sendToConversation(destinationId, isChannel, (channel) =>
-      this.app.client.chat.postMessage({ channel, text }),
+    options?: OutboundSendOptions,
+  ): Promise<string | undefined> {
+    const threadTs = options?.replyToPlatformMessageId;
+    const posted = await this.sendToConversation(
+      destinationId,
+      isChannel,
+      (channel) =>
+        this.app.client.chat.postMessage({
+          channel,
+          text,
+          ...(threadTs ? { thread_ts: threadTs } : {}),
+        }),
     );
+    return posted.ts;
+  }
+
+  protected override async editOutbound(
+    destinationId: string,
+    platformMessageId: string,
+    text: string,
+    isChannel: boolean,
+  ): Promise<string | undefined> {
+    const updated = await this.sendToConversation(
+      destinationId,
+      isChannel,
+      (channel) =>
+        this.app.client.chat.update({
+          channel,
+          ts: platformMessageId,
+          text,
+        }),
+    );
+    return updated.ts;
   }
 
   /**
@@ -413,6 +455,7 @@ export class SlackAdapter extends BaseBotAdapter {
     message: string,
     isDm: boolean,
     inboundTs?: string,
+    replyToTs?: string,
   ): Promise<void> {
     const result = await client.chat.postMessage({
       channel: channelId,
@@ -467,6 +510,7 @@ export class SlackAdapter extends BaseBotAdapter {
         channelId,
         isDm,
         platformMessageId: inboundTs,
+        ...(replyToTs ? { replyToPlatformMessageId: replyToTs } : {}),
       },
       async (text: string) => {
         await client.chat.update({

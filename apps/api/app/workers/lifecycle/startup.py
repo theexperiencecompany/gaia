@@ -24,6 +24,7 @@ from app.core.provider_registration import (
 from app.core.runtime_config_subscriber import start_runtime_config_subscriber
 from app.services.delivery_alerts.dead_letter_tap import start_dead_letter_tap
 from app.services.device.up_listener import start_up_listener
+from app.services.outbox.receipt_consumer import start_receipt_consumer
 from app.utils.browser_reaper import start_browser_reaper
 from app.workers.browser_worker import start_browser_worker
 from app.workers.metrics import start_metrics_server
@@ -74,6 +75,9 @@ async def startup(ctx: MutableMapping[str, object]) -> None:
 
         # Alerts on outbound messages the broker dead-lettered with no bot involved.
         start_dead_letter_tap(ctx)
+
+        # Files the delivery receipts the bots publish for each outbound envelope part.
+        start_receipt_consumer(ctx)
 
         # Last: browser jobs run on the services everything above just started.
         start_browser_worker(ctx)

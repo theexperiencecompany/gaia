@@ -92,6 +92,7 @@ export type {
   CommandExecuteParams,
   MessageTarget,
   OutboundNotifications,
+  OutboundSendOptions,
   PlatformName,
   RichMessage,
   RichMessageTarget,

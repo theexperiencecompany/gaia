@@ -3,14 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from functools import partial
+import json
 
 from pydantic import BaseModel, ValidationError
 import pytest
 
 from app.config.settings import settings
-from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
+from app.constants.chat import ConversationSource
+from app.constants.outbound import OUTBOUND_ENVELOPE_VERSION
+from app.schemas.outbound import (
+    OutboundAttachment,
+    OutboundMessageEnvelope,
+    OutboundReceipt,
+    ReceiptStatus,
+)
 
+_EDIT_NEEDS_TEXT = "an edit requires text or text_parts"
 _ONE_SOURCE = "attachment requires exactly one of `url` or (`conversation_id` + `path`)"
 _HTTPS_ONLY = "attachment `url` must be an https URL"
 _NEEDS_BODY = "envelope requires text, text_parts, attachment, or reaction"
@@ -144,3 +154,98 @@ class TestEnvelopeBody:
             for _ in range(2)
         ]
         assert made[0].id != made[1].id
+
+
+@pytest.mark.unit
+class TestEnvelopeVersionAndTracking:
+    def test_an_envelope_is_stamped_with_the_current_version_on_the_wire(self) -> None:
+        envelope = OutboundMessageEnvelope(platform="slack", destination_id="C1", text="hi")
+        assert json.loads(envelope.model_dump_json())["v"] == OUTBOUND_ENVELOPE_VERSION
+
+    def test_tracking_reply_and_edit_fields_ride_the_wire_under_the_names_the_bots_read(
+        self,
+    ) -> None:
+        envelope = OutboundMessageEnvelope(
+            platform="telegram",
+            destination_id="42",
+            text="hi",
+            outbox_message_id="ob-1",
+            conversation_id="conv-1",
+            reply_to_platform_message_id="m-1",
+            edit_of_platform_message_id="m-2",
+            part_index=3,
+        )
+        wire = json.loads(envelope.model_dump_json())
+        assert {
+            key: wire[key]
+            for key in (
+                "outbox_message_id",
+                "conversation_id",
+                "reply_to_platform_message_id",
+                "edit_of_platform_message_id",
+                "part_index",
+            )
+        } == {
+            "outbox_message_id": "ob-1",
+            "conversation_id": "conv-1",
+            "reply_to_platform_message_id": "m-1",
+            "edit_of_platform_message_id": "m-2",
+            "part_index": 3,
+        }
+
+    def test_an_edit_needs_text_to_replace_the_message_with(self) -> None:
+        edit = partial(
+            OutboundMessageEnvelope,
+            platform="telegram",
+            destination_id="42",
+            attachment=_artifact(),
+            edit_of_platform_message_id="m-2",
+        )
+        assert _rejection(edit) == _EDIT_NEEDS_TEXT
+
+    def test_a_negative_part_index_is_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            OutboundMessageEnvelope(platform="slack", destination_id="C1", text="hi", part_index=-1)
+
+
+@pytest.mark.unit
+class TestOutboundReceipt:
+    def test_the_receipt_a_bot_publishes_parses(self) -> None:
+        """The JSON shape libs/shared/ts/src/bots/consumer/receipts.ts publishes."""
+        receipt = OutboundReceipt.model_validate_json(
+            json.dumps(
+                {
+                    "envelope_id": "env-1",
+                    "outbox_message_id": "ob-1",
+                    "part_index": 0,
+                    "platform": "telegram",
+                    "platform_message_ids": ["m1", "m2"],
+                    "status": "failed",
+                    "error": "destination_blocked",
+                    "occurred_at": "2026-11-10T11:00:00.000Z",
+                }
+            )
+        )
+        assert receipt.status is ReceiptStatus.FAILED
+        assert receipt.platform_message_ids == ["m1", "m2"]
+        assert receipt.occurred_at.tzinfo is not None
+
+    def test_an_unknown_status_is_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            OutboundReceipt(
+                envelope_id="env-1",
+                outbox_message_id="ob-1",
+                platform=ConversationSource.TELEGRAM,
+                status="delivered",
+                occurred_at=datetime.now(UTC),
+            )
+
+    def test_a_non_bot_platform_is_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            OutboundReceipt(
+                envelope_id="env-1",
+                outbox_message_id="ob-1",
+                platform=ConversationSource.WEB,
+                status=ReceiptStatus.SENT,
+                occurred_at=datetime.now(UTC),
+            )

@@ -28,6 +28,8 @@ export const BOT_FAILURE_REASON = {
   BACKEND_UNREACHABLE: "backend_unreachable",
   /** An outbound envelope dead-lettered before any send: unparseable, invalid or empty. */
   ENVELOPE_REJECTED: "envelope_rejected",
+  /** An outbound edit on a platform that cannot edit a sent message. */
+  EDIT_UNSUPPORTED: "edit_unsupported",
   /** An outbound file over the platform's size cap; the user got a note instead. */
   FILE_TOO_LARGE: "file_too_large",
   UNKNOWN: "unknown",

@@ -62,6 +62,12 @@ export interface ChatRequest {
    */
   platformMessageId?: string;
   /**
+   * Platform-native id of the message the user's message replies to or quotes
+   * (Telegram reply, Discord reference, Slack thread root, WhatsApp context).
+   * Absent when the message quotes nothing, or the platform exposes no quote.
+   */
+  replyToPlatformMessageId?: string;
+  /**
    * Full file metadata for the attached files. Sent alongside `fileIds` so
    * the agent can resolve URLs/filenames without an extra DB lookup, matching
    * the web app's chat payload shape.
@@ -435,6 +441,12 @@ export interface BotCommand {
 // Re-export GaiaClient type for use in CommandExecuteParams
 // (avoids circular imports - consumers import GaiaClient from @gaia/shared directly)
 import type { GaiaClient } from "../api";
+
+/** Per-send options an adapter honours where its platform can. */
+export interface OutboundSendOptions {
+  /** Platform-native id of the message this one quotes or replies to. */
+  replyToPlatformMessageId?: string;
+}
 
 /**
  * For a platform that only lets a business message a user freely inside a window

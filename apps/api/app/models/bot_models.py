@@ -53,6 +53,14 @@ class BotChatRequest(BaseModel):
             "message so a later background reaction can anchor to it."
         ),
     )
+    reply_to_platform_message_id: str | None = Field(
+        None,
+        description=(
+            "Platform-native id of the message the user's message replies to or "
+            "quotes (Telegram reply, Discord reference, Slack thread root, "
+            "WhatsApp context). Persisted on the saved user message."
+        ),
+    )
 
     @field_validator("platform")
     @classmethod

@@ -19,13 +19,11 @@ import re
 import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-# The frozenset is DEFINED in app/constants/chat.py and only re-exported by
-# app/models/chat_models.py. It moved out of models/ when the import fence made
-# app.constants a leaf; this checker kept reading the old path, so its regex
-# matched nothing and it exited "could not locate BOT_CONVERSATION_SOURCES" on
-# every run — a stale path reading as a parity failure.
+# Defined in app/constants/chat.py; app/models/chat_models.py only re-exports it.
 CHAT_CONSTANTS = REPO_ROOT / "apps/api/app/constants/chat.py"
 TOPOLOGY_TS = REPO_ROOT / "libs/shared/ts/src/bots/consumer/topology.ts"
+ENVELOPE_TS = REPO_ROOT / "libs/shared/ts/src/bots/consumer/envelope.ts"
+OUTBOUND_PY = REPO_ROOT / "apps/api/app/constants/outbound.py"
 
 
 def python_bot_platforms() -> set[str]:
@@ -59,20 +57,60 @@ def ts_outbound_platforms() -> set[str]:
     return set(re.findall(r"^\s*(\w+):\s*`", match.group(1), re.MULTILINE))
 
 
+def envelope_version_drift() -> list[str]:
+    """Describe where the envelope version differs between the Python and TS constants."""
+    py_match = re.search(r"^OUTBOUND_ENVELOPE_VERSION\s*=\s*(\d+)", OUTBOUND_PY.read_text(), re.M)
+    ts_match = re.search(
+        r"^export const OUTBOUND_ENVELOPE_VERSION\s*=\s*(\d+)", ENVELOPE_TS.read_text(), re.M
+    )
+    if not py_match or not ts_match:
+        sys.exit("could not locate OUTBOUND_ENVELOPE_VERSION in outbound.py and envelope.ts")
+    if py_match.group(1) == ts_match.group(1):
+        return []
+    return [f"envelope version: Python v{py_match.group(1)}, TypeScript v{ts_match.group(1)}"]
+
+
+def receipts_queue_drift() -> list[str]:
+    """Describe where the receipts queue name differs between the two sides.
+
+    Both sides build it as ``<prefix>receipts`` from the same prefix, so the
+    suffix is what can drift.
+    """
+    py_match = re.search(
+        r'^OUTBOUND_RECEIPTS_QUEUE\s*=\s*f"\{OUTBOUND_QUEUE_PREFIX\}(\w+)"',
+        OUTBOUND_PY.read_text(),
+        re.M,
+    )
+    ts_match = re.search(
+        r"^export const OUTBOUND_RECEIPTS_QUEUE\s*=\s*`\$\{OUTBOUND_QUEUE_PREFIX\}(\w+)`",
+        TOPOLOGY_TS.read_text(),
+        re.M,
+    )
+    if not py_match or not ts_match:
+        sys.exit("could not locate OUTBOUND_RECEIPTS_QUEUE in outbound.py and topology.ts")
+    if py_match.group(1) == ts_match.group(1):
+        return []
+    return [f"receipts queue: Python {py_match.group(1)!r}, TypeScript {ts_match.group(1)!r}"]
+
+
 def main() -> int:
     py = python_bot_platforms()
     ts = ts_outbound_platforms()
-    if py == ts:
+    drift = envelope_version_drift() + receipts_queue_drift()
+    if py == ts and not drift:
         return 0
     print("Outbound topology drift between Python and TypeScript:", file=sys.stderr)
     if py - ts:
         print(f"  only in Python (BOT_CONVERSATION_SOURCES): {sorted(py - ts)}", file=sys.stderr)
     if ts - py:
         print(f"  only in TypeScript (OUTBOUND_QUEUES): {sorted(ts - py)}", file=sys.stderr)
-    print(
-        "  add the missing platform to BOTH app/constants/chat.py and topology.ts.",
-        file=sys.stderr,
-    )
+    if py != ts:
+        print(
+            "  add the missing platform to BOTH app/constants/chat.py and topology.ts.",
+            file=sys.stderr,
+        )
+    for line in drift:
+        print(f"  {line}", file=sys.stderr)
     return 1
 
 

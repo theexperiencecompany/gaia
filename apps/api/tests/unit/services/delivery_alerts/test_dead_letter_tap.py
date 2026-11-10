@@ -6,14 +6,13 @@ from unittest.mock import AsyncMock, patch
 
 from pydantic import ValidationError
 import pytest
-from tests.helpers import WideEventRecorder, captured_wide_event
+from tests.helpers import WideEventRecorder
 
 from app.constants.chat import ConversationSource
 from app.constants.delivery_alerts import (
     DEAD_LETTER_TAP_REQUEUE_DELAY_SECONDS,
     DeliveryFailureKind,
 )
-from app.constants.outbound import RABBITMQ_CONNECT_TIMEOUT_SECONDS, RABBITMQ_HEARTBEAT_SECONDS
 from app.schemas.delivery_failures import DeliveryFailure
 from app.services.delivery_alerts import dead_letter_tap
 from app.services.delivery_alerts.dead_letter_tap import dead_letter_failure
@@ -181,86 +180,4 @@ class TestHandle:
                 "error": "redis down",
                 "error_type": "ConnectionError",
             }
-        ]
-
-
-RABBITMQ_URL = "amqp://tap.test"
-
-
-class TestRun:
-    async def test_connects_to_the_configured_broker(self) -> None:
-        connection = AsyncMock()
-        holder = dead_letter_tap._TapConnection()
-        with (
-            patch.object(dead_letter_tap.settings, "RABBITMQ_URL", RABBITMQ_URL),
-            patch.object(
-                dead_letter_tap.aio_pika, "connect_robust", AsyncMock(return_value=connection)
-            ) as connect,
-            patch.object(dead_letter_tap, "_consume", AsyncMock()) as consume,
-        ):
-            await dead_letter_tap._run(holder)
-
-        connect.assert_awaited_once_with(
-            RABBITMQ_URL,
-            timeout=RABBITMQ_CONNECT_TIMEOUT_SECONDS,
-            heartbeat=RABBITMQ_HEARTBEAT_SECONDS,
-        )
-        consume.assert_awaited_once_with(connection)
-        assert holder.connection is connection
-
-    async def test_a_failed_setup_closes_its_connection_and_retries(self) -> None:
-        first, second = AsyncMock(name="first"), AsyncMock(name="second")
-        holder = dead_letter_tap._TapConnection()
-        held_while_waiting: list[object] = []
-
-        async def _pause(_delay: float) -> None:
-            held_while_waiting.append(holder.connection)
-
-        with (
-            patch.object(
-                dead_letter_tap.aio_pika, "connect_robust", AsyncMock(side_effect=[first, second])
-            ),
-            patch.object(
-                dead_letter_tap,
-                "_consume",
-                AsyncMock(side_effect=[RuntimeError("declare refused"), None]),
-            ) as consume,
-            patch.object(dead_letter_tap.asyncio, "sleep", _pause),
-        ):
-            await dead_letter_tap._run(holder)
-
-        first.close.assert_awaited_once()
-        second.close.assert_not_awaited()
-        assert held_while_waiting == [None]
-        assert consume.await_args_list[-1].args == (second,)
-        assert holder.connection is second
-
-    async def test_a_failed_connect_backs_off_doubling_up_to_the_cap(self) -> None:
-        connection = AsyncMock()
-        holder = dead_letter_tap._TapConnection()
-        pause = AsyncMock()
-        refused = ConnectionError("broker down")
-        async with captured_wide_event() as event:
-            with (
-                patch.object(dead_letter_tap, "DEAD_LETTER_TAP_RECONNECT_MAX_SECONDS", 3.0),
-                patch.object(
-                    dead_letter_tap.aio_pika,
-                    "connect_robust",
-                    AsyncMock(side_effect=[refused, refused, refused, connection]),
-                ),
-                patch.object(dead_letter_tap, "_consume", AsyncMock()),
-                patch.object(dead_letter_tap.asyncio, "sleep", pause),
-            ):
-                await dead_letter_tap._run(holder)
-
-        assert [call.args for call in pause.await_args_list] == [(1.0,), (2.0,), (3.0,)]
-        assert holder.connection is connection
-        assert event["warnings"] == [
-            {
-                "msg": "dead-letter tap could not start, retrying",
-                "wait_s": wait_s,
-                "error": "broker down",
-                "error_type": "ConnectionError",
-            }
-            for wait_s in (1.0, 2.0, 3.0)
         ]

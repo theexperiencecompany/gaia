@@ -41,8 +41,9 @@ class TestAdapter extends BaseBotAdapter {
     destinationId: string,
     text: string,
     isChannel: boolean,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     await this.sent(destinationId, text, isChannel);
+    return undefined;
   }
 }
 

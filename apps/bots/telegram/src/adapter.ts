@@ -37,6 +37,7 @@ import {
   MEDIA_READ_TIMEOUT_MS,
   type MediaKind,
   type OutboundFile,
+  type OutboundSendOptions,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -458,14 +459,42 @@ export class TelegramAdapter extends BaseBotAdapter {
     destinationId: string,
     text: string,
     _isChannel: boolean,
-  ): Promise<void> {
+    options?: OutboundSendOptions,
+  ): Promise<string> {
     // grammY accepts a string chat_id, avoiding the NaN Number() would produce for
     // a non-numeric destination. A Telegram chat_id is polymorphic — group/supergroup
     // ids already route correctly, so _isChannel needs no branch here.
-    await this.sendHtml(
-      (t, opts) => this.bot.api.sendMessage(destinationId, t, opts),
+    const replyTo = options?.replyToPlatformMessageId;
+    const sent = await this.sendHtml(
+      (t, opts) =>
+        this.bot.api.sendMessage(destinationId, t, {
+          ...opts,
+          ...(replyTo
+            ? { reply_parameters: { message_id: Number(replyTo) } }
+            : {}),
+        }),
       text,
     );
+    return sent.message_id.toString();
+  }
+
+  protected override async editOutbound(
+    destinationId: string,
+    platformMessageId: string,
+    text: string,
+  ): Promise<string> {
+    await this.editHtml(
+      (t, opts) =>
+        this.bot.api.editMessageText(
+          destinationId,
+          Number(platformMessageId),
+          t,
+          opts,
+        ),
+      text,
+      (err) => this.adapterLogger.error("outbound_edit_failed", undefined, err),
+    );
+    return platformMessageId;
   }
 
   protected override async reactToMessage(
@@ -627,6 +656,12 @@ export class TelegramAdapter extends BaseBotAdapter {
           channelId: chatId.toString(),
           isDm: ctx.chat?.type === "private",
           platformMessageId: ctx.msg?.message_id?.toString(),
+          ...(ctx.msg?.reply_to_message
+            ? {
+                replyToPlatformMessageId:
+                  ctx.msg.reply_to_message.message_id.toString(),
+              }
+            : {}),
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),

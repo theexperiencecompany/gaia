@@ -12,6 +12,7 @@ const { connection, channel, connect } = vi.hoisted(() => {
     consume: vi.fn().mockResolvedValue(undefined),
     ack: vi.fn(),
     nack: vi.fn(),
+    sendToQueue: vi.fn().mockReturnValue(true),
   };
   const connection = {
     on: vi.fn(),
@@ -29,7 +30,10 @@ import type {
   OutboundReaction,
 } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
 import { OutboundConsumer } from "../../../../../libs/shared/ts/src/bots/consumer/outbound-consumer";
-import type { OutboundNotifications } from "../../../../../libs/shared/ts/src/bots/types";
+import type {
+  OutboundNotifications,
+  OutboundSendOptions,
+} from "../../../../../libs/shared/ts/src/bots/types";
 import { hashLogIdentifier } from "../../../../../libs/shared/ts/src/bots/utils/logger";
 import { captureBotEvents } from "../helpers/capture-bot-event";
 
@@ -50,7 +54,12 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 /** Boots a consumer and returns the message handler it registered with consume(). */
 async function startAndCaptureHandler(
   platform: "whatsapp" | "discord" | "telegram",
-  deliver: (id: string, text: string) => Promise<void>,
+  deliver: (
+    id: string,
+    text: string,
+    isChannel: boolean,
+    options?: OutboundSendOptions,
+  ) => Promise<string | undefined>,
   deliverFile: (
     id: string,
     attachment: OutboundAttachment,
@@ -63,6 +72,12 @@ async function startAndCaptureHandler(
     isChannel: boolean,
   ) => Promise<void> = async () => undefined,
   notifications?: OutboundNotifications,
+  deliverEdit?: (
+    id: string,
+    platformMessageId: string,
+    text: string,
+    isChannel: boolean,
+  ) => Promise<string | undefined>,
 ): Promise<Handler> {
   const consumer = new OutboundConsumer(
     platform,
@@ -73,6 +88,7 @@ async function startAndCaptureHandler(
     reportFailure,
     deliverReaction,
     notifications,
+    deliverEdit,
   );
   await consumer.start();
   const calls = channel.consume.mock.calls;
@@ -91,6 +107,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   connection.createChannel.mockResolvedValue(channel);
   channel.consume.mockResolvedValue(undefined);
+  channel.sendToQueue.mockReturnValue(true);
 });
 
 describe("OutboundConsumer message handling", () => {
@@ -1076,5 +1093,365 @@ describe("OutboundConsumer lifecycle", () => {
 
     expect(channel.consume).not.toHaveBeenCalled();
     expect(connection.close).toHaveBeenCalled();
+  });
+});
+
+const RECEIPTS_QUEUE = "outbound.receipts";
+
+/** Every receipt the consumer published, decoded. */
+function publishedReceipts(): Record<string, unknown>[] {
+  return channel.sendToQueue.mock.calls
+    .filter(([queue]) => queue === RECEIPTS_QUEUE)
+    .map(([, body]) => JSON.parse((body as Buffer).toString()));
+}
+
+/** A tracked envelope: carries the outbox ledger's dedupe key. */
+function trackedEnvelope(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "env-1",
+    v: 1,
+    platform: "telegram",
+    destination_id: "5550001",
+    text: "hi",
+    outbox_message_id: "ob-1",
+    enqueued_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+/** A platform send error the way the bots' clients raise it. */
+function sendError(status: number, description: string) {
+  return Object.assign(new Error(`${status}: ${description}`), {
+    error_code: status,
+    description,
+  });
+}
+
+describe("OutboundConsumer envelope versions", () => {
+  it("sends an envelope that carries no version as v1", async () => {
+    const deliver = vi.fn().mockResolvedValue("m1");
+    const handle = await startAndCaptureHandler("telegram", deliver);
+
+    const msg = msgFor(trackedEnvelope({ v: undefined }));
+    await deliverMessage(handle, msg);
+
+    expect(deliver).toHaveBeenCalledOnce();
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+  });
+
+  it("dead-letters an unsupported version without sending, and says so in a receipt", async () => {
+    const deliver = vi.fn();
+    const handle = await startAndCaptureHandler("telegram", deliver);
+    const msg = msgFor(trackedEnvelope({ v: 2, text: undefined, blocks: [] }));
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, false);
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: "envelope_rejected",
+        reason: "unsupported_envelope_version",
+        envelope_id: "env-1",
+      }),
+    );
+    expect(publishedReceipts()).toEqual([
+      expect.objectContaining({
+        envelope_id: "env-1",
+        outbox_message_id: "ob-1",
+        status: "dead_lettered",
+        error: "unsupported_envelope_version",
+        platform_message_ids: [],
+      }),
+    ]);
+  });
+});
+
+describe("OutboundConsumer two-phase dedupe", () => {
+  it("acks a redelivery of a sent message without sending it again", async () => {
+    const deliver = vi.fn().mockResolvedValue("m1");
+    const handle = await startAndCaptureHandler("telegram", deliver);
+
+    await deliverMessage(handle, msgFor(trackedEnvelope()));
+    const redelivery = msgFor(trackedEnvelope(), true);
+    await deliverMessage(handle, redelivery);
+
+    expect(deliver).toHaveBeenCalledOnce();
+    expect(channel.ack).toHaveBeenCalledWith(redelivery);
+    expect(publishedReceipts()).toHaveLength(1);
+  });
+
+  it("does not resend text whose first attempt died after sending part of it", async () => {
+    const deliver = vi
+      .fn()
+      .mockResolvedValueOnce("m1")
+      .mockRejectedValueOnce(sendError(400, "Bad Request: chat not found"));
+    const handle = await startAndCaptureHandler("telegram", deliver);
+    const parts = { text: undefined, text_parts: ["a", "b"] };
+    const partial = msgFor(trackedEnvelope(parts));
+
+    await deliverMessage(handle, partial);
+    expect(channel.nack).toHaveBeenCalledWith(partial, false, false);
+
+    const redelivery = msgFor(trackedEnvelope(parts), true);
+    await deliverMessage(handle, redelivery);
+
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(channel.ack).toHaveBeenCalledWith(redelivery);
+  });
+
+  it("sends the retry of a message whose first attempt was requeued before any send", async () => {
+    const deliver = vi
+      .fn()
+      .mockRejectedValueOnce(sendError(502, "Bad Gateway"))
+      .mockResolvedValueOnce("m1");
+    const handle = await startAndCaptureHandler("telegram", deliver);
+
+    const first = msgFor(trackedEnvelope());
+    await deliverMessage(handle, first);
+    expect(channel.nack).toHaveBeenCalledWith(first, false, true);
+
+    const retry = msgFor(trackedEnvelope(), true);
+    await deliverMessage(handle, retry);
+
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(channel.ack).toHaveBeenCalledWith(retry);
+  });
+
+  it("keys the dedupe on the part, so each part of one outbox message sends", async () => {
+    const deliver = vi.fn().mockResolvedValue("m");
+    const handle = await startAndCaptureHandler("telegram", deliver);
+
+    await deliverMessage(handle, msgFor(trackedEnvelope({ part_index: 0 })));
+    await deliverMessage(
+      handle,
+      msgFor(trackedEnvelope({ id: "env-2", part_index: 1 })),
+    );
+
+    expect(deliver).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves an envelope without an outbox id undeduped", async () => {
+    const deliver = vi.fn().mockResolvedValue("m");
+    const handle = await startAndCaptureHandler("telegram", deliver);
+    const untracked = trackedEnvelope({ outbox_message_id: undefined });
+
+    await deliverMessage(handle, msgFor(untracked));
+    await deliverMessage(handle, msgFor(untracked, true));
+
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(publishedReceipts()).toEqual([]);
+  });
+});
+
+describe("OutboundConsumer receipts", () => {
+  it("publishes one receipt per envelope with every platform message id sent", async () => {
+    const deliver = vi
+      .fn()
+      .mockResolvedValueOnce("m1")
+      .mockResolvedValueOnce("m2");
+    const handle = await startAndCaptureHandler("telegram", deliver);
+
+    await deliverMessage(
+      handle,
+      msgFor(
+        trackedEnvelope({
+          text: undefined,
+          text_parts: ["a", "b"],
+          part_index: 2,
+          conversation_id: "conv-1",
+        }),
+      ),
+    );
+
+    expect(channel.sendToQueue).toHaveBeenCalledWith(
+      RECEIPTS_QUEUE,
+      expect.any(Buffer),
+      expect.objectContaining({ persistent: true }),
+    );
+    expect(publishedReceipts()).toEqual([
+      expect.objectContaining({
+        envelope_id: "env-1",
+        outbox_message_id: "ob-1",
+        part_index: 2,
+        platform: "telegram",
+        platform_message_ids: ["m1", "m2"],
+        status: "sent",
+        error: null,
+      }),
+    ]);
+  });
+
+  it("publishes a failed receipt, with what already went out, when a send fails", async () => {
+    const deliver = vi
+      .fn()
+      .mockResolvedValueOnce("m1")
+      .mockRejectedValueOnce(
+        sendError(403, "Forbidden: bot was blocked by the user"),
+      );
+    const handle = await startAndCaptureHandler("telegram", deliver);
+
+    await deliverMessage(
+      handle,
+      msgFor(trackedEnvelope({ text: undefined, text_parts: ["a", "b"] })),
+    );
+
+    expect(publishedReceipts()).toEqual([
+      expect.objectContaining({
+        status: "failed",
+        error: "destination_blocked",
+        platform_message_ids: ["m1"],
+      }),
+    ]);
+  });
+
+  it("publishes no receipt for a send that is requeued for another attempt", async () => {
+    const handle = await startAndCaptureHandler(
+      "telegram",
+      vi.fn().mockRejectedValue(sendError(502, "Bad Gateway")),
+    );
+
+    await deliverMessage(handle, msgFor(trackedEnvelope()));
+
+    expect(channel.nack).toHaveBeenCalledWith(expect.anything(), false, true);
+    expect(publishedReceipts()).toEqual([]);
+  });
+
+  it("still acks a delivered message when its receipt cannot be published", async () => {
+    channel.sendToQueue.mockImplementation(() => {
+      throw new Error("channel closed");
+    });
+    const handle = await startAndCaptureHandler(
+      "telegram",
+      vi.fn().mockResolvedValue("m1"),
+    );
+    const msg = msgFor(trackedEnvelope());
+
+    await deliverMessage(handle, msg);
+
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+    expect(channel.nack).not.toHaveBeenCalled();
+  });
+
+  it("declares the receipts queue as durable on connect", async () => {
+    await startAndCaptureHandler("telegram", vi.fn());
+
+    expect(channel.assertQueue).toHaveBeenCalledWith(RECEIPTS_QUEUE, {
+      durable: true,
+    });
+  });
+});
+
+describe("OutboundConsumer edits and replies", () => {
+  it("edits the named message in place instead of sending a new one", async () => {
+    const deliver = vi.fn();
+    const deliverEdit = vi.fn().mockResolvedValue("m-edited");
+    const handle = await startAndCaptureHandler(
+      "telegram",
+      deliver,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      deliverEdit,
+    );
+    const msg = msgFor(
+      trackedEnvelope({
+        edit_of_platform_message_id: "m-old",
+        text: "**new**",
+      }),
+    );
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(deliverEdit).toHaveBeenCalledExactlyOnceWith(
+      "5550001",
+      "m-old",
+      expect.stringContaining("new"),
+      false,
+    );
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+    expect(publishedReceipts()).toEqual([
+      expect.objectContaining({
+        status: "sent",
+        platform_message_ids: ["m-edited"],
+      }),
+    ]);
+  });
+
+  it("fails an edit loudly on a platform that cannot edit, never sending a second message", async () => {
+    const deliver = vi.fn();
+    const handle = await startAndCaptureHandler("whatsapp", deliver);
+    const msg = msgFor(
+      trackedEnvelope({
+        platform: "whatsapp",
+        edit_of_platform_message_id: "wamid.old",
+      }),
+    );
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, false);
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: "send_failed",
+        reason: "edit_unsupported",
+      }),
+    );
+    expect(publishedReceipts()).toEqual([
+      expect.objectContaining({ status: "failed", error: "edit_unsupported" }),
+    ]);
+  });
+
+  it("refuses to edit one message into several", async () => {
+    const deliverEdit = vi.fn();
+    const handle = await startAndCaptureHandler(
+      "telegram",
+      vi.fn(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      deliverEdit,
+    );
+
+    await deliverMessage(
+      handle,
+      msgFor(
+        trackedEnvelope({
+          edit_of_platform_message_id: "m-old",
+          text: undefined,
+          text_parts: ["a", "b"],
+        }),
+      ),
+    );
+
+    expect(deliverEdit).not.toHaveBeenCalled();
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ reason: "edit_requires_single_message" }),
+    );
+  });
+
+  it("quotes the replied-to message on the first bubble only", async () => {
+    const deliver = vi.fn().mockResolvedValue("m");
+    const handle = await startAndCaptureHandler("telegram", deliver);
+
+    await deliverMessage(
+      handle,
+      msgFor(
+        trackedEnvelope({
+          text: undefined,
+          text_parts: ["a", "b"],
+          reply_to_platform_message_id: "m-orig",
+        }),
+      ),
+    );
+
+    expect(deliver).toHaveBeenNthCalledWith(1, "5550001", "a", false, {
+      replyToPlatformMessageId: "m-orig",
+    });
+    expect(deliver).toHaveBeenNthCalledWith(2, "5550001", "b", false);
   });
 });

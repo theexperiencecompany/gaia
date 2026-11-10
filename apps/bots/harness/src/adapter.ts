@@ -127,13 +127,13 @@ export class HarnessAdapter extends BaseBotAdapter {
   protected deliverOutbound(
     destinationId: string,
     text: string,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     this.transcript.record({
       type: "outbound-delivery",
       destinationId,
       text,
     });
-    return Promise.resolve();
+    return Promise.resolve(undefined);
   }
 
   /**

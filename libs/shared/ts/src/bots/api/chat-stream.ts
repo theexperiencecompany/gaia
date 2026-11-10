@@ -234,6 +234,11 @@ async function streamChatOnce(
         ...(request.platformMessageId
           ? { platform_message_id: request.platformMessageId }
           : {}),
+        ...(request.replyToPlatformMessageId
+          ? {
+              reply_to_platform_message_id: request.replyToPlatformMessageId,
+            }
+          : {}),
         ...(request.fileIds && request.fileIds.length > 0
           ? { file_ids: request.fileIds }
           : {}),

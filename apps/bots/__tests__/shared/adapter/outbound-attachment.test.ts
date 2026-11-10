@@ -51,8 +51,8 @@ class TestAdapter extends BaseBotAdapter {
   protected async stop(): Promise<void> {
     /* nothing to disconnect */
   }
-  protected async deliverOutbound(): Promise<void> {
-    /* no outbound delivery under test */
+  protected async deliverOutbound(): Promise<string | undefined> {
+    return undefined; // no outbound delivery under test
   }
   sentFile: OutboundFile | null = null;
   protected async sendOutboundFile(

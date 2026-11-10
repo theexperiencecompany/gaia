@@ -26,6 +26,8 @@ export interface KapsoMessageEvent {
     timestamp: string;
     type: string; // "text" | "image" | "audio" | "voice" | "video" | "document" | "sticker" | ...
     text?: { body: string };
+    /** Present when the user replied to (quoted) an earlier message; `id` is that message's wamid. */
+    context?: { id?: string };
     image?: WaMediaPayload;
     audio?: WaMediaPayload;
     voice?: WaMediaPayload;

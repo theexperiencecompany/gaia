@@ -178,9 +178,12 @@ function makeCtx(
     editMessageTextFn?: ReturnType<typeof vi.fn>;
     sendMessageFn?: ReturnType<typeof vi.fn>;
     sendChatActionFn?: ReturnType<typeof vi.fn>;
+    /** Telegram message id the inbound message replies to, when it quotes one. */
+    repliedToMessageId?: number;
   } = {},
 ) {
   const {
+    repliedToMessageId,
     chatId = 123456,
     chatType = "private",
     userId = 999,
@@ -204,6 +207,14 @@ function makeCtx(
       username: fromUsername,
     },
     message: { text, message_id: 10 },
+    ...(repliedToMessageId === undefined
+      ? {}
+      : {
+          msg: {
+            message_id: 10,
+            reply_to_message: { message_id: repliedToMessageId },
+          },
+        }),
     match,
     reply: replyFn,
     api: {
@@ -544,6 +555,43 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
 
     expect(replyFn).toHaveBeenCalledWith("Thinking...");
     expect(handleStreamingChat).toHaveBeenCalled();
+  });
+
+  it("forwards the message the user replied to", async () => {
+    const ctx = makeCtx({ repliedToMessageId: 31 });
+
+    await (
+      adapter as unknown as {
+        handleTelegramStreaming: (
+          ctx: typeof ctx,
+          userId: string,
+          message: string,
+        ) => Promise<void>;
+      }
+    ).handleTelegramStreaming(ctx, "555", "yes do it");
+
+    const request = vi.mocked(handleStreamingChat).mock.calls[0][1];
+    expect(request).toMatchObject({
+      platformMessageId: "10",
+      replyToPlatformMessageId: "31",
+    });
+  });
+
+  it("sends no reply target when the message quotes nothing", async () => {
+    const ctx = makeCtx();
+
+    await (
+      adapter as unknown as {
+        handleTelegramStreaming: (
+          ctx: typeof ctx,
+          userId: string,
+          message: string,
+        ) => Promise<void>;
+      }
+    ).handleTelegramStreaming(ctx, "555", "hello");
+
+    const request = vi.mocked(handleStreamingChat).mock.calls[0][1];
+    expect(request).not.toHaveProperty("replyToPlatformMessageId");
   });
 
   it("calls handleStreamingChat with the correct request shape", async () => {

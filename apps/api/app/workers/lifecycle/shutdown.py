@@ -9,6 +9,7 @@ from app.core.provider_registration import unified_shutdown
 from app.core.runtime_config_subscriber import stop_runtime_config_subscriber
 from app.services.delivery_alerts.dead_letter_tap import stop_dead_letter_tap
 from app.services.device.up_listener import stop_up_listener
+from app.services.outbox.receipt_consumer import stop_receipt_consumer
 from app.utils.browser_reaper import stop_browser_reaper
 from app.utils.crawl_obscura import shutdown_crawl_obscura
 from app.workers.browser_worker import stop_browser_worker
@@ -28,6 +29,7 @@ async def shutdown(ctx: MutableMapping[str, object]) -> None:
         await stop_browser_worker(ctx)
 
         await stop_dead_letter_tap(ctx)
+        await stop_receipt_consumer(ctx)
         await stop_browser_reaper()
         await shutdown_crawl_obscura()
 

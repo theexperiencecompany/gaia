@@ -194,3 +194,33 @@ describe("streamChat — a chunk carrying several frames", () => {
     expect(onDone).toHaveBeenCalledWith("three", "c1");
   });
 });
+
+describe("streamChat — request body", () => {
+  async function postedBody(request: ChatRequest) {
+    const deps = makeDeps(frames({ done: true }));
+    await streamChat(
+      deps,
+      request,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      "/api/v1/bot/chat-stream",
+    );
+    return vi.mocked(deps.client.post).mock.calls[0][1];
+  }
+
+  it("sends the message the user replied to as reply_to_platform_message_id", async () => {
+    const body = await postedBody({
+      ...REQUEST,
+      replyToPlatformMessageId: "m-31",
+    });
+
+    expect(body).toMatchObject({ reply_to_platform_message_id: "m-31" });
+  });
+
+  it("omits reply_to_platform_message_id when nothing was quoted", async () => {
+    const body = await postedBody(REQUEST);
+
+    expect(body).not.toHaveProperty("reply_to_platform_message_id");
+  });
+});

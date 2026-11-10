@@ -728,11 +728,12 @@ export class ImessageAdapter extends BaseBotAdapter {
     destinationId: string,
     text: string,
     _isChannel: boolean,
-  ): Promise<void> {
-    // iMessage is DM-only here (group spaces are ignored inbound), so
-    // _isChannel is never set — destinationId is always a handle/space.
+  ): Promise<string | undefined> {
+    // DM-only (group spaces are ignored inbound), so _isChannel is never set.
+    // The SDK has no reply target or edit: reply-to is not quoted, no editOutbound.
     const space = await this.im.space.create(destinationId);
-    await space.send(text);
+    const sent = await space.send(text);
+    return sent?.id;
   }
 
   protected override async reactToMessage(

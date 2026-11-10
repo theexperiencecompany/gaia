@@ -8,6 +8,7 @@ the bot consumer converts it to the platform's native formatting before sending.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Self
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -15,6 +16,8 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, model_validator
 
 from app.config.settings import settings
+from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.constants.outbound import OUTBOUND_ENVELOPE_VERSION
 
 
 def _is_own_api(url: str) -> bool:
@@ -71,7 +74,15 @@ class OutboundReaction(BaseModel):
 class OutboundMessageEnvelope(BaseModel):
     """Shape of a bot-facing message queued to the delivery bus."""
 
+    v: int = OUTBOUND_ENVELOPE_VERSION
     id: str = Field(default_factory=lambda: str(uuid4()))
+    # The outbox ledger message this envelope delivers; with part_index it is the
+    # bot's dedupe key and the key its receipts are filed under.
+    outbox_message_id: str | None = Field(default=None, min_length=1)
+    conversation_id: str | None = Field(default=None, min_length=1)
+    reply_to_platform_message_id: str | None = Field(default=None, min_length=1)
+    edit_of_platform_message_id: str | None = Field(default=None, min_length=1)
+    part_index: int = Field(default=0, ge=0)
     platform: str = Field(min_length=1)
     destination_id: str = Field(min_length=1)
     # False (default): destination_id is the user's DM target. True: it is a
@@ -96,4 +107,41 @@ class OutboundMessageEnvelope(BaseModel):
             and self.reaction is None
         ):
             raise ValueError("envelope requires text, text_parts, attachment, or reaction")
+        return self
+
+    @model_validator(mode="after")
+    def _edit_requires_text(self) -> Self:
+        if self.edit_of_platform_message_id and not (self.text or self.text_parts):
+            raise ValueError("an edit requires text or text_parts")
+        return self
+
+
+class ReceiptStatus(StrEnum):
+    """How an outbound envelope part ended, as the bot reports it."""
+
+    SENT = "sent"
+    FAILED = "failed"
+    DEAD_LETTERED = "dead_lettered"
+
+
+class OutboundReceipt(BaseModel):
+    """A bot's report of how one envelope part ended; mirrors receipts.ts in the bot lib.
+
+    platform_message_ids holds every platform message sent for the part, in order
+    (empty when none went out). A part with no receipt is unknown, not failed.
+    """
+
+    envelope_id: str = Field(min_length=1)
+    outbox_message_id: str = Field(min_length=1)
+    part_index: int = Field(default=0, ge=0)
+    platform: ConversationSource
+    platform_message_ids: list[str] = Field(default_factory=list)
+    status: ReceiptStatus
+    error: str | None = None
+    occurred_at: datetime
+
+    @model_validator(mode="after")
+    def _bot_platform_only(self) -> Self:
+        if self.platform not in BOT_CONVERSATION_SOURCES:
+            raise ValueError(f"{self.platform.value} is not a messaging-platform bot")
         return self

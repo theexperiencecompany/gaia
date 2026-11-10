@@ -73,6 +73,20 @@ class TestWorkerStartup:
         assert seen == [ctx]
         assert seen[0] is ctx
 
+    async def test_the_receipt_consumer_is_kept_in_the_ctx_that_shutdown_stops_it_from(
+        self, ctx: dict
+    ) -> None:
+        seen: list[object] = []
+        with (
+            patch("app.workers.lifecycle.startup.unified_startup", new_callable=AsyncMock),
+            patch("app.workers.lifecycle.startup.start_receipt_consumer", seen.append),
+        ):
+            from app.workers.lifecycle.startup import startup
+
+            await startup(ctx)
+
+        assert seen == [ctx]
+
     async def test_startup_starts_the_browser_worker_once_the_process_is_ready(
         self, ctx: dict, browser_worker_calls: list[str]
     ) -> None:

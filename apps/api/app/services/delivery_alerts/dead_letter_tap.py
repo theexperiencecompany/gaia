@@ -11,14 +11,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping, MutableMapping
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import aio_pika
 from aio_pika.abc import AbstractIncomingMessage, AbstractRobustConnection
 from pydantic import BaseModel, Field, ValidationError
 
-from app.config.settings import settings
 from app.constants.chat import ConversationSource
 from app.constants.delivery_alerts import (
     DEAD_LETTER_REASON_REJECTED,
@@ -33,29 +31,14 @@ from app.constants.outbound import (
     OUTBOUND_DLX,
     OUTBOUND_QUEUE_PREFIX,
     OUTBOUND_QUEUES,
-    RABBITMQ_CONNECT_TIMEOUT_SECONDS,
-    RABBITMQ_HEARTBEAT_SECONDS,
     dlq_name,
 )
 from app.schemas.delivery_failures import DeliveryFailure
 from app.services.delivery_alerts.reporting import queue_delivery_failure
-from app.utils.background_tasks import spawn_background_task
+from app.services.rabbitmq_consumer import start_consumer, stop_consumer
 from shared.py.wide_events import log, log_context
 
 _REPORTER = "dead-letter-tap"
-
-
-@dataclass
-class _TapConnection:
-    """Filled in by the tap's task once it connects, so shutdown can close it."""
-
-    connection: AbstractRobustConnection | None = None
-
-
-@dataclass(frozen=True)
-class _RunningTap:
-    task: asyncio.Task[None]
-    holder: _TapConnection
 
 
 class _Death(BaseModel):
@@ -163,53 +146,18 @@ async def _consume(connection: AbstractRobustConnection) -> None:
     await queue.consume(_handle)
 
 
-async def _run(holder: _TapConnection) -> None:
-    # connect_robust only restores a connection whose setup once succeeded, so the
-    # first connect AND the setup on it are retried here until both go through.
-    delay = 1.0
-    while True:
-        connection: AbstractRobustConnection | None = None
-        try:
-            connection = await aio_pika.connect_robust(
-                settings.RABBITMQ_URL,
-                timeout=RABBITMQ_CONNECT_TIMEOUT_SECONDS,
-                heartbeat=RABBITMQ_HEARTBEAT_SECONDS,
-            )
-            holder.connection = connection
-            await _consume(connection)
-        except Exception as e:
-            log.warning(
-                "dead-letter tap could not start, retrying",
-                wait_s=delay,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            holder.connection = None
-            if connection is not None:
-                await connection.close()
-            await asyncio.sleep(delay)
-            delay = min(delay * 2, DEAD_LETTER_TAP_RECONNECT_MAX_SECONDS)
-            continue
-        log.info("dead-letter tap consuming", queue=DEAD_LETTER_TAP_QUEUE)
-        return
-
-
 def start_dead_letter_tap(ctx: MutableMapping[str, object]) -> None:
     """Start alerting on broker dead-letters in the background; a no-op without RabbitMQ."""
-    if not settings.RABBITMQ_URL:
-        log.warning("dead-letter tap not started: RABBITMQ_URL is not configured")
-        return
-    holder = _TapConnection()
-    task = spawn_background_task(_run(holder), name="dead_letter_tap")
-    ctx[DEAD_LETTER_TAP_CTX_KEY] = _RunningTap(task=task, holder=holder)
+    start_consumer(
+        ctx,
+        DEAD_LETTER_TAP_CTX_KEY,
+        _consume,
+        name="dead_letter_tap",
+        queue=DEAD_LETTER_TAP_QUEUE,
+        reconnect_max_seconds=DEAD_LETTER_TAP_RECONNECT_MAX_SECONDS,
+    )
 
 
 async def stop_dead_letter_tap(ctx: MutableMapping[str, object]) -> None:
     """Stop connecting (if still trying) and close the tap's connection."""
-    running = ctx.pop(DEAD_LETTER_TAP_CTX_KEY, None)
-    if not isinstance(running, _RunningTap):
-        return
-    running.task.cancel()
-    await asyncio.wait({running.task})
-    if running.holder.connection is not None:
-        await running.holder.connection.close()
+    await stop_consumer(ctx, DEAD_LETTER_TAP_CTX_KEY)

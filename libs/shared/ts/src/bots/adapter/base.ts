@@ -60,6 +60,7 @@ import type {
   BotConfig,
   CommandContext,
   OutboundNotifications,
+  OutboundSendOptions,
   PlatformName,
   RichMessageTarget,
 } from "../types";
@@ -291,7 +292,8 @@ export abstract class BaseBotAdapter {
     this._outboundConsumer = new OutboundConsumer(
       this.platform,
       url,
-      (id, text, isChannel) => this.deliverOutbound(id, text, isChannel),
+      (id, text, isChannel, options) =>
+        this.deliverOutbound(id, text, isChannel, options),
       (id, attachment, isChannel) =>
         this.deliverOutboundFile(id, attachment, isChannel),
       this.config.gaiaApiUrl,
@@ -299,6 +301,7 @@ export abstract class BaseBotAdapter {
       (id, reaction, isChannel) =>
         this.deliverOutboundReaction(id, reaction, isChannel),
       this.outboundNotifications,
+      this.editOutbound?.bind(this),
     );
     void this._outboundConsumer.start();
   }
@@ -353,13 +356,28 @@ export abstract class BaseBotAdapter {
    * `renderForPlatform` — do not convert it again, just hand it to the platform SDK.
    *
    * `isChannel` is true for a channel/group id, false for a user id (DM); platforms that
-   * address both identically (Telegram) may ignore it.
+   * address both identically (Telegram) may ignore it. Returns the platform's id for the
+   * sent message, and quotes `options.replyToPlatformMessageId` where the platform can.
    */
   protected abstract deliverOutbound(
     destinationId: string,
     text: string,
     isChannel: boolean,
-  ): Promise<void>;
+    options?: OutboundSendOptions,
+  ): Promise<string | undefined>;
+
+  /**
+   * Replaces the text of a message this bot already sent, returning its id. Left
+   * undefined by a platform with no edit primitive (WhatsApp, iMessage): the
+   * outbound consumer then fails an edit envelope instead of sending a second message.
+   * `text` has already run through `renderForPlatform`.
+   */
+  protected editOutbound?(
+    destinationId: string,
+    platformMessageId: string,
+    text: string,
+    isChannel: boolean,
+  ): Promise<string | undefined>;
 
   /**
    * Delivers a file artifact to `destinationId`, addressed by `isChannel` like

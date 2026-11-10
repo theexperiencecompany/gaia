@@ -12,6 +12,7 @@ from app.constants.auth import InstanceRole
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
+from app.constants.outbound import OUTBOUND_RECEIPTS_RETENTION_SECONDS
 from app.constants.outbox import (
     ITEMS_COLLECTION,
     MESSAGES_COLLECTION,
@@ -136,6 +137,7 @@ async def create_all_indexes() -> None:
             create_tool_output_shapes_indexes(),
             create_email_verdict_indexes(),
             create_run_trace_indexes(),
+            create_outbound_receipt_indexes(),
             create_outbox_indexes(),
         ]
 
@@ -179,6 +181,7 @@ async def create_all_indexes() -> None:
             "tool_output_shapes",
             "email_verdicts",
             "run_trace",
+            "outbound_receipts",
             "outbox",
         ]
 
@@ -1698,6 +1701,26 @@ async def create_run_trace_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating run trace indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_outbound_receipt_indexes() -> None:
+    """Create indexes for outbound_receipts: unique per (envelope, status), TTL on recorded_at."""
+    receipts = get_async_collection("outbound_receipts")
+    try:
+        await asyncio.gather(
+            receipts.create_index([("envelope_id", 1), ("status", 1)], unique=True),
+            receipts.create_index([("outbox_message_id", 1), ("part_index", 1)]),
+            receipts.create_index(
+                "recorded_at", expireAfterSeconds=OUTBOUND_RECEIPTS_RETENTION_SECONDS
+            ),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating outbound receipt indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

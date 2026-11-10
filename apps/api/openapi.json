@@ -1791,6 +1791,18 @@
             "minLength": 1,
             "title": "Platform User Id",
             "type": "string"
+          },
+          "reply_to_platform_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Platform-native id of the message the user's message replies to or quotes (Telegram reply, Discord reference, Slack thread root, WhatsApp context). Persisted on the saved user message.",
+            "title": "Reply To Platform Message Id"
           }
         },
         "required": [
@@ -10759,6 +10771,17 @@
               }
             ]
           },
+          "reply_to_platform_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Platform Message Id"
+          },
           "response": {
             "title": "Response",
             "type": "string"
@@ -11058,6 +11081,17 @@
               }
             ]
           },
+          "reply_to_platform_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Platform Message Id"
+          },
           "response": {
             "title": "Response",
             "type": "string"
@@ -11276,6 +11310,17 @@
                 "type": "null"
               }
             ]
+          },
+          "reply_to_platform_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Platform Message Id"
           },
           "selectedCalendarEvent": {
             "anyOf": [

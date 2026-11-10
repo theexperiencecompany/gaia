@@ -671,7 +671,13 @@ async function bootSlackWithEvents() {
 
 describe("SlackAdapter - app_mention event handling", () => {
   let mentionHandler: (args: {
-    event: { text: string; user: string; channel: string };
+    event: {
+      text: string;
+      user: string;
+      channel: string;
+      ts?: string;
+      thread_ts?: string;
+    };
     client: ReturnType<typeof makeSlackClient>;
     context: { botUserId?: string };
   }) => Promise<void>;
@@ -715,6 +721,47 @@ describe("SlackAdapter - app_mention event handling", () => {
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );
+  });
+
+  it("forwards the thread a mention was written in as the message it replies to", async () => {
+    const client = makeSlackClient("ts-mention");
+
+    await mentionHandler({
+      event: {
+        text: "<@BOTID> do it",
+        user: "U999",
+        channel: "C111",
+        ts: "200.2",
+        thread_ts: "100.1",
+      },
+      client,
+      context: { botUserId: "BOTID" },
+    });
+
+    const request = vi.mocked(handleStreamingChat).mock.calls[0][1];
+    expect(request).toMatchObject({
+      platformMessageId: "200.2",
+      replyToPlatformMessageId: "100.1",
+    });
+  });
+
+  it("forwards no reply target for a message that starts a thread", async () => {
+    const client = makeSlackClient("ts-mention");
+
+    await mentionHandler({
+      event: {
+        text: "<@BOTID> hi",
+        user: "U999",
+        channel: "C111",
+        ts: "100.1",
+        thread_ts: "100.1",
+      },
+      client,
+      context: { botUserId: "BOTID" },
+    });
+
+    const request = vi.mocked(handleStreamingChat).mock.calls[0][1];
+    expect(request).not.toHaveProperty("replyToPlatformMessageId");
   });
 
   it("posts 'How can I help you?' when mention text is empty after stripping", async () => {
@@ -924,6 +971,66 @@ describe("SlackAdapter - deliverOutbound channel routing", () => {
       channel: "C-group",
       text: "hi",
     });
+  });
+
+  it("returns the posted ts and replies inside the thread of the quoted message", async () => {
+    const adapter = new SlackAdapter() as unknown as Deliverer & {
+      editOutbound: (
+        destinationId: string,
+        platformMessageId: string,
+        text: string,
+        isChannel: boolean,
+      ) => Promise<string | undefined>;
+    };
+    const app = makeApp();
+    adapter.app = app;
+
+    const ts = await (
+      adapter as unknown as {
+        deliverOutbound: (
+          d: string,
+          t: string,
+          c: boolean,
+          o: { replyToPlatformMessageId: string },
+        ) => Promise<string | undefined>;
+      }
+    ).deliverOutbound("C-group", "hi", true, {
+      replyToPlatformMessageId: "9.9",
+    });
+
+    expect(ts).toBe("1.1");
+    expect(app.client.chat.postMessage).toHaveBeenCalledWith({
+      channel: "C-group",
+      text: "hi",
+      thread_ts: "9.9",
+    });
+  });
+
+  it("edits a sent message with chat.update", async () => {
+    const adapter = new SlackAdapter() as unknown as {
+      editOutbound: (
+        destinationId: string,
+        platformMessageId: string,
+        text: string,
+        isChannel: boolean,
+      ) => Promise<string | undefined>;
+      app: unknown;
+    };
+    const app = makeApp();
+    adapter.app = {
+      client: {
+        ...app.client,
+        chat: { update: vi.fn().mockResolvedValue({ ts: "5.5" }) },
+      },
+    };
+
+    const ts = await adapter.editOutbound("C-group", "5.5", "new", true);
+
+    expect(ts).toBe("5.5");
+    expect(
+      (adapter.app as { client: { chat: { update: unknown } } }).client.chat
+        .update,
+    ).toHaveBeenCalledWith({ channel: "C-group", ts: "5.5", text: "new" });
   });
 
   it("resolves the user's DM channel before posting when not a channel", async () => {

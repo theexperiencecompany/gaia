@@ -34,6 +34,7 @@ import {
   MEDIA_READ_TIMEOUT_MS,
   type OutboundFile,
   type OutboundNotifications,
+  type OutboundSendOptions,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -420,17 +421,19 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       has_text: Boolean(text),
     });
     const msgId = event.message.id;
+    const replyToMessageId = event.message.context?.id;
 
     // Enqueue per user — webhook returns 200 immediately while processing is
     // serialized: messages from the same user run one at a time, in order.
     if (text) {
       this.enqueueForUser(waId, () =>
-        this.handleIncomingMessage(waId, text, msgId).catch((err) =>
-          this.adapterLogger.error("incoming_message_processing_failed", {
-            user_hash: waIdHash,
-            message_id: msgId,
-            ...sanitizeErrorForLog(err),
-          }),
+        this.handleIncomingMessage(waId, text, msgId, replyToMessageId).catch(
+          (err) =>
+            this.adapterLogger.error("incoming_message_processing_failed", {
+              user_hash: waIdHash,
+              message_id: msgId,
+              ...sanitizeErrorForLog(err),
+            }),
         ),
       );
       return;
@@ -460,13 +463,14 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
 
     this.enqueueForUser(waId, () =>
-      this.handleMediaMessage(waId, media, msgId).catch((err) =>
-        this.adapterLogger.error("media_message_processing_failed", {
-          user_hash: waIdHash,
-          message_id: msgId,
-          media_kind: media.kind,
-          ...sanitizeErrorForLog(err),
-        }),
+      this.handleMediaMessage(waId, media, msgId, replyToMessageId).catch(
+        (err) =>
+          this.adapterLogger.error("media_message_processing_failed", {
+            user_hash: waIdHash,
+            message_id: msgId,
+            media_kind: media.kind,
+            ...sanitizeErrorForLog(err),
+          }),
       ),
     );
   }
@@ -617,6 +621,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     waId: string,
     text: string,
     messageId: string,
+    replyToMessageId?: string,
   ): Promise<void> {
     const waIdHash = hashLogIdentifier(waId);
     this.adapterLogger.info("incoming_message_started", {
@@ -662,7 +667,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
             await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
             return;
           }
-          await this.handleStreamingMessage(waId, rest, messageId);
+          await this.handleStreamingMessage(
+            waId,
+            rest,
+            messageId,
+            [],
+            replyToMessageId,
+          );
           return;
         }
 
@@ -677,7 +688,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(waId, chatText, messageId);
+      await this.handleStreamingMessage(
+        waId,
+        chatText,
+        messageId,
+        [],
+        replyToMessageId,
+      );
     } finally {
       typing.stop();
     }
@@ -695,6 +712,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     text: string,
     messageId: string,
     attachments: BotFileData[] = [],
+    replyToMessageId?: string,
   ): Promise<void> {
     if (!text.trim() && attachments.length === 0) {
       await this.sendWhatsAppText(
@@ -717,6 +735,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           channelId: waId,
           isDm: true,
           platformMessageId: messageId,
+          ...(replyToMessageId
+            ? { replyToPlatformMessageId: replyToMessageId }
+            : {}),
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -829,6 +850,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     waId: string,
     media: ExtractedMedia,
     messageId: string,
+    replyToMessageId?: string,
   ): Promise<void> {
     const waIdHash = hashLogIdentifier(waId);
     this.adapterLogger.info("media_message_started", {
@@ -869,6 +891,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           outcome.text,
           messageId,
           outcome.attachments,
+          replyToMessageId,
         );
       }
     } catch (err) {
@@ -979,12 +1002,14 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private async sendWhatsAppText(
     waId: string,
     text: string,
+    replyToMessageId?: string,
   ): Promise<SentMessage> {
     const response = await this.whatsAppClient.messages.sendText({
       phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
       to: `+${waId}`,
       body: text,
       previewUrl: false,
+      ...(replyToMessageId ? { contextMessageId: replyToMessageId } : {}),
     });
 
     const messageId = response.messages[0]?.id ?? "";
@@ -1007,10 +1032,16 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     destinationId: string,
     text: string,
     _isChannel: boolean,
-  ): Promise<void> {
+    options?: OutboundSendOptions,
+  ): Promise<string | undefined> {
     // destinationId is always a wa_id: WhatsApp has no channel outbound. Only
     // reached inside the 24h window; outside it the consumer sends the template.
-    await this.sendWhatsAppText(destinationId, text);
+    const sent = await this.sendWhatsAppText(
+      destinationId,
+      text,
+      options?.replyToPlatformMessageId,
+    );
+    return sent.id || undefined;
   }
 
   protected override async reactToMessage(

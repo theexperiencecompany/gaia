@@ -299,14 +299,19 @@ function makeGuildMessage(overrides: {
   botId?: string;
   hasGuild?: boolean;
   authorBot?: boolean;
+  /** Id of the message this one replies to, when it carries a reference. */
+  referencedMessageId?: string;
 }) {
   const {
     content = "<@bot-id> hello",
     hasGuild = true,
     authorBot = false,
+    referencedMessageId,
   } = overrides;
 
   return {
+    id: "message-1",
+    reference: referencedMessageId ? { messageId: referencedMessageId } : null,
     content,
     author: { id: "user-123", bot: authorBot },
     guild: hasGuild ? { id: "guild-abc" } : null,
@@ -676,6 +681,31 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       }),
       expect.any(Function), // onReaction
     );
+  });
+
+  it("forwards the message a mention replies to, and nothing when it replies to none", async () => {
+    const mention = (m: ReturnType<typeof makeGuildMessage>) =>
+      (
+        adapter as unknown as {
+          handleMentionMessage: (
+            m: typeof message,
+            botId: string,
+          ) => Promise<void>;
+        }
+      ).handleMentionMessage(m, BOT_ID);
+    const message = makeGuildMessage({ referencedMessageId: "ref-9" });
+
+    await mention(message);
+    await mention(makeGuildMessage({}));
+
+    const [quoting, plain] = vi
+      .mocked(handleStreamingChat)
+      .mock.calls.map((call) => call[1]);
+    expect(quoting).toMatchObject({
+      platformMessageId: "message-1",
+      replyToPlatformMessageId: "ref-9",
+    });
+    expect(plain).not.toHaveProperty("replyToPlatformMessageId");
   });
 
   it("strips <@!botId> nickname mention before passing to handleStreamingChat", async () => {
@@ -1249,14 +1279,63 @@ describe("DiscordAdapter - deliverOutbound channel routing", () => {
       destinationId: string,
       text: string,
       isChannel: boolean,
-    ) => Promise<void>;
+      options?: { replyToPlatformMessageId?: string },
+    ) => Promise<string>;
+    editOutbound: (
+      destinationId: string,
+      platformMessageId: string,
+      text: string,
+      isChannel: boolean,
+    ) => Promise<string>;
     client: unknown;
   };
 
+  it("returns the sent message's id and quotes the message it replies to", async () => {
+    const adapter = new DiscordAdapter() as unknown as Deliverer;
+    const channelSend = vi.fn().mockResolvedValue({ id: "sent-1" });
+    adapter.client = {
+      channels: {
+        fetch: vi
+          .fn()
+          .mockResolvedValue({ isTextBased: () => true, send: channelSend }),
+      },
+    };
+
+    const id = await adapter.deliverOutbound("chan-1", "hi", true, {
+      replyToPlatformMessageId: "orig-1",
+    });
+
+    expect(id).toBe("sent-1");
+    expect(channelSend).toHaveBeenCalledWith({
+      content: "hi",
+      reply: { messageReference: "orig-1", failIfNotExists: false },
+    });
+  });
+
+  it("edits the named message in a channel and returns its id", async () => {
+    const adapter = new DiscordAdapter() as unknown as Deliverer;
+    const edit = vi.fn().mockResolvedValue({ id: "m-old" });
+    const fetchMessage = vi.fn().mockResolvedValue({ edit });
+    adapter.client = {
+      channels: {
+        fetch: vi.fn().mockResolvedValue({
+          isTextBased: () => true,
+          messages: { fetch: fetchMessage },
+        }),
+      },
+    };
+
+    const id = await adapter.editOutbound("chan-1", "m-old", "new", true);
+
+    expect(fetchMessage).toHaveBeenCalledWith("m-old");
+    expect(edit).toHaveBeenCalledWith("new");
+    expect(id).toBe("m-old");
+  });
+
   it("sends to the channel via channels.fetch when isChannel", async () => {
     const adapter = new DiscordAdapter() as unknown as Deliverer;
-    const channelSend = vi.fn().mockResolvedValue(undefined);
-    const userSend = vi.fn().mockResolvedValue(undefined);
+    const channelSend = vi.fn().mockResolvedValue({ id: "sent-1" });
+    const userSend = vi.fn().mockResolvedValue({ id: "sent-2" });
     const client = {
       channels: {
         fetch: vi
@@ -1291,7 +1370,7 @@ describe("DiscordAdapter - deliverOutbound channel routing", () => {
 
   it("DMs the user via users.fetch when not a channel", async () => {
     const adapter = new DiscordAdapter() as unknown as Deliverer;
-    const userSend = vi.fn().mockResolvedValue(undefined);
+    const userSend = vi.fn().mockResolvedValue({ id: "sent-2" });
     const client = {
       channels: { fetch: vi.fn() },
       users: { fetch: vi.fn().mockResolvedValue({ send: userSend }) },

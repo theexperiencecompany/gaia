@@ -155,6 +155,20 @@ class TestPlatformMessageId:
         user = await self._persist_user(_body())
         assert user.platform_message_id is None
 
+    async def test_bot_turn_stamps_the_message_it_replied_to(self) -> None:
+        body = MessageRequestWithHistory(
+            message="yes do it",
+            conversation_id=CONV,
+            messages=[{"role": "user", "content": "yes do it"}],
+            reply_to_platform_message_id="wamid.099",
+        )
+        user = await self._persist_user(body)
+        assert user.reply_to_platform_message_id == "wamid.099"
+
+    async def test_turn_that_quotes_nothing_saves_none(self) -> None:
+        user = await self._persist_user(_body())
+        assert user.reply_to_platform_message_id is None
+
 
 class TestPersistedTurnMatchesTheLiveStream:
     """The persisted entry must reproduce what the browser assembled live.

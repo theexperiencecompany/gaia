@@ -241,6 +241,7 @@ async def build_bot_message_request(
         fileIds=body.file_ids or [],
         fileData=body.file_data or [],
         platform_message_id=body.platform_message_id,
+        reply_to_platform_message_id=body.reply_to_platform_message_id,
     )
 
 

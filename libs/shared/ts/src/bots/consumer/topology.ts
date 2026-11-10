@@ -31,6 +31,12 @@ export const OUTBOUND_QUEUES: Record<PlatformName, string> = {
   imessage: `${OUTBOUND_QUEUE_PREFIX}imessage`,
 };
 
+/**
+ * Queue the bots publish delivery receipts to and the API consumes. Mirrors
+ * ``OUTBOUND_RECEIPTS_QUEUE`` in apps/api/app/constants/outbound.py.
+ */
+export const OUTBOUND_RECEIPTS_QUEUE = `${OUTBOUND_QUEUE_PREFIX}receipts`;
+
 /** Dead-letter queue name for a work queue. */
 export const dlqName = (queue: string): string => `${queue}.dlq`;
 

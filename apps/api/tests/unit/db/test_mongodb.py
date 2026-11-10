@@ -404,6 +404,7 @@ _INDEX_CREATORS = [
     "create_tool_output_shapes_indexes",
     "create_email_verdict_indexes",
     "create_run_trace_indexes",
+    "create_outbound_receipt_indexes",
     "create_outbox_indexes",
 ]
 

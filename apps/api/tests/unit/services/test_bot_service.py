@@ -698,6 +698,23 @@ class TestLoadConversationHistory:
             {"role": "user", "content": "hello?"},
         ]
 
+    async def test_the_message_a_bot_user_replied_to_reaches_the_agent_request(
+        self, mock_conversations: MagicMock
+    ) -> None:
+        mock_conversations.get = AsyncMock(return_value=_conv([]))
+        body = BotChatRequest(
+            message="yes do it",
+            platform="telegram",
+            platform_user_id="1685738115",
+            platform_message_id="10",
+            reply_to_platform_message_id="9",
+        )
+
+        request = await build_bot_message_request(body, "conv1", "user1")
+
+        assert request.platform_message_id == "10"
+        assert request.reply_to_platform_message_id == "9"
+
     async def test_handles_empty_bot_response_field(self, mock_conversations: MagicMock) -> None:
         mock_conversations.get = AsyncMock(return_value=_conv([{"type": "bot", "response": ""}]))
 

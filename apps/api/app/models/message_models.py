@@ -129,6 +129,8 @@ class MessageRequestWithHistory(BaseModel):
     # message_id, Discord id, Slack ts). Set only by bot turns for later native
     # reactions; web and other clients leave it None.
     platform_message_id: str | None = None
+    # Platform-native id of the message this user message replies to (bot turns only).
+    reply_to_platform_message_id: str | None = None
 
 
 class MessageRequest(BaseModel):
