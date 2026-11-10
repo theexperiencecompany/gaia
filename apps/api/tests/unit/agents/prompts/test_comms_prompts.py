@@ -3,7 +3,7 @@
 import pytest
 
 from app.agents.prompts.comms_prompts import outcome_delivery_note, tracked_todo_delivery_note
-from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
+from app.constants.agents import NO_REPORT_PROBLEM, AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.comms import SILENCE_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
 
@@ -162,8 +162,16 @@ class TestTheNarratorKnowsWhatReachedTheUser:
 
 
 class TestTheOutcomeLineCommsNarratesUnder:
-    def test_a_plain_text_stop_that_broke_no_rule_adds_nothing(self) -> None:
-        assert outcome_delivery_note(None, None) == ""
+    def test_a_run_that_filed_no_report_is_delivered_as_not_verified(self) -> None:
+        """Regression: a plain-text stop once added nothing, so the result read as done."""
+        note = outcome_delivery_note(None, None)
+
+        assert f"NOT verified ({NO_REPORT_PROBLEM})" in note
+        assert "never call it done" in note
+
+    @pytest.mark.parametrize("declared", list(OutcomeState))
+    def test_every_outcome_has_a_reply_shape(self, declared: OutcomeState) -> None:
+        assert "NOT verified" not in outcome_delivery_note(declared, None)
 
     def test_a_verified_outcome_gets_its_reply_shape(self) -> None:
         assert outcome_delivery_note(OutcomeState.BLOCKED, None) == (

@@ -4,39 +4,24 @@ The tool name MUST match `FINISH_TASK_NAME` in `app.constants.general` —
 the bigtool router and subagent runner key off that constant.
 """
 
-from typing import Annotated
-
 from langchain_core.tools import tool
 
-from app.constants.agents import OutcomeState
+from app.agents.core.task_report import render_task_report
 from app.constants.general import FINISH_TASK_NAME
+from app.models.task_report_models import FinishTaskArgs
 
 
 @tool(
+    args_schema=FinishTaskArgs,
     description=(
         "Finish the task and return the final result to the parent. `result` must "
-        "contain the ACTUAL deliverable in full, not a description of what you did. "
-        "If the task asked for a list, records, or data, include every item with its "
-        "details (do not return a count, a few highlights, or a 'successfully "
-        "retrieved X' summary in place of the data). The data itself is the result; "
-        "the parent only sees what you put here."
-    )
+        "contain the ACTUAL deliverable in full, not a description of what you did; "
+        "the parent only sees what you put here. The executor also files its report "
+        "here: outcome, facts, answer, scope, needs_you and failure."
+    ),
 )
-async def finish_task(
-    result: str,
-    outcome: Annotated[
-        OutcomeState | None,
-        "Where the request stands. done: the outcome is met by tool calls in this run. "
-        "schedule: a tracked todo with a schedule or recurrence set in this run, or the todo "
-        "whose brief says it wakes you again, will wake GAIA to pick it up later (a reminder "
-        "only pings the user and does not count). subscribe: a trigger watch set in this run will. ask: it needs the "
-        "user's decision or approval (put the one question in result). blocked: it "
-        "cannot proceed (put the reason and what would unblock it in result). The "
-        "executor always sets it.",
-    ] = None,
-) -> str:
-    del outcome  # read off the tool call by the run's outcome review, not returned
-    return result
+async def finish_task(**fields: object) -> str:
+    return render_task_report(FinishTaskArgs.model_validate(fields))
 
 
 # Import-time guarantee that a rename doesn't silently break the

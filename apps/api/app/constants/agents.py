@@ -172,10 +172,16 @@ class OutcomeState(StrEnum):
     """How an executor run left the user's request, declared on finish_task."""
 
     DONE = "done"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    NEEDS_YOU = "needs_you"
+    BLOCKED = "blocked"
     SCHEDULE = "schedule"
     SUBSCRIBE = "subscribe"
-    ASK = "ask"
-    BLOCKED = "blocked"
+    NOTHING_NEW = "nothing_new"
+    NO_ACTION_NEEDED = "no_action_needed"
+    UNVERIFIED = "unverified"
+    CANCELLED = "cancelled"
 
 
 #: The calls whose success backs a declared outcome (outcome_review.review_outcome).
@@ -215,8 +221,14 @@ IRREVERSIBLE_APPROVED_BRIEF = (
 )
 IRREVERSIBLE_UNAPPROVED_BRIEF = (
     "Irreversible actions: NOT approved. Deleting, bulk-changing, sending or posting needs the "
-    "user's yes first: prepare it (the draft, the exact items) and finish with outcome ask."
+    "user's yes first: prepare it (the draft, the exact items) and finish with outcome needs_you."
 )
+
+#: Why a run that ended without a finish_task report that declares an outcome is never success.
+NO_REPORT_PROBLEM = "the run ended without a finish_task report that declares an outcome"
+
+#: The provider name the global ToolRegistry is registered under.
+TOOL_REGISTRY_PROVIDER = "tool_registry"
 
 #: What a delegator reads when a worker ended with no answer. Silence is not success:
 #: the literal "Task completed" once stood in here and comms told the user it was done.

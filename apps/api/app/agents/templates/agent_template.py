@@ -16,6 +16,7 @@ in a separate dynamic-context system message placed AFTER this one.
 from typing import Final
 
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT, EXECUTOR_AGENT_PROMPT
+from app.agents.prompts.executor_report_prompts import EXECUTOR_REPORT_RULES
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
@@ -162,7 +163,7 @@ COMMS_PROMPT_TEMPLATE: Final[str] = COMMS_PROMPT_DEFAULT
 def get_executor_prompt() -> str:
     """Return the static executor prompt; GAIA_CORE is appended, not interpolated, for a stable provider cache."""
     return (
-        f"{EXECUTOR_AGENT_PROMPT}\n\n{INSTRUCTION_PRECEDENCE_RULES}\n\n"
+        f"{EXECUTOR_AGENT_PROMPT}\n\n{EXECUTOR_REPORT_RULES}\n\n{INSTRUCTION_PRECEDENCE_RULES}\n\n"
         f"{GAIA_CORE}\n\n{TODO_SYSTEM_PROMPT}"
     )
 

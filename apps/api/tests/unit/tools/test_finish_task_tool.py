@@ -14,12 +14,31 @@ class TestFinishTask:
         assert finish_task.name == FINISH_TASK_NAME
 
     async def test_result_is_returned_verbatim(self) -> None:
-        result = await finish_task.coroutine(result="The full deliverable data.")
+        result = await finish_task.ainvoke({"result": "The full deliverable data."})
         assert result == "The full deliverable data."
 
     async def test_multi_line_results_are_untouched(self) -> None:
-        result = await finish_task.coroutine(result="line 1\nline 2\n- item")
+        result = await finish_task.ainvoke({"result": "line 1\nline 2\n- item"})
         assert result == "line 1\nline 2\n- item"
 
     async def test_empty_result_is_returned_as_is(self) -> None:
-        assert await finish_task.coroutine(result="") == ""
+        assert await finish_task.ainvoke({"result": ""}) == ""
+
+    async def test_the_report_is_rendered_after_the_result(self) -> None:
+        result = await finish_task.ainvoke(
+            {
+                "result": "Booked.",
+                "outcome": "done",
+                "facts": [
+                    {"text": "Sent the confirmation.", "kind": "did", "source_call_ids": ["c1"]}
+                ],
+            }
+        )
+
+        assert result.startswith("Booked.")
+        assert "- did: Sent the confirmation." in result
+
+    async def test_the_tool_schema_exposes_the_report_fields(self) -> None:
+        fields = set(finish_task.args)
+
+        assert {"result", "outcome", "facts", "answer", "scope", "needs_you", "failure"} <= fields

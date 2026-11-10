@@ -6,27 +6,50 @@ exists to catch, so the evidence is what ran, never what the run says.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Protocol, cast
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
-from pydantic import BaseModel
+from pydantic import ValidationError
 
 from app.agents.core.delegation_window import current_delegation
+from app.agents.core.report_review import RunCall, report_problem
+from app.agents.core.subagents.call_record import is_error_envelope, parsed_result
 from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.agents import (
+    NO_REPORT_PROBLEM,
     OUTCOME_COMPLETE_TOOL,
     OUTCOME_SCHEDULE_ARGS,
     OUTCOME_SUBSCRIBE_TOOL,
     OUTCOME_TRACKED_TODO_TOOLS,
     TODO_REARM_TAG,
     TODO_WAKES_AGAIN_TAG,
+    TOOL_REGISTRY_PROVIDER,
     OutcomeState,
 )
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.constants.llm import COMPLETION_NON_WORK_TOOLS
+from app.core.lazy_loader import providers
+from app.models.task_report_models import FinishTaskArgs
 from app.override.langgraph_bigtool.utils import State
 from app.utils.multimodal import extract_text_content
+
+#: Whether a tool, named as the registry knows it, changes the world.
+WriteClassifier = Callable[[str], bool]
+
+
+class _DestructivenessSource(Protocol):
+    def is_tool_destructive(self, tool_name: str) -> bool | None: ...
+
+
+def registered_is_write(tool_name: str) -> bool:
+    """Return whether a tool changes the world: plumbing never does, an unclassified tool does."""
+    if tool_name in HIL_EXEMPT_TOOLS:
+        return False
+    registry = cast(_DestructivenessSource, providers.get(TOOL_REGISTRY_PROVIDER))
+    return registry.is_tool_destructive(tool_name) is not False
 
 
 def is_successful_work(message: AnyMessage) -> bool:
@@ -38,22 +61,41 @@ def is_successful_work(message: AnyMessage) -> bool:
     )
 
 
+def _succeeded_ids(delegation: Sequence[AnyMessage]) -> set[str]:
+    """Return the ids of work calls whose result came back without an error or an error body."""
+    return {
+        m.tool_call_id
+        for m in delegation
+        if isinstance(m, ToolMessage)
+        and is_successful_work(m)
+        and not is_error_envelope(parsed_result(m))
+    }
+
+
 def _successful_calls(delegation: Sequence[AnyMessage]) -> list[ToolCall]:
     """Return this delegation's work calls whose results came back without error, in order."""
-    answered = {
-        m.tool_call_id for m in delegation if isinstance(m, ToolMessage) and is_successful_work(m)
-    }
+    succeeded = _succeeded_ids(delegation)
     return [
         call
         for m in delegation
         if isinstance(m, AIMessage)
         for call in m.tool_calls
-        if _is_answered(call, answered)
+        if call["id"] in succeeded
     ]
 
 
-def _is_answered(call: ToolCall, answered: set[str]) -> bool:
-    return call["id"] in answered
+def _run_calls(delegation: Sequence[AnyMessage], is_write: WriteClassifier) -> list[RunCall]:
+    """Return every call of this delegation as the report review checks it against."""
+    succeeded = _succeeded_ids(delegation)
+    calls: list[RunCall] = []
+    for message in delegation:
+        if not isinstance(message, AIMessage):
+            continue
+        for call in message.tool_calls:
+            tool = _effective_call(call)[0]
+            ok = call["id"] in succeeded
+            calls.append(RunCall(call["id"] or "", tool, ok, ok and is_write(tool)))
+    return calls
 
 
 def _effective_call(call: ToolCall) -> tuple[str, Mapping[str, object]]:
@@ -98,9 +140,9 @@ def todo_left_asleep(delegation: Sequence[AnyMessage]) -> str | None:
 class OutcomeReview:
     """The executor's declared outcome for a delegation, checked against what actually ran.
 
-    declared is None when the run never called finish_task with an outcome; a
-    plain-text stop is vetted by the completion nudge instead, so it carries no
-    problem. problem names why a declaration is not backed by this run's calls.
+    declared is None when the run never filed a finish_task report that declares
+    one, and problem then says so: a run without a report is unverified, never
+    success. problem otherwise names why the report is not backed by this run's calls.
     """
 
     declared: OutcomeState | None
@@ -111,36 +153,40 @@ class OutcomeReview:
         return self.declared is not None and self.problem is None
 
 
-class _FinishArgs(BaseModel):
-    """The arguments of finish_task as the model sent them, valid or not."""
-
-    outcome: object = None
+def _is_finish_task(call: ToolCall) -> bool:
+    return call["name"] == FINISH_TASK_NAME
 
 
-def _finish_outcome(call: ToolCall) -> OutcomeState | None:
-    raw = _FinishArgs.model_validate(call["args"]).outcome
-    return OutcomeState(raw) if isinstance(raw, str) and raw in OutcomeState else None
-
-
-def _declared_outcome(delegation: Sequence[AnyMessage]) -> OutcomeState | None:
+def _last_finish_call(delegation: Sequence[AnyMessage]) -> ToolCall | None:
     for message in reversed(delegation):
         if not isinstance(message, AIMessage):
             continue
         for call in message.tool_calls:
             if _is_finish_task(call):
-                return _finish_outcome(call)
+                return call
     return None
 
 
-def _is_finish_task(call: ToolCall) -> bool:
-    return call["name"] == FINISH_TASK_NAME
+def _schema_problem(error: ValidationError) -> str:
+    first = error.errors()[0]
+    where = ".".join(str(part) for part in first["loc"])
+    return f"the finish_task report does not match its schema ({where}: {first['msg']})"
 
 
-def review_outcome(delegation: Sequence[AnyMessage]) -> OutcomeReview:
-    """Check the declared outcome against this delegation's successful tool calls."""
-    declared = _declared_outcome(delegation)
+def review_outcome(delegation: Sequence[AnyMessage], is_write: WriteClassifier) -> OutcomeReview:
+    """Check the finish_task report against this delegation's tool calls."""
     asleep = todo_left_asleep(delegation)
-    if declared is None or asleep:
+    finish = _last_finish_call(delegation)
+    if finish is None:
+        return OutcomeReview(None, asleep or NO_REPORT_PROBLEM)
+    try:
+        report = FinishTaskArgs.model_validate(finish["args"])
+    except ValidationError as error:
+        return OutcomeReview(None, asleep or _schema_problem(error))
+    declared = report.outcome
+    if declared is None:
+        return OutcomeReview(None, asleep or NO_REPORT_PROBLEM)
+    if asleep:
         return OutcomeReview(declared, asleep)
     calls = _successful_calls(delegation)
     if declared is OutcomeState.DONE and not calls:
@@ -157,12 +203,12 @@ def review_outcome(delegation: Sequence[AnyMessage]) -> OutcomeReview:
         _effective_call(c)[0] == OUTCOME_SUBSCRIBE_TOOL for c in calls
     ):
         return OutcomeReview(declared, "subscribe was declared but no trigger watch was set")
-    return OutcomeReview(declared, None)
+    return OutcomeReview(declared, report_problem(report, _run_calls(delegation, is_write)))
 
 
-def outcome_unbacked(state: State) -> bool:
-    """Return whether the run is ending on an outcome its own tool calls do not back."""
-    return not review_outcome(current_delegation(state)).verified
+def outcome_problem(state: State) -> str | None:
+    """Return why the running delegation's report is not backed by its calls, None when it is."""
+    return review_outcome(current_delegation(state), registered_is_write).problem
 
 
 def leaves_a_todo_asleep(state: State) -> bool:
@@ -170,6 +216,6 @@ def leaves_a_todo_asleep(state: State) -> bool:
     return todo_left_asleep(current_delegation(state)) is not None
 
 
-def review_run(messages: Sequence[AnyMessage]) -> OutcomeReview:
+def review_run(messages: Sequence[AnyMessage], is_write: WriteClassifier) -> OutcomeReview:
     """Review the delegation that ended a finished executor thread."""
-    return review_outcome(current_delegation(State(messages=list(messages))))
+    return review_outcome(current_delegation(State(messages=list(messages))), is_write)

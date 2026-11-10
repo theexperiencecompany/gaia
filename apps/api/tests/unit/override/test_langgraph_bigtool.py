@@ -1820,6 +1820,30 @@ class TestFinishTaskNodeDirect:
 
         assert result["messages"][0].content == ""
 
+    def test_the_report_is_rendered_into_the_tool_message_comms_reads(self) -> None:
+        args = {
+            "result": "booked",
+            "outcome": "partial",
+            "facts": [{"text": "The venue will confirm the slot.", "kind": "pending_confirmation"}],
+        }
+
+        result = finish_task_node(
+            [ToolCall(name=FINISH_TASK_NAME, args=args, id="call-4")], store=MagicMock()
+        )
+
+        content = result["messages"][0].content
+        assert content.startswith("booked")
+        assert "- pending_confirmation: The venue will confirm the slot." in content
+
+    def test_a_report_that_breaks_its_schema_still_delivers_the_result(self) -> None:
+        args = {"result": "notes", "facts": [{"text": "x", "kind": "guessed"}]}
+
+        result = finish_task_node(
+            [ToolCall(name=FINISH_TASK_NAME, args=args, id="call-5")], store=MagicMock()
+        )
+
+        assert result["messages"][0].content == "notes"
+
     async def test_async_twin_delegates_to_the_sync_impl(self) -> None:
         result = await afinish_task_node(
             [ToolCall(name=FINISH_TASK_NAME, args={"result": 7}, id="call-3")], store=MagicMock()

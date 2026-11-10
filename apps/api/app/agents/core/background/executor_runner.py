@@ -52,7 +52,7 @@ from app.agents.core.background.session import (
     get_session,
     signal_executor_done,
 )
-from app.agents.core.outcome_review import review_run
+from app.agents.core.outcome_review import registered_is_write, review_run
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
@@ -622,11 +622,11 @@ async def _review_outcome_note(conversation_id: str, ctx: SubagentExecutionConte
     The note is an addition to the result, so a review that cannot run drops the note, never the result.
     """
     try:
-        review = review_run(await thread_messages(ctx))
+        review = review_run(await thread_messages(ctx), registered_is_write)
     except Exception:  # the thread read is a checkpointer call; the result still delivers
         log.error(f"{LogTag.AGENT} Executor outcome review failed")
         return ""
-    if review.verified and review.declared is OutcomeState.ASK:
+    if review.verified and review.declared is OutcomeState.NEEDS_YOU:
         await record_confirmation_asked(conversation_id)
     log.set(
         executor={

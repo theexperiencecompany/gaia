@@ -248,7 +248,7 @@ class TestPlanInTheThread:
 class TestTermination:
     async def test_finish_task_ends_the_run_with_its_own_result(self):
         """finish_task's result becomes the message the parent reads, not the model's trailing prose."""
-        finish = {"result": "Which night works, Tuesday or Wednesday?", "outcome": "ask"}
+        finish = {"result": "Which night works, Tuesday or Wednesday?", "outcome": "needs_you"}
         async with executor_graph(
             [call("finish_task", finish, call_id="f1"), "unreachable"]
         ) as graph:

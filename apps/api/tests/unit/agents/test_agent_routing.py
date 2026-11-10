@@ -14,6 +14,7 @@ from langchain_core.tools import tool
 from pydantic import ValidationError
 import pytest
 
+from app.agents.core import outcome_review
 from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
 from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECISION_NUDGE_MESSAGE
 from app.constants.general import FINISH_TASK_NAME
@@ -338,6 +339,11 @@ class TestCompletionNudgeWiring:
     the nudge is only reachable for an executor with work left. A rename or a
     dropped edge here leaves the guard inert while every other tier stays green.
     """
+
+    @pytest.fixture(autouse=True)
+    def _no_registered_writes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Classify no tool as a write: these graphs are built without a tool registry."""
+        monkeypatch.setattr(outcome_review, "registered_is_write", lambda tool_name: False)
 
     def _compile_executor(self, llm, *, require_finish_to_end: bool = True):
         from langgraph.checkpoint.memory import MemorySaver

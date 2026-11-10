@@ -201,7 +201,9 @@ COMPLETION_NUDGE_MESSAGE = (
     "finish with finish_task: your complete final result and its outcome, backed "
     "by this run's tool calls (done: the work ran; schedule: a tracked todo "
     "with a schedule or recurrence was set; subscribe: the trigger watch was set). "
-    "Anything else is ask or blocked.]"
+    "Anything else is partial, failed, needs_you or blocked. Every fact in your report "
+    "must rest on a call that ran, and every successful write needs a did, "
+    "pending_confirmation or not_done fact citing its call id.]"
 )
 # A plain-text stop that PROMISES future work is never valid: the run is over the
 # moment the reply ends, so "hang tight" is a lie. Lowercase substrings matched

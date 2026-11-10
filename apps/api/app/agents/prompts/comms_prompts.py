@@ -8,7 +8,7 @@ from collections.abc import Sequence
 
 from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
-from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
+from app.constants.agents import NO_REPORT_PROBLEM, AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.comms import EMOJI_DIRECTIVE, SILENCE_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
@@ -299,7 +299,7 @@ ORCHESTRATION DISCIPLINE
 - You manage executor-level orchestration, not subagent internals. Subagents are full agents with their own tools, skills, and policies.
 - Do NOT handhold subagents with step-by-step tool scripts unless the user asked for that exact procedure or safety requires it. Do NOT create plan_tasks items for subagent internal work. Your tasks describe orchestration milestones (delegate, coordinate, verify, finalize).
 - FINISH WHAT YOU START: every planned step and every tracked todo you create must be carried through before you end the turn. If a step is blocked, needs the user, or a subagent failed, say so explicitly and mark it. Never silently drop a step or report success for work that did not finish.
-- END WITH finish_task(result, outcome). Before you call it, review the outcome: what the user asked, what they actually want (the brief's "Outcome the user actually wants"), what this run did, and whether that is enough. If an obvious useful step remains and is safe, do it now instead of finishing. Then pick the outcome this run's tool calls prove: done (the work ran), schedule (a tracked todo with a schedule or recurrence now wakes GAIA to pick it up; a reminder only pings the user and never counts), subscribe (a trigger watch now does), ask (it needs the user's decision: the one question goes in result), blocked (the reason and what would unblock it go in result). GAIA checks the outcome against the calls that actually ran, so an outcome they do not back is reported to the user as unverified.
+- END WITH finish_task: your result and your report (see REPORTING). Before you call it, review the outcome: what the user asked, what they actually want (the brief's "Outcome the user actually wants"), what this run did, and whether that is enough. If an obvious useful step remains and is safe, do it now instead of finishing. GAIA checks the report against the calls that actually ran, so a report they do not back is delivered to the user as unverified, and a run that ends without one is never treated as done.
 - OWN WHAT OUTLIVES THE RUN: deadline or ongoing work, and anything you started that finishes later (a background job, a message awaiting a reply), ends with schedule or subscribe, never with a promise. Do not create follow-ups nobody needs.
 
 RISKY WRITES: DRAFT AND CONFIRM FIRST
@@ -689,18 +689,40 @@ _OUTCOME_REPLY_SHAPES: dict[OutcomeState, str] = {
         "done, verified. Confirm it in one line with the one or two specifics that matter, "
         "plus any default it assumed. No question unless they must decide something."
     ),
+    OutcomeState.PARTIAL: (
+        "partly done. Say what happened and what did not, each from its fact, and the one "
+        "thing needed to finish the rest."
+    ),
+    OutcomeState.FAILED: (
+        "it failed. Say plainly that nothing they asked for happened, why, and what they can "
+        "do about it, from the failure."
+    ),
+    OutcomeState.NEEDS_YOU: (
+        "it needs their decision. Ask exactly the one question the report names and nothing "
+        "else; nothing has happened yet."
+    ),
+    OutcomeState.BLOCKED: (
+        "blocked. Say plainly what did not happen and the smallest thing needed from them."
+    ),
     OutcomeState.SCHEDULE: (
         "a follow-up is set and will wake on its own. One line: what happens next and when."
     ),
     OutcomeState.SUBSCRIBE: (
         "a watch is set. One line: what you are watching for and what you will do when it fires."
     ),
-    OutcomeState.ASK: (
-        "it needs their decision. Ask exactly the one question the result names and nothing "
-        "else; nothing has happened yet."
+    OutcomeState.NOTHING_NEW: (
+        "a check found nothing worth telling. Say so in one line with what was covered, "
+        "and any gap in it."
     ),
-    OutcomeState.BLOCKED: (
-        "blocked. Say plainly what did not happen and the smallest thing needed from them."
+    OutcomeState.NO_ACTION_NEEDED: (
+        "nothing needed doing because the condition did not hold. One line: why."
+    ),
+    OutcomeState.UNVERIFIED: (
+        "the run could not tell whether it happened. Say what is confirmed, what is not, and "
+        "never call it done."
+    ),
+    OutcomeState.CANCELLED: (
+        "they stopped it. Say what already happened and what did not, from the facts."
     ),
 }
 
@@ -708,16 +730,13 @@ _OUTCOME_REPLY_SHAPES: dict[OutcomeState, str] = {
 def outcome_delivery_note(declared: OutcomeState | None, problem: str | None) -> str:
     """Return the outcome line comms narrates a finished executor result under.
 
-    Empty for a run that ended in plain text without declaring one and broke no
-    rule: the completion nudge already vetted its work, so there is nothing to add.
+    A run without a verified report is delivered as not verified, never as done.
     """
-    if declared is None and problem is None:
-        return ""
-    if declared is None or problem is not None:
-        body = (
-            f"NOT verified ({problem}). Report only what the result shows actually "
-            "happened, name what did not, and never call it done."
-        )
-    else:
+    if declared is not None and problem is None:
         body = _OUTCOME_REPLY_SHAPES[declared]
+    else:
+        body = (
+            f"NOT verified ({problem or NO_REPORT_PROBLEM}). Report only what the result shows "
+            "actually happened, name what did not, and never call it done."
+        )
     return f"\n\n{wrap_agent_payload(AgentTag.DELIVERY_INSTRUCTIONS, f'Outcome: {body}')}"

@@ -335,19 +335,22 @@ class TestTheRunsDeclaredOutcomeIsCheckedAtFinalize:
         ctx = _executor_ctx()
         create_session("s1", RunKind.QUEUED)
         read = AsyncMock(side_effect=lambda c: thread if c is ctx else [])
-        with patch.object(er, "thread_messages", read):
+        with (
+            patch.object(er, "thread_messages", read),
+            patch.object(er, "registered_is_write", lambda tool_name: False),
+        ):
             async with log_context("executor_finalize_test"):
                 await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final", ctx)
                 event = dict(log.get())
         return boundaries.deliver.await_args.kwargs["outcome_note"], event
 
-    async def test_a_verified_ask_is_voiced_as_an_ask_and_awaits_the_users_answer(
+    async def test_a_verified_needs_you_is_voiced_as_an_ask_and_awaits_the_users_answer(
         self, boundaries: _Boundaries
     ) -> None:
-        note, event = await self._finalize(boundaries, _delegation(outcome="ask"))
+        note, event = await self._finalize(boundaries, _delegation(outcome="needs_you"))
 
-        assert note == outcome_delivery_note(OutcomeState.ASK, None)
-        assert event["executor"] == {"outcome": "ask", "outcome_verified": True}
+        assert note == outcome_delivery_note(OutcomeState.NEEDS_YOU, None)
+        assert event["executor"] == {"outcome": "needs_you", "outcome_verified": True}
         assert await spend_confirmation("conv-1") is True
 
     async def test_an_unbacked_done_is_voiced_as_not_verified_and_named_in_the_wide_event(

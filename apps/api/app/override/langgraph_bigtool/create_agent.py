@@ -39,7 +39,8 @@ from langgraph.types import RetryPolicy, Send
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 from pydantic import TypeAdapter
 
-from app.agents.core.outcome_review import leaves_a_todo_asleep, outcome_unbacked
+from app.agents.core.outcome_review import leaves_a_todo_asleep, outcome_problem
+from app.agents.core.task_report import finish_task_content
 from app.agents.llm.client import (
     LLMInvokeOptions,
     _is_openai_wire,
@@ -659,15 +660,12 @@ async def areject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: Base
 
 
 def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:  # noqa: ARG001 -- langgraph injects store positionally at graph-execution time
-    """Answer each finish_task call with its result as the tool message."""
+    """Answer each finish_task call with its result and report as the tool message."""
     messages = []
     for call in tool_calls:
-        result = call["args"].get("result")
-        # No result is no answer: the run reports it as unconfirmed, never as done.
-        content = str(result) if result is not None else ""
         messages.append(
             ToolMessage(
-                content=content,
+                content=finish_task_content(call["args"]),
                 tool_call_id=call["id"] or "",
                 name=FINISH_TASK_NAME,
             )
@@ -681,9 +679,11 @@ async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> 
 
 
 def _owes_backed_outcome(state: State) -> bool:
-    # A finish_task whose declared outcome this run's tool calls do not back,
-    # while the completion nudge budget lasts. ask and blocked need no work.
-    return completion_nudges_spent(state) < MAX_COMPLETION_NUDGES and outcome_unbacked(state)
+    # A finish_task whose report this run's tool calls do not back, while the
+    # completion nudge budget lasts. needs_you and blocked need no work.
+    return completion_nudges_spent(state) < MAX_COMPLETION_NUDGES and (
+        outcome_problem(state) is not None
+    )
 
 
 def _owes_playbook_decision(state: State) -> bool:

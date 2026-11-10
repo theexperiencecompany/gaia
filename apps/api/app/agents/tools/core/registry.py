@@ -7,6 +7,7 @@ from langchain_core.tools import BaseTool
 
 from app.config.oauth_config import all_integrations
 from app.config.settings import settings
+from app.constants.agents import TOOL_REGISTRY_PROVIDER
 from app.constants.integrations import CONNECT_INTEGRATION_TOOL, DISCONNECT_INTEGRATION_TOOL
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -935,7 +936,7 @@ async def get_tool_registry() -> ToolRegistry:
     Returns:
         The global ToolRegistry instance.
     """
-    tool_registry = await providers.aget("tool_registry")
+    tool_registry = await providers.aget(TOOL_REGISTRY_PROVIDER)
 
     if tool_registry is None:
         raise RuntimeError("ToolRegistry is not available")
@@ -946,7 +947,7 @@ async def get_tool_registry() -> ToolRegistry:
 
 
 @lazy_provider(
-    name="tool_registry",
+    name=TOOL_REGISTRY_PROVIDER,
     required_keys=[],
     strategy=MissingKeyStrategy.ERROR,
     auto_initialize=True,
