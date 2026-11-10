@@ -84,8 +84,8 @@ async def test_a_reopen_write_is_filtered_to_the_users_todo_still_completed() ->
     )
     with (
         patch("app.db.repositories.base.get_async_collection", return_value=collection),
-        patch.object(todo_repository, "_cache_store", AsyncMock()),
-        patch.object(todo_repository, "_invalidate", AsyncMock()),
+        patch.object(todo_repository, "_cache_store", AsyncMock()) as store,
+        patch.object(todo_repository, "_invalidate", AsyncMock()) as invalidate,
     ):
         reopened = await todo_repository.update_if_completed(
             TODO_ID, "u1", update=TodoUpdate(completed=False)
@@ -95,6 +95,9 @@ async def test_a_reopen_write_is_filtered_to_the_users_todo_still_completed() ->
     assert query == {"_id": ObjectId(TODO_ID), "user_id": "u1", "completed": True}
     assert operations["$set"]["completed"] is False
     assert reopened is not None and reopened.id == TODO_ID
+    # The reopened todo is refreshed in its owner's cache, not a scope-less one.
+    assert store.await_args.args[0] == "u1"
+    invalidate.assert_awaited_once_with("u1")
 
 
 async def test_a_reopen_write_that_matches_nothing_returns_none() -> None:
