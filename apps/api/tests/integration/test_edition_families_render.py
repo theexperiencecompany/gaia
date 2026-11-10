@@ -23,12 +23,7 @@ import pytest
 
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
-from app.services.briefing.editions import (
-    EXPLORER_RENDERER,
-    FAMILY_EDITION,
-    edition_frame,
-    render_edition,
-)
+from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
 
 # A brief, even a quiet one on the 540px canvas, is at least this many CSS px
@@ -40,6 +35,7 @@ _HEADLINE = "Two replies need you before your 11:00 with Sequoia."
 
 _DAILY: dict[str, Any] = {
     "kicker": "THE MORNING BRIEF",
+    "template_family": "swiss",
     "date": "2026-10-14",
     "headline": _HEADLINE,
     "lede": "I drafted both and pulled last quarter's numbers into the deck.",
@@ -136,7 +132,7 @@ _INVENTED_AMOUNT = re.compile(
 )
 _ZERO_FILLED = re.compile(r"(?<![\d:.,])0(?![\d:.,%h])|\bnull\b|\bundefined\b|\bNaN\b")
 
-_FAMILIES = sorted({FAMILY_EDITION, *EXPLORER_RENDERER})
+_FAMILIES = sorted(EXPLORER_RENDERER)
 
 
 def _png_height(png: bytes) -> int:
@@ -145,9 +141,8 @@ def _png_height(png: bytes) -> int:
 
 
 def _render_html(family: str, payload: dict[str, Any]) -> str:
-    render = EXPLORER_RENDERER.get(family, render_edition)
-    data = BriefingPayload.model_validate(payload)
-    return render(data, edition_no=287, generated_local="", tz_label="")
+    data = BriefingPayload.model_validate({**payload, "template_family": family})
+    return EXPLORER_RENDERER[family](data, edition_no=287, generated_local="", tz_label="")
 
 
 async def _visible_text(html: str) -> str:

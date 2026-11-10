@@ -168,11 +168,10 @@ class BriefingPayload(BaseModel):
     mood: BriefingMood
     caption: str
     hue: int = Field(default=0, ge=0, le=HUE_MAX)
-    template_family: str | None = Field(
-        default=None,
+    template_family: str = Field(
         description=(
             "The edition template family this brief was drawn in. Persisted so "
-            "the archive re-renders identically forever; None on legacy rows."
+            "the archive re-renders identically forever."
         ),
     )
     stamp_city: str | None = Field(

@@ -6922,9 +6922,9 @@ export interface components {
             tallies: components["schemas"]["BriefingTallies"] | null;
             /**
              * Template Family
-             * @description The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever; None on legacy rows.
+             * @description The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever.
              */
-            template_family: string | null;
+            template_family: string;
             week: components["schemas"]["BriefingWeek"] | null;
         };
         /**

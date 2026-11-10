@@ -32,6 +32,7 @@ def _item(text: str, kind: str = "note") -> dict[str, Any]:
 def _payload(**overrides: Any) -> BriefingPayload:
     payload: dict[str, Any] = {
         "kicker": "",
+        "template_family": "swiss",
         "date": "2026-07-05",
         "headline": "",
         "lede": "Three things need you before noon.",
@@ -220,7 +221,7 @@ class TestContent:
             {"time": None, "t24": None, "label": "Offsite", "note": None, "tag": ""},
         ]
 
-    @pytest.mark.parametrize("family", sorted({"edition", *explorer_family_ids()}))
+    @pytest.mark.parametrize("family", sorted(explorer_family_ids()))
     def test_no_item_appears_in_two_sections_in_any_family(self, family: str) -> None:
         content = build_ed(
             self._daily(),
