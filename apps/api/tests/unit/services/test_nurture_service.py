@@ -5,6 +5,7 @@ frequency caps and step-selection logic are pure and fully pinned here; the
 send path is verified with the email/analytics boundaries mocked.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -31,29 +32,13 @@ USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 
-def _step(
-    *,
-    key: str = "first_win",
-    day_offset: int = 1,
-    skip_predicate: str | None = None,
-    context_builder: str | None = None,
-    cta_path: str | None = None,
-    cta_label: str | None = None,
-    requires_onboarding: bool = False,
-    enabled: bool = True,
-) -> NurtureStep:
-    return NurtureStep(
-        key=key,
-        day_offset=day_offset,
-        template="nurture_first_win.html",
-        subject="Subject",
-        skip_predicate=skip_predicate,
-        context_builder=context_builder,
-        cta_path=cta_path,
-        cta_label=cta_label,
-        requires_onboarding=requires_onboarding,
-        enabled=enabled,
-    )
+_STEP = NurtureStep(
+    key="first_win",
+    day_offset=1,
+    template="nurture_first_win.html",
+    subject="Subject",
+    requires_onboarding=False,
+)
 
 
 def _entry(status: NurtureStepStatus, at: datetime) -> NurtureHistoryEntry:
@@ -91,31 +76,36 @@ class TestWithinFrequencyCaps:
 
 class TestStepPending:
     def test_disabled_step_is_not_pending(self) -> None:
-        assert _step_pending(_step(enabled=False), 1, set(), True) is False
+        assert _step_pending(replace(_STEP, enabled=False), 1, set(), True) is False
 
     def test_completed_step_is_not_pending(self) -> None:
-        assert _step_pending(_step(), 1, {"first_win"}, True) is False
+        assert _step_pending(_STEP, 1, {"first_win"}, True) is False
 
     def test_outside_window_is_not_pending(self) -> None:
-        assert _step_pending(_step(day_offset=1), 0, set(), True) is False
+        assert _step_pending(replace(_STEP, day_offset=1), 0, set(), True) is False
         assert (
-            _step_pending(_step(day_offset=1), 1 + NURTURE_BACKFILL_GRACE_DAYS + 1, set(), True)
+            _step_pending(
+                replace(_STEP, day_offset=1), 1 + NURTURE_BACKFILL_GRACE_DAYS + 1, set(), True
+            )
             is False
         )
 
     def test_within_window_is_pending(self) -> None:
-        assert _step_pending(_step(day_offset=1), 1, set(), True) is True
+        assert _step_pending(replace(_STEP, day_offset=1), 1, set(), True) is True
         assert (
-            _step_pending(_step(day_offset=1), 1 + NURTURE_BACKFILL_GRACE_DAYS, set(), True) is True
+            _step_pending(
+                replace(_STEP, day_offset=1), 1 + NURTURE_BACKFILL_GRACE_DAYS, set(), True
+            )
+            is True
         )
 
     def test_onboarding_gate_holds_when_not_onboarded(self) -> None:
-        step = _step(requires_onboarding=True)
+        step = replace(_STEP, requires_onboarding=True)
         assert _step_pending(step, 1, set(), False) is False
         assert _step_pending(step, 1, set(), True) is True
 
     def test_non_onboarding_step_pending_even_unonboarded(self) -> None:
-        assert _step_pending(_step(requires_onboarding=False), 1, set(), False) is True
+        assert _step_pending(replace(_STEP, requires_onboarding=False), 1, set(), False) is True
 
 
 class TestSelectStep:
@@ -160,8 +150,8 @@ class TestSelectStep:
             patch(
                 "app.services.nurture.service.NURTURE_STEPS",
                 [
-                    _step(key="step_a", day_offset=1, skip_predicate="used_chat"),
-                    _step(key="step_b", day_offset=2, skip_predicate=None),
+                    replace(_STEP, key="step_a", day_offset=1, skip_predicate="used_chat"),
+                    replace(_STEP, key="step_b", day_offset=2, skip_predicate=None),
                 ],
             ),
         ):
@@ -172,7 +162,7 @@ class TestSelectStep:
 
     async def test_onboarding_gated_step_selected_only_once_onboarding_completed(self) -> None:
         """The gate is read off the user document, not assumed — held for a user who never finished onboarding, selected for one who did."""
-        gated = _step(key="gated", day_offset=1, requires_onboarding=True)
+        gated = replace(_STEP, key="gated", day_offset=1, requires_onboarding=True)
         with patch("app.services.nurture.service.NURTURE_STEPS", [gated]):
             onboarded = UserDocument(
                 id="u-1",
@@ -193,7 +183,7 @@ class TestSelectStep:
         with (
             patch(
                 "app.services.nurture.service.NURTURE_STEPS",
-                [_step(key="step_a", day_offset=1, skip_predicate="used_chat")],
+                [replace(_STEP, key="step_a", day_offset=1, skip_predicate="used_chat")],
             ),
             patch(
                 "app.services.nurture.service.SKIP_PREDICATES",
@@ -209,7 +199,7 @@ class TestSelectStep:
 class TestSendStep:
     async def test_sends_email_with_utm_url(self) -> None:
         user = UserDocument(id="u-1", email="u@example.com", name="A")
-        step = _step(cta_path="/c", cta_label="Go")
+        step = replace(_STEP, cta_path="/c", cta_label="Go")
         with (
             patch("app.services.nurture.service.send_email", new_callable=AsyncMock) as mock_send,
             patch(
@@ -231,7 +221,9 @@ class TestSendStep:
 
     async def test_context_builder_overrides_cta_label(self) -> None:
         user = UserDocument(id="u-1", email="u@example.com")
-        step = _step(cta_path="/c", cta_label="Default", context_builder="google_connection_status")
+        step = replace(
+            _STEP, cta_path="/c", cta_label="Default", context_builder="google_connection_status"
+        )
         with (
             patch("app.services.nurture.service.send_email", new_callable=AsyncMock) as mock_send,
             patch("app.services.nurture.service.render_email_template", return_value="<html>"),
@@ -284,7 +276,7 @@ class TestProcessUser:
     async def test_sends_and_records_on_success(self) -> None:
         sent = _entry(NurtureStepStatus.SENT, datetime(2026, 5, 20, 12, 0))
         user = self._user(nurture={"completed_steps": ["welcome"], "history": [sent.model_dump()]})
-        step = _step()
+        step = _STEP
         with (
             patch("app.services.nurture.service.is_within_local_daytime", return_value=True),
             patch(
