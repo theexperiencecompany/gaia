@@ -23,6 +23,7 @@ from app.services.briefing.scouts.tools import (
 )
 from app.services.hil import read_only as read_only_module
 from app.services.hil.read_only import _ReadOnlyJudgement
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.utils.errors import AppError
 
@@ -328,9 +329,7 @@ class TestBoundTools:
         resolved = SimpleNamespace(mcp_config=SimpleNamespace(server_url="https://mcp.acme.io/mcp"))
         monkeypatch.setattr(scout_tools_module, "get_tools_store", AsyncMock(return_value=store))
         monkeypatch.setattr(scout_tools_module, "get_subagent_by_id", {}.get)
-        monkeypatch.setattr(
-            scout_tools_module.IntegrationResolver, "resolve", AsyncMock(return_value=resolved)
-        )
+        monkeypatch.setattr(IntegrationResolver, "resolve", AsyncMock(return_value=resolved))
         monkeypatch.setattr(
             scout_tools_module,
             "derive_integration_namespace",

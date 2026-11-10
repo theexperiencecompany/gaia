@@ -17,7 +17,10 @@
 #                               production actually runs, so ":latest ==
 #                               deployed" holds as an invariant.
 #   notify                      Send one deploy-pipeline message to Discord and
-#                               Slack (the channel Grafana alerts post to).
+#                               Slack (the channel Grafana alerts post to), from
+#                               a fixed template per STATE.
+#   failing-checks <sha>        The check-runs that failed on <sha>, as the cause
+#                               lines a blocked message renders.
 #   served-commit               Record the commit prod's /health serves before
 #                               a deploy (previous=, scopes the change list).
 #   verify-commit               Fail unless prod's /health (and each bot's,
@@ -39,10 +42,18 @@
 #           ${VAR:-latest} defaults. Needs the `prod` docker context.
 #   verify  as `stack`, minus the write.
 #   retag   from-env: APPS_IMAGE_TAG / BOTS_IMAGE_TAG / GRAFANA_IMAGE_TAG.
-#           rolled-back: ROLLBACK_MODE, IMAGE_DIGEST, DOCKER_CONTEXT, STACK.
+#           rolled-back: ROLLBACK_MODE, IMAGE_DIGEST, DOCKER_CONTEXT, STACK;
+#           re-points every service on one of our repos, grafana included.
 #           Both need a GHCR login with packages:write.
-#   notify  MESSAGE, COLOR (required); DISCORD_WEBHOOK, SLACK_WEBHOOK (each
-#           attempted; a missing or failed one fails the step); USERNAME.
+#   notify  STATE (deploy_blocked | deploy_failed | deploy_succeeded |
+#           recovered) with IMPACT, CAUSE, ACTION, and CLEARS_WHEN for the two
+#           failure states — one template per state, never free prose. SUBJECT
+#           tails the headline, RUN_LINK overrides the run URL, DRY_RUN renders
+#           and length-guards without delivering. The legacy MESSAGE + COLOR
+#           pair is still honored for callers that predate STATE.
+#           DISCORD_WEBHOOK, SLACK_WEBHOOK (each attempted; a missing or failed
+#           one fails the step); USERNAME.
+#   failing-checks  <sha> [max]  GITHUB_REPOSITORY; GH_TOKEN or GITHUB_TOKEN.
 #   served-commit  PROD_ORIGIN, GITHUB_OUTPUT.
 #   verify-commit  PROD_ORIGIN, GITHUB_OUTPUT; APPS_IMAGE_TAG (empty = latest),
 #           BOTS_IMAGE_TAG, VERIFY_TIMEOUT_SECS, VERIFY_CONSECUTIVE,
@@ -126,7 +137,7 @@ cmd_plan() {
         ;;
     esac
   else
-    # Automatic push-triggered plan (main.yml phase=deploy passes GATE_RESULT).
+    # Automatic push-triggered plan (build.yml phase=deploy, called from ci.yml with the gate's result).
     if [[ "$gate_passed" = "true" ]] && [[ "$backend_affected" = "true" ]] && [[ "$DOCKER_RELEASE_RESULT" = "success" ]]; then
       backend_deploy=true
     fi
@@ -211,6 +222,14 @@ cmd_retag() {
     fi
   }
 
+  is_deployed_repo() {
+    local name
+    for name in "${APPS_IMAGE_REPOS[@]}" "${BOTS_IMAGE_REPOS[@]}" "$GRAFANA_IMAGE_REPO"; do
+      [[ "$1" == "$GHCR_NAMESPACE/$name" ]] && return 0
+    done
+    return 1
+  }
+
   retag() {
     local ref="$1" repo
     repo=$(repo_of "$ref")
@@ -256,21 +275,42 @@ cmd_retag() {
         retag "$IMAGE_DIGEST"
       else
         # `service rollback` restored each service's previous spec; read the
-        # image (repo:tag@digest) each rolled-back service now runs and
-        # re-point that repo's :latest at it. Deduped: gaia-backend and
-        # arq_worker share the gaia repo.
-        refs=$(for svc in $(docker --context "$DOCKER_CONTEXT" stack services "$STACK" --format '{{.Name}}' \
-            | grep -E 'gaia-backend|arq_worker|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot'); do
-            docker --context "$DOCKER_CONTEXT" service inspect "$svc" \
-              --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
-          done | sort -u)
-        if [[ -z "$refs" ]]; then
-          echo "::error::rolled-back retag: no matching services found in stack $STACK"
+        # image each service now runs and re-point its repo's :latest at it.
+        # Every service on one of OUR repos counts, grafana included, rather
+        # than a hand-kept name list that once left grafana's :latest on the
+        # build it had just been rolled away from. Keyed by repo and pinned by
+        # DIGEST: deduping whole `repo:tag@digest` refs let services sharing a
+        # repo issue one retag each, so :latest landed on whichever sorted last.
+        local services svc image repo targets="" conflicts
+        services="$(docker --context "$DOCKER_CONTEXT" stack services "$STACK" --format '{{.Name}}')"
+        while IFS= read -r svc; do
+          [[ -n "$svc" ]] || continue
+          image="$(docker --context "$DOCKER_CONTEXT" service inspect "$svc" \
+            --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}')"
+          repo="$(repo_of "$image")"
+          is_deployed_repo "$repo" || continue
+          if [[ "$image" == *@* ]]; then
+            targets+="$repo $repo@${image#*@}"$'\n'
+          else
+            targets+="$repo $image"$'\n'
+          fi
+        done <<< "$services"
+        targets="$(printf '%s' "$targets" | sort -u)"
+        if [[ -z "$targets" ]]; then
+          echo "::error::rolled-back retag: no service in stack $STACK runs one of our images"
           exit 1
         fi
-        while IFS= read -r ref; do
-          retag "$ref"
-        done <<< "$refs"
+        # One repo, two images: prod is split across builds and :latest can
+        # name only one of them, so moving it would make the alias a guess.
+        conflicts="$(awk '{n[$1]++; l[$1] = l[$1] $2 "\n"} END {for (r in n) if (n[r] > 1) printf "%s", l[r]}' <<< "$targets")"
+        if [[ -n "$conflicts" ]]; then
+          echo "::error::rolled-back retag: services on one repo run different images — :latest left unchanged"
+          printf '%s\n' "$conflicts"
+          exit 1
+        fi
+        while IFS=' ' read -r _repo target; do
+          retag "$target"
+        done <<< "$targets"
       fi
       ;;
 
@@ -299,21 +339,122 @@ post_webhook() {
   rm -f "$response_file"
 }
 
-cmd_notify() {
+# A message is a state, its impact, the cause, the action and what clears it —
+# eight content lines, no prose. Past that nobody reads it and the template has
+# drifted, so notify refuses to send (see the guard in cmd_notify).
+_NOTIFY_MAX_LINES=8
+# Continuation lines sit under the first line's text: "Cause: " is seven
+# characters, so eight spaces aligns just past it on every block.
+_NOTIFY_INDENT="        "
 
-  : "${MESSAGE:?MESSAGE is required}"
-  : "${COLOR:?COLOR is required}"
+# _notify_headline <glyph> <title> — the one line that names the state, with
+# SUBJECT's specifics after it when the caller has any.
+_notify_headline() {
+  if [[ -n "${SUBJECT:-}" ]]; then
+    printf '%s %s — %s\n' "$1" "$2" "$SUBJECT"
+  else
+    printf '%s %s\n' "$1" "$2"
+  fi
+}
+
+# _notify_block <label> <text> — one labelled paragraph: `Label: first line`,
+# every further line aligned under it. Empty text prints nothing at all, so a
+# state with nothing to clear simply has no Clears-when line; a blank line
+# inside a field (a YAML block scalar keeps its trailing newline) is dropped
+# rather than sent as an indented whitespace line.
+_notify_block() {
+  local label="$1" text="$2" line first=true
+  [[ -n "$text" ]] || return 0
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    if [[ "$first" = true ]]; then
+      printf '%s: %s\n' "$label" "$line"
+      first=false
+    else
+      printf '%s%s\n' "$_NOTIFY_INDENT" "$line"
+    fi
+  done <<< "$text"
+}
+
+# _notify_state_color — the state's own colour. Read outside the command
+# substitution that renders the body, so the choice is not lost with it.
+_notify_state_color() {
+  case "$STATE" in
+    deploy_blocked | deploy_failed) printf '%s\n' "#ff6b6b" ;;
+    deploy_succeeded | recovered) printf '%s\n' "#48f442" ;;
+    *)
+      ci_die "deploy notify: unknown STATE '$STATE' (deploy_blocked|deploy_failed|deploy_succeeded|recovered)"
+      ;;
+  esac
+}
+
+# _notify_state_message — one template per state, on stdout. Every field a state
+# cannot do without is required here rather than defaulted: a missing one is
+# template drift, and an empty slot would send a message that says nothing.
+_notify_state_message() {
+  local glyph title cause_label clears_required=false
+  case "$STATE" in
+    deploy_blocked) glyph="⛔"; title="DEPLOY BLOCKED"; cause_label="Cause"; clears_required=true ;;
+    deploy_failed) glyph="❌"; title="DEPLOY FAILED"; cause_label="Cause"; clears_required=true ;;
+    deploy_succeeded) glyph="✅"; title="DEPLOY SUCCEEDED"; cause_label="Shipped" ;;
+    recovered) glyph="🟢"; title="RECOVERED"; cause_label="Cause" ;;
+    *) ci_die "deploy notify: unknown STATE '$STATE' (deploy_blocked|deploy_failed|deploy_succeeded|recovered)" ;;
+  esac
+
+  # Required, not defaulted: a missing field is template drift, and an empty slot
+  # sends a message that says nothing.
+  : "${IMPACT:?IMPACT is required for STATE=$STATE}"
+  : "${CAUSE:?CAUSE is required for STATE=$STATE}"
+  : "${ACTION:?ACTION is required for STATE=$STATE}"
+  [[ "$clears_required" = false ]] || : "${CLEARS_WHEN:?CLEARS_WHEN is required for STATE=$STATE}"
+
+  _notify_headline "$glyph" "$title"
+  _notify_block "Prod" "$IMPACT"
+  echo
+  # CAUSE is the antecedent: for a success it is what shipped.
+  _notify_block "$cause_label" "$CAUSE"
+  _notify_block "Do" "$ACTION"
+  _notify_block "Clears when" "${CLEARS_WHEN:-}"
+}
+
+cmd_notify() {
   USERNAME="${USERNAME:-Gaia Deploy Bot}"
 
-  local message="$MESSAGE"
-  if [[ -n "${GITHUB_RUN_ID:-}" ]]; then
-    message+=$'\n'"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+  local message
+  if [[ -n "${STATE:-}" ]]; then
+    COLOR="${COLOR:-$(_notify_state_color)}"
+    message="$(_notify_state_message)"
+  else
+    # Legacy callers still get the free-text path they were written against.
+    : "${MESSAGE:?MESSAGE (or STATE) is required}"
+    : "${COLOR:?COLOR is required}"
+    message="$MESSAGE"
   fi
+
+  local link="${RUN_LINK:-}"
+  if [[ -z "$link" ]] && [[ -n "${GITHUB_RUN_ID:-}" ]]; then
+    link="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+  fi
+  [[ -n "$link" ]] && message+=$'\n'"$link"
 
   # Always log the full message first, so the run itself records what was (or
   # failed to be) delivered even when a webhook call is lost.
   echo "Deploy notification:"
   printf '%s\n' "$message"
+
+  # Blank lines separate blocks and are not content; everything else is. Loud on
+  # overflow: a template that grew past its budget must fail here, in the run
+  # that can be fixed, not arrive in the channel as an essay.
+  local content_lines
+  content_lines=$(grep -c . <<< "$message" || true)
+  if (( content_lines > _NOTIFY_MAX_LINES )); then
+    ci_die "deploy notify: message is ${content_lines} content lines (max ${_NOTIFY_MAX_LINES}) — shorten the ${STATE:-MESSAGE} template"
+  fi
+
+  if [[ "${DRY_RUN:-}" = "true" ]]; then
+    ci_ok "deploy notify: dry run — rendered and length-guarded, not delivered"
+    return 0
+  fi
 
   # Discord and Slack embed limits sit near 4096 chars — truncate instead of 400ing.
   if [[ "${#message}" -gt 4000 ]]; then
@@ -341,7 +482,7 @@ cmd_notify() {
     failed+=("SLACK_WEBHOOK is unset")
   else
     # Discord markdown bolds with **, Slack mrkdwn with a single *.
-    payload=$(jq -n --arg t "${message//\*\*/*}" --arg c "$COLOR" --arg f "${MESSAGE%%$'\n'*}" \
+    payload=$(jq -n --arg t "${message//\*\*/*}" --arg c "$COLOR" --arg f "${message%%$'\n'*}" \
       '{attachments: [{color: $c, fallback: $f, text: $t, mrkdwn_in: ["text"]}]}')
     if post_webhook Slack "$SLACK_WEBHOOK" "$payload" > /dev/null; then
       ci_ok "deploy notify: Slack OK"
@@ -355,14 +496,64 @@ cmd_notify() {
   fi
 }
 
+# cmd_failing_checks <sha> [max] — the check-runs that failed on <sha>, as the
+# cause lines a blocked message renders: `"<name> failed on <short sha>"`, then
+# `"→ <html_url>"`, one pair per check.
+#
+# <max> (default 3) bounds how many are named, the rest collapsing to a count on
+# the last name line — notify's eight-line budget is the whole message's, and a
+# red gate can fail a dozen checks. "Required" is not in this payload (it lives
+# in the branch-protection rule), so the discriminator is "failed": a skipped or
+# neutral check is not a cause.
+#
+# Fails non-zero when the request does, because an empty answer from a broken
+# lookup reads exactly like "nothing failed" and would send a cause-less alarm.
+cmd_failing_checks() {
+  local sha="${1:?usage: deploy.sh failing-checks <sha> [max]}"
+  local max="${2:-3}"
+  : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+  local short="${sha:0:8}" rows name url shown=0 total
+
+  if ! rows=$(gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?per_page=100&filter=latest" \
+    -H 'Accept: application/vnd.github+json' \
+    --jq '.check_runs[]
+      | select(.conclusion as $c
+          | ["failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"] | index($c))
+      | [.name, .html_url] | @tsv'); then
+    ci_die "deploy failing-checks: the check-runs request for $short failed — the cause is unknown, not absent"
+  fi
+
+  if [[ -z "$rows" ]]; then
+    echo "no failing check-runs reported on $short"
+    return 0
+  fi
+
+  total=$(grep -c . <<< "$rows" || true)
+  # while-read, not mapfile: macOS bash 3.2 (pytest.sh makes the same choice).
+  while IFS=$'\t' read -r name url; do
+    shown=$((shown + 1))
+    if (( shown == max && total > max )); then
+      printf '%s failed on %s (+%d more)\n' "$name" "$short" "$((total - max))"
+    else
+      printf '%s failed on %s\n' "$name" "$short"
+    fi
+    printf '→ %s\n' "$url"
+    (( shown < max )) || break
+  done <<< "$rows"
+}
+
 # image_commit <ref> — the GIT_COMMIT_SHA the image was built with (the same
-# variable env_context()/resolveCommit() read at runtime).
+# variable env_context()/resolveCommit() read at runtime). {{json .Image}} is one
+# config for a single-platform image and a platform-keyed map for an index.
 image_commit() {
-  local ref="$1" sha
-  sha=$(docker buildx imagetools inspect "$ref" --format '{{json .Image.Config.Env}}' \
-    | jq -r '.[] | select(startswith("GIT_COMMIT_SHA=")) | ltrimstr("GIT_COMMIT_SHA=")')
-  [[ -n "$sha" ]] || ci_die "image $ref carries no GIT_COMMIT_SHA — cannot tell which commit it runs"
-  echo "$sha"
+  local ref="$1" shas
+  shas=$(docker buildx imagetools inspect "$ref" --format '{{json .Image}}' \
+    | jq -r '(if has("config") then [.] else [.[]] end)
+        | [.[].config.Env // [] | .[] | select(startswith("GIT_COMMIT_SHA=")) | ltrimstr("GIT_COMMIT_SHA=")]
+        | unique | .[]')
+  [[ -n "$shas" ]] || ci_die "image $ref carries no GIT_COMMIT_SHA — cannot tell which commit it runs"
+  [[ "$shas" != *$'\n'* ]] || ci_die "image $ref platforms disagree on GIT_COMMIT_SHA: ${shas//$'\n'/, }"
+  echo "$shas"
 }
 
 # served_commit <url> — the `commit` a /health endpoint reports, empty when it
@@ -512,7 +703,7 @@ cmd_unwedge() {
 }
 
 usage() {
-  sed -n '2,52p' "$0" >&2
+  sed -n '2,63p' "$0" >&2
 }
 
 main() {
@@ -524,6 +715,7 @@ main() {
     verify) _cmd_swarm_stack verify "$@" ;;
     retag)  cmd_retag "$@" ;;
     notify) cmd_notify "$@" ;;
+    failing-checks) cmd_failing_checks "$@" ;;
     served-commit) cmd_served_commit "$@" ;;
     verify-commit) cmd_verify_commit "$@" ;;
     changelog) cmd_changelog "$@" ;;

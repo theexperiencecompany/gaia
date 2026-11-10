@@ -210,6 +210,24 @@
       {
         "files": ["src/features/desktop-popup/sync.ts"],
         "rules": ["react-doctor/effect-needs-cleanup"]
+      },
+      // INVALID_CREDENTIALS_COPY / WRONG_CURRENT_PASSWORD_COPY are user-facing
+      // error strings, not secrets; the rule matches on their names.
+      {
+        "files": [
+          "src/features/auth/components/LoginForm.tsx",
+          "src/features/settings/components/PasswordChangeSection.tsx"
+        ],
+        "rules": ["react-doctor/no-secrets-in-client-code"]
+      },
+      // isSubmitting stays set on success while router.push navigates away (the
+      // form unmounts), blocking a double submit; failure paths reset it.
+      {
+        "files": [
+          "src/features/auth/components/LoginForm.tsx",
+          "src/features/auth/components/SignupForm.tsx"
+        ],
+        "rules": ["react-doctor/no-loading-flag-reset-outside-finally"]
       }
     ]
   }

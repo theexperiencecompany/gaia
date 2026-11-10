@@ -1,5 +1,6 @@
 """Tests for app/api/v1/endpoints/short_links.py."""
 
+from typing import Final
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
@@ -15,7 +16,7 @@ from tests.helpers import captured_wide_event
 # routes.py mounts the short-links router at its own "/l" prefix.
 BASE = "/api/v1/l"
 SLUG = "abcdefghijk"
-TODO = ShortLinkTargetType.TODO_DELIVERABLE
+TODO: Final = ShortLinkTargetType.TODO_DELIVERABLE
 
 _ENDPOINT = "app.api.v1.endpoints.short_links"
 

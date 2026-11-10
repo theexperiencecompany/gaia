@@ -121,6 +121,17 @@ class BriefingWeek(BaseModel):
     ahead: list[BriefingEvent] = Field(default_factory=list)
 
 
+class NewStamp(BaseModel):
+    """A city stamp the user collected for the first time with this brief."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    city: str
+    country: str
+    collected: int = Field(ge=1, description="Stamps collected, this one included.")
+    total: int = Field(ge=1, description="How many city stamps can be collected.")
+
+
 class BriefingPayload(BaseModel):
     """The structured briefing the run emits and every channel renders."""
 
@@ -148,6 +159,10 @@ class BriefingPayload(BaseModel):
             "Air Mail editions only: the city stamp (a stamps/cities.json slug) "
             "this brief carried. The Postmarks page reads it."
         ),
+    )
+    new_stamp: NewStamp | None = Field(
+        default=None,
+        description="Set when this brief's stamp is one the user had not collected before.",
     )
     recipient_name: str | None = Field(
         default=None,

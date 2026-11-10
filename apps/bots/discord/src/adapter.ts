@@ -726,7 +726,7 @@ export class DiscordAdapter extends BaseBotAdapter {
   /**
    * Sends a rich welcome embed to a first-time DM user.
    *
-   * Includes a direct link to heygaia.io with a proper OG preview.
+   * Includes a direct link to the GAIA instance this bot serves.
    */
   private async sendDMWelcome(message: Message): Promise<void> {
     const embed = new EmbedBuilder()
@@ -768,8 +768,8 @@ export class DiscordAdapter extends BaseBotAdapter {
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setLabel("Visit heygaia.io")
-        .setURL("https://heygaia.io")
+        .setLabel("Open GAIA")
+        .setURL(this.config.gaiaFrontendUrl)
         .setStyle(ButtonStyle.Link),
       new ButtonBuilder()
         .setLabel("Read the Docs")

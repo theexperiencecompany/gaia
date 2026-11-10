@@ -9,7 +9,7 @@
  * tools are still fetched on demand at GET /integrations/{id}/tools.
  */
 export const integrationKeys = {
-  /** Prefix — invalidating this busts the catalog, status, per-integration tools, and instructions. */
+  /** Prefix — invalidating this busts the catalog, status, and per-integration tools. */
   all: ["integrations"] as const,
   /** Fast personalized catalog snapshot. */
   me: ["integrations", "me"] as const,
@@ -21,9 +21,6 @@ export const integrationKeys = {
   /** The accounts connected to one integration (GET /integrations/{id}/accounts). */
   accounts: (integrationId: string) =>
     ["integrations", integrationId, "accounts"] as const,
-  /** One integration's custom instructions. */
-  instructions: (integrationId: string) =>
-    ["integrations", "instructions", integrationId] as const,
 };
 
 export const toolKeys = {

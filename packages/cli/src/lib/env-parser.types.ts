@@ -18,6 +18,8 @@ export interface EnvCategory {
   allRequired: boolean;
   docsUrl?: string;
   alternativeGroup?: string;
+  /** False for a group a self-hosted instance does not use; self-host setup skips it. */
+  selfhostSetup: boolean;
   variables: EnvVar[];
 }
 

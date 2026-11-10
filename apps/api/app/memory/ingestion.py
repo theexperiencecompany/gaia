@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, date as date_type, datetime, timedelta
 from difflib import SequenceMatcher
 import time
+from typing import TypedDict, Unpack, cast
 import uuid
 
 from app.constants.memory import (
@@ -43,10 +44,12 @@ from app.memory.embeddings import embed_batch, embed_query
 from app.memory.extraction import categorize_fact, extract_memories, summarize_episode_entries
 from app.memory.management import forget_memory
 from app.memory.mappers import row_to_entry
+from app.memory.pg_store import EpisodeEntry
+from app.memory.pg_store.episodes import entry_text
 from app.memory.reconciliation import ReconciledFact, reconcile
 from app.memory.schemas import ExtractedFact, ExtractedMemoryBatch
 from app.memory.user_time import resolve_user_timezone
-from app.models.memory_db_models import MemoryRecord
+from app.models.memory_db_models import MemoryEpisode, MemoryRecord
 from app.models.memory_models import MemoryEntry
 from app.models.payment_models import PlanType
 from app.services.memory_fs import schedule_memory_vfs_sync
@@ -55,6 +58,31 @@ from shared.py.wide_events import MemoryContext, UserContext, log
 
 _DEFAULT_USER_NAME = "the user"
 _FALLBACK_CATEGORY_PATH = "general"
+
+
+class TranscriptTurn(TypedDict):
+    """One conversation turn as retain receives it: a speaker and a body.
+
+    The shape every producer of messages builds and the one the extractor
+    renders. Named here because retain keeps the looser list-of-dicts
+    signature, so the indexer states the concrete shape where it reads it
+    instead of guessing at keys.
+    """
+
+    role: str
+    content: str
+
+
+def _journal_entries(episode: MemoryEpisode | None) -> list[EpisodeEntry]:
+    """Return a day's stored journal entries in the shape pg_store declares.
+
+    MemoryEpisode.entries is a JSONB column arriving as untyped mappings; the
+    entry shape belongs to app.memory.pg_store.episodes, named once here so
+    every reader below shares one declaration instead of re-guessing keys.
+    """
+    if episode is None:
+        return []
+    return cast(list[EpisodeEntry], episode.entries)
 
 
 class MemoryLimitReachedError(Exception):
@@ -251,15 +279,75 @@ async def _close_resolved_agenda_items(user_id: str, items: list[str]) -> int:
     return closed
 
 
+class RetainOptions(TypedDict, total=False):
+    """Optional retain() inputs; now defaults to the current UTC time."""
+
+    source_id: str | None
+    extraction_hints: str | None
+    user_name: str | None
+    now: datetime | None
+
+
+@dataclass(frozen=True)
+class _IngestContext:
+    """What extraction is shown about the user's memory before it runs."""
+
+    folder_tree: list[tuple[str, int]]
+    recent_facts: list[str]
+    local_now: datetime
+    journaled_today: list[str]
+
+
+async def _load_ingest_context(user_id: str, now: datetime) -> _IngestContext:
+    """Read the folder tree, recent facts and today's journal on the user's wall clock."""
+    folder_tree = await pg_store.get_folder_tree(user_id)
+    recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
+    local_now = (await resolve_user_timezone(user_id)).localize(now)
+    today_episode = await pg_store.get_episode(user_id, local_now.date())
+    return _IngestContext(
+        folder_tree=folder_tree,
+        recent_facts=recent_facts,
+        local_now=local_now,
+        journaled_today=[entry_text(entry) for entry in _journal_entries(today_episode)],
+    )
+
+
+async def _admit_under_free_cap(
+    user_id: str, reconciled: list[ReconciledFact]
+) -> list[ReconciledFact]:
+    """Admit only as many NEW facts as the free plan has room for; paid plans pass through."""
+    growth = sum(1 for item in reconciled if item.outcome is ReconcileOutcome.NEW)
+    remaining = await _free_cap_remaining(user_id, growth)
+    if remaining is None:
+        return reconciled
+    kept, dropped = _enforce_free_cap(reconciled, remaining)
+    if dropped:
+        log.info(
+            "memory_cap_reached",
+            event_name="memory_cap_reached",
+            user_id=user_id,
+            dropped=dropped,
+            limit=FREE_MEMORY_FACT_LIMIT,
+        )
+    return kept
+
+
+async def _refresh_agenda(user_id: str, resolved_agenda: list[str], applied: _ApplyResult) -> None:
+    """Close the agenda items the batch resolved; re-render the agenda when anything on it changed."""
+    closed = await _close_resolved_agenda_items(user_id, resolved_agenda)
+    agenda_touched = closed > 0 or any(
+        fact.shelf_life is MemoryShelfLife.TASK for _, fact in applied.inserted
+    )
+    if agenda_touched:
+        await render_agenda_document(user_id)
+
+
 async def retain(
     user_id: str,
     messages: list[dict[str, str]],
     *,
     source_type: MemorySourceType,
-    source_id: str | None = None,
-    extraction_hints: str | None = None,
-    user_name: str | None = None,
-    now: datetime | None = None,
+    **options: Unpack[RetainOptions],
 ) -> RetainResult:
     """Ingest a conversation transcript into long-term memory.
 
@@ -270,7 +358,8 @@ async def retain(
     """
     timings: dict[str, int] = {}
     started = time.perf_counter()
-    now = now or datetime.now(UTC)
+    now = options.get("now") or datetime.now(UTC)
+    source_id = options.get("source_id")
 
     # Set operation context up front so a mid-ingest failure still attributes
     # the wide event to a retain (the completion set below replaces this).
@@ -279,24 +368,19 @@ async def retain(
         memory=MemoryContext(operation="retain", source_type=source_type.value),
     )
 
-    folder_tree = await pg_store.get_folder_tree(user_id)
-    recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
-    local_now = (await resolve_user_timezone(user_id)).localize(now)
-    today_episode = await pg_store.get_episode(user_id, local_now.date())
-    journaled_today = (
-        [entry.get("text", "") for entry in today_episode.entries] if today_episode else []
-    )
+    context = await _load_ingest_context(user_id, now)
+    local_now = context.local_now
     timings["context_ms"] = _elapsed_ms(started)
 
     stage = time.perf_counter()
     batch = await extract_memories(
         messages,
         user_id=user_id,
-        user_name=user_name or _DEFAULT_USER_NAME,
-        folder_tree=_format_folder_tree(folder_tree),
-        recent_facts=recent_facts,
-        journaled_today=journaled_today,
-        extraction_hints=extraction_hints,
+        user_name=options.get("user_name") or _DEFAULT_USER_NAME,
+        folder_tree=_format_folder_tree(context.folder_tree),
+        recent_facts=context.recent_facts,
+        journaled_today=context.journaled_today,
+        extraction_hints=options.get("extraction_hints"),
         current_date=local_now,
     )
     timings["extract_ms"] = _elapsed_ms(stage)
@@ -330,32 +414,23 @@ async def retain(
     reconciled = await reconcile(user_id, batch.facts, embeddings)
     timings["reconcile_ms"] = _elapsed_ms(stage)
 
-    # Free-plan cap: admits only as many NEW facts as fit and drops the rest,
-    # so a batch that crosses the cap lands exactly at it, not over. Fail-open
-    # by design, so concurrent batches can transiently overshoot by a few.
-    growth = sum(1 for item in reconciled if item.outcome is ReconcileOutcome.NEW)
-    remaining = await _free_cap_remaining(user_id, growth)
-    if remaining is not None:
-        reconciled, dropped = _enforce_free_cap(reconciled, remaining)
-        if dropped:
-            log.info(
-                "memory_cap_reached",
-                event_name="memory_cap_reached",
-                user_id=user_id,
-                dropped=dropped,
-                limit=FREE_MEMORY_FACT_LIMIT,
-            )
+    # Free-plan cap: a batch that crosses the cap lands exactly at it, not over.
+    # Fail-open by design, so concurrent batches can transiently overshoot by a few.
+    reconciled = await _admit_under_free_cap(user_id, reconciled)
 
     stage = time.perf_counter()
     applied = await _apply_reconciled(
         user_id, reconciled, source_type=source_type, source_id=source_id, mentioned_at=now
     )
-    result.new = applied.new
-    result.updated = applied.updated
-    result.extended = applied.extended
-    result.duplicates = applied.duplicates
-    result.entities_linked = applied.entities_linked
-    result.edges_added = applied.edges_added
+    result = RetainResult(
+        facts_extracted=result.facts_extracted,
+        new=applied.new,
+        updated=applied.updated,
+        extended=applied.extended,
+        duplicates=applied.duplicates,
+        entities_linked=applied.entities_linked,
+        edges_added=applied.edges_added,
+    )
     timings["apply_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
@@ -366,16 +441,18 @@ async def retain(
     timings["episodes_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
-    await _store_conversation_chunks(user_id, messages, source_id=source_id, local_now=local_now)
+    await _store_conversation_chunks(
+        # ``retain``'s signature stays ``list[dict[str, str]]`` because the same
+        # list goes to the extractor; the turns are exactly ``TranscriptTurn``.
+        user_id,
+        cast(list[TranscriptTurn], messages),
+        source_id=source_id,
+        local_now=local_now,
+    )
     timings["chunks_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
-    closed = await _close_resolved_agenda_items(user_id, resolved_agenda)
-    agenda_touched = closed > 0 or any(
-        fact.shelf_life is MemoryShelfLife.TASK for _, fact in applied.inserted
-    )
-    if agenda_touched:
-        await render_agenda_document(user_id)
+    await _refresh_agenda(user_id, resolved_agenda, applied)
     timings["agenda_ms"] = _elapsed_ms(stage)
 
     await invalidate_user_memory_caches(user_id)
@@ -465,7 +542,9 @@ async def summarize_episode(user_id: str, date: date_type) -> None:
     if episode is None or episode.summary or not episode.entries:
         return
 
-    lines = [f"{entry.get('time', '')} {entry.get('text', '')}" for entry in episode.entries]
+    # Typed local: the comprehension reads the declared entry shape, not raw keys.
+    entries: list[EpisodeEntry] = _journal_entries(episode)
+    lines = [f"{entry.get('time', '')} {entry_text(entry)}" for entry in entries]
     summary = await summarize_episode_entries(lines, user_id=user_id)
     if summary is None:
         return
@@ -648,7 +727,7 @@ async def _apply_graph(
 
 async def _store_conversation_chunks(
     user_id: str,
-    messages: list[dict[str, str]],
+    messages: list[TranscriptTurn],
     *,
     source_id: str | None,
     local_now: datetime,
@@ -736,11 +815,7 @@ async def _append_episode_entries(
     if not entries:
         return 0, 0
     episode = await pg_store.get_episode(user_id, local_now.date())
-    seen = (
-        [_normalize_entry(str(entry.get("text", ""))) for entry in episode.entries]
-        if episode
-        else []
-    )
+    seen = [_normalize_entry(entry_text(entry)) for entry in _journal_entries(episode)]
     kept: list[str] = []
     for text in entries:
         normalized = _normalize_entry(text)

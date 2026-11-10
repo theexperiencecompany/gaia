@@ -8,7 +8,6 @@ unlinked.
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from enum import Enum
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict
@@ -20,8 +19,10 @@ from app.constants.platform_links import (
     IMESSAGE_PENDING_REGISTRATION_TTL,
     LINK_CONFLICT_ACCOUNT_HAS_OTHER,
     LINK_CONFLICT_PLATFORM_TAKEN,
+    Platform,
 )
 from app.db.redis import redis_cache
+from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.pending_platform_registrations import (
     pending_platform_registration_repository,
 )
@@ -34,8 +35,9 @@ from app.models.platform_models import (
     PlatformLinkEntry,
     PlatformLinkResult,
 )
-from app.models.user_models import PlatformLinkRecord, UserDocument
+from app.models.user_models import AuthenticatedUser, PlatformLinkRecord, UserDocument
 from app.services.analytics_service import capture
+from app.services.bot_service import BotService
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.payments.payment_service import payment_service
 from app.services.photon.photon_client import (
@@ -47,6 +49,7 @@ from app.utils.errors import AppError, create_error
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.bots import BotChatOpened
 from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import log
 
@@ -77,30 +80,6 @@ async def _enqueue_day_zero_hello(user_id: str, platform: str) -> None:
             platform=platform,
             error=str(e),
         )
-
-
-class Platform(str, Enum):
-    """Supported platforms for account linking."""
-
-    DISCORD = "discord"
-    SLACK = "slack"
-    TELEGRAM = "telegram"
-    WHATSAPP = "whatsapp"
-    IMESSAGE = "imessage"
-
-    @classmethod
-    def is_valid(cls, platform: str) -> bool:
-        """Check if platform is supported."""
-        try:
-            cls(platform)
-            return True
-        except ValueError:
-            return False
-
-    @classmethod
-    def values(cls) -> list[str]:
-        """Get list of all platform values."""
-        return [p.value for p in cls]
 
 
 PREMIUM_PLATFORMS: frozenset[str] = frozenset({Platform.IMESSAGE.value})
@@ -369,7 +348,13 @@ async def start_platform_connect(
 
     # Telegram manual flow (no OAuth)
     if platform == Platform.TELEGRAM.value:
-        bot_username = settings.TELEGRAM_BOT_USERNAME or "gaia_bot"
+        bot_username = settings.telegram_bot_username
+        if not bot_username:
+            raise create_error(
+                message="telegram connect is not configured",
+                fix="The instance administrator adds a Telegram bot with 'gaia bots add telegram'.",
+                status_code=501,
+            )
         return InitiatePlatformConnectResponse(
             auth_url=None,
             auth_type="manual",
@@ -429,6 +414,19 @@ async def start_platform_connect(
     )
 
 
+async def _require_linked_entry(user_id: str, platform: str) -> PlatformLinkEntry:
+    """Return the user's link on platform, or raise a 404 naming what is actually linked."""
+    linked = await PlatformLinkService.get_linked_platforms(user_id)
+    entry = linked.get(platform)
+    if entry is None:
+        raise create_error(
+            message=f"No {platform} account is linked",
+            fix="Check account/linked-accounts for what is actually connected",
+            status_code=404,
+        )
+    return entry
+
+
 async def disconnect_platform_account(user_id: str, platform: str) -> DisconnectPlatformResponse:
     """Unlink platform from the user and clear the bot auth cache entry.
 
@@ -436,17 +434,10 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
     tool so every unlink path gets the same cleanup. Raises AppError (404) when
     the unlink fails.
     """
-    # Read platform_user_id before unlinking so we can clear the bot auth cache
-    existing = await PlatformLinkService.get_linked_platforms(user_id)
-    entry: PlatformLinkEntry | None = existing.get(platform)
-    if entry is None:
-        # A no-op "disconnected" would lie to the caller (the agent would tell
-        # the user something that was never linked is now gone).
-        raise create_error(
-            message=f"No {platform} account is linked",
-            fix="Check account/linked-accounts for what is actually connected",
-            status_code=404,
-        )
+    # Read platform_user_id before unlinking so we can clear the bot auth cache.
+    # A missing link is a 404, not a no-op "disconnected": the agent would tell
+    # the user something that was never linked is now gone.
+    entry: PlatformLinkEntry = await _require_linked_entry(user_id, platform)
     platform_user_id = entry["platformUserId"]
 
     try:
@@ -475,6 +466,16 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
         await redis_cache.client.delete(cache_key)
 
     return result
+
+
+async def open_platform_chat(user_id: str, platform: str, user: AuthenticatedUser) -> str:
+    """Return the linked platform's DM conversation, creating it before its first message."""
+    entry: PlatformLinkEntry = await _require_linked_entry(user_id, platform)
+    conversation_id = await BotService.get_or_create_session(
+        platform, entry["platformUserId"], None, user, is_dm=True
+    )
+    capture(UserId(user_id), BotChatOpened(platform=platform))
+    return conversation_id
 
 
 def linked_platforms_of(user: UserDocument) -> dict[str, PlatformLinkEntry]:
@@ -605,6 +606,14 @@ class PlatformLinkService:
         linked = await PlatformLinkService.get_linked_platforms(user_id)
         entry: PlatformLinkEntry | None = linked.get(platform)
         pending = await pending_platform_registration_repository.get_for_user(user_id, platform)
+
+        # A session outlives nothing but its link: left in place, the next GAIA user this
+        # account links to continues this user's conversation and agent thread. Ended before
+        # the $unset, because the link is the only record of which sessions are this user's.
+        if entry is not None:
+            await bot_session_repository.delete_for_platform_user(
+                platform=platform, platform_user_id=entry["platformUserId"]
+            )
 
         result = await user_repository.unlink_platform(user_id, platform)
         if result is None:

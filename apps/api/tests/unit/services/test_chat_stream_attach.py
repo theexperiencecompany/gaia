@@ -22,7 +22,8 @@ import pytest
 
 from app.agents.core.agent import AgentRunOptions, StreamMessageIds
 from app.agents.core.background.session import RunKind, create_session, get_session
-from app.models.message_models import MessageRequestWithHistory
+from app.db.repositories.conversations import conversation_repository
+from app.models.message_models import FileData, MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
@@ -35,6 +36,7 @@ from app.services.chat.stream import (
     _StreamState,
     _TurnContext,
 )
+from app.services.files import FileService
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -174,7 +176,7 @@ class TestFinalizeStreamBackstop:
             [
                 {"tool_name": "search", "data": {}},
                 {"tool_name": "search", "data": {}},
-                {"data": {}},
+                {"tool_name": "fetch", "data": {}},
             ]
         )
 
@@ -188,7 +190,7 @@ class TestFinalizeStreamBackstop:
                 "s1", MagicMock(), AuthenticatedUser(user_id=USER_ID), "conv-1", state, None
             )
 
-        assert log.set.call_args.kwargs["tool_types"] == ["search"]
+        assert sorted(log.set.call_args.kwargs["tool_types"]) == ["fetch", "search"]
         assert log.set.call_args.kwargs["tool_calls_count"] == 3
 
     async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:
@@ -216,7 +218,7 @@ class TestFinalizeStreamBackstop:
 
 class TestRecentHistory:
     def test_a_trailing_user_turn_is_dropped_from_the_prior_context(self) -> None:
-        messages = [
+        messages: list[MessageDict] = [
             {"role": "user", "content": "draft it"},
             {"role": "assistant", "content": "drafted"},
             {"role": "user", "content": "send it"},
@@ -225,7 +227,7 @@ class TestRecentHistory:
         assert _recent_history(messages) == messages[:2]
 
     def test_a_trailing_assistant_turn_is_kept(self) -> None:
-        messages = [
+        messages: list[MessageDict] = [
             {"role": "user", "content": "draft it"},
             {"role": "assistant", "content": "drafted"},
         ]
@@ -373,7 +375,9 @@ class TestConsumeAgentStreamCallsTheAgent:
             conversation_id="conv-1",
             stream_id="stream-1",
             source="whatsapp",
+            presence={"captured_at": 1_800_000_000, "last_seen": {"web": 1}},
             usage_callback=usage_callback,
+            todo_id="todo-1",
         )
 
         with patch.object(chat_stream, "call_agent", fake_call_agent):
@@ -388,6 +392,9 @@ class TestConsumeAgentStreamCallsTheAgent:
         assert isinstance(options, AgentRunOptions)
         assert options.usage_metadata_callback is usage_callback
         assert options.source == "whatsapp"
+        assert options.presence == {"captured_at": 1_800_000_000, "last_seen": {"web": 1}}
+        # Inside a tracked todo's chat the turn is bound to that todo.
+        assert options.active_todo_id == "todo-1"
 
         assert captured["ids"] == StreamMessageIds(
             stream_id="stream-1",
@@ -412,7 +419,9 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
             conversation_id="conv-1",
             stream_id="stream-1",
             source=None,
+            presence=None,
             usage_callback=UsageMetadataCallbackHandler(),
+            todo_id=None,
         )
         sm = AsyncMock()
         sm.is_cancelled = AsyncMock(return_value=False)
@@ -458,8 +467,11 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
 class TestRunChatStreamTurnDerivations:
     """_run_chat_stream derives turn state and the new-conversation flag before any collaborator runs; a wrong derivation misattributes the saved reply or picks the wrong branch."""
 
-    async def _run(self, body: MessageRequestWithHistory) -> dict[str, Any]:
+    async def _run(
+        self, body: MessageRequestWithHistory, *, todo_id: str | None = None
+    ) -> dict[str, Any]:
         seen: dict[str, Any] = {}
+        get_todo_id = AsyncMock(return_value=todo_id)
 
         async def fake_publish_init(
             body_: MessageRequestWithHistory,
@@ -485,6 +497,7 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "register_executor_capture"),
             patch.object(chat_stream, "_set_stream_log_context"),
+            patch.object(chat_stream, "_capture_presence", AsyncMock(return_value=None)),
             patch.object(chat_stream, "_publish_init_chunk", fake_publish_init),
             patch.object(
                 chat_stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)
@@ -501,6 +514,8 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "_finalize_description", AsyncMock()),
             patch.object(chat_stream, "capture"),
             patch.object(chat_stream, "_finalize_stream", AsyncMock()),
+            patch.object(conversation_repository, "get_todo_id", get_todo_id),
+            patch.object(FileService, "attach_uploads", new_callable=AsyncMock) as attach_uploads,
         ):
             sm.publish_chunk = AsyncMock()
             sm.complete_stream = AsyncMock()
@@ -510,7 +525,31 @@ class TestRunChatStreamTurnDerivations:
             )
 
         seen["forwarder"] = forwarder
+        seen["attach_uploads"] = attach_uploads
+        seen["get_todo_id"] = get_todo_id
         return seen
+
+    async def test_a_file_turn_on_an_existing_conversation_is_attached(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(
+                message="look",
+                messages=[],
+                conversation_id="conv-1",
+                fileIds=["f1"],
+                fileData=[
+                    FileData(fileId="f2", url="https://cdn.example/f2.png", filename="f2.png")
+                ],
+            )
+        )
+
+        seen["attach_uploads"].assert_awaited_once_with(["f1", "f2"], USER_ID, "conv-1")
+
+    async def test_a_turn_without_files_does_not_attach(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1")
+        )
+
+        seen["attach_uploads"].assert_not_awaited()
 
     async def test_the_clients_send_id_is_the_turns_user_message_id(self) -> None:
         seen = await self._run(
@@ -552,3 +591,19 @@ class TestRunChatStreamTurnDerivations:
         )
 
         assert seen["is_new_conversation"] is False
+
+    async def test_a_turn_in_a_tracked_todos_chat_is_bound_to_that_todo(self) -> None:
+        """Without it a follow-up in the todo's chat had no idea which todo "this" was."""
+        seen = await self._run(
+            MessageRequestWithHistory(message="status?", messages=[], conversation_id="conv-1"),
+            todo_id="todo-1",
+        )
+
+        seen["get_todo_id"].assert_awaited_once_with("conv-1", user_id=USER_ID)
+        assert seen["turn"].todo_id == "todo-1"
+
+    async def test_a_new_conversation_is_never_looked_up_as_a_todos_chat(self) -> None:
+        seen = await self._run(MessageRequestWithHistory(message="hi", messages=[]))
+
+        seen["get_todo_id"].assert_not_awaited()
+        assert seen["turn"].todo_id is None

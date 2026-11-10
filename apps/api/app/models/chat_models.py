@@ -8,7 +8,12 @@ from typing_extensions import TypedDict
 # app.constants.outbound can derive the outbound queue set without the model
 # stack. Re-exported here because this is the import site consumers use.
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
-from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
+from app.models.message_models import (
+    FileData,
+    ReplyToMessageData,
+    SelectedWorkflowData,
+    TodoRunWake,
+)
 
 __all__ = [
     "BOT_CONVERSATION_SOURCES",
@@ -157,6 +162,8 @@ class MessageModel(BaseModel):
     selectedTool: str | None = None
     toolCategory: str | None = None
     selectedWorkflow: SelectedWorkflowData | None = None
+    # What woke a tracked todo's run, on the user's side of the todo's chat.
+    todo_run_wake: TodoRunWake | None = None
     tool_data: list[ToolDataEntry] | None = None
     follow_up_actions: list[str] | None = None
     metadata: dict[str, Any] | None = None
@@ -164,6 +171,9 @@ class MessageModel(BaseModel):
     # Terminal stream error for a bot turn that produced no response — rendered
     # on reload instead of an empty bubble.
     error: str | None = None
+    # True on a bot turn the user stopped with Stop; the client shows a quiet
+    # "Stopped" line under it. None everywhere else.
+    stopped: bool | None = None
     # Set by the pin-message endpoint on the embedded message; absent on most
     # messages, so it reads back as None unless the user pinned this one.
     pinned: bool | None = None

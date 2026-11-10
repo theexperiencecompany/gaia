@@ -18,6 +18,8 @@ from dodopayments.types import Subscription
 from fastapi import HTTPException
 import pytest
 
+from app.config.deployment import DeploymentKind, baseline_profile
+from app.config.settings import settings
 from app.constants.cache import (
     ACTIVE_PLANS_CACHE_KEY,
     CHECKOUT_SCAN_MISS_CACHE_PREFIX,
@@ -33,11 +35,11 @@ from app.models.payment_models import (
     PlanResponse,
     PlanTier,
     PlanType,
+    SubscriptionDetails,
     SubscriptionDocument,
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
-from app.services.payments import payment_service as payment_service_module
 from app.services.payments.payment_service import DodoPaymentService
 from app.services.payments.subscription_events import (
     SubscriptionEventKind,
@@ -93,7 +95,7 @@ SAMPLE_PLAN = PlanDocument(
     description="Pro features billed monthly",
     amount=999,
     currency="USD",
-    duration="monthly",
+    duration=PlanDuration.MONTHLY,
     max_users=5,
     features=["feature_a", "feature_b"],
     is_active=True,
@@ -231,7 +233,7 @@ class TestGetPlans:
             description=None,
             amount=999,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=None,
             features=[],
             is_active=True,
@@ -313,7 +315,7 @@ class TestGetPlans:
             plan_type=PlanTier.PRO,
             amount=0,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             is_active=True,
             created_at=NOW,
             updated_at=NOW,
@@ -341,7 +343,7 @@ class TestGetPlans:
             plan_type=PlanTier.FREE,
             amount=0,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             is_active=True,
             created_at=NOW,
             updated_at=NOW,
@@ -384,7 +386,7 @@ class TestGetPlans:
             description=None,
             amount=0,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=1,
             features=[],
             is_active=True,
@@ -399,7 +401,7 @@ class TestGetPlans:
             description=None,
             amount=3000,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=1,
             features=[],
             is_active=True,
@@ -428,7 +430,7 @@ class TestGetPlans:
             plan_type=PlanTier.ENTERPRISE,
             amount=0,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=0,
             is_active=True,
             created_at=NOW,
@@ -639,6 +641,56 @@ class TestCreateSubscription:
         call_kwargs = mock_dodo_client.checkout_sessions.create.call_args[1]
         assert call_kwargs["discount_code"] == "SAVE20"
 
+    async def test_the_checkout_renders_dark_whatever_the_os_theme(
+        self,
+        payment_service,
+        mock_users_collection,
+        mock_subscription_repository,
+        mock_plan_repository,
+        mock_redis_cache,
+        mock_dodo_client,
+    ):
+        """Regression: the overlay SDK's theme options are ignored, so a light-mode OS got a white sheet."""
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
+        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
+        checkout_response = MagicMock()
+        checkout_response.session_id = "sess_003"
+        checkout_response.checkout_url = "https://checkout.dodo.dev/sess_003"
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
+        mock_plan_repository.list_plans = AsyncMock(return_value=[])
+
+        await payment_service.create_subscription(user_id=FAKE_USER_ID, product_id="prod_abc123")
+
+        call_kwargs = mock_dodo_client.checkout_sessions.create.call_args[1]
+        assert call_kwargs["customization"] == {"theme": "dark"}
+
+    async def test_the_checkout_is_one_page_with_the_wallets_first(
+        self,
+        payment_service,
+        mock_users_collection,
+        mock_subscription_repository,
+        mock_plan_repository,
+        mock_redis_cache,
+        mock_dodo_client,
+    ):
+        """Dodo's two-page checkout put Apple Pay / Google Pay behind a Continue to Payment step."""
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
+        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
+        checkout_response = MagicMock()
+        checkout_response.session_id = "sess_004"
+        checkout_response.checkout_url = "https://checkout.dodo.dev/sess_004"
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
+        mock_plan_repository.list_plans = AsyncMock(return_value=[])
+
+        await payment_service.create_subscription(user_id=FAKE_USER_ID, product_id="prod_abc123")
+
+        call_kwargs = mock_dodo_client.checkout_sessions.create.call_args[1]
+        assert call_kwargs["feature_flags"] == {
+            "allow_discount_code": True,
+            "allow_customer_editing_country": True,
+            "single_page": True,
+        }
+
     async def test_outside_production_everything_but_the_card_is_prefilled(
         self,
         payment_service,
@@ -657,7 +709,7 @@ class TestCreateSubscription:
         mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
         mock_plan_repository.list_plans = AsyncMock(return_value=[])
 
-        with patch.object(payment_service_module.settings, "ENV", "development"):
+        with patch.object(settings, "ENV", "development"):
             await payment_service.create_subscription(
                 user_id=FAKE_USER_ID, product_id="prod_abc123"
             )
@@ -672,7 +724,7 @@ class TestCreateSubscription:
         assert dev_kwargs["customer"]["phone_number"] == "+14155550123"
         assert dev_kwargs["show_saved_payment_methods"] is True
 
-        with patch.object(payment_service_module.settings, "ENV", "production"):
+        with patch.object(settings, "ENV", "production"):
             await payment_service.create_subscription(
                 user_id=FAKE_USER_ID, product_id="prod_abc123"
             )
@@ -706,7 +758,7 @@ class TestCreateSubscription:
             return_value=SimpleNamespace(session_id="sess_004", checkout_url="https://pay/x")
         )
 
-        with patch.object(payment_service_module.settings, "ENV", "production"):
+        with patch.object(settings, "ENV", "production"):
             await payment_service.create_subscription(
                 user_id=FAKE_USER_ID, product_id="prod_abc123"
             )
@@ -1021,6 +1073,57 @@ class TestGetCachedPlanType:
         assert event["payment"]["plan_source"] == "subscription"
         assert event["payment"]["plan_type"] == "pro"
 
+    async def test_every_user_is_pro_where_plans_are_not_enforced(
+        self, payment_service, mock_redis_cache, mock_subscription_repository, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        mock_redis_cache.get = AsyncMock(side_effect=AssertionError("no cache read"))
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            side_effect=AssertionError("no subscription read")
+        )
+
+        async with captured_wide_event() as event:
+            plan = await payment_service.get_cached_plan_type(FAKE_USER_ID)
+
+        assert plan is PlanType.PRO
+        assert event["payment"] == {"plan_type": "pro", "plan_source": "unenforced"}
+
+    async def test_the_status_the_web_reads_is_pro_where_plans_are_not_enforced(
+        self, payment_service, mock_subscription_repository, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            side_effect=AssertionError("no subscription read")
+        )
+
+        status = await payment_service.get_user_subscription_status(FAKE_USER_ID)
+
+        assert status.model_dump() == {
+            "user_id": FAKE_USER_ID,
+            "current_plan": None,
+            "subscription": None,
+            "is_subscribed": False,
+            "days_remaining": None,
+            "can_upgrade": False,
+            "can_downgrade": False,
+            "has_ever_subscribed": False,
+            "has_subscription": False,
+            "plan_type": PlanType.PRO,
+            "status": None,
+        }
+
+    async def test_the_details_the_agent_reads_are_pro_where_plans_are_not_enforced(
+        self, payment_service, mock_subscription_repository, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            side_effect=AssertionError("no subscription read")
+        )
+
+        details = await payment_service.get_subscription_details(FAKE_USER_ID)
+
+        assert details == SubscriptionDetails(plan_type=PlanType.PRO, is_subscribed=False)
+
 
 @pytest.mark.unit
 @pytest.mark.usefixtures("mock_redis_cache")
@@ -1141,7 +1244,7 @@ class TestVerifyPaymentCompletion:
         payment_status: str | None = "succeeded",
         subscription_id: str | None = "sub_from_checkout",
         subscription_status: str = "active",
-    ) -> SimpleNamespace:
+    ) -> Subscription:
         """checkout_sessions.retrieve -> payments.retrieve -> subscriptions.retrieve, each answering only its own id."""
         checkout_status = SimpleNamespace(payment_id=payment_id, payment_status=payment_status)
         payment = SimpleNamespace(subscription_id=subscription_id)
@@ -1257,6 +1360,8 @@ class TestVerifyPaymentCompletion:
             SubscriptionActivated(
                 subscription_id="sub_from_checkout",
                 plan_name="Pro",
+                product_id="prod_abc123",
+                billing_interval="Year",
                 amount=300.0,
                 currency="USD",
                 amount_charged_pre_tax=300.0,
@@ -1783,7 +1888,7 @@ def _plan(
     name: str,
     plan_type: PlanTier = PlanTier.PRO,
     amount: int,
-    duration: str,
+    duration: PlanDuration,
     product_id: str,
     active: bool = True,
 ) -> PlanDocument:
@@ -1810,16 +1915,16 @@ CATALOGUE = [
         name="Free",
         plan_type=PlanTier.FREE,
         amount=0,
-        duration="monthly",
+        duration=PlanDuration.MONTHLY,
         product_id="",
     ),
-    _plan(name="Pro", amount=3000, duration="monthly", product_id="prod_m"),
-    _plan(name="Pro", amount=30000, duration="yearly", product_id="prod_y"),
+    _plan(name="Pro", amount=3000, duration=PlanDuration.MONTHLY, product_id="prod_m"),
+    _plan(name="Pro", amount=30000, duration=PlanDuration.YEARLY, product_id="prod_y"),
     _plan(
         name="Enterprise",
         plan_type=PlanTier.ENTERPRISE,
         amount=0,
-        duration="monthly",
+        duration=PlanDuration.MONTHLY,
         product_id="",
     ),
 ]
@@ -1859,7 +1964,7 @@ class TestPlanForSubscription:
         retired = _plan(
             name="Pro",
             amount=3000,
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             product_id="prod_m",
             active=False,
         )
@@ -1916,7 +2021,7 @@ class TestGetProPlan:
         cheap = _plan(
             name="Pro",
             amount=1,
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             product_id="prod_m",
         )
         mock_plan_repository.list_plans = AsyncMock(return_value=[cheap])
@@ -1956,7 +2061,7 @@ class TestGetProPlan:
             name="Enterprise",
             plan_type=PlanTier.ENTERPRISE,
             amount=500,
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             product_id="prod_ent",
         )
         mock_plan_repository.list_plans = AsyncMock(return_value=[priced_enterprise, CATALOGUE[1]])
@@ -2332,6 +2437,7 @@ class TestDodoPaymentServiceInit:
     def test_production_env_uses_live_mode(self):
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "production"
+            mock_settings.deployment = baseline_profile(DeploymentKind.PRODUCTION)
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_live_test"
             mock_settings.DODO_PAYMENTS_BASE_URL = None
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
@@ -2344,6 +2450,7 @@ class TestDodoPaymentServiceInit:
     def test_development_env_uses_test_mode(self):
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
+            mock_settings.deployment = baseline_profile(DeploymentKind.DEVELOPMENT)
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_test_test"
             mock_settings.DODO_PAYMENTS_BASE_URL = None
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
@@ -2357,6 +2464,7 @@ class TestDodoPaymentServiceInit:
         """When DODO_PAYMENTS_BASE_URL is set, it points the SDK at that URL instead of the real environment endpoint."""
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
+            mock_settings.deployment = baseline_profile(DeploymentKind.DEVELOPMENT)
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_test_test"
             mock_settings.DODO_PAYMENTS_BASE_URL = "http://localhost:8899"
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
@@ -2370,6 +2478,7 @@ class TestDodoPaymentServiceInit:
         """If DodoPayments raises, the error is logged but not propagated."""
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
+            mock_settings.deployment = baseline_profile(DeploymentKind.DEVELOPMENT)
             mock_settings.DODO_PAYMENTS_API_KEY = "bad_key"
             with patch(
                 "app.services.payments.payment_service.DodoPayments",
@@ -2382,4 +2491,8 @@ class TestDodoPaymentServiceInit:
                 # Init failure leaves the service without a usable client
                 assert not hasattr(svc, "client")
                 # The failure must be surfaced in the logs, not swallowed
-                mock_log.error.assert_called_once()
+                mock_log.error.assert_called_once_with(
+                    f"{LogTag.PAYMENT} Failed to instantiate dodo payments",
+                    error="Bad API key",
+                    error_type="Exception",
+                )

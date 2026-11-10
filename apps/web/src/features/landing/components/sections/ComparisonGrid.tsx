@@ -3,7 +3,8 @@
 import { Tooltip } from "@heroui/tooltip";
 import { ArrowRight02Icon, Cancel01Icon, Tick02Icon } from "@icons";
 import Image from "next/image";
-import { Link } from "@/i18n/navigation";
+import { SiteLink } from "@/components/seo/SiteLink";
+import { getImageDimensions } from "@/lib/imageDimensions";
 
 import LargeHeader from "../shared/LargeHeader";
 
@@ -160,7 +161,7 @@ const GRID_ROWS: GridRow[] = [
   {
     feature: "Integrations",
     values: [
-      { type: "text", label: "50+ native + MCP" },
+      { type: "text", label: "Native + MCP" },
       { type: "text", label: "50+ + 100 skills" },
       { type: "text", label: "~10 services + MCP" },
       { type: "no" },
@@ -170,15 +171,24 @@ const GRID_ROWS: GridRow[] = [
   },
 ];
 
-function BrandLogo({ competitor }: { competitor: CompetitorInfo }) {
+function BrandLogo({
+  competitor,
+  alt,
+}: {
+  competitor: CompetitorInfo;
+  alt: string;
+}) {
   if (competitor.logo.type === "image") {
+    const { width, height } = getImageDimensions(competitor.logo.src);
+
     return (
       <div className="relative h-7 w-7 overflow-hidden rounded-md">
         <Image
           src={competitor.logo.src}
-          alt={competitor.name}
-          fill
-          className="object-contain p-0.5"
+          alt={alt}
+          width={width}
+          height={height}
+          className="absolute inset-0 h-full w-full object-contain p-0.5"
           sizes="28px"
           unoptimized
         />
@@ -239,16 +249,16 @@ export default function ComparisonGrid() {
                   >
                     <Tooltip content={c.name} placement="top">
                       {c.slug ? (
-                        <Link
+                        <SiteLink
                           href={`/compare/${c.slug}`}
                           aria-label={`Compare with ${c.name}`}
                           className="inline-flex transition-transform hover:scale-110"
                         >
-                          <BrandLogo competitor={c} />
-                        </Link>
+                          <BrandLogo competitor={c} alt="" />
+                        </SiteLink>
                       ) : (
                         <span className="inline-flex">
-                          <BrandLogo competitor={c} />
+                          <BrandLogo competitor={c} alt={c.name} />
                         </span>
                       )}
                     </Tooltip>
@@ -285,13 +295,13 @@ export default function ComparisonGrid() {
 
         <p className="text-center text-xs text-zinc-400">
           Sourced from official websites and documentation.{" "}
-          <Link
+          <SiteLink
             href="/compare"
             className="inline-flex items-center gap-1 underline underline-offset-2 transition-colors hover:text-zinc-300"
           >
             See full comparisons
             <ArrowRight02Icon width={12} height={12} />
-          </Link>
+          </SiteLink>
         </p>
       </div>
     </section>

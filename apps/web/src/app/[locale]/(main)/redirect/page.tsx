@@ -1,15 +1,21 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Spinner from "@/components/ui/spinner";
+import { currentUserQueryOptions } from "@/features/auth/hooks/useCurrentUser";
+import { setupStatusQueryOptions } from "@/features/settings/hooks/useSetupStatus";
+import { opensSetupWizard } from "@/features/setup-wizard/utils/setupWizardRoute";
+import { isSelfhostWeb } from "@/lib/selfhost";
 import { toast } from "@/lib/toast";
 
 export default function RedirectPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
-    const handleRedirect = () => {
+    const handleRedirect = async () => {
       const params = new URLSearchParams(window.location.search);
       // Check for OAuth errors
       const oauthError = params.get("oauth_error");
@@ -63,6 +69,26 @@ export default function RedirectPage() {
         // Redirect to login page on error
         router.replace("/login");
         return;
+      }
+
+      // Self-host: the admin lands in the setup wizard while it is still owed.
+      // Hosted GAIA has no setup surface to ask.
+      if (isSelfhostWeb()) {
+        try {
+          const [setupStatus, user] = await Promise.all([
+            queryClient.fetchQuery(setupStatusQueryOptions),
+            queryClient.fetchQuery(currentUserQueryOptions),
+          ]);
+          if (opensSetupWizard(setupStatus, user.role ?? undefined)) {
+            router.replace("/setup");
+            return;
+          }
+        } catch (error) {
+          console.error("Failed to fetch setup status:", error);
+          toast.error(
+            "Couldn't check your instance's setup status — continuing to the app.",
+          );
+        }
       }
 
       // Default redirect to main app if no specific parameters

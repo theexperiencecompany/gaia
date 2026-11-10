@@ -7,8 +7,10 @@ import {
   ScrollView,
   useWindowDimensions,
   View,
+  type ViewStyle,
 } from "react-native";
 import Animated, {
+  type AnimatedStyle,
   Easing,
   FadeIn,
   type SharedValue,
@@ -43,11 +45,11 @@ import {
   countTimelineTools,
   type EnrichedSubagentGroup,
   formatDetailText,
-  humanToolTitle,
   matchRichRenderer,
   previewForCall,
 } from "./activity-format";
 import { PulsingDot } from "./pulsing";
+import { humanToolTitle } from "./tool-title";
 
 // Gap scale — decisions §5 allows ONLY these values.
 const GAP = { xs: 2, sm: 4, md: 8, lg: 12, xl: 16, xxl: 24 } as const;
@@ -92,7 +94,7 @@ function formatSeconds(seconds: number): string {
  */
 function useMeasuredCollapse(open: boolean): {
   progress: SharedValue<number>;
-  collapseStyle: ReturnType<typeof useAnimatedStyle>;
+  collapseStyle: AnimatedStyle<ViewStyle>;
   measureHandler: (event: LayoutChangeEvent) => void;
 } {
   const contentHeight = useSharedValue(0);
@@ -107,7 +109,7 @@ function useMeasuredCollapse(open: boolean): {
     fade.value = withTiming(open ? 1 : 0, { duration: FADE_MS });
   }, [open, progress, fade]);
 
-  const collapseStyle = useAnimatedStyle(() => ({
+  const collapseStyle = useAnimatedStyle<ViewStyle>(() => ({
     height: contentHeight.value * progress.value,
     opacity: fade.value,
     overflow: "hidden",
@@ -126,7 +128,7 @@ function useMeasuredCollapse(open: boolean): {
 /** Chevron rotating off a collapse's own progress. */
 function CollapseChevron({ progress }: { progress: SharedValue<number> }) {
   const rotation = useDerivedValue(() => `${progress.value * 180}deg`);
-  const style = useAnimatedStyle(() => ({
+  const style = useAnimatedStyle<ViewStyle>(() => ({
     transform: [{ rotate: rotation.value }],
   }));
   return (
@@ -163,8 +165,12 @@ function StatusDot({ status }: { status: ActivityStatus }) {
     });
   }, [status, doneOpacity]);
 
-  const checkStyle = useAnimatedStyle(() => ({ opacity: doneOpacity.value }));
-  const dotStyle = useAnimatedStyle(() => ({ opacity: 1 - doneOpacity.value }));
+  const checkStyle = useAnimatedStyle<ViewStyle>(() => ({
+    opacity: doneOpacity.value,
+  }));
+  const dotStyle = useAnimatedStyle<ViewStyle>(() => ({
+    opacity: 1 - doneOpacity.value,
+  }));
 
   return (
     <View
@@ -476,7 +482,7 @@ function ActivityRow({
       ? approvals.statusByToolCallId.get(call.tool_call_id)
       : undefined;
 
-  const title = humanToolTitle(call.tool_name);
+  const title = humanToolTitle(call);
   const preview = previewForCall(call);
   const hasDetail =
     Boolean(call.output) ||
@@ -890,13 +896,14 @@ export function ActivityBlock({
     });
   }, [expanded, totalCount, seconds]);
 
-  const liveTitle = useMemo(() => {
-    const last = timeline.at(-1);
-    if (!last) return `${thinkingLabel ?? "Thinking"}…`;
-    if (last.kind === "tool") return `${humanToolTitle(last.call.tool_name)}…`;
-    if (last.kind === "subagent") return `${last.group.subagent_name}…`;
-    return "Thinking…";
-  }, [timeline, thinkingLabel]);
+  const lastItem = timeline.at(-1);
+  const liveTitle = !lastItem
+    ? `${thinkingLabel ?? "Thinking"}…`
+    : lastItem.kind === "tool"
+      ? `${humanToolTitle(lastItem.call)}…`
+      : lastItem.kind === "subagent"
+        ? `${lastItem.group.subagent_name}…`
+        : "Thinking…";
 
   const summaryIcons = useMemo(() => {
     const seen = new Set<string>();

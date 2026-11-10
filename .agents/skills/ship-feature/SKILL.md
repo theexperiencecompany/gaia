@@ -109,7 +109,7 @@ feature will change, per the protocol in
 ### 4. Implement
 
 Execute the plan task by task on the feature branch. Write to CI's structural
-bars from the start rather than remediating after — the Code Quality lanes
+bars from the start rather than remediating after — the CI lint checks
 enforce limits on file size, components per file, type placement, complexity,
 docstring coverage, duplication, and dead code (current thresholds live in
 the lane scripts/configs, see the CI reference). UI-touching work follows

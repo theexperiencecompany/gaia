@@ -116,6 +116,7 @@ function buildDraftFormValues(
     trigger_config: triggerConfig,
     // The agent chose it from what the user asked for.
     delivery: draftData.delivery ?? null,
+    gate: { condition: draftData.runs_only_when ?? "", enabled: true },
   };
 }
 

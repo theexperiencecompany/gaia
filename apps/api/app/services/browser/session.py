@@ -48,6 +48,8 @@ class BrowserHostSession:
     host_url: str
     #: The engine the host runs this context on, as the host reported it.
     engine: BrowserEngine
+    #: Whether that engine is Fortress, which fingerprints itself, as the host reported it.
+    fortress: bool
     #: The site the session opened on, where a sign-in on an unknown page is saved.
     start_domain: str | None = None
     #: The sites its returned state is saved under as a login on release: one it
@@ -175,6 +177,7 @@ async def browser_session(
         cdp_url=host.cdp_ws,
         host_url=host_url,
         engine=host.engine,
+        fortress=host.fortress,
         start_domain=domain,
         login_domains=login_domains,
     )

@@ -43,7 +43,7 @@ export interface TurnUiState {
   toolInfo?: ActiveToolInfo;
 }
 
-/** Loading UI owned by non-turn flows (voice agent, file upload). */
+/** Loading UI owned by non-turn flows (the voice agent). */
 interface AuxLoadingState {
   active: boolean;
   text: string;

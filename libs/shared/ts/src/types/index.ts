@@ -12,6 +12,7 @@ export type {
   IntegrationStatusRecord,
   IntegrationStatusValue,
   IntegrationTool,
+  IntegrationToolApproval,
   IntegrationToolsResponse,
   MarketplaceIntegration,
   MyIntegrationItem,
@@ -45,7 +46,6 @@ export type {
   NotificationActionConfig,
   PlatformLink,
   PlatformLinksResponse,
-  QuietHours,
 } from "./notification";
 export {
   EMAIL_CHANNEL_DESCRIPTION,
@@ -91,7 +91,7 @@ export type {
   TodoLabel,
   TodoListResponse,
   TodoUpdate,
-  TriggerSubscription,
+  TriggerSubscriptionView,
 } from "./todo";
 export {
   ConditionMatch,

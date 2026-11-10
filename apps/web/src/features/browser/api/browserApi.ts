@@ -2,18 +2,18 @@ import type {
   HandoffDecisionResponse,
   LiveViewTokenResponse,
 } from "@shared/api/generated";
-import { apiOrigin } from "@/lib/api/client";
+import { apiBaseUrl } from "@/lib/api/client";
 import { api } from "@/lib/api/typed";
 import type { BrowserHandoffDecision } from "@/types/features/browserTaskTypes";
 
 /**
- * The live-view socket, `/live/{target}` on the API: every surface dials it
- * here. `target` is a session id that the takeover `token` authorizes (chat
+ * The live-view socket, `/browser/live/{target}` under the API base (the one
+ * prefix the deployed proxies upgrade): every surface dials it here. `target` is a session id that the takeover `token` authorizes (chat
  * card, side panel, its full-page link), or a bot link's capability code,
  * which is its own authority (no token).
  */
 export function liveSocketUrl(target: string, token: string | null): string {
-  const base = `${apiOrigin.replace(/^http/, "ws")}/live/${encodeURIComponent(target)}`;
+  const base = `${apiBaseUrl.replace(/^http/, "ws")}/browser/live/${encodeURIComponent(target)}`;
   return token ? `${base}?t=${encodeURIComponent(token)}` : base;
 }
 
@@ -78,7 +78,7 @@ export const browserApi = {
     code: string,
     decision: BrowserHandoffDecision,
   ): Promise<HandoffDecisionResponse> =>
-    api.post("/live/{code}/decision", {
+    api.post("/api/v1/browser/live/{code}/decision", {
       path: { code },
       body: { decision },
       errorMessage: "Could not send your answer to the browser task",

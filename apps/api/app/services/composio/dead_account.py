@@ -4,9 +4,6 @@ import typing as t
 
 import composio_client
 
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
-from app.utils.errors import AppError
-
 # Tool execution reports a dead account as error code 1810 (ActionExecute_ConnectedAccountNotFound);
 # the proxy reports it as ConnectedAccount_ResourceNotFound. Either surfaces as a raised
 # NotFoundError (404) or in a non-raising result, so every path gates on this one marker set.
@@ -32,21 +29,6 @@ class _ComposioErrorDetail(t.TypedDict, total=False):
     name: object
     type: object
     slug: object
-
-
-class ConnectedAccountGoneError(AppError):
-    """A provider call ran as a connected account Composio no longer holds."""
-
-    def __init__(self, toolkit: str, cause: str) -> None:
-        super().__init__(
-            message=f"The {toolkit} connected account no longer exists",
-            why="Composio has no connected account with the id this call ran as",
-            fix=f"Reconnect the {toolkit} account",
-            status_code=403,
-            code=INTEGRATION_NOT_CONNECTED,
-            public={"toolkit": toolkit},
-            meta={"cause": cause},
-        )
 
 
 def message_mentions_dead_account(message: str) -> bool:

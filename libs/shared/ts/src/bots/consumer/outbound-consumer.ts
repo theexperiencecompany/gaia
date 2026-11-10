@@ -11,11 +11,18 @@
  */
 
 import { type Channel, type ConsumeMessage, connect } from "amqplib";
-import type { PlatformName } from "../types";
+import {
+  DELIVERY_FAILURE_KIND,
+  type DeliveryFailure,
+  describeErrorForAlert,
+  type ReportDeliveryFailure,
+} from "../delivery-failures";
+import type { OutboundNotifications, PlatformName } from "../types";
 import { segmentIntoBubbles } from "../utils/bubbles";
 import { retryAfterMs } from "../utils/delivery-errors";
 import {
   BOT_FAILURE_REASON,
+  classifyBotFailure,
   isTransientBotFailure,
   recordBotFailure,
 } from "../utils/failure-reasons";
@@ -96,7 +103,8 @@ export class OutboundConsumer {
   /**
    * `gaiaApiUrl` is what makes a plain-http attachment URL acceptable: a dev or
    * self-hosted API serves step screenshots off its own host, and only that one
-   * origin is exempt from the https rule.
+   * origin is exempt from the https rule. `reportFailure` alerts on every message
+   * this consumer dead-letters.
    */
   constructor(
     private readonly platform: PlatformName,
@@ -104,7 +112,9 @@ export class OutboundConsumer {
     private readonly deliver: DeliverFn,
     private readonly deliverFile: DeliverFileFn,
     gaiaApiUrl: string | undefined,
+    private readonly reportFailure: ReportDeliveryFailure,
     deliverReaction?: DeliverReactionFn,
+    private readonly notifications?: OutboundNotifications,
   ) {
     this.logger = createBotLogger(platform, "outbound-consumer");
     this.envelopeSchema = outboundMessageEnvelopeSchemaFor(gaiaApiUrl);
@@ -243,6 +253,19 @@ export class OutboundConsumer {
   }
 
   /**
+   * Dead-letters a message and alerts on it — the one way this consumer drops a
+   * message, so nothing reaches the DLQ unreported. The DLQ keeps it for replay.
+   */
+  private deadLetter(
+    channel: Channel,
+    msg: ConsumeMessage,
+    failure: DeliveryFailure,
+  ): void {
+    this.reportFailure(failure);
+    this.settle(channel, () => channel.nack(msg, false, false));
+  }
+
+  /**
    * Hands a message to its chat's lane. Prefetched messages run concurrently, so a
    * slow photo upload let the text published after it arrive first; one chat's
    * messages now go out in published order while other chats proceed.
@@ -339,7 +362,10 @@ export class OutboundConsumer {
         bytes: msg.content.length,
       });
       wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
-      this.settle(channel, () => channel.nack(msg, false, false)); // unparseable → DLQ
+      this.deadLetter(channel, msg, {
+        kind: DELIVERY_FAILURE_KIND.ENVELOPE_REJECTED,
+        reason: "envelope_unparseable",
+      });
       return null;
     }
     const parsed = this.envelopeSchema.safeParse(raw);
@@ -351,7 +377,12 @@ export class OutboundConsumer {
         ),
       });
       wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
-      this.settle(channel, () => channel.nack(msg, false, false)); // schema mismatch → DLQ
+      this.deadLetter(channel, msg, {
+        kind: DELIVERY_FAILURE_KIND.ENVELOPE_REJECTED,
+        reason: "envelope_invalid",
+        error_message: `invalid fields: ${parsed.error.issues.map((issue) => issue.path.join(".")).join(", ")}`,
+        destination_id: destinationOf(msg),
+      });
       return null;
     }
     const env = parsed.data;
@@ -365,7 +396,14 @@ export class OutboundConsumer {
         got: env.platform,
       });
       wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
-      this.settle(channel, () => channel.nack(msg, false, false)); // wrong platform → DLQ
+      this.deadLetter(channel, msg, {
+        kind: DELIVERY_FAILURE_KIND.ENVELOPE_REJECTED,
+        reason: "platform_mismatch",
+        error_message: `published for ${env.platform}`,
+        destination_id: env.destination_id,
+        is_channel: env.is_channel,
+        envelope_id: env.id,
+      });
       return null;
     }
 
@@ -391,14 +429,21 @@ export class OutboundConsumer {
       );
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {
-      recordBotFailure("outbound_file_delivery_failed", err, {
+      const reason = recordBotFailure("outbound_file_delivery_failed", err, {
         envelope_id: id,
         redelivered: msg.fields.redelivered,
       });
       // Never requeue a file: deliverFile fetches AND uploads, so a failure can surface after
       // the platform already accepted the upload. Only a rate limit proves it accepted
       // nothing, and that was already retried; dead-letter the rest for manual replay.
-      this.settle(channel, () => channel.nack(msg, false, false));
+      this.deadLetter(channel, msg, {
+        kind: DELIVERY_FAILURE_KIND.SEND_FAILED,
+        reason,
+        error_message: describeErrorForAlert(err),
+        destination_id: destinationId,
+        is_channel: isChannel,
+        envelope_id: id,
+      });
     }
   }
 
@@ -427,7 +472,14 @@ export class OutboundConsumer {
         { envelope_id: id, redelivered: msg.fields.redelivered },
         err,
       );
-      this.settle(channel, () => channel.nack(msg, false, false));
+      this.deadLetter(channel, msg, {
+        kind: DELIVERY_FAILURE_KIND.SEND_FAILED,
+        reason: classifyBotFailure(err),
+        error_message: describeErrorForAlert(err),
+        destination_id: destinationId,
+        is_channel: isChannel,
+        envelope_id: id,
+      });
     }
   }
 
@@ -450,7 +502,13 @@ export class OutboundConsumer {
     if (sources.length === 0) {
       wideLog.warning("outbound_envelope_empty", { envelope_id: id });
       wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
-      this.settle(channel, () => channel.nack(msg, false, false)); // nothing to send → DLQ
+      this.deadLetter(channel, msg, {
+        kind: DELIVERY_FAILURE_KIND.ENVELOPE_REJECTED,
+        reason: "envelope_empty",
+        destination_id: destinationId,
+        is_channel: isChannel,
+        envelope_id: id,
+      });
       return;
     }
 
@@ -458,7 +516,19 @@ export class OutboundConsumer {
     // many chunks already went out — a partial send must NOT requeue.
     const progress = { delivered: 0 };
     try {
-      await this.deliverSources(destinationId, sources, progress, isChannel);
+      if (
+        this.notifications &&
+        (await this.notifications.windowClosed(destinationId, isChannel))
+      ) {
+        await this.deliverAsNotification(
+          this.notifications,
+          destinationId,
+          sources,
+          progress,
+        );
+      } else {
+        await this.deliverSources(destinationId, sources, progress, isChannel);
+      }
       wideLog.set({ delivered_count: progress.delivered });
       // `redelivered` only ever appeared on the error branches, so a duplicate
       // that succeeded — the exact case the at-least-once queue produces — was
@@ -470,7 +540,13 @@ export class OutboundConsumer {
       if (progress.delivered === 0) {
         wideLog.warning("outbound_text_rendered_empty", { envelope_id: id });
         wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
-        this.settle(channel, () => channel.nack(msg, false, false));
+        this.deadLetter(channel, msg, {
+          kind: DELIVERY_FAILURE_KIND.ENVELOPE_REJECTED,
+          reason: "rendered_empty",
+          destination_id: destinationId,
+          is_channel: isChannel,
+          envelope_id: id,
+        });
         return;
       }
       this.settle(channel, () => channel.ack(msg));
@@ -489,8 +565,43 @@ export class OutboundConsumer {
         progress.delivered === 0 &&
         !msg.fields.redelivered;
       wideLog.set({ requeued: requeue });
-      this.settle(channel, () => channel.nack(msg, false, requeue));
+      if (requeue) {
+        this.settle(channel, () => channel.nack(msg, false, true));
+        return;
+      }
+      this.deadLetter(channel, msg, {
+        kind: DELIVERY_FAILURE_KIND.SEND_FAILED,
+        reason,
+        error_message: describeErrorForAlert(err),
+        destination_id: destinationId,
+        is_channel: isChannel,
+        envelope_id: id,
+      });
     }
+  }
+
+  /**
+   * Outside the platform's messaging window: the whole envelope as ONE template
+   * message, bubbles joined, so a multi-bubble reply is one notification and
+   * never several out of order.
+   */
+  private async deliverAsNotification(
+    notifications: OutboundNotifications,
+    destinationId: string,
+    sources: string[],
+    progress: { delivered: number },
+  ): Promise<void> {
+    const text = sources
+      .flatMap((source) => segmentIntoBubbles(source))
+      .map((bubble) => renderForPlatform(bubble, this.platform).trim())
+      .filter(Boolean)
+      .join("\n\n");
+    wideLog.set({ outbound_mode: "notification" });
+    if (!text) return;
+    await sendHonouringRateLimit(() =>
+      notifications.deliver(destinationId, text),
+    );
+    progress.delivered = 1;
   }
 
   /**
@@ -557,15 +668,33 @@ function resolveSources(
   return [];
 }
 
-/** The destination a message is delivered to, read before validation so it can pick a lane. */
-function laneKey(msg: ConsumeMessage): string {
+/** Matches the API's limit on a reported destination_id. */
+const DESTINATION_ID_MAX_LENGTH = 256;
+
+/**
+ * The destination a message is delivered to, read without validating the envelope:
+ * only a plausible id, since it is reported as-is and a bad one would fail the report.
+ */
+function destinationOf(msg: ConsumeMessage): string | undefined {
   try {
     const parsed: unknown = JSON.parse(msg.content.toString());
     if (parsed && typeof parsed === "object" && "destination_id" in parsed) {
-      return String(parsed.destination_id);
+      const id = parsed.destination_id;
+      if (
+        typeof id === "string" &&
+        id.length > 0 &&
+        id.length <= DESTINATION_ID_MAX_LENGTH
+      ) {
+        return id;
+      }
     }
   } catch {
-    // Unparseable: handle() dead-letters it; no chat order to keep.
+    // Unparseable: handle() dead-letters it; there is no destination to read.
   }
-  return UNREADABLE_LANE;
+  return undefined;
+}
+
+/** The lane a message waits in, picked before validation. */
+function laneKey(msg: ConsumeMessage): string {
+  return destinationOf(msg) ?? UNREADABLE_LANE;
 }

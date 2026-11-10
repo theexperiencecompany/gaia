@@ -21,11 +21,12 @@ from app.agents.llm.lane import AgentRole
 from app.config.settings import settings
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
-    PLAYBOOK_REPLAYED_CALLS_KEY,
     WORKFLOW_LOCK_CONTEXT_KEY,
 )
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.llm import DEV_MODEL_OPTIONS
+from app.constants.notifications import ProactiveMessageClass
+from app.constants.trigger_gates import QUIET_HOURS_CONTEXT_KEY
 from app.constants.workflows import WorkflowDelivery
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -41,6 +42,7 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
@@ -59,8 +61,8 @@ from shared.py.analytics.context import (
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
-def _make_request(**overrides) -> MessageRequestWithHistory:
-    defaults = {
+def _make_request(**overrides: object) -> MessageRequestWithHistory:
+    defaults: dict[str, object] = {
         "message": "Hello agent",
         "messages": [{"role": "user", "content": "Hello agent"}],
         "fileIds": [],
@@ -72,17 +74,17 @@ def _make_request(**overrides) -> MessageRequestWithHistory:
         "replyToMessage": None,
     }
     defaults.update(overrides)
-    return MessageRequestWithHistory(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
+    return MessageRequestWithHistory.model_validate(defaults)
 
 
-def _make_user(**overrides) -> AuthenticatedUser:
+def _make_user(**overrides: object) -> AuthenticatedUser:
     defaults: dict[str, object] = {
         "user_id": USER_ID,
         "email": "test@example.com",
         "name": "Test User",
     }
     defaults.update(overrides)
-    return AuthenticatedUser(**defaults)
+    return AuthenticatedUser.model_validate(defaults)
 
 
 FAKE_HISTORY = [
@@ -105,6 +107,19 @@ FAKE_CONFIG = {
 # ---------------------------------------------------------------------------
 # Patches common to most tests
 # ---------------------------------------------------------------------------
+
+
+#: What a root run with no presence of its own reads from the store.
+READ_PRESENCE: PresenceSnapshot = {"captured_at": 1_700_000_000, "last_seen": {"telegram": 1}}
+
+
+@pytest.fixture(autouse=True)
+def _read_presence():
+    """Keep the root's presence read off real Redis; tests that care assert on this mock."""
+    with patch(
+        "app.agents.core.agent.read_presence", new_callable=AsyncMock, return_value=READ_PRESENCE
+    ) as read:
+        yield read
 
 
 @pytest.fixture(autouse=True)
@@ -200,6 +215,38 @@ class TestCoreAgentLogic:
         assert kwargs["scope"].user_name == "Alice"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("history", "expected"),
+        [
+            ([{"role": "user", "content": "Hello agent"}], True),
+            (
+                [
+                    {"role": "assistant", "content": "Your reminder: stretch"},
+                    {"role": "user", "content": "Hello agent"},
+                ],
+                False,
+            ),
+        ],
+        ids=["first_turn", "later_turn"],
+    )
+    async def test_scope_marks_whether_the_turn_opens_the_thread(self, history, expected):
+        patches = _common_patches()
+        with (
+            patches["construct"] as mock_construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(messages=history),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        assert mock_construct.call_args.kwargs["scope"].opens_thread is expected
+
+    @pytest.mark.asyncio
     async def test_the_users_onboarding_data_reaches_build_agent_config(self):
         """Onboarding_preferences(user.get("onboarding")) is real, unmocked code in _core_agent_logic — this proves the pair it derives actually lands on the build_agent_config call (so the executor and every subagent it hands off to can inherit it), not just that extraction doesn't crash."""
         user = _make_user(
@@ -241,6 +288,52 @@ class TestCoreAgentLogic:
             )
 
         assert mock_build_config.call_args.kwargs["turn"].workflow_id == "wf-brief"
+
+    async def test_a_run_without_presence_reads_it_once_for_comms_and_the_config(
+        self, _read_presence: AsyncMock
+    ) -> None:
+        """A workflow fire arrives with none: one read feeds the comms context and every child."""
+        patches = _common_patches()
+        with (
+            patches["construct"] as construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context={"execution_mode": "background"}),
+            )
+
+        _read_presence.assert_awaited_once_with(USER_ID)
+        assert construct.call_args.kwargs["scope"].presence == READ_PRESENCE
+        assert build_config.call_args.kwargs["turn"].presence == READ_PRESENCE
+
+    async def test_the_presence_an_interactive_turn_captured_wins_without_a_read(
+        self, _read_presence: AsyncMock
+    ) -> None:
+        captured: PresenceSnapshot = {"captured_at": 5, "last_seen": {"web": 4}}
+        patches = _common_patches()
+        with (
+            patches["construct"] as construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(source="web", presence=captured),
+            )
+
+        _read_presence.assert_not_awaited()
+        assert construct.call_args.kwargs["scope"].presence == captured
+        assert build_config.call_args.kwargs["turn"].presence == captured
 
     @pytest.mark.asyncio
     async def test_interactive_chat_carries_no_workflow_on_the_turn(self):
@@ -356,6 +449,38 @@ class TestCallAgent:
 
         assert len(chunks) == 2
         assert "DONE" in chunks[-1]
+
+    @pytest.mark.asyncio
+    async def test_a_turn_in_a_todos_chat_reaches_the_model_bound_to_that_todo(self):
+        """Regression: call_agent rebuilt the options field by field and dropped the todo binding."""
+
+        async def _fake_stream(*args, **kwargs):
+            yield "data: [DONE]\n\n"
+
+        patches = _common_patches()
+        with (
+            patches["construct"] as construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as build_config,
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_streaming",
+                return_value=_fake_stream(),
+            ),
+        ):
+            await _drain(
+                call_agent(
+                    request=_make_request(),
+                    conversation_id="conv-1",
+                    user=_make_user(),
+                    options=AgentRunOptions(source="web", active_todo_id="todo-7"),
+                )
+            )
+
+        assert construct.call_args.kwargs["scope"].active_todo_id == "todo-7"
+        assert build_config.call_args.kwargs["turn"].active_todo_id == "todo-7"
+        assert build_config.call_args.kwargs["turn"].source == "web"
 
     @pytest.mark.asyncio
     async def test_stream_id_added_to_config(self):
@@ -837,7 +962,41 @@ class TestCallAgentSilent:
                 user=_make_user(),
             )
 
-        assert result == SilentRunResult(message="Hello!", tool_data={"tool": "data"})
+        assert (result.message, result.tool_data) == ("Hello!", {"tool": "data"})
+        assert UUID(result.stream_id).version == 4
+
+    @pytest.mark.asyncio
+    async def test_a_caller_that_seeded_the_run_record_names_the_run_it_keys(self):
+        """The workflow worker opens a heal run's record before the run starts, so the run must be that one."""
+        config = _fresh_config()
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", []),
+            ),
+        ):
+            result = await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                stream_id="seeded-run",
+            )
+
+        assert (config["configurable"]["stream_id"], result.stream_id) == (
+            "seeded-run",
+            "seeded-run",
+        )
 
     @pytest.mark.asyncio
     async def test_the_detached_executors_tool_data_is_folded_onto_the_message(self):
@@ -878,7 +1037,9 @@ class TestCallAgentSilent:
         execute.assert_awaited_once_with(FAKE_GRAPH, FAKE_STATE, config)
         wait.assert_awaited_once_with(stream_id, timeout=BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
         drain.assert_called_once_with(stream_id)
-        assert result == SilentRunResult(message="Hello!", tool_data=[comms_entry, executor_entry])
+        assert result == SilentRunResult(
+            message="Hello!", tool_data=[comms_entry, executor_entry], stream_id=stream_id
+        )
 
     @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):
@@ -1304,6 +1465,7 @@ class TestTheLaneTheRunResolves:
                 user_request=request.message,
                 user_preferences=None,
                 writing_style=None,
+                presence=READ_PRESENCE,
             ),
             "tracing": AgentTracing(
                 usage_metadata_callback=callback,
@@ -1338,6 +1500,33 @@ class TestTheLaneTheRunResolves:
 
         assert build_config.call_args.kwargs["turn"].execution_mode == "background"
         assert build_config.call_args.kwargs["turn"].active_todo_id == "todo-9"
+
+    @pytest.mark.asyncio
+    async def test_a_turn_in_a_tracked_todos_chat_is_bound_to_that_todo(self):
+        """The user is talking about this todo, live: bound to it, still interactive."""
+        patches = _common_patches()
+        with (
+            patches["construct"] as construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=_fresh_config(),
+            ) as build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(active_todo_id="todo-7"),
+            )
+
+        turn = build_config.call_args.kwargs["turn"]
+        assert (turn.active_todo_id, turn.execution_mode) == ("todo-7", "interactive")
+        # The comms context names the todo too, not just the config the executor inherits.
+        assert construct.call_args.kwargs["scope"].active_todo_id == "todo-7"
 
 
 class TestTheBackgroundRunsStandingAuthorization:
@@ -1539,9 +1728,9 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_id": "wf-1",
             "workflow_title": "Daily digest",
             "workflow_delivery": WorkflowDelivery.SILENT,
+            QUIET_HOURS_CONTEXT_KEY: {"kind": "bypass", "reason": "the service is down"},
             PLAYBOOK_FALLBACK_CONTEXT_KEY: "hash_drift at step 3",
             WORKFLOW_LOCK_CONTEXT_KEY: ":fire-task-1",
-            PLAYBOOK_REPLAYED_CALLS_KEY: [{"tool_name": "GMAIL_FETCH_EMAILS"}],
         }
         patches = _common_patches()
         with (
@@ -1573,12 +1762,13 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_id": "wf-1",
             "workflow_title": "Daily digest",
             "workflow_delivery": WorkflowDelivery.SILENT,
+            # Let through quiet hours as urgent: its result is not held at delivery.
+            "workflow_message_class": ProactiveMessageClass.URGENT,
             "playbook_fallback": "hash_drift at step 3",
             # The claim its fire took on this conversation, carried through so
             # call_executor adopts it instead of queueing the run behind it. Read
             # under a different spelling and every workflow run goes to a dead inbox.
             "executor_lock_reservation": ":fire-task-1",
-            "playbook_replayed_calls": [{"tool_name": "GMAIL_FETCH_EMAILS"}],
         }
 
     @pytest.mark.asyncio
@@ -1615,9 +1805,9 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_id": "wf-1",
             "workflow_title": "",
             "workflow_delivery": WorkflowDelivery.NOW,
+            "workflow_message_class": ProactiveMessageClass.ROUTINE,
             "playbook_fallback": None,
             "executor_lock_reservation": None,
-            "playbook_replayed_calls": None,
         }
 
     @pytest.mark.asyncio

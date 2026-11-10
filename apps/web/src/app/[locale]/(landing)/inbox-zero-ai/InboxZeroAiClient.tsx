@@ -277,21 +277,22 @@ export default function InboxZeroAiClient() {
         />
         <ol className="w-full max-w-3xl space-y-4 text-left">
           {triageSteps.map((step, index) => (
-            <AnimatedCard
-              key={step.name}
-              delay={index * 0.1}
-              className="flex items-start gap-4 rounded-2xl bg-zinc-800/60 p-5"
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-400/10 text-sm font-semibold text-violet-400">
-                {index + 1}
-              </span>
-              <div>
-                <p className="mb-1 font-semibold text-white">{step.name}</p>
-                <p className="text-sm leading-relaxed text-zinc-400">
-                  {step.text}
-                </p>
-              </div>
-            </AnimatedCard>
+            <li key={step.name}>
+              <AnimatedCard
+                delay={index * 0.1}
+                className="flex items-start gap-4 rounded-2xl bg-zinc-800/60 p-5"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-400/10 text-sm font-semibold text-violet-400">
+                  {index + 1}
+                </span>
+                <div>
+                  <p className="mb-1 font-semibold text-white">{step.name}</p>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    {step.text}
+                  </p>
+                </div>
+              </AnimatedCard>
+            </li>
           ))}
         </ol>
       </section>
@@ -381,7 +382,7 @@ export default function InboxZeroAiClient() {
             href: "/open-source-ai-assistant",
             label: "Open Source & Self-Host",
             description:
-              "Run GAIA on your own servers with full privacy. MIT licensed and free to self-host.",
+              "Run GAIA on your own servers with full privacy. Source-available and free to self-host for personal use.",
           },
         ]}
       />

@@ -21,13 +21,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.context.assemble import AssembledContext
-from app.agents.context.slots import ONBOARDING_MARKER
 from app.agents.context.tiers import AgentTier
 from app.agents.core.messages import (
     MessageAttachments,
     MessageScope,
     construct_langchain_messages,
 )
+from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -35,6 +35,7 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
+from app.models.workflow_models import WorkflowStep
 
 SYSTEM_MSG = SystemMessage(content="System prompt here")
 DYNAMIC_MSG = SystemMessage(
@@ -54,6 +55,7 @@ class _Returns(NamedTuple):
     tool_msg: str = "Tool selection"
     reply_msg: str = "Reply context\n\noriginal"
     files_str: str = ""
+    server_files: tuple[FileData, ...] = ()
 
 
 def _patches(returns: _Returns = _Returns()) -> dict[str, Any]:
@@ -90,6 +92,11 @@ def _patches(returns: _Returns = _Returns()) -> dict[str, Any]:
         "format_files": patch(
             "app.agents.core.messages.format_files_list",
             return_value=returns.files_str,
+        ),
+        "get_uploads": patch(
+            "app.agents.core.messages.FileService.get_uploads",
+            new_callable=AsyncMock,
+            return_value=list(returns.server_files),
         ),
     }
 
@@ -259,7 +266,7 @@ class TestContentPriority:
             id="wf-1",
             title="Test WF",
             description="desc",
-            steps=[{"title": "s1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="s1", category="c1", description="d1")],
         )
         p = _patches(_Returns(workflow_msg="WORKFLOW OUTPUT"))
         with (
@@ -286,8 +293,8 @@ class TestContentPriority:
             id="e-1",
             summary="Meeting",
             description="Team sync",
-            start={"dateTime": "2025-01-01T10:00:00Z"},
-            end={"dateTime": "2025-01-01T11:00:00Z"},
+            start=GoogleCalendarEventDateTime(dateTime="2025-01-01T10:00:00Z"),
+            end=GoogleCalendarEventDateTime(dateTime="2025-01-01T11:00:00Z"),
         )
         p = _patches(_Returns(calendar_msg="CALENDAR OUTPUT"))
         with (
@@ -384,13 +391,17 @@ class TestUserContentExtraction:
     async def test_a_files_only_turn_becomes_a_message_listing_the_files(self) -> None:
         """A user may send files with no text; the turn is the files, not an error."""
         files = [FileData(fileId="f1", url="https://example.com/f1", filename="report.pdf")]
-        p = _patches()
-        with p["create_system"], p["build_dynamic"]:
+        p = _patches(
+            _Returns(
+                files_str="[Uploaded files]\n- report.pdf",
+                server_files=tuple(files),
+            )
+        )
+        with p["create_system"], p["build_dynamic"], p["get_uploads"], p["format_files"]:
             result = await construct_langchain_messages(
                 query="",
-                attachments=MessageAttachments(
-                    files_data=files, currently_uploaded_file_ids=["f1"]
-                ),
+                scope=MessageScope(user_id="uid-1"),
+                attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
             )
 
         human = result[2]
@@ -400,15 +411,12 @@ class TestUserContentExtraction:
 
     @pytest.mark.asyncio
     async def test_files_the_turn_did_not_upload_do_not_stand_in_for_a_message(self) -> None:
-        files = [FileData(fileId="f1", url="https://example.com/f1", filename="report.pdf")]
         p = _patches()
         with p["create_system"], p["build_dynamic"]:
             with pytest.raises(ValueError, match="No human message"):
                 await construct_langchain_messages(
                     query="",
-                    attachments=MessageAttachments(
-                        files_data=files, currently_uploaded_file_ids=[]
-                    ),
+                    attachments=MessageAttachments(currently_uploaded_file_ids=[]),
                 )
 
 
@@ -450,55 +458,58 @@ class TestReplyContext:
 class TestFileContext:
     @pytest.mark.asyncio
     async def test_files_appended_to_content(self) -> None:
-        files_data = [
+        files = [
             FileData(fileId="f1", url="https://example.com/f1", filename="test.txt"),
         ]
-        p = _patches(_Returns(files_str="Uploaded Files:\n- Name: test.txt Id: f1"))
+        p = _patches(
+            _Returns(
+                files_str="Uploaded Files:\n- Name: test.txt Id: f1",
+                server_files=tuple(files),
+            )
+        )
         with (
             p["create_system"],
             p["build_dynamic"],
+            p["get_uploads"],
             p["format_files"] as mock_files,
         ):
             result = await construct_langchain_messages(
                 query="check this",
-                attachments=MessageAttachments(
-                    files_data=files_data, currently_uploaded_file_ids=["f1"]
-                ),
+                scope=MessageScope(user_id="uid-1"),
+                attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
             )
 
         # Comms suppresses the processing guide — that lane can't act on files.
-        mock_files.assert_called_once_with(files_data, ["f1"], None, include_processing_guide=False)
+        mock_files.assert_called_once_with(files, ["f1"], None, include_processing_guide=False)
         assert result[-2].content == "check this\n\nUploaded Files:\n- Name: test.txt Id: f1"
 
     @pytest.mark.asyncio
-    async def test_stored_descriptions_reach_the_files_list_for_this_conversation(self) -> None:
-        files_data = [
-            FileData(fileId="f1", url="https://example.com/f1", filename="a.txt"),
-            FileData(fileId="f2", url="https://example.com/f2", filename="b.txt"),
+    async def test_server_metadata_reaches_the_files_list_for_this_conversation(self) -> None:
+        server_files = [
+            FileData(
+                fileId="f1",
+                url="https://example.com/f1",
+                filename="a.txt",
+                description="a quarterly report",
+                sandbox_path="/workspace/sessions/conv-1/user-uploaded/a.txt",
+            ),
         ]
-        p = _patches(_Returns(files_str="FILES"))
+        p = _patches(_Returns(files_str="FILES", server_files=tuple(server_files)))
         with (
             p["create_system"],
             p["build_dynamic"],
+            p["get_uploads"] as get_uploads,
             p["format_files"] as mock_files,
-            patch(
-                "app.agents.core.messages.FileService.get_descriptions",
-                new_callable=AsyncMock,
-                return_value={"f1": "a quarterly report"},
-            ) as get_descriptions,
         ):
             await construct_langchain_messages(
                 query="check these",
                 scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-                attachments=MessageAttachments(
-                    files_data=files_data, currently_uploaded_file_ids=["f1", "f2"]
-                ),
+                attachments=MessageAttachments(currently_uploaded_file_ids=["f1", "f2"]),
             )
 
-        get_descriptions.assert_awaited_once_with(["f1", "f2"], "uid-1")
-        assert [f.description for f in files_data] == ["a quarterly report", None]
+        get_uploads.assert_awaited_once_with(["f1", "f2"], "uid-1", "conv-1")
         mock_files.assert_called_once_with(
-            files_data, ["f1", "f2"], "conv-1", include_processing_guide=False
+            server_files, ["f1", "f2"], "conv-1", include_processing_guide=False
         )
 
     @pytest.mark.asyncio
@@ -555,7 +566,7 @@ class TestTriggerContext:
             id="wf-1",
             title="Email WF",
             description="desc",
-            steps=[{"title": "s1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="s1", category="c1", description="d1")],
         )
         trigger = {"type": "gmail", "email_data": {"sender": "a@b.com"}}
         p = _patches()
@@ -575,45 +586,25 @@ class TestTriggerContext:
         assert call_args[0][2] == trigger
 
 
-class TestTheOnboardingProbeSeesTheUsersActualMessage:
-    """The probe must receive the user's LATEST message, trimmed — not the first, not the assistant's reply."""
-
-    @staticmethod
-    def _probe() -> Any:
-        return patch(
-            "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-            new_callable=AsyncMock,
-            return_value=None,
-        )
+class TestTheCommsContextKnowsWhereTheTurnIs:
+    """The new-user guidance reads the seeded thread and the mail facts off these two fields."""
 
     @pytest.mark.asyncio
-    async def test_it_receives_the_latest_user_message_trimmed(self) -> None:
+    async def test_the_conversation_and_the_onboarding_record_reach_the_sections(self) -> None:
+        onboarding = OnboardingSubdocument(completed=True, user_bio="Runs ops at a bakery.")
         p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
+        with p["create_system"], p["build_dynamic"] as assemble, p["format_files"]:
             await construct_langchain_messages(
-                query="  what can you do?  ",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
+                query="hi",
+                scope=MessageScope(
+                    user_id="uid-1",
+                    conversation_id="conv-1",
+                    user_dict=AuthenticatedUser(user_id="uid-1", onboarding=onboarding),
+                ),
             )
 
-        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="what can you do?")
-
-    @pytest.mark.asyncio
-    async def test_a_tool_only_turn_carries_no_user_message(self) -> None:
-        p = _patches()
-        with (
-            p["create_system"],
-            p["build_dynamic"],
-            p["format_files"],
-            p["format_tool"],
-            self._probe() as probe,
-        ):
-            await construct_langchain_messages(
-                query="",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-                attachments=MessageAttachments(selected_tool="gmail"),
-            )
-
-        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="")
+        ctx = assemble.await_args.args[0]
+        assert (ctx.conversation_id, ctx.onboarding) == ("conv-1", onboarding)
 
     @pytest.mark.asyncio
     async def test_a_turn_with_neither_a_message_nor_a_tool_is_refused(self) -> None:
@@ -627,94 +618,6 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
                     query="",
                     scope=MessageScope(user_id="uid-1"),
                 )
-
-    @pytest.mark.asyncio
-    async def test_a_turn_outside_a_conversation_is_never_probed(self) -> None:
-        """Without a conversation there is no onboarding state to read, so the Mongo probe would query nothing."""
-        p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
-            await construct_langchain_messages(
-                query="hi",
-                scope=MessageScope(user_id="uid-1"),
-            )
-
-        probe.assert_not_awaited()
-
-
-class TestAnOnboardingTurnKeepsBothItsPromptAndTheUsersIdentity:
-    """The onboarding prompt now has its own slot, arriving beside identity rather than instead of it.
-
-    It used to be stamped memory_message — the stable block's own marker — and
-    emitted after it, so the single-occupant slot kept the prompt and dropped
-    the identity block, losing name, timezone, preferences and integrations.
-    """
-
-    PROMPT = "Welcome! Ask about their inbox."
-
-    def _probe(self) -> Any:
-        return patch(
-            "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-            new_callable=AsyncMock,
-            return_value=self.PROMPT,
-        )
-
-    async def _run(self) -> list[Any]:
-        p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe():
-            return await construct_langchain_messages(
-                query="hi",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-            )
-
-    @pytest.mark.asyncio
-    async def test_the_prompt_reaches_the_model_verbatim(self) -> None:
-        onboarding = [
-            m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
-        ]
-
-        assert len(onboarding) == 1
-        assert onboarding[0].content == self.PROMPT
-
-    @pytest.mark.asyncio
-    async def test_the_identity_block_is_still_there(self) -> None:
-        assert DYNAMIC_MSG in await self._run()
-
-    @pytest.mark.asyncio
-    async def test_the_prompt_does_not_claim_the_stable_blocks_slot(self) -> None:
-        """Carrying memory_message is what made it evict identity; the pruning node keeps only the latest holder."""
-        (onboarding,) = [
-            m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
-        ]
-
-        assert onboarding.additional_kwargs.get("memory_message") is not True
-        assert onboarding.additional_kwargs.get("dynamic_context") is not True
-
-    @pytest.mark.asyncio
-    async def test_it_follows_the_stable_block_rather_than_replacing_it(self) -> None:
-        result = await self._run()
-        onboarding = next(m for m in result if m.additional_kwargs.get(ONBOARDING_MARKER) is True)
-
-        assert result.index(onboarding) > result.index(DYNAMIC_MSG)
-
-    @pytest.mark.asyncio
-    async def test_an_ordinary_turn_carries_no_onboarding_message(self) -> None:
-        p = _patches()
-        with (
-            p["create_system"],
-            p["build_dynamic"],
-            p["format_files"],
-            patch(
-                "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-        ):
-            result = await construct_langchain_messages(
-                query="hi",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-            )
-
-        assert not [m for m in result if m.additional_kwargs.get(ONBOARDING_MARKER)]
 
 
 class TestTheClockIsRenderedInTheUsersTimezone:

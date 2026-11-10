@@ -1,7 +1,7 @@
 """Webpage fetch failover behaviour and the httpx engine's HTML->markdown parse."""
 
 from collections.abc import Callable
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -15,10 +15,13 @@ from app.utils.crawl4ai_utils import CrawlBatchParams
 from app.utils.exceptions import FetchError
 from app.utils.webpage_fetch import (
     Crawl4aiFetcher,
+    FirecrawlFetcher,
     HttpxFetcher,
     WebpageFetcher,
     _fetch_first_success,
+    default_fetchers,
 )
+from tests.helpers import InMemoryCredentialStore
 
 
 def _resolver(host_to_ip: dict[str, str]) -> Callable[[str, int], list[str]]:
@@ -82,6 +85,36 @@ async def test_raises_when_all_engines_fail() -> None:
 
     with pytest.raises(FetchError):
         await _fetch_first_success("https://example.com", fetchers=fetchers)
+
+
+# ---------------------------------------------------------------------------
+# Firecrawl credential resolution (store → env)
+# ---------------------------------------------------------------------------
+
+
+async def test_default_fetchers_resolve_the_firecrawl_key_from_the_store(
+    selfhost_credential_store: InMemoryCredentialStore,
+) -> None:
+    """Reach the engine with the store-configured key; the runtime reads no env var directly."""
+    selfhost_credential_store.save("firecrawl", api_key="fc-stored")  # pragma: allowlist secret
+    fetchers = await default_fetchers()
+
+    firecrawl = next(f for f in fetchers if isinstance(f, FirecrawlFetcher))
+    assert firecrawl.is_configured() is True
+    with patch("app.utils.webpage_fetch.FirecrawlApp", return_value=MagicMock()) as mock_app:
+        firecrawl._get_client()
+    assert mock_app.call_args.kwargs["api_key"] == "fc-stored"
+
+
+async def test_unconfigured_firecrawl_engine_is_skipped_not_broken() -> None:
+    # resolve() returning None means neither store nor env has a key; the
+    # chain must record the engine as unconfigured and move on to the backup.
+    firecrawl = FirecrawlFetcher(None)
+    assert firecrawl.is_configured() is False
+
+    backup = FakeFetcher("backup", result="ok")
+    result = await _fetch_first_success("https://example.com", fetchers=[firecrawl, backup])
+    assert result == "ok"
 
 
 async def test_crawl4ai_fetcher_returns_content_and_passes_exact_batch_params() -> None:

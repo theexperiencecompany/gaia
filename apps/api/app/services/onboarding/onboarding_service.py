@@ -1,4 +1,4 @@
-from typing import Any
+from datetime import UTC, datetime
 
 from fastapi import HTTPException
 
@@ -11,11 +11,13 @@ from app.memory.engine import memory_engine
 from app.models.onboarding_models import OnboardingResetCounts
 from app.models.user_models import (
     BioStatus,
+    OnboardingAnswers,
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
     OnboardingStatusResponse,
     OnboardingSubdocument,
+    OnboardingUser,
     UserDocument,
 )
 from app.services.analytics_service import capture, identify_user
@@ -34,30 +36,40 @@ from app.services.onboarding.intelligence_job import abort_active_intelligence_j
 from app.services.platform_link_service import linked_platforms_of
 from app.services.system_workflows.provisioner import provision_briefing_workflows
 from app.services.workflow.service import WorkflowService
+from app.utils.auth_utils import with_local_onboarding_completed
 from app.utils.background_tasks import spawn_background_task
 from app.utils.seeding_utils import seed_first_conversation
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.onboarding import OnboardingCompleted
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.catalog.onboarding import (
+    OnboardingCompleted,
+    OnboardingPhaseCompleted,
+    OnboardingStarted,
+    OnboardingStep,
+)
 from shared.py.wide_events import log
 
 
-def _serialize_user(user: UserDocument) -> dict[str, Any]:
-    """Return the JSON-serializable user dict the onboarding endpoints return.
+def _onboarding_status(user: UserDocument) -> OnboardingStatusResponse:
+    """Return the client-facing onboarding state of user, with self-host's completion synthesized."""
+    onboarding_data = with_local_onboarding_completed(user.onboarding or OnboardingSubdocument())
+    return OnboardingStatusResponse(
+        completed=onboarding_data.completed,
+        completed_at=onboarding_data.completed_at,
+        phase=onboarding_data.phase,
+        preferences=onboarding_data.preferences or OnboardingPreferences.model_validate({}),
+        first_message_conversation_id=onboarding_data.first_message_conversation_id,
+        getting_started_conversation_id=onboarding_data.getting_started_conversation_id,
+    )
 
-    dict[str, Any] is deliberate: UserDocument is extra="allow" so this can spread
-    undeclared fields into the response the frontend's UserInfo reads — narrowing
-    it would silently drop production fields (Type Safety item 14).
-    """
-    data = user.model_dump(mode="json", exclude={"id"})
-    data["_id"] = user.id
-    data["user_id"] = user.id
-    return data
+
+def _onboarding_user(user: UserDocument) -> OnboardingUser:
+    return OnboardingUser(user_id=user.id, onboarding=_onboarding_status(user))
 
 
 async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
-) -> dict[str, Any]:
+) -> OnboardingUser:
     """Complete a user's onboarding submission.
 
     Idempotent under concurrent retries via an atomic onboarding.completed gate.
@@ -73,7 +85,6 @@ async def complete_onboarding(
             needs=onboarding_data.needs,
             other_need=onboarding_data.other_need,
             response_style="casual",  # Default response style
-            custom_instructions=None,
         )
 
         # Atomic gate inside the repository: only the request that creates the
@@ -95,7 +106,11 @@ async def complete_onboarding(
                 user_id=user_id,
                 phase=existing.onboarding.phase if existing.onboarding else None,
             )
-            return _serialize_user(existing)
+            return _onboarding_user(existing)
+
+        # The wizard submits only once the chosen platform's link has landed
+        # (or the user went on without one), so the link is on this document.
+        connected_platform = next(iter(linked_platforms_of(updated_user)), None)
 
         # Once per user: the atomic gate above returned early on a retried POST.
         # The typed need is free text (only presence travels); profession goes
@@ -106,6 +121,7 @@ async def complete_onboarding(
             OnboardingCompleted(
                 needs=sorted(need.value for need in onboarding_data.needs),
                 has_other_need=bool(onboarding_data.other_need),
+                linked_platform=connected_platform,
             ),
         )
         identify_user(
@@ -116,10 +132,13 @@ async def complete_onboarding(
         # timezone and quiet hours the completion write just stored.
         await provision_briefing_workflows(user_id)
 
-        seeded_user = await _seed_first_conversation(updated_user, preferences)
+        stored = updated_user.onboarding.preferences if updated_user.onboarding else None
+        seeded_user = await _seed_first_conversation(
+            updated_user, stored or preferences, connected_platform
+        )
 
         log.info(f"{LogTag.ONBOARDING} Onboarding completed successfully for user", user_id=user_id)
-        return _serialize_user(seeded_user or updated_user)
+        return _onboarding_user(seeded_user or updated_user)
 
     except HTTPException:
         raise
@@ -134,8 +153,31 @@ async def complete_onboarding(
         raise HTTPException(status_code=500, detail="Failed to complete onboarding") from e
 
 
+async def complete_onboarding_on_platform_link(user_id: str) -> None:
+    """Finish onboarding when the platform step's bot link lands, so a user who never returns to the web tab is not left unfinished.
+
+    Only for a user already past the paid reveal with stored answers; the web
+    submit that may follow replays into the same atomic completion gate.
+    """
+    user = await user_repository.get(user_id)
+    onboarding = user.onboarding if user else None
+    if onboarding is None or onboarding.completed:
+        return
+    if OnboardingStep.PAID_REVEAL_SEEN not in onboarding.steps_reached:
+        return
+    stored = onboarding.preferences
+    if stored is None or not stored.profession:
+        return
+    await complete_onboarding(
+        user_id,
+        OnboardingRequest(
+            profession=stored.profession, needs=stored.needs or [], other_need=stored.other_need
+        ),
+    )
+
+
 async def _seed_first_conversation(
-    user: UserDocument, preferences: OnboardingPreferences
+    user: UserDocument, preferences: OnboardingPreferences, connected_platform: str | None
 ) -> UserDocument | None:
     """Seed GAIA's opening conversation and stamp its id on the onboarding subdoc.
 
@@ -146,10 +188,6 @@ async def _seed_first_conversation(
     """
     user_id = user.id
     try:
-        # Linking happens on the platform-pick step, before the answers are
-        # submitted, so the link is already on the document we just wrote. A user
-        # who skipped that step simply gets no platform line.
-        connected_platform = next(iter(linked_platforms_of(user)), None)
         composed = compose_first_conversation(preferences, connected_platform)
         # Almost always a Redis read: the PATCH that preceded this fired the
         # model call in the background. A miss costs at most two seconds; a
@@ -179,16 +217,7 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
 
-        onboarding_data = user.onboarding or OnboardingSubdocument()
-
-        return OnboardingStatusResponse(
-            completed=onboarding_data.completed,
-            completed_at=onboarding_data.completed_at,
-            phase=onboarding_data.phase,
-            preferences=onboarding_data.preferences or OnboardingPreferences.model_validate({}),
-            first_message_conversation_id=onboarding_data.first_message_conversation_id,
-            getting_started_conversation_id=onboarding_data.getting_started_conversation_id,
-        )
+        return _onboarding_status(user)
 
     except HTTPException:
         raise
@@ -205,7 +234,7 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
 
 async def update_onboarding_preferences(
     user_id: str, preferences: OnboardingPreferences
-) -> dict[str, Any]:
+) -> OnboardingUser:
     """Update a user's onboarding preferences (for the settings page)."""
     try:
         # PATCH semantics: the repository writes only fields the caller set, each
@@ -215,32 +244,12 @@ async def update_onboarding_preferences(
         if updated_user is None:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Detached on purpose: the wizard's next screens are the latency budget
-        # for the model call the seeded conversation needs. Failures stay inside
-        # the task; a settings save must never fail over a nicety.
-        try:
-            spawn_background_task(
-                prewarm_first_question(
-                    user_id,
-                    preferences,
-                    next(iter(linked_platforms_of(updated_user)), None),
-                ),
-                name=f"prewarm_first_question:{user_id}",
-            )
-        except Exception as e:
-            log.warning(
-                f"{LogTag.ONBOARDING} could not start the first question prewarm",
-                user_id=user_id,
-                error=str(e)[:200],
-                error_type=type(e).__name__,
-            )
-
         log.info(
             f"{LogTag.ONBOARDING} Onboarding preferences updated successfully for user",
             user_id=user_id,
         )
 
-        return _serialize_user(updated_user)
+        return _onboarding_user(updated_user)
 
     except HTTPException:
         raise
@@ -253,6 +262,64 @@ async def update_onboarding_preferences(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to update preferences") from e
+
+
+async def save_onboarding_answers(user_id: str, answers: OnboardingAnswers) -> OnboardingUser:
+    """Store the wizard's Q1 and Q2 the moment they are confirmed, and stamp questions_answered.
+
+    Written long before completion: the platform-link opener and the seeded
+    first conversation are composed from these stored answers.
+    """
+    preferences = OnboardingPreferences(
+        profession=answers.profession,
+        needs=answers.needs,
+        other_need=answers.other_need,
+        language=answers.language,
+    )
+    updated_user = await user_repository.update_onboarding_preferences(user_id, preferences)
+    if updated_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Detached on purpose: the wizard's next screens are the latency budget for
+    # the model call the seeded conversation needs; a miss only costs the chips.
+    spawn_background_task(
+        prewarm_first_question(
+            user_id, preferences, next(iter(linked_platforms_of(updated_user)), None)
+        ),
+        name=f"prewarm_first_question:{user_id}",
+    )
+    await record_onboarding_step(user_id, OnboardingStep.QUESTIONS_ANSWERED, answers=answers)
+    return _onboarding_user(updated_user)
+
+
+async def record_onboarding_step(
+    user_id: str, step: OnboardingStep, *, answers: OnboardingAnswers | None = None
+) -> bool:
+    """Stamp step on the user and report it once per onboarding run; False when already stamped."""
+    reached_at = datetime.now(UTC)
+    if not await user_repository.record_onboarding_step(user_id, step, reached_at):
+        return False
+    capture(
+        UserId(user_id),
+        _step_event(step, answers),
+        Dedupe(key=f"onboarding_step:{step.value}", occurred_at=reached_at),
+    )
+    return True
+
+
+def _step_event(
+    step: OnboardingStep, answers: OnboardingAnswers | None
+) -> OnboardingStarted | OnboardingPhaseCompleted:
+    if step is OnboardingStep.STARTED:
+        return OnboardingStarted()
+    if answers is None:
+        return OnboardingPhaseCompleted(phase=step)
+    # The typed need is free text, so only its presence travels.
+    return OnboardingPhaseCompleted(
+        phase=step,
+        needs=sorted(need.value for need in answers.needs),
+        has_other_need=bool(answers.other_need),
+    )
 
 
 async def reset_onboarding(

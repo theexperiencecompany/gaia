@@ -7,13 +7,20 @@ methods directly with a seam mocked to actually raise, proving the surrounding
 except block is reached and swallows the failure instead of propagating it.
 """
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 import json
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+from redis.asyncio.client import PubSub
 import time_machine
 
-from app.services.chat.artifact_forwarder import ArtifactForwarder, _parse_artifact_message
+from app.services.artifact_events import ArtifactEventMessage
+from app.services.chat.artifact_forwarder import (
+    ArtifactForwarder,
+    _parse_artifact_message,
+    _PubSubMessage,
+)
 from app.utils.artifact_utils import build_artifact_full_entry, build_artifact_ref_entry
 
 
@@ -26,22 +33,23 @@ def _forwarder(*, bot_message_id: str | None = "bot-msg-1") -> ArtifactForwarder
     )
 
 
-class _FakePubSub:
-    """Yields pre-built pub/sub messages through .listen()."""
+def _pubsub(messages: list[_PubSubMessage]) -> PubSub:
+    """Return a PubSub whose .listen() yields pre-built messages."""
 
-    def __init__(self, messages: list[dict[str, str]]) -> None:
-        self._messages = messages
-
-    async def listen(self):
-        for message in self._messages:
+    async def listen() -> AsyncIterator[_PubSubMessage]:
+        for message in messages:
             yield message
 
+    pubsub = MagicMock(spec=PubSub)
+    pubsub.listen = listen
+    return pubsub
 
-def _artifact_message(conversation_id: str, path: str) -> dict[str, str]:
-    return {
-        "type": "message",
-        "data": f'{{"session_id": "{conversation_id}", "path": "{path}", "event": "upsert"}}',
-    }
+
+def _artifact_message(conversation_id: str, path: str) -> _PubSubMessage:
+    return _PubSubMessage(
+        type="message",
+        data=f'{{"session_id": "{conversation_id}", "path": "{path}", "event": "upsert"}}',
+    )
 
 
 class TestParseArtifactMessage:
@@ -53,7 +61,7 @@ class TestParseArtifactMessage:
         }
 
     def test_a_non_message_frame_is_ignored_even_with_a_valid_payload(self) -> None:
-        frame = {**_artifact_message("conv-1", "a.md"), "type": "pmessage"}
+        frame = _PubSubMessage(type="pmessage", data=_artifact_message("conv-1", "a.md")["data"])
         assert _parse_artifact_message(frame, "conv-1") is None
 
     def test_another_conversations_event_is_ignored(self) -> None:
@@ -64,9 +72,11 @@ class TestUpsertPipeline:
     @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
     async def test_a_changed_file_is_streamed_registered_and_persisted(self) -> None:
         forwarder = _forwarder()
-        payload = {
+        payload: ArtifactEventMessage = {
             "event": "upsert",
             "session_id": "conv-1",
+            "user_id": "user-1",
+            "ts": 1.0,
             "path": "a.md",
             "size_bytes": 3,
             "mtime": 2.0,
@@ -103,7 +113,7 @@ class TestConsumeSurvivesOneBadEvent:
     async def test_bad_event_is_logged_and_the_loop_continues(self) -> None:
         """One event whose handling raises must not stop the next event from being handled."""
         forwarder = _forwarder()
-        pubsub = _FakePubSub(
+        pubsub = _pubsub(
             [
                 _artifact_message("conv-1", "bad.txt"),
                 _artifact_message("conv-1", "good.txt"),
@@ -167,8 +177,11 @@ class TestBotDeliveryCarriesTheLink:
             bot_message_id="bot-msg-1",
             source="telegram",
         )
-        payload = {
+        payload: ArtifactEventMessage = {
             "event": "upsert",
+            "session_id": "conv-1",
+            "user_id": "user-1",
+            "ts": 1.0,
             "path": "report.html",
             "content_type": "text/html",
             "short_url": "https://heygaia.link/abcdefghijk",

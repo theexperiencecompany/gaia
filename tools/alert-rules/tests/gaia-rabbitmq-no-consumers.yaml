@@ -24,7 +24,7 @@ tests:
             exp_annotations:
               description: >-
                 Every bot consumer has died or lost its connection while the API kept publishing, so all four platforms have stopped delivering. Messages are persistent with a dead-letter exchange, so the backlog drains on its own once a consumer reconnects — but until then users are getting silence. Check whether the bot containers are running before restarting anything.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-rabbitmq-no-consumers
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-rabbitmq-no-consumers
               __dashboardUid__: gaia-rabbitmq
               __panelId__: '7'
 

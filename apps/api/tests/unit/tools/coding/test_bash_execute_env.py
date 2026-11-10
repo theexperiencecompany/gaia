@@ -13,6 +13,8 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from e2b import TimeoutException
+from langchain_core.runnables import RunnableConfig
 import pytest
 from tests.helpers import captured_wide_event
 
@@ -26,10 +28,11 @@ from app.constants.sandbox import (
 )
 from app.services.sandbox import SandboxAcquisitionError
 from app.services.storage import ArtifactInfo, FsOps, fs_timer
+from shared.py.wide_events import log
 
 ARTIFACTS_MODULE = "app.agents.tools.coding._artifacts"
 MODULE = "app.agents.tools.coding.bash_tool"
-CONFIG = {"configurable": {"user_id": "u1", "stream_id": "s1"}}
+CONFIG = RunnableConfig(configurable={"user_id": "u1", "stream_id": "s1"})
 EXECUTE_ENV = {
     "GAIA_EXECUTE_URL": "https://api.test/api/v1/sandbox/execute",
     "GAIA_EXECUTE_TOKEN": "tok-1",
@@ -56,7 +59,7 @@ def _code_mode_on(mint: MagicMock) -> ExitStack:
     return stack
 
 
-def _acquire(sbx: AsyncMock) -> MagicMock:
+def _acquire(sbx: object) -> MagicMock:
     manager = MagicMock()
     manager.__aenter__ = AsyncMock(return_value=sbx)
     manager.__aexit__ = AsyncMock(return_value=False)
@@ -203,7 +206,7 @@ class TestBashExecuteEnv:
         assert mint.call_args.kwargs["command_timeout_seconds"] == BASH_MAX_TIMEOUT_SECONDS
 
 
-SESSION_CONFIG = {"configurable": {"user_id": "u1", "conversation_id": "conv1"}}
+SESSION_CONFIG = RunnableConfig(configurable={"user_id": "u1", "conversation_id": "conv1"})
 
 
 def _streaming_run(stdout: str = "out", stderr: str = "err") -> AsyncMock:
@@ -589,3 +592,30 @@ class TestBashFailures:
         reason = "failed to start background command (stderr: )"
         assert out == f"Error: {reason}"
         assert emit.call_args_list[-1] == _error_event(run_id, reason, "conv1")
+
+    @pytest.mark.parametrize(
+        "timeout_error",
+        [TimeoutException("context deadline exceeded"), TimeoutError()],
+    )
+    async def test_a_command_past_its_deadline_names_the_limit_and_the_background_option(
+        self, timeout_error: Exception
+    ) -> None:
+        sbx = _sbx()
+        sbx.commands.run = AsyncMock(side_effect=timeout_error)
+        acquire = _acquire(sbx)
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=acquire),
+            patch(f"{MODULE}.safe_emit") as emit,
+            patch.object(log, "error") as log_error,
+        ):
+            out = await bash.ainvoke({"command": "sleep 999", "timeout": 45}, config=SESSION_CONFIG)
+        run_id = emit.call_args_list[0].args[0]["bash_data"]["id"]
+        reason = (
+            f"command did not finish within 45s; rerun with a larger timeout "
+            f"(max {BASH_MAX_TIMEOUT_SECONDS}) or with background=True"
+        )
+        assert out == f"Error: {reason}"
+        assert emit.call_args_list[-1] == _error_event(run_id, reason, "conv1")
+        log_error.assert_not_called()
+        # The sandbox still sees the failure, so its liveness probe can evict a dead one.
+        assert acquire.return_value.__aexit__.await_args.args[0] is not None

@@ -23,6 +23,10 @@ import type {
   UserSubscriptionStatus,
 } from "@/features/pricing/api/pricingApi";
 
+vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
+  useDeployment: () => ({ bills: true }),
+}));
+
 vi.mock("@/lib/analytics", () => ({
   track: vi.fn(),
 }));
@@ -562,10 +566,17 @@ describe("marketing price strings", () => {
       {
         "@type": "Offer",
         "availability": "https://schema.org/InStock",
-        "description": "GAIA is free to use with open-source self-hosting option",
-        "name": "Free Plan",
-        "price": "0",
+        "description": "Hosted GAIA, billed monthly. Self-hosting is free for non-commercial use.",
+        "name": "GAIA Pro",
+        "price": "30",
         "priceCurrency": "USD",
+        "priceSpecification": {
+          "@type": "UnitPriceSpecification",
+          "price": "30",
+          "priceCurrency": "USD",
+          "unitCode": "MON",
+        },
+        "url": "https://heygaia.io/pricing",
       }
     `);
   });

@@ -3,39 +3,49 @@
 from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
+from shared.py.analytics.catalog.delivery import ProactiveDestinationBasis, ProactiveDestinationKind
 from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
     "WorkflowActivated",
     "WorkflowCardNavigate",
     "WorkflowCreated",
+    "WorkflowCreatedOrigin",
     "WorkflowDeactivated",
     "WorkflowDeleted",
     "WorkflowExecuted",
     "WorkflowPublished",
+    "WorkflowResultDelivered",
+    "WorkflowResultDeliveryOutcome",
     "WorkflowStepsRegenerated",
     "WorkflowUnpublished",
     "WorkflowUpdated",
 ]
 
 
+#: user_created: saved from the editor or a confirmed chat draft; chat_agent: the agent created
+#: it straight from a chat request; todo_converted: the user turned a todo into a workflow;
+#: todo_requested: the user pressed Generate Workflow on a todo.
+WorkflowCreatedOrigin = Literal["user_created", "chat_agent", "todo_converted", "todo_requested"]
+
+
 class WorkflowCreated(ServerEvent):
-    """A workflow was created, by the user or generated for a todo."""
+    """A workflow was created, by the user or generated for a todo; origin says which."""
 
     event: ClassVar[str] = "workflow:created"
     previous_names: ClassVar[tuple[str, ...]] = ("workflows:created",)
     budget_per_user_day: ClassVar[int] = 200
 
+    origin: WorkflowCreatedOrigin
     workflow_id: Identifier | None = None
     trigger_type: Identifier | None = None
     steps_count: int | None = None
     generated_immediately: bool | None = None
-    from_todo: bool | None = None
+    #: Kept for the Feature Adoption insight that splits on it; origin is the finer split.
     is_todo_workflow: bool | None = None
     #: The delivery mode chosen at creation: by the user in the modal, or by the
     #: agent from the user's words.
     delivery: Literal["now", "brief", "silent"] | None = None
-    created_by_agent: bool | None = None
 
 
 class WorkflowExecuted(ServerEvent):
@@ -47,6 +57,24 @@ class WorkflowExecuted(ServerEvent):
 
     workflow_id: Identifier | None = None
     trigger_type: Identifier | None = None
+
+
+#: delivered: it reached its place (the GAIA app keeps the saved result); undelivered: the
+#: chat-app send failed; lookup_failed: no place could be resolved, so only the saved result exists.
+WorkflowResultDeliveryOutcome = Literal["delivered", "undelivered", "lookup_failed"]
+
+
+class WorkflowResultDelivered(ServerEvent):
+    """A workflow run's result was routed to the user's one proactive place; platform is the chat app that got it."""
+
+    event: ClassVar[str] = "workflow:result_delivered"
+    budget_per_user_day: ClassVar[int] = 200
+
+    workflow_id: Identifier | None = None
+    outcome: WorkflowResultDeliveryOutcome
+    destination: ProactiveDestinationKind | None = None
+    destination_basis: ProactiveDestinationBasis | None = None
+    platform: Identifier | None = None
 
 
 class WorkflowActivated(ServerEvent):

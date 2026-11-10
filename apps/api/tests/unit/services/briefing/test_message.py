@@ -5,8 +5,8 @@ from typing import Any
 import pytest
 
 from app.constants.general import NEW_MESSAGE_BREAKER
-from app.models.briefing_models import BriefingPayload
-from app.services.briefing.message import brief_message, chat_text, preheader
+from app.models.briefing_models import BriefingPayload, NewStamp
+from app.services.briefing.message import brief_message, chat_text, delivered_message, preheader
 from app.utils.message_breaks import split_message_bubbles
 
 _LINK = "https://heygaia.io/brief/brief_1"
@@ -77,3 +77,22 @@ class TestBriefMessage:
 
     def test_a_written_message_is_returned_as_written(self) -> None:
         assert brief_message(_payload()) == _MESSAGE
+
+
+@pytest.mark.unit
+class TestNewStampLine:
+    _STAMP = NewStamp(city="Lima", country="Peru", collected=3, total=85)
+
+    def test_a_new_stamp_follows_the_message_on_every_surface(self) -> None:
+        payload = _payload(new_stamp=self._STAMP)
+
+        delivered = delivered_message(payload)
+
+        assert delivered.startswith(f"{_MESSAGE}\n\nNew stamp: Lima, Peru. 3 of 85 collected. ")
+        assert delivered.endswith("/settings/postmarks)")
+        assert delivered in chat_text(payload, _LINK)
+        assert preheader(payload).endswith("3 of 85 collected. See your stamps")
+        assert brief_message(payload) == _MESSAGE
+
+    def test_without_a_new_stamp_the_message_is_delivered_as_written(self) -> None:
+        assert delivered_message(_payload()) == _MESSAGE

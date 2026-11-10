@@ -21,9 +21,9 @@ interface ToolMetadata {
 }
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Tools We Love",
+  title: "Tools We Love: The Open-Source Projects Behind GAIA",
   description:
-    "Discover the incredible open-source projects and tools that power GAIA. We celebrate the amazing communities and maintainers behind these projects that make building great software possible.",
+    "The open-source projects and tools GAIA is built on, and the communities and maintainers behind them. A thank-you list from the GAIA team.",
   path: "/thanks",
   keywords: [
     "open source",

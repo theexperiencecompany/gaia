@@ -5,14 +5,9 @@ preference model, the stored defaults and the enum from drifting apart, which is
 how imessage and email ended up honoured by delivery while invisible to the API.
 """
 
-from pydantic import ValidationError
-import pytest
-
 from app.constants.notifications import (
     DEFAULT_CHANNEL_PREFERENCES,
     DEFAULT_CHAT_CHANNEL_PRIORITY,
-    DEFAULT_QUIET_HOURS_END,
-    DEFAULT_QUIET_HOURS_START,
     EXTERNAL_NOTIFICATION_CHANNELS,
     USER_CONFIGURABLE_CHANNELS,
     NotificationChannel,
@@ -20,8 +15,6 @@ from app.constants.notifications import (
 from app.models.notification.notification_models import (
     ChannelPreferences,
     ChannelPreferencesUpdate,
-    QuietHours,
-    default_quiet_hours,
 )
 
 CONFIGURABLE_CHANNEL_VALUES = {channel.value for channel in USER_CONFIGURABLE_CHANNELS}
@@ -51,22 +44,3 @@ class TestChannelSetIsSingleSourced:
         assert set(DEFAULT_CHAT_CHANNEL_PRIORITY) == {
             channel.value for channel in EXTERNAL_NOTIFICATION_CHANNELS
         }
-
-
-class TestQuietHours:
-    def test_the_default_window_is_the_named_constant(self) -> None:
-        assert default_quiet_hours() == QuietHours(
-            start_hour=DEFAULT_QUIET_HOURS_START, end_hour=DEFAULT_QUIET_HOURS_END
-        )
-
-    def test_an_empty_window_is_rejected(self) -> None:
-        with pytest.raises(ValidationError) as excinfo:
-            QuietHours(start_hour=9, end_hour=9)
-        assert [error["msg"] for error in excinfo.value.errors()] == [
-            "Value error, Quiet hours must start and end at different hours"
-        ]
-
-    @pytest.mark.parametrize("hour", [-1, 24])
-    def test_an_hour_outside_the_clock_is_rejected(self, hour: int) -> None:
-        with pytest.raises(ValidationError):
-            QuietHours(start_hour=hour, end_hour=8)

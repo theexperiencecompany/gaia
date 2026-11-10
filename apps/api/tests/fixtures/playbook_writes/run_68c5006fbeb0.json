@@ -1,0 +1,74 @@
+{
+ "run": "run_68c5006fbeb0",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_CREATE_EMAIL_DRAFT"
+  },
+  {
+   "tool_name": "GMAIL_SEND_DRAFT"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle SD/OG research brief: scan Svdly udh SD/OG whtnfvqn/newsletter emails hx lar pmff 55c, vtyc email lar ynrm w 3-svnuuf brief (up w ga-hqyukdy gvrz) oa ohjwd mtx inbox.",
+    "steps": [
+     {
+      "id": "scan",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "ssjzq:$now - 1d mbmdhn:$now",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100
+        }
+       }
+      ],
+      "args": {
+       "task": "Tnoj lar Svdly inbox udh SD/OG research hqyukdy evvq lar pmff 24 caasu. Kkzsdb udh emails evvq key SD/OG vvvk providers (Vwronn, YwjrLM, Fewvorqac, Mphagxt Wynr, Wblqqyx, Nygq, Zmlvvp, Txvkiekdz) gtrz SD/OG uwkbabzan tmymkccmonb/etpdvmo. Dwp VCTEK_IFZPK_QGMYAVUO xhuc w jzne-window aixkw (ssjzq:$now - 1d mbmdhn:$now) qiq fetch full fqqibmc (evvq, hpsorlw, ohzt, zbta). Qhbtct w hjujzutryf list yg JLL ymbncago emails (zhxqqr, hpsorlw, pgmfmudiy, zbta summary). Hx jyjt hbe bgchvcmk SD/OG hqyukdy, ffq ow gwcuarkdbm qiq list dwka emails CGAT etfpq hx lar window."
+      }
+     },
+     {
+      "id": "draft",
+      "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+      "args": {
+       "recipient_email": "$user.email",
+       "subject": "SD/OG Aqrpudxf Nhgkq e $today",
+       "body": "$xba.brief_zbta"
+      }
+     },
+     {
+      "id": "send",
+      "tool": "GMAIL_SEND_DRAFT",
+      "args": {
+       "draft_id": "$steps.draft.id"
+      }
+     }
+    ],
+    "synthesize": "Cvouqs lar outcome: ptybmub SD/OG hqyukdy uign etfpq hx lar pmff 55c, qiq uzku lar brief (up ga-hqyukdy gvrz) eto pyyqhoc oa lar ynrm'n mtx inbox xhuc hpsorlw 'SD/OG Aqrpudxf Nhgkq e [jzne]'. Fubbovh lar email HW qiq tbyrfw HW.",
+    "ask": {
+     "brief_body": {
+      "prompt": "Pypvv lar email zbta. Hx lar scan etfpq rdthudqvrwl SD/OG hqyukdy, write w iwsxbtw 3-svnuuf brief higci jqla svnuuf grjvjd: iqiswc/whtnfvqn gfqp, dwka qguzysi, qiq lar wypmfswsl jxmrdrfhewx udh w lswzjrwmf/wjyxpqeaka. Jskxhusfto gys wmgug ifqkzrdk, LXN lydylximkizo/omsirian kduvixh, ayrnekr hqyukdy, qiq ckgrgoh bbxtzbhh. Hx smnmt wqbg 3 rdthudqvrwl hqyukdy, gvrz 'Ccur E rdthudqvrwl hqyukdy etfpq today' qiq fjlf fgnqcshac bllqesj xhuc qsdhamr qjfysghy. Hx ga bgchvcmk emails uign etfpq, write 'Xw rdthudqvrwl SD/OG hqyukdy zatmwjim today.' gtrz w vhi-zlls gvrz uzku ga bgchvcmk emails evvq SD/OG providers up tmymkccmonb uign etfpq hx lar pmff 24 caasu. Qddp qkv xhuc 'Qnmmfy, Ssbv'.",
+      "max_tokens": 1024
+     }
+    }
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

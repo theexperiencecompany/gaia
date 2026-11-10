@@ -9,6 +9,7 @@
  * replay needs a code change to enable. This pins that init carries an
  * explicit `session_recording` block.
  */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const initMock = vi.fn();
@@ -58,12 +59,29 @@ describe("instrumentation-client posthog init", () => {
     expect(config["session_recording"]).toEqual({});
   });
 
+  it("masks the customer's email and payment ids a Dodo return URL carries", async () => {
+    await runIdleLoader();
+    await vi.waitFor(() => {
+      expect(initMock).toHaveBeenCalledTimes(1);
+    });
+
+    const [, config] = initMock.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    // The SDK masks these at the source: events, person properties and the
+    // flags request alike. A before_send hook would miss the last two.
+    expect(config["mask_personal_data_properties"]).toBe(true);
+    expect(config["custom_personal_data_properties"]).toEqual(
+      expect.arrayContaining(["email", "payment_id", "subscription_id"]),
+    );
+  });
+
   it("drops a legacy email identity before posthog's initial pageview", async () => {
     vi.doMock("@/lib/analytics", async () => {
       await new Promise((resolve) => setTimeout(resolve, CHUNK_LOAD_MS));
       return {
-        resetLegacyEmailIdentity: () => sdkOrder.push("reset_legacy_identity"),
-        flushPendingAnalytics: () => sdkOrder.push("flush"),
+        connectPostHog: () => sdkOrder.push("connect_posthog"),
       };
     });
     initMock.mockImplementation(() => {
@@ -75,10 +93,10 @@ describe("instrumentation-client posthog init", () => {
 
     await runIdleLoader();
     await vi.waitFor(() => {
-      expect(sdkOrder).toHaveLength(3);
+      expect(sdkOrder).toHaveLength(2);
     });
 
-    expect(sdkOrder.indexOf("reset_legacy_identity")).toBeLessThan(
+    expect(sdkOrder.indexOf("connect_posthog")).toBeLessThan(
       sdkOrder.indexOf("initial_pageview"),
     );
   });

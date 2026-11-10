@@ -353,7 +353,7 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
 
 async def _store(user: UserDocument, payload: BriefingPayload, kind: BriefingKind) -> None:
     """Render and host the edition, then upsert the brief as delivered in-app and by email."""
-    image = await host_edition_image(payload, render_key=uuid4().hex)
+    image = await host_edition_image(payload, owner_id=user.id, render_key=uuid4().hex)
     await briefing_repository.upsert_briefing(
         user.id,
         payload.date,

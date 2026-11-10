@@ -38,7 +38,9 @@ from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
+from pydantic import TypeAdapter
 
+from app.agents.core.outcome_review import leaves_a_todo_asleep, outcome_unbacked
 from app.agents.llm.client import (
     LLMInvokeOptions,
     _is_openai_wire,
@@ -56,11 +58,12 @@ from app.agents.middleware.completion import (
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
+from app.agents.tools.invocation import invoke_tool, invoke_tool_sync
 from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
 )
-from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
@@ -77,12 +80,7 @@ from app.override.langgraph_bigtool.agent_config import (
     RetrieveToolsResponse,
     ToolRetrievalConfig,
 )
-from app.override.langgraph_bigtool.dynamic_tool_node import (
-    DynamicToolNode,
-    ToolNodeOptions,
-    format_tool_error,
-    hil_and_timeout_guarded_tool_call,
-)
+from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 from app.override.langgraph_bigtool.hooks import (
     HookType,
     changed_hook_keys,
@@ -99,6 +97,7 @@ from app.override.langgraph_bigtool.utils import (
     pop_pruned_tombstones,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
+from app.utils.message_breaks import normalize_message_breaks
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
@@ -106,6 +105,8 @@ from shared.py.wide_events import log
 #: tool. langgraph derives this same name from reject_unbound_tools itself,
 #: so the router, both edges, and the registration below must all agree.
 REJECT_UNBOUND_TOOLS_NODE = "reject_unbound_tools"
+
+_RETRIEVE_TOOLS_RESPONSE: TypeAdapter[RetrieveToolsResponse] = TypeAdapter(RetrieveToolsResponse)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -301,11 +302,11 @@ def _tools_to_bind(deps: _AgentDeps, state: State) -> list[BaseTool]:
 
 
 def _finalize_model_response(response: AIMessage, agent_name: str) -> AIMessage:
+    if agent_name == "comms_agent" and isinstance(response.content, str):
+        response.content = normalize_message_breaks(response.content)
+
     if not response.tool_calls and not response.content:
         response.content = "Empty response from model."
-
-    if isinstance(response.content, str) and agent_name == "comms_agent":
-        response.content = response.content + NEW_MESSAGE_BREAKER
 
     return response
 
@@ -317,7 +318,7 @@ def _log_message_preview(state: State) -> None:
         for msg in recent_messages:
             role = msg.__class__.__name__
             # The text's length, not the raw content's: inline media is megabytes of base64.
-            content = extract_text_content(getattr(msg, "content", ""))
+            content = extract_text_content(msg.content)
             preview.append({"role": role, "content_length": len(content)})
         log.info("acall_model message preview", preview=preview)
     except Exception as e:
@@ -480,27 +481,23 @@ def _retrieval_call_kwargs(
 
 
 def _resolve_retrieval_result(
-    result: RetrieveToolsResponse,
+    output: object,
     tool_call_id: str,
     response_texts: dict[str, str],
 ) -> tuple[list[str], list[str]]:
-    """Split a retrieve_tools result into ids to bind vs ids to echo, recording response text by call id."""
-    # Handle both RetrieveToolsResult dict and plain list
-    if isinstance(result, dict):
-        tools_to_bind = [
-            tool_id for tool_id in result.get("tools_to_bind", []) if isinstance(tool_id, str)
-        ]
-        response = [tool_id for tool_id in result.get("response", []) if isinstance(tool_id, str)]
-        rendered = result.get("response_text")
-        if isinstance(rendered, str) and rendered:
-            response_texts[tool_call_id] = rendered
+    """Split a retrieve_tools output into ids to bind vs ids to echo, recording response text by call id.
+
+    Raises pydantic.ValidationError when the output is not a RetrieveToolsResponse.
+    """
+    result = _RETRIEVE_TOOLS_RESPONSE.validate_python(output)
+    if isinstance(result, list):
+        tools_to_bind = response = result
     else:
-        tools_to_bind = [
-            tool_id
-            for tool_id in (result if isinstance(result, list) else [])
-            if isinstance(tool_id, str)
-        ]
-        response = tools_to_bind
+        tools_to_bind = result["tools_to_bind"]
+        response = result["response"]
+        rendered = result.get("response_text")
+        if rendered:
+            response_texts[tool_call_id] = rendered
 
     # Filter out subagent: prefixed tools from binding
     filtered_bind = [tool_id for tool_id in tools_to_bind if not tool_id.startswith("subagent:")]
@@ -554,7 +551,9 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
         response_texts: dict[str, str] = {}
         for tool_call in tool_calls:
             kwargs = _retrieval_call_kwargs(tool_call, deps.store_arg, store, config)
-            result = deps.retrieve_tools.invoke(kwargs, config=config)
+            result = invoke_tool_sync(
+                deps.retrieve_tools, kwargs, config, call_args=tool_call["args"]
+            )
             filtered_bind, response = _resolve_retrieval_result(
                 result, tool_call["id"], response_texts
             )
@@ -587,7 +586,9 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
             if tool_call_id is None:
                 raise ValueError("retrieve_tools call carries no id to answer it under")
             kwargs = _retrieval_call_kwargs(request.tool_call, deps.store_arg, store, config)
-            result = await retrieve_tools.ainvoke(kwargs, config=config)
+            result = await invoke_tool(
+                retrieve_tools, kwargs, config, call_args=request.tool_call["args"]
+            )
             response_texts: dict[str, str] = {}
             filtered_bind, response = _resolve_retrieval_result(
                 result, tool_call_id, response_texts
@@ -670,15 +671,16 @@ async def areject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: Base
 
 
 def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:  # noqa: ARG001 -- langgraph injects store positionally at graph-execution time
+    """Answer each finish_task call with its result as the tool message."""
     messages = []
     for call in tool_calls:
-        args = call.get("args", {}) if isinstance(call, dict) else {}
-        result = args.get("result")
-        content = str(result) if result is not None else "Task completed."
+        result = call["args"].get("result")
+        # No result is no answer: the run reports it as unconfirmed, never as done.
+        content = str(result) if result is not None else ""
         messages.append(
             ToolMessage(
                 content=content,
-                tool_call_id=call.get("id", ""),
+                tool_call_id=call["id"] or "",
                 name=FINISH_TASK_NAME,
             )
         )
@@ -688,6 +690,12 @@ def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State: 
 async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
     """Async twin of finish_task_node for the async graph path."""
     return finish_task_node(tool_calls, store=store)
+
+
+def _owes_backed_outcome(state: State) -> bool:
+    # A finish_task whose declared outcome this run's tool calls do not back,
+    # while the completion nudge budget lasts. ask and blocked need no work.
+    return completion_nudges_spent(state) < MAX_COMPLETION_NUDGES and outcome_unbacked(state)
 
 
 def _owes_playbook_decision(state: State) -> bool:
@@ -711,12 +719,16 @@ def _after_finish_task(exit_node: str) -> Callable[[State], str]:
         if _owes_playbook_decision(state):
             log.info(f"{LogTag.AGENT} finish_task without a playbook decision; nudging once")
             return "nudge_continue"
+        if _owes_backed_outcome(state):
+            log.info(f"{LogTag.AGENT} finish_task outcome not backed by this run; nudging once")
+            return "nudge_continue"
         return exit_node
 
     return route
 
 
 def nudge_continue_node(state: State) -> State:
+    """Append the nudge that sends the agent back to work before it may finish."""
     # The message IS the tally: completion_nudges_spent / playbook_nudges_spent
     # count these back out of the current delegation, so there is no counter
     # to keep in sync.
@@ -757,9 +769,7 @@ def _get_bound_tool_names(deps: _AgentDeps, state: State) -> set[str]:
         if tool_id in deps.tool_registry:
             bound.add(deps.tool_registry[tool_id].name)
     # Middleware tools (e.g. spawn_subagent, plan_tasks)
-    for tool in deps.middleware_tools:
-        if hasattr(tool, "name"):
-            bound.add(tool.name)
+    bound.update(tool.name for tool in deps.middleware_tools)
     return bound
 
 
@@ -821,7 +831,7 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
                 _owes_playbook_decision(state)
                 or (
                     completion_nudges_spent(state) < MAX_COMPLETION_NUDGES
-                    and work_looks_unfinished(state)
+                    and (work_looks_unfinished(state) or leaves_a_todo_asleep(state))
                 )
             ):
                 return "nudge_continue"
@@ -862,13 +872,6 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
 def _tool_node(deps: _AgentDeps) -> DynamicToolNode:
     return DynamicToolNode(
         deps.tool_registry,
-        ToolNodeOptions(
-            # Parent-routed tools used to re-raise non-validation exceptions and
-            # crash the run; every failure now becomes an error ToolMessage,
-            # matching the middleware path (timeout wrapper exempts orchestration tools).
-            handle_tool_errors=format_tool_error,
-            awrap_tool_call=hil_and_timeout_guarded_tool_call,
-        ),
         middleware_executor=deps.middleware_executor,
         middleware_tools=deps.middleware_tools,
     )
@@ -927,8 +930,8 @@ def create_agent(
     """Create a ReAct agent that starts with only a tool-retrieval tool and binds retrieved tools as it runs.
 
     hooks_config.require_finish_to_end nudges-and-loops instead of ending early
-    on an unfinished plain-text reply; agent_config.agent_name == "comms_agent"
-    appends NEW_MESSAGE_BREAKER to string replies.
+    on an unfinished plain-text reply; comms_agent string replies are stored
+    with their message breaks normalized.
     """
     tools = tools_config or ToolRetrievalConfig()
     hooks = hooks_config or HookConfig()
@@ -959,8 +962,8 @@ def create_agent(
     builder.add_node("agent", _model_node(deps))
     if retrieve_tools is not None:
         # Tool retrieval is a pure read, so the default retry predicate is
-        # safe. The tools node has NO retry policy: its exceptions come from
-        # parent-routed tools, and retrying could double-execute a side effect.
+        # safe. The tools node has NO retry policy: an exception it raises comes
+        # from a tool that may have run, and retrying could double-execute a side effect.
         builder.add_node(
             "select_tools",
             _select_tools_node(deps),

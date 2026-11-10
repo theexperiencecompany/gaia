@@ -13,6 +13,7 @@ import {
   getFileTypeExtension,
   getFormattedFileType,
 } from "@/features/chat/components/files/fileTypeConfig";
+import { isPrivateBlobUrl } from "@/lib/privateBlob";
 import { cn } from "@/lib/utils";
 
 const ICON_SIZE = 36;
@@ -72,6 +73,7 @@ export function FileCard({
       ) : thumbnailUrl ? (
         <Image
           src={thumbnailUrl}
+          unoptimized={isPrivateBlobUrl(thumbnailUrl)}
           alt={name}
           width={ICON_SIZE}
           height={ICON_SIZE}

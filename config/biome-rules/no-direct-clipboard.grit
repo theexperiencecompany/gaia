@@ -1,0 +1,12 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// navigator.clipboard is undefined on a plain-http origin (a self-hosted server's IP),
+// so a direct call silently fails there. Copy through copyText / copyFieldText instead.
+`navigator.clipboard` as $node where {
+  register_diagnostic(
+    span = $node,
+    message = "Do not use navigator.clipboard directly. Use copyText or copyFieldText from `@/lib/clipboard`, which fall back when the Clipboard API is missing.",
+    severity = "error"
+  )
+}

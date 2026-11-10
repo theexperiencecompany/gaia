@@ -6,19 +6,18 @@ graph but never executes a tool. So the tier that owns every tool in the product
 a tool call changes anything.
 
 The assertions here are about the graph's own contracts: which tools it will run without
-retrieval, what a tool call does to the todos channel, what the pre-model hook puts in front of
-the model, and how the run terminates.
+retrieval, what a tool call does to the todos channel, how the plan reaches the model, and how the
+run terminates.
 """
 
 from __future__ import annotations
 
-from itertools import takewhile
 import logging
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.errors import GraphRecursionError
 import pytest
@@ -27,6 +26,7 @@ from app.agents.core.background import executor_runner
 from app.agents.core.background.executor_runner import _ExecutorResult
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext
+from app.agents.prompts import todo_prompts
 from app.agents.tools import manual_tool
 from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE
 from app.constants.general import EXECUTOR_INTEGRATION_ID
@@ -43,6 +43,7 @@ from tests.e2e._harness.graph_run import (
     NUDGE_NODE,
     REJECT_NODE,
     TOOLS_NODE,
+    ToolCall,
     call,
     executor_graph,
     run_graph,
@@ -52,7 +53,7 @@ from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
 pytestmark = pytest.mark.e2e
 
 
-def plan(*contents: str, plan_id: str = "p1") -> dict[str, Any]:
+def plan(*contents: str, plan_id: str = "p1") -> ToolCall:
     return call("plan_tasks", {"tasks": [{"content": c} for c in contents]}, plan_id)
 
 
@@ -68,7 +69,7 @@ class TestToolsBoundFromTurnOne:
         [
             "plan_tasks",
             "update_tasks",
-            "handoff",
+            "activate_integration",
             "retrieve_tools",
             # spawn_subagent comes from the middleware stack, not
             # initial_tool_ids — it is the only tool here that depends on
@@ -209,60 +210,51 @@ class TestTodoState:
         assert run.ran("plan_tasks")
 
 
-class TestTodoContextHook:
-    """The todo pre-model hook re-renders the plan into a SystemMessage before every model call.
+class TestPlanInTheThread:
+    """The plan reaches the model as plan_tasks' result, written into the thread where it was set.
 
-    The rewrite is ephemeral — it never lands in the checkpoint — so the only
-    place to observe it is the prompt the model actually received.
+    No hook re-renders it before each call: the next request extends the
+    previous one, so the plan the model reads is the ToolMessage itself.
     """
 
     async def test_the_current_plan_is_put_in_front_of_the_model(self):
         async with executor_graph([plan("draft the email", "send it"), "Planned."]) as graph:
             run = await run_graph(graph, "email my landlord")
 
-        context = run.system_slot("todo_context")
-        assert context is not None, "the model was never shown the todo context"
-        assert "draft the email" in context
-        assert "send it" in context
+        [plan_result] = [
+            m for m in run.last_prompt() if isinstance(m, ToolMessage) and m.name == "plan_tasks"
+        ]
+        assert "draft the email" in str(plan_result.content)
+        assert "send it" in str(plan_result.content)
 
     async def test_the_plan_appears_exactly_once(self):
-        """The hook must strip its previous copy before inserting a fresh one."""
+        """Only the tool result states the plan; no system message carries a second copy."""
+        async with executor_graph([plan("one task", "two task"), "Planned."]) as graph:
+            run = await run_graph(graph, "do two things")
+
+        holding = [m for m in run.last_prompt() if "two task" in str(m.content)]
+        assert len(holding) == 1
+        assert isinstance(holding[0], ToolMessage)
+
+    async def test_the_next_call_extends_the_previous_request(self):
+        """Every provider's prompt cache reuses only a shared prefix, so nothing may be rewritten ahead of the new tail."""
         async with executor_graph([plan("one", "two"), "Planned."]) as graph:
             run = await run_graph(graph, "do two things")
 
-        slots = [
-            m
-            for m in run.last_prompt()
-            if isinstance(m, SystemMessage) and m.additional_kwargs.get("todo_context")
-        ]
-        assert len(slots) == 1
-
-    async def test_a_run_with_no_plan_still_gets_the_todo_instructions(self):
-        """The slot is always injected, even before anything has been planned."""
-        async with executor_graph(["Nothing to plan."]) as graph:
-            run = await run_graph(graph, "just answer me")
-
-        assert run.system_slot("todo_context") is not None
-
-    async def test_the_context_leads_the_prompt_so_gemini_keeps_it(self):
-        """Gemini only promotes the leading contiguous SystemMessage run into system_instruction."""
-        async with executor_graph([plan("one", "two"), "Planned."]) as graph:
-            run = await run_graph(graph, "do two things")
-
-        prompt = run.last_prompt()
-        leading = list(takewhile(lambda m: isinstance(m, SystemMessage), prompt))
-        assert any(m.additional_kwargs.get("todo_context") for m in leading)
+        first, second = run.prompts
+        assert second[: len(first)] == first
 
 
 class TestTermination:
     async def test_finish_task_ends_the_run_with_its_own_result(self):
         """finish_task's result becomes the message the parent reads, not the model's trailing prose."""
+        finish = {"result": "Which night works, Tuesday or Wednesday?", "outcome": "ask"}
         async with executor_graph(
-            [call("finish_task", {"result": "Booked for Tuesday."}, call_id="f1"), "unreachable"]
+            [call("finish_task", finish, call_id="f1"), "unreachable"]
         ) as graph:
             run = await run_graph(graph, "book me a table")
 
-        assert run.results_from(FINISH_NODE) == ["Booked for Tuesday."]
+        assert run.results_from(FINISH_NODE) == ["Which night works, Tuesday or Wednesday?"]
         assert "unreachable" not in run.final_text()
 
     async def test_finish_task_wins_over_other_calls_in_the_same_turn(self):
@@ -296,12 +288,12 @@ class TestTermination:
         # takes its one nudge and then ends in plain text.
         assert run.nodes() == [AGENT_NODE, NUDGE_NODE, AGENT_NODE]
 
-    async def test_finish_task_without_a_result_still_terminates(self):
-        """A missing result must yield a usable completion message, not an empty one."""
+    async def test_finish_task_without_a_result_terminates_with_no_answer(self):
+        """A missing result ends the run with no answer, which is never reported as done."""
         async with executor_graph([call("finish_task", {}, call_id="f1")]) as graph:
             run = await run_graph(graph, "wrap up")
 
-        assert run.results_from(FINISH_NODE) == ["Task completed."]
+        assert run.results_from(FINISH_NODE) == [""]
 
 
 class TestRecursionWrapup:
@@ -531,6 +523,32 @@ class TestTheCompletionGuardIsPerDelegation:
         assert NUDGE_NODE in second.nodes(), (
             "the second delegation cleared the floor on the first one's tool calls"
         )
+
+
+class TestARecurringTodoRunIsNotSentBack:
+    """Seen live: an hourly todo's run sent its reminder, declared schedule, was sent back, and sent it again."""
+
+    SCRIPT = (
+        plan("remind the user to call mom"),
+        call("finish_task", {"result": "Reminded.", "outcome": "schedule"}, call_id="f1"),
+        call("finish_task", {"result": "Reminded again.", "outcome": "schedule"}, call_id="f2"),
+    )
+
+    async def test_its_schedule_outcome_ends_the_run_on_the_first_finish(self):
+        brief = f"Execute the scheduled task: call mom\n\n{todo_prompts.TODO_WAKES_AGAIN_BRIEF}"
+        async with executor_graph(self.SCRIPT) as graph:
+            run = await run_graph(graph, brief)
+
+        assert NUDGE_NODE not in run.nodes(), (
+            "the run was sent back to redo work its todo already covers"
+        )
+        assert run.results_from(FINISH_NODE) == ["Reminded."]
+
+    async def test_a_schedule_with_nothing_to_wake_gaia_is_still_sent_back(self):
+        async with executor_graph(self.SCRIPT) as graph:
+            run = await run_graph(graph, "check on me later about calling mom")
+
+        assert NUDGE_NODE in run.nodes()
 
 
 class TestThreadContinuity:

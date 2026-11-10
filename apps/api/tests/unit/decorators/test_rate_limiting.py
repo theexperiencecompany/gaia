@@ -21,13 +21,19 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
     RateLimitExceededException,
 )
-from app.constants.llm import FREE_DAILY_COST_BUDGET_USD
+from app.config.rate_limits import RateLimitPeriod
+from app.config.settings import settings
+from app.constants.llm import (
+    FREE_DAILY_COST_BUDGET_USD,
+    PRO_MONTHLY_COST_BUDGET_USD,
+)
+from app.constants.log_tags import LogTag
 from app.decorators import rate_limiting as rl
 from app.models.payment_models import PlanType
+from app.models.usage_models import UsageInfo
 from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.billing import RateLimitHit
 
 RESET_AT = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
@@ -235,7 +241,7 @@ class TestAllowedCallRecordsTheContext:
     """
 
     @staticmethod
-    async def _run_allowed(plan: object) -> dict[str, object]:
+    async def _run_allowed(plan: object) -> rl.RateLimitUsage:
         decorated = rl.with_rate_limiting(feature_key="generate_image")(_limited_tool)
         with (
             patch(
@@ -320,7 +326,7 @@ class TestTokenCounting:
         log = await self._run(42)
 
         log.debug.assert_any_call(
-            f"{rl.LogTag.API} Token usage recorded",
+            f"{LogTag.API} Token usage recorded",
             tokens_used=42,
             feature_key="generate_image",
         )
@@ -334,7 +340,7 @@ class TestTokenCounting:
         log = await self._run(1)
 
         log.debug.assert_any_call(
-            f"{rl.LogTag.API} Token usage recorded",
+            f"{LogTag.API} Token usage recorded",
             tokens_used=1,
             feature_key="generate_image",
         )
@@ -370,8 +376,8 @@ class TestAttachUsageMetadata:
             {
                 "feature_key": "generate_image",
                 "usage_info": {
-                    "day": SimpleNamespace(used=3, limit=50, reset_time=RESET_AT),
-                    "month": SimpleNamespace(used=0, limit=100, reset_time=None),
+                    "day": UsageInfo(used=3, limit=50, reset_time=RESET_AT),
+                    "month": UsageInfo.model_construct(used=0, limit=100, reset_time=None),
                 },
                 "user_plan": "pro",
             }
@@ -589,16 +595,16 @@ class TestDailyCostBudget:
 
     async def test_spend_under_the_budget_passes_and_books_nothing(self) -> None:
         with _budget_of(FREE_DAILY_COST_BUDGET_USD / 2, PlanType.FREE) as mock_upsell:
-            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
         mock_upsell.assert_not_called()
 
     async def test_the_dev_unlimited_flag_lifts_an_exhausted_budget(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(rl.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+        monkeypatch.setattr(settings, "DEV_UNLIMITED_RATE_LIMITS", True)
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
-            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
         mock_upsell.assert_not_called()
 
@@ -607,18 +613,23 @@ class TestDailyCostBudget:
             _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE),
             pytest.raises(CostBudgetExceededException) as raised,
         ):
-            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
+        detail: object = raised.value.detail
+        assert isinstance(detail, dict)
         assert raised.value.status_code == 429
-        assert raised.value.detail["feature"] == "chat_messages"
-        assert raised.value.detail["plan_required"] == PlanType.PRO.value
-        assert raised.value.detail["current_plan"] == PlanType.FREE.value
+        assert detail["feature"] == "chat_messages"
+        assert detail["plan_required"] == PlanType.PRO.value
+        assert detail["current_plan"] == PlanType.FREE.value
+        assert detail["message"] == (
+            "You've used today's AI usage allowance. Upgrade to Pro for higher limits."
+        )
 
     async def test_the_upsell_names_the_user_feature_plan_and_origin(self) -> None:
         """Every argument is load-bearing: the plan decides whether the seam fires, the feature names the wall, the origin picks the email."""
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
             with pytest.raises(CostBudgetExceededException):
-                await rl.enforce_daily_cost_budget(
+                await rl.enforce_cost_budget(
                     USER_ID, "chat_messages", origin=LimitHitOrigin.BACKGROUND
                 )
 
@@ -629,7 +640,7 @@ class TestDailyCostBudget:
     async def test_an_undeclared_origin_books_an_interactive_hit(self) -> None:
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
             with pytest.raises(CostBudgetExceededException):
-                await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
+                await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
         assert mock_upsell.call_args.args[3] is LimitHitOrigin.INTERACTIVE
 
@@ -639,10 +650,120 @@ class TestDailyCostBudget:
             _budget_of(1_000.0, PlanType.PRO),
             pytest.raises(CostBudgetExceededException) as raised,
         ):
-            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
-        assert "plan_required" not in raised.value.detail
-        assert raised.value.detail["current_plan"] == PlanType.PRO.value
+        detail: object = raised.value.detail
+        assert isinstance(detail, dict)
+        assert "plan_required" not in detail
+        assert detail["current_plan"] == PlanType.PRO.value
+        assert detail["message"] == "You've used today's AI usage allowance."
+        assert raised.value.period is RateLimitPeriod.DAY
+
+
+@contextmanager
+def _spend_of(*, day: float, month: float, plan: PlanType) -> Iterator[None]:
+    """Run the real gate against a per-window spend."""
+
+    async def _get_cost(user_id: str, period: RateLimitPeriod) -> float:
+        return {(USER_ID, RateLimitPeriod.DAY): day, (USER_ID, RateLimitPeriod.MONTH): month}[
+            (user_id, period)
+        ]
+
+    with (
+        patch(
+            "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+            new_callable=AsyncMock,
+            return_value=plan,
+        ),
+        patch("app.decorators.rate_limiting.get_cost", _get_cost),
+        patch("app.decorators.rate_limiting.schedule_limit_upsell"),
+    ):
+        yield
+
+
+class TestMonthlyCostBudget:
+    """At 100% of Pro's monthly allowance usage stops until the month resets."""
+
+    async def test_a_pro_user_at_the_monthly_allowance_is_paused_until_the_month_resets(
+        self,
+    ) -> None:
+        reset = datetime(2099, 2, 15, tzinfo=UTC)
+        with (
+            _spend_of(day=0.5, month=PRO_MONTHLY_COST_BUDGET_USD + 0.1234567, plan=PlanType.PRO),
+            patch(
+                "app.decorators.rate_limiting.monthly_allowance_window",
+                AsyncMock(side_effect=lambda user_id: {USER_ID: ("20990115", reset)}[user_id]),
+            ),
+            patch(
+                "app.decorators.rate_limiting.monthly_budget_stop_text",
+                lambda reset_at: f"paused until {reset_at:%B} {reset_at.day}",
+            ),
+            patch("app.decorators.rate_limiting.log") as log,
+            patch("app.decorators.rate_limiting.capture_limit_hit") as hit,
+            patch(
+                "app.decorators.rate_limiting.current_limit_origin",
+                return_value=LimitHitOrigin.INTERACTIVE,
+            ),
+            pytest.raises(CostBudgetExceededException) as raised,
+        ):
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
+
+        hit.assert_called_once_with(
+            UserId(USER_ID),
+            "chat_messages",
+            PlanType.PRO,
+            origin=LimitHitOrigin.INTERACTIVE,
+            window="month",
+        )
+        assert raised.value.status_code == 429
+        assert raised.value.period is RateLimitPeriod.MONTH
+        assert raised.value.detail == {
+            "code": "rate_limit_exceeded",
+            "feature": "chat_messages",
+            "message": "paused until February 15",
+            "reset_time": reset.isoformat(),
+            "current_plan": PlanType.PRO.value,
+        }
+        assert log.warning.call_args.args == ("[API] Monthly cost budget exhausted",)
+        assert log.warning.call_args.kwargs == {
+            "user": {"id": USER_ID},
+            "user_plan": PlanType.PRO.value,
+            "spent_usd": pytest.approx(PRO_MONTHLY_COST_BUDGET_USD + 0.123457, abs=1e-9),
+            "feature_key": "chat_messages",
+        }
+
+    async def test_a_pro_user_one_cent_short_of_the_allowance_runs(self) -> None:
+        with (
+            _spend_of(day=0.5, month=PRO_MONTHLY_COST_BUDGET_USD - 0.01, plan=PlanType.PRO),
+            patch("app.decorators.rate_limiting.capture_limit_hit") as hit,
+        ):
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
+
+        hit.assert_not_called()
+
+    async def test_a_pro_user_at_the_daily_guard_records_a_daily_refusal(self) -> None:
+        with (
+            _spend_of(day=1_000.0, month=0.0, plan=PlanType.PRO),
+            patch("app.decorators.rate_limiting.capture_limit_hit") as hit,
+            patch(
+                "app.decorators.rate_limiting.current_limit_origin",
+                return_value=LimitHitOrigin.BACKGROUND,
+            ),
+            pytest.raises(CostBudgetExceededException),
+        ):
+            await rl.enforce_cost_budget(USER_ID, "trigger_workflow_executions")
+
+        hit.assert_called_once_with(
+            UserId(USER_ID),
+            "trigger_workflow_executions",
+            PlanType.PRO,
+            origin=LimitHitOrigin.BACKGROUND,
+            window="day",
+        )
+
+    async def test_free_has_no_monthly_wall(self) -> None:
+        with _spend_of(day=0.0, month=PRO_MONTHLY_COST_BUDGET_USD * 10, plan=PlanType.FREE):
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
 
 class TestToolPlanLabelling:
@@ -786,7 +907,7 @@ class TestEnforceFeatureLimit:
             "user_plan": "pro",
         }
         log.debug.assert_called_once_with(
-            f"{rl.LogTag.API} Rate limit check passed",
+            f"{LogTag.API} Rate limit check passed",
             user_id=USER_ID,
             actual_feature_key="generate_image",
         )
@@ -807,7 +928,7 @@ class TestEnforceFeatureLimit:
             await rl._enforce_feature_limit(USER_ID, "generate_image")
 
         log.error.assert_called_once_with(
-            f"{rl.LogTag.API} Rate limiting failed",
+            f"{LogTag.API} Rate limiting failed",
             user_id=USER_ID,
             actual_feature_key="generate_image",
             error="redis down",
@@ -818,7 +939,7 @@ class TestEnforceFeatureLimit:
 class TestLimitHitException:
     async def _hit(
         self, plan: PlanType = PlanType.PRO, detail: Any = None
-    ) -> tuple[Any, MagicMock, MagicMock, MagicMock, RateLimitExceededException]:
+    ) -> tuple[Any, MagicMock, MagicMock, RateLimitExceededException]:
         exc = RateLimitExceededException(
             feature="generate_image", reset_time=RESET_AT, plan_required="pro"
         )
@@ -826,45 +947,39 @@ class TestLimitHitException:
             exc.detail = detail
         writer = MagicMock()
         with (
-            patch("app.decorators.rate_limiting.capture") as capture,
             patch.object(rl, "current_stream_writer", return_value=writer),
             patch("app.decorators.rate_limiting.log") as log,
         ):
             result = rl._limit_hit_exception(USER_ID, "generate_image", plan, exc)
-        return result, capture, writer, log, exc
-
-    async def test_paid_plan_hit_captures_an_event_with_exact_props(self) -> None:
-        result, capture, _, _, _ = await self._hit(plan=PlanType.PRO)
-        capture.assert_called_once_with(
-            UserId(USER_ID), RateLimitHit(feature="generate_image", plan="pro")
-        )
-        assert isinstance(result, rl.LangChainRateLimitError)
-
-    async def test_free_plan_hit_captures_no_duplicate_event(self) -> None:
-        _, capture, _, _, _ = await self._hit(plan=PlanType.FREE)
-        capture.assert_not_called()
+        return result, writer, log, exc
 
     async def test_dict_detail_drives_reset_time_and_card(self) -> None:
-        result, _, writer, _, _ = await self._hit(detail={"reset_time": RESET_AT.isoformat()})
+        result, writer, _, _ = await self._hit(detail={"reset_time": RESET_AT.isoformat()})
         assert result.reset_time == RESET_AT.isoformat()
         card = writer.call_args.args[0]
         assert card["tool_data"]["data"]["reset_time"] == RESET_AT.isoformat()
 
     async def test_string_detail_becomes_the_message(self) -> None:
-        result, _, writer, _, _ = await self._hit(detail="too many requests")
+        result, writer, _, _ = await self._hit(detail="too many requests")
         assert result.detail == {"message": "too many requests"}
         card = writer.call_args.args[0]
         assert card["tool_data"]["data"]["plan_required"] == "pro"
 
     async def test_warning_log_is_exact(self) -> None:
-        _, _, _, log, exc = await self._hit()
+        _, _, log, exc = await self._hit()
         log.warning.assert_called_once_with(
-            f"{rl.LogTag.API} Rate limit exceeded",
+            f"{LogTag.API} Rate limit exceeded",
             user_id=USER_ID,
             actual_feature_key="generate_image",
             error=str(exc),
             error_type="RateLimitExceededException",
         )
+
+
+def _with_detail(exc: RateLimitExceededException, detail: object) -> RateLimitExceededException:
+    """Swap the 429's detail via FastAPI's init, which types it as the open value it is at runtime."""
+    HTTPException.__init__(exc, status_code=exc.status_code, detail=detail)
+    return exc
 
 
 class TestLimitHitExceptionDetailFallbacks:
@@ -874,7 +989,6 @@ class TestLimitHitExceptionDetailFallbacks:
     async def _convert(exc: RateLimitExceededException) -> tuple[Any, MagicMock]:
         writer = MagicMock()
         with (
-            patch("app.decorators.rate_limiting.capture"),
             patch.object(rl, "current_stream_writer", return_value=writer),
             patch("app.decorators.rate_limiting.log"),
         ):
@@ -882,8 +996,10 @@ class TestLimitHitExceptionDetailFallbacks:
         return result, writer
 
     async def test_a_reset_time_missing_from_detail_falls_back_to_the_attribute(self) -> None:
-        exc = RateLimitExceededException(feature="generate_image", reset_time=RESET_AT)
-        exc.detail = {"error": "rate_limit_exceeded"}
+        exc = _with_detail(
+            RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
+            {"error": "rate_limit_exceeded"},
+        )
 
         result, writer = await self._convert(exc)
 
@@ -891,24 +1007,29 @@ class TestLimitHitExceptionDetailFallbacks:
         assert writer.call_args.args[0]["tool_data"]["data"]["reset_time"] == RESET_AT.isoformat()
 
     async def test_a_plan_required_missing_from_detail_falls_back_to_the_attribute(self) -> None:
-        exc = RateLimitExceededException(feature="generate_image", plan_required="team")
-        exc.detail = {"error": "rate_limit_exceeded"}
+        exc = _with_detail(
+            RateLimitExceededException(feature="generate_image", plan_required="team"),
+            {"error": "rate_limit_exceeded"},
+        )
 
         result, writer = await self._convert(exc)
 
         assert writer.call_args.args[0]["tool_data"]["data"]["plan_required"] == "team"
 
     async def test_plan_required_comes_from_detail_over_the_attribute(self) -> None:
-        exc = RateLimitExceededException(feature="generate_image", plan_required="pro")
-        exc.detail = {"plan_required": "team"}
+        exc = _with_detail(
+            RateLimitExceededException(feature="generate_image", plan_required="pro"),
+            {"plan_required": "team"},
+        )
 
         _, writer = await self._convert(exc)
 
         assert writer.call_args.args[0]["tool_data"]["data"]["plan_required"] == "team"
 
     async def test_an_unrecognised_detail_shape_yields_an_empty_detail_dict(self) -> None:
-        exc = RateLimitExceededException(feature="generate_image", reset_time=RESET_AT)
-        exc.detail = 42
+        exc = _with_detail(
+            RateLimitExceededException(feature="generate_image", reset_time=RESET_AT), 42
+        )
 
         result, _ = await self._convert(exc)
 

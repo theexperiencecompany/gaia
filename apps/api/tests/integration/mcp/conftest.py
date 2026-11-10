@@ -10,19 +10,29 @@ import pytest
 def _mock_ssrf_guard() -> Iterator[None]:
     """Neutralize the DNS-resolving SSRF guard for the whole MCP integration suite.
 
-    _do_connect and probe_mcp_connection call assert_public_http_url,
+    _do_connect and probe_mcp_connection call assert_endpoint_url_allowed,
     which performs real DNS resolution. Integration tests use fake hostnames that
     do not resolve, so patch the guard to a no-op where it is used.
     """
     with (
         patch(
-            "app.services.mcp.mcp_client.assert_public_http_url",
+            "app.services.mcp.mcp_client.assert_endpoint_url_allowed",
             new_callable=AsyncMock,
         ),
         patch(
-            "app.services.mcp.oauth_discovery.assert_public_http_url",
+            "app.services.mcp.oauth_discovery.assert_endpoint_url_allowed",
             new_callable=AsyncMock,
         ),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _no_other_connected_servers() -> Iterator[None]:
+    """Collision naming reads the user's other connected servers from Mongo; this suite has none."""
+    with patch(
+        "app.services.mcp.mcp_client.connected_tool_records",
+        new=AsyncMock(return_value=[]),
     ):
         yield
 

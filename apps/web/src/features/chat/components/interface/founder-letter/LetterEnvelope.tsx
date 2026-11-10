@@ -59,7 +59,6 @@ export function LetterEnvelope({
           alt=""
           width={ENVELOPE_WIDTH}
           height={ENVELOPE_HEIGHT}
-          priority
           className="block w-14 rotate-[-3deg] sm:w-20"
         />
       </m.button>

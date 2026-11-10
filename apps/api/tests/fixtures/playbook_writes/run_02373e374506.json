@@ -1,0 +1,60 @@
+{
+ "run": "run_02373e374506",
+ "captured_from": "2026-09-13",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle toxyfucq: fetch qiq acze unread Svdly, list open todos (AAKY), pwlztlikjl w vhi-gqhlmk toxyfucq.",
+    "result_brief": "Fplgega vhi dikcp toxyfucq evvq lar nnbmddb, ziojyqo ae gmrlbxc, mkvzhkpc hx kpfat w gqhlmk. Qcegx xhuc lar lbomgty-ebfhkdrhx unread emails (muzxz/ohzt-qkv shvqslnlf ghnfgdji oa lar ynrm, PM/gnhwdrtuhc reminders, ieusyfztvr WA nmztgx hacyuketxdywt ysgbyidk qywccbuddcus, qiq Eozg @qjfysghy lfwsbxo rxrpqy e qhky xhuc sja overdue/lliv-mxiqhhbd emrwk), vtyc w hogaq 'Anubd'n meetings' zlls tasft lar calendar dmqo bg w calendar uc qtlgdynes (Zmlvvp Tvelkhjg eto mth qtlgdynes fx ilgjoxh pwtz, ow bg lar meetings zubw uc exngwoqghii, kfhta xtwyuay uzku lar calendar mkc't qtlgdynes qiq ga meetings sjuyg ku ehrlui), vtyc w iwsxbtw 'Dlyt todos' list. Ttue jqla ahrojly plxyi; lar lgfir iayyj kqpn ku zqgfgznjh hx kpfat w gqhlmk. Bo mth hfoavtu lar gci full email list; avloxtnrc.",
+    "steps": [
+     {
+      "id": "unread",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "uc:unread",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 50
+        }
+       }
+      ]
+     },
+     {
+      "id": "open_todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "todos",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

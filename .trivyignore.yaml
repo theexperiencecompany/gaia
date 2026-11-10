@@ -1,0 +1,10 @@
+# Findings trivy may ignore, each pinned to its path. Vulnerabilities: no fixed
+# release and a reason it cannot reach us (the same reasons as PIP_AUDIT_IGNORED
+# in scripts/ci/audit.sh); drop the entry once a fix exists.
+vulnerabilities: []
+secrets:
+  - id: stripe-secret-token
+    paths: [".gitleaks.toml"]
+    statement: >-
+      The gitleaks allowlist names the fake Stripe-shaped key the WorkOS
+      settings test uses; it is a placeholder pattern, not a credential.

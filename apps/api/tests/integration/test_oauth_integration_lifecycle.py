@@ -28,7 +28,6 @@ from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION, AccountConn
 from app.models.integration_models import (
     Integration,
     IntegrationAccount,
-    McpConnectTarget,
     UserIntegrationDocument,
     UserIntegrationStatus,
 )
@@ -1089,7 +1088,7 @@ class TestIntegrationResolver:
         )
 
         with patch(
-            "app.services.integrations.integration_resolver.integration_repository.get",
+            "app.services.integrations.integration_resolver.integration_repository.get_custom",
             AsyncMock(return_value=custom),
         ):
             resolved = await IntegrationResolver.resolve("my-custom-server")
@@ -1105,7 +1104,7 @@ class TestIntegrationResolver:
     async def test_resolve_nonexistent_returns_none(self) -> None:
         """Resolving a non-existent integration returns None."""
         with patch(
-            "app.services.integrations.integration_resolver.integration_repository.get",
+            "app.services.integrations.integration_resolver.integration_repository.get_custom",
             AsyncMock(return_value=None),
         ):
             resolved = await IntegrationResolver.resolve("does_not_exist_xyz")
@@ -1127,7 +1126,7 @@ class TestIntegrationResolver:
             )
         )
         with patch(
-            "app.services.integrations.integration_resolver.integration_repository.get",
+            "app.services.integrations.integration_resolver.integration_repository.get_custom",
             mock_get,
         ):
             resolved = await IntegrationResolver.resolve("gmail")
@@ -1270,13 +1269,11 @@ class TestMCPIntegrationConnection:
             ),
         ):
             response = await connect_mcp_integration(
-                McpConnectTarget(
-                    user_id=USER_ID,
-                    integration_id="deepwiki",
-                    integration_name="DeepWiki",
-                    redirect_path="/integrations",
-                ),
+                user_id=USER_ID,
+                integration_id="deepwiki",
+                integration_name="DeepWiki",
                 requires_auth=False,
+                redirect_path="/integrations",
             )
 
             assert response.status == "connected"
@@ -1309,13 +1306,11 @@ class TestMCPIntegrationConnection:
             # only update_user_integration_status is (no patch needed for caches here)
         ):
             response = await connect_mcp_integration(
-                McpConnectTarget(
-                    user_id=USER_ID,
-                    integration_id="custom-api",
-                    integration_name="Custom API",
-                    redirect_path="/integrations",
-                ),
+                user_id=USER_ID,
+                integration_id="custom-api",
+                integration_name="Custom API",
                 requires_auth=False,
+                redirect_path="/integrations",
                 bearer_token="sk-test-bearer-token",
             )
 
@@ -1348,53 +1343,53 @@ class TestMCPIntegrationConnection:
                 "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
                 AsyncMock(),
             ),
+            patch(
+                "app.services.integrations.integration_connection_service.update_user_integration_status",
+                AsyncMock(return_value=True),
+            ) as update_status,
         ):
             response = await connect_mcp_integration(
-                McpConnectTarget(
-                    user_id=USER_ID,
-                    integration_id="broken-api",
-                    integration_name="Broken API",
-                    redirect_path="/integrations",
-                ),
+                user_id=USER_ID,
+                integration_id="broken-api",
+                integration_name="Broken API",
                 requires_auth=False,
+                redirect_path="/integrations",
                 bearer_token="sk-bad-token",
             )
 
             assert response.status == "error"
             assert response.error is not None
             mock_token_store.delete_credentials.assert_called_once_with("broken-api")
+            update_status.assert_awaited_once_with(USER_ID, "broken-api", "created")
 
     async def test_connect_auth_required_mcp_returns_redirect(self) -> None:
         """MCP integration requiring OAuth returns redirect with auth URL."""
 
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client.build_oauth_auth_url = AsyncMock(
-            return_value="https://auth.example.com/oauth?client_id=abc"
-        )
-
         with (
             patch(
                 "app.services.integrations.integration_connection_service.get_mcp_client",
-                AsyncMock(return_value=mock_mcp_client),
+                AsyncMock(return_value=AsyncMock()),
+            ),
+            patch(
+                "app.services.integrations.integration_connection_service.build_oauth_auth_url",
+                AsyncMock(return_value="https://auth.example.com/oauth?client_id=abc"),
             ),
             patch(
                 "app.services.integrations.integration_connection_service.update_user_integration_status",
                 AsyncMock(return_value=True),
             ),
             patch(
-                "app.services.integrations.integration_connection_service.get_api_base_url",
-                return_value="https://api.example.com",
+                "app.services.integrations.integration_connection_service.get_mcp_oauth_redirect_uri",
+                return_value="https://api.example.com/integrations/callback",
             ),
         ):
             response = await connect_mcp_integration(
-                McpConnectTarget(
-                    user_id=USER_ID,
-                    integration_id="linear",
-                    integration_name="Linear",
-                    redirect_path="/integrations",
-                    is_platform=True,
-                ),
+                user_id=USER_ID,
+                integration_id="linear",
+                integration_name="Linear",
                 requires_auth=True,
+                redirect_path="/integrations",
+                is_platform=True,
             )
 
             assert response.status == "redirect"

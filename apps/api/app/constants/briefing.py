@@ -115,6 +115,15 @@ def hue_for_day(day_of_year: int) -> int:
 # Mail family, the only one that carries a city stamp.
 WEEKLY_FAMILY: Final[str] = "weekly"
 POSTAL_FAMILY: Final[str] = "postal"
+# The web page that shows the user's collected Air Mail stamps.
+POSTMARKS_PATH: Final[str] = "/settings/postmarks"
+
+
+class BriefItemSource(StrEnum):
+    """What held a result for the user's next brief instead of sending it."""
+
+    WORKFLOW = "workflow"
+    TODO = "todo"
 
 
 class BriefingBag(StrEnum):

@@ -27,6 +27,7 @@ export const mapStoredMessageToConversationMessage = (
     toolCategory: message.toolCategory ?? undefined,
     selectedWorkflow: message.selectedWorkflow ?? undefined,
     selectedCalendarEvent: message.selectedCalendarEvent ?? undefined,
+    todo_run_wake: message.todoRunWake ?? undefined,
     loading: message.status === "sending",
     queued: message.status === "queued",
     failed: message.status === "failed",
@@ -41,6 +42,7 @@ export const mapStoredMessageToConversationMessage = (
     replyToMessage: message.replyToMessageData ?? undefined,
     kind: message.kind ?? undefined,
     reacts_to_message_id: message.reacts_to_message_id ?? undefined,
+    stopped: message.stopped ?? undefined,
     reactions: message.reactions ?? undefined,
   } as MessageType;
 

@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
 import BotsPage from "@/features/bots/components/BotsPage";
+import { BOTS_FAQS } from "@/features/bots/pageContent";
 import {
   generateBreadcrumbSchema,
+  generateFAQSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Your AI, Where You Already Work",
+  title: "GAIA Bots for Telegram, Discord, Slack, and WhatsApp",
   description:
     "Chat with GAIA on Discord, Telegram, Slack, WhatsApp, and iMessage. Delegate tasks, get answers, and run workflows, without leaving the apps you already use.",
   path: "/bots",
@@ -45,7 +48,14 @@ export default function Bots() {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema]} />
+      <JsonLd
+        data={[
+          webPageSchema,
+          breadcrumbSchema,
+          generateFAQSchema(BOTS_FAQS),
+          generateProductSchema(),
+        ]}
+      />
       <BotsPage />
     </>
   );

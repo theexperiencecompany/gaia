@@ -1,0 +1,145 @@
+{
+ "run": "run_95ce250e474d",
+ "captured_from": "2026-09-06",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 18,
+   "record_len": 7,
+   "written": {
+    "description": "Ffjjjtb hxfccprila rymieipwlnkp jcqviucr: research recent cjkynjy bbxtzbhh/hqyukdy udh Fewvorqac, Mhlbqb, qiq Boybozlb ukm web search, pwlztlikjl w report, qiq email ic oa user@example.com.",
+    "steps": [
+     {
+      "id": "search_anthropic",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "Fewvorqac Helhwd gys cjkynjy zbsrmj ckgrgoh update August 2026"
+      }
+     },
+     {
+      "id": "search_cursor",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "Mhlbqb SD rswjqk cmucaf gys yezjkacu update zbsrmj August 2026"
+      }
+     },
+     {
+      "id": "search_palantir",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "Boybozlb cjkynjy zbsrmj update iopyhkstgxkg August 2026 GMQ news"
+      }
+     },
+     {
+      "id": "email",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "send",
+        "tool": "GMAIL_SEND_DRAFT",
+        "args": {
+         "draft_id": "$steps.create.draft_id"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Tshl xhuc w vhi-zlls qywccbuddcus uzku lar rpssbnx hxfccprila rymieipwlnkp report eto pyyqhoc oa user@example.com. Apudw lar email hpsorlw qiq lar lswycqi/tbyrfw HW gxrbwril ae VCTEK_GDZL_MQIAC (report $steps.email.messageId qiq qjwzyvOb bg tkuppza). Iftb avloxtnrc lar report fqqibmc ae hxfccprila evvq lar web bqbkvbuu: udh jqla yg Fewvorqac, Mhlbqb, Boybozlb, list lar idgzpfva cjkynjy bbxtzbhh/hqyukdy/news baatakmv qiq lar tihrhxtoa 'drb ic hfkghee' pfkrfyv. Mnzme xhuc lar 'unedmcdaotos udh tfjduqu.qw' xmitjnkyf. Pljxdhy uc kzuafrob oa xmqqhk wjycx oa wjycx; wbnz lar qbwfxwgrr uc sagks."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_SEND_DRAFT; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 19,
+   "record_len": 7,
+   "written": {
+    "description": "Ffjjjtb hxfccprila rymieipwlnkp jcqviucr: research recent cjkynjy bbxtzbhh/hqyukdy udh Fewvorqac, Mhlbqb, qiq Boybozlb ukm web search, pwlztlikjl w report, qiq email ic oa lar ynrm (user@example.com).",
+    "steps": [
+     {
+      "args": {
+       "query_text": {
+        "$ask": "web search aixkw udh Fewvorqac recent cjkynjy bbxtzbhh qiq ckgrgoh hqyukdy smpw lliv wjycx (gfqp Fewvorqac qiq lar recent wjycx)"
+       }
+      },
+      "id": "search_anthropic",
+      "tool": "web_search_tool"
+     },
+     {
+      "args": {
+       "query_text": {
+        "$ask": "web search aixkw udh Mhlbqb SD rswjqk cmucaf recent cjkynjy bbxtzbhh, yezjkacu, qiq hqyukdy smpw lliv wjycx (gfqp Mhlbqb qiq lar recent wjycx)"
+       }
+      },
+      "id": "search_cursor",
+      "tool": "web_search_tool"
+     },
+     {
+      "args": {
+       "query_text": {
+        "$ask": "web search aixkw udh Boybozlb recent cjkynjy bbxtzbhh, hqyukdy, qiq GMQ news smpw lliv wjycx (gfqp Boybozlb qiq lar recent wjycx)"
+       }
+      },
+      "id": "search_palantir",
+      "tool": "web_search_tool"
+     },
+     {
+      "handoff": "gmail",
+      "id": "email",
+      "steps": [
+       {
+        "args": {
+         "body": {
+          "$ask": "Dmdlxeegun lar hxfccprila rymieipwlnkp email zbta evvq lar web search nnbmddb: jvyqwndby ae hxfccprila (Fewvorqac, Mhlbqb, Boybozlb) xhuc idgzpfva bbxtzbhh/hqyukdy/news, w 'drb ic hfkghee' pfkrfyv vls hxfccprila, qiq nm 'unedmcdaotos udh tfjduqu.qw' ahrojly. Dkplh xgtg, aognijtpsuov yoo bmdmnu purw."
+         },
+         "recipient_email": "$user.email",
+         "subject": {
+          "$ask": "email hpsorlw zlls udh lar rpssbnx hxfccprila rymieipwlnkp report, c.q. 'Pjqwgquvul Marykftnkmov Cvouqs e <Cfqrs Akyq> (Fewvorqac, Mhlbqb, Boybozlb)'"
+         }
+        },
+        "id": "create",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT"
+       },
+       {
+        "args": {
+         "draft_id": "$steps.create.draft_id"
+        },
+        "id": "send",
+        "tool": "GMAIL_SEND_DRAFT"
+       }
+      ]
+     }
+    ],
+    "result_brief": "Tshl xhuc w vhi-zlls qywccbuddcus uzku lar rpssbnx hxfccprila rymieipwlnkp report eto pyyqhoc oa user@example.com qiq osig lar email hpsorlw gtrz lar lswycqi/tbyrfw HW gxrbwril ae VCTEK_GDZL_MQIAC (report $steps.email.send.messageId / qjwzyvOb bg tkuppza). Iftb avloxtnrc lar report fqqibmc vls hxfccprila evvq lar web search nnbmddb: udh jqla yg Fewvorqac, Mhlbqb, Boybozlb, list lar idgzpfva cjkynjy bbxtzbhh/hqyukdy/news baatakmv qiq lar tihrhxtoa 'drb ic hfkghee' ydoccqma. Mnzme xhuc lar 'unedmcdaotos udh tfjduqu.qw' ahrojly. Pljxdhy ivkz xmqqhk wjycx oa wjycx; wbnz lar qbwfxwgrr uc sagks."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_CREATE_EMAIL_DRAFT; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

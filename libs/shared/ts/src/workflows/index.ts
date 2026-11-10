@@ -4,6 +4,11 @@ export {
   WORKFLOW_DELIVERY_COPY,
 } from "./delivery";
 export type {
+  TriggerDisplayConfig,
+  TriggerDisplayInfo,
+} from "./triggerDisplay";
+export { getTriggerDisplayInfoBySlug } from "./triggerDisplay";
+export type {
   BuiltinTriggerMeta,
   IntegrationTriggerGroup,
   TriggerFieldSchema,

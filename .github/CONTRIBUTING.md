@@ -11,14 +11,14 @@ GAIA is an open source project, and we welcome contributions of all kinds:
 
 - Read our [Code of Conduct](https://github.com/theexperiencecompany/gaia/blob/master/.github/CODE_OF_CONDUCT.md)
 - Set up your environment: [Development Setup Guide](https://docs.heygaia.io/developers/development-setup)
-- Explore our [contribution guidelines](https://docs.heygaia.io/developers/contributing) for details
+- Read [Open a pull request](https://docs.heygaia.io/developers/contributing) for the workflow and the checklist
 
 ## How to Contribute
 
-- Bug fixes, features, docs, and tests are all welcome ([see ways to contribute](https://docs.heygaia.io/developers/contributing#ways-to-contribute))
-- Fork the repo, create a branch, make changes, test, and open a pull request ([workflow details](https://docs.heygaia.io/developers/contributing#contribution-workflow))
-- Follow our [coding standards](https://docs.heygaia.io/developers/contributing#coding-standards) for Python and React/Next.js
-- Use [Conventional Commits](https://docs.heygaia.io/developers/contributing#commit-message-guidelines) for commit messages
+- Bug fixes, features, docs, and tests are all welcome. For a large change, open an issue first
+- Fork the repo, create a branch, make changes, test, and open a pull request ([workflow details](https://docs.heygaia.io/developers/contributing#the-workflow))
+- Follow our [code style](https://docs.heygaia.io/configuration/code-style) for Python and TypeScript
+- Use [Conventional Commits](https://docs.heygaia.io/configuration/conventional-commits) for commit messages and pull request titles
 
 ## Pull Requests
 

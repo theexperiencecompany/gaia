@@ -15,11 +15,12 @@ them.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 import contextlib
-from typing import Any
+from contextlib import AbstractAsyncContextManager
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.tools.coding._artifacts import artifact_links_note
@@ -33,6 +34,7 @@ from app.agents.workspace.paths import MountRole
 from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
 from app.services import gaia_task_files
+from app.services.gaia_task_files import RootFile
 from app.services.sandbox import SandboxAcquisitionError
 from app.services.storage import FsOps
 
@@ -41,17 +43,17 @@ MODULE = "app.agents.tools.coding.write_tool"
 USER_ID = "user-1"
 SESSION_ID = "conv-1"
 
-CONFIG: dict[str, Any] = {
-    "configurable": {"user_id": USER_ID, "conversation_id": SESSION_ID},
-    "metadata": {"user_id": USER_ID, "conversation_id": SESSION_ID},
-}
+CONFIG = RunnableConfig(
+    configurable={"user_id": USER_ID, "conversation_id": SESSION_ID},
+    metadata={"user_id": USER_ID, "conversation_id": SESSION_ID},
+)
 
 SCRATCH_PATH = "/workspace/sessions/conv-1/scratch/notes.md"
 SHORT_URL = "https://heygaia.link/abcdefghijk"
 
 
 @pytest.fixture(autouse=True)
-def _rate_limit_passes() -> None:
+def _rate_limit_passes() -> Iterator[None]:
     """Fix the @with_rate_limiting seam (not under test) to pass.
 
     write is invoked with a chat-shaped config, so the wrapper's user-context
@@ -70,7 +72,7 @@ def _rate_limit_passes() -> None:
         yield
 
 
-def _sandbox_cm(sbx: AsyncMock) -> Callable[[str], AsyncIterator[AsyncMock]]:
+def _sandbox_cm(sbx: AsyncMock) -> Callable[[str], AbstractAsyncContextManager[AsyncMock]]:
     """Stand-in for acquire_sandbox: yields a fixed sandbox for the config's user."""
 
     @contextlib.asynccontextmanager
@@ -259,7 +261,7 @@ TASK_ABS = f"/workspace/{TASK_REL}"
 
 
 async def test_write_task_file_emits_and_reports_exact_payloads() -> None:
-    task_ref = object()
+    task_ref = RootFile(name="index.md")
     with (
         patch(f"{MODULE}.gaia_task_files.write_file", AsyncMock(return_value=None)) as mock_write,
         patch(f"{MODULE}.safe_emit") as mock_emit,
@@ -277,7 +279,7 @@ async def test_write_task_file_emits_and_reports_exact_payloads() -> None:
 
 
 async def test_maybe_write_task_file_resolves_and_forwards_exact_args() -> None:
-    task_ref = object()
+    task_ref = RootFile(name="index.md")
     with (
         patch(
             f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=task_ref)

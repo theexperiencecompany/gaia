@@ -25,16 +25,16 @@ async def describe_image(
 ) -> str | None:
     """Describe an image with a one-off call on the dedicated vision model.
 
-    The canonical fallback for lanes that can't take pixels (read tool,
-    desktop screenshot tool). Returns None on failure. Runs on ModelUse.VISION,
-    never the default model, since callers reach here precisely because the
-    active lane cannot see.
+    The fallback for lanes that can't take pixels; runs on ModelUse.VISION, never
+    the default model. Returns None when the call fails; raises
+    LLMNotConfiguredError when no configured provider can see at all.
     """
+    vision_model = resolve_model(ModelUse.VISION)
     try:
         # Runs inside the agent's tool node too, so it must never stream as reply
         # text; the user id books the vision spend to whoever it was for.
         response = await ainvoke_llm(
-            resolve_model(ModelUse.VISION),
+            vision_model,
             [
                 {
                     "role": "user",
