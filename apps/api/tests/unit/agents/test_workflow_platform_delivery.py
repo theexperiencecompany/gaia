@@ -20,7 +20,7 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.models.user_models import AuthenticatedUser
-from app.services.delivery.chat_channel import ChatChannel, InApp, InAppReason
+from app.services.outbox.router import ChatChannel, InApp, InAppReason
 from app.services.outbox.transport.bot_queue import OutboundResult
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
@@ -28,7 +28,7 @@ from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.workflow_platform_delivery"
 
-USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
+USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
 USER_ID = "user-1"
 TEXT = f"Report is ready.{NEW_MESSAGE_BREAKER}It has 3 pages."
 

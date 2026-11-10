@@ -1,0 +1,80 @@
+"""The outbox vocabularies are closed: adding a member is a reviewed change, so this lists them all.
+
+The analytics event names the same values as literals (the catalog cannot import the app), so the
+two are pinned together here.
+"""
+
+from enum import StrEnum
+from typing import get_args
+
+from app.services.outbox.models import (
+    ComposeMode,
+    DeliveryTiming,
+    Disposition,
+    DropReason,
+    Initiative,
+    ItemFailure,
+    ItemState,
+    MessageState,
+    NoticeOutcome,
+    ProducerKind,
+    SubjectKind,
+    SubjectMerge,
+    UrgencyClass,
+)
+from app.services.outbox.prerendered import PrerenderedKind
+from shared.py.analytics.catalog.delivery import DeliveryMessageSent
+
+
+def _values(enum: type[StrEnum]) -> set[str]:
+    return {member.value for member in enum}
+
+
+def test_the_closed_vocabularies_are_exactly_these() -> None:
+    assert _values(SubjectKind) == {"ask", "workflow_run", "todo_run", "reminder"}
+    assert _values(SubjectMerge) == {"replace", "accumulate"}
+    assert _values(ProducerKind) == {"executor", "workflow", "todo", "reminder"}
+    assert _values(Initiative) == {"asked", "user_scheduled", "self_initiated"}
+    assert _values(DeliveryTiming) == {"the_moment", "at_time", "when_done"}
+    assert _values(NoticeOutcome) == {"info", "needs_you", "failed"}
+    assert _values(ComposeMode) == {"answer", "unsolicited", "interrupt"}
+    assert _values(ItemState) == {
+        "received",
+        "queued",
+        "composing",
+        "sending",
+        "sent",
+        "dropped",
+        "superseded",
+        "failed",
+    }
+    assert _values(DropReason) == {"nothing_new", "cancelled", "compose_skipped"}
+    assert _values(ItemFailure) == {
+        "no_destination",
+        "record_failed",
+        "transport_skipped",
+        "transport_failed",
+    }
+    assert _values(MessageState) == {"sending", "sent", "failed"}
+    assert _values(Disposition) == {"include", "skip"}
+    assert _values(PrerenderedKind) == {"compose_degraded"}
+
+
+def test_urgency_classes_are_ordered_from_background_to_interrupt() -> None:
+    assert [c.name for c in sorted(UrgencyClass)] == [
+        "BACKGROUND",
+        "ROUTINE",
+        "TIMELY",
+        "INTERRUPT",
+    ]
+
+
+def _literal(field: str) -> set[str]:
+    return set(get_args(DeliveryMessageSent.model_fields[field].annotation))
+
+
+def test_the_analytics_event_names_the_same_values_as_the_enums() -> None:
+    assert _literal("producer") == _values(ProducerKind)
+    assert _literal("subject_kind") == _values(SubjectKind)
+    assert _literal("mode") == _values(ComposeMode)
+    assert _literal("max_class") == {c.name.lower() for c in UrgencyClass}

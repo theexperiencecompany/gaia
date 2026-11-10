@@ -31,7 +31,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
-from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.services.outbox.router import ChatChannel, InApp
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.notifications import NotificationAgentSent
 from tests.helpers import captured_wide_event

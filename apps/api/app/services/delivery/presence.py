@@ -6,7 +6,6 @@ neither can tell where the user is.
 """
 
 from collections.abc import Mapping
-from datetime import UTC, datetime
 
 from app.constants.cache import USER_PRESENCE_PREFIX
 from app.constants.notifications import (
@@ -16,6 +15,7 @@ from app.constants.notifications import (
 from app.db.redis import redis_cache
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.presence_models import PresenceSnapshot
+from app.utils import clock
 
 
 def _presence_key(user_id: str) -> str:
@@ -23,7 +23,7 @@ def _presence_key(user_id: str) -> str:
 
 
 def _now_epoch() -> int:
-    return int(datetime.now(UTC).timestamp())
+    return int(clock.now().timestamp())
 
 
 def _parse(stored: Mapping[str, str], captured_at: int) -> PresenceSnapshot:

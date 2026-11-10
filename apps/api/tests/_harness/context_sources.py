@@ -20,8 +20,8 @@ from app.models.memory_models import MemoryEntry, MemorySearchResult
 from app.models.presence_models import PresenceSnapshot
 from app.models.todo_models import TodoDocument
 from app.services.browser.chat_task import ChatBrowserTasks
-from app.services.delivery.chat_channel import InApp, ProactiveTarget
 from app.services.gaia_knowledge_service import KnowledgeResult
+from app.services.outbox.router import InApp, ProactiveTarget
 
 
 def memory(content: str, *, mentioned: str | None = None) -> MemoryEntry:

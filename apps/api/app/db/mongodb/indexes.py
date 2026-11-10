@@ -12,6 +12,10 @@ from app.constants.auth import InstanceRole
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
+from app.constants.outbox import (
+    ITEMS_COLLECTION,
+    MESSAGES_COLLECTION,
+)
 from app.constants.payments import CLAIMED_STATUS
 from app.constants.run_trace import (
     CALL_PAYLOADS_COLLECTION,
@@ -132,6 +136,7 @@ async def create_all_indexes() -> None:
             create_tool_output_shapes_indexes(),
             create_email_verdict_indexes(),
             create_run_trace_indexes(),
+            create_outbox_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -174,6 +179,7 @@ async def create_all_indexes() -> None:
             "tool_output_shapes",
             "email_verdicts",
             "run_trace",
+            "outbox",
         ]
 
         index_results = {}
@@ -1625,6 +1631,37 @@ async def create_llm_call_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Failed to create llm_calls indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_outbox_indexes() -> None:
+    """Create indexes for the outbox: items and the message ledger.
+
+    The unique pairs are the idempotency gates: one item per report and one message per
+    compose attempt. The partial hold index and the sent-at order serve the later flush
+    and ledger reads. Both collections expire on expires_at.
+    """
+    items = get_async_collection(ITEMS_COLLECTION)
+    messages = get_async_collection(MESSAGES_COLLECTION)
+    try:
+        await asyncio.gather(
+            items.create_index([("user_id", 1), ("report_id", 1)], unique=True),
+            items.create_index([("user_id", 1), ("report.subject.id", 1), ("state", 1)]),
+            items.create_index(
+                [("user_id", 1), ("compose_attempt_id", 1)],
+                partialFilterExpression={"compose_attempt_id": {"$type": "string"}},
+            ),
+            items.create_index("expires_at", expireAfterSeconds=0),
+            messages.create_index([("user_id", 1), ("compose_attempt_id", 1)], unique=True),
+            messages.create_index([("user_id", 1), ("sent_at", -1)]),
+            messages.create_index("expires_at", expireAfterSeconds=0),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating outbox indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

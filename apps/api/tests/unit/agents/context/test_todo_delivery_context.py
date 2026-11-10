@@ -17,12 +17,13 @@ from tests._harness.context_chain import ContextSeed, effective_context, text_of
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background import comms_narrator, todo_run_delivery
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
+from app.agents.core.graph_manager import GraphManager
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE
 from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.services.delivery.chat_channel import InApp
+from app.services.outbox.router import InApp
 from app.services.tracked_todo_service import starting_canvas
 
 pytestmark = pytest.mark.unit
@@ -64,7 +65,7 @@ async def _delivered_request() -> HumanMessage:
             "resolve_proactive_target",
             AsyncMock(return_value=InApp(reason="no_chat_app")),
         ),
-        patch.object(comms_narrator.GraphManager, "get_graph", AsyncMock()),
+        patch.object(GraphManager, "get_graph", AsyncMock()),
         patch.object(
             comms_narrator, "build_agent_config", AsyncMock(return_value={"configurable": {}})
         ),

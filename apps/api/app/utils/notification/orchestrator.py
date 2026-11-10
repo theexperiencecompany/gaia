@@ -22,7 +22,7 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationView,
 )
-from app.services.delivery.chat_channel import InApp, resolve_proactive_target
+from app.services.outbox.router import InApp, resolve_proactive_target
 from app.services.outbox.transport.ws_speech import publish_notification
 from app.utils.notification.actions import (
     ActionHandler,

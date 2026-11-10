@@ -22,13 +22,13 @@ from app.models.notification.notification_models import (
     NotificationView,
 )
 from app.services.analytics_service import capture
-from app.services.delivery.chat_channel import (
+from app.services.notification_service import notification_service
+from app.services.outbox.router import (
     InApp,
     ProactiveTarget,
     proactive_destination,
     resolve_proactive_target,
 )
-from app.services.notification_service import notification_service
 from app.templates.docstrings.notification_tool_docs import (
     GET_NOTIFICATION_COUNT,
     GET_NOTIFICATION_PREFERENCES,

@@ -16,8 +16,8 @@ from app.agents.context.section_context import ExecutionMode
 from app.agents.context.slots import PRESENCE_NOTE_MARKER, mark
 from app.models.chat_models import ConversationSource
 from app.models.presence_models import PresenceSnapshot
-from app.services.delivery.chat_channel import ProactiveTarget, resolve_proactive_target
 from app.services.delivery.presence import previous_surface, read_presence, surfaces_by_recency
+from app.services.outbox.router import ProactiveTarget, resolve_proactive_target
 from app.utils.presence_utils import (
     describe_last_seen,
     destination_phrase,

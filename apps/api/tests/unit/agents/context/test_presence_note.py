@@ -19,8 +19,8 @@ from app.models.agent_models import AgentConfigurable
 from app.models.chat_models import ConversationSource
 from app.models.presence_models import PresenceSnapshot
 from app.services.chat import stream as stream_module
-from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.delivery.presence import read_presence, record_turn_presence
+from app.services.outbox.router import ChatChannel, InApp
 from app.utils import presence_utils
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context

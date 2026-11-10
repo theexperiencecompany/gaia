@@ -2590,6 +2590,79 @@
       }
     },
     {
+      "event": "delivery:message_sent",
+      "class": "DeliveryMessageSent",
+      "owner": "server",
+      "domain": "delivery",
+      "description": "The outbox sent one message to a user: a chat app took it, or it was recorded in the GAIA app.",
+      "previous_names": ["reminder:completed"],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The outbox sent one message to a user: a chat app took it, or it was recorded in the GAIA app.",
+        "properties": {
+          "producer": {
+            "enum": ["executor", "workflow", "todo", "reminder"],
+            "title": "Producer",
+            "type": "string"
+          },
+          "subject_kind": {
+            "enum": ["ask", "workflow_run", "todo_run", "reminder"],
+            "title": "Subject Kind",
+            "type": "string"
+          },
+          "mode": {
+            "enum": ["answer", "unsolicited", "interrupt"],
+            "title": "Mode",
+            "type": "string"
+          },
+          "destination": {
+            "enum": ["chat_app", "in_app"],
+            "title": "Destination",
+            "type": "string"
+          },
+          "destination_basis": {
+            "enum": [
+              "recent_activity",
+              "priority",
+              "owner_chat",
+              "active_in_app",
+              "no_chat_app"
+            ],
+            "title": "Destination Basis",
+            "type": "string"
+          },
+          "items_count": {
+            "title": "Items Count",
+            "type": "integer"
+          },
+          "max_class": {
+            "enum": ["background", "routine", "timely", "interrupt"],
+            "title": "Max Class",
+            "type": "string"
+          },
+          "degraded": {
+            "title": "Degraded",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "producer",
+          "subject_kind",
+          "mode",
+          "destination",
+          "destination_basis",
+          "items_count",
+          "max_class",
+          "degraded"
+        ],
+        "title": "DeliveryMessageSent",
+        "type": "object"
+      }
+    },
+    {
       "event": "desktop_popup:dismissed",
       "class": "DesktopPopupDismissed",
       "owner": "web",
@@ -4576,6 +4649,7 @@
                 "enum": [
                   "recent_activity",
                   "priority",
+                  "owner_chat",
                   "active_in_app",
                   "no_chat_app"
                 ],
@@ -5656,67 +5730,6 @@
           "has_external_link"
         ],
         "title": "RedditPostViewed",
-        "type": "object"
-      }
-    },
-    {
-      "event": "reminder:completed",
-      "class": "ReminderCompleted",
-      "owner": "server",
-      "domain": "reminder",
-      "description": "The worker executed a reminder; destination is where it was routed, absent when that routing never ran.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "The worker executed a reminder; destination is where it was routed, absent when that routing never ran.",
-        "properties": {
-          "reminder_id": {
-            "pattern": "^[0-9a-fA-F]{24}$",
-            "title": "Reminder Id",
-            "type": "string"
-          },
-          "agent": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Agent",
-            "type": "string"
-          },
-          "destination": {
-            "anyOf": [
-              {
-                "enum": ["chat_app", "in_app"],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Destination"
-          },
-          "destination_basis": {
-            "anyOf": [
-              {
-                "enum": [
-                  "recent_activity",
-                  "priority",
-                  "active_in_app",
-                  "no_chat_app"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Destination Basis"
-          }
-        },
-        "required": ["reminder_id", "agent"],
-        "title": "ReminderCompleted",
         "type": "object"
       }
     },
@@ -7071,6 +7084,7 @@
                 "enum": [
                   "recent_activity",
                   "priority",
+                  "owner_chat",
                   "active_in_app",
                   "no_chat_app"
                 ],
@@ -8603,6 +8617,7 @@
                 "enum": [
                   "recent_activity",
                   "priority",
+                  "owner_chat",
                   "active_in_app",
                   "no_chat_app"
                 ],

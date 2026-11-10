@@ -3,11 +3,8 @@
 from typing import ClassVar
 
 from shared.py.analytics.catalog.base import ServerEvent
-from shared.py.analytics.catalog.delivery import ProactiveDestinationBasis, ProactiveDestinationKind
-from shared.py.analytics.catalog.properties import Identifier, ObjectIdStr
 
 __all__ = [
-    "ReminderCompleted",
     "ReminderCreated",
     "ReminderDeleted",
     "ReminderPaused",
@@ -44,18 +41,6 @@ class ReminderResumed(ServerEvent):
 
     event: ClassVar[str] = "reminder:resumed"
     budget_per_user_day: ClassVar[int] = 50
-
-
-class ReminderCompleted(ServerEvent):
-    """The worker executed a reminder; destination is where it was routed, absent when that routing never ran."""
-
-    event: ClassVar[str] = "reminder:completed"
-    budget_per_user_day: ClassVar[int] = 50
-
-    reminder_id: ObjectIdStr
-    agent: Identifier
-    destination: ProactiveDestinationKind | None = None
-    destination_basis: ProactiveDestinationBasis | None = None
 
 
 class ReminderDeleted(ServerEvent):

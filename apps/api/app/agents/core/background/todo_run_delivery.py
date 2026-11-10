@@ -50,12 +50,12 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import section_body
-from app.services.delivery.chat_channel import (
+from app.services.notification_service import notification_service
+from app.services.outbox.router import (
     ProactiveTarget,
     proactive_destination,
     resolve_proactive_target,
 )
-from app.services.notification_service import notification_service
 from app.services.todo_activity import (
     recent_run_outcomes,
     record_run_finished,

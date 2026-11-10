@@ -79,8 +79,8 @@ from app.models.chat_models import SourceCategory
 from app.models.conversation_models import ConversationRunContext
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
-from app.services.delivery.chat_channel import InApp
 from app.services.hil import bridge
+from app.services.outbox.router import InApp
 from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder, captured_wide_event
 

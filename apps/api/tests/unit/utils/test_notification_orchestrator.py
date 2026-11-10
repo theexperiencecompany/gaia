@@ -27,7 +27,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.services.delivery.chat_channel import ChatChannel, InApp, InAppReason
+from app.services.outbox.router import ChatChannel, InApp, InAppReason
 from app.utils.notification.orchestrator import NotificationOrchestrator
 
 # ---------------------------------------------------------------------------

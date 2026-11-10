@@ -27,7 +27,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
-from app.services.delivery.chat_channel import (
+from app.services.outbox.router import (
     ChatChannel,
     InApp,
     ProactiveTarget,

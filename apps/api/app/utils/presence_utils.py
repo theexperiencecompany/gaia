@@ -6,8 +6,8 @@ from app.constants.notifications import PRESENCE_ACTIVE_WINDOW_SECONDS
 from app.models.agent_config import ExecutionMode
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.presence_models import PresenceSnapshot
-from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget, is_active_place
 from app.services.delivery.presence import previous_surface, surfaces_by_recency
+from app.services.outbox.router import ChatChannel, InApp, ProactiveTarget, is_active_place
 from shared.py.analytics.catalog.attribution import EntrySurface
 
 

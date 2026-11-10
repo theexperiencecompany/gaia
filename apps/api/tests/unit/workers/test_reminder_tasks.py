@@ -16,7 +16,7 @@ from app.workers.tasks.reminder_tasks import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
-from shared.py.analytics.catalog.reminders import ReminderCompleted
+from shared.py.analytics.catalog.reminders import ReminderUpdated
 from shared.py.analytics.context import AnalyticsContext, analytics_context
 from tests.helpers import captured_wide_event
 
@@ -59,7 +59,7 @@ class TestProcessReminder:
         """A non-numeric stamp degrades to an unstamped claim instead of raising."""
         with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
             mock_scheduler.process_task_execution = AsyncMock()
-            await process_reminder(ctx, "reminder_abc", "not-a-number")  # type: ignore[arg-type]  # deliberately bad-typed stamp: proves a non-numeric stamp degrades to an unstamped claim
+            await process_reminder(ctx, "reminder_abc", "not-a-number")
 
         mock_scheduler.process_task_execution.assert_awaited_once_with("reminder_abc", None)
 
@@ -186,7 +186,7 @@ class TestScheduledFireAttribution:
         }
 
         async def _remind(task_id: str, occurrence: object) -> None:
-            capture(REMINDER_OWNER, ReminderCompleted(reminder_id=task_id, agent="static"))
+            capture(REMINDER_OWNER, ReminderUpdated())
 
         with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as scheduler:
             scheduler.process_task_execution = AsyncMock(side_effect=_remind)

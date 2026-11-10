@@ -48,7 +48,7 @@ from app.models.message_models import MessageRequestWithHistory
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
-from app.services.delivery.chat_channel import InApp
+from app.services.outbox.router import InApp
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import RecordingFakeModel, call, scripted_model
 from tests.e2e._harness.saved_messages import SavedToolData

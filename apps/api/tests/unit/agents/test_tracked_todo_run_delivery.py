@@ -57,8 +57,8 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
-from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.delivery.presence import record_turn_presence
+from app.services.outbox.router import ChatChannel, InApp
 from app.services.outbox.transport import ws_speech
 from app.utils import auth_utils
 from app.utils.background_tasks import spawn_background_task
