@@ -1,0 +1,778 @@
+{
+ "faces": [
+  {
+   "family": "TeX Gyre Heros",
+   "file": "tex-gyre-heros-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "TeX Gyre Heros",
+   "file": "tex-gyre-heros-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "TeX Gyre Heros",
+   "file": "tex-gyre-heros-400i.woff2",
+   "weight": 400,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Libre Baskerville",
+   "file": "libre-baskerville-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Libre Baskerville",
+   "file": "libre-baskerville-400i.woff2",
+   "weight": 400,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Broadsheet Caslon",
+   "file": "broadsheet-caslon-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Broadsheet Caslon",
+   "file": "broadsheet-caslon-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Broadsheet Caslon",
+   "file": "broadsheet-caslon-400i.woff2",
+   "weight": 400,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Source Serif 4",
+   "file": "source-serif-4-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Source Serif 4",
+   "file": "source-serif-4-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Source Serif 4",
+   "file": "source-serif-4-400i.woff2",
+   "weight": 400,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Source Serif 4",
+   "file": "source-serif-4-500i.woff2",
+   "weight": 500,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Source Serif 4",
+   "file": "source-serif-4-600i.woff2",
+   "weight": 600,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Bodoni Moda",
+   "file": "bodoni-moda-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Bodoni Moda",
+   "file": "bodoni-moda-400i.woff2",
+   "weight": 400,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Barlow Condensed",
+   "file": "barlow-condensed-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Barlow Condensed",
+   "file": "barlow-condensed-600.woff2",
+   "weight": 600,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Barlow Condensed",
+   "file": "barlow-condensed-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "JetBrains Mono",
+   "file": "jetbrains-mono-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "JetBrains Mono",
+   "file": "jetbrains-mono-600.woff2",
+   "weight": 600,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "JetBrains Mono",
+   "file": "jetbrains-mono-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Schibsted Grotesk",
+   "file": "schibsted-grotesk-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Sofia Sans Condensed",
+   "file": "sofia-sans-condensed-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Sofia Sans Condensed",
+   "file": "sofia-sans-condensed-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Sofia Sans Condensed",
+   "file": "sofia-sans-condensed-800.woff2",
+   "weight": 800,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Special Elite",
+   "file": "special-elite-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Pinyon Script",
+   "file": "pinyon-script-400i.woff2",
+   "weight": 400,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Courier Prime",
+   "file": "courier-prime-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Courier Prime",
+   "file": "courier-prime-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Cormorant",
+   "file": "cormorant-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Cormorant",
+   "file": "cormorant-400i.woff2",
+   "weight": 400,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "EB Garamond",
+   "file": "eb-garamond-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "EB Garamond",
+   "file": "eb-garamond-400i.woff2",
+   "weight": 400,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Overpass",
+   "file": "overpass-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Overpass",
+   "file": "overpass-500.woff2",
+   "weight": 500,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Overpass",
+   "file": "overpass-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Playfair Display",
+   "file": "playfair-display-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Playfair Display",
+   "file": "playfair-display-500i.woff2",
+   "weight": 500,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Literata",
+   "file": "literata-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Literata",
+   "file": "literata-400i.woff2",
+   "weight": 400,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Literata",
+   "file": "literata-700i.woff2",
+   "weight": 700,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Cutive",
+   "file": "cutive-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": 83
+  },
+  {
+   "family": "Newsreader",
+   "file": "newsreader-400.woff2",
+   "weight": 400,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Newsreader",
+   "file": "newsreader-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Newsreader",
+   "file": "newsreader-500i.woff2",
+   "weight": 500,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Newsreader",
+   "file": "newsreader-700i.woff2",
+   "weight": 700,
+   "style": "italic",
+   "size_adjust": null
+  },
+  {
+   "family": "Aeonik Extended",
+   "file": "aeonik-extended-600.woff2",
+   "weight": 600,
+   "style": "normal",
+   "size_adjust": null
+  },
+  {
+   "family": "Aeonik Extended",
+   "file": "aeonik-extended-700.woff2",
+   "weight": 700,
+   "style": "normal",
+   "size_adjust": null
+  }
+ ],
+ "sources": [
+  {
+   "file": "tex-gyre-heros-400.woff2",
+   "url": "https://mirrors.ctan.org/fonts/tex-gyre/opentype/texgyreheros-regular.otf",
+   "sha256": "6ae1a09d5a940367b7aaaa91ee8bd8a2c333bfe193e7096e23f931357d62081f",
+   "version": "Version 2.004;PS 2.004;hotconv 1.0.49;makeotf.lib2.0.14853",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "tex-gyre-heros-700.woff2",
+   "url": "https://mirrors.ctan.org/fonts/tex-gyre/opentype/texgyreheros-bold.otf",
+   "sha256": "b170162835f4efc288886dd4231406dc47e19b614cf4416836635599d44a7d60",
+   "version": "Version 2.004;PS 2.004;hotconv 1.0.49;makeotf.lib2.0.14853",
+   "pins": {
+    "wght": 700
+   }
+  },
+  {
+   "file": "tex-gyre-heros-400i.woff2",
+   "url": "https://mirrors.ctan.org/fonts/tex-gyre/opentype/texgyreheros-italic.otf",
+   "sha256": "6473df7fa107b3fb4be38973710afe22b0640c2ac076d5337cf126bed9aa108c",
+   "version": "Version 2.004;PS 2.004;hotconv 1.0.49;makeotf.lib2.0.14853",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "libre-baskerville-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/librebaskerville/LibreBaskerville[wght].ttf",
+   "sha256": "05a95421961341c5b2556285e8415df9db27dab4f4abe22b446b3c6a8b916c5d",
+   "version": "Version 2.005",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "libre-baskerville-400i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/librebaskerville/LibreBaskerville-Italic[wght].ttf",
+   "sha256": "223959683dc73ec4437bd61fabaa4b3f22209e22855ffd3aee36ba61a5116e97",
+   "version": "Version 2.005",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "broadsheet-caslon-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/librecaslondisplay/LibreCaslonDisplay-Regular.ttf",
+   "sha256": "2340c497181e9446fcbb235e1c3780558dc62879ffe0ef47906d3f7f35cf5f35",
+   "version": "Version 1.100; ttfautohint (v1.6) -l 8 -r 50 -G 200 -x 14 -D latn -f none -w G -X \"\"",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "broadsheet-caslon-700.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/librecaslontext/LibreCaslonText[wght].ttf",
+   "sha256": "c11809dbfd5445886293d89b32bfc2584075c80e77750cf1c284113e36b8b3f4",
+   "version": "Version 2.000",
+   "pins": {
+    "wght": 700
+   }
+  },
+  {
+   "file": "broadsheet-caslon-400i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/librecaslontext/LibreCaslonText-Italic[wght].ttf",
+   "sha256": "60ca1a3aade61c8c381800ca85b9b2f0fb341d89ebe065e12cd6ec2ee2e53e54",
+   "version": "Version 2.000",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "source-serif-4-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/sourceserif4/SourceSerif4[opsz,wght].ttf",
+   "sha256": "97b2d4da6e3cb494b5a1e66ae176914d852ccabef49e0c02c0df25f3e39aca0b",
+   "version": "Version 4.004;hotconv 1.0.116;makeotfexe 2.5.65601",
+   "pins": {
+    "opsz": 20,
+    "wght": 400
+   }
+  },
+  {
+   "file": "source-serif-4-700.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/sourceserif4/SourceSerif4[opsz,wght].ttf",
+   "sha256": "97b2d4da6e3cb494b5a1e66ae176914d852ccabef49e0c02c0df25f3e39aca0b",
+   "version": "Version 4.004;hotconv 1.0.116;makeotfexe 2.5.65601",
+   "pins": {
+    "opsz": 20,
+    "wght": 700
+   }
+  },
+  {
+   "file": "source-serif-4-400i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/sourceserif4/SourceSerif4-Italic[opsz,wght].ttf",
+   "sha256": "15fbc7e4679489a501998c3669272637a6646388ef7e4bd77eebb5bf967a1f42",
+   "version": "Version 4.004;hotconv 1.0.116;makeotfexe 2.5.65601",
+   "pins": {
+    "opsz": 20,
+    "wght": 400
+   }
+  },
+  {
+   "file": "source-serif-4-500i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/sourceserif4/SourceSerif4-Italic[opsz,wght].ttf",
+   "sha256": "15fbc7e4679489a501998c3669272637a6646388ef7e4bd77eebb5bf967a1f42",
+   "version": "Version 4.004;hotconv 1.0.116;makeotfexe 2.5.65601",
+   "pins": {
+    "opsz": 20,
+    "wght": 500
+   }
+  },
+  {
+   "file": "source-serif-4-600i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/sourceserif4/SourceSerif4-Italic[opsz,wght].ttf",
+   "sha256": "15fbc7e4679489a501998c3669272637a6646388ef7e4bd77eebb5bf967a1f42",
+   "version": "Version 4.004;hotconv 1.0.116;makeotfexe 2.5.65601",
+   "pins": {
+    "opsz": 20,
+    "wght": 600
+   }
+  },
+  {
+   "file": "bodoni-moda-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/bodonimoda/BodoniModa[opsz,wght].ttf",
+   "sha256": "550f5e34ee0a828d7941b1fe9bc58b34e5260d3f33a61532e6d0a0114e79a5cf",
+   "version": "Version 2.005",
+   "pins": {
+    "opsz": 28,
+    "wght": 400
+   }
+  },
+  {
+   "file": "bodoni-moda-400i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/bodonimoda/BodoniModa-Italic[opsz,wght].ttf",
+   "sha256": "dfff1619f8f6871c6372f8855b67211f9a73b4e93d45aca868cd8f46a48622de",
+   "version": "Version 2.005",
+   "pins": {
+    "opsz": 28,
+    "wght": 400
+   }
+  },
+  {
+   "file": "barlow-condensed-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/barlowcondensed/BarlowCondensed-Regular.ttf",
+   "sha256": "583cec5da3b84bc4dc7c9c72e2a565c94d34e431518b19d7e250b7830ad5f996",
+   "version": "Version 1.408",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "barlow-condensed-600.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/barlowcondensed/BarlowCondensed-SemiBold.ttf",
+   "sha256": "7b619d14bc2327509a9ef32b0890f709626f7ecc9ff61191c2a4314c5499d2d9",
+   "version": "Version 1.408",
+   "pins": {
+    "wght": 600
+   }
+  },
+  {
+   "file": "barlow-condensed-700.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/barlowcondensed/BarlowCondensed-Bold.ttf",
+   "sha256": "e476562ec9c1e16cf16475895b511f08c804f438cc9a9f80a44ea50a0eeb5b65",
+   "version": "Version 1.408",
+   "pins": {
+    "wght": 700
+   }
+  },
+  {
+   "file": "jetbrains-mono-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/jetbrainsmono/JetBrainsMono[wght].ttf",
+   "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+   "version": "Version 2.211",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "jetbrains-mono-600.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/jetbrainsmono/JetBrainsMono[wght].ttf",
+   "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+   "version": "Version 2.211",
+   "pins": {
+    "wght": 600
+   }
+  },
+  {
+   "file": "jetbrains-mono-700.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/jetbrainsmono/JetBrainsMono[wght].ttf",
+   "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+   "version": "Version 2.211",
+   "pins": {
+    "wght": 700
+   }
+  },
+  {
+   "file": "schibsted-grotesk-700.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/schibstedgrotesk/SchibstedGrotesk[wght].ttf",
+   "sha256": "6ceeadf6be8e1fd7687011c7fa38ed0edd1abe967a0b73d97caec183552e823d",
+   "version": "Version 1.100;gftools[0.9.25]",
+   "pins": {
+    "wght": 700
+   }
+  },
+  {
+   "file": "sofia-sans-condensed-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/sofiasanscondensed/SofiaSansCondensed[wght].ttf",
+   "sha256": "3282c4e1a09d14e91c5fdb10aadee93048d017fa00f857f43fdcc29c989221fd",
+   "version": "Version 4.101",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "sofia-sans-condensed-700.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/sofiasanscondensed/SofiaSansCondensed[wght].ttf",
+   "sha256": "3282c4e1a09d14e91c5fdb10aadee93048d017fa00f857f43fdcc29c989221fd",
+   "version": "Version 4.101",
+   "pins": {
+    "wght": 700
+   }
+  },
+  {
+   "file": "sofia-sans-condensed-800.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/sofiasanscondensed/SofiaSansCondensed[wght].ttf",
+   "sha256": "3282c4e1a09d14e91c5fdb10aadee93048d017fa00f857f43fdcc29c989221fd",
+   "version": "Version 4.101",
+   "pins": {
+    "wght": 800
+   }
+  },
+  {
+   "file": "special-elite-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/apache/specialelite/SpecialElite-Regular.ttf",
+   "sha256": "a776fcb4ceb8bdf03e2967688ebdad42680de5b91a7e62c17e718ae212d14bc4",
+   "version": "Version 1.001",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "pinyon-script-400i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/pinyonscript/PinyonScript-Regular.ttf",
+   "sha256": "4aab130a6ed27f8b8117738c84a5602edf9300cdcc0651a9a65bf96f451ac29a",
+   "version": "Version 1.008; ttfautohint (v1.8.4.7-5d5b)",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "courier-prime-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/courierprime/CourierPrime-Regular.ttf",
+   "sha256": "72f793376f8e2841656bf21d77a5de010f2929bd6956a22ee848ad0c7eb978af",
+   "version": "Version 3.018",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "courier-prime-700.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/courierprime/CourierPrime-Bold.ttf",
+   "sha256": "ff1f38786c849d1c41fa8e447960abdb2bd75fdfb0cfcdeb524fad65a5af3638",
+   "version": "Version 3.018",
+   "pins": {
+    "wght": 700
+   }
+  },
+  {
+   "file": "cormorant-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/cormorant/Cormorant[wght].ttf",
+   "sha256": "8f12cb21f05b61649192eaff13eeeb1b5619bc524feeae672fb916974259a076",
+   "version": "Version 4.000",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "cormorant-400i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/cormorant/Cormorant-Italic[wght].ttf",
+   "sha256": "2c4e1c43fa126b51a84160815b9264af442c6c531d13bfd3c1723703cd489dd2",
+   "version": "Version 4.000",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "eb-garamond-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/ebgaramond/EBGaramond[wght].ttf",
+   "sha256": "ef9512f92f6d579e5dc75af59a5a4b1b8b47d2eda89e00b954d44520e5369027",
+   "version": "Version 1.003",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "eb-garamond-400i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/ebgaramond/EBGaramond-Italic[wght].ttf",
+   "sha256": "bba2c4499c93c9612b90b9825d32b07da52fce2fe57562a1eb6b833553f93c4e",
+   "version": "Version 1.003",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "overpass-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/overpass/Overpass[wght].ttf",
+   "sha256": "970717df17a7f9911dee45f60695d05bfa9d745fa0a11fc5c348371fa21f0073",
+   "version": "Version 4.000",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "overpass-500.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/overpass/Overpass[wght].ttf",
+   "sha256": "970717df17a7f9911dee45f60695d05bfa9d745fa0a11fc5c348371fa21f0073",
+   "version": "Version 4.000",
+   "pins": {
+    "wght": 500
+   }
+  },
+  {
+   "file": "overpass-700.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/overpass/Overpass[wght].ttf",
+   "sha256": "970717df17a7f9911dee45f60695d05bfa9d745fa0a11fc5c348371fa21f0073",
+   "version": "Version 4.000",
+   "pins": {
+    "wght": 700
+   }
+  },
+  {
+   "file": "playfair-display-700.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/playfairdisplay/PlayfairDisplay[wght].ttf",
+   "sha256": "c40f2293766a503bc70cce9e512ef844a4ccb7cbcde792fe2ea31d191917d8d6",
+   "version": "Version 1.203",
+   "pins": {
+    "wght": 700
+   }
+  },
+  {
+   "file": "playfair-display-500i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/playfairdisplay/PlayfairDisplay-Italic[wght].ttf",
+   "sha256": "a5e26dc5e2e77fb2803a0bf02fd4f81ee136ec8dea863ccdb0c59a263b21378b",
+   "version": "Version 1.203",
+   "pins": {
+    "wght": 500
+   }
+  },
+  {
+   "file": "literata-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/literata/Literata[opsz,wght].ttf",
+   "sha256": "b41138c9373112f32abb589cc22e8674b06ed4048b0c513be922bdd26f274440",
+   "version": "Version 3.103;gftools[0.9.29]",
+   "pins": {
+    "opsz": 18,
+    "wght": 400
+   }
+  },
+  {
+   "file": "literata-400i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/literata/Literata-Italic[opsz,wght].ttf",
+   "sha256": "d483dfaeba9cbf4ce71d32a52ee65df82f7e35b15fff8d1011cdb242d1fcd465",
+   "version": "Version 3.103;gftools[0.9.29]",
+   "pins": {
+    "opsz": 18,
+    "wght": 400
+   }
+  },
+  {
+   "file": "literata-700i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/literata/Literata-Italic[opsz,wght].ttf",
+   "sha256": "d483dfaeba9cbf4ce71d32a52ee65df82f7e35b15fff8d1011cdb242d1fcd465",
+   "version": "Version 3.103;gftools[0.9.29]",
+   "pins": {
+    "opsz": 18,
+    "wght": 700
+   }
+  },
+  {
+   "file": "cutive-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/cutive/Cutive-Regular.ttf",
+   "sha256": "8f0eb3280328c0051bbe725ce9d68c9117484b769cf68dbacec4343ae92ee031",
+   "version": "Version 1.110; ttfautohint (v1.8.4.7-5d5b)",
+   "pins": {
+    "wght": 400
+   }
+  },
+  {
+   "file": "newsreader-400.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/newsreader/Newsreader[opsz,wght].ttf",
+   "sha256": "8a08d13f8a6c0d51be379a60af84f945f65369a67e509ee3c3bdcc421254d7c1",
+   "version": "Version 1.003",
+   "pins": {
+    "opsz": 36,
+    "wght": 400
+   }
+  },
+  {
+   "file": "newsreader-700.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/newsreader/Newsreader[opsz,wght].ttf",
+   "sha256": "8a08d13f8a6c0d51be379a60af84f945f65369a67e509ee3c3bdcc421254d7c1",
+   "version": "Version 1.003",
+   "pins": {
+    "opsz": 36,
+    "wght": 700
+   }
+  },
+  {
+   "file": "newsreader-500i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/newsreader/Newsreader-Italic[opsz,wght].ttf",
+   "sha256": "796668611f80b64d5adf182fde3b6f29ed83b4e7cbec7b96937e84ac01364792",
+   "version": "Version 1.003",
+   "pins": {
+    "opsz": 36,
+    "wght": 500
+   }
+  },
+  {
+   "file": "newsreader-700i.woff2",
+   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/newsreader/Newsreader-Italic[opsz,wght].ttf",
+   "sha256": "796668611f80b64d5adf182fde3b6f29ed83b4e7cbec7b96937e84ac01364792",
+   "version": "Version 1.003",
+   "pins": {
+    "opsz": 36,
+    "wght": 700
+   }
+  },
+  {
+   "file": "aeonik-extended-600.woff2",
+   "url": "apps/web/src/app/fonts/aeonik/AeonikExtendedProTRIAL-SemiBold.woff2"
+  },
+  {
+   "file": "aeonik-extended-700.woff2",
+   "url": "apps/web/src/app/fonts/aeonik/AeonikExtendedPro-Bold.woff2"
+  }
+ ]
+}

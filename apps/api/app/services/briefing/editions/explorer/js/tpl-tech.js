@@ -48,8 +48,7 @@
         { id: "diazo", label: "diazo whiteprint", stock: "#f1efe6", ink: "#1f3487", soft: "#3d4f99", line: "rgba(31,52,135,.55)", grid: "rgba(31,52,135,.08)", warn: "#a8321c" },
       ],
       face: [
-        { id: "helvetica", label: "Helvetica Neue", stack: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
-        { id: "condensed", label: "Avenir Condensed", stack: "'Avenir Next Condensed', 'Helvetica Neue', sans-serif" },
+        { id: "barlow", label: "Barlow Condensed", stack: "'Barlow Condensed', sans-serif" },
       ],
       folds: [
         { id: "folded", label: "folded sheet" },
@@ -157,8 +156,7 @@ ${grain("bp-g", 0.85)}${folds}
         { id: "graphite", label: "graphite", panel: "#1d1e21", well: "#141517", plate: "#26282c", ink: "#eceae4", soft: "#a9a8a2", hair: "#36383d" },
       ],
       face: [
-        { id: "helvetica", label: "Helvetica Neue", stack: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
-        { id: "din", label: "Avenir Condensed", stack: "'Avenir Next Condensed', 'Helvetica Neue', sans-serif" },
+        { id: "sofia", label: "Sofia Sans Condensed", stack: "'Sofia Sans Condensed', sans-serif" },
       ],
     },
     css: `

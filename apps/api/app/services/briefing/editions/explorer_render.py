@@ -18,6 +18,7 @@ import re
 from app.constants.briefing import POSTAL_FAMILY, ArtFamily
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.artworks import artwork_catalogue
+from app.services.briefing.editions.edition_fonts import edition_font_faces_css
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
 from app.services.briefing.editions.stamps import (
     city_axis,
@@ -45,16 +46,6 @@ _REGISTER_PATTERN = re.compile(
 _BAND_ASSET_KEY = "BAND"
 # The Experience Company symbol heading Air Mail's return address.
 _TEC_MARK_ASSET_KEY = "TEC_MARK"
-
-# (family, asset key, weight, style) for the two embedded webfonts the
-# templates are designed against (explorer-contract.md rule 6).
-_FONT_FACE_SPEC: list[tuple[str, str, int, str]] = [
-    ("Aeonik Extended", "AEONIK_SEMIBOLD", 600, "normal"),
-    ("Aeonik Extended", "AEONIK_BOLD", 700, "normal"),
-    ("Playfair Display", "PLAYFAIR_NORMAL_500", 500, "normal"),
-    ("Playfair Display", "PLAYFAIR_NORMAL_700", 700, "normal"),
-    ("Playfair Display", "PLAYFAIR_ITALIC_500", 500, "italic"),
-]
 
 # Generic deterministic RNG — a straight port of explorer-shell.html's own
 # helpers, not vendored design. Picks one option per skin axis from
@@ -133,18 +124,6 @@ def _art(payload: BriefingPayload, family: str) -> ExplorerArt | None:
     }
 
 
-@lru_cache(maxsize=1)
-def _font_faces_css() -> str:
-    raw = _raw_assets()
-    rules = [
-        f"@font-face{{font-family:'{family}';font-style:{style};"
-        f"font-weight:{weight};font-display:block;"
-        f"src:url(data:font/woff2;base64,{raw[asset_key]}) format('woff2');}}"
-        for family, asset_key, weight, style in _FONT_FACE_SPEC
-    ]
-    return "".join(rules)
-
-
 def _json_for_script(value: object) -> str:
     """JSON-encode value for embedding inside an inline script literal.
 
@@ -205,7 +184,7 @@ def render_explorer_edition(
 <meta charset="utf-8">
 <meta name="viewport" content="width={EXPLORER_CANVAS_PX}">
 <style>
-{_font_faces_css()}
+{edition_font_faces_css(family)}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 html {{ -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }}
 body {{ width: {EXPLORER_CANVAS_PX}px; }}

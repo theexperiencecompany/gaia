@@ -71,7 +71,7 @@
     },
     css: `
 .t-receipt { box-sizing: border-box; isolation: isolate; width: 540px; padding: 56px 0 80px; display: flex; justify-content: center;
-  background: radial-gradient(120% 80% at 30% 0%, var(--hi) 0%, var(--a) 45%, var(--b) 100%); font-family: Menlo, 'SF Mono', ui-monospace, monospace; }
+  background: radial-gradient(120% 80% at 30% 0%, var(--hi) 0%, var(--a) 45%, var(--b) 100%); font-family: 'JetBrains Mono', monospace; }
 .t-receipt * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-receipt .wrap { position: relative; transform: rotate(0.5deg); }
 .t-receipt .wrap::before, .t-receipt .wrap::after { content: ""; position: absolute; bottom: 14px; width: 46%; height: 30px; z-index: -1; box-shadow: 0 18px 14px rgba(8,10,14,.5); }

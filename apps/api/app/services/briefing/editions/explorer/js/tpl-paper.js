@@ -40,8 +40,7 @@
         { id: "black", label: "black pad", stamp: "#26231f" },
       ],
       face: [
-        { id: "amtype", label: "American Typewriter", stack: "'American Typewriter', 'Courier New', monospace" },
-        { id: "courier", label: "Courier", stack: "'Courier New', Courier, monospace" },
+        { id: "elite", label: "Special Elite", stack: "'Special Elite', monospace" },
       ],
     },
     css: `
@@ -67,11 +66,11 @@
 .t-librarycard .ditto { display: inline-block; width: 64px; text-align: center; font-size: 24px; line-height: 1; color: #3a342b; }
 .t-librarycard .row .it small { display: block; font-size: 15px; color: #4f483c; }
 .t-librarycard .row .due { text-align: right; font-variant-numeric: tabular-nums; }
-.t-librarycard .stamp { display: inline-block; border: 2px solid var(--stamp); color: var(--stamp); border-radius: 3px; padding: 1px 5px; font: 700 14px/1.25 'Courier New', monospace; letter-spacing: 0; filter: url(#lc-ink); }
+.t-librarycard .stamp { display: inline-block; border: 2px solid var(--stamp); color: var(--stamp); border-radius: 3px; padding: 1px 5px; font: 700 14px/1.25 'Special Elite', monospace; letter-spacing: 0; filter: url(#lc-ink); }
 .t-librarycard .verb { font-weight: 700; margin-right: 6px; }
 .t-librarycard .sign { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 42px; font-size: 15px; }
 .t-librarycard .sign span:first-child { flex: 1; border-top: 1px solid #211d17; padding-top: 4px; margin-right: 18px; }
-.t-librarycard .sign i { font: italic 600 22px/1 'Snell Roundhand', 'Apple Chancery', cursive; display: block; margin-bottom: -2px; transform: translateY(-26px); height: 0; color: #2a3a7a; }
+.t-librarycard .sign i { font: italic 600 22px/1 'Pinyon Script', cursive; display: block; margin-bottom: -2px; transform: translateY(-26px); height: 0; color: #2a3a7a; }
 .t-librarycard .rec { margin-top: 16px; font-size: 15px; line-height: 1.5; }
 .t-librarycard .pocket { position: relative; z-index: 2; margin: -96px -8px 0; height: 118px; background: linear-gradient(180deg, rgba(255,255,255,.18), transparent 30%), var(--pocket);
   clip-path: polygon(0 18px, 34% 18px, 40% 0, 60% 0, 66% 18px, 100% 18px, 100% 100%, 0 100%); box-shadow: 0 -2px 4px rgba(0,0,0,.18); text-align: center; padding-top: 46px; color: #3b3021; }
@@ -163,8 +162,7 @@ ${inkMask("lc-ink", 7)}
         { id: "blush", label: "blush + bordeaux", ground: "#f1dcd4", card: "#f9ece6", ink: "#2b1b1e", soft: "#5f464a", gold: "#7c1d2c", foil: "#a8495a" },
       ],
       face: [
-        { id: "playfair", label: "Playfair + Hoefler", disp: "'Playfair Display', Georgia, serif", text: "'Hoefler Text', Baskerville, Georgia, serif" },
-        { id: "didot", label: "Didot + Baskerville", disp: "Didot, 'Bodoni 72', serif", text: "Baskerville, 'Hoefler Text', Georgia, serif" },
+        { id: "cormorant", label: "Cormorant + EB Garamond", disp: "'Cormorant', serif", text: "'EB Garamond', serif" },
       ],
       border: [
         { id: "foil", label: "foil keyline" },
@@ -247,8 +245,7 @@ ${inkMask("lc-ink", 7)}
         { id: "ink", label: "black on white", paper: "#f9f8f5", ink: "#121317", soft: "#55565c", hair: "#e0dfda", desk: "#c4c2bb", acc: "#121317", tint: "#ebeae5" },
       ],
       figures: [
-        { id: "helvetica", label: "Helvetica figures", fig: "'Helvetica Neue', Helvetica, sans-serif" },
-        { id: "menlo", label: "Menlo figures", fig: "Menlo, 'Courier New', monospace" },
+        { id: "heros", label: "TeX Gyre Heros figures", fig: "'TeX Gyre Heros', sans-serif" },
       ],
       stub: [
         { id: "remit", label: "remittance slip" },
@@ -256,7 +253,7 @@ ${inkMask("lc-ink", 7)}
       ],
     },
     css: `
-.t-invoice { box-sizing: border-box; width: 540px; padding: 30px 22px 38px; background: var(--desk); color: var(--ink); font: 400 17px/1.45 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+.t-invoice { box-sizing: border-box; width: 540px; padding: 30px 22px 38px; background: var(--desk); color: var(--ink); font: 400 17px/1.45 'TeX Gyre Heros', sans-serif; }
 .t-invoice * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-invoice .doc { position: relative; filter: drop-shadow(0 14px 18px rgba(0,0,0,.2)) drop-shadow(0 1px 2px rgba(0,0,0,.16)); }
 .t-invoice .sheet, .t-invoice .slip { position: relative; isolation: isolate; background: var(--paper); overflow: hidden; }
