@@ -4,6 +4,7 @@ from dataclasses import dataclass, field, replace
 from typing import TypedDict
 
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
 from app.override.langgraph_bigtool.agent_config import ToolRetrievalConfig
 
@@ -108,8 +109,16 @@ def build_provider_parent_tool_runtime_config(
 def build_executor_child_tool_runtime_config() -> ToolRuntimeConfig:
     """Build child tool runtime config for executor-spawned subagents."""
     # retrieve_tools hands back integration tools as docs to run via execute, so it always binds.
+    # activate_integration loads the integration a spawn's own slice needs into its context.
     return ToolRuntimeConfig(
-        initial_tool_names=["read", "bash", "execute", "get_tool_schema", FINISH_TASK_NAME],
+        initial_tool_names=[
+            "read",
+            "bash",
+            "execute",
+            "get_tool_schema",
+            ACTIVATE_INTEGRATION_TOOL_NAME,
+            FINISH_TASK_NAME,
+        ],
         enable_retrieve_tools=True,
         include_subagents_in_retrieve=False,
     )

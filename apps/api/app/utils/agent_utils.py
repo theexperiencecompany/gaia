@@ -59,8 +59,8 @@ class ActivateIntegrationCallArgs(BaseModel):
 class IntegrationDisplayMetadata(BaseModel):
     """Icon, id and name for a custom integration's tool card.
 
-    Redis-cached under two prefixes (handoff lookups by subagent id, MCP icon
-    lookups by integration id); an all-``None`` instance is the cached negative
+    Redis-cached under CUSTOM_INT_METADATA_CACHE_PREFIX by integration id; an
+    all-``None`` instance is the cached negative
     result, written as ``{}``.
     """
 

@@ -421,7 +421,7 @@ class AgentThread:
     """The subagent this run embodies; also its memory namespace id."""
 
     vfs_session_id: str | None = None
-    """Shared VFS session ID held constant across the executor and the handoff
+    """Shared VFS session ID held constant across the executor and the
     subagents it spawns, so all resolve VFS paths against the executor workspace.
     Inherited automatically via ``base_configurable``."""
 
@@ -707,12 +707,8 @@ async def build_agent_config(
     if plan := (inherited.plan_type or (resolved_plan.value if resolved_plan else None)):
         configurable["plan_type"] = plan
 
-    # A tracked todo run stamps what its spawns do on its root; the executor inherits it.
-    if spawn_job := inherited.spawn_job:
-        configurable["spawn_job"] = spawn_job
-
     # A workflow fire stamps its workflow on the comms configurable; the executor
-    # and its handoff subagents inherit it whole, the way root_request_id is.
+    # and its spawned subagents inherit it whole, the way root_request_id is.
     if workflow_id := inherited.workflow_id:
         configurable["workflow_id"] = workflow_id
         configurable["workflow_title"] = inherited.workflow_title

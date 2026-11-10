@@ -435,7 +435,6 @@ apps/api/tests/unit/tools/coding/test_bash_execute_env.py	attr-defined
 apps/api/tests/unit/tools/coding/test_bash_exit.py	attr-defined
 apps/api/tests/unit/tools/coding/test_bash_lab_run.py	arg-type
 apps/api/tests/unit/tools/coding/test_bash_lab_run.py	attr-defined
-apps/api/tests/unit/tools/coding/test_grep_filter_tools.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	index
 apps/api/tests/unit/tools/coding/test_read_fallback.py	arg-type

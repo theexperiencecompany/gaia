@@ -721,7 +721,6 @@ class TestBuildExecutorGraph:
                     "list_running_subagents",
                     "message_subagent",
                     "cancel_subagent",
-                    "activate_integration",
                     "update_user_instructions",
                 },
                 tool_runtime_config=runtime_config,
@@ -925,10 +924,8 @@ class TestBuildGraphs:
     @patch(f"{_MOD}.log")
     @patch(f"{_MOD}.build_comms_agent")
     @patch(f"{_MOD}.build_executor_agent")
-    @patch(f"{_MOD}.register_subagent_providers")
     def test_registers_both_agents(
         self,
-        mock_register_subagent,
         mock_build_executor,
         mock_build_comms,
         mock_log,
@@ -937,17 +934,14 @@ class TestBuildGraphs:
 
         build_graphs()
 
-        mock_register_subagent.assert_called_once()
         mock_build_executor.assert_called_once()
         mock_build_comms.assert_called_once()
 
     @patch(f"{_MOD}.log")
     @patch(f"{_MOD}.build_comms_agent")
     @patch(f"{_MOD}.build_executor_agent")
-    @patch(f"{_MOD}.register_subagent_providers")
     def test_calls_in_correct_order(
         self,
-        mock_register_subagent,
         mock_build_executor,
         mock_build_comms,
         mock_log,
@@ -955,21 +949,18 @@ class TestBuildGraphs:
         from app.agents.core.graph_builder.build_graph import build_graphs
 
         call_order: list[str] = []
-        mock_register_subagent.side_effect = lambda: call_order.append("register")
         mock_build_executor.side_effect = lambda: call_order.append("executor")
         mock_build_comms.side_effect = lambda: call_order.append("comms")
 
         build_graphs()
 
-        assert call_order == ["register", "executor", "comms"]
+        assert call_order == ["executor", "comms"]
 
     @patch(f"{_MOD}.log")
     @patch(f"{_MOD}.build_comms_agent")
     @patch(f"{_MOD}.build_executor_agent")
-    @patch(f"{_MOD}.register_subagent_providers")
     def test_logs_start_and_completion(
         self,
-        mock_register_subagent,
         mock_build_executor,
         mock_build_comms,
         mock_log,

@@ -16,6 +16,7 @@ from app.agents.core.subagents.base_subagent import (
     SubAgentToolConfig,
     build_scoped_tool_dict,
 )
+from app.agents.core.subagents.integration_activation import activate_integration
 from app.agents.core.subagents.spawn_agent import _build_spawn_graph
 from app.agents.middleware.factory import SubagentStackOptions
 from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
@@ -37,7 +38,8 @@ from app.agents.tools.instructions_tools import (
     get_user_instructions,
     update_integration_instructions,
 )
-from app.constants.execute import EXECUTE_TOOL_NAME
+from app.constants import agents as agents_constants
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME, EXECUTE_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.models.integration_models import UserToolNamespaces
 from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
@@ -372,6 +374,7 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
         "bash",
         "execute",
         "get_tool_schema",
+        "activate_integration",
         "finish_task",
     ]
 
@@ -536,6 +539,25 @@ async def test_an_executor_spawn_can_run_the_integration_tools_retrieve_hands_it
     bound = captured["tools_config"].initial_tool_ids
     assert EXECUTE_TOOL_NAME in bound
     assert "get_tool_schema" in bound
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_an_executor_spawn_can_activate_the_integration_its_task_needs():
+    """Regression: a spawn made before the executor activated Gmail could not activate it."""
+    captured = await _spawn_graph_agent_kwargs(
+        registry={
+            "vfs_read": vfs_read,
+            "normal_tool": normal_tool,
+            ACTIVATE_INTEGRATION_TOOL_NAME: activate_integration,
+        },
+        excluded=set(agents_constants.EXECUTOR_SPAWN_EXCLUDED_TOOLS),
+        runtime=build_executor_child_tool_runtime_config(),
+    )
+
+    # In the spawn's own registry (exclusions are applied there) and bound from its first step.
+    assert captured["tool_registry"][ACTIVATE_INTEGRATION_TOOL_NAME] is activate_integration
+    assert ACTIVATE_INTEGRATION_TOOL_NAME in captured["tools_config"].initial_tool_ids
 
 
 @pytest.mark.asyncio
