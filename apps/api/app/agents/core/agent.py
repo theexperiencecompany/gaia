@@ -29,12 +29,14 @@ from app.agents.core.messages import (
     MessageScope,
     construct_langchain_messages,
 )
+from app.agents.core.thread_lock import comms_thread_lock
 from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
+from app.db.repositories.conversations import conversation_repository
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentLane,
@@ -63,6 +65,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.chat.state import aggregate_usage_metadata
 from app.services.delivery.presence import read_presence
+from app.utils.timezone import Timezone
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.wide_events import log
@@ -165,8 +168,12 @@ async def _core_agent_logic(
     # captures none either; note_is_due keeps its turns noteless by entry surface.
     presence = options.presence or (await read_presence(user_id) if user_id else None)
 
+    # The surface and zone this turn is in, left on the conversation for the runs that
+    # start without a turn of their own (carry runs, approval tickets).
+    turn_timezone = Timezone.try_parse(user.timezone)
+
     # Build langchain messages and get graph concurrently
-    history, graph = await asyncio.gather(
+    history, graph, _recorded = await asyncio.gather(
         construct_langchain_messages(
             query=request.message,
             scope=MessageScope(
@@ -191,6 +198,12 @@ async def _core_agent_logic(
             ),
         ),
         GraphManager.get_graph("comms_agent"),
+        conversation_repository.set_run_context(
+            conversation_id,
+            user_id=user_id,
+            conversation_source=source,
+            user_timezone=turn_timezone.value if turn_timezone else None,
+        ),
     )
 
     initial_state = build_initial_state(
@@ -357,8 +370,9 @@ async def call_agent(
         if ids.bot_message_id:
             configurable["bot_message_id"] = ids.bot_message_id
 
-        async for chunk in execute_graph_streaming(graph, initial_state, config):
-            yield chunk
+        async with comms_thread_lock(conversation_id):
+            async for chunk in execute_graph_streaming(graph, initial_state, config):
+                yield chunk
 
 
 async def call_agent_silent(
@@ -401,7 +415,10 @@ async def call_agent_silent(
             cast(AgentConfigurable, config[CONF])["stream_id"] = stream_id
             register_executor_capture(stream_id)
 
-            complete_message, tool_data = await execute_graph_silent(graph, initial_state, config)
+            async with comms_thread_lock(conversation_id):
+                complete_message, tool_data = await execute_graph_silent(
+                    graph, initial_state, config
+                )
 
             # Wait for the detached executor (if one was spawned) and fold its
             # reconstructed tool_data into this message's tool_data.

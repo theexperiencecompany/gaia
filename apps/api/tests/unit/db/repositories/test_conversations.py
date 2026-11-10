@@ -469,6 +469,80 @@ class TestBackgroundVisibility:
         assert update == {"$set": {"has_live_approval": False}}
 
 
+class TestRunContext:
+    """set_run_context / get_run_context — what a turn leaves for runs that have no turn."""
+
+    async def test_it_sets_only_the_fields_it_was_given_and_leaves_updated_at_alone(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        assert (
+            await repo.set_run_context(
+                CONVERSATION_ID,
+                user_id=USER_ID,
+                conversation_source="whatsapp",
+                user_timezone=None,
+            )
+            is True
+        )
+
+        flt, update, _kwargs = _update_call(collection)
+        assert flt == {"conversation_id": CONVERSATION_ID, "user_id": USER_ID}
+        assert update == {"$set": {"run_context.conversation_source": "whatsapp"}}
+
+    async def test_it_writes_nothing_when_there_is_nothing_to_record(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        assert (
+            await repo.set_run_context(
+                CONVERSATION_ID, user_id=USER_ID, conversation_source=None, user_timezone=None
+            )
+            is False
+        )
+        collection.update_one.assert_not_awaited()
+
+    async def test_a_conversation_that_does_not_exist_reports_false(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        _matched(collection, 0)
+
+        assert (
+            await repo.set_run_context(
+                CONVERSATION_ID,
+                user_id=USER_ID,
+                conversation_source="web",
+                user_timezone="Asia/Kolkata",
+            )
+            is False
+        )
+
+    async def test_it_reads_the_stored_context(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        collection.find_one = AsyncMock(
+            return_value={
+                "run_context": {"conversation_source": "web", "user_timezone": "Asia/Kolkata"}
+            }
+        )
+
+        context = await repo.get_run_context(CONVERSATION_ID, user_id=USER_ID)
+
+        assert (context.conversation_source, context.user_timezone) == ("web", "Asia/Kolkata")
+        collection.find_one.assert_awaited_once_with(
+            {"conversation_id": CONVERSATION_ID, "user_id": USER_ID},
+            {"_id": 0, "run_context": 1},
+        )
+
+    @pytest.mark.parametrize("stored", [None, {}])
+    async def test_a_missing_conversation_or_context_reads_as_empty(
+        self, repo: ConversationRepository, collection: MagicMock, stored: dict[str, Any] | None
+    ) -> None:
+        collection.find_one = AsyncMock(return_value=stored)
+
+        context = await repo.get_run_context(CONVERSATION_ID, user_id=USER_ID)
+
+        assert (context.conversation_source, context.user_timezone) == (None, None)
+
+
 class TestOwnerIds:
     async def test_it_collects_every_user_holding_the_conversation_id(
         self, repo: ConversationRepository, collection: MagicMock

@@ -8,10 +8,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.db.repositories.users import user_repository
-from app.memory import context, pg_store, user_time
+from app.memory import context, pg_store
 from app.models.memory_db_models import MemoryEpisode
+from app.utils import clock
 
-USER = "user-1"
+USER = "507f1f77bcf86cd799439011"
 
 # 20:00 UTC on June 30 is already July 1 in Asia/Kolkata (UTC+5:30).
 FIXED_NOW = datetime(2026, 6, 30, 20, 0, tzinfo=UTC)
@@ -39,9 +40,8 @@ def seams() -> Any:
             "get",
             AsyncMock(return_value=SimpleNamespace(timezone="Asia/Kolkata")),
         ) as get_user,
-        patch.object(user_time, "datetime") as clock,
+        patch.object(clock, "now", return_value=FIXED_NOW),
     ):
-        clock.now.return_value = FIXED_NOW
         yield SimpleNamespace(episodes=episodes, get_user=get_user, set_cache=set_cache)
 
 

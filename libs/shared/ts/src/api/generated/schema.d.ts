@@ -7596,6 +7596,19 @@ export interface components {
             system_purpose?: components["schemas"]["SystemPurpose"] | null;
         };
         /**
+         * ConversationRunContext
+         * @description Where the user is, as of the conversation's latest turn; read by runs that have no live turn.
+         *
+         *     A field is None until a turn that knew it has run. Both are the values a turn's
+         *     agent config carries as conversation_source and user_timezone.
+         */
+        ConversationRunContext: {
+            /** Conversation Source */
+            conversation_source?: string | null;
+            /** User Timezone */
+            user_timezone?: string | null;
+        };
+        /**
          * ConversationSource
          * @description Client or channel a conversation originated from.
          * @enum {string}
@@ -16530,6 +16543,7 @@ export type ConversationDocument = components['schemas']['ConversationDocument']
 export type ConversationListResponse = components['schemas']['ConversationListResponse'];
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
 export type ConversationModel = components['schemas']['ConversationModel'];
+export type ConversationRunContext = components['schemas']['ConversationRunContext'];
 export type ConversationSource = components['schemas']['ConversationSource'];
 export type ConversationSummary = components['schemas']['ConversationSummary'];
 export type ConversationSyncItem = components['schemas']['ConversationSyncItem'];

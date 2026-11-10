@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
+from app.agents.core.thread_lock import comms_thread_lock
 from app.agents.core.thread_writes import with_message_ids
 from app.agents.llm.lane import AgentRole
 from app.constants.agents import AgentTag, wrap_agent_payload
@@ -79,7 +80,8 @@ async def narrate_executor_result(
                 _executor_report(result_text, msg_type, preamble),
             ],
         }
-        notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
+        async with comms_thread_lock(conversation_id):
+            notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
         return strip_internal_agent_tags(notification_text)
     except Exception as e:
         log.error(f"{LogTag.AGENT} narrate_executor_result: failed", error=str(e))
@@ -113,7 +115,8 @@ async def record_executor_cancellation(
 
     Without this, comms' last knowledge of the task stays "Handed to the executor...
     I'm on it", and a later turn believes the work is still running. Silent
-    aupdate_state write, no model call. Best-effort.
+    aupdate_state write, no model call. A failed write is logged and swallowed; only a
+    thread lock that cannot be taken raises.
     """
     marker = HumanMessage(
         content=wrap_agent_payload(
@@ -124,25 +127,26 @@ async def record_executor_cancellation(
         ),
         name=BACKGROUND_EXECUTOR_NAME,
     )
-    try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
-        await comms_graph.aupdate_state(
-            {"configurable": {"thread_id": conversation_id}},
-            {"messages": with_message_ids([marker])},
-            as_node="tools",
-        )
-        log.info(
-            f"{LogTag.AGENT} Recorded executor cancellation in comms checkpoint",
-            conversation_id=conversation_id,
-            task_id=task_id,
-        )
-    except Exception as e:  # cancel finalize must proceed regardless
-        log.error(
-            f"{LogTag.AGENT} Failed to record executor cancellation",
-            conversation_id=conversation_id,
-            task_id=task_id,
-            error=str(e),
-        )
+    async with comms_thread_lock(conversation_id):
+        try:
+            comms_graph = await GraphManager.get_graph("comms_agent")
+            await comms_graph.aupdate_state(
+                {"configurable": {"thread_id": conversation_id}},
+                {"messages": with_message_ids([marker])},
+                as_node="tools",
+            )
+            log.info(
+                f"{LogTag.AGENT} Recorded executor cancellation in comms checkpoint",
+                conversation_id=conversation_id,
+                task_id=task_id,
+            )
+        except Exception as e:  # cancel finalize must proceed regardless
+            log.error(
+                f"{LogTag.AGENT} Failed to record executor cancellation",
+                conversation_id=conversation_id,
+                task_id=task_id,
+                error=str(e),
+            )
 
 
 async def record_platform_delivery(conversation_id: str, text: str) -> None:
@@ -169,23 +173,27 @@ async def record_exchange_in_thread(conversation_id: str, user_message: str, rep
 
 
 async def _append_to_thread(conversation_id: str, messages: list[BaseMessage]) -> None:
-    """Write messages into the comms thread with a silent aupdate_state, no model call; never raises."""
-    try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
-        # as_node="tools", not "agent": the agent node's should_continue needs
-        # a store aupdate_state can't inject; the tools->agent edge needs none.
-        await comms_graph.aupdate_state(
-            {"configurable": {"thread_id": conversation_id}},
-            {"messages": with_message_ids(messages)},
-            as_node="tools",
-        )
-        log.info(
-            f"{LogTag.AGENT} Recorded messages in conversation thread",
-            conversation_id=conversation_id,
-        )
-    except Exception as e:  # what it records already reached the user; never break the caller
-        log.error(
-            f"{LogTag.AGENT} Failed to record messages in conversation thread",
-            conversation_id=conversation_id,
-            error=str(e),
-        )
+    """Write messages into the comms thread with a silent aupdate_state, no model call.
+
+    A failed write is logged and swallowed; only a thread lock that cannot be taken raises.
+    """
+    async with comms_thread_lock(conversation_id):
+        try:
+            comms_graph = await GraphManager.get_graph("comms_agent")
+            # as_node="tools", not "agent": the agent node's should_continue needs
+            # a store aupdate_state can't inject; the tools->agent edge needs none.
+            await comms_graph.aupdate_state(
+                {"configurable": {"thread_id": conversation_id}},
+                {"messages": with_message_ids(messages)},
+                as_node="tools",
+            )
+            log.info(
+                f"{LogTag.AGENT} Recorded messages in conversation thread",
+                conversation_id=conversation_id,
+            )
+        except Exception as e:  # what it records already reached the user; never break the caller
+            log.error(
+                f"{LogTag.AGENT} Failed to record messages in conversation thread",
+                conversation_id=conversation_id,
+                error=str(e),
+            )

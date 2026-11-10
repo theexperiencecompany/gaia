@@ -209,6 +209,14 @@ RUN_RECORD_TTL = ONE_DAY_TTL * 2
 # The integrations a run already showed a connect card for; calls to them are refused.
 RUN_BLOCKED_INTEGRATIONS_PREFIX = "run_blocked_integrations:"
 
+# The lease every writer of a conversation's comms LangGraph thread holds while it writes
+# (see agents/core/thread_lock). A turn is bounded, so the hold cap is the busy lock's TTL.
+COMMS_THREAD_LOCK_PREFIX = "comms_thread:lock:"
+COMMS_THREAD_LOCK_LEASE_SECONDS = 30.0
+COMMS_THREAD_LOCK_RENEW_SECONDS = 10.0
+COMMS_THREAD_LOCK_ACQUIRE_TIMEOUT_SECONDS = 120.0
+COMMS_THREAD_LOCK_MAX_HOLD_SECONDS = float(THIRTY_MINUTES_TTL)
+
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 # Set when an executor run ends asking the user to confirm; only then may the
 # next call_executor carry irreversible_approved (confirmation_gate.py).

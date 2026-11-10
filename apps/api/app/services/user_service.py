@@ -11,7 +11,7 @@ from app.models.user_models import (
 )
 from app.services.analytics_service import capture
 from app.services.blob_store import blob_store
-from app.utils.timezone import Timezone
+from app.utils.timezone import Timezone, resolve_home_timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsQuietHoursUpdated
 from shared.py.wide_events import log
@@ -48,9 +48,14 @@ async def set_quiet_hours(user_id: str, hours: QuietHours) -> QuietHours:
 
 
 async def get_profile_timezone(user_id: str) -> Timezone:
-    """Return the timezone on the user's profile; UTC when they have none or it is not one."""
-    user = await get_user_by_id(user_id)
-    return Timezone.parse(user.timezone if user else None)
+    """Return the user's home timezone; UTC for an id that names no profile, or a profile with no valid zone.
+
+    A failed profile read propagates: UTC here would fire a schedule or file a journal day at the wrong hour.
+    """
+    if not user_repository.is_valid_id(user_id):
+        return Timezone.utc()
+    user = await user_repository.get(user_id)
+    return resolve_home_timezone(user.timezone if user else None, None).timezone
 
 
 async def update_user_profile(

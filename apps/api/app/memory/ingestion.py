@@ -48,12 +48,12 @@ from app.memory.pg_store import EpisodeEntry
 from app.memory.pg_store.episodes import entry_text
 from app.memory.reconciliation import ReconciledFact, reconcile
 from app.memory.schemas import ExtractedFact, ExtractedMemoryBatch
-from app.memory.user_time import resolve_user_timezone
 from app.models.memory_db_models import MemoryEpisode, MemoryRecord
 from app.models.memory_models import MemoryEntry
 from app.models.payment_models import PlanType
 from app.services.memory_fs import schedule_memory_vfs_sync
 from app.services.payments.payment_service import payment_service
+from app.services.user_service import get_profile_timezone
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 _DEFAULT_USER_NAME = "the user"
@@ -302,7 +302,7 @@ async def _load_ingest_context(user_id: str, now: datetime) -> _IngestContext:
     """Read the folder tree, recent facts and today's journal on the user's wall clock."""
     folder_tree = await pg_store.get_folder_tree(user_id)
     recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
-    local_now = (await resolve_user_timezone(user_id)).localize(now)
+    local_now = (await get_profile_timezone(user_id)).localize(now)
     today_episode = await pg_store.get_episode(user_id, local_now.date())
     return _IngestContext(
         folder_tree=folder_tree,

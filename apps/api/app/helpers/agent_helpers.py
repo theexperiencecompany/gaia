@@ -70,6 +70,7 @@ from app.utils.agent_utils import (
 from app.utils.general_utils import clip_text
 from app.utils.multimodal import MessageContent, extract_text_content, has_media_blocks
 from app.utils.stream_publishers import TodoProgressSnapshot
+from app.utils.timezone import resolve_home_timezone
 from shared.py.wide_events import log
 
 
@@ -649,11 +650,9 @@ async def build_agent_config(
     # The agent operates in the user's HOME timezone (IANA, DST-aware). Top-level
     # callers pass it on user.timezone; child agents reconstruct a bare user,
     # so they inherit the parent's zone from its configurable instead.
-    home_timezone = (acting_user.timezone or "").strip()
-    if not home_timezone and base_configurable:
-        home_timezone = (inherited.user_timezone or "").strip()
-    if not home_timezone:
-        home_timezone = "UTC"
+    home_timezone = resolve_home_timezone(
+        acting_user.timezone, inherited.user_timezone
+    ).timezone.value
 
     # One id for the WHOLE user turn: generated at the top-level call and
     # inherited by every child agent, so the accounting middleware's aggregate

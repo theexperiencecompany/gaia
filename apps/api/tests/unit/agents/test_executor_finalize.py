@@ -73,8 +73,10 @@ from app.constants.general import FINISH_TASK_NAME
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
+from app.db.repositories.conversations import conversation_repository
 from app.models.agent_models import InboxEntry
 from app.models.chat_models import SourceCategory
+from app.models.conversation_models import ConversationRunContext
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
 from app.services.delivery.chat_channel import InApp
@@ -105,6 +107,17 @@ def _run(
         workflow_id=workflow_id,
         source_category=source_category,
     )
+
+
+@pytest.fixture(autouse=True)
+def _untouched_conversation() -> Iterator[None]:
+    """Double the run-context read a carried run starts with, for a conversation no turn has touched."""
+    with patch.object(
+        conversation_repository,
+        "get_run_context",
+        AsyncMock(return_value=ConversationRunContext()),
+    ):
+        yield
 
 
 class _Boundaries:

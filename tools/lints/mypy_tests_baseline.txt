@@ -112,7 +112,6 @@ apps/api/tests/unit/agents/test_delegation.py	assignment
 apps/api/tests/unit/agents/test_delegation.py	attr-defined
 apps/api/tests/unit/agents/test_delegation.py	list-item
 apps/api/tests/unit/agents/test_delegation.py	typeddict-item
-apps/api/tests/unit/agents/test_deliver_to_executor.py	attr-defined
 apps/api/tests/unit/agents/test_email_processor.py	arg-type
 apps/api/tests/unit/agents/test_email_processor.py	list-item
 apps/api/tests/unit/agents/test_email_processor.py	method-assign
@@ -241,14 +240,10 @@ apps/api/tests/unit/memory/test_embeddings.py	attr-defined
 apps/api/tests/unit/memory/test_embeddings.py	func-returns-value
 apps/api/tests/unit/memory/test_embeddings.py	misc
 apps/api/tests/unit/memory/test_embeddings.py	valid-type
-apps/api/tests/unit/memory/test_ingestion.py	arg-type
-apps/api/tests/unit/memory/test_ingestion.py	attr-defined
-apps/api/tests/unit/memory/test_ingestion.py	typeddict-item
 apps/api/tests/unit/memory/test_management.py	attr-defined
 apps/api/tests/unit/memory/test_management.py	misc
 apps/api/tests/unit/memory/test_reconciliation.py	attr-defined
 apps/api/tests/unit/memory/test_retrieval.py	attr-defined
-apps/api/tests/unit/memory/test_user_time.py	attr-defined
 apps/api/tests/unit/middleware/test_loop_guard.py	union-attr
 apps/api/tests/unit/middleware/test_rate_limiter_middleware.py	arg-type
 apps/api/tests/unit/middleware/test_request_timeout.py	arg-type

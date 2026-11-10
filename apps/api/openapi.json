@@ -3889,6 +3889,35 @@
         "title": "ConversationModel",
         "type": "object"
       },
+      "ConversationRunContext": {
+        "description": "Where the user is, as of the conversation's latest turn; read by runs that have no live turn.\n\nA field is None until a turn that knew it has run. Both are the values a turn's\nagent config carries as conversation_source and user_timezone.",
+        "properties": {
+          "conversation_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Source"
+          },
+          "user_timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Timezone"
+          }
+        },
+        "title": "ConversationRunContext",
+        "type": "object"
+      },
       "ConversationSource": {
         "description": "Client or channel a conversation originated from.",
         "enum": [

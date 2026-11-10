@@ -62,6 +62,19 @@ class FoldedCards(BaseModel):
     cards: list[ToolDataEntry] = Field(default_factory=list)
 
 
+class ConversationRunContext(BaseModel):
+    """Where the user is, as of the conversation's latest turn; read by runs that have no live turn.
+
+    A field is None until a turn that knew it has run. Both are the values a turn's
+    agent config carries as conversation_source and user_timezone.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    conversation_source: str | None = None
+    user_timezone: str | None = None
+
+
 class ConversationDocument(UserScopedDocument):
     """A conversation and its embedded message history as stored in MongoDB.
 
@@ -86,6 +99,8 @@ class ConversationDocument(UserScopedDocument):
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
+    # Write-side state only, like folded_cards: never serialized to a reader.
+    run_context: ConversationRunContext | None = Field(default=None, exclude=True)
     messages: list[MessageModel] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
@@ -164,6 +179,14 @@ class _SourceRow(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     source: str | None = None
+
+
+class _RunContextRow(BaseModel):
+    """Projection of just a conversation's stored run context."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    run_context: ConversationRunContext | None = None
 
 
 class _TodoBindingRow(BaseModel):

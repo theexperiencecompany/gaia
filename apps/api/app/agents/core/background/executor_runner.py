@@ -62,6 +62,7 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import NON_WAKING_TAGS, AgentTag, OutcomeState
+from app.constants.chat import SourceCategory
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
@@ -78,6 +79,7 @@ from app.constants.executor import (
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
+from app.db.repositories.conversations import conversation_repository
 from app.models.agent_models import (
     AgentConfigurable,
     AgentConfigurableView,
@@ -846,10 +848,24 @@ async def _prepare_executor_run(
 ) -> PreparedQueuedTask | None:
     """Claim the conversation and materialize a detached run for the task.
 
-    Built from the user alone: a caller's configurable belongs to the run that
-    held it (its thread, subagent id, turn hints), never to the run started here.
-    None means another run holds the conversation (or Redis is down).
+    Built from the user and the conversation's run context: a caller's configurable
+    belongs to the run that held it (its thread, subagent id, turn hints), never to
+    the run started here. None means another run holds the conversation (or Redis is down).
     """
+    run_context = await conversation_repository.get_run_context(
+        conversation_id, user_id=user.user_id
+    )
+    configurable: AgentConfigurable = {
+        "user_id": user.user_id,
+        "email": user.email or "",
+        "user_name": user.name or "",
+        "user_timezone": run_context.user_timezone or user.timezone,
+        "thread_id": conversation_id,
+        "execution_mode": "interactive",
+    }
+    if source := run_context.conversation_source:
+        configurable["conversation_source"] = source
+        configurable["source_category"] = SourceCategory.from_source(source).value
     task_id = str(uuid4())
     # Equivalent under mutation: prepare_run_from_item claims the conversation it is
     # handed, never this item's copy, and the item is never stored.
@@ -862,14 +878,7 @@ async def _prepare_executor_run(
         conversation_id,
         build_run_item(
             task=task,
-            configurable={
-                "user_id": user.user_id,
-                "email": user.email or "",
-                "user_name": user.name or "",
-                "user_timezone": user.timezone,
-                "thread_id": conversation_id,
-                "execution_mode": "interactive",
-            },
+            configurable=configurable,
             identity=identity,
             workflow_execution_id=workflow_execution_id,
         ),

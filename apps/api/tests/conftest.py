@@ -69,6 +69,7 @@ from app.config.posthog import init_posthog
 from app.config.settings import settings as app_settings
 from app.core.lazy_loader import MissingKeyStrategy, providers
 from app.db.redis import redis_cache
+from app.models.conversation_models import ConversationRunContext
 from app.models.payment_models import (
     PlanType,
     SubscriptionStatus,
@@ -359,6 +360,16 @@ def _no_captured_loop_carryover() -> Iterator[None]:
     """Forget a server loop a test captured (unified_startup does); the next test's loop is new, that one closed."""
     yield
     reset_captured_loop()
+
+
+@pytest.fixture
+def empty_run_context() -> Iterator[AsyncMock]:
+    """Double the conversation read that starts a run with no turn of its own, for a conversation no turn has touched."""
+    with patch(
+        "app.db.repositories.conversations.conversation_repository.get_run_context",
+        AsyncMock(return_value=ConversationRunContext()),
+    ) as read:
+        yield read
 
 
 @pytest.fixture

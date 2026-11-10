@@ -40,7 +40,7 @@ from app.models.agent_models import InboxEntry
 from app.models.user_models import AuthenticatedUser
 from tests.helpers import captured_wide_event
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("empty_run_context")]
 
 CONVERSATION = "conv-1"
 TASK = "summarize the thread"
@@ -59,7 +59,7 @@ def _seams(*, busy: list[bool], started: bool):
 
     stack = patch.object(er, "reclaim_dead_lock", _free_after_reclaim)
     start = patch.object(er, "_start_executor_run", new_callable=AsyncMock, return_value=started)
-    append = patch.object(er.ExecutorInbox, "append", new_callable=AsyncMock)
+    append = patch.object(ExecutorInbox, "append", new_callable=AsyncMock)
     return stack, start, append
 
 

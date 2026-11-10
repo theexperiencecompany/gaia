@@ -45,12 +45,14 @@ from app.models.chat_models import (
 from app.models.conversation_models import (
     ConversationDocument,
     ConversationMessageHit,
+    ConversationRunContext,
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
     _ConversationIdRow,
     _ConversationOwnerRow,
     _MessageProjectionRow,
+    _RunContextRow,
     _SourceRow,
     _SystemGeneratedRow,
     _TodoBindingRow,
@@ -621,6 +623,49 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _SourceRow,
         )
         return None if row is None else ConversationSource.coerce(row.source)
+
+    async def set_run_context(
+        self,
+        conversation_id: str,
+        *,
+        user_id: str,
+        conversation_source: str | None,
+        user_timezone: str | None,
+    ) -> bool:
+        """Record the surface and timezone of the conversation's latest turn; unknown fields keep their stored value.
+
+        Does not advance updatedAt: a turn's context is not conversation activity. False when
+        the conversation does not exist (yet) or nothing was given to record.
+        """
+        known = {
+            f"run_context.{field}": value
+            for field, value in (
+                ("conversation_source", conversation_source),
+                ("user_timezone", user_timezone),
+            )
+            if value is not None
+        }
+        if not known:
+            return False
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id},
+            {"$set": known},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
+    async def get_run_context(
+        self, conversation_id: str, *, user_id: str
+    ) -> ConversationRunContext:
+        """Return the conversation's run context; empty when it has none or does not exist."""
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            {"_id": 0, "run_context": 1},
+            _RunContextRow,
+        )
+        return (row.run_context if row else None) or ConversationRunContext()
 
     async def owner_ids(self, conversation_id: str) -> set[str]:
         """Every user holding a conversation under this id; more than one means they share its agent thread."""

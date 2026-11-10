@@ -120,6 +120,17 @@ def _read_presence():
 
 
 @pytest.fixture(autouse=True)
+def _run_context_write():
+    """Keep the turn's run-context write off Mongo; test_executor_run_context asserts on it."""
+    with patch(
+        "app.agents.core.agent.conversation_repository.set_run_context",
+        new_callable=AsyncMock,
+        return_value=True,
+    ) as write:
+        yield write
+
+
+@pytest.fixture(autouse=True)
 def _no_real_analytics():
     """Keep every test hermetic: agent lifecycle events are asserted through this mock and never reach a real PostHog client."""
     with patch("app.services.analytics_service.capture") as mock_capture:
