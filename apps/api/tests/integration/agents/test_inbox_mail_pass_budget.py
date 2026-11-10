@@ -1,4 +1,8 @@
-"""An Inbox desk mail pass finishes inside its step budget however many threads it reads.
+"""A spawn finishes a mail sweep inside its step budget however many threads it reads.
+
+The Inbox desk mail pass is the measured case: fetch, mine the saved file, read the
+threads, draft, report. A chat sweep slice has the same shape, so every spawn gets
+the budget this pass needs, with nothing stamped on the run that spawns it.
 
 Real: the spawn_subagent tool (blocking), the compiled spawn graph with the real middleware
 stack, and the recursion wrap-up notice. Replaced: the LLM (a fake that walks the batched mail
@@ -27,7 +31,7 @@ from app.agents.middleware.factory import SubagentStackOptions, create_subagent_
 from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
-from app.models.agent_models import AnyAgentMiddleware, SpawnJob
+from app.models.agent_models import AnyAgentMiddleware
 from tests.helpers import PassthroughFakeLLM
 
 WRAP_UP_MARKER = "almost out of steps"
@@ -114,8 +118,8 @@ def _mail_tools() -> dict[str, Any]:
     }
 
 
-async def _run_mail_pass(llm: MailPassFakeLLM, job: SpawnJob) -> list[ToolMessage]:
-    """Run one blocking spawn from a run stamped with job; return the spawn thread's tool results."""
+async def _run_mail_pass(llm: MailPassFakeLLM) -> list[ToolMessage]:
+    """Run one blocking spawn; return the spawn thread's tool results."""
     saver = InMemorySaver()
     tools = _mail_tools()
     holder: dict[str, Any] = {}
@@ -166,7 +170,6 @@ async def _run_mail_pass(llm: MailPassFakeLLM, job: SpawnJob) -> list[ToolMessag
             "user_name": "Desk",
             "stream_id": "stream-mail-pass",
             "execution_mode": "background",
-            "spawn_job": job,
         }
     }
     spawn = middleware.tools[0]
@@ -220,20 +223,10 @@ async def test_a_mail_pass_reads_and_drafts_every_thread_within_its_budget(
 ) -> None:
     llm = MailPassFakeLLM(thread_count)
 
-    results = await _run_mail_pass(llm, SpawnJob.INBOX_MAIL)
+    results = await _run_mail_pass(llm)
 
     assert not llm.saw_wrap_up, "the pass was told to stop before it finished"
     drafts = [m for m in results if m.name == "GMAIL_CREATE_EMAIL_DRAFT"]
     assert len(drafts) == thread_count
     assert llm.reported is not None
     assert llm.reported.count("thread: ") == thread_count
-
-
-async def test_a_focused_spawn_budget_cannot_hold_a_mail_pass() -> None:
-    """Why the mail pass has a budget of its own: the default one runs out before the drafts."""
-    llm = MailPassFakeLLM(3)
-
-    results = await _run_mail_pass(llm, SpawnJob.FOCUSED)
-
-    assert llm.saw_wrap_up
-    assert not [m for m in results if m.name == "GMAIL_CREATE_EMAIL_DRAFT"]

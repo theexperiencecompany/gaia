@@ -1646,8 +1646,18 @@ class TestMaybeInjectWrapupDirect:
         assert "almost out of steps" in at_edge["messages"][-1].content
         assert _maybe_inject_wrapup(outside, _limited(EXECUTOR_RECURSION_LIMIT)) is outside
 
+    def test_a_spawn_is_not_stopped_before_it_finishes_a_sweep_slice(self) -> None:
+        """Regression: at 15 steps a spawn got the stop notice on its 5th model call."""
+        # A measured mail slice: skill, fetch, second fetch, three mining calls. Two
+        # supersteps per tool round, so model call k has limit - (2k - 1) steps left.
+        tool_calling_model_calls = 7
+        remaining = SUBAGENT_RECURSION_LIMIT - (2 * tool_calling_model_calls - 1)
+        state = _make_state(remaining_steps=remaining)
+
+        assert _maybe_inject_wrapup(state, _limited(SUBAGENT_RECURSION_LIMIT)) is state
+
     def test_a_short_run_keeps_the_floor(self) -> None:
-        """A fraction of a 15-step subagent is one model turn — too few to answer in."""
+        """A fraction of a short subagent run is one model turn, too few to answer in."""
         at_floor = _maybe_inject_wrapup(
             _make_state(remaining_steps=RECURSION_WRAPUP_MIN_STEPS),
             _limited(SUBAGENT_RECURSION_LIMIT),

@@ -43,7 +43,7 @@ MCP servers each one exposes.
 
 Use this before anything device-related: to learn which machines are paired, whether each is
 online right now, and the local MCP servers it exposes (with their integration_id, so you can
-hand off to their tools).
+activate them with activate_integration).
 
 RETURN VALUE:
 A list of devices, each with:
@@ -54,7 +54,7 @@ A list of devices, each with:
 NOTES:
 - A server with tools_synced_at = null was never successfully reached, so its tools are not
   available yet; tell the user to make sure the device is online.
-- Tools of an online, synced device server are used like any other integration (hand off to it);
+- Tools of an online, synced device server are used like any other integration (activate it);
   you do not connect to a device server through add_custom_mcp_server.
 """
 
@@ -173,7 +173,7 @@ read stderr, fix, and re-run rather than assuming success.
 NOTES:
 - NOT for a device's MCP servers. If a device exposes an MCP server (shown under
   CONNECTED DEVICES as "exposing: <name>"), use that server's own tools to
-  operate it - retrieve them and hand off to its subagent - never shell out to it
+  operate it - activate that integration and run its tools - never shell out to it
   with this tool. run_on_device is for shell commands, not for calling MCP tools.
 - This is the one way to touch the user's real files; the coding sandbox is a
   cloud container that cannot see their machine.

@@ -45,14 +45,6 @@ class SubagentKind(StrEnum):
     SPAWN = "spawn"
 
 
-class SpawnJob(StrEnum):
-    """The job a run's spawn_subagent calls hand over, which sets each spawn's step budget."""
-
-    FOCUSED = "focused"
-    # The Inbox desk's per-account pass: fetch, sweep, read and draft (INBOX_DESK_MAIL_TASK).
-    INBOX_MAIL = "inbox_mail"
-
-
 class SubagentResumeItem(TypedDict):
     """How to rebuild a background subagent run, in any process, from what its tool was given.
 
@@ -173,9 +165,6 @@ class AgentConfigurable(TypedDict, total=False):
     #: by children; the budget wall reads it to avoid a Redis lookup, and
     #: derives the tier from the cached plan itself when absent.
     plan_type: str
-    #: What this run's spawns do, stamped by a tracked todo run whose kind
-    #: spawns one job (the Inbox desk's mail passes) and inherited by its executor.
-    spawn_job: SpawnJob
 
     # --- workflow context (must survive queueing) ---------------------------
     workflow_id: str
@@ -268,7 +257,6 @@ class AgentConfigurableView(BaseModel):
     conversation_source: str | None = None
     source_category: str | None = None
     plan_type: str | None = None
-    spawn_job: SpawnJob | None = None
     workflow_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True

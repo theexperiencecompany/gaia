@@ -176,7 +176,7 @@ async def is_gated(
 
 
 class _DelegationArgs(BaseModel):
-    """The one argument of spawn_subagent / handoff that decides whether it can pause its parent."""
+    """The one argument of spawn_subagent that decides whether it can pause its parent."""
 
     model_config = ConfigDict(extra="ignore")
 

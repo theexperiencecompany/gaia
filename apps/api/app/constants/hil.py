@@ -143,9 +143,9 @@ HIL_DECIDED_UNRESUMED_GRACE_SECONDS = 120
 # in v1 (deprecated, slated for removal in v2).
 LANGGRAPH_INTERRUPT_KEY = "__interrupt__"
 
-# configurable flag set only on a resume re-dispatch. The handoff tool probes
-# the subagent thread's checkpoint for a parked interrupt ONLY when this is
-# set, so fresh runs (the ~100% case) skip that per-handoff Postgres read.
+# configurable flag set only on a resume re-dispatch. spawn_subagent probes
+# the spawn's thread checkpoint for a parked interrupt ONLY when this is
+# set, so fresh runs (the ~100% case) skip that per-spawn Postgres read.
 HIL_RESUME_CONFIG_KEY: Final = "hil_resume_replay"
 
 # configurable key a background subagent run carries its own rebuild recipe
