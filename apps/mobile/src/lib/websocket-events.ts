@@ -3,7 +3,7 @@
  * These match the event types emitted by the backend over the WS connection.
  */
 export const WS_EVENTS = {
-  NOTIFICATION_DELIVERED: "notification.delivered",
+  OUTBOX_MESSAGE: "outbox.message",
   NOTIFICATION_READ: "notification.read",
   NOTIFICATION_UPDATED: "notification.updated",
   TODO_CREATED: "todo.created",
@@ -20,3 +20,18 @@ export const WS_EVENTS = {
 } as const;
 
 export type WsEventType = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
+
+export const OUTBOX_MESSAGE_KINDS = {
+  CONVERSATION_MESSAGE: "conversation_message",
+  NOTIFICATION: "notification",
+} as const;
+
+/** Whether an `outbox.message` frame carries a notification record (not a chat message). */
+export function isOutboxNotification(message: unknown): boolean {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    "kind" in message &&
+    message.kind === OUTBOX_MESSAGE_KINDS.NOTIFICATION
+  );
+}

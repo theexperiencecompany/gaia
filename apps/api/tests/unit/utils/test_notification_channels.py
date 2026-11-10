@@ -32,7 +32,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.services.outbound_delivery import OutboundResult
+from app.services.outbox.transport.bot_queue import OutboundResult
 from app.utils.notification.channels.discord import DiscordChannelAdapter
 from app.utils.notification.channels.external import ExternalPayload
 from app.utils.notification.channels.imessage import ImessageChannelAdapter
@@ -128,74 +128,15 @@ class TestInAppChannelAdapter:
         request = _make_request(channels=[ChannelConfig(channel_type="telegram", enabled=True)])
         assert InAppChannelAdapter().can_handle(request) is True
 
-    async def test_transform_basic(self) -> None:
-        request = _make_request(title="Hello", body="World")
-        content = await InAppChannelAdapter().transform(request)
-        assert content.title == "Hello"
-        assert content.body == "World"
-        assert content.metadata == {"key": "value"}
+    async def test_transform_names_the_stored_record(self) -> None:
+        content = await InAppChannelAdapter().transform(_make_request(title="Hello", body="World"))
+        assert content == "notif-1"
 
-    async def test_transform_carries_the_action_confirmation_message(self) -> None:
-        action = _make_redirect_action()
-        action.requires_confirmation = True
-        action.confirmation_message = "Really open it?"
-        content = await InAppChannelAdapter().transform(_make_request(actions=[action]))
-
-        assert content.actions[0].requires_confirmation is True
-        assert content.actions[0].confirmation_message == "Really open it?"
-
-    async def test_transform_wire_frame(self) -> None:
-        """The dumped payload is exactly the notification.new frame body."""
-        action = _make_redirect_action(label="View", url="/todos/1")
-        action.id = "act-1"
-        request = _make_request(title="Hello", body="World", actions=[action])
-        content = await InAppChannelAdapter().transform(request)
-        assert content.model_dump() == {
-            "id": "notif-1",
-            "title": "Hello",
-            "body": "World",
-            "type": NotificationType.INFO,
-            "priority": 2,
-            "actions": [
-                {
-                    "id": "act-1",
-                    "type": ActionType.REDIRECT,
-                    "label": "View",
-                    "style": ActionStyle.PRIMARY,
-                    "requires_confirmation": False,
-                    "confirmation_message": None,
-                    "config": {
-                        "redirect": {
-                            "url": "/todos/1",
-                            "open_in_new_tab": False,
-                            "close_notification": False,
-                        },
-                        "api_call": None,
-                        "modal": None,
-                    },
-                }
-            ],
-            "metadata": {"key": "value"},
-            "created_at": request.created_at.isoformat(),
-        }
-
-    async def test_successful_delivery(self) -> None:
-        content = await InAppChannelAdapter().transform(_make_request(title="Test", body="B"))
-        with patch("app.utils.notification.channels.inapp.websocket_manager") as ws:
-            ws.broadcast_to_user = AsyncMock()
-            status = await InAppChannelAdapter().deliver(content, "user-1")
+    async def test_delivery_reports_the_record_without_a_socket_push(self) -> None:
+        with patch("app.core.websocket_manager.WebSocketManager.broadcast_to_user") as broadcast:
+            status = await InAppChannelAdapter().deliver("notif-1", "user-1")
         assert status.status == NotificationStatus.DELIVERED
-        ws.broadcast_to_user.assert_awaited_once_with(
-            "user-1", {"type": "notification.new", "notification": content.model_dump()}
-        )
-
-    async def test_delivery_failure(self) -> None:
-        with patch("app.utils.notification.channels.inapp.websocket_manager") as ws:
-            ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("ws down"))
-            content = await InAppChannelAdapter().transform(_make_request())
-            status = await InAppChannelAdapter().deliver(content, "user-1")
-        assert status.status == NotificationStatus.FAILED
-        assert "ws down" in (status.error_message or "")
+        broadcast.assert_not_called()
 
 
 # ========================================================================

@@ -37,7 +37,7 @@ async def test_web_source_broadcasts_over_websocket_and_records() -> None:
         patch(f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock) as to_platform,
         patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock) as record,
         patch(f"{MODULE}.conversation_repository", convo_repo),
-        patch(f"{MODULE}.websocket_manager", ws),
+        patch("app.services.outbox.transport.ws_speech.websocket_manager", ws),
     ):
         source = await deliver_message_to_conversation(
             conversation_id="conv-1",
@@ -50,7 +50,8 @@ async def test_web_source_broadcasts_over_websocket_and_records() -> None:
     to_platform.assert_not_awaited()  # web goes over the socket, not a bot API
     ws.broadcast_to_user.assert_awaited_once()
     event = ws.broadcast_to_user.await_args.args[1]
-    assert event["type"] == "conversation.new_message"
+    assert event["type"] == "outbox.message"
+    assert event["kind"] == "conversation_message"
     assert event["conversation_id"] == "conv-1"
     assert event["message"]["response"] == "time to drink water"
     # No narration ran, so the checkpoint is recorded explicitly, framed with origin.
@@ -71,7 +72,7 @@ async def test_bot_source_delivers_to_platform_and_records() -> None:
         ) as to_platform,
         patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock) as record,
         patch(f"{MODULE}.conversation_repository", convo_repo),
-        patch(f"{MODULE}.websocket_manager", ws),
+        patch("app.services.outbox.transport.ws_speech.websocket_manager", ws),
     ):
         source = await deliver_message_to_conversation(
             conversation_id="conv-2",
@@ -333,7 +334,7 @@ class TestATrackedTodosRunReportIsKeptInItsChat:
         ws = MagicMock(broadcast_to_user=AsyncMock())
         with (
             patch(f"{MODULE}.update_messages", new_callable=AsyncMock) as save,
-            patch(f"{MODULE}.websocket_manager", ws),
+            patch("app.services.outbox.transport.ws_speech.websocket_manager", ws),
             patch(f"{MODULE}.deliver_todo_run_result", new_callable=AsyncMock) as todo_delivery,
         ):
             assert await deliver_result(
@@ -362,7 +363,8 @@ class TestATrackedTodosRunReportIsKeptInItsChat:
         broadcast.assert_awaited_once_with(
             USER.user_id,
             {
-                "type": "conversation.new_message",
+                "type": "outbox.message",
+                "kind": "conversation_message",
                 "conversation_id": TODO_CHAT,
                 "message": {
                     "type": "bot",
@@ -398,7 +400,7 @@ class TestATrackedTodosRunReportIsKeptInItsChat:
                 new_callable=AsyncMock,
                 side_effect=HTTPException(status_code=404),
             ),
-            patch(f"{MODULE}.websocket_manager", ws),
+            patch("app.services.outbox.transport.ws_speech.websocket_manager", ws),
             patch(f"{MODULE}.deliver_todo_run_result", new_callable=AsyncMock) as todo_delivery,
         ):
             await deliver_result(_todo_run(), "Deploy is green.", "final", tool_data=None)
@@ -415,7 +417,7 @@ class TestARunsWakeLeadsItInItsChat:
         ws = MagicMock(broadcast_to_user=AsyncMock())
         with (
             patch(f"{MODULE}.update_messages", new_callable=AsyncMock) as save,
-            patch(f"{MODULE}.websocket_manager", ws),
+            patch("app.services.outbox.transport.ws_speech.websocket_manager", ws),
         ):
             await record_todo_run_wake(TODO_CHAT, USER, WAKE)
 
@@ -432,7 +434,8 @@ class TestARunsWakeLeadsItInItsChat:
         ws.broadcast_to_user.assert_awaited_once_with(
             USER.user_id,
             {
-                "type": "conversation.new_message",
+                "type": "outbox.message",
+                "kind": "conversation_message",
                 "conversation_id": TODO_CHAT,
                 "message": {
                     "type": "user",
@@ -459,7 +462,7 @@ class TestARunsWakeLeadsItInItsChat:
                 new_callable=AsyncMock,
                 side_effect=HTTPException(status_code=404),
             ),
-            patch(f"{MODULE}.websocket_manager", ws),
+            patch("app.services.outbox.transport.ws_speech.websocket_manager", ws),
         ):
             await record_todo_run_wake(TODO_CHAT, USER, WAKE)
 
@@ -484,7 +487,10 @@ class TestCommsNarratesARunsResultUnderItsOutcomeNote:
             patch(f"{MODULE}.generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
             patch(f"{MODULE}.conversation_repository", convo_repo),
-            patch(f"{MODULE}.websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
+            patch(
+                "app.services.outbox.transport.ws_speech.websocket_manager",
+                MagicMock(broadcast_to_user=AsyncMock()),
+            ),
         ):
             if outcome_note is None:
                 await deliver_result(run, "raw", "final", tool_data=None)

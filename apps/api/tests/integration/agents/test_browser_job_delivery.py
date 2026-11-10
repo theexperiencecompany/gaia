@@ -40,7 +40,7 @@ from app.schemas.browser import (
     BrowserStepSnapshot,
 )
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
-from app.services import outbound_delivery as outbound_mod, platform_message_service
+from app.services import platform_message_service
 from app.services.browser import (
     bot_delivery as bot_mod,
     job_runner as jr,
@@ -49,6 +49,7 @@ from app.services.browser.job_relay import follow_job_cards
 from app.services.browser.job_runner import execute_browser_job
 from app.services.browser.jobs import put_job_state
 from app.services.browser.ledger import RunLedger
+from app.services.outbox.transport import bot_queue as outbound_mod
 
 pytestmark = pytest.mark.integration
 

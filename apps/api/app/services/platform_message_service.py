@@ -1,7 +1,7 @@
 """Deliver agent-generated chat messages to a user's linked bot platform.
 
 The web UI receives background/proactive bot messages over a WebSocket
-(conversation.new_message). Bot users have no such socket — their only
+(outbox.message). Bot users have no such socket — their only
 inbound path is a request/response SSE turn that has already closed by the
 time a background executor finishes. This service is the bot-side equivalent
 of that push: it publishes the message to the originating platform's outbound
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
-from app.services.outbound_delivery import (
+from app.services.outbox.transport.bot_queue import (
     OutboundResult,
     publish_outbound_message,
     publish_outbound_reaction,

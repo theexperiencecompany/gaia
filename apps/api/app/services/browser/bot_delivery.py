@@ -25,7 +25,7 @@ from app.schemas.browser import (
 from app.services.browser.captions import caption_from_action_list
 from app.services.browser.live_view import create_live_view_link
 from app.services.browser.shot_store import SHOT_SUFFIX
-from app.services.outbound_delivery import (
+from app.services.outbox.transport.bot_queue import (
     OutboundResult,
     publish_outbound_message,
     publish_outbound_photo,

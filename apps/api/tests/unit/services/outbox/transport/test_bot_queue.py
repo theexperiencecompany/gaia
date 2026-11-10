@@ -15,7 +15,7 @@ from app.constants.outbound import (
 )
 from app.models.chat_models import ConversationSource
 from app.schemas.outbound import OutboundMessageEnvelope
-from app.services import outbound_delivery as od
+from app.services.outbox.transport import bot_queue as od
 from app.utils.log_identifiers import hash_platform_user_id
 from tests.helpers import captured_wide_event
 

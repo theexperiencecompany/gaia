@@ -7,7 +7,7 @@ import type { StreamToolDataEntry } from "@shared/chat";
  * Such turns don't finish their visible answer when the SSE's main response
  * completes: comms only acks synchronously ("on it"), then the executor streams
  * its tool events over the SAME SSE and delivers the real result later via a
- * `conversation.new_message` WebSocket event.
+ * `outbox.message` WebSocket event.
  */
 export function hasExecutorDelegation(
   toolData: StreamToolDataEntry[] | null | undefined,

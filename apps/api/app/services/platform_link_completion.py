@@ -9,7 +9,7 @@ on a rejected attempt:
 
 They live in different routers, so without one implementation they drift. It
 lives here rather than in platform_link_service because
-outbound_delivery already imports that module.
+bot_queue already imports that module.
 """
 
 from collections.abc import Mapping
@@ -20,7 +20,7 @@ from app.models.platform_models import PlatformLinkCompletion
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
 from app.services.onboarding.onboarding_service import complete_onboarding_on_platform_link
-from app.services.outbound_delivery import (
+from app.services.outbox.transport.bot_queue import (
     OutboundResult,
     notify_account_linked,
     publish_outbound_message,

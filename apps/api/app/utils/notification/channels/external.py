@@ -20,7 +20,7 @@ from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
 )
-from app.services.outbound_delivery import OutboundResult, publish_outbound_message
+from app.services.outbox.transport.bot_queue import OutboundResult, publish_outbound_message
 from app.utils.notification.channels.base import ChannelAdapter
 
 

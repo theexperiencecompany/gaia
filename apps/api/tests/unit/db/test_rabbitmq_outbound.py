@@ -275,7 +275,7 @@ class TestAmqpAwaitsAreBounded:
     async def test_hanging_publish_ends_in_the_failed_outcome(
         self, connected_publisher, monkeypatch
     ) -> None:
-        """The caller contract in outbound_delivery still holds: FAILED, not a hang."""
+        """The caller contract in bot_queue still holds: FAILED, not a hang."""
         pub, channel = connected_publisher
         monkeypatch.setattr(rabbitmq, "RABBITMQ_PUBLISH_TIMEOUT_SECONDS", 0.05)
 
@@ -284,7 +284,7 @@ class TestAmqpAwaitsAreBounded:
 
         channel.default_exchange.publish = AsyncMock(side_effect=_never_returns)
 
-        # Mirrors outbound_delivery's ``except Exception -> OutboundResult.FAILED``.
+        # Mirrors bot_queue's ``except Exception -> OutboundResult.FAILED``.
         try:
             await pub.publish_outbound("outbound.whatsapp", b"{}")
             outcome = "published"

@@ -1,7 +1,7 @@
 import * as Notifications from "expo-notifications";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { wsManager } from "@/lib/websocket-client";
-import { WS_EVENTS } from "@/lib/websocket-events";
+import { isOutboxNotification, WS_EVENTS } from "@/lib/websocket-events";
 
 export interface RealtimeNotification {
   id: string;
@@ -86,8 +86,9 @@ export function useRealtimeNotifications(
     wsManager.onDisconnect(handleDisconnect);
 
     const unsubDelivered = wsManager.subscribe(
-      WS_EVENTS.NOTIFICATION_DELIVERED,
+      WS_EVENTS.OUTBOX_MESSAGE,
       (message: unknown) => {
+        if (!isOutboxNotification(message)) return;
         const msg = message as Record<string, unknown>;
         const notification = msg.notification as
           | Record<string, unknown>

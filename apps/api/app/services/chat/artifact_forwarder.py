@@ -43,7 +43,7 @@ from app.services.chat.artifacts_registry import (
     remove_conversation_artifact,
     upsert_conversation_artifact,
 )
-from app.services.outbound_delivery import publish_outbound_file
+from app.services.outbox.transport.bot_queue import publish_outbound_file
 from app.services.storage import resolve_session_path
 from app.utils.artifact_utils import (
     ArtifactDataEntry,

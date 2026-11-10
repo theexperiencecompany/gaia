@@ -6,6 +6,7 @@ that pushes to those sockets (an API request handler, an ARQ worker) therefore
 has to reach *every* replica, not one of them.
 """
 
+from enum import StrEnum
 from typing import Final
 
 # Pub/sub, deliberately not a work queue: every replica subscribes and writes to
@@ -18,3 +19,15 @@ WEBSOCKET_LISTENER_RESUBSCRIBE_SECONDS: Final[float] = 5.0
 
 # Pause before the one retry of a failed per-user broadcast.
 WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS: Final[float] = 0.5
+
+# The one WebSocket event that carries words to the user. State-sync events
+# (integration status, executor stream started/cancelled, approval decided,
+# onboarding stage) keep their own names and never travel under this one.
+WS_EVENT_OUTBOX_MESSAGE: Final[str] = "outbox.message"
+
+
+class OutboxMessageKind(StrEnum):
+    """What an outbox.message frame carries, named by its kind field."""
+
+    CONVERSATION_MESSAGE = "conversation_message"
+    NOTIFICATION = "notification"

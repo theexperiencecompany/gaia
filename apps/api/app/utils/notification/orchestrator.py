@@ -23,6 +23,7 @@ from app.models.notification.notification_models import (
     NotificationView,
 )
 from app.services.delivery.chat_channel import InApp, resolve_proactive_target
+from app.services.outbox.transport.ws_speech import publish_notification
 from app.utils.notification.actions import (
     ActionHandler,
     ApiCallActionHandler,
@@ -180,16 +181,11 @@ class NotificationOrchestrator:
             )
 
             # Broadcast real-time update to user
-            await websocket_manager.broadcast_to_user(
+            # The socket frame is JSON, so the view is dumped in json mode —
+            # enums as their values, matching what REST clients receive.
+            await publish_notification(
                 notification.user_id,
-                {
-                    "type": "notification.delivered",
-                    # The socket frame is JSON, so the view is dumped in json mode —
-                    # enums as their values, matching what REST clients receive.
-                    "notification": self._serialize_notification(notification).model_dump(
-                        mode="json"
-                    ),
-                },
+                self._serialize_notification(notification).model_dump(mode="json"),
             )
 
     async def _default_channels(self, user_id: str) -> list[str]:

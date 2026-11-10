@@ -455,7 +455,7 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
   - `channel_preferences.py` — per-channel user prefs.
 - `apps/api/app/models/notification/notification_models.py` — `NotificationRecord`, `NotificationRequest`, `NotificationType`, `NotificationStatus`, `NotificationSourceEnum`, `ChannelConfig`, `BulkActions`.
 - `apps/api/app/constants/notifications.py` — `ALL_AUTO_INJECTED_CHANNELS`, `CHANNEL_TYPE_INAPP`.
-- `apps/api/app/services/outbound_delivery.py` — proxies notifications to the right channel (in-app, email, bot, push).
+- `apps/api/app/services/outbox/transport/bot_queue.py` — proxies notifications to the right channel (in-app, email, bot, push).
 - Frontend: `libs/shared/ts/src/types/notification.ts`, `libs/shared/ts/src/api/notificationsApi.ts`, `libs/shared/ts/src/hooks/useNotificationsBase.ts`.
 
 ---
@@ -617,4 +617,4 @@ A browser task is a background job, not a tool call the turn holds open. `browse
 | Change workflow triggers | `apps/api/app/services/workflow/trigger_service.py` + `apps/api/app/models/trigger_config.py` |
 | Change tracked-todo notes (canvas.md / activity.md) | `apps/api/app/services/gaia_task_files.py` + `apps/api/app/services/todo_canvas_storage.py` |
 | Change sandbox behavior | `apps/api/app/services/sandbox/{pool,lifecycle,shard_router,artifact_watcher}.py` |
-| Change notification routing | `apps/api/app/utils/notification/orchestrator.py` + `apps/api/app/services/outbound_delivery.py` |
+| Change notification routing | `apps/api/app/utils/notification/orchestrator.py` + `apps/api/app/services/outbox/transport/bot_queue.py` |

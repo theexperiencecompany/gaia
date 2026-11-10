@@ -404,7 +404,7 @@ class TestARunLandsInTheTodosOwnChat:
         assert report["message_id"] == started["task_id"]
         assert "create_flowchart" in _card_tool_names(report)
         # An open chat is shown the wake live, before the run starts streaming.
-        woke, landed = stack.pushed_of("conversation.new_message")
+        woke, landed = stack.pushed_of("outbox.message")
         assert stack.pushed.index(woke) < stack.pushed.index(started)
         assert woke["conversation_id"] == conversation_id
         assert woke["message"] == {

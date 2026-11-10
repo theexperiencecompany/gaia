@@ -35,7 +35,7 @@ from app.models.user_models import (
     OnboardingPreferences,
     UserDocument,
 )
-from app.services.outbound_delivery import OutboundResult
+from app.services.outbox.transport.bot_queue import OutboundResult
 from app.services.platform_link_code_service import LinkCodeClaim, PlatformLinkCodePayload
 from app.services.platform_link_completion import PostLinkSideEffectError
 from app.utils.errors import AppError

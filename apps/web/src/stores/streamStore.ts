@@ -22,7 +22,7 @@ export interface ActiveToolInfo {
  * - connecting: send fired, SSE not yet delivering events
  * - streaming: SSE open (covers the background-executor tail after `main_response_complete`)
  * - awaiting_executor: SSE closed, a delegated background executor still owes its result
- *   (delivered via the `conversation.new_message` WebSocket)
+ *   (delivered via the `outbox.message` WebSocket)
  */
 export type TurnPhase = "connecting" | "streaming" | "awaiting_executor";
 

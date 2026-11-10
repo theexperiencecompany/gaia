@@ -238,7 +238,7 @@ class TestDeliverNotification:
         request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
         record = _make_record(request=request)
 
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
+        with patch("app.services.outbox.transport.ws_speech.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
             await orch._deliver_notification(record)
 
@@ -266,7 +266,7 @@ class TestDeliverNotification:
         request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
         record = _make_record(request=request)
 
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
+        with patch("app.services.outbox.transport.ws_speech.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
             await orch._deliver_notification(record)
 
@@ -293,7 +293,7 @@ class TestDeliverNotification:
         request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
         record = _make_record(request=request)
 
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
+        with patch("app.services.outbox.transport.ws_speech.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
             await orch._deliver_notification(record)
 
@@ -312,7 +312,7 @@ class TestDeliverNotification:
         request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
         record = _make_record(request=request)
 
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
+        with patch("app.services.outbox.transport.ws_speech.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
             # Should not raise
             await orch._deliver_notification(record)
@@ -329,7 +329,7 @@ class TestDeliverNotification:
         request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
         record = _make_record(request=request)
 
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
+        with patch("app.services.outbox.transport.ws_speech.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
             await orch._deliver_notification(record)
 
@@ -337,7 +337,7 @@ class TestDeliverNotification:
         storage.update_notification.assert_not_awaited()
 
     async def test_websocket_broadcast_after_delivery(self) -> None:
-        """A notification.delivered event is broadcast via websocket."""
+        """The delivered record goes out as one outbox.message notification frame."""
         storage = AsyncMock()
         orch = NotificationOrchestrator(storage=storage)
 
@@ -355,7 +355,7 @@ class TestDeliverNotification:
         request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
         record = _make_record(request=request)
 
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
+        with patch("app.services.outbox.transport.ws_speech.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
             await orch._deliver_notification(record)
 
@@ -363,7 +363,8 @@ class TestDeliverNotification:
             call_args = ws.broadcast_to_user.call_args
             assert call_args[0][0] == request.user_id
             payload = call_args[0][1]
-            assert payload["type"] == "notification.delivered"
+            assert payload["type"] == "outbox.message"
+            assert payload["kind"] == "notification"
             assert "notification" in payload
 
 
@@ -397,7 +398,7 @@ class TestDefaultChannels:
         record = _make_record(request=_make_request(channels=[]))
 
         with (
-            patch("app.utils.notification.orchestrator.websocket_manager") as ws,
+            patch("app.services.outbox.transport.ws_speech.websocket_manager") as ws,
             patch(
                 "app.utils.notification.orchestrator.resolve_proactive_target",
                 AsyncMock(
@@ -423,7 +424,7 @@ class TestDefaultChannels:
         record = _make_record(request=_make_request(channels=[]))
 
         with (
-            patch("app.utils.notification.orchestrator.websocket_manager") as ws,
+            patch("app.services.outbox.transport.ws_speech.websocket_manager") as ws,
             patch(
                 "app.utils.notification.orchestrator.resolve_proactive_target",
                 AsyncMock(return_value=InApp(reason=reason)),
@@ -458,7 +459,7 @@ class TestDefaultChannels:
         record = _make_record(request=_make_request(channels=[ChannelConfig(channel_type="inapp")]))
 
         with (
-            patch("app.utils.notification.orchestrator.websocket_manager") as ws,
+            patch("app.services.outbox.transport.ws_speech.websocket_manager") as ws,
             patch(
                 "app.utils.notification.orchestrator.resolve_proactive_target", AsyncMock()
             ) as resolve,

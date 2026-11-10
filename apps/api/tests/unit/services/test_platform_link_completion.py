@@ -10,7 +10,7 @@ import pytest
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_GREETING
 from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkResult
-from app.services.outbound_delivery import OutboundResult
+from app.services.outbox.transport.bot_queue import OutboundResult
 from app.services.platform_link_completion import (
     PostLinkSideEffectError,
     complete_platform_link,

@@ -49,8 +49,6 @@ from app.constants.executor import (
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
-from app.constants.websocket import WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS
-from app.core.websocket_manager import websocket_manager
 from app.db.repositories.conversations import conversation_repository
 from app.models.agent_models import CommsDirective
 from app.models.chat_models import (
@@ -67,6 +65,7 @@ from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
+from app.services.outbox.transport.ws_speech import publish_conversation_message
 from app.services.platform_message_service import (
     deliver_message_to_platform,
     deliver_reaction_to_platform,
@@ -176,7 +175,7 @@ async def record_todo_run_wake(
 ) -> None:
     """Lead a tracked todo's run with what woke it, on the user's side of its chat.
 
-    Pushed as conversation.new_message so an open chat shows it live; a failed save lets the run go ahead."""
+    Pushed as an outbox.message so an open chat shows it live; a failed save lets the run go ahead."""
     message = MessageModel(
         type="user",
         response="",
@@ -188,18 +187,15 @@ async def record_todo_run_wake(
         conversation_id, user, message, max_messages=TODO_CONVERSATION_MAX_MESSAGES
     ):
         return
-    await _broadcast_message(
+    await publish_conversation_message(
         user.user_id,
+        conversation_id,
         {
-            "type": "conversation.new_message",
-            "conversation_id": conversation_id,
-            "message": {
-                "type": "user",
-                "response": "",
-                "message_id": message.message_id,
-                "date": message.date,
-                "todo_run_wake": wake.model_dump(mode="json"),
-            },
+            "type": "user",
+            "response": "",
+            "message_id": message.message_id,
+            "date": message.date,
+            "todo_run_wake": wake.model_dump(mode="json"),
         },
     )
 
@@ -576,7 +572,7 @@ async def _broadcast_and_defer_follow_ups(
 ) -> None:
     """Push the answer to the client now, then generate follow-ups in the background.
 
-    The second push reuses conversation.new_message — the client upserts by id.
+    The second push reuses outbox.message — the client upserts by id.
     A reaction gets none: there is no rendered message to attach chips to.
     """
     await _broadcast_bot_message(
@@ -1248,31 +1244,7 @@ async def _broadcast_bot_message(
             "content": target.user_msg_content,
             "role": "user",
         }
-    await _broadcast_message(
-        target.user_id,
-        {
-            "type": "conversation.new_message",
-            "conversation_id": target.conversation_id,
-            "message": ws_payload,
-        },
-    )
-
-
-async def _broadcast_message(user_id: str, ws_event: dict[str, object]) -> None:
-    """Best-effort WebSocket broadcast with one retry."""
-    for attempt in range(2):
-        try:
-            await websocket_manager.broadcast_to_user(user_id, ws_event)
-            return
-        except Exception as ws_err:
-            log.warning(
-                f"{LogTag.AGENT} _broadcast_message: broadcast attempt failed",
-                attempt=attempt + 1,
-                user_id=user_id,
-                error=str(ws_err),
-            )
-            if attempt == 0:
-                await asyncio.sleep(WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS)
+    await publish_conversation_message(target.user_id, target.conversation_id, ws_payload)
 
 
 async def _lookup_platform_message_id(

@@ -43,7 +43,7 @@ const pushed = () => {
   const [, handler] =
     vi
       .mocked(wsManager.on)
-      .mock.calls.find(([event]) => event === "conversation.new_message") ?? [];
+      .mock.calls.find(([event]) => event === "outbox.message") ?? [];
   if (!handler) throw new Error("the hook registered no new-message handler");
   return handler as (event: unknown) => Promise<void>;
 };
@@ -62,7 +62,8 @@ describe("a tracked todo run's wake pushed to an open chat", () => {
 
   it("lands on the user's side with what woke the run", async () => {
     await pushed()({
-      type: "conversation.new_message",
+      type: "outbox.message",
+      kind: "conversation_message",
       conversation_id: CONVERSATION_ID,
       message: {
         type: "user",
@@ -96,7 +97,8 @@ describe("a tracked todo run's wake pushed to an open chat", () => {
     } as never);
 
     await pushed()({
-      type: "conversation.new_message",
+      type: "outbox.message",
+      kind: "conversation_message",
       conversation_id: CONVERSATION_ID,
       message: {
         type: "user",
@@ -108,5 +110,15 @@ describe("a tracked todo run's wake pushed to an open chat", () => {
     });
 
     expect(endSession).not.toHaveBeenCalled();
+  });
+
+  it("ignores an outbox frame that is not a chat message", async () => {
+    await pushed()({
+      type: "outbox.message",
+      kind: "notification",
+      notification: { id: "n-1" },
+    });
+
+    expect(db.putMessage).not.toHaveBeenCalled();
   });
 });

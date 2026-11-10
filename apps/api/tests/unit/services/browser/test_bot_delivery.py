@@ -21,7 +21,7 @@ from app.services.browser.bot_delivery import (
     _is_blank_tab,
     _step_caption,
 )
-from app.services.outbound_delivery import OutboundResult
+from app.services.outbox.transport.bot_queue import OutboundResult
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit

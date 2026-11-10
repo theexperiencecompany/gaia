@@ -122,7 +122,7 @@ async def _deliver(
             new_callable=AsyncMock,
             return_value=platform_delivered,
         ) as platform,
-        patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+        patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
     ):
         await rd.deliver_result(
             _run(task_id=task_id),
@@ -227,10 +227,8 @@ class TestDeliverResultRouting:
 
     async def test_websocket_payload_carries_conversation_and_message(self) -> None:
         _save, _platform, ws = await _deliver(ConversationSource.WEB)
-        event = ws.await_args.args[1]
-        assert event["type"] == "conversation.new_message"
-        assert event["conversation_id"] == "conv-1"
-        assert event["message"]["response"] == "result text"
+        assert ws.await_args.args[1] == "conv-1"
+        assert ws.await_args.args[2]["response"] == "result text"
 
     async def test_the_save_is_attributed_to_the_runs_owner(self) -> None:
         """update_messages scopes the write by user — an unattributed save lands on nobody's conversation."""
@@ -479,7 +477,7 @@ class TestPersistCancelledRun:
         with (
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
             patch.object(rd, "narrate_executor_result", new_callable=AsyncMock) as narrate,
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
         ):
             await rd.persist_cancelled_run(run, CARDS)
 
@@ -660,7 +658,7 @@ class TestDeliverResultToolDataOwnership:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
             patch.object(
                 rd, "_lookup_user_message_content", new_callable=AsyncMock, return_value=""
             ),
@@ -676,7 +674,7 @@ class TestDeliverResultToolDataOwnership:
         saved = save.await_args.args[0].messages[0]
         assert saved.message_id == "task-9"
         assert saved.tool_data and saved.tool_data[0]["tool_name"] == "tool_calls_data"
-        ws_message = ws.await_args.args[1]["message"]
+        ws_message = ws.await_args.args[2]
         assert ws_message["tool_data"] == saved.tool_data
         assert ws_message["task_id"] == "task-9"
 
@@ -697,7 +695,7 @@ class TestDeliverResultToolDataOwnership:
         saved = save.await_args.args[0].messages[0]
         assert not saved.tool_data
         assert saved.message_id != "task-9"  # no placeholder to reconcile with
-        assert "tool_data" not in ws.await_args.args[1]["message"]
+        assert "tool_data" not in ws.await_args.args[2]
 
     async def test_live_run_with_bot_message_id_still_appends_a_fresh_message(self) -> None:
         """bot_message_id alone must not route delivery down the HIL-merge path, which races the comms stream's save."""
@@ -726,7 +724,7 @@ class TestDeliverResultToolDataOwnership:
             ),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock) as source,
             patch.object(rd, "deliver_message_to_platform", new_callable=AsyncMock) as platform,
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
         ):
             await rd.deliver_result(run, "raw", "final", tool_data=None)
 
@@ -745,7 +743,7 @@ class TestDeliverResultToolDataOwnership:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock) as follow_ups,
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock),
         ):
             await rd.deliver_result(run, "traceback...", "error", tool_data=None)
 
@@ -873,7 +871,7 @@ class TestDeliverResultHilResume:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
             patch.object(
                 rd.conversation_repository,
                 "get_message",
@@ -928,7 +926,7 @@ class TestDeliverResultHilResume:
         # A live task_id-keyed placeholder DOES exist for queued-kind runs
         # (real queue pops AND resumes), so task_id must still be emitted —
         # otherwise the frontend's placeholder is orphaned forever.
-        ws_message = ws.await_args.args[1]["message"]
+        ws_message = ws.await_args.args[2]
         assert ws_message["message_id"] == "orig-msg-1"
         assert ws_message["task_id"] == "task-resume-1"
 
@@ -947,7 +945,7 @@ class TestDeliverResultHilResume:
 
         # A WebSocket push replaces the client's stored message wholesale, so
         # dropping either half here would erase real cards from the user's view.
-        ws_message = ws.await_args.args[1]["message"]
+        ws_message = ws.await_args.args[2]
         tool_names = [c["tool_name"] for c in ws_message["tool_data"]]
         assert "old_tool" in tool_names
         assert "tool_calls_data" in tool_names  # the resumed run's new card
@@ -960,7 +958,7 @@ class TestDeliverResultHilResume:
                 rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
             ),
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(
                 rd.conversation_repository, "get_message", new_callable=AsyncMock, return_value=None
@@ -1544,13 +1542,13 @@ class TestDeliveredMessageIdentity:
             ),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
             patch.object(
                 rd, "_lookup_user_message_content", new_callable=AsyncMock, return_value="asked"
             ),
         ):
             await rd.deliver_result(run, "raw", "final", tool_data=None)
-        return ws.await_args.args[1]["message"]
+        return ws.await_args.args[2]
 
     async def test_a_queued_run_is_keyed_on_its_task_id(self) -> None:
         message = await self._deliver_run(_run(RunKind.QUEUED, task_id="task-7"))
@@ -1599,7 +1597,7 @@ class TestDeliveredMessageIdentity:
             ),
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
             patch.object(
                 rd.conversation_repository,
                 "get_message",
@@ -1616,7 +1614,7 @@ class TestDeliveredMessageIdentity:
         ):
             await rd.deliver_result(run, "raw", "final", tool_data=None)
 
-        assert "replyToMessage" not in ws.await_args.args[1]["message"]
+        assert "replyToMessage" not in ws.await_args.args[2]
 
 
 class TestDeletedConversationDuringDelivery:
@@ -1628,7 +1626,7 @@ class TestDeletedConversationDuringDelivery:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock, side_effect=exc),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
         ):
             result = await rd.deliver_result(_run(), "raw", "final", tool_data=None)
         return result, ws
@@ -1711,7 +1709,7 @@ class TestDeferredFollowUpPush:
         with (
             patch.object(rd, "_build_follow_up_actions", new=AsyncMock(return_value=generated)),
             patch.object(rd, "_persist_follow_up_actions", new=AsyncMock(return_value=persisted)),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
         ):
             run = _run(RunKind.QUEUED, task_id="task-7")
             await rd._generate_and_push_follow_ups(
@@ -1733,9 +1731,9 @@ class TestDeferredFollowUpPush:
     async def test_suggestions_reach_the_client_on_the_same_message(self) -> None:
         ws = await self._push(generated=["ask about X", "try Y"])
 
-        event = ws.await_args.args[1]
-        assert event["message"]["message_id"] == "msg-1"
-        assert event["message"]["follow_up_actions"] == ["ask about X", "try Y"]
+        message = ws.await_args.args[2]
+        assert message["message_id"] == "msg-1"
+        assert message["follow_up_actions"] == ["ask about X", "try Y"]
 
     async def test_nothing_generated_means_no_second_push(self) -> None:
         ws = await self._push(generated=[])
@@ -1855,7 +1853,7 @@ class TestDeletedConversationIsNotAnError:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock, side_effect=exc),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock),
             patch.object(rd, "log") as log,
         ):
             result = await rd.deliver_result(_run(), "raw", "final", tool_data=None)
@@ -2099,7 +2097,7 @@ class TestBroadcastPayloadIsWhatTheClientUpserts:
     async def _broadcast(self, target: rd._DeliveryTarget):
         bot_message = MessageModel(type="bot", response="voiced", date="2026-01-01T00:00:00+00:00")
         bot_message.message_id = "msg-1"
-        with patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws:
+        with patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws:
             await rd._broadcast_bot_message(
                 target=target,
                 bot_message=bot_message,
@@ -2112,7 +2110,7 @@ class TestBroadcastPayloadIsWhatTheClientUpserts:
     async def test_a_quoting_push_carries_the_whole_reply_quote(self) -> None:
         ws = await self._broadcast(_target())
 
-        assert ws.await_args.args[1]["message"] == {
+        assert ws.await_args.args[2] == {
             "type": "bot",
             "response": "voiced",
             "message_id": "msg-1",
@@ -2129,7 +2127,7 @@ class TestBroadcastPayloadIsWhatTheClientUpserts:
     async def test_a_non_quoting_push_omits_the_quote_entirely(self) -> None:
         ws = await self._broadcast(_target(show_reply_quote=False, emit_task_id=False))
 
-        assert ws.await_args.args[1]["message"] == {
+        assert ws.await_args.args[2] == {
             "type": "bot",
             "response": "voiced",
             "message_id": "msg-1",
@@ -2197,7 +2195,7 @@ class TestDeliveryContextIsThreadedWhole:
                 new_callable=AsyncMock,
                 return_value="what I asked",
             ),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
             patch.object(rd, "_spawn_deferred_follow_ups") as spawn,
         ):
             await rd.deliver_result(_quoting_run(), "raw", "final", tool_data=None)
@@ -2212,7 +2210,7 @@ class TestDeliveryContextIsThreadedWhole:
     async def test_the_quote_the_user_sees_survives_the_hand_off(self) -> None:
         ws, _spawn = await self._deliver_queued()
 
-        assert ws.await_args.args[1]["message"]["replyToMessage"] == {
+        assert ws.await_args.args[2]["replyToMessage"] == {
             "id": "user-msg-1",
             "content": "what I asked",
             "role": "user",
@@ -2232,7 +2230,7 @@ class TestDeliveryContextIsThreadedWhole:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock),
         ):
             await rd.deliver_result(
                 _run(), "raw", "final", "handed back by the subagent", tool_data=None
@@ -2481,7 +2479,7 @@ class TestCommsDirectiveDelivery:
     async def test_react_delivers_the_emoji_over_websocket_on_web(self) -> None:
         save, _platform, ws = await _deliver(ConversationSource.WEB, comms_text="<EMOJI>✅</EMOJI>")
         ws.assert_awaited_once()
-        assert ws.await_args.args[1]["message"]["response"] == "✅"
+        assert ws.await_args.args[2]["response"] == "✅"
         assert save.await_args.args[0].messages[0].kind is rd.MessageKind.EMOJI_ACK
 
     async def test_react_attaches_a_native_reaction_when_the_platform_id_is_known(
@@ -2514,7 +2512,7 @@ class TestCommsDirectiveDelivery:
                 rd, "deliver_reaction_to_platform", new_callable=AsyncMock, return_value=True
             ) as react,
             patch.object(rd, "deliver_message_to_platform", new_callable=AsyncMock) as platform,
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
             patch.object(rd, "capture") as capture,
         ):
             await rd.deliver_result(run, result_text="raw", result_type="final", tool_data=None)
@@ -2562,7 +2560,7 @@ class TestCommsDirectiveDelivery:
             patch.object(
                 rd, "deliver_message_to_platform", new_callable=AsyncMock, return_value=True
             ) as platform,
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock),
         ):
             await rd.deliver_result(run, result_text="raw", result_type="final", tool_data=None)
         react.assert_not_awaited()
@@ -2588,11 +2586,11 @@ class TestCommsDirectiveDelivery:
                 new_callable=AsyncMock,
                 return_value="",
             ),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
             patch.object(rd, "_spawn_deferred_follow_ups"),
         ):
             await rd.deliver_result(run, result_text="raw", result_type="final", tool_data=None)
-        message = ws.await_args.args[1]["message"]
+        message = ws.await_args.args[2]
         assert message["response"] == "✅"
         assert message["kind"] == "emoji_ack"
         assert message["reacts_to_message_id"] == "user-msg-1"
@@ -2616,7 +2614,7 @@ class TestCommsDirectiveDelivery:
                 new_callable=AsyncMock,
                 return_value="",
             ),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock),
             patch.object(rd, "_spawn_deferred_follow_ups"),
         ):
             text, message_id = await rd.deliver_result(
@@ -2644,7 +2642,7 @@ class TestCommsDirectiveDelivery:
                 new_callable=AsyncMock,
                 return_value="",
             ),
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock),
             patch.object(rd, "_spawn_deferred_follow_ups") as spawn,
         ):
             await rd.deliver_result(run, result_text="raw", result_type="final", tool_data=None)
@@ -2730,7 +2728,7 @@ async def _deliver_run(
             patch.object(
                 rd, "deliver_message_to_platform", new_callable=AsyncMock, return_value=True
             ) as platform,
-            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "publish_conversation_message", new_callable=AsyncMock) as ws,
             patch.object(rd, "_spawn_deferred_follow_ups") as spawn,
             patch.object(rd, "capture") as capture,
             patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
@@ -2846,7 +2844,7 @@ class TestInlineFollowUpsOnlyWhereNothingWaits:
     async def test_a_web_ack_with_no_answered_message_carries_no_reaction_target(self) -> None:
         delivered = await _deliver_run(_run(), _Seams(comms_text="<EMOJI>✅</EMOJI>", source=None))
 
-        assert "reacts_to_message_id" not in delivered.ws.await_args.args[1]["message"]
+        assert "reacts_to_message_id" not in delivered.ws.await_args.args[2]
 
 
 class TestAWorkflowResult:
@@ -2951,31 +2949,6 @@ class TestLookupPlatformMessageId:
             {
                 "msg": f"{LogTag.AGENT} _lookup_platform_message_id: failed",
                 "error": "mongo down",
-            }
-        ]
-
-
-class TestBroadcastRetry:
-    async def test_a_failed_push_is_retried_once_and_logged(self) -> None:
-        event_out = {"type": "conversation.new_message"}
-        ws = MagicMock()
-        ws.broadcast_to_user = AsyncMock(side_effect=[RuntimeError("socket gone"), None])
-
-        async with captured_wide_event() as event:
-            with (
-                patch.object(rd, "websocket_manager", ws),
-                patch.object(rd, "WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS", 0),
-            ):
-                await rd._broadcast_message(USER_ID, event_out)
-
-        assert ws.broadcast_to_user.await_count == 2
-        ws.broadcast_to_user.assert_awaited_with(USER_ID, event_out)
-        assert event["warnings"] == [
-            {
-                "msg": f"{LogTag.AGENT} _broadcast_message: broadcast attempt failed",
-                "attempt": 1,
-                "user_id": USER_ID,
-                "error": "socket gone",
             }
         ]
 

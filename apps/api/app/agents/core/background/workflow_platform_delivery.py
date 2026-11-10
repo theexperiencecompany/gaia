@@ -34,7 +34,7 @@ from app.services.delivery.chat_channel import (
     proactive_destination,
     resolve_proactive_target,
 )
-from app.services.outbound_delivery import OutboundResult, publish_outbound_message
+from app.services.outbox.transport.bot_queue import OutboundResult, publish_outbound_message
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import WorkflowResultDelivered

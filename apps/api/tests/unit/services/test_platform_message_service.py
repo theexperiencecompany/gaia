@@ -16,7 +16,7 @@ from app.models.chat_models import (
     SourceCategory,
 )
 from app.services import platform_message_service as pms
-from app.services.outbound_delivery import OutboundResult
+from app.services.outbox.transport.bot_queue import OutboundResult
 
 
 class TestIsBotPlatform:

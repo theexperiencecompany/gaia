@@ -141,8 +141,9 @@ describe("notification query cache", () => {
     });
 
     act(() => {
-      emit("notification.delivered", {
-        type: "notification.delivered",
+      emit("outbox.message", {
+        type: "outbox.message",
+        kind: "notification",
         notification: makeNotification("b"),
       });
     });
@@ -155,8 +156,9 @@ describe("notification query cache", () => {
 
     // A repeat of the same push must not duplicate the row.
     act(() => {
-      emit("notification.delivered", {
-        type: "notification.delivered",
+      emit("outbox.message", {
+        type: "outbox.message",
+        kind: "notification",
         notification: makeNotification("b"),
       });
     });

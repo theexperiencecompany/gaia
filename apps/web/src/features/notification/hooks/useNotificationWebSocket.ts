@@ -9,6 +9,10 @@ import {
 import { markDeliveredAsReadInCache } from "@/features/notification/hooks/useNotifications";
 import { toast } from "@/lib/toast";
 import { isSafeInternalPath } from "@/lib/url-safety";
+import {
+  OUTBOX_MESSAGE_EVENT,
+  OutboxMessageKind,
+} from "@/lib/websocket/outboxEvents";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { batchSyncConversations } from "@/services/syncService";
 import type {
@@ -23,13 +27,14 @@ import {
 
 interface WebSocketMessage {
   type:
-    | "notification.delivered"
+    | typeof OUTBOX_MESSAGE_EVENT
     | "notification.updated"
     | "notification.read"
     | "notification.reactivated"
     | "notification.all_read"
     | "ping"
     | "error";
+  kind?: OutboxMessageKind;
   notification?: NotificationView;
   notification_id?: string;
   updates?: NotificationUpdate;
@@ -130,8 +135,11 @@ export function useNotificationWebSocket() {
     (msg: unknown) => {
       const message = msg as WebSocketMessage;
       switch (message.type) {
-        case "notification.delivered":
-          if (message.notification) {
+        case OUTBOX_MESSAGE_EVENT:
+          if (
+            message.kind === OutboxMessageKind.Notification &&
+            message.notification
+          ) {
             prependNotification(queryClient, message.notification);
             const isOnboarding =
               pathnameRef.current?.includes("/onboarding") ?? false;
@@ -172,14 +180,14 @@ export function useNotificationWebSocket() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    wsManager.on("notification.delivered", handleMessage);
+    wsManager.on(OUTBOX_MESSAGE_EVENT, handleMessage);
     wsManager.on("notification.updated", handleMessage);
     wsManager.on("notification.all_read", handleMessage);
     wsManager.on("error", handleMessage);
     wsManager.onError(handleError);
 
     return () => {
-      wsManager.off("notification.delivered", handleMessage);
+      wsManager.off(OUTBOX_MESSAGE_EVENT, handleMessage);
       wsManager.off("notification.updated", handleMessage);
       wsManager.off("notification.all_read", handleMessage);
       wsManager.off("error", handleMessage);

@@ -221,7 +221,7 @@ export function useVoiceMessages(
 
       // A delegated executor's final answer ({response, message_id}) renders as
       // its own bubble keyed by message_id, not folded into the comms-ack turn.
-      // The WebSocket conversation.new_message carries the same id and reconciles in place.
+      // The WebSocket outbox.message carries the same id and reconciles in place.
       const answerId = event.message_id;
       if (
         typeof answerId === "string" &&

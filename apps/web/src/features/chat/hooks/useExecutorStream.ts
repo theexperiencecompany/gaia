@@ -68,7 +68,7 @@ const labelBackgroundProgress = (
 /**
  * A placeholder for a run with no message to continue (a plain queued task).
  * id === task_id so useBgMessageWebSocket can find and replace it when the
- * final conversation.new_message arrives; persisted so tool cards survive a
+ * final outbox.message arrives; persisted so tool cards survive a
  * refresh before then — an orphan only occurs if the run never finalizes.
  */
 const openPlaceholder = async (conversationId: string, taskId: string) => {
@@ -258,7 +258,7 @@ export const createExecutorStreamHandler =
         () => {
           // Stream closed — finalize so the loading indicator clears. A run that
           // errored gets its own reason; a clean one is replaced shortly by the
-          // final conversation.new_message WS event.
+          // final outbox.message WS event.
           finalizePlaceholder(terminalError);
         },
         (err) => {
@@ -287,7 +287,7 @@ export const createExecutorStreamHandler =
  * an SSE connection to `GET /stream/{stream_id}`, folding events through the
  * same accumulator the live chat turn uses so both paths render identically.
  * Active only for the currently-viewed conversation; removed on the final
- * `conversation.new_message`.
+ * `outbox.message`.
  */
 export function useExecutorStream() {
   const controllersRef = useRef<Set<AbortController>>(new Set());

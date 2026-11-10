@@ -8,6 +8,10 @@ import {
 import type { IMessage } from "@/lib/db/chatDb";
 import { db } from "@/lib/db/chatDb";
 import { streamLog } from "@/lib/streamLogger";
+import {
+  OUTBOX_MESSAGE_EVENT,
+  OutboxMessageKind,
+} from "@/lib/websocket/outboxEvents";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
 import { useStreamStore } from "@/stores/streamStore";
@@ -17,7 +21,8 @@ import { useStreamStore } from "@/stores/streamStore";
  * executor's NEW bot message, or the user-side wake that leads a tracked todo's run.
  */
 interface BgMessageEvent {
-  type: "conversation.new_message";
+  type: typeof OUTBOX_MESSAGE_EVENT;
+  kind: OutboxMessageKind;
   conversation_id: string;
   message: {
     type: "bot" | "user";
@@ -41,8 +46,8 @@ interface BgMessageEvent {
 }
 
 /**
- * Subscribe to `conversation.new_message` WebSocket events and insert the
- * message into IndexedDB and the Zustand store.
+ * Subscribe to `outbox.message` WebSocket events of kind
+ * `conversation_message` and insert the message into IndexedDB and the Zustand store.
  *
  * Conversation-scoped: only the active chat view updates immediately; other
  * conversations are persisted to IndexedDB and appear on navigation.
@@ -50,6 +55,9 @@ interface BgMessageEvent {
 export function useBgMessageWebSocket() {
   const handleBgMessage = useCallback(async (raw: unknown) => {
     const event = raw as BgMessageEvent;
+    if (event.kind !== OutboxMessageKind.ConversationMessage) {
+      return;
+    }
     const { conversation_id, message } = event;
 
     if (!conversation_id || !message?.message_id) {
@@ -120,16 +128,16 @@ export function useBgMessageWebSocket() {
     ) {
       stream.endSession(conversation_id);
     }
-    streamLog("ws", "conversation.new_message", {
+    streamLog("ws", OUTBOX_MESSAGE_EVENT, {
       conversationId: conversation_id,
       detail: { task_id: message.task_id },
     });
   }, []);
 
   useEffect(() => {
-    wsManager.on("conversation.new_message", handleBgMessage);
+    wsManager.on(OUTBOX_MESSAGE_EVENT, handleBgMessage);
     return () => {
-      wsManager.off("conversation.new_message", handleBgMessage);
+      wsManager.off(OUTBOX_MESSAGE_EVENT, handleBgMessage);
     };
   }, [handleBgMessage]);
 }

@@ -7,7 +7,7 @@ import {
 import { useEffect } from "react";
 import { inAppNotificationsApi } from "@/features/notifications/api/inapp-notifications-api";
 import { wsManager } from "@/lib/websocket-client";
-import { WS_EVENTS } from "@/lib/websocket-events";
+import { isOutboxNotification, WS_EVENTS } from "@/lib/websocket-events";
 import {
   type InAppNotification,
   InAppNotificationStatus,
@@ -131,8 +131,10 @@ export function useInappNotifications(): UseInappNotificationsResult {
     };
 
     const unsubDelivered = wsManager.subscribe(
-      WS_EVENTS.NOTIFICATION_DELIVERED,
-      invalidateAll,
+      WS_EVENTS.OUTBOX_MESSAGE,
+      (message: unknown) => {
+        if (isOutboxNotification(message)) invalidateAll();
+      },
     );
     const unsubRead = wsManager.subscribe(
       WS_EVENTS.NOTIFICATION_READ,

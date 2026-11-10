@@ -23,7 +23,7 @@ import pytest
 
 from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkResult
-from app.services.outbound_delivery import OutboundResult, publish_outbound_message
+from app.services.outbox.transport.bot_queue import OutboundResult, publish_outbound_message
 from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import PlatformAccountTakenError, PlatformLinkService
 from app.utils.errors import AppError
@@ -31,7 +31,7 @@ from app.utils.errors import AppError
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("onboarding_finish_on_link")]
 
 COMPLETION = "app.services.platform_link_completion"
-DELIVERY = "app.services.outbound_delivery"
+DELIVERY = "app.services.outbox.transport.bot_queue"
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 PLATFORM_USER_ID = "tg-123"
@@ -64,11 +64,11 @@ class TestOneTapLinkDeliversFirstContact:
                 new=AsyncMock(return_value=_link_result(is_new_link=True)),
             ),
             patch(
-                "app.services.outbound_delivery.PlatformLinkService.get_linked_platforms",
+                "app.services.outbox.transport.bot_queue.PlatformLinkService.get_linked_platforms",
                 new=AsyncMock(return_value={"telegram": {"platformUserId": PLATFORM_USER_ID}}),
             ),
             patch(
-                "app.services.outbound_delivery.get_rabbitmq_publisher",
+                "app.services.outbox.transport.bot_queue.get_rabbitmq_publisher",
                 new=AsyncMock(return_value=publisher),
             ),
             patch(f"{COMPLETION}.notify_account_linked", new=AsyncMock()) as notify,
@@ -174,11 +174,11 @@ class TestOutboundPublishResolvesAndEnvelopes:
     async def test_unlinked_account_skips_without_touching_the_broker(self) -> None:
         with (
             patch(
-                "app.services.outbound_delivery.PlatformLinkService.get_linked_platforms",
+                "app.services.outbox.transport.bot_queue.PlatformLinkService.get_linked_platforms",
                 new=AsyncMock(return_value={}),
             ),
             patch(
-                "app.services.outbound_delivery.get_rabbitmq_publisher",
+                "app.services.outbox.transport.bot_queue.get_rabbitmq_publisher",
                 new=AsyncMock(side_effect=AssertionError("broker must not be reached")),
             ),
         ):
@@ -196,11 +196,11 @@ class TestOutboundPublishResolvesAndEnvelopes:
         publisher.publish_outbound = AsyncMock(side_effect=_capture)
         with (
             patch(
-                "app.services.outbound_delivery.PlatformLinkService.get_linked_platforms",
+                "app.services.outbox.transport.bot_queue.PlatformLinkService.get_linked_platforms",
                 new=AsyncMock(return_value={"telegram": {"platformUserId": PLATFORM_USER_ID}}),
             ),
             patch(
-                "app.services.outbound_delivery.get_rabbitmq_publisher",
+                "app.services.outbox.transport.bot_queue.get_rabbitmq_publisher",
                 new=AsyncMock(return_value=publisher),
             ),
         ):

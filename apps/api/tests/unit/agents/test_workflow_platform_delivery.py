@@ -21,7 +21,7 @@ from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.models.user_models import AuthenticatedUser
 from app.services.delivery.chat_channel import ChatChannel, InApp, InAppReason
-from app.services.outbound_delivery import OutboundResult
+from app.services.outbox.transport.bot_queue import OutboundResult
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 from tests.helpers import captured_wide_event

@@ -59,6 +59,7 @@ from app.models.workflow_models import TriggerType
 from app.services import todo_activity
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.delivery.presence import record_turn_presence
+from app.services.outbox.transport import ws_speech
 from app.utils import auth_utils
 from app.utils.background_tasks import spawn_background_task
 from app.workers.tasks import tracked_todo_tasks
@@ -250,7 +251,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         broadcast = AsyncMock()
         with (
             _seams(todo=_todo()) as seams,
-            patch.object(rd, "websocket_manager", MagicMock(broadcast_to_user=broadcast)),
+            patch.object(ws_speech, "websocket_manager", MagicMock(broadcast_to_user=broadcast)),
         ):
             await run_todo_on_executor(_request())
 
@@ -268,7 +269,8 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         )
         user_id, event = broadcast.await_args.args
         assert user_id == USER.user_id
-        assert event["type"] == "conversation.new_message"
+        assert event["type"] == "outbox.message"
+        assert event["kind"] == "conversation_message"
         assert event["conversation_id"] == "run-conv-1"
         assert event["message"]["message_id"] == run.task_id
         assert event["message"]["task_id"] == run.task_id
@@ -279,7 +281,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
             _seams(
                 todo=_todo(), executor=_ExecutorResult("The calendar API was down.", "error")
             ) as seams,
-            patch.object(rd, "websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
+            patch.object(ws_speech, "websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
             pytest.raises(TodoRunFailedError),
         ):
             await run_todo_on_executor(_request())
