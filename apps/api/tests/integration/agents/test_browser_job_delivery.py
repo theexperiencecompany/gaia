@@ -3,7 +3,7 @@
 Real code under test: execute_browser_job with its ProgressEmitter and
 BrowserThreadMirror, the job event feed, follow_job_cards, publish_to_stream and
 BotProgressDelivery. Faked: the browser itself (a scripted stand-in for
-BrowserTaskRunner), the browser host session, Redis, and the outbound bot queue.
+BrowserTaskRunner), the browser host session, Redis, and the outbox intake.
 So this proves the wiring from one card snapshot to every surface that renders
 it; it does not prove Browser-Use produces those snapshots.
 """
@@ -28,8 +28,6 @@ from app.constants.browser import (
     HandoffStatus,
 )
 from app.constants.chat import SourceCategory
-from app.db.repositories.bot_sessions import bot_session_repository
-from app.models.bot_models import BotSessionDocument
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
     BrowserAction,
@@ -49,8 +47,7 @@ from app.services.browser.job_relay import follow_job_cards
 from app.services.browser.job_runner import execute_browser_job
 from app.services.browser.jobs import put_job_state
 from app.services.browser.ledger import RunLedger
-from app.services.outbox.transport import bot_queue as outbound_mod
-from app.services.platform_link_service import PlatformLinkService
+from app.services.outbox.models import NoticeOutcome, NoticeReport
 
 pytestmark = pytest.mark.integration
 
@@ -60,10 +57,6 @@ LIVE_VIEW_LINK = "https://gaia.test/live/abc"
 SHOT_URL = "https://cdn.test/browser-step-1.png"
 #: A plain progress line the run sends mid-way, as the stall watcher does.
 STALL_NOTE = "Still waiting on the page to load."
-#: Where the user's DMs land, per their platform link.
-DM_ID = "discord-user-7"
-#: The group channel the request was sent from.
-GROUP_CHANNEL_ID = "discord-channel-42"
 
 EmitFn = Callable[[BrowserCardSnapshot], Awaitable[None]]
 
@@ -148,22 +141,16 @@ def chunks(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 @pytest.fixture
-def outbound(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
-    """Capture the bot platform's queue: what a Discord user would actually receive."""
-    sent: dict[str, list[Any]] = {"messages": [], "photos": []}
+def outbound(monkeypatch: pytest.MonkeyPatch) -> list[NoticeReport]:
+    """Capture what the run hands the outbox: the reports the outbox then routes to a Discord user."""
+    submitted: list[NoticeReport] = []
 
-    async def _message(platform: Any, user_id: str, blocks: list[str]) -> bool:
-        sent["messages"].append((platform, user_id, list(blocks)))
-        return True
+    async def _submit(report: NoticeReport) -> None:
+        submitted.append(report)
 
-    async def _photo(platform: Any, user_id: str, url: str, **kwargs: Any) -> bool:
-        sent["photos"].append((platform, user_id, url, kwargs.get("caption")))
-        return True
-
-    monkeypatch.setattr(bot_mod, "publish_outbound_message", _message)
-    monkeypatch.setattr(bot_mod, "publish_outbound_photo", _photo)
+    monkeypatch.setattr(bot_mod, "submit", _submit)
     monkeypatch.setattr(bot_mod, "create_live_view_link", AsyncMock(return_value=LIVE_VIEW_LINK))
-    return sent
+    return submitted
 
 
 @pytest.fixture
@@ -264,13 +251,13 @@ async def test_the_runs_cards_are_collected_onto_the_turns_message_under_one_gro
     assert group_calls[0]["output"] == "opened example.test/book"
 
 
-async def test_a_bot_conversation_is_served_the_same_run_over_its_own_transport(
+async def test_a_bot_conversation_is_served_the_same_run_through_the_outbox(
     redis: fakeredis.aioredis.FakeRedis,
     chunks: list[str],
-    outbound: dict[str, list[Any]],
+    outbound: list[NoticeReport],
     browser: None,
 ) -> None:
-    """Bots read RabbitMQ, not SSE, so a run delivered only to the stream is invisible on Discord; both surfaces get the run exactly once."""
+    """Bots read the outbox's queue, not SSE, so a run delivered only to the stream is invisible on Discord; both surfaces get the run exactly once."""
     create_session(STREAM_ID, RunKind.LIVE)
 
     await _run_and_relay(
@@ -280,14 +267,18 @@ async def test_a_bot_conversation_is_served_the_same_run_over_its_own_transport(
         )
     )
 
-    assert [photo[2] for photo in outbound["photos"]] == [SHOT_URL]
+    step, stall = outbound
+    assert [artifact.url for artifact in step.artifacts] == [SHOT_URL]
+    assert stall.facts == [STALL_NOTE]
+    assert {report.outcome for report in outbound} == {NoticeOutcome.PROGRESS}
+    assert {report.subject.owner_conversation_id for report in outbound} == {"conv-7"}
     assert [_shape(frame) for frame in _frames(chunks)].count(BROWSER_TASK_EVENT) == 3
 
 
-async def test_a_web_conversation_is_never_pushed_to_a_bot_platform(
+async def test_a_web_conversation_is_never_submitted_for_a_bot_platform(
     redis: fakeredis.aioredis.FakeRedis,
     chunks: list[str],
-    outbound: dict[str, list[Any]],
+    outbound: list[NoticeReport],
     browser: None,
 ) -> None:
     """The bot mirror is chosen from the run's own provenance; a web turn pushed to a platform would arrive as a message the user never asked for."""
@@ -295,46 +286,7 @@ async def test_a_web_conversation_is_never_pushed_to_a_bot_platform(
 
     await _run_and_relay(_request())
 
-    assert outbound["messages"] == []
-    assert outbound["photos"] == []
-
-
-@pytest.fixture
-def queue(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
-    """Capture the bot platform's outbound queue itself: every envelope the backend enqueued, decoded.
-
-    Everything above it is real (BotProgressDelivery, publish_outbound_*), so an
-    envelope here is addressed exactly as the bot will deliver it.
-    """
-    envelopes: list[dict[str, Any]] = []
-
-    class _Publisher:
-        async def publish_outbound(
-            self, queue_name: str, body: bytes, *, expiration: int | None = None
-        ) -> None:
-            envelopes.append(json.loads(body))
-
-    monkeypatch.setattr(
-        outbound_mod, "get_rabbitmq_publisher", AsyncMock(return_value=_Publisher())
-    )
-    monkeypatch.setattr(
-        PlatformLinkService,
-        "get_linked_platforms",
-        AsyncMock(return_value={"discord": {"platformUserId": DM_ID}}),
-    )
-    monkeypatch.setattr(bot_mod, "create_live_view_link", AsyncMock(return_value=LIVE_VIEW_LINK))
-    return envelopes
-
-
-def _bot_session(channel_id: str | None) -> BotSessionDocument:
-    """Build the conversation's bot session: a group's carries its channel, a DM's none."""
-    return BotSessionDocument(
-        session_key="discord:session",
-        conversation_id="conv-7",
-        platform="discord",
-        platform_user_id=DM_ID,
-        channel_id=channel_id,
-    )
+    assert outbound == []
 
 
 class _ScriptedBrowserWithHandoff(_ScriptedBrowser):
@@ -352,20 +304,15 @@ class _ScriptedBrowserWithHandoff(_ScriptedBrowser):
         return await super().run(task)
 
 
-async def test_a_run_asked_for_in_a_group_keeps_its_live_link_and_photos_in_the_requesters_dm(
+async def test_a_run_asked_for_in_a_group_is_owned_by_the_group_and_addressed_to_the_requester(
     redis: fakeredis.aioredis.FakeRedis,
     chunks: list[str],
-    queue: list[dict[str, Any]],
+    outbound: list[NoticeReport],
     browser: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The live link drives the user's browser and a step photo can show a signed-in page, so a group that asked sees neither; only the final answer goes back there."""
+    """The live link and step photos reach the outbox owned by the group conversation and for the requester alone; the outbox's router (see test_outbox_timeline H1/H2) then keeps them out of the group."""
     monkeypatch.setattr(jr, "BrowserTaskRunner", _ScriptedBrowserWithHandoff)
-    monkeypatch.setattr(
-        bot_session_repository,
-        "get_by_conversation_id",
-        AsyncMock(return_value=_bot_session(GROUP_CHANNEL_ID)),
-    )
     create_session(STREAM_ID, RunKind.LIVE)
 
     await _run_and_relay(
@@ -375,7 +322,11 @@ async def test_a_run_asked_for_in_a_group_keeps_its_live_link_and_photos_in_the_
         )
     )
 
-    assert [(e["destination_id"], e["is_channel"]) for e in queue] == [(DM_ID, False)] * 3
-    assert any(LIVE_VIEW_LINK in part for part in queue[0]["text_parts"])
-    assert queue[1]["attachment"]["url"] == SHOT_URL
-    assert queue[2]["text"] == STALL_NOTE
+    handoff, step, stall = outbound
+    assert handoff.outcome is NoticeOutcome.NEEDS_YOU
+    assert any(LIVE_VIEW_LINK in fact for fact in handoff.facts)
+    assert [artifact.url for artifact in step.artifacts] == [SHOT_URL]
+    assert stall.facts == [STALL_NOTE]
+    assert {report.recipient for report in outbound} == {"6812f0b3c9a14e2b7d5a91c7"}
+    assert {report.subject.owner_conversation_id for report in outbound} == {"conv-7"}
+    assert {report.delivery_policy.channel for report in outbound} == {None}

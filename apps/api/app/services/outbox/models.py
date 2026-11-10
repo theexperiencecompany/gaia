@@ -11,7 +11,10 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.models.chat_models import ConversationSource
 from app.models.task_report_models import TaskReport
+from app.schemas.outbound import OutboundAttachment
+from app.services.outbox.prerendered import PrerenderedMessage
 
 
 class SubjectKind(StrEnum):
@@ -21,6 +24,8 @@ class SubjectKind(StrEnum):
     WORKFLOW_RUN = "workflow_run"
     TODO_RUN = "todo_run"
     REMINDER = "reminder"
+    BROWSER_JOB = "browser_job"
+    ACCOUNT = "account"
 
 
 class SubjectMerge(StrEnum):
@@ -39,6 +44,9 @@ class ProducerKind(StrEnum):
     WORKFLOW = "workflow"
     TODO = "todo"
     REMINDER = "reminder"
+    BROWSER = "browser"
+    ARTIFACT = "artifact"
+    ACCOUNT = "account"
 
 
 class Initiative(StrEnum):
@@ -72,6 +80,8 @@ class NoticeOutcome(StrEnum):
     INFO = "info"
     NEEDS_YOU = "needs_you"
     FAILED = "failed"
+    #: Where a run is on its way; told only to someone watching it live.
+    PROGRESS = "progress"
 
 
 class ComposeMode(StrEnum):
@@ -106,6 +116,10 @@ class DropReason(StrEnum):
     CANCELLED = "cancelled"
     #: The composer judged it adds nothing the user needs.
     COMPOSE_SKIPPED = "compose_skipped"
+    #: Progress nobody was watching live.
+    NOT_WATCHING = "not_watching"
+    #: Its `valid_until` passed before it could be told.
+    EXPIRED = "expired"
 
 
 class ItemFailure(StrEnum):
@@ -146,6 +160,8 @@ class DeliveryPolicy(BaseModel):
 
     timing: DeliveryTiming = DeliveryTiming.WHEN_DONE
     may_wake: bool = False
+    #: A chat app the message must go to when it is linked and enabled, whatever the user is doing.
+    channel: ConversationSource | None = None
 
 
 class _ReportBase(BaseModel):
@@ -178,7 +194,19 @@ class NoticeReport(_ReportBase):
 
     kind: Literal["notice"] = "notice"
     outcome: NoticeOutcome
-    facts: list[str] = Field(min_length=1)
+    facts: list[str] = Field(default_factory=list)
+    #: Files the notice carries by reference; the bot fetches the bytes.
+    artifacts: list[OutboundAttachment] = Field(default_factory=list)
+    #: Fixed copy said as it is, with no model; the notice's facts then name nothing to word.
+    prerendered: PrerenderedMessage | None = None
+    #: After this instant the notice is no longer worth telling.
+    valid_until: datetime | None = None
+
+    @model_validator(mode="after")
+    def _says_something(self) -> Self:
+        if not (self.facts or self.artifacts or self.prerendered):
+            raise ValueError("a notice carries facts, artifacts or a prerendered message")
+        return self
 
 
 OutboxReport = Annotated[RunReport | NoticeReport, Field(discriminator="kind")]

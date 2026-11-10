@@ -1,13 +1,16 @@
 """Compose: the contract a composed message must keep, the retry, the degraded render, and the thread write."""
 
 from datetime import UTC, datetime
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage
 import pytest
 
+from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
 from app.models.outbox_models import OutboxItemDocument
+from app.schemas.outbound import OutboundAttachment
 from app.services.outbox import compose as compose_module
 from app.services.outbox.compose import _validate, compose, record_in_thread
 from app.services.outbox.models import (
@@ -22,6 +25,7 @@ from app.services.outbox.models import (
     SubjectKind,
     UrgencyClass,
 )
+from app.services.outbox.prerendered import PrerenderedKind, PrerenderedMessage, prerendered_text
 from app.services.outbox.router import InApp
 
 MODULE = "app.services.outbox.compose"
@@ -194,3 +198,87 @@ async def test_a_failed_thread_write_is_raised_not_swallowed() -> None:
 
 def test_compose_module_exposes_no_graph_run() -> None:
     assert not hasattr(compose_module, "execute_graph_silent")
+
+
+def _written(report_id: str = "w", **overrides: object) -> OutboxItemDocument:
+    fields: dict[str, object] = {
+        "outcome": NoticeOutcome.INFO,
+        "facts": [f"fact {report_id}"],
+        "producer": ProducerKind.BROWSER,
+        "subject": Subject(kind=SubjectKind.BROWSER_JOB, id=report_id, label="Browser"),
+    }
+    base = _item(report_id, UrgencyClass.ROUTINE, Initiative.ASKED)
+    report = base.report.model_copy(update={**fields, **overrides})
+    return base.model_copy(update={"report": report})
+
+
+async def test_a_prerendered_notice_is_said_as_its_copy_with_no_model_call() -> None:
+    model = _model()
+    item = _written(
+        prerendered=PrerenderedMessage(kind=PrerenderedKind.ACCOUNT_LINKED, platform="Telegram")
+    )
+
+    composed = await _compose(model, [item])
+
+    model.assert_not_awaited()
+    assert composed.parts == [
+        prerendered_text(PrerenderedKind.ACCOUNT_LINKED, "en", platform="Telegram")
+    ]
+    assert (composed.included, composed.skipped, composed.degraded) == (["w"], [], False)
+
+
+@pytest.mark.parametrize(
+    ("kind", "fields"),
+    [
+        (PrerenderedKind.ACCOUNT_LINKED, {"platform": "Telegram"}),
+        (PrerenderedKind.FIRST_CONTACT, {"bubbles": ["Hey"]}),
+    ],
+)
+async def test_a_greeting_expires_on_the_short_greeting_ttl(
+    kind: PrerenderedKind, fields: dict[str, object]
+) -> None:
+    composed = await _compose(
+        _model(),
+        [_written(prerendered=PrerenderedMessage.model_validate({"kind": kind, **fields}))],
+    )
+
+    assert composed.ttl_seconds == OUTBOUND_TTL_SECONDS_GREETING < OUTBOUND_TTL_SECONDS_DEFAULT
+
+
+async def test_any_other_message_keeps_the_default_ttl() -> None:
+    composed = await _compose(_model(), [_written(outcome=NoticeOutcome.PROGRESS)])
+
+    assert composed.ttl_seconds == OUTBOUND_TTL_SECONDS_DEFAULT
+
+
+async def test_progress_is_said_as_its_producers_own_words_with_no_model_call() -> None:
+    model = _model()
+
+    composed = await _compose(model, [_written(outcome=NoticeOutcome.PROGRESS)])
+
+    model.assert_not_awaited()
+    assert composed.parts == ["fact w"]
+
+
+async def test_a_file_notice_carries_its_file_and_no_words() -> None:
+    model = _model()
+    photo = OutboundAttachment(url="https://cdn.example.com/a.png", filename="a.png", caption="c")
+
+    composed = await _compose(model, [_written(artifacts=[photo])])
+
+    model.assert_not_awaited()
+    assert (composed.parts, composed.attachments) == ([], [photo])
+    assert composed.included == ["w"]
+
+
+async def test_items_a_producer_wrote_and_items_to_word_are_one_message() -> None:
+    model = _model(_result(("must", "include"), ("optional", "skip"), parts=["Hi"]))
+    written = _written(outcome=NoticeOutcome.PROGRESS)
+
+    composed = await _compose(model, [MUST, OPTIONAL, written])
+
+    assert composed.parts == ["Hi", "fact w"]
+    assert sorted(composed.included) == ["must", "w"]
+    assert composed.skipped == ["optional"]
+    shown = json.loads(model.await_args.args[1][1].content)["items"]
+    assert [item["item_id"] for item in shown] == ["must", "optional"]

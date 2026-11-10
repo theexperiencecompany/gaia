@@ -31,12 +31,27 @@ def _values(enum: type[StrEnum]) -> set[str]:
 
 
 def test_the_closed_vocabularies_are_exactly_these() -> None:
-    assert _values(SubjectKind) == {"ask", "workflow_run", "todo_run", "reminder"}
+    assert _values(SubjectKind) == {
+        "ask",
+        "workflow_run",
+        "todo_run",
+        "reminder",
+        "browser_job",
+        "account",
+    }
     assert _values(SubjectMerge) == {"replace", "accumulate"}
-    assert _values(ProducerKind) == {"executor", "workflow", "todo", "reminder"}
+    assert _values(ProducerKind) == {
+        "executor",
+        "workflow",
+        "todo",
+        "reminder",
+        "browser",
+        "artifact",
+        "account",
+    }
     assert _values(Initiative) == {"asked", "user_scheduled", "self_initiated"}
     assert _values(DeliveryTiming) == {"the_moment", "at_time", "when_done"}
-    assert _values(NoticeOutcome) == {"info", "needs_you", "failed"}
+    assert _values(NoticeOutcome) == {"info", "needs_you", "failed", "progress"}
     assert _values(ComposeMode) == {"answer", "unsolicited", "interrupt"}
     assert _values(ItemState) == {
         "received",
@@ -48,7 +63,13 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
         "superseded",
         "failed",
     }
-    assert _values(DropReason) == {"nothing_new", "cancelled", "compose_skipped"}
+    assert _values(DropReason) == {
+        "nothing_new",
+        "cancelled",
+        "compose_skipped",
+        "not_watching",
+        "expired",
+    }
     assert _values(ItemFailure) == {
         "no_destination",
         "record_failed",
@@ -57,7 +78,11 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
     }
     assert _values(MessageState) == {"sending", "sent", "failed"}
     assert _values(Disposition) == {"include", "skip"}
-    assert _values(PrerenderedKind) == {"compose_degraded"}
+    assert _values(PrerenderedKind) == {
+        "compose_degraded",
+        "account_linked",
+        "first_contact",
+    }
 
 
 def test_urgency_classes_are_ordered_from_background_to_interrupt() -> None:

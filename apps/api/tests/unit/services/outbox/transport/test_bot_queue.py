@@ -8,11 +8,7 @@ from pydantic import ValidationError
 import pytest
 
 from app.constants.delivery_alerts import DeliveryFailureKind
-from app.constants.outbound import (
-    OUTBOUND_QUEUES,
-    OUTBOUND_TTL_SECONDS_DEFAULT,
-    OUTBOUND_TTL_SECONDS_GREETING,
-)
+from app.constants.outbound import OUTBOUND_QUEUES, OUTBOUND_TTL_SECONDS_DEFAULT
 from app.models.chat_models import ConversationSource
 from app.schemas.outbound import OutboundMessageEnvelope, OutboundReaction
 from app.services.outbox.transport import bot_queue as od
@@ -528,127 +524,6 @@ class TestPublishOutboundPhoto:
             publisher.publish_outbound.await_args.kwargs["expiration"]
             == OUTBOUND_TTL_SECONDS_DEFAULT
         )
-
-
-class TestNotifyAccountLinked:
-    async def test_a_linked_bot_platform_gets_the_confirmation_with_its_display_name(self) -> None:
-        publisher = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value={"telegram": {"platformUserId": "tg-123"}},
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            result = await od.notify_account_linked("telegram", "user-1")
-
-        assert result is od.OutboundResult.PUBLISHED
-        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
-        assert envelope["destination_id"] == "tg-123"
-        # The friendly display name, not the raw enum value.
-        assert "Your Telegram account is linked." in envelope["text"]
-
-    async def test_the_confirmation_says_the_link_worked_and_points_at_help(self) -> None:
-        """Pin the post-link greeting verbatim: it confirms the account is linked and names /help as the way in."""
-        publisher = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value={"telegram": {"platformUserId": "tg-123"}},
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            await od.notify_account_linked("telegram", "user-1")
-
-        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
-        assert envelope["text"] == (
-            "\u2705 **You're connected**\n\n"
-            "Your Telegram account is linked. "
-            "Message me anytime, or send `/help` to see what I can do."
-        )
-
-    async def test_the_confirmation_goes_to_the_user_who_linked_on_the_greeting_ttl(
-        self,
-    ) -> None:
-        """Pins two things: the destination is the user who just linked, and the confirmation expires on the short greeting TTL."""
-        publisher = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value={"telegram": {"platformUserId": "tg-123"}},
-            ) as linked,
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            await od.notify_account_linked("telegram", "user-1")
-
-        linked.assert_awaited_once_with("user-1")
-        assert (
-            publisher.publish_outbound.await_args.kwargs["expiration"]
-            == OUTBOUND_TTL_SECONDS_GREETING
-        )
-        assert OUTBOUND_TTL_SECONDS_GREETING < OUTBOUND_TTL_SECONDS_DEFAULT
-
-    async def test_whatsapp_uses_cased_display_name(self) -> None:
-        """WhatsApp's display name is WhatsApp, not Whatsapp — a .capitalize() fallback would be observable."""
-        publisher = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value={"whatsapp": {"platformUserId": "wa-123"}},
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            result = await od.notify_account_linked("whatsapp", "user-1")
-
-        assert result is od.OutboundResult.PUBLISHED
-        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
-        assert "Your WhatsApp account is linked." in envelope["text"]
-        assert "Your Whatsapp account" not in envelope["text"]
-
-    async def test_imessage_is_spelled_the_way_apple_spells_it(self) -> None:
-        """IMessage is the one platform whose display name is not a plain capitalization, so the map must carry it."""
-        publisher = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value={"imessage": {"platformUserId": "im-123"}},
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            result = await od.notify_account_linked("imessage", "user-1")
-
-        assert result is od.OutboundResult.PUBLISHED
-        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
-        assert "Your iMessage account is linked." in envelope["text"]
-        assert "Your Imessage account" not in envelope["text"]
-
-    async def test_a_non_bot_platform_is_skipped(self) -> None:
-        with patch.object(
-            PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
-        ) as linked:
-            result = await od.notify_account_linked("web", "user-1")
-        assert result is od.OutboundResult.SKIPPED
-        linked.assert_not_awaited()
 
 
 class TestOutboundBubbleSplitting:

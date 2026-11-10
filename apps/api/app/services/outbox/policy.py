@@ -94,10 +94,23 @@ def _mode_of(urgency: UrgencyClass, report: OutboxReport) -> ComposeMode:
     return ComposeMode.ANSWER if is_answer(report) else ComposeMode.UNSOLICITED
 
 
-def decide(report: OutboxReport) -> Decision:
-    """Decide what the outbox does with a report that is new and still to be told."""
+def is_progress(report: OutboxReport) -> bool:
+    """Whether the report only says where a run is on its way, which is for someone watching it live."""
+    return isinstance(report, NoticeReport) and report.outcome is NoticeOutcome.PROGRESS
+
+
+def decide(report: OutboxReport, *, watched_live: bool = False) -> Decision:
+    """Decide what the outbox does with a report that is new and still to be told.
+
+    watched_live says whether the user is on the surface the report's subject lives on now;
+    only progress depends on it.
+    """
     urgency = urgency_of(report)
     mode = _mode_of(urgency, report)
+    if is_progress(report) and not watched_live:
+        return Decision(
+            DecisionKind.RECORD_ONLY, urgency, mode, drop_reason=DropReason.NOT_WATCHING
+        )
     if isinstance(report, RunReport):
         outcome = report.report.outcome
         if outcome in _RECORD_ONLY_OUTCOMES:

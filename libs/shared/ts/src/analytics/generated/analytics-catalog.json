@@ -2604,12 +2604,27 @@
         "description": "The outbox sent one message to a user: a chat app took it, or it was recorded in the GAIA app.",
         "properties": {
           "producer": {
-            "enum": ["executor", "workflow", "todo", "reminder"],
+            "enum": [
+              "executor",
+              "workflow",
+              "todo",
+              "reminder",
+              "browser",
+              "artifact",
+              "account"
+            ],
             "title": "Producer",
             "type": "string"
           },
           "subject_kind": {
-            "enum": ["ask", "workflow_run", "todo_run", "reminder"],
+            "enum": [
+              "ask",
+              "workflow_run",
+              "todo_run",
+              "reminder",
+              "browser_job",
+              "account"
+            ],
             "title": "Subject Kind",
             "type": "string"
           },
@@ -2628,6 +2643,7 @@
               "recent_activity",
               "priority",
               "owner_chat",
+              "requested_channel",
               "active_in_app",
               "no_chat_app"
             ],
@@ -4650,6 +4666,7 @@
                   "recent_activity",
                   "priority",
                   "owner_chat",
+                  "requested_channel",
                   "active_in_app",
                   "no_chat_app"
                 ],
@@ -7085,6 +7102,7 @@
                   "recent_activity",
                   "priority",
                   "owner_chat",
+                  "requested_channel",
                   "active_in_app",
                   "no_chat_app"
                 ],
@@ -8618,6 +8636,7 @@
                   "recent_activity",
                   "priority",
                   "owner_chat",
+                  "requested_channel",
                   "active_in_app",
                   "no_chat_app"
                 ],

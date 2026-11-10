@@ -26,6 +26,7 @@ from app.db.repositories.outbox_messages import outbox_messages_repository
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.outbox_models import OutboxItemDocument, OutboxMessageDocument
 from app.models.user_models import AuthenticatedUser
+from app.schemas.outbound import OutboundAttachment
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
 from app.services.outbox import compose as compose_module
@@ -37,10 +38,16 @@ from app.services.outbox.models import (
     ItemFailure,
     ItemState,
     MessageState,
+    NoticeReport,
     UrgencyClass,
 )
 from app.services.outbox.router import ChatChannel, NoDestinationError, Route, destination_of, route
-from app.services.outbox.transport.bot_queue import OutboundResult, publish_outbound_message
+from app.services.outbox.transport.bot_queue import (
+    OutboundResult,
+    publish_outbound_file,
+    publish_outbound_message,
+    publish_outbound_photo,
+)
 from app.services.outbox.transport.ws_speech import publish_conversation_message
 from app.utils import clock
 from app.utils.auth_utils import load_user_context
@@ -81,6 +88,8 @@ async def _save_messages(
         MessageModel(type="bot", response=part, date=datetime.now(UTC).isoformat())
         for part in parts
     ]
+    if not messages:
+        return messages
     for message in messages:
         message.message_id = str(uuid4())
     await update_messages(
@@ -101,22 +110,51 @@ async def _fail_items(user_id: str, attempt_id: str, failure: ItemFailure) -> No
     )
 
 
+async def _publish_attachment(
+    target: ChatChannel, user_id: str, attachment: OutboundAttachment
+) -> bool:
+    """Hand one file to the chat app's queue: a photo the bot fetches by URL, or an artifact by reference."""
+    if attachment.url is not None:
+        return await publish_outbound_photo(
+            target.source, user_id, attachment.url, attachment.filename, attachment.caption
+        )
+    if attachment.conversation_id is not None and attachment.path is not None:
+        return await publish_outbound_file(
+            target.source,
+            user_id,
+            attachment.conversation_id,
+            attachment.path,
+            attachment.filename,
+            content_type=attachment.content_type,
+            caption=attachment.caption,
+        )
+    raise ValueError("an outbound attachment names a URL or an artifact")
+
+
 async def _alert(
-    user_id: str, destination: Route, parts: list[str], saved: dict[str, list[MessageModel]]
+    user_id: str, destination: Route, composed: Composed, saved: dict[str, list[MessageModel]]
 ) -> ItemFailure | None:
     """Alert the one destination; return why it did not land, or None when it did."""
     target = destination.target
     if isinstance(target, ChatChannel):
-        result = await publish_outbound_message(
-            target.source, user_id, parts, destination_override=target.platform_user_id
-        )
-        if result is OutboundResult.PUBLISHED:
-            return None
-        return (
-            ItemFailure.TRANSPORT_SKIPPED
-            if result is OutboundResult.SKIPPED
-            else ItemFailure.TRANSPORT_FAILED
-        )
+        if composed.parts:
+            result = await publish_outbound_message(
+                target.source,
+                user_id,
+                composed.parts,
+                destination_override=target.platform_user_id,
+                ttl_seconds=composed.ttl_seconds,
+            )
+            if result is not OutboundResult.PUBLISHED:
+                return (
+                    ItemFailure.TRANSPORT_SKIPPED
+                    if result is OutboundResult.SKIPPED
+                    else ItemFailure.TRANSPORT_FAILED
+                )
+        for attachment in composed.attachments:
+            if not await _publish_attachment(target, user_id, attachment):
+                return ItemFailure.TRANSPORT_FAILED
+        return None
     for message in saved[destination.alert_conversation_id]:
         await publish_conversation_message(
             user_id,
@@ -174,22 +212,26 @@ async def _send(
             for conversation_id in destination.recorded_in
         }
         # Recorded where it was asked, not alerted there: the chat shows it as unread.
-        for conversation_id in destination.recorded_in[1:]:
-            await conversation_repository.set_unread(conversation_id, user_id=user_id, unread=True)
+        if composed.parts:
+            for conversation_id in destination.recorded_in[1:]:
+                await conversation_repository.set_unread(
+                    conversation_id, user_id=user_id, unread=True
+                )
     except Exception:
         await _fail_items(user_id, attempt_id, ItemFailure.RECORD_FAILED)
         raise
-    failure = await _alert(user_id, destination, composed.parts, saved)
+    failure = await _alert(user_id, destination, composed, saved)
     if failure is not None:
         await _fail_items(user_id, attempt_id, failure)
     else:
         await _settle_sent(user_id, attempt_id, message, included)
 
     # A chat app's thread holds only what that chat app received.
-    thread_text = "\n\n".join(composed.parts)
-    for conversation_id in destination.recorded_in:
-        if failure is None or conversation_id != destination.alert_conversation_id:
-            await compose_module.record_in_thread(conversation_id, thread_text)
+    if composed.parts:
+        thread_text = "\n\n".join(composed.parts)
+        for conversation_id in destination.recorded_in:
+            if failure is None or conversation_id != destination.alert_conversation_id:
+                await compose_module.record_in_thread(conversation_id, thread_text)
 
 
 async def _settle_sent(
@@ -227,6 +269,27 @@ async def _settle_sent(
     )
 
 
+async def _drop_expired(
+    user_id: str, attempt_id: str, items: list[OutboxItemDocument]
+) -> list[OutboxItemDocument]:
+    """Record the items whose valid_until has passed and never tell them; return the ones still worth telling."""
+    now = clock.now()
+    expired = [
+        item.report_id
+        for item in items
+        if isinstance(item.report, NoticeReport)
+        and item.report.valid_until is not None
+        and item.report.valid_until <= now
+    ]
+    if not expired:
+        return items
+    dropped = await outbox_items_repository.drop_composing(
+        user_id, attempt_id, expired, DropReason.EXPIRED
+    )
+    OUTBOX_ITEMS_DROPPED.labels(reason=DropReason.EXPIRED.value).inc(dropped)
+    return [item for item in items if item.report_id not in expired]
+
+
 async def _flush(user: AuthenticatedUser, subject_id: str) -> None:
     attempt_id = str(uuid4())
     items = await outbox_items_repository.claim_queued_for_subject(
@@ -239,6 +302,9 @@ async def _flush(user: AuthenticatedUser, subject_id: str) -> None:
         )
         return
     try:
+        items = await _drop_expired(user.user_id, attempt_id, items)
+        if not items:
+            return
         destination = await route(user, items)
         composed = await compose_module.compose(
             items,

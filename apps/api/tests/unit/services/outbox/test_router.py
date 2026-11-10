@@ -84,6 +84,7 @@ class TestIsActivePlace:
         [
             (ChatChannel(ConversationSource.TELEGRAM, "tg-1", "recent_activity"), True),
             (InApp(reason="active_in_app"), True),
+            (ChatChannel(ConversationSource.TELEGRAM, "tg-1", "requested_channel"), True),
             (ChatChannel(ConversationSource.TELEGRAM, "tg-1", "priority"), False),
             (
                 ChatChannel(
@@ -100,13 +101,14 @@ class TestIsActivePlace:
         ids=[
             "chat_app_active",
             "app_active",
+            "requested_channel",
             "by_order",
             "by_order_unreachable_active",
             "no_chat_app",
             "no_chat_app_unreachable_active",
         ],
     )
-    def test_only_a_target_chosen_by_activity_is_the_active_place(
+    def test_only_a_settled_target_is_the_active_place(
         self, target: ProactiveTarget, active: bool
     ) -> None:
         assert is_active_place(target) is active
@@ -549,3 +551,41 @@ class TestResolveProactiveTarget:
             picked = await resolve_proactive_target(USER_ID)
 
         assert picked.unreachable_active is None
+
+
+class TestRequestedChatChannel:
+    """A producer that names a chat app is heard there, whatever the user is doing, when it can be reached."""
+
+    async def test_a_linked_enabled_platform_is_chosen_as_requested_whatever_the_order(
+        self,
+    ) -> None:
+        with patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())):
+            channel = await router._requested_chat_channel(USER_ID, ConversationSource.TELEGRAM)
+
+        assert channel == ChatChannel(ConversationSource.TELEGRAM, "tg-1", "requested_channel")
+
+    async def test_no_request_names_nothing_and_reads_nothing(self) -> None:
+        with patch.object(user_repository, "get", AsyncMock()) as get:
+            assert await router._requested_chat_channel(USER_ID, None) is None
+        get.assert_not_awaited()
+
+    async def test_a_platform_not_linked_falls_through_to_the_normal_route(self) -> None:
+        with patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())):
+            assert (
+                await router._requested_chat_channel(USER_ID, ConversationSource.WHATSAPP) is None
+            )
+
+    async def test_a_platform_the_user_switched_off_falls_through_to_the_normal_route(self) -> None:
+        user = _two_linked_user().model_copy(
+            update={"notification_channel_prefs": {CHANNEL_TYPE_TELEGRAM: False}}
+        )
+        with patch.object(user_repository, "get", AsyncMock(return_value=user)):
+            assert (
+                await router._requested_chat_channel(USER_ID, ConversationSource.TELEGRAM) is None
+            )
+
+    async def test_an_unknown_user_names_nothing(self) -> None:
+        with patch.object(user_repository, "get", AsyncMock(return_value=None)):
+            assert (
+                await router._requested_chat_channel(USER_ID, ConversationSource.TELEGRAM) is None
+            )

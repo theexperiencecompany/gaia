@@ -1,6 +1,6 @@
 """A timeline of events driven through the real outbox, asserted on the ledger it writes.
 
-Real: intake, policy, router, compose's validation and degrade, deliver's state machine, the
+Real: intake, policy, watching (presence), router, compose's validation and degrade, deliver's state machine, the
 two outbox repositories (on real Mongo, with the production indexes), the comms thread lock
 (on fakeredis), presence (fakeredis, read through the clock seam).
 Doubled: the clock, the ARQ queue (in memory, keyed on the instant a job is due), the compose
@@ -196,6 +196,12 @@ class Sinks:
     """What each speech transport was asked to say."""
 
     bot: list[tuple[str, list[str]]] = field(default_factory=list)
+    #: The account id each bot message was addressed to, parallel to `bot`.
+    bot_destinations: list[str | None] = field(default_factory=list)
+    #: The queue expiry each bot message was published with, parallel to `bot`.
+    bot_ttls: list[int | None] = field(default_factory=list)
+    #: (platform, what the bot fetches: a URL or an artifact path, caption) for each file sent.
+    files: list[tuple[str, str, str | None]] = field(default_factory=list)
     ws: list[tuple[str, str]] = field(default_factory=list)
     analytics: list[DeliveryMessageSent] = field(default_factory=list)
     bot_result: OutboundResult = OutboundResult.PUBLISHED
@@ -293,9 +299,39 @@ def _patched(world: World, sinks: Sinks, arq: FakeArq, compose: ScriptedCompose)
         world.unread.add(conversation_id)
         return True
 
-    async def publish_bot(source: ConversationSource, user_id: str, parts: list[str], **_: object):
+    async def publish_bot(
+        source: ConversationSource,
+        user_id: str,
+        parts: list[str],
+        *,
+        destination_override: str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> OutboundResult:
         sinks.bot.append((source.value, list(parts)))
+        sinks.bot_destinations.append(destination_override)
+        sinks.bot_ttls.append(ttl_seconds)
         return sinks.bot_result
+
+    async def publish_photo(
+        platform: ConversationSource,
+        user_id: str,
+        url: str,
+        filename: str,
+        caption: str | None = None,
+    ) -> bool:
+        sinks.files.append((platform.value, url, caption))
+        return True
+
+    async def publish_file(
+        platform: ConversationSource,
+        user_id: str,
+        conversation_id: str,
+        path: str,
+        filename: str,
+        **options: str | None,
+    ) -> bool:
+        sinks.files.append((platform.value, path, options.get("caption")))
+        return True
 
     async def publish_ws(user_id: str, conversation_id: str, message: dict[str, Any]) -> None:
         sinks.ws.append((conversation_id, message["response"]))
@@ -317,6 +353,8 @@ def _patched(world: World, sinks: Sinks, arq: FakeArq, compose: ScriptedCompose)
         enter(patch(f"{DELIVER}.update_messages", update_messages))
         enter(patch(f"{DELIVER}.conversation_repository.set_unread", set_unread))
         enter(patch(f"{DELIVER}.publish_outbound_message", publish_bot))
+        enter(patch(f"{DELIVER}.publish_outbound_photo", publish_photo))
+        enter(patch(f"{DELIVER}.publish_outbound_file", publish_file))
         enter(patch(f"{DELIVER}.publish_conversation_message", publish_ws))
         enter(patch(f"{DELIVER}.capture", capture))
         enter(patch(f"{DELIVER}.load_user_context", load_user))
@@ -369,6 +407,7 @@ async def prepare_collections(db: AsyncIOMotorDatabase[Any]) -> None:
 
 
 __all__ = [
+    "DELIVER",
     "T0",
     "AIMessage",
     "FakeArq",

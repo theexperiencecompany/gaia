@@ -619,11 +619,11 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "producer": "executor" | "workflow" | "todo" | "reminder";
-    "subject_kind": "ask" | "workflow_run" | "todo_run" | "reminder";
+    "producer": "executor" | "workflow" | "todo" | "reminder" | "browser" | "artifact" | "account";
+    "subject_kind": "ask" | "workflow_run" | "todo_run" | "reminder" | "browser_job" | "account";
     "mode": "answer" | "unsolicited" | "interrupt";
     "destination": "chat_app" | "in_app";
-    "destination_basis": "recent_activity" | "priority" | "owner_chat" | "active_in_app" | "no_chat_app";
+    "destination_basis": "recent_activity" | "priority" | "owner_chat" | "requested_channel" | "active_in_app" | "no_chat_app";
     "items_count": number;
     "max_class": "background" | "routine" | "timely" | "interrupt";
     "degraded": boolean;
@@ -989,7 +989,7 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "outcome": "sent" | "folded_into_reply";
     "destination"?: "chat_app" | "in_app";
-    "destination_basis"?: "recent_activity" | "priority" | "owner_chat" | "active_in_app" | "no_chat_app";
+    "destination_basis"?: "recent_activity" | "priority" | "owner_chat" | "requested_channel" | "active_in_app" | "no_chat_app";
   };
   "notification:bulk_action": {
     "actor": "user" | "agent";
@@ -1410,7 +1410,7 @@ export interface EventProperties {
     "recurring": boolean;
     "platform"?: string;
     "destination"?: "chat_app" | "in_app";
-    "destination_basis"?: "recent_activity" | "priority" | "owner_chat" | "active_in_app" | "no_chat_app";
+    "destination_basis"?: "recent_activity" | "priority" | "owner_chat" | "requested_channel" | "active_in_app" | "no_chat_app";
   };
   "todos:subscription_failed": {
     "actor": "user" | "agent";
@@ -1638,7 +1638,7 @@ export interface EventProperties {
     "workflow_id"?: string;
     "outcome": "delivered" | "undelivered" | "lookup_failed";
     "destination"?: "chat_app" | "in_app";
-    "destination_basis"?: "recent_activity" | "priority" | "owner_chat" | "active_in_app" | "no_chat_app";
+    "destination_basis"?: "recent_activity" | "priority" | "owner_chat" | "requested_channel" | "active_in_app" | "no_chat_app";
     "platform"?: string;
   };
   "workflow:steps_regenerated": {

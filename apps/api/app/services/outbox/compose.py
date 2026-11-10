@@ -7,7 +7,7 @@ violation stated; after that the items are said plainly (the degraded render), l
 Only record_in_thread writes to a comms thread, under the thread lock.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 import json
 from typing import TypedDict, cast
 
@@ -21,6 +21,7 @@ from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.compose_prompts import COMPOSE_RULES
 from app.agents.templates.agent_template import get_comms_static_prompt
 from app.constants.log_tags import LogTag
+from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
 from app.constants.outbox import (
     COMPOSE_LEDGER_MESSAGES,
     COMPOSE_MAX_ATTEMPTS,
@@ -30,17 +31,24 @@ from app.constants.outbox import (
 from app.db.repositories.outbox_messages import outbox_messages_repository
 from app.models.chat_models import ConversationSource
 from app.models.outbox_models import OutboxItemDocument
+from app.schemas.outbound import OutboundAttachment
 from app.services.outbox.metrics import OUTBOX_COMPOSE_DEGRADED
 from app.services.outbox.models import (
     ComposeMode,
     ComposeResult,
     Disposition,
+    NoticeOutcome,
     NoticeReport,
     OutboxReport,
     RunReport,
 )
 from app.services.outbox.policy import must_include
-from app.services.outbox.prerendered import PrerenderedKind, prerendered_text
+from app.services.outbox.prerendered import (
+    GREETING_KINDS,
+    PrerenderedKind,
+    prerendered_parts,
+    prerendered_text,
+)
 from app.services.outbox.router import ChatChannel, ProactiveTarget
 from shared.py.wide_events import log
 
@@ -53,6 +61,10 @@ class Composed:
     included: list[str]
     skipped: list[str]
     degraded: bool
+    #: Files the message carries, sent after its bubbles.
+    attachments: list[OutboundAttachment] = field(default_factory=list)
+    #: How long a chat app's queue holds the message before dropping it undelivered.
+    ttl_seconds: int = OUTBOUND_TTL_SECONDS_DEFAULT
 
 
 class _ThreadValues(TypedDict, total=False):
@@ -101,7 +113,7 @@ async def _thread_snapshot(conversation_id: str) -> list[dict[str, str]]:
     state = await graph.aget_state(
         cast(RunnableConfig, {"configurable": {"thread_id": conversation_id}})
     )
-    values = cast(_ThreadValues, state.values or {})
+    values: _ThreadValues = cast(_ThreadValues, state.values or {})
     recent = [m for m in values.get("messages", []) if _is_conversational(m)]
     return [
         {"from": "user" if isinstance(m, HumanMessage) else "gaia", "text": str(m.content)}
@@ -141,6 +153,24 @@ def _degraded_parts(items: list[OutboxItemDocument], locale: str) -> list[str]:
     return ["\n".join(lines)]
 
 
+def _said_as_written(item: OutboxItemDocument) -> bool:
+    """Whether the item's producer wrote its words, or it only carries a file: no model words it."""
+    report = item.report
+    return isinstance(report, NoticeReport) and (
+        report.prerendered is not None
+        or report.outcome is NoticeOutcome.PROGRESS
+        or bool(report.artifacts)
+    )
+
+
+def _written_parts(report: NoticeReport, locale: str) -> list[str]:
+    if report.prerendered is not None:
+        return prerendered_parts(report.prerendered, locale)
+    if report.artifacts:
+        return []
+    return ["\n".join(report.facts)]
+
+
 async def compose(
     items: list[OutboxItemDocument],
     *,
@@ -150,7 +180,55 @@ async def compose(
     conversation_id: str,
     locale: str,
 ) -> Composed:
-    """Word one message for items, as comms would say it in the destination thread."""
+    """Say items as one message: the producers' own words as they wrote them, the rest worded as comms would."""
+    written = [item for item in items if _said_as_written(item)]
+    to_word = [item for item in items if not _said_as_written(item)]
+    written_reports = [item.report for item in written if isinstance(item.report, NoticeReport)]
+    attachments = [artifact for report in written_reports for artifact in report.artifacts]
+    written_parts = [part for report in written_reports for part in _written_parts(report, locale)]
+    ttl_seconds = (
+        OUTBOUND_TTL_SECONDS_GREETING
+        if any(
+            r.prerendered is not None and r.prerendered.kind in GREETING_KINDS
+            for r in written_reports
+        )
+        else OUTBOUND_TTL_SECONDS_DEFAULT
+    )
+    if not to_word:
+        return Composed(
+            parts=written_parts,
+            included=[item.report_id for item in written],
+            skipped=[],
+            degraded=False,
+            attachments=attachments,
+            ttl_seconds=ttl_seconds,
+        )
+    worded = await _word(
+        to_word,
+        user_id=user_id,
+        mode=mode,
+        target=target,
+        conversation_id=conversation_id,
+        locale=locale,
+    )
+    return replace(
+        worded,
+        parts=[*worded.parts, *written_parts],
+        included=[*worded.included, *(item.report_id for item in written)],
+        attachments=attachments,
+        ttl_seconds=ttl_seconds,
+    )
+
+
+async def _word(
+    items: list[OutboxItemDocument],
+    *,
+    user_id: str,
+    mode: ComposeMode,
+    target: ProactiveTarget,
+    conversation_id: str,
+    locale: str,
+) -> Composed:
     source = _destination_source(target)
     recent_sent = await outbox_messages_repository.recent_sent(
         user_id, limit=COMPOSE_LEDGER_MESSAGES

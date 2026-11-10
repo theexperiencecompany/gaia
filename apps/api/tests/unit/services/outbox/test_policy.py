@@ -118,3 +118,29 @@ def test_a_user_set_time_that_may_not_wake_is_not_an_interrupt() -> None:
 def test_a_run_report_must_declare_its_outcome() -> None:
     with pytest.raises(ValueError, match="declares its outcome"):
         _run(None)
+
+
+def test_progress_nobody_is_watching_is_recorded_and_never_alerted() -> None:
+    decision = decide(_notice(outcome=NoticeOutcome.PROGRESS), watched_live=False)
+
+    assert (decision.kind, decision.drop_reason) == (
+        DecisionKind.RECORD_ONLY,
+        DropReason.NOT_WATCHING,
+    )
+
+
+def test_progress_someone_is_watching_live_is_sent() -> None:
+    decision = decide(_notice(outcome=NoticeOutcome.PROGRESS), watched_live=True)
+
+    assert (decision.kind, decision.drop_reason) == (DecisionKind.SEND_NOW, None)
+
+
+@pytest.mark.parametrize("outcome", [NoticeOutcome.INFO, NoticeOutcome.NEEDS_YOU])
+def test_only_progress_depends_on_being_watched(outcome: NoticeOutcome) -> None:
+    assert decide(_notice(outcome=outcome), watched_live=False).kind is DecisionKind.SEND_NOW
+
+
+def test_a_handoff_that_needs_the_user_is_timely_whether_or_not_they_are_watching() -> None:
+    report = _notice(outcome=NoticeOutcome.NEEDS_YOU, initiative=Initiative.ASKED)
+
+    assert decide(report, watched_live=False).urgency is UrgencyClass.TIMELY

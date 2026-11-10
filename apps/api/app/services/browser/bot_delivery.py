@@ -1,20 +1,22 @@
-"""Mirror browser progress to messaging bots (Telegram/WhatsApp/etc).
+"""Hand a browser run's progress to the outbox, for the users who follow it in a messaging bot.
 
-Bots consume backend-pushed messages over RabbitMQ, not the SSE stream. Step
-screenshots are already published at a URL (the bucket's, or the API's own
-shot route; see screenshots.py), so a bot step is delivered as a real photo,
-the same artifact the web card renders, through the platform's native image
-message instead of a pasted link.
+A step is a progress notice carrying its screenshot by reference: told only to a user
+watching live, superseded by the next step, never sent into a group. A handoff needs the
+user and is told whether they are watching or not, until the handoff times out. The
+outbox decides where each goes; nothing here publishes to a bot.
 """
 
+from datetime import datetime, timedelta
+
+from pydantic import ValidationError
+
+from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_CREDENTIALS_SAVED_NOTE,
     BROWSER_HANDOFF_REPLY_PROMPT,
     HandoffStatus,
 )
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
     BrowserAction,
     BrowserHandoffSnapshot,
@@ -22,31 +24,43 @@ from app.schemas.browser import (
     BrowserSessionSnapshot,
     BrowserStepSnapshot,
 )
+from app.schemas.outbound import OutboundAttachment
 from app.services.browser.captions import caption_from_action_list
 from app.services.browser.live_view import create_live_view_link
 from app.services.browser.shot_store import SHOT_SUFFIX
-from app.services.outbox.transport.bot_queue import (
-    OutboundResult,
-    publish_outbound_message,
-    publish_outbound_photo,
+from app.services.outbox.intake import submit
+from app.services.outbox.models import (
+    Initiative,
+    NoticeOutcome,
+    NoticeReport,
+    ProducerKind,
+    Subject,
+    SubjectKind,
+    SubjectMerge,
 )
+from app.utils import clock
 from shared.py.wide_events import log
+
+_SUBJECT_LABEL = "Browser task"
 
 
 class BotProgressDelivery:
-    """Delivers browser card snapshots to the requester's DM, even for a run asked for in a group."""
+    """Submits browser card snapshots to the outbox, owned by the conversation that asked for the run."""
 
     def __init__(
         self,
         *,
-        platform: ConversationSource,
+        job_id: str,
         user_id: str,
+        conversation_id: str,
         stream_screenshots: bool,
     ) -> None:
-        self._platform = platform
+        self._job_id = job_id
         self._user_id = user_id
+        self._conversation_id = conversation_id
         self._stream_screenshots = stream_screenshots
         self._steps_shown = 0
+        self._reports_submitted = 0
         #: The page and frame of the last step sent; a step showing the same again sends none.
         # Equivalent mutant: "" equals no (address, frame) pair, exactly like None.
         self._last_frame: tuple[str | None, str] | None = None  # pragma: no mutate
@@ -61,7 +75,7 @@ class BotProgressDelivery:
         return
 
     async def step(self, snapshot: BrowserStepSnapshot) -> None:
-        """Emit a per-step progress event to the conversation."""
+        """Submit a per-step progress notice, with the step's screenshot when there is one worth sending."""
         # The pre-navigation blank tab has no photo worth sending (empty white
         # page), but its label still says where the run is headed: send that
         # as text so step 1 is never silence.
@@ -80,20 +94,15 @@ class BotProgressDelivery:
         # Numbered by what this user was shown: the run's index counts the blank tab and repeats.
         self._steps_shown += 1
         caption = _step_caption(self._steps_shown, snapshot.goal, snapshot.actions)
-        if self._stream_screenshots and snapshot.screenshot:
-            sent = await publish_outbound_photo(
-                self._platform,
-                self._user_id,
-                snapshot.screenshot,
-                filename=f"browser-step-{self._steps_shown}{SHOT_SUFFIX}",
-                caption=caption,
-            )
-            if sent:
-                return
-        await self.note(_step_caption(self._steps_shown, snapshot.goal, snapshot.actions))
+        photo = (
+            self._photo_of(snapshot.screenshot, caption)
+            if self._stream_screenshots and snapshot.screenshot
+            else None
+        )
+        await self._submit_progress(caption, [photo] if photo is not None else [])
 
     async def handoff(self, snapshot: BrowserHandoffSnapshot) -> None:
-        """Emit a live-view handoff event to the conversation."""
+        """Submit the user's turn: a live-view handoff, told until it times out."""
         # Only the PENDING snapshot needs a message: resolution is already acked
         # in-chat and the final result line closes the task.
         if snapshot.status != HandoffStatus.PENDING:
@@ -102,19 +111,28 @@ class BotProgressDelivery:
         # Equivalent mutant: "" equals no (address, frame) pair, exactly like None.
         self._last_frame = None  # pragma: no mutate
 
-        # The ask is the model's own words (request_human_takeover's reason),
-        # shown verbatim as the first bubble; link and reply instruction follow.
-        blocks = [snapshot.reason]
+        # The ask is the model's own words (request_human_takeover's reason);
+        # the link and the reply instruction follow.
+        facts = [snapshot.reason]
         if snapshot.saves_login:
-            blocks[0] += f"\n{BROWSER_CREDENTIALS_SAVED_NOTE}"
+            facts[0] += f"\n{BROWSER_CREDENTIALS_SAVED_NOTE}"
         if snapshot.session_id:
             # One link per handoff, revoked when it is settled: only one is ever open.
             link = await create_live_view_link(
                 snapshot.session_id, self._user_id, snapshot.handoff_id
             )
-            blocks.append(f"Open the live browser: {link}")
-        blocks.append(BROWSER_HANDOFF_REPLY_PROMPT)
-        await self.note(NEW_MESSAGE_BREAKER.join(blocks))
+            facts.append(f"Open the live browser: {link}")
+        facts.append(BROWSER_HANDOFF_REPLY_PROMPT)
+        await submit(
+            self._notice(
+                f"handoff:{snapshot.handoff_id}",
+                NoticeOutcome.NEEDS_YOU,
+                facts,
+                subject_id=f"{self._job_id}:handoff:{snapshot.handoff_id}",
+                valid_until=clock.now()
+                + timedelta(seconds=settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS),
+            )
+        )
 
     async def result(self, snapshot: BrowserResultSnapshot) -> None:
         """Close out the progress with the run's recap link, and nothing else.
@@ -124,18 +142,74 @@ class BotProgressDelivery:
         every outcome arrive twice.
         """
         if snapshot.replay_url:
-            await self.note(f"📽 Here's a recap of the run: {snapshot.replay_url}")
+            await submit(
+                self._notice(
+                    "recap",
+                    NoticeOutcome.INFO,
+                    [f"Here's a recap of the run: {snapshot.replay_url}"],
+                    subject_id=f"{self._job_id}:recap",
+                )
+            )
 
     async def note(self, message: str) -> None:
-        """Send one plain message to the user."""
-        result = await publish_outbound_message(self._platform, self._user_id, [message])
-        if result is not OutboundResult.PUBLISHED:
-            log.warning(
-                f"{LogTag.BROWSER} Browser progress not sent to the bot",
-                outbound_result=result,
-                platform=self._platform,
-                user_id=self._user_id,
+        """Submit one plain progress line."""
+        await self._submit_progress(message, [])
+
+    async def _submit_progress(self, text: str, artifacts: list[OutboundAttachment]) -> None:
+        """Submit progress of the run, which supersedes the progress before it."""
+        self._reports_submitted += 1
+        await submit(
+            self._notice(
+                f"progress:{self._reports_submitted}",
+                NoticeOutcome.PROGRESS,
+                [text],
+                subject_id=self._job_id,
+                artifacts=artifacts,
             )
+        )
+
+    def _notice(
+        self,
+        report_key: str,
+        outcome: NoticeOutcome,
+        facts: list[str],
+        *,
+        subject_id: str,
+        artifacts: list[OutboundAttachment] | None = None,
+        valid_until: datetime | None = None,
+    ) -> NoticeReport:
+        return NoticeReport(
+            report_id=f"browser:{self._job_id}:{report_key}",
+            recipient=self._user_id,
+            producer=ProducerKind.BROWSER,
+            subject=Subject(
+                kind=SubjectKind.BROWSER_JOB,
+                id=subject_id,
+                owner_conversation_id=self._conversation_id,
+                label=_SUBJECT_LABEL,
+                merge=SubjectMerge.REPLACE,
+            ),
+            occurred_at=clock.now(),
+            initiative=Initiative.ASKED,
+            outcome=outcome,
+            facts=facts,
+            artifacts=artifacts or [],
+            valid_until=valid_until,
+        )
+
+    def _photo_of(self, url: str, caption: str) -> OutboundAttachment | None:
+        """Return the step's screenshot as an attachment, or None when its URL may not be sent (the caption then goes alone)."""
+        try:
+            return OutboundAttachment(
+                url=url, filename=f"browser-step-{self._steps_shown}{SHOT_SUFFIX}", caption=caption
+            )
+        except ValidationError:
+            log.warning(
+                f"{LogTag.BROWSER} Step screenshot URL rejected; sending its caption alone",
+                user_id=self._user_id,
+                job_id=self._job_id,
+            )
+            return None
 
 
 def _is_blank_tab(url: str | None) -> bool:

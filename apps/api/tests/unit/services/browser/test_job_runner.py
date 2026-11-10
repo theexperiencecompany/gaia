@@ -1386,10 +1386,12 @@ async def test_bot_delivery_is_built_for_the_originating_platform(
     h = _install(monkeypatch)
     monkeypatch.setattr(settings, "BROWSER_USE_STREAM_SCREENSHOTS", False)
     await _run(h, _bot_request(task="x"))
+    request = _bot_request(task="x")
     assert h.delivery_kwargs == [
         {
-            "platform": ConversationSource.DISCORD,
+            "job_id": request.job_id,
             "user_id": USER_ID,
+            "conversation_id": request.conversation_id,
             "stream_screenshots": False,
         }
     ]

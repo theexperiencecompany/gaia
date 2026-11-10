@@ -14,11 +14,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from app.constants.delivery_alerts import DeliveryFailureKind
-from app.constants.outbound import (
-    OUTBOUND_QUEUES,
-    OUTBOUND_TTL_SECONDS_DEFAULT,
-    OUTBOUND_TTL_SECONDS_GREETING,
-)
+from app.constants.outbound import OUTBOUND_QUEUES, OUTBOUND_TTL_SECONDS_DEFAULT
 from app.db.rabbitmq import RabbitMQPublisher, get_rabbitmq_publisher
 from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkEntry
@@ -286,29 +282,6 @@ async def publish_outbound_message(
         parts=len(parts),
     )
     return OutboundResult.PUBLISHED
-
-
-async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
-    """Send a one-off "you're connected" confirmation to a freshly linked bot account.
-
-    Resolves the bot platform, builds the confirmation copy as CommonMark (each
-    bot renders its own platform-native markdown), and enqueues it. Non-bot
-    sources (web OAuth links, etc.) and unsupported/unlinked platforms are
-    skipped. Best-effort: never raises into the caller's linking flow.
-    """
-    source = ConversationSource.coerce(platform)
-    if source is None or source not in OUTBOUND_QUEUES:
-        return OutboundResult.SKIPPED
-
-    display_name = source.display_name
-    text = (
-        "✅ **You're connected**\n\n"
-        f"Your {display_name} account is linked. "
-        "Message me anytime, or send `/help` to see what I can do."
-    )
-    return await publish_outbound_message(
-        source, user_id, [text], ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING
-    )
 
 
 async def publish_outbound_file(

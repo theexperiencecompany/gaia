@@ -46,6 +46,7 @@ from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
 from app.services.browser.tools import EngineSwitchFn, TakeoverFn
+from app.services.outbox.models import NoticeReport
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
 
@@ -621,7 +622,7 @@ def long_waits_pass_quickly() -> Iterator[None]:
 
 
 def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextManager[object]]:
-    """Record what reaches the user: the turn's and the job's streams, bot messages and photos, the message the cards fold into, and the executor run woken to tell the ending."""
+    """Record what reaches the user: the turn's and the job's streams, what the outbox is handed for a bot (messages and photos), the message the cards fold into, and the executor run woken to tell the ending."""
 
     async def _publish_chunk(chunk_stream_id: str, chunk: str) -> None:
         if chunk_stream_id == stream_id:
@@ -631,13 +632,11 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
         else:
             world.other_streams.setdefault(chunk_stream_id, []).append(chunk)
 
-    async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> bool:
-        world.bot_messages.extend(blocks)
-        return True
-
-    async def _outbound_photo(platform: Any, user_id: str, url: str, **kwargs: Any) -> bool:
-        world.bot_photos.append(url)
-        return True
+    async def _submit(report: NoticeReport) -> None:
+        for artifact in report.artifacts:
+            world.bot_photos.append(str(artifact.url))
+        if not report.artifacts:
+            world.bot_messages.extend(report.facts)
 
     async def _wake(conversation_id: str, user: object) -> None:
         world.woken.append(conversation_id)
@@ -657,8 +656,7 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
             "app.core.stream_manager.StreamManager.publish_chunk",
             AsyncMock(side_effect=_publish_chunk),
         ),
-        patch("app.services.browser.bot_delivery.publish_outbound_message", _outbound_message),
-        patch("app.services.browser.bot_delivery.publish_outbound_photo", _outbound_photo),
+        patch("app.services.browser.bot_delivery.submit", _submit),
         patch(
             "app.services.browser.bot_delivery.create_live_view_link",
             AsyncMock(return_value=LIVE_VIEW_LINK),

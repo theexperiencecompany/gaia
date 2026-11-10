@@ -1,7 +1,7 @@
 """The outbox as a user lives it: events on a clock, asserted on the ledger rows they leave.
 
-Scenarios from the outbound-layer catalogue that need no holds: B3, B4, B8, B9, B16 and the
-record-is-not-alert and one-destination rules. Needs USE_REAL_SERVICES=1 (real Mongo for the
+Scenarios from the outbound-layer catalogue that need no holds: B3, B4, B8, B9, B16, B18, B19,
+H1, H2 (browser), I1 and the record-is-not-alert and one-destination rules. Needs USE_REAL_SERVICES=1 (real Mongo for the
 two outbox collections); the model, transports, thread and clock are doubled (see the harness).
 """
 
@@ -10,12 +10,18 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from datetime import timedelta
+import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.constants.agents import OutcomeState
+from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
+from app.constants.outbox import LIVE_WATCH_WINDOW_SECONDS
 from app.models.chat_models import ConversationSource
+from app.models.platform_models import PlatformLinkResult
 from app.models.task_report_models import TaskReport
+from app.schemas.outbound import OutboundAttachment
 from app.services.outbox.deliver import flush_subject
 from app.services.outbox.models import (
     ComposeResult,
@@ -35,7 +41,10 @@ from app.services.outbox.models import (
     UrgencyClass,
 )
 from app.services.outbox.transport.bot_queue import OutboundResult
+from app.services.platform_link_completion import complete_platform_link
+from app.services.platform_link_service import PlatformLinkService
 from tests.e2e._harness.outbox_timeline import (
+    DELIVER,
     T0,
     OutboxTimeline,
     World,
@@ -325,6 +334,291 @@ async def test_two_flushers_on_one_queued_item_send_one_message(tl: OutboxTimeli
     assert len(await tl.ledger()) == 1
     assert len(tl.compose.calls) == 1
     assert len(tl.sinks.bot) + len(tl.sinks.ws) == 1
+
+
+def _browser_notice(
+    report_id: str,
+    outcome: NoticeOutcome,
+    *,
+    owner: str = "tg-dm",
+    subject_id: str = "job-1",
+    minutes: float = 0,
+    **overrides: object,
+) -> NoticeReport:
+    fields: dict[str, object] = {
+        "report_id": report_id,
+        "recipient": USER,
+        "producer": ProducerKind.BROWSER,
+        "subject": Subject(
+            kind=SubjectKind.BROWSER_JOB,
+            id=subject_id,
+            owner_conversation_id=owner,
+            label="Browser task",
+            merge=SubjectMerge.REPLACE,
+        ),
+        "occurred_at": T0 + timedelta(minutes=minutes),
+        "initiative": Initiative.ASKED,
+        "outcome": outcome,
+        "facts": [f"fact of {report_id}"],
+    }
+    return NoticeReport.model_validate({**fields, **overrides})
+
+
+def _step_photo(n: int, *, owner: str = "tg-dm") -> NoticeReport:
+    photo = OutboundAttachment(
+        url=f"https://cdn.example.com/{n}.jpg",
+        filename=f"browser-step-{n}.jpg",
+        caption=f"Step {n}",
+    )
+    return _browser_notice(
+        f"browser:job-1:progress:{n}",
+        NoticeOutcome.PROGRESS,
+        owner=owner,
+        minutes=n / 10,
+        artifacts=[photo],
+    )
+
+
+async def test_b18_twelve_browser_steps_nobody_watches_leave_the_final_result_only(
+    tl: OutboxTimeline,
+) -> None:
+    for n in range(1, 13):
+        await tl.at(n / 10)
+        await tl.submit(_step_photo(n))
+    await tl.drain()
+
+    items = await tl.items()
+    assert {(i.state, i.drop_reason) for i in items} == {
+        (ItemState.DROPPED, DropReason.NOT_WATCHING)
+    }
+    assert len(items) == 12
+    assert await tl.ledger() == []
+    assert (tl.sinks.bot, tl.sinks.files, tl.sinks.ws) == ([], [], [])
+
+    await tl.at(3)
+    await tl.submit(
+        _run("final", OutcomeState.DONE, subject_id="ask-1", initiative=Initiative.ASKED)
+    )
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert message.report_ids == ["final"]
+    assert len(tl.sinks.bot) == 1
+    assert tl.sinks.files == []
+
+
+async def test_b18_a_user_watching_live_is_shown_each_step_as_a_photo_without_a_model_call(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.active_on(ConversationSource.TELEGRAM)
+    for n in range(1, 4):
+        await tl.at(n / 10)
+        await tl.submit(_step_photo(n))
+        await tl.drain()
+
+    assert tl.sinks.files == [
+        ("telegram", f"https://cdn.example.com/{n}.jpg", f"Step {n}") for n in (1, 2, 3)
+    ]
+    assert tl.sinks.bot == []
+    assert tl.compose.calls == []
+    assert [m.parts for m in await tl.ledger()] == [[], [], []]
+
+
+async def test_b18_a_user_who_stopped_watching_stops_being_shown_steps(tl: OutboxTimeline) -> None:
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await tl.at(1)
+    await tl.submit(_step_photo(1))
+    await tl.drain()
+    await tl.at(1 + LIVE_WATCH_WINDOW_SECONDS / 60 + 1)
+    await tl.submit(_step_photo(2))
+    await tl.drain()
+
+    assert [f[1] for f in tl.sinks.files] == ["https://cdn.example.com/1.jpg"]
+    states = {i.report_id: i.drop_reason for i in await tl.items()}
+    assert states["browser:job-1:progress:2"] is DropReason.NOT_WATCHING
+
+
+async def test_b19_a_handoff_while_the_user_is_away_is_timely_and_goes_to_the_dm_that_asked(
+    tl: OutboxTimeline,
+) -> None:
+    handoff = _browser_notice(
+        "browser:job-1:handoff:h1",
+        NoticeOutcome.NEEDS_YOU,
+        subject_id="job-1:handoff:h1",
+        facts=["Sign in to finish.", "Open the live browser: https://live.example.com/x"],
+        valid_until=T0 + timedelta(minutes=10),
+    )
+    await tl.submit(handoff)
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert (message.max_class, message.destination_basis) == (UrgencyClass.TIMELY, "owner_chat")
+    assert [source for source, _ in tl.sinks.bot] == ["telegram"]
+    assert tl.sinks.bot_ttls == [OUTBOUND_TTL_SECONDS_DEFAULT]
+    assert "Open the live browser" in json.dumps(tl.compose.context)
+
+
+async def test_b19_a_handoff_that_expires_before_it_can_be_told_is_recorded_not_sent(
+    tl: OutboxTimeline,
+) -> None:
+    handoff = _browser_notice(
+        "browser:job-1:handoff:h1",
+        NoticeOutcome.NEEDS_YOU,
+        subject_id="job-1:handoff:h1",
+        valid_until=T0 + timedelta(minutes=10),
+    )
+    await tl.submit(handoff)
+    await tl.at(11)
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.EXPIRED)
+    assert await tl.ledger() == []
+    assert tl.compose.calls == []
+
+
+async def test_h1_an_unsolicited_notice_for_a_user_active_in_a_group_never_goes_into_the_group(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.conversations["tg-group"] = "telegram"
+    tl.world.sessions["tg-group"] = ("telegram", "tg-1", "group-chat-9")
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await tl.submit(_reminder(owner="tg-group", initiative=Initiative.SELF_INITIATED))
+    await tl.drain()
+
+    assert tl.sinks.bot_destinations == ["tg-1"]
+    assert "tg-group" not in tl.world.saved
+    assert "tg-group" not in {thread for thread, _, _ in tl.graph.writes}
+    [message] = await tl.ledger()
+    assert message.conversation_id == "tg-dm"
+
+
+async def test_h2_a_browser_run_asked_for_in_a_group_shows_its_steps_and_handoff_only_in_the_dm(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.conversations["tg-group"] = "telegram"
+    tl.world.sessions["tg-group"] = ("telegram", "tg-1", "group-chat-9")
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await tl.submit(_step_photo(1, owner="tg-group"))
+    await tl.submit(
+        _browser_notice(
+            "browser:job-1:handoff:h1",
+            NoticeOutcome.NEEDS_YOU,
+            owner="tg-group",
+            subject_id="job-1:handoff:h1",
+            facts=["Open the live browser: https://live.example.com/x"],
+            minutes=1,
+        )
+    )
+    await tl.drain()
+
+    assert tl.sinks.bot_destinations == ["tg-1"]
+    assert tl.sinks.files == [("telegram", "https://cdn.example.com/1.jpg", "Step 1")]
+    assert {m.conversation_id for m in await tl.ledger()} == {"tg-dm"}
+    assert "tg-group" not in tl.world.saved
+    assert tl.sinks.ws == []
+
+
+def _artifact(path: str = "out/report.pdf", **overrides: object) -> NoticeReport:
+    fields: dict[str, object] = {
+        "report_id": f"artifact:tg-dm:{path}:1.0",
+        "recipient": USER,
+        "producer": ProducerKind.ARTIFACT,
+        "subject": Subject(
+            kind=SubjectKind.ASK,
+            id=f"tg-dm:artifact:{path}",
+            owner_conversation_id="tg-dm",
+            label=path,
+        ),
+        "occurred_at": T0,
+        "initiative": Initiative.ASKED,
+        "outcome": NoticeOutcome.INFO,
+        "artifacts": [
+            OutboundAttachment(conversation_id="tg-dm", path=path, filename=path.rsplit("/", 1)[-1])
+        ],
+    }
+    return NoticeReport.model_validate({**fields, **overrides})
+
+
+async def test_a_file_the_agent_writes_reaches_the_bot_user_by_reference_with_no_words(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await tl.submit(_artifact())
+    await tl.drain()
+
+    assert tl.sinks.files == [("telegram", "out/report.pdf", None)]
+    assert (tl.sinks.bot, tl.compose.calls, tl.graph.writes) == ([], [], [])
+    [message] = await tl.ledger()
+    assert (message.state, message.parts) == (MessageState.SENT, [])
+
+
+async def test_a_file_a_chat_app_refuses_fails_the_item_loudly(tl: OutboxTimeline) -> None:
+    await tl.active_on(ConversationSource.TELEGRAM)
+
+    async def refuse(*_: object, **__: object) -> bool:
+        return False
+
+    with patch(f"{DELIVER}.publish_outbound_file", refuse):
+        await tl.submit(_artifact())
+        await tl.drain()
+
+    [item] = await tl.items()
+    assert item.state is ItemState.FAILED
+
+
+async def _link_discord(tl: OutboxTimeline, first_contact: list[str] | None = None) -> None:
+    """Complete a discord link for the user, who is on the web, with the outbox real and only the link write doubled."""
+    tl.world.link("discord", "dc-1")
+    tl.world.dm("discord", "dc-dm")
+    await tl.active_on(ConversationSource.WEB)
+    link = PlatformLinkResult(
+        status="linked",
+        platform="discord",
+        platform_user_id="dc-1",
+        connected_at="2026-11-10T09:00:00Z",
+        is_new_link=True,
+    )
+    with (
+        patch.object(PlatformLinkService, "link_account", AsyncMock(return_value=link)),
+        patch("app.services.platform_link_completion.schedule_account_sync"),
+        patch("app.services.platform_link_completion.capture"),
+        patch(
+            "app.services.platform_link_completion.complete_onboarding_on_platform_link",
+            AsyncMock(),
+        ),
+    ):
+        await complete_platform_link(USER, "discord", "dc-1", first_contact=first_contact)
+    await tl.drain()
+
+
+async def test_i1_a_first_contact_after_linking_is_the_prerendered_bubbles_in_the_linked_dm(
+    tl: OutboxTimeline,
+) -> None:
+    bubbles = ["Hey Aryan, I'm with you on Discord now.", "Tell me one thing off your plate."]
+    await _link_discord(tl, bubbles)
+
+    assert tl.sinks.bot == [("discord", bubbles)]
+    assert tl.sinks.bot_destinations == ["dc-1"]
+    assert tl.sinks.bot_ttls == [OUTBOUND_TTL_SECONDS_GREETING]
+    assert tl.compose.calls == []
+    [message] = await tl.ledger()
+    assert message.destination_basis == "requested_channel"
+    assert message.conversation_id == "dc-dm"
+    assert [i.state for i in await tl.items()] == [ItemState.SENT]
+    assert tl.world.saved["dc-dm"] == bubbles
+
+
+async def test_i1_a_new_link_without_a_first_contact_is_the_connected_confirmation(
+    tl: OutboxTimeline,
+) -> None:
+    await _link_discord(tl)
+
+    [(platform, [text])] = tl.sinks.bot
+    assert platform == "discord"
+    assert "Your Discord account is linked." in text
+    assert tl.compose.calls == []
+    assert tl.sinks.ws == []
 
 
 async def _park_queued(tl: OutboxTimeline, report: NoticeReport | RunReport) -> None:

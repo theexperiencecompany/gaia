@@ -11,6 +11,7 @@ from app.api.v1.endpoints.platform_links import mint_link_code
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
+from app.models.chat_models import ConversationSource
 from app.models.payment_models import PlanType
 from app.models.platform_models import DisconnectPlatformResponse, PlatformLinkResult
 from app.models.user_models import (
@@ -351,18 +352,20 @@ class TestLinkPlatform:
                 return_value=link_result,
             ),
             patch(
-                "app.services.platform_link_completion.notify_account_linked",
+                "app.services.platform_link_completion.submit",
                 new_callable=AsyncMock,
-            ) as mock_notify,
+            ) as mock_submit,
             patch("app.services.platform_link_completion.capture") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
 
         assert resp.status_code == 200
-        # The greeting goes out on the platform just linked, to the user who
-        # linked it — argument order here decides who gets messaged where.
-        mock_notify.assert_awaited_once_with("discord", FAKE_USER_ID)
+        # The confirmation is for the user who linked, pinned to the platform just linked.
+        mock_submit.assert_awaited_once()
+        report = mock_submit.await_args.args[0]
+        assert report.recipient == FAKE_USER_ID
+        assert report.delivery_policy.channel is ConversationSource.DISCORD
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER_ID), IntegrationConnected(integration_id="discord", is_new_link=True)
         )

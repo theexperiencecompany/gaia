@@ -19,7 +19,8 @@ from app.db.repositories.outbox_items import outbox_items_repository
 from app.services.outbox.deliver import flush_subject
 from app.services.outbox.metrics import OUTBOX_ITEMS_DROPPED
 from app.services.outbox.models import ItemState, OutboxReport, SubjectMerge
-from app.services.outbox.policy import DecisionKind, decide
+from app.services.outbox.policy import DecisionKind, decide, is_progress
+from app.services.outbox.watching import is_watched_live
 from app.utils import clock
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
@@ -45,7 +46,7 @@ async def _queue_if_to_be_told(report: OutboxReport) -> bool:
     ):
         log.info(f"{LogTag.NOTIFICATION} Outbox report superseded by a newer one")
         return False
-    decision = decide(report)
+    decision = decide(report, watched_live=is_progress(report) and await is_watched_live(report))
     if decision.kind is DecisionKind.RECORD_ONLY and decision.drop_reason is not None:
         dropped = await outbox_items_repository.drop(
             report.recipient, report.report_id, decision.drop_reason

@@ -35,7 +35,6 @@ from app.models.user_models import (
     OnboardingPreferences,
     UserDocument,
 )
-from app.services.outbox.transport.bot_queue import OutboundResult
 from app.services.platform_link_code_service import LinkCodeClaim, PlatformLinkCodePayload
 from app.services.platform_link_completion import PostLinkSideEffectError
 from app.utils.errors import AppError
@@ -452,15 +451,37 @@ class TestRedeemLinkCode:
             response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
 
         assert response.status_code == 200
+        # The outbox records the bubbles it sends: only the user's own turn is written here.
+        mock_persist.assert_awaited_once_with(
+            LINKED_USER_ID, RedeemLinkCodeRequest(**REDEEM_BODY), []
+        )
+
+    @patch("app.api.v1.endpoints.bot_links.require_bot_api_key", new_callable=AsyncMock)
+    async def test_bubbles_the_bot_sends_itself_are_persisted_with_the_exchange(
+        self, _auth: AsyncMock, client: AsyncClient, _linked_user: AsyncMock
+    ):
+        _linked_user.return_value = UserDocument(id=LINKED_USER_ID, name="Aryan Randeriya")
+        with (
+            patch(CLAIM_PATCH, new_callable=AsyncMock, return_value=_claimed()),
+            patch(DISCARD_PATCH, new_callable=AsyncMock),
+            patch(
+                COMPLETE_PATCH,
+                new_callable=AsyncMock,
+                return_value=_completion(delivered=False),
+            ),
+            patch(PERSIST_PATCH, new_callable=AsyncMock) as mock_persist,
+        ):
+            await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
         mock_persist.assert_awaited_once_with(
             LINKED_USER_ID, RedeemLinkCodeRequest(**REDEEM_BODY), BUBBLES
         )
 
     @patch("app.api.v1.endpoints.bot_links.require_bot_api_key", new_callable=AsyncMock)
-    async def test_a_first_contact_the_queue_refused_comes_back_for_the_bot_to_send(
+    async def test_a_first_contact_with_no_queue_to_carry_it_comes_back_for_the_bot_to_send(
         self, _auth: AsyncMock, client: AsyncClient
     ):
-        """Nothing retries the outbound publish, so a failed first message comes back with delivered=False for the bot to send itself."""
+        """A platform with no outbound queue cannot be told by the outbox, so the first message comes back with delivered=False for the bot to send itself."""
         with (
             patch(
                 CLAIM_PATCH,
@@ -473,11 +494,8 @@ class TestRedeemLinkCode:
                 new_callable=AsyncMock,
                 return_value=_link_result(),
             ),
-            patch(
-                f"{COMPLETION_MODULE}.publish_outbound_message",
-                new_callable=AsyncMock,
-                return_value=OutboundResult.FAILED,
-            ),
+            patch(f"{COMPLETION_MODULE}.OUTBOUND_QUEUES", {}),
+            patch(f"{COMPLETION_MODULE}.submit", new_callable=AsyncMock) as mock_submit,
             patch(f"{COMPLETION_MODULE}.schedule_account_sync", MagicMock()),
             patch(f"{COMPLETION_MODULE}.capture", MagicMock()),
             patch("app.api.v1.endpoints.bot_links.log") as mock_log,
@@ -493,12 +511,13 @@ class TestRedeemLinkCode:
         # The wide event is how "did the greeting go out" gets answered in
         # Loki; it must carry the real verdict, not a placeholder.
         mock_log.set.assert_any_call(outcome="success", is_new_link=True, delivered=False)
+        mock_submit.assert_not_awaited()
 
     @patch("app.api.v1.endpoints.bot_links.require_bot_api_key", new_callable=AsyncMock)
     async def test_a_delivered_first_contact_is_not_handed_back_as_well(
         self, _auth: AsyncMock, client: AsyncClient
     ):
-        """Otherwise the bot sends what the outbound queue already sent."""
+        """Otherwise the bot sends what the outbox already sends."""
         with (
             patch(
                 CLAIM_PATCH,
@@ -511,11 +530,7 @@ class TestRedeemLinkCode:
                 new_callable=AsyncMock,
                 return_value=_link_result(),
             ),
-            patch(
-                f"{COMPLETION_MODULE}.publish_outbound_message",
-                new_callable=AsyncMock,
-                return_value=OutboundResult.PUBLISHED,
-            ),
+            patch(f"{COMPLETION_MODULE}.submit", new_callable=AsyncMock),
             patch(f"{COMPLETION_MODULE}.schedule_account_sync", MagicMock()),
             patch(f"{COMPLETION_MODULE}.capture", MagicMock()),
             patch("app.api.v1.endpoints.bot_links.log") as mock_log,
@@ -676,11 +691,7 @@ class TestRedeemLinkCode:
                 new_callable=AsyncMock,
                 return_value=_link_result(),
             ),
-            patch(
-                f"{COMPLETION_MODULE}.publish_outbound_message",
-                new_callable=AsyncMock,
-                side_effect=broker_down,
-            ),
+            patch(f"{COMPLETION_MODULE}.submit", new_callable=AsyncMock, side_effect=broker_down),
             patch(f"{COMPLETION_MODULE}.schedule_account_sync", MagicMock()),
             patch(f"{COMPLETION_MODULE}.capture", MagicMock()),
         ):
@@ -724,7 +735,7 @@ class TestRedeemLinkCode:
                 f"{COMPLETION_MODULE}.PlatformLinkService.link_account",
                 new=link,
             ),
-            patch(f"{COMPLETION_MODULE}.publish_outbound_message", new=publish),
+            patch(f"{COMPLETION_MODULE}.submit", new=publish),
             patch(f"{COMPLETION_MODULE}.schedule_account_sync", MagicMock()),
             patch(f"{COMPLETION_MODULE}.capture", MagicMock()),
         ):

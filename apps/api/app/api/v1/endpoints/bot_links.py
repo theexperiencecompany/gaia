@@ -267,8 +267,9 @@ async def redeem_link_code(request: Request, body: RedeemLinkCodeRequest) -> Red
     )
     delivered = completion.first_contact_delivered
     log.set(outcome="success", is_new_link=completion.link.is_new_link, delivered=delivered)
-    await _persist_first_contact(payload.user_id, body, bubbles)
-    # A publish the queue refused is never retried, so the bubbles go back to
+    # The outbox records the bubbles it sends; only ones the bot sends itself are recorded here.
+    await _persist_first_contact(payload.user_id, body, [] if delivered else bubbles)
+    # A platform with no outbound queue has nothing to carry the bubbles, so they go back to
     # the bot that asked for the link rather than being lost.
     return RedeemLinkCodeResponse(
         linked=True, delivered=delivered, first_contact=[] if delivered else bubbles
@@ -299,7 +300,7 @@ async def _persist_first_contact(
     body: RedeemLinkCodeRequest,
     bubbles: list[str],
 ) -> None:
-    """Write the first contact into the platform's bot conversation.
+    """Write the user's first message, and the bubbles the bot sends itself, into the platform's bot conversation.
 
     Nothing else does it, so without this the user's next message arrives
     into an empty thread. Best-effort: losing the transcript must never turn
@@ -324,13 +325,16 @@ async def _persist_first_contact(
                     first_contact=True,
                 )
             )
-        messages.append(
-            MessageModel(
-                type="bot",
-                response=NEW_MESSAGE_BREAKER.join(bubbles),
-                date=now.isoformat(),
+        if bubbles:
+            messages.append(
+                MessageModel(
+                    type="bot",
+                    response=NEW_MESSAGE_BREAKER.join(bubbles),
+                    date=now.isoformat(),
+                )
             )
-        )
+        if not messages:
+            return
         await update_messages(
             UpdateMessagesRequest(conversation_id=conversation_id, messages=messages),
             user=actor,

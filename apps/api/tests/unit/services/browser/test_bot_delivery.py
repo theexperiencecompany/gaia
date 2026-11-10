@@ -1,13 +1,21 @@
-"""Tests for bot progress delivery — session/step/handoff/result and helpers."""
+"""Browser progress handed to the outbox: what each card snapshot becomes, and what it never becomes."""
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.browser import BROWSER_HANDOFF_REPLY_PROMPT, HandoffStatus, SensitiveCategory
-from app.models.chat_models import ConversationSource
+from app.config.settings import settings
+from app.constants.browser import (
+    BROWSER_CREDENTIALS_SAVED_NOTE,
+    BROWSER_HANDOFF_REPLY_PROMPT,
+    BrowserSessionStatus,
+    HandoffStatus,
+    SensitiveCategory,
+)
 from app.schemas.browser import (
     BrowserAction,
     BrowserHandoffSnapshot,
@@ -15,34 +23,82 @@ from app.schemas.browser import (
     BrowserSessionSnapshot,
     BrowserStepSnapshot,
 )
-from app.services.browser import bot_delivery as bot_delivery_mod
 from app.services.browser.bot_delivery import (
     BotProgressDelivery,
     _is_blank_tab,
     _step_caption,
 )
-from app.services.outbox.transport.bot_queue import OutboundResult
-from tests.helpers import captured_wide_event
+from app.services.outbox.models import (
+    NoticeOutcome,
+    NoticeReport,
+    ProducerKind,
+    SubjectKind,
+    SubjectMerge,
+)
 
 pytestmark = pytest.mark.unit
 
+NOW = datetime(2026, 11, 10, 9, 0, tzinfo=UTC)
+SUBMIT = "app.services.browser.bot_delivery.submit"
+LIVE_LINK = "https://live.example.com/link"
 
-@pytest.fixture
-def delivery():
+
+def _delivery(*, stream_screenshots: bool = True) -> BotProgressDelivery:
     return BotProgressDelivery(
-        platform=ConversationSource.TELEGRAM,
+        job_id="job-1",
         user_id="user-1",
-        stream_screenshots=True,
+        conversation_id="conv-1",
+        stream_screenshots=stream_screenshots,
     )
 
 
 @pytest.fixture
-def delivery_no_screenshots():
-    return BotProgressDelivery(
-        platform=ConversationSource.TELEGRAM,
-        user_id="user-1",
-        stream_screenshots=False,
-    )
+def delivery() -> BotProgressDelivery:
+    return _delivery()
+
+
+@pytest.fixture
+def delivery_no_screenshots() -> BotProgressDelivery:
+    return _delivery(stream_screenshots=False)
+
+
+@pytest.fixture
+def submitted() -> Iterator[list[NoticeReport]]:
+    """Every report handed to the outbox, in order; the clock and the live-view link are fixed."""
+    reports: list[NoticeReport] = []
+
+    async def capture_report(report: NoticeReport) -> None:
+        reports.append(report)
+
+    with (
+        patch(SUBMIT, capture_report),
+        patch("app.services.browser.bot_delivery.clock.now", return_value=NOW),
+        patch(
+            "app.services.browser.bot_delivery.create_live_view_link",
+            new=AsyncMock(return_value=LIVE_LINK),
+        ),
+    ):
+        yield reports
+
+
+def _step(index: int = 2, **overrides: object) -> BrowserStepSnapshot:
+    fields: dict[str, object] = {
+        "index": index,
+        "goal": "Clicking",
+        "url": "https://example.com",
+        "screenshot": "https://cdn.example.com/shot.png",
+    }
+    return BrowserStepSnapshot.model_validate({**fields, **overrides})
+
+
+def _handoff(**overrides: object) -> BrowserHandoffSnapshot:
+    fields: dict[str, object] = {
+        "handoff_id": "h1",
+        "reason": "Payment needed",
+        "session_id": "sess-1",
+        "status": HandoffStatus.PENDING,
+    }
+    return BrowserHandoffSnapshot.model_validate({**fields, **overrides})
 
 
 class TestIsBlankTab:
@@ -111,606 +167,270 @@ class TestStepCaption:
         assert result == f"Step 1 · {goal}"
 
 
-class TestBotProgressDeliverySession:
-    async def test_session_is_silent_link_comes_at_handoff(self, delivery):
+class TestSessionIsSilent:
+    async def test_a_session_snapshot_submits_nothing_and_mints_no_link(
+        self, delivery, submitted
+    ) -> None:
         snapshot = BrowserSessionSnapshot(
-            task="do thing",
-            status="running",
-            session_id="sess-1",
+            task="t", status=BrowserSessionStatus.RUNNING, session_id="sess-1"
         )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.create_live_view_link",
-                new=AsyncMock(),
-            ) as mock_link,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message",
-                new=AsyncMock(),
-            ) as mock_pub,
-        ):
+        with patch("app.services.browser.bot_delivery.create_live_view_link") as mint:
             await delivery.session(snapshot)
-            mock_link.assert_not_awaited()
-            mock_pub.assert_not_awaited()
-
-    async def test_no_session_id_does_nothing(self, delivery):
-        snapshot = BrowserSessionSnapshot(task="t", status="running", session_id=None)
-        with (
-            patch(
-                "app.services.browser.bot_delivery.create_live_view_link", new=AsyncMock()
-            ) as mock_link,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mock_pub,
-        ):
-            await delivery.session(snapshot)
-            mock_link.assert_not_awaited()
-            mock_pub.assert_not_awaited()
-
-    async def test_empty_session_id_does_nothing(self, delivery):
-        snapshot = BrowserSessionSnapshot(task="t", status="running", session_id="")
-        with (
-            patch("app.services.browser.bot_delivery.create_live_view_link", new=AsyncMock()) as ml,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mp,
-        ):
-            await delivery.session(snapshot)
-            ml.assert_not_awaited()
-            mp.assert_not_awaited()
+        mint.assert_not_called()
+        assert submitted == []
 
 
-class TestBotProgressDeliveryStep:
-    async def test_blank_tab_sends_label_as_text_not_photo(self, delivery):
-        snap = BrowserStepSnapshot(
-            index=1, goal="Open", url="about:blank", screenshot="https://cdn/1.png"
+class TestStepIsProgressThatSupersedes:
+    async def test_a_step_is_a_progress_notice_of_the_browser_job_owned_by_the_asking_chat(
+        self, delivery, submitted
+    ) -> None:
+        await delivery.step(_step())
+        [report] = submitted
+        assert report.outcome is NoticeOutcome.PROGRESS
+        assert report.producer is ProducerKind.BROWSER
+        assert (report.recipient, report.subject.owner_conversation_id) == ("user-1", "conv-1")
+        assert (report.subject.kind, report.subject.id) == (SubjectKind.BROWSER_JOB, "job-1")
+        assert report.subject.merge is SubjectMerge.REPLACE
+        assert report.valid_until is None
+
+    async def test_every_step_of_a_run_is_a_distinct_report_of_one_subject(
+        self, delivery, submitted
+    ) -> None:
+        await delivery.step(_step(1, frame_digest="a"))
+        await delivery.step(_step(2, frame_digest="b"))
+        first, second = submitted
+        assert first.report_id != second.report_id
+        assert first.subject.id == second.subject.id
+
+    async def test_a_step_carries_its_photo_by_url_with_the_caption(
+        self, delivery, submitted
+    ) -> None:
+        await delivery.step(_step())
+        [report] = submitted
+        [photo] = report.artifacts
+        assert (photo.url, photo.filename, photo.caption) == (
+            "https://cdn.example.com/shot.png",
+            "browser-step-1.jpg",
+            "Step 1 · Clicking",
         )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo", new=AsyncMock()
-            ) as mp,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mm,
-        ):
-            await delivery.step(snap)
-            mp.assert_not_awaited()
-            mm.assert_awaited_once()
-            assert mm.call_args[0][2] == ["Step 1 · Open"]
+        assert report.facts == ["Step 1 · Clicking"]
 
-    async def test_blank_tab_label_text(self, delivery):
-        snap = BrowserStepSnapshot(index=1, goal="Open", url=None, screenshot="https://cdn/1.png")
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo", new=AsyncMock()
-            ) as mp,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mm,
-        ):
-            await delivery.step(snap)
-            mp.assert_not_awaited()
-            mm.assert_awaited_once()
-            assert mm.call_args[0][2] == ["Step 1 · Open"]
+    async def test_a_long_goal_is_never_clipped(self, delivery, submitted) -> None:
+        goal = "Typing " + "a very long goal " * 12
+        await delivery.step(_step(goal=goal))
+        assert submitted[0].artifacts[0].caption == f"Step 1 · {goal.strip()}"
 
-    async def test_photo_sent_when_eligible(self, delivery):
-        snap = BrowserStepSnapshot(
-            index=2,
-            goal="Clicking",
-            url="https://example.com",
-            screenshot="https://cdn.example.com/shot.png",
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo",
-                new=AsyncMock(return_value=True),
-            ) as mock_photo,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mock_text,
-        ):
-            await delivery.step(snap)
-            mock_photo.assert_awaited_once_with(
-                ConversationSource.TELEGRAM,
-                "user-1",
-                "https://cdn.example.com/shot.png",
-                filename="browser-step-1.jpg",
-                caption="Step 1 · Clicking",
-            )
-            mock_text.assert_not_awaited()
-
-    async def test_photo_fallback_to_text_when_not_sent(self, delivery):
-        snap = BrowserStepSnapshot(
-            index=2, goal="Clicking", url="https://example.com", screenshot="https://cdn/shot.png"
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo",
-                new=AsyncMock(return_value=False),
-            ) as mock_photo,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mock_text,
-        ):
-            await delivery.step(snap)
-            mock_photo.assert_awaited_once()
-            mock_text.assert_awaited_once()
-            text_msg = mock_text.call_args[0][2][0]
-            assert text_msg == "Step 1 · Clicking"
-
-    async def test_long_goal_photo_caption_is_whole(self, delivery):
-        goal = 'Typing "hi sent using gaia browser use from telegram" into the post composer box on the x.com homepage timeline view area near the very top of the main feed column on the left hand side'
-        snap = BrowserStepSnapshot(
-            index=2, goal=goal, url="https://x.com/compose", screenshot="https://cdn/shot.png"
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo",
-                new=AsyncMock(return_value=True),
-            ) as mock_photo,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mm,
-        ):
-            await delivery.step(snap)
-            mock_photo.assert_awaited_once()
-            mm.assert_not_awaited()
-            assert mock_photo.call_args.kwargs["caption"] == f"Step 1 · {goal}"
-
-    async def test_long_goal_text_fallback_is_whole(self, delivery):
-        goal = 'Typing "hi sent using gaia browser use from telegram" into the post composer box on the x.com homepage timeline view area near the very top of the main feed column on the left hand side'
-        snap = BrowserStepSnapshot(
-            index=2, goal=goal, url="https://x.com/compose", screenshot="https://cdn/shot.png"
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo",
-                new=AsyncMock(return_value=False),
-            ),
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mm,
-        ):
-            await delivery.step(snap)
-            mm.assert_awaited_once()
-            assert mm.call_args[0][2][0] == f"Step 1 · {goal}"
-
-    async def test_no_screenshot_falls_back_to_text(self, delivery):
-        snap = BrowserStepSnapshot(index=1, goal="Open", url="https://example.com", screenshot=None)
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo", new=AsyncMock()
-            ) as mp,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mm,
-        ):
-            await delivery.step(snap)
-            mp.assert_not_awaited()
-            mm.assert_awaited_once()
-            assert mm.call_args[0][2][0] == "Step 1 · Open"
-
-    async def test_empty_goal_uses_snapshot_actions_for_caption(self, delivery):
-        """goal="" must still caption from the snapshot's own actions, not an empty list."""
-        snap = BrowserStepSnapshot(
-            index=1,
-            goal="",
-            actions=[BrowserAction(name="click")],
-            url="https://example.com",
-            screenshot=None,
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo", new=AsyncMock()
-            ) as mp,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mm,
-        ):
-            await delivery.step(snap)
-            mp.assert_not_awaited()
-            mm.assert_awaited_once_with(
-                ConversationSource.TELEGRAM, "user-1", ["Step 1 · Clicking"]
-            )
-
-    async def test_stream_screenshots_disabled_always_text(self, delivery_no_screenshots):
-        snap = BrowserStepSnapshot(
-            index=1, goal="Open", url="https://example.com", screenshot="https://cdn/shot.png"
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo", new=AsyncMock()
-            ) as mp,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mm,
-        ):
-            await delivery_no_screenshots.step(snap)
-            mp.assert_not_awaited()
-            mm.assert_awaited_once()
-            assert mm.call_args[0][2][0] == "Step 1 · Open"
-
-    async def test_chrome_newtab_label_text(self, delivery):
-        snap = BrowserStepSnapshot(
-            index=1, goal="Open", url="chrome://newtab/", screenshot="https://cdn/shot.png"
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo", new=AsyncMock()
-            ) as mp,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mm,
-        ):
-            await delivery.step(snap)
-            mp.assert_not_awaited()
-            mm.assert_awaited_once()
-            assert mm.call_args[0][2] == ["Step 1 · Open"]
-
-
-class TestBotProgressDeliveryHandoff:
-    async def test_pending_with_session_includes_link(self, delivery):
-        snap = BrowserHandoffSnapshot(
-            handoff_id="h1",
-            reason="Payment needed",
-            session_id="sess-1",
-            status=HandoffStatus.PENDING,
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.create_live_view_link",
-                new=AsyncMock(return_value="https://live.example.com/link"),
-            ) as mock_link,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mock_pub,
-        ):
-            await delivery.handoff(snap)
-            mock_link.assert_awaited_once_with("sess-1", "user-1", "h1")
-            msg = mock_pub.call_args[0][2][0]
-            assert msg == (
-                "Payment needed"
-                "<NEW_MESSAGE_BREAK>"
-                "Open the live browser: https://live.example.com/link"
-                "<NEW_MESSAGE_BREAK>"
-                f"{BROWSER_HANDOFF_REPLY_PROMPT}"
-            )
-
-    async def test_handoff_is_one_delivery_call_with_token_bubbles(self, delivery):
-        """The bot splitter turns each token block into its own bubble: ask, link and reply instruction arrive as three readable messages, still in a single delivery call."""
-        from app.constants.browser import SensitiveCategory
-
-        snap = BrowserHandoffSnapshot(
-            handoff_id="h1",
-            reason="Sign in to your Reddit account to continue.",
-            session_id="sess-1",
-            status=HandoffStatus.PENDING,
-            category=SensitiveCategory.CREDENTIALS,
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.create_live_view_link",
-                new=AsyncMock(return_value="https://live/x"),
-            ),
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mp,
-        ):
-            await delivery.handoff(snap)
-            mp.assert_awaited_once()
-            text_parts = mp.call_args[0][2]
-            assert len(text_parts) == 1
-            assert text_parts[0].count("<NEW_MESSAGE_BREAK>") == 2
-
-    async def test_credentials_handoff_reassures_the_login_is_saved(self, delivery):
-        """A sign-in handoff tells the user the session will be saved encrypted — it is true (storage_persistence.py) and it is what makes a login worth doing once."""
-        from app.constants.browser import BROWSER_CREDENTIALS_SAVED_NOTE, SensitiveCategory
-
-        snap = BrowserHandoffSnapshot(
-            handoff_id="h1",
-            reason="Enter your password and click Sign in.",
-            session_id="sess-1",
-            status=HandoffStatus.PENDING,
-            category=SensitiveCategory.CREDENTIALS,
-            saves_login=True,
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.create_live_view_link",
-                new=AsyncMock(return_value="https://live/x"),
-            ),
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mp,
-        ):
-            await delivery.handoff(snap)
-            assert BROWSER_CREDENTIALS_SAVED_NOTE in mp.call_args[0][2][0]
-
-    async def test_credentials_note_is_appended_not_substituted(self, delivery):
-        """The saved-login note is an addition to the takeover request, never a replacement — a sign-in handoff that dropped the reason and the done/stop instructions would leave the user with reassurance and no idea what to do."""
-        from app.constants.browser import BROWSER_CREDENTIALS_SAVED_NOTE, SensitiveCategory
-
-        snap = BrowserHandoffSnapshot(
-            handoff_id="h1",
-            reason="Enter your password and click Sign in.",
-            session_id="sess-1",
-            status=HandoffStatus.PENDING,
-            category=SensitiveCategory.CREDENTIALS,
-            saves_login=True,
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.create_live_view_link",
-                new=AsyncMock(return_value="https://live/x"),
-            ),
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mp,
-        ):
-            await delivery.handoff(snap)
-            assert mp.call_args[0][2][0] == (
-                "Enter your password and click Sign in.\n"
-                f"{BROWSER_CREDENTIALS_SAVED_NOTE}"
-                "<NEW_MESSAGE_BREAK>"
-                "Open the live browser: https://live/x"
-                "<NEW_MESSAGE_BREAK>"
-                f"{BROWSER_HANDOFF_REPLY_PROMPT}"
-            )
-
-    async def test_a_handoff_that_saves_no_login_promises_none(self, delivery):
-        """Nothing is stored for a payment, or for any sign-in while login persistence is off, so the note would be a false reassurance."""
-        from app.constants.browser import BROWSER_CREDENTIALS_SAVED_NOTE, SensitiveCategory
-
-        snap = BrowserHandoffSnapshot(
-            handoff_id="h1",
-            reason="Complete the payment.",
-            session_id="sess-1",
-            status=HandoffStatus.PENDING,
-            category=SensitiveCategory.PAYMENT,
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.create_live_view_link",
-                new=AsyncMock(return_value="https://live/x"),
-            ),
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mp,
-        ):
-            await delivery.handoff(snap)
-            assert BROWSER_CREDENTIALS_SAVED_NOTE not in mp.call_args[0][2][0]
-
-    async def test_pending_without_session_no_link(self, delivery):
-        snap = BrowserHandoffSnapshot(
-            handoff_id="h1", reason="Need creds", session_id=None, status=HandoffStatus.PENDING
-        )
-        with (
-            patch("app.services.browser.bot_delivery.create_live_view_link", new=AsyncMock()) as ml,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mp,
-        ):
-            await delivery.handoff(snap)
-            ml.assert_not_awaited()
-            msg = mp.call_args[0][2][0]
-            assert msg == (f"Need creds<NEW_MESSAGE_BREAK>{BROWSER_HANDOFF_REPLY_PROMPT}")
-
-    async def test_non_pending_does_nothing(self, delivery):
-        for status in (HandoffStatus.COMPLETED, HandoffStatus.CANCELLED, HandoffStatus.TIMEOUT):
-            snap = BrowserHandoffSnapshot(
-                handoff_id="h1", reason="x", session_id="s1", status=status
-            )
-            with (
-                patch(
-                    "app.services.browser.bot_delivery.create_live_view_link", new=AsyncMock()
-                ) as ml,
-                patch(
-                    "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-                ) as mp,
-            ):
-                await delivery.handoff(snap)
-                ml.assert_not_awaited()
-                mp.assert_not_awaited()
-
-
-#: One run of every outcome the result used to voice its own line for.
-_OUTCOMES = (
-    ("completed", True, "Posted the tweet with exactly the requested text"),
-    ("failed", False, "Browser task failed: Failed to establish CDP connection"),
-    ("cancelled", False, "Browser task was cancelled."),
-    ("failed", False, "Stopped: nobody finished the step in the live browser in time."),
-)
-
-
-class TestBotProgressDeliveryResult:
-    """The outcome is the assistant's to voice once; the progress channel sends only the recap link."""
-
-    @pytest.mark.parametrize(("status", "success", "summary"), _OUTCOMES)
-    async def test_a_run_with_a_recap_sends_exactly_the_recap_line(
-        self, delivery, status, success, summary
-    ):
-        """A canned "Done"/"Stopped"/"Couldn't finish" line here made every outcome arrive twice."""
-        snap = BrowserResultSnapshot(
-            status=status,
-            success=success,
-            summary=summary,
-            steps=2,
-            replay_url="https://cdn.example.com/replay",
-        )
-        with patch(
-            "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-        ) as mp:
-            await delivery.result(snap)
-        mp.assert_awaited_once()
-        assert mp.call_args[0][2] == ["📽 Here's a recap of the run: https://cdn.example.com/replay"]
-
-    @pytest.mark.parametrize(("status", "success", "summary"), _OUTCOMES)
-    async def test_a_run_without_a_recap_sends_nothing(self, delivery, status, success, summary):
-        snap = BrowserResultSnapshot(status=status, success=success, summary=summary, steps=2)
-        with patch(
-            "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-        ) as mp:
-            await delivery.result(snap)
-        mp.assert_not_awaited()
-
-
-class TestOneLinkPerRun:
-    async def test_the_handoff_reuses_the_link_the_run_already_sent(self, delivery):
-        """Two links to one browser leaves the user guessing which tab is the real one."""
-        codes = iter(["https://live.example.com/first", "https://live.example.com/second"])
-        with (
-            patch(
-                "app.services.browser.bot_delivery.create_live_view_link",
-                new=AsyncMock(side_effect=lambda *_: next(codes)),
-            ) as mock_link,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message",
-                new=AsyncMock(return_value="published"),
-            ) as mock_pub,
-        ):
-            await delivery.session(
-                BrowserSessionSnapshot(task="sign in", status="running", session_id="sess-1")
-            )
-            await delivery.handoff(
-                BrowserHandoffSnapshot(
-                    handoff_id="h1",
-                    status=HandoffStatus.PENDING,
-                    reason="Enter your password and sign in",
-                    category=SensitiveCategory.CREDENTIALS,
-                    session_id="sess-1",
-                )
-            )
-
-        assert mock_link.await_count == 1
-        sent = [call[0][2][0] for call in mock_pub.await_args_list]
-        assert all("https://live.example.com/first" in message for message in sent)
-        assert not any("second" in message for message in sent)
-
-
-async def test_the_first_step_the_user_sees_is_step_one(delivery, monkeypatch) -> None:
-    """The blank-tab navigate sends its label as text (no photo to show), so numbering still opens at Step 1."""
-    sent: list[str] = []
-
-    async def _message(platform, user_id, blocks) -> bool:
-        sent.extend(blocks)
-        return True
-
-    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_message", _message)
-    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_photo", AsyncMock(return_value=False))
-
-    await delivery.step(BrowserStepSnapshot(index=1, goal="Opening the site", url="about:blank"))
-    await delivery.step(BrowserStepSnapshot(index=2, goal="Searching", url="https://example.com"))
-    await delivery.step(BrowserStepSnapshot(index=3, goal="Reading", url="https://example.com/a"))
-
-    assert [line.split(" · ")[0] for line in sent] == ["Step 1", "Step 2", "Step 3"]
-
-
-async def test_a_blank_tab_with_no_goal_is_named_by_its_action(delivery, monkeypatch) -> None:
-    sent: list[str] = []
-
-    async def _message(platform, user_id, blocks) -> OutboundResult:
-        sent.extend(blocks)
-        return OutboundResult.PUBLISHED
-
-    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_message", _message)
-
-    await delivery.step(
-        BrowserStepSnapshot(
-            index=1,
-            goal="",
-            url="about:blank",
-            actions=[BrowserAction(name="navigate", inputs={"url": "https://www.example.com/a"})],
-        )
+    @pytest.mark.parametrize(
+        "overrides", [{"screenshot": None}, {"screenshot": "http://cdn.example.com/shot.png"}]
     )
+    async def test_a_step_with_no_sendable_photo_goes_as_its_caption_alone(
+        self, delivery, submitted, overrides
+    ) -> None:
+        """A rejected (non-https) URL degrades to the caption, never to silence."""
+        await delivery.step(_step(**overrides))
+        [report] = submitted
+        assert report.artifacts == []
+        assert report.facts == ["Step 1 · Clicking"]
 
-    assert sent == ["Step 1 · Opening example.com"]
+    async def test_a_rejected_screenshot_url_is_a_warning_naming_the_job(
+        self, delivery, submitted
+    ) -> None:
+        with patch("app.services.browser.bot_delivery.log") as log:
+            await delivery.step(_step(screenshot="http://cdn.example.com/shot.png"))
+        log.warning.assert_called_once()
+        assert log.warning.call_args.kwargs["job_id"] == "job-1"
 
+    async def test_screenshots_turned_off_send_only_the_caption(
+        self, delivery_no_screenshots, submitted
+    ) -> None:
+        await delivery_no_screenshots.step(_step())
+        assert submitted[0].artifacts == []
 
-async def test_a_blank_tab_opened_mid_run_continues_the_numbering(delivery, monkeypatch) -> None:
-    sent: list[str] = []
+    @pytest.mark.parametrize("url", [None, "about:blank", "chrome://newtab/"])
+    async def test_the_blank_tab_says_where_the_run_is_headed_without_a_photo(
+        self, delivery, submitted, url
+    ) -> None:
+        await delivery.step(_step(1, goal="Open", url=url))
+        [report] = submitted
+        assert (report.facts, report.artifacts) == (["Step 1 · Open"], [])
 
-    async def _message(platform, user_id, blocks) -> OutboundResult:
-        sent.extend(blocks)
-        return OutboundResult.PUBLISHED
+    async def test_a_blank_tab_with_no_label_is_silent(self, delivery, submitted) -> None:
+        await delivery.step(_step(1, goal="", url="about:blank"))
+        assert submitted == []
 
-    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_message", _message)
-    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_photo", AsyncMock(return_value=False))
+    async def test_a_blank_tab_with_no_goal_is_named_by_its_action(
+        self, delivery, submitted
+    ) -> None:
+        await delivery.step(
+            _step(1, goal="", url="about:blank", actions=[BrowserAction(name="click")])
+        )
+        assert submitted[0].facts == ["Step 1 · Clicking"]
 
-    await delivery.step(BrowserStepSnapshot(index=1, goal="Searching", url="https://example.com"))
-    await delivery.step(BrowserStepSnapshot(index=2, goal="Opening a new tab", url="about:blank"))
-
-    assert sent == ["Step 1 · Searching", "Step 2 · Opening a new tab"]
-
-
-@pytest.mark.parametrize("outcome", [OutboundResult.SKIPPED, OutboundResult.FAILED])
-async def test_a_message_the_bot_never_got_is_a_warning_naming_who_missed_it(
-    delivery, monkeypatch, outcome
-) -> None:
-    monkeypatch.setattr(
-        bot_delivery_mod, "publish_outbound_message", AsyncMock(return_value=outcome)
-    )
-
-    async with captured_wide_event() as event:
-        await delivery.note("Step 1 · Searching")
-
-    [warning] = event["warnings"]
-    assert "not sent to the bot" in warning["msg"]
-    assert warning["outbound_result"] is outcome
-    assert warning["platform"] == ConversationSource.TELEGRAM
-    assert warning["user_id"] == "user-1"
-
-
-async def test_a_delivered_message_raises_no_warning(delivery, monkeypatch) -> None:
-    monkeypatch.setattr(
-        bot_delivery_mod,
-        "publish_outbound_message",
-        AsyncMock(return_value=OutboundResult.PUBLISHED),
-    )
-
-    async with captured_wide_event() as event:
-        await delivery.note("Step 1 · Searching")
-
-    assert "warnings" not in event
+    async def test_numbering_counts_what_the_user_was_shown(self, delivery, submitted) -> None:
+        await delivery.step(_step(1, goal="Open", url="about:blank"))
+        await delivery.step(_step(3, goal="Read", frame_digest="a"))
+        await delivery.step(_step(4, goal="Mid-run blank", url="about:blank"))
+        assert [report.facts[0] for report in submitted] == [
+            "Step 1 · Open",
+            "Step 2 · Read",
+            "Step 3 · Mid-run blank",
+        ]
 
 
 class TestRepeatedFrames:
     """A list scrolled past its end shows the same page again and again; the user is sent it once."""
 
     @staticmethod
-    def _step(
+    def _frame(
         index: int, digest: str, url: str = "https://example.com/list"
     ) -> BrowserStepSnapshot:
-        return BrowserStepSnapshot(
-            index=index,
+        return _step(
+            index,
             goal="Scrolling",
             url=url,
-            screenshot=f"https://cdn/{index}.jpg",
+            screenshot=f"https://cdn.example.com/{index}.jpg",
             frame_digest=digest,
         )
 
-    async def test_only_a_frame_identical_to_the_last_one_sent_is_skipped(self, delivery):
-        handoff = BrowserHandoffSnapshot(
-            handoff_id="h1", reason="Sign in", session_id=None, status=HandoffStatus.PENDING
-        )
-        photos = AsyncMock(return_value=True)
-        with (
-            patch("app.services.browser.bot_delivery.publish_outbound_photo", new=photos),
-            patch("app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()),
-        ):
-            await delivery.step(self._step(1, "a"))
-            await delivery.step(self._step(2, "a"))
-            await delivery.step(self._step(3, "b"))
-            await delivery.step(self._step(4, "a"))
-            # The same picture at another address is another page.
-            await delivery.step(self._step(5, "a", url="https://example.com/list?page=2"))
-            await delivery.handoff(handoff)
-            # The user may have changed the page in the live view: shown again.
-            await delivery.step(self._step(6, "a", url="https://example.com/list?page=2"))
+    async def test_only_a_frame_identical_to_the_last_one_sent_is_skipped(
+        self, delivery, submitted
+    ) -> None:
+        await delivery.step(self._frame(1, "a"))
+        await delivery.step(self._frame(2, "a"))
+        await delivery.step(self._frame(3, "b"))
+        await delivery.step(self._frame(4, "a"))
+        # The same picture at another address is another page.
+        await delivery.step(self._frame(5, "a", url="https://example.com/list?page=2"))
+        await delivery.handoff(_handoff(session_id=None))
+        # The user may have changed the page in the live view: shown again.
+        await delivery.step(self._frame(6, "a", url="https://example.com/list?page=2"))
 
-        sent = [(call.args[2], call.kwargs["caption"]) for call in photos.await_args_list]
-        assert sent == [
-            ("https://cdn/1.jpg", "Step 1 · Scrolling"),
-            ("https://cdn/3.jpg", "Step 2 · Scrolling"),
-            ("https://cdn/4.jpg", "Step 3 · Scrolling"),
-            ("https://cdn/5.jpg", "Step 4 · Scrolling"),
-            ("https://cdn/6.jpg", "Step 5 · Scrolling"),
+        photos = [r.artifacts[0] for r in submitted if r.outcome is NoticeOutcome.PROGRESS]
+        assert [(p.url, p.caption) for p in photos] == [
+            ("https://cdn.example.com/1.jpg", "Step 1 · Scrolling"),
+            ("https://cdn.example.com/3.jpg", "Step 2 · Scrolling"),
+            ("https://cdn.example.com/4.jpg", "Step 3 · Scrolling"),
+            ("https://cdn.example.com/5.jpg", "Step 4 · Scrolling"),
+            ("https://cdn.example.com/6.jpg", "Step 5 · Scrolling"),
         ]
+
+
+class TestHandoffNeedsTheUser:
+    async def test_a_pending_handoff_is_a_needs_you_notice_valid_until_the_handoff_times_out(
+        self, delivery, submitted
+    ) -> None:
+        await delivery.handoff(_handoff())
+        [report] = submitted
+        assert report.outcome is NoticeOutcome.NEEDS_YOU
+        assert report.valid_until == NOW + timedelta(
+            seconds=settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS
+        )
+
+    async def test_it_says_the_ask_then_the_one_link_then_how_to_reply(
+        self, delivery, submitted
+    ) -> None:
+        await delivery.handoff(_handoff())
+        assert submitted[0].facts == [
+            "Payment needed",
+            f"Open the live browser: {LIVE_LINK}",
+            BROWSER_HANDOFF_REPLY_PROMPT,
+        ]
+
+    async def test_the_link_is_minted_once_for_this_user_and_handoff(
+        self, delivery, submitted
+    ) -> None:
+        with patch(
+            "app.services.browser.bot_delivery.create_live_view_link",
+            new=AsyncMock(return_value=LIVE_LINK),
+        ) as mint:
+            await delivery.handoff(_handoff())
+        mint.assert_awaited_once_with("sess-1", "user-1", "h1")
+
+    async def test_a_handoff_is_its_own_subject_so_a_later_step_cannot_supersede_it(
+        self, delivery, submitted
+    ) -> None:
+        await delivery.step(_step())
+        await delivery.handoff(_handoff())
+        step, handoff = submitted
+        assert handoff.subject.id != step.subject.id
+        assert handoff.report_id == "browser:job-1:handoff:h1"
+
+    async def test_a_credentials_handoff_reassures_the_login_is_saved_in_the_first_line(
+        self, delivery, submitted
+    ) -> None:
+        await delivery.handoff(
+            _handoff(
+                reason="Sign in to your Reddit account to continue.",
+                category=SensitiveCategory.CREDENTIALS,
+                saves_login=True,
+            )
+        )
+        first = submitted[0].facts[0]
+        assert first.startswith("Sign in to your Reddit account to continue.")
+        assert first.endswith(BROWSER_CREDENTIALS_SAVED_NOTE)
+
+    async def test_a_handoff_that_saves_no_login_promises_none(self, delivery, submitted) -> None:
+        await delivery.handoff(_handoff(saves_login=False))
+        assert BROWSER_CREDENTIALS_SAVED_NOTE not in submitted[0].facts[0]
+
+    async def test_a_handoff_without_a_session_has_no_link(self, delivery, submitted) -> None:
+        await delivery.handoff(_handoff(session_id=None))
+        assert submitted[0].facts == ["Payment needed", BROWSER_HANDOFF_REPLY_PROMPT]
+
+    @pytest.mark.parametrize("status", [s for s in HandoffStatus if s is not HandoffStatus.PENDING])
+    async def test_a_settled_handoff_says_nothing(self, delivery, submitted, status) -> None:
+        await delivery.handoff(_handoff(status=status))
+        assert submitted == []
+
+
+_OUTCOMES = (
+    (BrowserSessionStatus.COMPLETED, True, "Done."),
+    (BrowserSessionStatus.COMPLETED, False, "Couldn't finish."),
+    (BrowserSessionStatus.FAILED, False, "Stopped: nobody finished the step in time."),
+)
+
+
+class TestResultIsOnlyTheRecap:
+    """The outcome is the assistant's to voice once, in the executor's report; this sends only the recap link."""
+
+    @pytest.mark.parametrize(("status", "success", "summary"), _OUTCOMES)
+    async def test_a_run_with_a_recap_submits_exactly_the_recap(
+        self, delivery, submitted, status, success, summary
+    ) -> None:
+        await delivery.result(
+            BrowserResultSnapshot(
+                status=status,
+                success=success,
+                summary=summary,
+                steps=2,
+                replay_url="https://cdn.example.com/replay",
+            )
+        )
+        [report] = submitted
+        assert report.outcome is NoticeOutcome.INFO
+        assert report.facts == ["Here's a recap of the run: https://cdn.example.com/replay"]
+
+    @pytest.mark.parametrize(("status", "success", "summary"), _OUTCOMES)
+    async def test_a_run_without_a_recap_submits_nothing(
+        self, delivery, submitted, status, success, summary
+    ) -> None:
+        await delivery.result(
+            BrowserResultSnapshot(status=status, success=success, summary=summary, steps=2)
+        )
+        assert submitted == []
+
+
+class TestNote:
+    async def test_a_plain_line_is_progress_of_the_run(self, delivery, submitted) -> None:
+        await delivery.note("Still waiting on the page to load.")
+        [report] = submitted
+        assert report.outcome is NoticeOutcome.PROGRESS
+        assert report.facts == ["Still waiting on the page to load."]
+
+    async def test_an_outbox_that_cannot_take_it_raises_to_the_caller(self, delivery) -> None:
+        """The job runner's mirror logs the failure and goes on; the producer never hides it."""
+        with (
+            patch(SUBMIT, AsyncMock(side_effect=ConnectionError("redis down"))),
+            pytest.raises(ConnectionError),
+        ):
+            await delivery.note("x")

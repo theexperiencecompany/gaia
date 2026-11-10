@@ -21,9 +21,10 @@ __all__ = [
 ProactiveDestinationKind = Literal["chat_app", "in_app"]
 
 #: Why: the user was active there, it led their chat-app order, the answer went back to the
-#: direct message that asked, they were active in the GAIA app, or no chat app was usable.
+#: direct message that asked, the producer named the chat app, they were active in the GAIA app,
+#: or no chat app was usable.
 ProactiveDestinationBasis = Literal[
-    "recent_activity", "priority", "owner_chat", "active_in_app", "no_chat_app"
+    "recent_activity", "priority", "owner_chat", "requested_channel", "active_in_app", "no_chat_app"
 ]
 
 
@@ -41,8 +42,8 @@ class DeliveryMessageSent(ServerEvent):
     previous_names: ClassVar[tuple[str, ...]] = ("reminder:completed",)
     budget_per_user_day: ClassVar[int] = 500
 
-    producer: Literal["executor", "workflow", "todo", "reminder"]
-    subject_kind: Literal["ask", "workflow_run", "todo_run", "reminder"]
+    producer: Literal["executor", "workflow", "todo", "reminder", "browser", "artifact", "account"]
+    subject_kind: Literal["ask", "workflow_run", "todo_run", "reminder", "browser_job", "account"]
     mode: Literal["answer", "unsolicited", "interrupt"]
     destination: ProactiveDestinationKind
     destination_basis: ProactiveDestinationBasis

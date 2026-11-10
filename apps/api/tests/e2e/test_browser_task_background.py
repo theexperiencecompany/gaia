@@ -184,7 +184,7 @@ async def test_a_bot_conversation_gets_one_photo_per_step_and_only_the_recap_lin
     ]
     # Session start is silent, and the assistant voices the outcome once, so the
     # progress channel closes with the recap link alone (else results arrive twice).
-    assert world.bot_messages == [f"📽 Here's a recap of the run: {REPLAY_URL}"]
+    assert world.bot_messages == [f"Here's a recap of the run: {REPLAY_URL}"]
 
 
 async def test_a_second_browser_task_in_one_turn_is_refused_by_name() -> None:

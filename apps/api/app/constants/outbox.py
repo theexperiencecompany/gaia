@@ -33,5 +33,8 @@ COMPOSE_LEDGER_MESSAGES: Final = 5
 #: The locale the prerendered copy falls back to when it has none for the user's.
 DEFAULT_LOCALE: Final = "en"
 
+#: A user who wrote on a surface this recently is watching it live; progress older than that is not worth a ping.
+LIVE_WATCH_WINDOW_SECONDS: Final = 5 * 60
+
 #: What the compose model call is named in traces and metering.
 OUTBOX_COMPOSE_LABEL: Final = "outbox_compose"

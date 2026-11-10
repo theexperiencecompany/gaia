@@ -22,14 +22,11 @@ KNOWN_SPEAKERS: dict[str, str] = {
     "apps/api/app/services/hil/notify.py": "approval prompt pushed to a backgrounded mobile app",
     "apps/api/app/agents/core/background/workflow_platform_delivery.py": "workflow run results sent to the user's chat platform",
     "apps/api/app/utils/notification/channels/external.py": "notification channel adapter for external chat platforms",
-    "apps/api/app/services/platform_link_completion.py": "linked-account confirmation and first-contact greeting",
     "apps/api/app/services/platform_message_service.py": "proactive messages and reactions to a bot platform",
-    "apps/api/app/services/chat/artifact_forwarder.py": "artifact files forwarded to the chat platform",
-    "apps/api/app/services/browser/bot_delivery.py": "browser-run progress photos, hand-off and recap messages",
 }
 
 #: The ceiling for len(KNOWN_SPEAKERS). Lower it as callers move behind the outbox; never raise it.
-KNOWN_SPEAKERS_CEILING = 9
+KNOWN_SPEAKERS_CEILING = 6
 
 
 def _repo_root() -> Path:

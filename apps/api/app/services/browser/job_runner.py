@@ -230,15 +230,16 @@ class BrowserThreadMirror:
 
 
 def _build_bot_delivery(request: BrowserJobRequest) -> BotProgressDelivery | None:
-    """Mirror a bot-asked run to the requester's DM, never a group: its live link and shots are private."""
+    """Hand a bot-asked run's progress to the outbox, which sends it to the requester's DM, never a group: its live link and shots are private."""
     is_bot = request.source_category == SourceCategory.BOT.value
     if not (is_bot and request.user_id and request.conversation_id):
         return None
     if request.conversation_source is None:
         return None
     return BotProgressDelivery(
-        platform=request.conversation_source,
+        job_id=request.job_id,
         user_id=request.user_id,
+        conversation_id=request.conversation_id,
         stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
     )
 

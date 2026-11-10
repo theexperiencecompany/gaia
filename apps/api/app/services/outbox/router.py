@@ -35,8 +35,8 @@ from shared.py.analytics.catalog.delivery import (
 from shared.py.wide_events import log
 
 #: Why a platform was chosen: the user wrote there within the active window, it led their order,
-#: or the answer goes back to the direct message that asked.
-ChatChannelBasis = Literal["recent_activity", "priority", "owner_chat"]
+#: the answer goes back to the direct message that asked, or the producer named it.
+ChatChannelBasis = Literal["recent_activity", "priority", "owner_chat", "requested_channel"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,9 +81,12 @@ class Route:
 
 
 def is_active_place(target: ProactiveTarget) -> bool:
-    """Whether target is where the user is active now, not a fallback chosen with nobody reachable active."""
+    """Whether target is settled: where the user is active now or a chat app a producer named, not a fallback."""
     match target:
-        case ChatChannel(basis="recent_activity") | InApp(reason="active_in_app"):
+        case (
+            ChatChannel(basis="recent_activity" | "requested_channel")
+            | InApp(reason="active_in_app")
+        ):
             return True
     return False
 
@@ -170,6 +173,24 @@ async def resolve_proactive_target(user_id: str) -> ProactiveTarget:
     return channel
 
 
+async def _requested_chat_channel(
+    user_id: str, source: ConversationSource | None
+) -> ChatChannel | None:
+    """Return the chat app a producer asked for when it is linked, enabled and reachable, else None."""
+    if source is None:
+        return None
+    user = await user_repository.get(user_id)
+    if user is None:
+        return None
+    channel = pick_chat_channel(
+        [source.value],
+        linked_platforms_of(user),
+        normalize_channel_preferences(user.notification_channel_prefs),
+        active=None,
+    )
+    return replace(channel, basis="requested_channel") if channel is not None else None
+
+
 @dataclass(frozen=True, slots=True)
 class _Owner:
     """The conversation that owns a subject's history."""
@@ -217,7 +238,9 @@ async def route(user: AuthenticatedUser, items: list[OutboxItemDocument]) -> Rou
     Raises NoDestinationError when the alert stays in the app and the user has no conversation there.
     """
     owner = await _find_owner(user.user_id, items[0].report.subject.owner_conversation_id)
-    target = await resolve_proactive_target(user.user_id)
+    target = await _requested_chat_channel(
+        user.user_id, items[0].report.delivery_policy.channel
+    ) or await resolve_proactive_target(user.user_id)
     if owner is not None and not is_active_place(target):
         if any(is_answer(item.report) for item in items):
             target = await _owner_dm_channel(owner) or target

@@ -14,23 +14,30 @@ bot_queue already imports that module.
 
 from collections.abc import Mapping
 
-from app.constants.outbound import OUTBOUND_TTL_SECONDS_GREETING
+from app.constants.outbound import OUTBOUND_QUEUES
 from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkCompletion
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
 from app.services.onboarding.onboarding_service import complete_onboarding_on_platform_link
-from app.services.outbox.transport.bot_queue import (
-    OutboundResult,
-    notify_account_linked,
-    publish_outbound_message,
+from app.services.outbox.intake import submit
+from app.services.outbox.models import (
+    DeliveryPolicy,
+    Initiative,
+    NoticeOutcome,
+    NoticeReport,
+    ProducerKind,
+    Subject,
+    SubjectKind,
 )
+from app.services.outbox.prerendered import PrerenderedKind, PrerenderedMessage
 from app.services.platform_link_service import (
     AccountHasDifferentPlatformError,
     PlatformAccountTakenError,
     PlatformLinkService,
     link_conflict_error,
 )
+from app.utils import clock
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
 from shared.py.wide_events import log
@@ -46,6 +53,35 @@ class PostLinkSideEffectError(Exception):
     """
 
 
+def _greeting(
+    source: ConversationSource, first_contact: list[str] | None, is_new_link: bool
+) -> PrerenderedMessage | None:
+    """Return what GAIA says on a freshly linked chat app: the first contact when given, else a confirmation of a new link."""
+    if first_contact:
+        return PrerenderedMessage(kind=PrerenderedKind.FIRST_CONTACT, bubbles=first_contact)
+    if is_new_link:
+        return PrerenderedMessage(kind=PrerenderedKind.ACCOUNT_LINKED, platform=source.display_name)
+    return None
+
+
+def _platform_notice(
+    user_id: str, source: ConversationSource, connected_at: str, message: PrerenderedMessage
+) -> NoticeReport:
+    """Build the notice that says message on source, the chat app just linked, whatever the user is doing."""
+    occurrence = f"{message.kind.value}:{source.value}:{connected_at}"
+    return NoticeReport(
+        report_id=occurrence,
+        recipient=user_id,
+        producer=ProducerKind.ACCOUNT,
+        subject=Subject(kind=SubjectKind.ACCOUNT, id=occurrence, label=source.display_name),
+        occurred_at=clock.now(),
+        initiative=Initiative.ASKED,
+        delivery_policy=DeliveryPolicy(channel=source),
+        outcome=NoticeOutcome.INFO,
+        prerendered=message,
+    )
+
+
 async def complete_platform_link(
     user_id: str,
     platform: str,
@@ -56,8 +92,8 @@ async def complete_platform_link(
 ) -> PlatformLinkCompletion:
     """Link the account and run every side effect a successful link owes.
 
-    first_contact, when given, is delivered as-is on the outbound queue; the
-    result reports whether it went out, since nothing retries the publish.
+    first_contact, when given, is submitted to the outbox as-is; the result reports
+    whether the platform has a queue to carry it, since otherwise nothing sends it.
     Raises AppError(409) when the platform account belongs to another user, and
     PostLinkSideEffectError for any failure after the link is already written.
     """
@@ -84,27 +120,22 @@ async def complete_platform_link(
     # re-raised, nothing swallowed, but named so a caller holding a single-use
     # credential spends it instead of handing it back for a duplicate retry.
     try:
-        delivered = True
-        if first_contact:
-            delivery = await publish_outbound_message(
-                ConversationSource.coerce(platform) or ConversationSource.WEB,
-                user_id,
-                first_contact,
-                ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING,
+        source = ConversationSource.coerce(platform)
+        carrier = source if source in OUTBOUND_QUEUES else None
+        delivered = carrier is not None or not first_contact
+        if carrier is not None:
+            greeting = _greeting(carrier, first_contact, result.is_new_link)
+            if greeting is not None:
+                await submit(_platform_notice(user_id, carrier, result.connected_at, greeting))
+        elif first_contact:
+            # The link itself held; the one message a new user is guaranteed
+            # to read has no queue to travel. Loud, because nothing else will retry it —
+            # and reported back so the caller can have the bot send it instead.
+            log.warning(
+                "first contact has no outbound queue after a one-tap link",
+                platform=platform,
+                user_id=user_id,
             )
-            delivered = delivery is OutboundResult.PUBLISHED
-            if not delivered:
-                # The link itself held; the one message a new user is guaranteed
-                # to read did not. Loud, because nothing else will retry it — and
-                # reported back so the caller can have the bot send it instead.
-                log.warning(
-                    "first contact was not delivered after a one-tap link",
-                    platform=platform,
-                    user_id=user_id,
-                    outcome=delivery.value,
-                )
-        elif result.is_new_link:
-            await notify_account_linked(platform, user_id)
         schedule_account_sync(user_id)
         if result.is_new_link:
             await complete_onboarding_on_platform_link(user_id)
