@@ -430,8 +430,8 @@
     a summary (an inbox desk that opens a todo per email thread and saves reply drafts, then briefs
     the user). One todo per initiative. A todo about one email thread is created with its
     gmail_thread_id: a thread has one open todo, and creating a second returns the existing one
-    for you to update. list_tracked_todos filters by labels (todos carrying all of them) and by
-    gmail_thread_id.
+    for you to update; when its todo was completed, creating reopens that one. list_tracked_todos
+    filters by labels (todos carrying all of them) and by gmail_thread_id.
     Two modes:
       IMMEDIATE: create → act → log subagent activity in activity.md → complete.
       LONG-RUNNING: create → act → update canvas.md / activity.md → leave open for future follow-up.
