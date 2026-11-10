@@ -19,14 +19,19 @@ export const useStreamResume = (conversationId: string | null): void => {
   useEffect(() => {
     if (!conversationId) return;
     const resumeThenApply = async (): Promise<void> => {
-      // Without a cached copy last_updated is undefined, which makes the
-      // backend return the full conversation.
+      // Without a usable cached timestamp last_updated is undefined, which makes
+      // the backend return the full conversation. A legacy row can hold an
+      // invalid date, and serializing that would throw before the resume.
       const cached = await db.getConversation(conversationId);
+      const cachedAt = cached?.updatedAt;
       const { conversations, active_streams } =
         await chatApi.batchSyncConversations([
           {
             conversation_id: conversationId,
-            last_updated: cached?.updatedAt.toISOString(),
+            last_updated:
+              cachedAt && !Number.isNaN(cachedAt.getTime())
+                ? cachedAt.toISOString()
+                : undefined,
           },
         ]);
       const conversation = conversations.at(0);

@@ -69,4 +69,30 @@ describe("opening a chat that is already cached", () => {
       { conversation_id: "new-chat", last_updated: undefined },
     ]);
   });
+
+  it("fetches the full chat, and still resumes, when the cached timestamp is invalid", async () => {
+    vi.mocked(db.getConversation).mockResolvedValue({
+      id: "legacy-chat",
+      title: "Legacy",
+      createdAt: new Date("not a date"),
+      updatedAt: new Date("not a date"),
+    });
+    vi.mocked(chatApi.batchSyncConversations).mockResolvedValue({
+      conversations: [],
+      missing: [],
+      active_streams: { "legacy-chat": "stream-9" },
+    });
+
+    renderHook(() => useStreamResume("legacy-chat"));
+
+    await waitFor(() =>
+      expect(turnManager.resumeIfActive).toHaveBeenCalledWith(
+        "legacy-chat",
+        "stream-9",
+      ),
+    );
+    expect(chatApi.batchSyncConversations).toHaveBeenCalledWith([
+      { conversation_id: "legacy-chat", last_updated: undefined },
+    ]);
+  });
 });
