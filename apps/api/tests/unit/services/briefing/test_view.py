@@ -3,6 +3,7 @@
 The real explorer templates and stamp catalogue (cities.json) are read.
 """
 
+from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.briefing_models import (
     BriefingItem,
     BriefingModel,
@@ -46,20 +47,25 @@ def test_an_air_mail_brief_names_its_family_and_stamp_city() -> None:
 def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section() -> None:
     """The lead can be a needs-you item too; the editions list it with the other decisions."""
     lead = BriefingSection(
-        numeral="I", title="First up", items=[BriefingItem(text="Reply to Priya", kind="you")]
+        numeral="I",
+        title="First up",
+        items=[BriefingItem(text="Priya", action=BriefAction.REPLY, kind="you")],
     )
     needs_you = BriefingSection(
         numeral="II",
         title="Needs you",
         items=[
-            BriefingItem(text="Approve the MSA", count=3, kind="you"),
-            BriefingItem(text="Retry the export", kind="failed"),
+            BriefingItem(text="The MSA", action=BriefAction.APPROVE, count=3, kind="you"),
+            BriefingItem(text="The export", action=BriefAction.RETRY, kind="failed"),
         ],
     )
     gaias_work = BriefingSection(
         numeral="III",
         title="GAIA's work",
-        items=[BriefingItem(text="Drafted the memo", kind="lookback"), BriefingItem(text="FYI")],
+        items=[
+            BriefingItem(text="The memo", outcome=BriefOutcome.DRAFTED, kind="lookback"),
+            BriefingItem(text="FYI", outcome=BriefOutcome.CHANGED),
+        ],
     )
 
     view = briefing_view(
