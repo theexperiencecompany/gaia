@@ -9,7 +9,7 @@ import { FirstStepRow } from "@/features/first-steps/components/FirstStepRow";
 import {
   FIRST_STEPS_ROW_STAGGER_SECONDS,
   FIRST_STEPS_TRANSITION,
-  FIRST_STEPS_WIDGET_HIDDEN_PATHS,
+  FIRST_STEPS_WIDGET_HIDDEN_ROUTES,
 } from "@/features/first-steps/constants";
 import { useFirstStepAction } from "@/features/first-steps/hooks/useFirstStepAction";
 import { useFirstSteps } from "@/features/first-steps/hooks/useFirstSteps";
@@ -36,7 +36,10 @@ export function FirstStepsWidget() {
   const runStep = useFirstStepAction("widget");
   const reduceMotion = useReducedMotion();
 
-  if (FIRST_STEPS_WIDGET_HIDDEN_PATHS.includes(pathname) || !isVisible) {
+  const isHiddenRoute = FIRST_STEPS_WIDGET_HIDDEN_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+  if (isHiddenRoute || !isVisible) {
     return null;
   }
 

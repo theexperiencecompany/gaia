@@ -69,6 +69,31 @@ if (buildCacheDir && !existsSync(buildCacheDir)) {
   failures.push(`open-next cache dir missing for build ${buildId}`);
 }
 
+// OpenNext 1.20.12 moved entries under `route-cache/APP_PAGE/<hash>/$/…`; 1.20.2
+// wrote `<buildId>/<path>.cache`. Match either layout by the suffix.
+function findCacheEntry(dir, urlPath, depth = 0) {
+  if (!dir || depth > 6 || !existsSync(dir)) return null;
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const wanted = `${urlPath}.cache`;
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name === wanted.slice(wanted.lastIndexOf("/") + 1)) continue;
+  }
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isFile() && full.endsWith(`/${wanted}`)) return full;
+    if (entry.isDirectory()) {
+      const found = findCacheEntry(full, urlPath, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 for (const { urlPath, dataFile } of SPOT_CHECKS) {
   const routeKey = `/${urlPath}`;
   const entry = routes[routeKey];
@@ -85,16 +110,20 @@ for (const { urlPath, dataFile } of SPOT_CHECKS) {
   const source = JSON.parse(
     readFileSync(join(root, "public", "data", dataFile), "utf8"),
   );
-  const marker = source.metaTitle;
+  // Hub copy carries {{CURRENT_YEAR}}; the page renders it resolved (fillCurrentYear).
+  const marker = source.metaTitle?.replaceAll(
+    "{{CURRENT_YEAR}}",
+    String(new Date().getFullYear()),
+  );
   if (!marker) {
     failures.push(`${routeKey}: source ${dataFile} has no metaTitle to check against`);
     continue;
   }
   const cacheFile = buildCacheDir
-    ? join(buildCacheDir, `${urlPath}.cache`)
+    ? findCacheEntry(buildCacheDir, urlPath)
     : null;
-  if (!cacheFile || !existsSync(cacheFile)) {
-    failures.push(`${routeKey}: cache entry missing (${cacheFile})`);
+  if (!cacheFile) {
+    failures.push(`${routeKey}: cache entry missing under ${buildCacheDir}`);
     continue;
   }
   const cached = JSON.parse(readFileSync(cacheFile, "utf8"));

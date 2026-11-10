@@ -81,6 +81,18 @@ class CanvasShapeError(AppError):
         )
 
 
+class OpenStateError(AppError):
+    """Raised (400) when a write would leave an open tracked todo without a valid next step."""
+
+    def __init__(self, problems: list[str]) -> None:
+        super().__init__(
+            message=" ".join(problems),
+            status_code=HTTPStatus.BAD_REQUEST,
+            code="open_state_invalid",
+        )
+        self.problems = problems
+
+
 class UnwatchedTodoKeptError(AppError):
     """Raised (a 500) when a new todo's watch failed and removing the todo failed too; carries its id."""
 
@@ -94,3 +106,25 @@ class UnwatchedTodoKeptError(AppError):
             public={"todo_id": todo_id},
         )
         self.todo_id = todo_id
+
+
+class TodoNotFoundError(ValueError):
+    """Raised when no todo of this user has the id; carries the id so a caller can point at the one meant.
+
+    A ValueError, as the plain one it replaces: every route already maps that to its 4xx.
+    """
+
+    def __init__(self, todo_id: str) -> None:
+        super().__init__(f"Todo {todo_id} not found")
+        self.todo_id = todo_id
+
+
+class UntrackedTodoChatError(AppError):
+    """Raised (409) when a chat is asked of a todo GAIA does not track: only tracked todos run, so only they have one."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Only a tracked todo has a chat",
+            status_code=HTTPStatus.CONFLICT,
+            code="todo_not_tracked",
+        )

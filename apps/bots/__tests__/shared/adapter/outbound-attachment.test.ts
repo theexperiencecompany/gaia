@@ -3,7 +3,7 @@
  *
  * Step screenshots used to be R2 objects, so every attachment URL was public and
  * the SSRF-guarded public fetch was the only path. The API can now serve them
- * itself at `GET /shots/{code}/{index}.png` on GAIA's own base URL, which in
+ * itself at `GET /api/v1/browser/shots/{code}/{index}.png` on GAIA's own base URL, which in
  * development is a loopback address the guard correctly refuses — so the photo
  * silently became a text caption. A URL on our own origin therefore goes through
  * the authenticated client, and everything else keeps the guard.

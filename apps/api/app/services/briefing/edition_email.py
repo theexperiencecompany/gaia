@@ -9,7 +9,6 @@ into the app; the email can never approve or send on its own.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from datetime import date as date_cls
 from html import escape
@@ -17,20 +16,23 @@ from html import escape
 import cloudinary.utils
 
 from app.constants.briefing import EDITION_DELIVERY_MAX_WIDTH_PX, EditionDeliveryFormat
+from app.constants.files import BlobKind
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
 from app.models.briefing_models import BriefingPayload
+from app.services.blob_store import CloudinaryBlobStore
 from app.services.briefing.editions import edition_frame, render_edition, renderer_for
 from app.services.briefing.message import MESSAGE_LINK_RE, delivered_message, preheader
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
-from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
 
 # Edition numbering is cosmetic furniture; anchor it to a fixed epoch so the
 # number is stable and monotonic across days without any stored counter.
 _EDITION_EPOCH = date_cls(2026, 1, 1)
+
+EDITION_IMAGE_STORE = CloudinaryBlobStore()
 
 # GAIA email palette: dark-first, single cyan accent (matches DESIGN.md).
 _BG = "#000000"
@@ -144,7 +146,9 @@ def edition_delivery_url(public_id: str, fetch_format: EditionDeliveryFormat) ->
     return delivery[0]
 
 
-async def host_edition_image(payload: BriefingPayload, *, render_key: str) -> HostedEditionImage:
+async def host_edition_image(
+    payload: BriefingPayload, *, owner_id: str, render_key: str
+) -> HostedEditionImage:
     """Render the edition, host it on the CDN under render_key, and return its delivery URLs.
 
     The display URL serves the in-app page and the email, the chat URL the chat post.
@@ -153,7 +157,15 @@ async def host_edition_image(payload: BriefingPayload, *, render_key: str) -> Ho
     """
     image = await render_edition_png(payload)
     public_id = f"briefing/editions/{render_key}"
-    original_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
+    # The delivery URLs are Cloudinary transformations, so the edition lives there.
+    original_url = await EDITION_IMAGE_STORE.put(
+        owner_id,
+        public_id,
+        image,
+        resource_type="image",
+        kind=BlobKind.GENERATED_IMAGE,
+        content_type="image/png",
+    )
     log.debug("briefing.edition_image.hosted", image_bytes=len(image), url=original_url)
     return HostedEditionImage(
         display_url=edition_delivery_url(public_id, EditionDeliveryFormat.AUTO),

@@ -10,10 +10,12 @@ file list with `git ls-files` relative to the working directory, so pointing it
 at a sandbox repo scopes the whole gate without stubbing anything.
 """
 
+import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import textwrap
 
 import pytest
 
@@ -42,7 +44,9 @@ def _add(repo: Path, rel: str, lines: int) -> None:
 NODE = shutil.which("node")
 
 
-def _run(repo: Path, *args: str, changed_files: str | None = None):
+def _run(
+    repo: Path, *args: str, changed_files: str | None = None
+) -> subprocess.CompletedProcess[str]:
     # PATH inherited: node and git come from the mise-managed toolchain, not a
     # fixed system path. CHANGED_FILES is set explicitly per case so a value
     # leaking in from the surrounding lane cannot silently rescope the gate.
@@ -278,6 +282,29 @@ def _stub_generators(tmp_path: Path, openapi: str, types: str) -> dict[str, str]
         stub = bin_dir / name
         stub.write_text(body)
         stub.chmod(0o755)
+    # The api-schema check runs the codegen binary directly (it lives outside the
+    # workspace); GAIA_OPENAPI_TS points it at this stub, which writes FAKE_TYPES
+    # to whatever --output names.
+    codegen = bin_dir / "openapi-typescript"
+    codegen.write_text(
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            echo "$*" >> "$REC/codegen.log"
+            out=""
+            while [[ $# -gt 0 ]]; do
+              case "$1" in
+                --output) out="$2"; shift ;;
+              esac
+              shift
+            done
+            mkdir -p "$(dirname "$out")"
+            printf '%s' "$FAKE_TYPES" > "$out"
+            """
+        )
+    )
+    codegen.chmod(0o755)
     rec = tmp_path / "rec"
     rec.mkdir()
     return {
@@ -286,10 +313,11 @@ def _stub_generators(tmp_path: Path, openapi: str, types: str) -> dict[str, str]
         "FAKE_OPENAPI": openapi,
         "FAKE_TYPES": types,
         "CHANGED_FILES": "",
+        "GAIA_OPENAPI_TS": str(bin_dir / "openapi-typescript"),
     }
 
 
-def _run_env(repo: Path, env: dict[str, str], *args: str):
+def _run_env(repo: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [NODE, str(CHECKS), *args], cwd=repo, capture_output=True, text=True, check=False, env=env
     )
@@ -306,7 +334,7 @@ def test_api_schema_passes_when_regeneration_reproduces_the_commit(tmp_path: Pat
     assert process.returncode == 0, process.stdout + process.stderr
     # Both generators ran — a check that diffed without regenerating passes vacuously.
     assert (tmp_path / "rec" / "uv.log").exists()
-    assert (tmp_path / "rec" / "pnpm.log").exists()
+    assert (tmp_path / "rec" / "codegen.log").exists()
 
 
 def test_api_schema_fails_on_drift_with_the_one_line_fix(tmp_path: Path) -> None:
@@ -711,3 +739,131 @@ def test_a_baselined_raw_client_import_does_not_fail(tmp_path: Path) -> None:
     process = _run(repo, "api-client-imports")
 
     assert process.returncode == 0, process.stdout
+
+
+# ---------------------------------------------------------------------------
+# bot-handles: one canonical handle per platform, every spoken-of link agrees
+# ---------------------------------------------------------------------------
+
+BOT_HANDLES_SOURCE = "libs/shared/bot-identity.json"
+WHATSAPP = "12038429512"
+TELEGRAM = "heygaia_bot"
+DISCORD = "puRWnQ7hV5"
+
+
+def _handles_repo(
+    tmp_path: Path,
+    whatsapp: str = WHATSAPP,
+    telegram: str = TELEGRAM,
+    discord: str = DISCORD,
+) -> Path:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        BOT_HANDLES_SOURCE,
+        json.dumps(
+            {
+                "whatsappNumber": whatsapp,
+                "telegramUsername": telegram,
+                "discordInviteCode": discord,
+                "discordCommunityUrl": "https://discord.heygaia.io",
+            }
+        ),
+    )
+    return repo
+
+
+def test_matching_links_pass(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "README.md", "[WhatsApp](https://wa.me/12038429512)\n")
+    _add_text(repo, "docs/telegram.mdx", "[Telegram](https://t.me/heygaia_bot)\n")
+    _add_text(repo, "docs/GAIA.md", "[Discord](https://discord.com/invite/puRWnQ7hV5)\n")
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 0, process.stderr
+
+
+def test_a_stale_whatsapp_link_fails_and_names_the_file(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "docs/quick-start.mdx", "[WhatsApp](https://wa.me/12762088737)\n")
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 1
+    assert "docs/quick-start.mdx" in process.stderr
+    assert "12762088737" in process.stderr
+
+
+def test_a_stale_telegram_username_fails(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "README.md", "[Telegram](https://t.me/some_other_bot)\n")
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 1
+    assert "some_other_bot" in process.stderr
+
+
+def test_a_stale_discord_invite_fails(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "libs/help.ts", 'url: "https://discord.gg/gaia"\n')
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 1
+    assert "gaia" in process.stderr
+
+
+def test_telegram_usernames_compare_case_insensitively(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "README.md", "[Telegram](https://t.me/HeyGaia_Bot)\n")
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 0, process.stderr
+
+
+def test_changing_a_canonical_handle_flags_every_copy(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "README.md", "[Telegram](https://t.me/heygaia_bot)\n")
+    _add_text(
+        repo,
+        BOT_HANDLES_SOURCE,
+        json.dumps(
+            {
+                "whatsappNumber": WHATSAPP,
+                "telegramUsername": "other_bot",
+                "discordInviteCode": DISCORD,
+                "discordCommunityUrl": "https://discord.heygaia.io",
+            }
+        ),
+    )
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 1
+    assert "README.md" in process.stderr
+
+
+def test_api_test_fixtures_are_not_treated_as_links(tmp_path: Path) -> None:
+    repo = _handles_repo(tmp_path)
+    _add_text(
+        repo,
+        "apps/api/tests/unit/services/test_platform_link_service.py",
+        'assert result == "https://wa.me/15551234567"\n',
+    )
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 0, process.stderr
+
+
+def test_a_missing_canonical_handle_fails_loudly(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, "README.md", "[Telegram](https://t.me/heygaia_bot)\n")
+
+    process = _run(repo, "bot-handles")
+
+    assert process.returncode == 1
+    assert BOT_HANDLES_SOURCE in process.stderr

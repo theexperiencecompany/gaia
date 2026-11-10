@@ -38,16 +38,21 @@ interface UnreadEmailsViewProps {
 
 const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
   emails = [],
-  status: {
+  status = {},
+  onConnect,
+  onLoadMore,
+}) => {
+  // Destructured here rather than inline: TypeScript 7.1 stops contextually
+  // typing an empty object literal used as a nested destructuring default,
+  // which turned every field into an implicit `any` (TS7031).
+  const {
     isConnected = true,
     connectLabel = "Connect",
     isFetching = false,
     hasNextPage,
     isFetchingNextPage,
-  } = {},
-  onConnect,
-  onLoadMore,
-}) => {
+  } = status;
+
   const appendToInput = useAppendToInput();
 
   // Convert EmailData to EmailFetchData format expected by EmailListCard

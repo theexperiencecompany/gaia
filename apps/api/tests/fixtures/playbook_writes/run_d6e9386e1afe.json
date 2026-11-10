@@ -1,0 +1,151 @@
+{
+ "run": "run_d6e9386e1afe",
+ "captured_from": "2026-09-05",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 3,
+   "written": {
+    "description": "Xdsle Cbswsimi: lqirhkaw gather yg unread Svdly, today'n Zmlvvp Tvelkhjg events, qiq open Rbwxszg tasks, vtyc pwlztlikjl vhi hogaq Bdbzna toxyfucq.",
+    "steps": [
+     {
+      "id": "inbox",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "uc:unread",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "mbOxys"
+         ],
+         "max_messages": 100
+        }
+       }
+      ]
+     },
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "time_min": "$qdnsoU47:00:006642",
+         "time_max": "$dvohaB56:59:596642",
+         "timezone": "Espzty/Nflocwnjo",
+         "max_results": 100,
+         "singleEvents": true,
+         "orderBy": "qkodwXshk"
+        }
+       }
+      ]
+     },
+     {
+      "id": "todoist",
+      "handoff": "todoist",
+      "steps": [
+       {
+        "id": "tasks",
+        "tool": "TODOIST_GET_ALL_TASKS",
+        "args": {}
+       }
+      ]
+     }
+    ],
+    "result_brief": "Dmdlxeegun vhi hogaq Bdbzna toxyfucq mkvzhkpc hx kpfat w gqhlmk xhuc jxwvq caojidex: (1) unread emails wgflgj ae gmrlbxc e qhky xhuc rqyvoyit ohzt-critical today (nzppldzn cwf, kbam-ysn snxardawb), vtyc dvrpfu-yoj; (2) today'n meetings xhuc fakuo (xtwyuay kfhta \"bpqlc Srhofgd rnior\" bg lar calendar event list uc mnpyu); (3) open Rbwxszg todos, wedmcjqmnpmu overdue qiq cwf-tfss emrwk. Ttue ic iwsxbtw qiq zqgfgznjh, fzdnbo qiq fohvsvp vls Isfg'n sbwitmxqej."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['gmail', 'googlecalendar', 'todoist']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 10,
+   "record_len": 3,
+   "written": {
+    "description": "Xdsle Cbswsimi: lqirhkaw gather yg unread Svdly, today'n Zmlvvp Tvelkhjg events, qiq open Rbwxszg tasks, vtyc pwlztlikjl vhi hogaq Bdbzna toxyfucq.",
+    "result_brief": "Dmdlxeegun vhi hogaq Bdbzna toxyfucq mkvzhkpc hx kpfat w gqhlmk xhuc jxwvq caojidex: (1) unread emails wgflgj ae gmrlbxc e qhky xhuc rqyvoyit ohzt-critical today (nzppldzn cwf, kbam-ysn snxardawb), vtyc dvrpfu-yoj; (2) today'n meetings xhuc fakuo (xtwyuay kfhta \"bpqlc Srhofgd rnior\" bg lar calendar event list uc mnpyu); (3) open Rbwxszg todos, wedmcjqmnpmu overdue qiq cwf-tfss emrwk. Ttue ic iwsxbtw qiq zqgfgznjh, fzdnbo qiq fohvsvp vls Isfg'n sbwitmxqej.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "inbox",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "mbOxys"
+         ],
+         "max_messages": 100,
+         "query": "uc:unread"
+        },
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     },
+     {
+      "handoff": "googlecalendar",
+      "id": "calendar",
+      "steps": [
+       {
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "max_results": 100,
+         "time_max": "$dvohaB56:59:596642",
+         "time_min": "$qdnsoU47:00:006642"
+        },
+        "id": "events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "handoff": "todoist",
+      "id": "todoist",
+      "steps": [
+       {
+        "args": {},
+        "id": "tasks",
+        "tool": "TODOIST_GET_ALL_TASKS"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['gmail', 'googlecalendar', 'todoist']",
+   "expected": "unmappable"
+  }
+ ]
+}

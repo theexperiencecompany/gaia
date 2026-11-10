@@ -22,6 +22,10 @@ import pytest
 from tests.helpers import captured_wide_event
 import time_machine
 
+from app.agents.prompts.briefing_prompts import (
+    build_briefing_voice_prompt,
+    build_weekly_digest_prompt,
+)
 from app.constants.briefing import (
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
@@ -31,14 +35,18 @@ from app.constants.briefing import (
     BriefingBag,
     BriefingFrequency,
     BriefingRunOutcome,
+    BriefItemSource,
 )
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
     ProactiveMessageClass,
 )
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL
 from app.constants.user_activity import ActivityStatus
+from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.users import user_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
     BriefingEvent,
@@ -56,18 +64,19 @@ from app.models.notification.notification_models import (
     NotificationStatus,
 )
 from app.models.short_link_models import ShortLinkTargetType
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import (
     BriefingBootstrap,
     BriefingDormancy,
     ShuffleBag,
     UserDocument,
 )
-from app.services.briefing import context, service
+from app.services.briefing import chat_sync, context, dormancy, service
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
-from app.services.delivery.chat_channel import ChatChannel
+from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.analytics import UserId
@@ -82,7 +91,7 @@ _DAY_START = datetime(2026, 10, 12, 18, 30, tzinfo=UTC)
 # Monday 12 Oct, local midnight: the weekly digest counts from the start of the week.
 _WEEK_START = datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
 _EVENT = BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia")
-_CHAT = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1")
+_CHAT = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="priority")
 _EDITION = HostedEditionImage(
     display_url="https://cdn.example/f_auto/brief", chat_url="https://cdn.example/f_jpg/brief"
 )
@@ -137,8 +146,9 @@ def _held(item_id: str, title: str, text: str) -> PendingBriefItemDocument:
     return PendingBriefItemDocument(
         id=item_id,
         user_id=_USER,
-        workflow_id=f"wf-{item_id}",
-        workflow_title=title,
+        source=BriefItemSource.WORKFLOW,
+        source_id=f"wf-{item_id}",
+        source_title=title,
         conversation_id=f"conv-{item_id}",
         text=text,
     )
@@ -174,6 +184,15 @@ class World:
         default_factory=lambda: UserDocument(id=_USER, timezone=_TZ, email="a@b.c", name="Ada")
     )
     chat: ChatChannel | None = _CHAT
+    #: The context and repository reads the run makes, by name, as patched.
+    reads: dict[str, AsyncMock] = field(default_factory=dict)
+
+
+def _seam(
+    monkeypatch: pytest.MonkeyPatch, w: World, owner: object, name: str, mock: AsyncMock
+) -> None:
+    monkeypatch.setattr(owner, name, mock)
+    w.reads[name] = mock
 
 
 @pytest.fixture
@@ -196,11 +215,11 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
             return_value=SimpleNamespace(channels=[_delivered(c) for c in _ORCHESTRATED])
         ),
         post=AsyncMock(return_value=OutboundResult.PUBLISHED),
-        host_image=AsyncMock(side_effect=lambda payload, *, render_key: _EDITION),
+        host_image=AsyncMock(side_effect=lambda payload, *, owner_id, render_key: _EDITION),
         consume=AsyncMock(),
         capture=MagicMock(),
-        voice_prompt=MagicMock(wraps=service.build_briefing_voice_prompt),
-        weekly_prompt=MagicMock(wraps=service.build_weekly_digest_prompt),
+        voice_prompt=MagicMock(wraps=build_briefing_voice_prompt),
+        weekly_prompt=MagicMock(wraps=build_weekly_digest_prompt),
     )
 
     # Seams keyed on the user: a read for anyone else finds nothing. The stored
@@ -211,11 +230,11 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         w.user.briefing_shuffle_bags = {BriefingBag(k): v for k, v in w.bags.items()} or None
         return w.user
 
-    monkeypatch.setattr(service.user_repository, "get", AsyncMock(side_effect=get_user))
-    monkeypatch.setattr(service.briefing_repository, "was_delivered", w.was_delivered)
-    monkeypatch.setattr(service.user_repository, "clear_briefing_bootstrap", w.clear_bootstrap)
-    monkeypatch.setattr(service.dormancy, "clear_dormancy", w.clear_dormancy)
-    monkeypatch.setattr(service.dormancy, "enter_dormancy", w.enter_dormancy)
+    monkeypatch.setattr(user_repository, "get", AsyncMock(side_effect=get_user))
+    monkeypatch.setattr(briefing_repository, "was_delivered", w.was_delivered)
+    monkeypatch.setattr(user_repository, "clear_briefing_bootstrap", w.clear_bootstrap)
+    monkeypatch.setattr(dormancy, "clear_dormancy", w.clear_dormancy)
+    monkeypatch.setattr(dormancy, "enter_dormancy", w.enter_dormancy)
     monkeypatch.setattr(service, "build_briefing_voice_prompt", w.voice_prompt)
     monkeypatch.setattr(service, "build_weekly_digest_prompt", w.weekly_prompt)
 
@@ -224,55 +243,57 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         return SimpleNamespace(message=_message_written(kwargs["request"].message, reply.message))
 
     monkeypatch.setattr(service, "call_agent_silent", model)
-    monkeypatch.setattr(service.briefing_repository, "list_recent", w.recent)
-    monkeypatch.setattr(service.briefing_repository, "list_stamped", w.stamped)
-    monkeypatch.setattr(service.briefing_repository, "upsert_briefing", w.upsert)
-    monkeypatch.setattr(service.briefing_repository, "set_delivered_channels", w.set_channels)
+    monkeypatch.setattr(briefing_repository, "list_recent", w.recent)
+    monkeypatch.setattr(briefing_repository, "list_stamped", w.stamped)
+    monkeypatch.setattr(briefing_repository, "upsert_briefing", w.upsert)
+    monkeypatch.setattr(briefing_repository, "set_delivered_channels", w.set_channels)
     monkeypatch.setattr(service, "optional_short_link", w.mint)
-    monkeypatch.setattr(
-        service.briefing_repository, "has_daily_briefing", AsyncMock(return_value=True)
-    )
-    monkeypatch.setattr(service.notification_service, "create_notification", w.notify)
+    _seam(monkeypatch, w, briefing_repository, "has_daily_briefing", AsyncMock(return_value=True))
+    monkeypatch.setattr(notification_service, "create_notification", w.notify)
     monkeypatch.setattr(
         service,
-        "resolve_chat_channel",
-        AsyncMock(side_effect=lambda user_id: w.chat if user_id == _USER else None),
+        "resolve_proactive_target",
+        AsyncMock(
+            side_effect=lambda user_id: (
+                w.chat if user_id == _USER and w.chat else InApp(reason="no_chat_app")
+            )
+        ),
     )
     monkeypatch.setattr(service, "host_edition_image", w.host_image)
     monkeypatch.setattr(service, "post_to_platform_chat", w.post)
     monkeypatch.setattr(service, "capture", w.capture)
-    monkeypatch.setattr(
-        service.pending_brief_items_repository,
+    _seam(
+        monkeypatch,
+        w,
+        pending_brief_items_repository,
         "list_for_user",
         AsyncMock(side_effect=lambda *_, **__: list(w.held)),
     )
-    monkeypatch.setattr(service.pending_brief_items_repository, "consume", w.consume)
-    monkeypatch.setattr(
-        service.chat_sync, "format_replies_block", AsyncMock(return_value="No replies.")
+    monkeypatch.setattr(pending_brief_items_repository, "consume", w.consume)
+    _seam(monkeypatch, w, chat_sync, "format_replies_block", AsyncMock(return_value="No replies."))
+    _seam(monkeypatch, w, context, "format_goal_block", AsyncMock(return_value=("Ship v2", True)))
+    _seam(
+        monkeypatch, w, context, "get_yesterday_payload", AsyncMock(return_value=sentinel.yesterday)
     )
-    monkeypatch.setattr(
-        service.context, "format_goal_block", AsyncMock(return_value=("Ship v2", True))
-    )
-    monkeypatch.setattr(
-        service.context, "get_yesterday_payload", AsyncMock(return_value=sentinel.yesterday)
-    )
-    monkeypatch.setattr(service.context, "format_lookback_block", AsyncMock(return_value="-"))
-    monkeypatch.setattr(
-        service.context,
+    _seam(monkeypatch, w, context, "format_lookback_block", AsyncMock(return_value="-"))
+    _seam(
+        monkeypatch,
+        w,
+        context,
         "compute_winback_state",
         AsyncMock(return_value=context.WinbackState(unacknowledged=0, last_was_winback=False)),
     )
-    monkeypatch.setattr(
-        service.context, "gather_tracked_work", AsyncMock(side_effect=lambda *_: w.work)
-    )
-    monkeypatch.setattr(service.context, "user_open_todo_summary", AsyncMock(return_value=(0, [])))
-    monkeypatch.setattr(
-        service.context,
+    _seam(monkeypatch, w, context, "gather_tracked_work", AsyncMock(side_effect=lambda *_: w.work))
+    _seam(monkeypatch, w, context, "user_open_todo_summary", AsyncMock(return_value=(0, [])))
+    _seam(
+        monkeypatch,
+        w,
+        context,
         "gather_completed_since",
         AsyncMock(return_value=context.CompletedWork(user=[_todo("u1", "Gym")])),
     )
-    monkeypatch.setattr(service.dormancy, "record_idle_day", AsyncMock(return_value=0))
-    monkeypatch.setattr(service.dormancy, "latest_activity_since", AsyncMock(return_value=None))
+    _seam(monkeypatch, w, dormancy, "record_idle_day", AsyncMock(return_value=0))
+    _seam(monkeypatch, w, dormancy, "latest_activity_since", AsyncMock(return_value=None))
     monkeypatch.setattr(
         service,
         "activity_status_of",
@@ -292,10 +313,12 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         assert user_id == _USER
         w.bags[bag.value] = state
 
-    monkeypatch.setattr(service.user_repository, "set_briefing_bag", set_bag)
-    monkeypatch.setattr(service.context, "gather_calendar", AsyncMock(return_value=[_EVENT]))
-    monkeypatch.setattr(
-        service.context,
+    monkeypatch.setattr(user_repository, "set_briefing_bag", set_bag)
+    _seam(monkeypatch, w, context, "gather_calendar", AsyncMock(return_value=[_EVENT]))
+    _seam(
+        monkeypatch,
+        w,
+        context,
         "gather_week",
         AsyncMock(return_value=BriefingWeek(days=[BriefingWeekDay(you=1, gaia=2)] * 7)),
     )
@@ -405,7 +428,7 @@ class TestDailyBrief:
         """Nothing needs the user, nothing is on the calendar, nothing ran overnight."""
         world.work = context.TrackedWork()
         bags_before = dict(world.bags)
-        monkeypatch.setattr(service.context, "gather_calendar", AsyncMock(return_value=[]))
+        _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
 
         await service.run_daily_briefing(_USER)
 
@@ -542,7 +565,7 @@ class TestDailyBrief:
     async def test_unknown_user_fails_loud(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(service.user_repository, "get", AsyncMock(return_value=None))
+        monkeypatch.setattr(user_repository, "get", AsyncMock(return_value=None))
 
         with pytest.raises(service.BriefingGenerationError, match="unknown user"):
             await service.run_daily_briefing(_USER)
@@ -553,7 +576,7 @@ class TestDailyBrief:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            service.dormancy,
+            dormancy,
             "state_from_user",
             lambda _: DormancyState(idle_days=3, date=None, dormant_since=MagicMock()),
         )
@@ -566,8 +589,10 @@ class TestDailyBrief:
     async def test_ignored_winback_backs_off(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            service.context,
+        _seam(
+            monkeypatch,
+            world,
+            context,
             "compute_winback_state",
             AsyncMock(return_value=context.WinbackState(unacknowledged=5, last_was_winback=True)),
         )
@@ -835,10 +860,14 @@ class TestTheProseMatchesTheItems:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Regression: 5 open todos were shown to the model, then rejected when it said 5."""
-        monkeypatch.setattr(
-            service.context, "user_open_todo_summary", AsyncMock(return_value=(5, ["Gym"]))
+        _seam(
+            monkeypatch,
+            world,
+            context,
+            "user_open_todo_summary",
+            AsyncMock(return_value=(5, ["Gym"])),
         )
-        monkeypatch.setattr(service.context, "gather_calendar", AsyncMock(return_value=[]))
+        _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
         world.agent.return_value = _voiced("5 open todos, a quiet morning", "Nothing else today.")
 
         await service.run_daily_briefing(_USER)
@@ -850,8 +879,8 @@ class TestTheProseMatchesTheItems:
     async def test_a_count_the_model_was_not_shown_is_still_rejected(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            service.context, "user_open_todo_summary", AsyncMock(return_value=(5, []))
+        _seam(
+            monkeypatch, world, context, "user_open_todo_summary", AsyncMock(return_value=(5, []))
         )
         world.agent.return_value = _voiced("6 open todos", "A quiet morning.")
 
@@ -887,8 +916,10 @@ class TestTheMessageCoversTheDay:
     async def test_a_headline_may_name_what_only_the_goal_mentions(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            service.context,
+        _seam(
+            monkeypatch,
+            world,
+            context,
             "format_goal_block",
             AsyncMock(return_value=("Raise a seed round from Accel", True)),
         )
@@ -916,8 +947,10 @@ class TestTheMessageCoversTheDay:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         world.work = _brief_work()
-        monkeypatch.setattr(
-            service.context,
+        _seam(
+            monkeypatch,
+            world,
+            context,
             "compute_winback_state",
             AsyncMock(
                 return_value=context.WinbackState(
@@ -1006,6 +1039,26 @@ class TestOneSubjectIsOneItem:
         items = [(it.text, it.count) for s in _stored_payload(world).sections for it in s.items]
         assert items == [("Approve the Acme MSA", 2)]
 
+    async def test_threads_the_inbox_desk_opened_are_one_item_each(self, world: World) -> None:
+        world.work = context.TrackedWork(
+            blocked=[
+                TodoDocument(
+                    id=f"t{n}",
+                    user_id=_USER,
+                    title=title,
+                    labels=[GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL],
+                    parent_todo_id="desk",
+                    external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=f"th{n}"),
+                )
+                for n, title in enumerate(["Priya · pitch deck", "Arjun · contract"])
+            ]
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        items = [(it.text, it.count) for s in _stored_payload(world).sections for it in s.items]
+        assert items == [("Priya · pitch deck", 1), ("Arjun · contract", 1)]
+
 
 def _brief_work() -> context.TrackedWork:
     return context.TrackedWork(
@@ -1020,24 +1073,23 @@ class TestTheDailyRunWiring:
     async def test_every_read_is_for_this_user_and_the_last_local_day(self, world: World) -> None:
         await service.run_daily_briefing(_USER)
 
-        ctx = service.context
-        ctx.format_goal_block.assert_awaited_once_with(_USER, world.user)
-        ctx.get_yesterday_payload.assert_awaited_once_with(_USER, before_date=_DATE)
-        ctx.format_lookback_block.assert_awaited_once_with(_USER, sentinel.yesterday, _DAY_START)
-        assert ctx.compute_winback_state.await_args.args[0].id == _USER
-        service.briefing_repository.has_daily_briefing.assert_awaited_once_with(_USER)
-        ctx.gather_tracked_work.assert_awaited_once_with(_USER, _DAY_START)
-        ctx.user_open_todo_summary.assert_awaited_once_with(_USER)
-        ctx.gather_completed_since.assert_awaited_once_with(_USER, _DAY_START)
-        calendar_call = ctx.gather_calendar.await_args
+        world.reads["format_goal_block"].assert_awaited_once_with(_USER, world.user)
+        world.reads["get_yesterday_payload"].assert_awaited_once_with(_USER, before_date=_DATE)
+        world.reads["format_lookback_block"].assert_awaited_once_with(
+            _USER, sentinel.yesterday, _DAY_START
+        )
+        assert world.reads["compute_winback_state"].await_args.args[0].id == _USER
+        world.reads["has_daily_briefing"].assert_awaited_once_with(_USER)
+        world.reads["gather_tracked_work"].assert_awaited_once_with(_USER, _DAY_START)
+        world.reads["user_open_todo_summary"].assert_awaited_once_with(_USER)
+        world.reads["gather_completed_since"].assert_awaited_once_with(_USER, _DAY_START)
+        calendar_call = world.reads["gather_calendar"].await_args
         assert calendar_call.args[0] == _USER and calendar_call.kwargs == {"days": 1}
         assert (calendar_call.args[1].date_str, calendar_call.args[1].tz.key) == (_DATE, _TZ)
-        service.pending_brief_items_repository.list_for_user.assert_awaited_once_with(
-            _USER, sort=[("created_at", 1)]
-        )
-        service.chat_sync.format_replies_block.assert_awaited_once_with(_USER, _DAY_START)
-        service.dormancy.record_idle_day.assert_awaited_once_with(
-            _USER, service.dormancy.state_from_user(world.user), False, _DATE
+        world.reads["list_for_user"].assert_awaited_once_with(_USER, sort=[("created_at", 1)])
+        world.reads["format_replies_block"].assert_awaited_once_with(_USER, _DAY_START)
+        world.reads["record_idle_day"].assert_awaited_once_with(
+            _USER, dormancy.state_from_user(world.user), False, _DATE
         )
         prompt_args = world.voice_prompt.call_args.kwargs
         assert prompt_args["date_local"] == _DATE
@@ -1053,8 +1105,12 @@ class TestTheDailyRunWiring:
     async def test_a_users_first_brief_is_voiced_as_their_first(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            service.briefing_repository, "has_daily_briefing", AsyncMock(return_value=False)
+        _seam(
+            monkeypatch,
+            world,
+            briefing_repository,
+            "has_daily_briefing",
+            AsyncMock(return_value=False),
         )
 
         await service.run_daily_briefing(_USER)
@@ -1287,8 +1343,8 @@ class TestTheFactsTheModelVoices:
         counts: str,
         note: str,
     ) -> None:
-        monkeypatch.setattr(
-            service.context, "user_open_todo_summary", AsyncMock(return_value=summary)
+        _seam(
+            monkeypatch, world, context, "user_open_todo_summary", AsyncMock(return_value=summary)
         )
 
         await service.run_daily_briefing(_USER)
@@ -1300,8 +1356,12 @@ class TestTheFactsTheModelVoices:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         offsite = BriefingEvent(date=_DATE, title="Offsite")
-        monkeypatch.setattr(
-            service.context, "gather_calendar", AsyncMock(return_value=[offsite, _EVENT])
+        _seam(
+            monkeypatch,
+            world,
+            context,
+            "gather_calendar",
+            AsyncMock(return_value=[offsite, _EVENT]),
         )
         await service.run_daily_briefing(_USER)
         assert (
@@ -1309,7 +1369,7 @@ class TestTheFactsTheModelVoices:
             "- all day: Offsite\n- 11:00: Sequoia\n\n## YESTERDAY"
         ) in _prompt(world)
 
-        monkeypatch.setattr(service.context, "gather_calendar", AsyncMock(return_value=[]))
+        _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
         await service.run_daily_briefing(_USER)
         assert (
             "is empty.\nThe user's calendar has nothing today (or no calendar is connected)."
@@ -1495,10 +1555,8 @@ class TestTheGoalHold:
         )
 
     @staticmethod
-    def _no_goal(monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            service.context, "format_goal_block", AsyncMock(return_value=("", False))
-        )
+    def _no_goal(monkeypatch: pytest.MonkeyPatch, world: World) -> None:
+        _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
 
     @pytest.mark.parametrize(
         "since", [_NOW - timedelta(days=1), (_NOW - timedelta(days=1)).replace(tzinfo=None)]
@@ -1507,7 +1565,7 @@ class TestTheGoalHold:
         self, world: World, monkeypatch: pytest.MonkeyPatch, since: datetime
     ) -> None:
         self._pending(world, since)
-        self._no_goal(monkeypatch)
+        self._no_goal(monkeypatch, world)
 
         await service.run_daily_briefing(_USER)
 
@@ -1519,7 +1577,7 @@ class TestTheGoalHold:
         self, world: World, monkeypatch: pytest.MonkeyPatch, age: timedelta
     ) -> None:
         self._pending(world, _NOW - age)
-        self._no_goal(monkeypatch)
+        self._no_goal(monkeypatch, world)
 
         await service.run_daily_briefing(_USER)
 
@@ -1542,7 +1600,7 @@ class TestTheGoalHold:
             timezone=_TZ,
             briefing_bootstrap=BriefingBootstrap(pending=False, since=_NOW),
         )
-        self._no_goal(monkeypatch)
+        self._no_goal(monkeypatch, world)
 
         await service.run_daily_briefing(_USER)
 
@@ -1573,14 +1631,14 @@ class TestTheIdleLadder:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _dormant(world)
-        monkeypatch.setattr(service.dormancy, "latest_activity_since", AsyncMock(return_value=_NOW))
+        _seam(monkeypatch, world, dormancy, "latest_activity_since", AsyncMock(return_value=_NOW))
 
         await service.run_daily_briefing(_USER)
 
-        (user_id, since), _ = service.dormancy.latest_activity_since.await_args
+        (user_id, since), _ = world.reads["latest_activity_since"].await_args
         assert (user_id, since) == (_USER, _DORMANT_SINCE)
         world.clear_dormancy.assert_awaited_once_with(_USER)
-        assert service.dormancy.record_idle_day.await_args.args[1] == DormancyState(
+        assert world.reads["record_idle_day"].await_args.args[1] == DormancyState(
             idle_days=0, date=None, dormant_since=None
         )
         world.upsert.assert_awaited_once()
@@ -1604,22 +1662,20 @@ class TestTheIdleLadder:
         idle: bool,
     ) -> None:
         world.work, world.held = work, held
-        monkeypatch.setattr(
-            service.context, "format_goal_block", AsyncMock(return_value=("", has_goal))
+        _seam(
+            monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", has_goal))
         )
 
         await service.run_daily_briefing(_USER)
 
-        assert service.dormancy.record_idle_day.await_args.args[2] is idle
+        assert world.reads["record_idle_day"].await_args.args[2] is idle
 
     @pytest.mark.parametrize(("idle_days", "stage"), [(2, "warn"), (3, "final")])
     async def test_the_idle_streak_sets_the_wind_down_and_the_goodbye_goes_dormant(
         self, world: World, monkeypatch: pytest.MonkeyPatch, idle_days: int, stage: str
     ) -> None:
-        monkeypatch.setattr(
-            service.context, "format_goal_block", AsyncMock(return_value=("", False))
-        )
-        monkeypatch.setattr(service.dormancy, "record_idle_day", AsyncMock(return_value=idle_days))
+        _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
+        _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=idle_days))
 
         await service.run_daily_briefing(_USER)
 
@@ -1632,11 +1688,9 @@ class TestTheIdleLadder:
     async def test_the_wind_down_message_is_pushed_even_on_an_empty_day(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            service.context, "format_goal_block", AsyncMock(return_value=("", False))
-        )
-        monkeypatch.setattr(service.dormancy, "record_idle_day", AsyncMock(return_value=2))
-        monkeypatch.setattr(service.context, "gather_calendar", AsyncMock(return_value=[]))
+        _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
+        _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=2))
+        _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
 
         await service.run_daily_briefing(_USER)
 
@@ -1647,7 +1701,7 @@ class TestTheIdleLadder:
     async def test_a_long_streak_with_work_to_report_does_not_wind_down(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(service.dormancy, "record_idle_day", AsyncMock(return_value=5))
+        _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=5))
 
         await service.run_daily_briefing(_USER)
 
@@ -1662,8 +1716,10 @@ class TestTheIdleLadder:
         idle_days: int,
         voiced_winback: bool,
     ) -> None:
-        monkeypatch.setattr(
-            service.context,
+        _seam(
+            monkeypatch,
+            world,
+            context,
             "compute_winback_state",
             AsyncMock(
                 return_value=context.WinbackState(
@@ -1671,10 +1727,8 @@ class TestTheIdleLadder:
                 )
             ),
         )
-        monkeypatch.setattr(
-            service.context, "format_goal_block", AsyncMock(return_value=("", False))
-        )
-        monkeypatch.setattr(service.dormancy, "record_idle_day", AsyncMock(return_value=idle_days))
+        _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
+        _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=idle_days))
 
         await service.run_daily_briefing(_USER)
 
@@ -1682,10 +1736,10 @@ class TestTheIdleLadder:
         assert _stored_payload(world).mood == "winback"
 
 
-def _idle_day(monkeypatch: pytest.MonkeyPatch, streak: int) -> None:
+def _idle_day(monkeypatch: pytest.MonkeyPatch, world: World, streak: int) -> None:
     """Make today a day with nothing to report, at the given idle streak."""
-    monkeypatch.setattr(service.context, "format_goal_block", AsyncMock(return_value=("", False)))
-    monkeypatch.setattr(service.dormancy, "record_idle_day", AsyncMock(return_value=streak))
+    _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
+    _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=streak))
 
 
 class TestTheFirstWeek:
@@ -1695,11 +1749,11 @@ class TestTheFirstWeek:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         world.user.created_at = _NOW - timedelta(days=FIRST_WEEK_DAYS, seconds=-1)
-        _idle_day(monkeypatch, IDLE_DORMANT_DAYS)
+        _idle_day(monkeypatch, world, IDLE_DORMANT_DAYS)
 
         await service.run_daily_briefing(_USER)
 
-        assert service.dormancy.record_idle_day.await_args.args[2] is False
+        assert world.reads["record_idle_day"].await_args.args[2] is False
         assert world.voice_prompt.call_args.kwargs["situation"].wind_down is None
         assert world.voice_prompt.call_args.kwargs["situation"].first_week is True
         world.enter_dormancy.assert_not_awaited()
@@ -1708,11 +1762,11 @@ class TestTheFirstWeek:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         world.user.created_at = _NOW - timedelta(days=FIRST_WEEK_DAYS)
-        _idle_day(monkeypatch, IDLE_DORMANT_DAYS)
+        _idle_day(monkeypatch, world, IDLE_DORMANT_DAYS)
 
         await service.run_daily_briefing(_USER)
 
-        assert service.dormancy.record_idle_day.await_args.args[2] is True
+        assert world.reads["record_idle_day"].await_args.args[2] is True
         assert world.voice_prompt.call_args.kwargs["situation"].wind_down == "final"
         assert world.voice_prompt.call_args.kwargs["situation"].first_week is False
         world.enter_dormancy.assert_awaited_once_with(_USER)
@@ -1809,7 +1863,7 @@ class TestTheAgentOutput:
     async def test_a_lede_alone_contradicting_the_items_is_sent_back(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(service.context, "gather_calendar", AsyncMock(return_value=[]))
+        _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
         world.work = context.TrackedWork(completed=[_todo("c1", "Investor update")])
         world.agent.side_effect = [
             _voiced("The investor update is done", "You have a meeting at noon."),
@@ -1838,19 +1892,23 @@ class TestTheWeeklyRunWiring:
     async def test_the_week_is_read_for_this_user_and_summarised_for_the_model(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            service.context, "gather_completed_since", AsyncMock(return_value=_weekly_completed())
+        _seam(
+            monkeypatch,
+            world,
+            context,
+            "gather_completed_since",
+            AsyncMock(return_value=_weekly_completed()),
         )
         world.agent.return_value = SimpleNamespace(message=_fenced(_weekly(3)))
 
         async with captured_wide_event() as event:
             await service.run_weekly_digest(_USER)
 
-        service.context.gather_completed_since.assert_awaited_once_with(_USER, _WEEK_START)
-        week_call = service.context.gather_week.await_args
+        world.reads["gather_completed_since"].assert_awaited_once_with(_USER, _WEEK_START)
+        week_call = world.reads["gather_week"].await_args
         assert (week_call.args[0], week_call.args[1].date_str) == (_USER, _DATE)
         # The prose and the tallies read the same completions: one window for both.
-        assert week_call.args[2] is service.context.gather_completed_since.return_value
+        assert week_call.args[2] is world.reads["gather_completed_since"].return_value
         shipped = "\n".join(
             ["- Deck: Final numbers in", "- untitled", *[f"- G{i}" for i in range(2, 15)]]
         )
@@ -1908,15 +1966,17 @@ class TestTheWeeklyRunWiring:
     ) -> None:
         _dormant(world)
         world.agent.return_value = SimpleNamespace(message=_fenced(_weekly(3)))
-        monkeypatch.setattr(
-            service.dormancy,
+        _seam(
+            monkeypatch,
+            world,
+            dormancy,
             "latest_activity_since",
             AsyncMock(return_value=_NOW if came_back else None),
         )
 
         await service.run_weekly_digest(_USER)
 
-        (user_id, since), _ = service.dormancy.latest_activity_since.await_args
+        (user_id, since), _ = world.reads["latest_activity_since"].await_args
         assert (user_id, since) == (_USER, _DORMANT_SINCE)
         assert world.upsert.await_count == int(came_back)
 

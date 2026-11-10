@@ -1,1 +1,119 @@
-{"slug":"evernote","name":"Evernote","domain":"evernote.com","category":"notes","tagline":"Classic note-taking app with web clipper and document scanning","painPoints":["Pricing restructured to Starter ($100/year) and Advanced ($250/year) — expensive for a note app","No proactive AI; all capture and organization is manual","Frequent pricing changes and plan restructuring erode user trust","No email, calendar, or task integration for automatic knowledge capture","Performance has degraded over the years; app feels slow on mobile"],"metaTitle":"Best Evernote Alternative in 2026","metaDescription":"Evernote's pricing has ballooned and it still has no proactive AI. GAIA manages your notes, email, tasks, and calendar automatically. Free tier + self-hosting.","keywords":["evernote alternative","best evernote alternative","evernote replacement 2026","evernote too expensive","evernote vs gaia","ai note taking app","proactive knowledge management","evernote alternative free","free evernote alternative","open source evernote alternative","self-hosted evernote alternative","evernote alternative 2026"],"whyPeopleLook":"Evernote was the undisputed king of note-taking for over a decade, but years of ownership changes, feature stagnation, and aggressive pricing restructuring have pushed millions of users to look elsewhere. In 2026, Evernote's Starter plan costs $100/year and the Advanced plan costs $250/year — steep prices for an app that still requires you to manually clip, write, and organize everything yourself. There is no proactive AI, no email integration, and no workflow automation. Users want a tool that captures knowledge automatically from their email and meetings, not one that charges a premium for the privilege of doing it manually.","gaiaFitScore":4,"gaiaReplaces":["Knowledge capture from email threads and calendar events automatically","Semantic search over your notes and correspondence","Meeting context memory without manual journaling","Task creation from notes and email without manual entry","Cross-platform note access on web, desktop, mobile, and bots"],"gaiaAdvantages":["Knowledge is built automatically from your email and calendar — no manual clipping","Proactive surfacing means relevant notes appear when you need them","Open-source and self-hostable; Evernote is closed-source SaaS","Free tier available without aggressive pricing restructuring","Full productivity assistant beyond note storage"],"migrationSteps":["Export your Evernote notes via File > Export as ENEX or HTML","Convert exports to Markdown and import into GAIA's memory system","Connect Gmail and Google Calendar to enrich GAIA's knowledge base automatically","Use GAIA's semantic search to retrieve knowledge instead of Evernote notebooks"],"faqs":[{"question":"Can GAIA replace Evernote's web clipper?","answer":"GAIA does not include a browser-based web clipper. It builds knowledge automatically from your email, calendar, and connected tools. For web clipping, you can continue using a lightweight clipper tool and import saved content into GAIA's memory."},{"question":"Is GAIA cheaper than Evernote in 2026?","answer":"Evernote's Starter plan is $100/year ($8.33/month) and Advanced is $250/year ($20.83/month). GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month with email management, task automation, calendar integration, and 50+ tool connections. Self-hosted GAIA is completely free."},{"question":"Does GAIA have notebooks and tags like Evernote?","answer":"GAIA uses graph-based memory rather than notebooks and tags. Knowledge is organized by relationships between people, projects, and events — surfaced contextually rather than browsed in a folder hierarchy."},{"question":"Can I import my existing Evernote notes into GAIA?","answer":"Yes. Export your Evernote notes as ENEX or Markdown, then import them into GAIA's memory system. GAIA will index the content for semantic search and can surface relevant notes during conversations."}]}
+{
+  "slug": "evernote",
+  "name": "Evernote",
+  "domain": "evernote.com",
+  "category": "notes",
+  "tagline": "Classic note-taking app with web clipper and document scanning",
+  "painPoints": [
+    "Pricing restructured to paid Starter and Advanced tiers — expensive for a note app",
+    "No proactive AI; all capture and organization is manual",
+    "Frequent pricing changes and plan restructuring erode user trust",
+    "No email, calendar, or task integration for automatic knowledge capture",
+    "Performance has degraded over the years; app feels slow on mobile"
+  ],
+  "metaTitle": "Best Evernote Alternative in {{CURRENT_YEAR}}: Pricing and Migration",
+  "metaDescription": "Evernote keeps changing its paid plans. GAIA builds knowledge from your email and calendar automatically. Compare pricing and see how to move.",
+  "keywords": [
+    "evernote alternative",
+    "best evernote alternative",
+    "evernote replacement {{CURRENT_YEAR}}",
+    "evernote too expensive",
+    "ai note taking app",
+    "proactive knowledge management",
+    "source-available evernote alternative",
+    "self-hosted evernote alternative",
+    "evernote alternative {{CURRENT_YEAR}}"
+  ],
+  "whyPeopleLook": "Evernote was the undisputed king of note-taking for over a decade, but years of ownership changes, feature stagnation, and aggressive pricing restructuring have pushed millions of users to look elsewhere. In 2026, Evernote's paid Starter and Advanced plans — steep prices for an app that still requires you to manually clip, write, and organize everything yourself. There is no proactive AI, no email integration, and no workflow automation. Users want a tool that captures knowledge automatically from their email and meetings, not one that charges a premium for the privilege of doing it manually.",
+  "gaiaFitScore": 4,
+  "gaiaReplaces": [
+    "Knowledge capture from email threads and calendar events automatically",
+    "Semantic search over your notes and correspondence",
+    "Meeting context memory without manual journaling",
+    "Task creation from notes and email without manual entry",
+    "Cross-platform note access on web, desktop, mobile, and bots"
+  ],
+  "gaiaAdvantages": [
+    "Knowledge is built automatically from your email and calendar: no manual clipping",
+    "Proactive surfacing means relevant notes appear when you need them",
+    "Source-available and self-hostable; Evernote is closed-source SaaS",
+    "One stable plan without aggressive pricing restructuring",
+    "Full productivity assistant beyond note storage"
+  ],
+  "migrationSteps": [
+    "Export your Evernote notes via File > Export as ENEX or HTML",
+    "Convert exports to Markdown and import into GAIA's memory system",
+    "Connect Gmail and Google Calendar to enrich GAIA's knowledge base automatically",
+    "Use GAIA's semantic search to retrieve knowledge instead of Evernote notebooks"
+  ],
+  "faqs": [
+    {
+      "question": "Can GAIA replace Evernote's web clipper?",
+      "answer": "GAIA does not include a browser-based web clipper. It builds knowledge automatically from your email, calendar, and connected tools. For web clipping, you can continue using a lightweight clipper tool and import saved content into GAIA's memory."
+    },
+    {
+      "question": "Is GAIA cheaper than Evernote in 2026?",
+      "answer": "Evernote's Starter and Advanced plans are paid annual tiers. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month with email management, task automation, calendar integration, and tool connections. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
+    },
+    {
+      "question": "Does GAIA have notebooks and tags like Evernote?",
+      "answer": "GAIA uses graph-based memory rather than notebooks and tags. Knowledge is organized by relationships between people, projects, and events — surfaced contextually rather than browsed in a folder hierarchy."
+    },
+    {
+      "question": "Can I import my existing Evernote notes into GAIA?",
+      "answer": "Yes. Export your Evernote notes as ENEX or Markdown, then import them into GAIA's memory system. GAIA will index the content for semantic search and can surface relevant notes during conversations."
+    }
+  ],
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "Knowledge platform that captures and acts: notes, email, tasks, and calendar managed by one assistant",
+      "competitor": "Digital note-taking and personal organization platform: capture notes, clips, scans, and documents in searchable notebooks organized by the user"
+    },
+    {
+      "feature": "Information capture",
+      "gaia": "Capture happens automatically from email threads and calendar events, not only by typing, clipping, or scanning",
+      "competitor": "Manual capture: notes typed or dictated by user; web clipper for saving web pages; document scanning; audio and video transcription on paid plans"
+    },
+    {
+      "feature": "AI capabilities",
+      "gaia": "AI that triages, drafts, schedules, and follows up across tools, beyond enhancing note content",
+      "competitor": "AI Edit and Transcribe on Starter and Advanced plans; AI features enhance note content; no autonomous monitoring, triage, or action outside the note editor"
+    },
+    {
+      "feature": "Email management",
+      "gaia": "Full inbox management: triage, reply drafting, and email-to-task, instead of forwarding emails into notes",
+      "competitor": "Email forwarding to Evernote to save email content as notes; no inbox triage, reply drafting, or email management capabilities"
+    },
+    {
+      "feature": "Calendar integration",
+      "gaia": "Calendar synced and managed with meeting memory attached, so events carry their context",
+      "competitor": "No native calendar integration or scheduling; meeting notes can be created manually; calendar events are not synced or managed"
+    },
+    {
+      "feature": "Task management",
+      "gaia": "Tasks created from notes and email with priorities and deadlines, in a real hierarchy",
+      "competitor": "Basic task and reminder functionality inside notes; no AI-driven task creation from external sources; no dedicated project hierarchy"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Multi-step automations across tools described in words, replacing a passive store plus Zapier piping",
+      "competitor": "No native workflow automation; Zapier integration for piping external data into Evernote; primarily a passive content store"
+    },
+    {
+      "feature": "Search & retrieval",
+      "gaia": "Semantic search over notes plus correspondence and tasks, answering from your whole digital footprint",
+      "competitor": "Core strength: full-text search across typed, handwritten, and scanned content; reliable, fast search across a large note archive is a long-standing Evernote strength"
+    },
+    {
+      "feature": "Source-available & self-hosting",
+      "gaia": "Source-available and self-hostable, with no acquisition-driven data concerns",
+      "competitor": "Closed-source SaaS; no self-hosting; data subject to Evernote's privacy policy; ownership history (Bending Spoons acquisition) has raised user data concerns"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted: paid plan at ${{PRO_MONTHLY_PRICE}}/month; self-hosting free for non-commercial use (plus your own model API costs)",
+      "competitor": "Free plan and paid plans available; paid hardware required."
+    }
+  ]
+}

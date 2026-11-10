@@ -47,11 +47,13 @@ NUDGE = "Acme's invoice is three days overdue. Want me to chase them?"
 @pytest.mark.regression
 async def test_a_proactive_notification_is_in_the_next_bot_turns_memory() -> None:
     thread_id = f"conv-{uuid4()}"
-    user = UserDocument(
-        id=USER_ID,
-        platform_links={"telegram": {"id": TELEGRAM_ID}},
-        timezone="UTC",
-        quiet_hours=quiet_hours_excluding_now(),
+    user = UserDocument.model_validate(
+        {
+            "id": USER_ID,
+            "platform_links": {"telegram": {"id": TELEGRAM_ID}},
+            "timezone": "UTC",
+            "quiet_hours": quiet_hours_excluding_now(),
+        }
     )
     publisher = MagicMock(publish_outbound=AsyncMock())
     request = NotificationRequest(

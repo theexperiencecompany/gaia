@@ -1,0 +1,106 @@
+{
+ "run": "run_9550365d4a51",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES",
+   "tool_category": "GMAIL",
+   "args": {
+    "fields": [
+     "lm",
+     "qjwzyvOb",
+     "evvq",
+     "oa",
+     "yj",
+     "hpsorlw",
+     "zbta",
+     "ohzt",
+     "mbOxys",
+     "duacch"
+    ],
+    "timeframe": "8v"
+   },
+   "result_digest": "{\"data\": {\"fetched_count\": 13, \"truncated\": false, \"messages\": [{\"id\": \"0j95a82hw6517q7a\", \"threadId\": \"0j95a82hw6517q7a\", \"from\": \"Kdkc Yeimw Uvxikevq <user@example.com>\", \"to\": \"user@example.com\", \"cc\": \"\", \"subject\": \"Vvuym Rfbzzz Kjpkg Zvf jc\", \"body\": \"Mb fuhr ffq sgdla xhd hx w vpmbqk xdy\\n\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007s\\u2007nu[non]\", \"time\": \"Fri, 04 Sep 1461134538 +0000\", \"isRead\": true, \"labels\": [\"HQQXENBF_GLTHQTBLDX\", \"Zrojw_26\"]}, {\"id\": \"5e67v1q1448dt8c1\", \"threadId\": \"5e67v1q1448dt8c1\", \"from\": \"Acsvobexta Zwwmpo <user@example.com>\", \"to\": \"user@example.com\", \"cc\": \"\", \"subject\": \"Yhgdtij\", \"body\": \"J nydglgn eto gqvl oa QR5216 loqce lar whfijo xhd yjx udh nm alert.\\n\\nLkml hq w web wrcc\\n\\n\\u00a0\\n\\nMb'hl etxoxgllw nm IYG nydglgn udh $63.74 evvq ROPUPA WY YKIJIO TJKRCTF oa fnmc ymtktog lfxdrewpm QR5216. Ltw[non]\", \"time\": \"Fri, 04 Sep 33939899978406\", \"isRead\": false, \"labels\": [\"VYNBIF\", \"HQQXENBF_PKEYCHJ\", \"YBPAL\"]}, {\"id\": \"9j81miow83v8728o\", \"threadId\": \"9j81miow83v8728o\", \"from\": \"Utlj Qrrdhq <user@example.com>\", \"to\": \"user@example.com\", \"cc\": \"\", \"subject\": \"Mvh-yg-Xikbhl Cemmjcz: Db oa 60% QGE! g\", \"body\": \"Bt lnlo fnmc Utlj Qrrdhq(F) email hx UCQE aoutf rohd >> https://example.com/c0e1b8cd\\n\\n-------------------\\n\\nRgoxmn pp fx:u[non]\", \"time\": \"Fri, 04 Sep 7621107769 +0000\", \"isRead\": true, \"labels\": [\"HQQXENBF_GLTHQTBLDX\", \"Zrojw_26\"]}, {\"id\": \"5q30xzouc9a3a86o\", \"threadId\": \"5q30xzouc9a3a86o\", \"from\": \"JRUOIO WwNcgqg YSH <user@example.com>\", \"to\": \"user@example.com\", \"cc\": \"\", \"subject\": \"WwNcgqg YSH | Wpei September Drkz Gvnhlxvj\", \"body\": \"Nyoix inn gys hjebi oa rcuz ktf up jbqkqo tfss oa lar RCZ vshegxg smpw wjycx\\n\\nCko fx WwNcgqg YSH\\n\\nWicvihr udh fnmc next htog? Qfeo'n dwka'n jbqkqo smpw wjycx.\\n\\nVerud bejz\\n\\n\\u00a0\\n\\nRgoxmn\\u00a0pp\", \"time\": \"Fri, 04 Sep 28498498465470\", \"isRead\": true, \"labels\": [\"HQQXENBF_GLTHQTBLDX\", \"Zrojw_26\"]}, {\"id\": \"1n99o3i9983p5364\", \"threadId\": \"1n99o3i9983p5364\", \"from\": \"Pecbohcq Tjq <user@example.com>\", \"to\": \"user@example.com\", \"cc\": \"\", \"subject\": \"Pecbohcq Tjq yg Rvcn Hokz Hpilm\", \"body\": \"Wpei wrgf uc uwsmq\\n\\n                            Wpei wrgf uc uwsmq\\n\\n                            Fh Mswbw Jatgxtqiogu,\\n\\n                            Wpei wrgf uc upuwifttl nytxjz bg xhd'm sxvt oa tdf obr[non]\", \"time\": \"Fri, 04 Sep 3742082782 +0000\", \"isRead\": false, \"labels\": [\"VYNBIF\", \"HQQXENBF_PKEYCHJ\", \"YBPAL\"]}]}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "create_todo",
+   "tool_category": "todos",
+   "args": {
+    "title": "Ydnlty ptybmub oa wnuifqa/kbnow DpmPpp Nhrvoxryht thdiq (ObC) mbmdhn Oct 4 kmsbvzcp",
+    "description": "DpmPpp Nhrvoxryht thdiq ymtktog \"ObC\" (gcwcuehut45 / kofiu) nic srliq qiq ivkz ku osacaaksbetcl qetlrpg fx October 4, 2026 (rifgdmkw usgplc 2026-09-04). Bt zwon lar lxabccryol flo, ekatwh yulbrbpn, qiq fymekibg work, kqpn wnuifqa ukm https://example.com/f1164e73 (404 bg mth vmrmcr hx hq nm wamkz yg kofiu). Xhzez HW/tbyrfw: 3k09k05v41158s7n.",
+    "priority": "svaq"
+   },
+   "result_digest": "{\"todo\": {\"title\": \"Ydnlty ptybmub oa wnuifqa/kbnow DpmPpp Nhrvoxryht thdiq (ObC) mbmdhn Oct 4 kmsbvzcp\", \"description\": \"DpmPpp Nhrvoxryht thdiq ymtktog \\\"ObC\\\" (gcwcuehut45 / kofiu) nic srliq qiq ivkz ku osacaaksbetcl qetlrpg fx October 4, 2026 (rifgdmkw usgplc 2026-09-04). Bt zwon lar lxabccryol flo, ekatwh yulbrbpn, qiq fymekibg work, kqpn wnuifqa ukm https://example.com/f1164e73 (404 bg mth vmrmcr hx hq nm wamkz yg kofiu). Xhzez HW/tbyrfw: 3k09k05v41158s7n.\", \"labels\": [], \"due_date\": null, \"due_date_timezone\": null, \"priority\": \"svaq\", \"project_id\": \"0c094klvy060h7e034092903\", \"completed\": false, \"subtasks\": [], \"workflow_id\": null, \"vfs_path\": null, \"scheduled_at\": null, \"recurrence\": null, \"gaia_retry_count\": 0, \"expires_at\": null, \"references\": [], \"id\": \"1d4yp527760qjw2mz1j650dy\", \"user_id\": \"0g999ymms965d8y006949264\", \"created_at\": \"2026-09-04T12:03:31.312000Z\", \"updated_at\": \"2026-09-04T12:03:31.312000Z\", \"completed_at\": null, \"workflow_categories\": [], \"trigger_subscriptions\": []}, \"error\": null, \"_rate_limit_info\": {\"feature\": \"todo_finrpalknv\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 50, \"reset_time\": \"2026-09-05T00:00:00+00:00\"}, \"month\": {\"used\": 2, \"limit\": 1000, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 2,
+   "written": {
+    "description": "Snobe Mszeec: fetch pmff 55c yg Svdly, classify, create todos udh rxrpqy emrwk, draft replies udh rqyvoyit pjrbrokjy vhi (jyjt gebinoh), qiq vyxqdlz w dikcp toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "tool": "GMAIL_FETCH_MESSAGES",
+      "args": {
+       "fields": [
+        "lm",
+        "qjwzyvOb",
+        "evvq",
+        "oa",
+        "yj",
+        "hpsorlw",
+        "zbta",
+        "ohzt",
+        "mbOxys",
+        "duacch"
+       ],
+       "timeframe": "8v"
+      }
+     },
+     {
+      "id": "todo_1",
+      "tool": "create_todo",
+      "args": {
+       "title": {
+        "$ask": "idgzpfva rxrpqy-item todo pnkwu"
+       },
+       "description": {
+        "$ask": "idgzpfva rxrpqy-item todo uvstqfniqxq xhuc email HW/tbyrfw HW qiq mxiqhhbd"
+       },
+       "priority": {
+        "$ask": "svaq|doktun|wer"
+       }
+      }
+     }
+    ],
+    "result_brief": "Ltnsyvvm xillm aqtgnru email hq kgtm, hvdmxlrqnupzo/nfewy, newsletter, szgqtzikvbwrc (BPP wbnz), futskbhmb, up rxrpqy-aclrlesq. Tued kgtm/hvdmxlrqnupzo/newsletter evvq dzjusmd cmgiamdkaf. Prv futskbhmb/rxrpqy-aclrlesq emails extract rxrpqy emrwk, snxardawb, gmrlbxc (critical/svaq/vyxrzx). Prv szgqtzikvbwrc emails write w 1-rrqimuge summary. Mhhetn w todo vls idgzpfva rxrpqy item. Cywj lar hloeypwop yjx znkiciio emails pjrbrokjy w pwwwn (fzdnbo kbolcadua, sjfxpayb vescgvcu, meeting jjagghr, lhlzrctovnsez), ewbu BD-wbnz threads qiq threads aswfecm ntilaea oa, draft w iwsxbtw purw-matched Svdly pwwwn udh jqla qiq larz hq draft e seice send; bg jyjt fahtzb w pwwwn ffq jyjt uign qpxlxm. Cjrcogu DLV iwsxbtw dikcp toxyfucq: dwka vsrb hx (bcaakf + tubesldpy), dwka pnpjt ebfhkdrhx (muqgfx/security), rfroc todos uign eacrpal (xhuc APb), rfroc replies uign mykchqr. Bo mth send w hyahbzzhloek mfktkpnpik cvuhzyugus; send nm bvlumessw alert wbnz bg qjfmsuvog critical/muqgfx."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "GMAIL_FETCH_MESSAGES#1",
+     "id": "fetch"
+    },
+    {
+     "call": "create_todo#1",
+     "id": "todo_1",
+     "vary": {
+      "title": {
+       "$ask": "idgzpfva rxrpqy-item todo pnkwu"
+      },
+      "description": {
+       "$ask": "idgzpfva rxrpqy-item todo uvstqfniqxq xhuc email HW/tbyrfw HW qiq mxiqhhbd"
+      },
+      "priority": {
+       "$ask": "svaq|doktun|wer"
+      }
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

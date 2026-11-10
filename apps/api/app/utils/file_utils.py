@@ -10,14 +10,15 @@ from typing import TYPE_CHECKING, Union, cast
 from langchain_core.messages import BaseMessage
 
 from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model, with_llm_retry
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.vision import describe_image
 from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
-from app.config.settings import settings
 from app.constants.files import (
     CSV_MIME,
     DOC_MIME,
     DOCX_MIME,
     EPUB_MIME,
+    IMAGE_SUMMARY_NO_VISION_PROVIDER,
     LOCAL_EXTRACTION_TIMEOUT_SECONDS,
     MAX_CHUNK_CHARS,
     MAX_INDEXED_CHUNKS,
@@ -32,8 +33,11 @@ from app.constants.files import (
     XLSX_MIME,
 )
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
+from app.services.providers.provider_credentials_service import ProviderConfig, resolved_config
 from app.utils import local_document_parser
+from app.utils.exceptions import ProviderNotConfiguredError
 from app.utils.image_codec import ImageCodec, InvalidImageError
 from shared.py.wide_events import log
 
@@ -41,6 +45,11 @@ if TYPE_CHECKING:
     from llama_cloud_services import LlamaParse
 
 _IMAGE_SUMMARY_UNAVAILABLE = "Image description could not be generated."
+_SCANNED_PDF_NEEDS_OCR = (
+    "{filename} is a scanned PDF and was not read: reading scanned pages needs OCR, "
+    "which isn't set up on this GAIA instance. An admin can add a LlamaParse key "
+    "in Settings → Providers & Tools."
+)
 
 
 def _chunk_markdown(markdown: str, max_chunk_chars: int = MAX_CHUNK_CHARS) -> list[str]:
@@ -86,8 +95,15 @@ class DocumentProcessor:
 
     @property
     def parser(self) -> "LlamaParse":
-        """LlamaCloud client, constructed on first use."""
+        """LlamaCloud client for the saved LlamaParse key, constructed on first use.
+
+        Raises ProviderNotConfiguredError when no key is saved or set in env.
+        """
         if self._parser is None:
+            config: ProviderConfig | None = resolved_config(CredentialProviderName.LLAMAPARSE)
+            api_key = config.api_key if config else None
+            if not api_key:
+                raise ProviderNotConfiguredError("LlamaParse OCR has no API key")
             from llama_cloud_services import (  # noqa: PLC0415 -- ~0.7s SDK import; only the scanned-PDF OCR fallback needs it
                 LlamaParse,
             )
@@ -97,7 +113,7 @@ class DocumentProcessor:
 
             self._parser = LlamaParse(
                 result_type=ResultType.MD,
-                api_key=settings.LLAMA_INDEX_KEY or "",
+                api_key=api_key,
             )
         return self._parser
 
@@ -122,6 +138,9 @@ class DocumentProcessor:
                 return await self.process_text(file_content)
             ext = Path(filename).suffix.lower()
             return f"File of type {ext} (no content extraction available)"
+        except ProviderNotConfiguredError:
+            log.warning(f"{LogTag.TOOL} Scanned PDF skipped: no OCR provider", filename=filename)
+            return _SCANNED_PDF_NEEDS_OCR.format(filename=filename)
         except Exception as e:
             log.error(
                 f"{LogTag.TOOL} Failed to process file",
@@ -148,13 +167,18 @@ class DocumentProcessor:
             )
             return _IMAGE_SUMMARY_UNAVAILABLE
 
-        description = await describe_image(
-            inline.base64,
-            inline.mime_type,
-            prompt=DOCUMENT_IMAGE_SUMMARY_PROMPT,
-            label="file_image_summary",
-            user_id=self.user_id,
-        )
+        try:
+            description = await describe_image(
+                inline.base64,
+                inline.mime_type,
+                prompt=DOCUMENT_IMAGE_SUMMARY_PROMPT,
+                label="file_image_summary",
+                user_id=self.user_id,
+            )
+        except LLMNotConfiguredError as e:
+            # The upload still lands; the summary says plainly why it is blind.
+            log.warning(f"{LogTag.TOOL} No vision provider for an uploaded image", error=str(e))
+            return IMAGE_SUMMARY_NO_VISION_PROVIDER
         return description or _IMAGE_SUMMARY_UNAVAILABLE
 
     async def process_doc(self, data: bytes) -> list[DocumentSummaryModel]:

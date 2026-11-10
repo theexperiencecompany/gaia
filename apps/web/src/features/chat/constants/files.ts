@@ -25,6 +25,13 @@ export const ALLOWED_FILE_TYPES = [
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ];
 
+/** Human summary of ALLOWED_FILE_TYPES, shown before and when a pick is rejected. */
+export const SUPPORTED_FILE_TYPES_LABEL =
+  "Supported: images, PDF, Word, Excel, PowerPoint, OpenDocument, EPUB, and text files (TXT, Markdown, CSV, RTF, JSON)";
+
+/** The attach menu's description: the limits a user would otherwise only learn from a rejection. */
+export const ATTACHMENT_LIMITS_HINT = `Up to ${MAX_FILES} files per message, ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB each. ${SUPPORTED_FILE_TYPES_LABEL}.`;
+
 /** Pastes longer than this become a .txt attachment instead of inline text,
  *  keeping the composer responsive and routing big content through the file
  *  pipeline (same approach as Claude's paste-to-attachment). */

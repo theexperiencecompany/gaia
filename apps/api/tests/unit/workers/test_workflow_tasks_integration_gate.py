@@ -62,7 +62,7 @@ async def _run_task(
         patch(
             f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
         ) as notify,
-        patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock) as budget,
+        patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(
             f"{MODULE}.execute_workflow_as_chat",

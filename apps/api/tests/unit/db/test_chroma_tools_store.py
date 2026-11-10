@@ -9,8 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langgraph.store.base import PutOp
 import pytest
 
+from app.agents.tools.core.local_embeddings import FastEmbedEmbeddings
 from app.constants.chroma import (
     CHROMA_TOOLS_STORE_COLLECTION,
+    GEMINI_EMBEDDING_DIMS,
     TOOLS_INDEX_CACHE_TTL_SECONDS,
     TOOLS_SEED_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     TOOLS_SEED_LOCK_KEY_PREFIX,
@@ -19,6 +21,7 @@ from app.constants.chroma import (
     TOOLS_SEED_LOCK_RENEW_SECONDS,
 )
 from app.constants.log_tags import LogTag
+from app.constants.memory import EMBEDDING_DIM
 from app.db.chroma import chroma_tools_store
 from app.db.chroma.chroma_store import ChromaBatchWriteError
 from app.db.chroma.chroma_tools_store import (
@@ -954,9 +957,11 @@ class TestInitializeChromaToolsStore:
             patch("app.db.chroma.chroma_tools_store.ChromaClient.get_client", new=AsyncMock()),
             patch(
                 "app.db.chroma.chroma_tools_store.providers.aget",
-                new=AsyncMock(return_value=embeddings),
+                new=AsyncMock(side_effect={"google_embeddings": embeddings}.get),
             ),
-            patch("app.db.chroma.chroma_tools_store.ChromaStore", return_value=mock_store),
+            patch(
+                "app.db.chroma.chroma_tools_store.ChromaStore", return_value=mock_store
+            ) as chroma_store,
             patch(
                 "app.db.chroma.chroma_tools_store._get_current_tools_with_hashes",
                 return_value=current,
@@ -970,6 +975,7 @@ class TestInitializeChromaToolsStore:
             ) as execute,
         ):
             yield SimpleNamespace(
+                chroma_store=chroma_store,
                 store=mock_store,
                 collection=collection,
                 registry=registry,
@@ -993,6 +999,12 @@ class TestInitializeChromaToolsStore:
                 "tool": SimpleNamespace(name="t", description="d"),
             }
         }
+
+    async def test_the_store_seeds_at_startup_not_on_the_first_chat(self):
+        """Seeding embeds every builtin tool: 41s on a fresh self-host, paid by its first message."""
+        loader = initialize_chroma_tools_store()
+
+        assert loader.auto_initialize is True
 
     async def test_raises_when_embeddings_unavailable(self):
         with (
@@ -1029,6 +1041,25 @@ class TestInitializeChromaToolsStore:
             # The runner suffixes collections (GAIA_CHROMA_COLLECTION_SUFFIX), so name it by the constant.
             "collection": CHROMA_TOOLS_STORE_COLLECTION,
             "embedded_count": 1,
+        }
+
+    @pytest.mark.parametrize(
+        ("embeddings", "dims"),
+        [
+            (FastEmbedEmbeddings(), EMBEDDING_DIM),
+            (object(), GEMINI_EMBEDDING_DIMS),
+        ],
+        ids=["local-fastembed-declares-its-size", "google-default"],
+    )
+    async def test_the_collection_is_sized_by_the_embeddings_backend(
+        self, seed_lock_keys, embeddings, dims
+    ):
+        with self._patched(embeddings=embeddings, current={}, existing={}) as p:
+            await self._run()
+        assert p.chroma_store.call_args.kwargs["index"] == {
+            "embed": embeddings,
+            "dims": dims,
+            "fields": ["description"],
         }
 
     async def test_no_diff_does_not_touch_the_store(self):

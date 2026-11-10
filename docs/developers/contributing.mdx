@@ -1,117 +1,117 @@
 ---
-title: "Contributing Guidelines"
-description: "Learn how to contribute to GAIA with our contribution guidelines and best practices"
-icon: "git-alt"
+title: "Open a pull request"
+sidebarTitle: "Open a pull request"
+description: "Fork, change, check, and open a pull request."
+icon: "code-pull-request"
 ---
 
-GAIA is built in the open, and contributions of every size are welcome, bug fixes, features, docs, and integrations. This page covers the conventions your contribution needs to follow.
+Bug fixes, features, docs and tests are all welcome. AI-assisted pull requests are fine: just say so.
 
-<Tip>
-**Quick Setup**: Install the GAIA CLI globally, then run `gaia init` to automatically set up your development environment.
-
-<Snippet file="cli-install.mdx" />
-
-This guide covers the manual process for contributors who prefer full control.
-</Tip>
-
-## Getting Started
-
-Before making your first contribution:
-
-<CardGroup cols={2}>
-  <Card
-    title="Code of Conduct"
-    icon="handshake"
-    href="https://github.com/theexperiencecompany/gaia/blob/master/.github/CODE_OF_CONDUCT.md"
-  >
-    Read our community guidelines
-  </Card>
-  <Card
-    title="Development Setup"
-    icon="laptop-code"
-    href="/developers/development-setup"
-  >
-    Set up your local environment
-  </Card>
-  <Card title="Code Style Guide" icon="code" href="/configuration/code-style">
-    Learn our coding standards
-  </Card>
-  <Card title="Commands Reference" icon="terminal" href="/developers/commands">
-    Discover available mise commands
-  </Card>
-</CardGroup>
-
-## Ways to Contribute
-
-<CardGroup cols={2}>
-  <Card title="Bug Fixes" icon="bug">
-    Help us squash bugs and improve stability
-  </Card>
-  <Card title="New Features" icon="plus">
-    Add exciting new capabilities to GAIA
-  </Card>
-  <Card title="Documentation" icon="book">
-    Improve guides, add examples, or fix typos
-  </Card>
-  <Card title="Testing" icon="flask">
-    Write tests to improve code coverage and reliability
-  </Card>
-</CardGroup>
-
-## Contribution Workflow
+For a large change, open an [issue](https://github.com/theexperiencecompany/gaia/issues) or [discussion](https://github.com/theexperiencecompany/gaia/discussions) first, so we agree on the approach.
 
 <Steps>
-  <Step title="Fork & Clone">
-    **Fork** the repository on GitHub and clone **your fork** locally:
+  <Step title="Fork and clone">
+    Fork the repository on GitHub, then clone your fork and add the original as `upstream`:
 
     ```bash
     git clone https://github.com/YOUR_USERNAME/gaia.git
+    cd gaia
+    git remote add upstream https://github.com/theexperiencecompany/gaia.git
     ```
 
+    Then follow [Set up for development](/developers/development-setup) from step 2.
   </Step>
 
-  <Step title="Create a Branch">
-    Create a new branch for your feature or fix:
+  <Step title="Create a branch from master">
+    `master` is the only long-lived branch.
 
     ```bash
-    git checkout -b feature/your-feature-name
+    git checkout -b fix/chat-draft-lost
+    ```
+  </Step>
+
+  <Step title="Make the change, with a test">
+    Follow the `CLAUDE.md` in the folder you change (see [Project tour](/developers/project-tour#rules-that-live-next-to-the-code)). New behavior ships with a test. A bug fix ships with a test that fails without the fix. See [Testing](/developers/testing).
+  </Step>
+
+  <Step title="Run the checks">
+    ```bash
+    mise run lint         # TypeScript and the Nx projects
+    mise run lint:py      # all Python
+    mise run type-check
     ```
 
+    Add the tests for what you changed. `mise run lint:fix` and `mise run lint:py:fix` fix most lint findings.
   </Step>
 
-  <Step title="Make Changes">
-    Make your changes following our coding standards and best practices.
-  </Step>
-
-  <Step title="Commit & Push">
-    Commit your changes with a descriptive message following our [conventional commits](/configuration/conventional-commits) format:
+  <Step title="Commit">
+    Use a [conventional commit](/configuration/conventional-commits) message.
 
     ```bash
-    git add .
-    git commit -m "feat: your commit message"
-    git push origin your-branch-name
+    git add <files>
+    git commit -m "fix(web): keep the draft when switching chats"
     ```
 
+    With the hooks installed (`mise run pre-commit:install`), commits run the linters, and pushes run the CI checks your change affects. That can take a few minutes.
   </Step>
 
-  <Step title="Create Pull Request">
-    Open a [pull request on GitHub](https://github.com/theexperiencecompany/gaia/pulls) with a clear description of your changes.
+  <Step title="Merge master if it moved">
+    Use a merge, not a rebase:
+
+    ```bash
+    git fetch upstream
+    git merge upstream/master
+    ```
+  </Step>
+
+  <Step title="Push and open the pull request">
+    ```bash
+    git push origin fix/chat-draft-lost
+    ```
+
+    Open the pull request against `master`. Its title uses the same format as a commit, and CI rejects any other. See the [allowed types](/configuration/conventional-commits#supported-types).
+  </Step>
+
+  <Step title="Fill in the template">
+    Write the description for someone who has never seen your branch. Delete sections that don't apply.
+
+    - **Summary** and **Why**: what changes for the user, and why.
+    - **What changed**, grouped by area.
+    - **The bug**, for fixes: root cause and how the fix addresses it.
+    - **Screenshots** for anything visual.
+    - **How to verify**: steps a reviewer can follow.
   </Step>
 </Steps>
 
-## Recognition
+## What happens next
 
-Contributors are recognized in:
+1. CI runs on every push. Open a failed check to read its log.
+2. A maintainer reviews and may comment.
+3. Push more commits to the same branch to answer. The pull request updates itself.
+4. A maintainer merges it once it's approved and green.
 
-- **README.md** contributors section
-- **Release notes** for significant contributions
-- **Discord** contributor role and channels
+Contributors are credited in the README, and in the release notes for significant changes.
 
-## Getting Help
+## Common problems
 
-- **Documentation**: Check our comprehensive docs
-- **Discord**: Join our community for real-time help
-- **Issues**: Search existing issues or create a new one
-- **Discussions**: Use GitHub Discussions for questions and ideas
+<AccordionGroup>
+  <Accordion title="A CI check failed">
+    Read the log. Most failures name the file and line. The table in the [repository's CLAUDE.md](https://github.com/theexperiencecompany/gaia/blob/master/CLAUDE.md#verify-with-the-ci-command-not-a-lookalike) maps each kind of change to its command. Run it locally, fix, commit and push.
+  </Accordion>
 
-Thank you for contributing to GAIA! 🚀
+  <Accordion title="The pull request has merge conflicts">
+    Merge `master` into your branch, resolve the conflicts git reports, then commit and push.
+  </Accordion>
+
+  <Accordion title="The title check failed">
+    Edit the title so it starts with an allowed type, like `fix:` or `feat(web):`. The check reruns on its own.
+  </Accordion>
+</AccordionGroup>
+
+Need help? Ask in [Discord](https://discord.heygaia.io), [GitHub Discussions](https://github.com/theexperiencecompany/gaia/discussions) or on the issue.
+
+## Next
+
+<Card title="Architecture" icon="sitemap" href="/developers/architecture">
+  How the processes, databases and AI agents fit together.
+</Card>

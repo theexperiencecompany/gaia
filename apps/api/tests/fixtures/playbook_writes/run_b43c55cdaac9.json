@@ -1,0 +1,52 @@
+{
+ "run": "run_b43c55cdaac9",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {},
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['github', 'googlecalendar', 'linear']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 5,
+   "record_len": 0,
+   "written": {
+    "description": "Vqdkscj sdnqmme status urvstvngp udh qjrsucnkwtsp: fetch today'n trmwnlfmk sdnqmme sync meetings evvq Zmlvvp Tvelkhjg, njzrgywjn cuioau/vxdvud avjsrfif evvq Lhhiuw, qiq ijkaape/PK activity evvq DpmPpp (lbh hx lqirhkaw), vtyc pwlztlikjl tnvd w iwsxbtw mhvwvqap-qiq-avjsrfif toxyfucq. Hx sja whtnfvqn uc mth qtlgdynes, vqpa lar toxyfucq HSMFHCCYHN.",
+    "result_brief": "Apudw rfroc dmqo vyagigm uueuvlasp up goohkt. Hx lbh jxwvq ncow xhuc \"pnpjt oa ku qtlgdynes\", report lar toxyfucq hq HSMFHCCYHN, list jqla jsfoljo iqiswc ae gfqp, qiq dgmbr lar mondsseazv ESP(n) tkcxipvb (jqla nntfd udh 1 miby). Hx dmqo eto kzaveewed, pwlztlikjl tnvd w gsocliiw toxyfucq xhuc eqf caojidex: \"Xfyjtwrs nxqjotbxdf\" (evvq Lhhiuw njzrgywjn cuioau + DpmPpp zchmfb JVr/ijkaape) qiq \"Elszqnajjns/avjsrfif\" (evvq Lhhiuw vxdvud avjsrfif + DpmPpp open JVr), jqla item lfvesi lar pnkwu, status, qiq jzne/ezmrgn evvq lar vvvk cxdspf, tkcxipvb. Vcdqows label sja tqxj dzout iqiswc goohkt.",
+    "steps": [
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "fetch_events",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {}
+       }
+      ]
+     },
+     {
+      "id": "linear",
+      "handoff": "linear",
+      "steps": []
+     },
+     {
+      "id": "github",
+      "handoff": "github",
+      "steps": []
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['github', 'googlecalendar', 'linear']",
+   "expected": "unmappable"
+  }
+ ]
+}

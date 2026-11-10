@@ -1,95 +1,186 @@
 """Behavior tests for app.agents.core.background.workflow_platform_delivery.
 
-Locks: a result goes to the ONE platform resolve_chat_channel picks; the
+Locks: a result goes to the ONE platform the caller's resolved target names; the
 notification text is split into bubbles on the break sentinel; that platform
 gets a persisted bot message and one outbound publish; the platform that
-already has the result in its own conversation is never pinged again; and
-every failure path stays best-effort (logs, never raises).
+already has the result in its own conversation is never pinged again; a
+target in the GAIA app sends nothing to a chat app; and every failure path
+stays best-effort (logs, never raises).
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
+from app.agents.core.background.workflow_platform_delivery import (
+    deliver_result_to_platforms,
+    deliver_workflow_result,
+)
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
 from app.models.chat_models import ConversationSource
 from app.models.user_models import AuthenticatedUser
-from app.services.delivery.chat_channel import ChatChannel
+from app.services.delivery.chat_channel import ChatChannel, InApp, InAppReason
 from app.services.outbound_delivery import OutboundResult
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.workflow_platform_delivery"
 PLATFORM_CHAT = "app.agents.core.background.platform_chat"
 
+pytestmark = pytest.mark.usefixtures("outside_quiet_hours")
+
 USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
 USER_ID = "user-1"
 TEXT = f"Report is ready.{NEW_MESSAGE_BREAKER}It has 3 pages."
 
-pytestmark = pytest.mark.usefixtures("outside_quiet_hours")
+TELEGRAM = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-123", basis="priority"
+)
+WHATSAPP = ChatChannel(
+    source=ConversationSource.WHATSAPP, platform_user_id="wa-1", basis="priority"
+)
+IMESSAGE = ChatChannel(
+    source=ConversationSource.IMESSAGE, platform_user_id="im-1", basis="priority"
+)
 
-TELEGRAM = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-123")
 
+class TestAWorkflowResultSaysWhereItWent:
+    """Both workflow paths deliver through deliver_workflow_result, which records the routing once."""
 
-def _channel(channel: ChatChannel | None):
-    return patch(f"{MODULE}.resolve_chat_channel", AsyncMock(return_value=channel))
+    OWNER_ID = "6812f0b3c9a14e2b7d5a91cc"
+    ORIGIN = 'workflow "Morning digest" (id wf-1)'
+
+    async def _deliver(self, *, target: object, sent_on: ConversationSource | None) -> MagicMock:
+        with (
+            patch(f"{MODULE}.resolve_proactive_target", AsyncMock(return_value=target)),
+            patch(f"{MODULE}.deliver_result_to_platforms", AsyncMock(return_value=sent_on)),
+            patch(f"{MODULE}.capture") as capture,
+        ):
+            await deliver_workflow_result(
+                user=AuthenticatedUser(user_id=self.OWNER_ID),
+                workflow_id="wf-1",
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
+            )
+        return capture
+
+    async def test_a_result_sent_where_the_user_is_active_names_that_chat_app(self) -> None:
+        active = ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
+        capture = await self._deliver(target=active, sent_on=ConversationSource.TELEGRAM)
+
+        capture.assert_called_once_with(
+            UserId(self.OWNER_ID),
+            WorkflowResultDelivered(
+                workflow_id="wf-1",
+                outcome="delivered",
+                platform="telegram",
+                destination="chat_app",
+                destination_basis="recent_activity",
+            ),
+        )
+
+    async def test_a_result_kept_in_the_app_for_an_active_user_says_so(self) -> None:
+        capture = await self._deliver(target=InApp(reason="active_in_app"), sent_on=None)
+
+        capture.assert_called_once_with(
+            UserId(self.OWNER_ID),
+            WorkflowResultDelivered(
+                workflow_id="wf-1",
+                outcome="delivered",
+                destination="in_app",
+                destination_basis="active_in_app",
+            ),
+        )
+
+    async def test_a_chat_app_that_did_not_take_it_is_recorded_undelivered(self) -> None:
+        capture = await self._deliver(target=TELEGRAM, sent_on=None)
+
+        capture.assert_called_once_with(
+            UserId(self.OWNER_ID),
+            WorkflowResultDelivered(
+                workflow_id="wf-1",
+                outcome="undelivered",
+                destination="chat_app",
+                destination_basis="priority",
+            ),
+        )
+
+    async def test_a_failed_lookup_sends_nothing_and_is_recorded_as_lookup_failed(self) -> None:
+        with (
+            patch(
+                f"{MODULE}.resolve_proactive_target",
+                AsyncMock(side_effect=ConnectionError("mongo down")),
+            ),
+            patch(f"{MODULE}.deliver_result_to_platforms", AsyncMock()) as deliver,
+            patch(f"{MODULE}.capture") as capture,
+        ):
+            async with captured_wide_event() as event:
+                await deliver_workflow_result(
+                    user=AuthenticatedUser(user_id=self.OWNER_ID),
+                    workflow_id="wf-1",
+                    notification_text=TEXT,
+                    origin=self.ORIGIN,
+                    message_class=ProactiveMessageClass.ROUTINE,
+                )
+
+        deliver.assert_not_awaited()
+        capture.assert_called_once_with(
+            UserId(self.OWNER_ID),
+            WorkflowResultDelivered(workflow_id="wf-1", outcome="lookup_failed"),
+        )
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} workflow result: chat app lookup failed, not sent to the chat app",
+                "workflow_id": "wf-1",
+                "error": "mongo down",
+                "error_type": "ConnectionError",
+            }
+        ]
 
 
 class TestDeliverWorkflowResultToPlatforms:
     ORIGIN = 'workflow "Morning digest" (id wf-1)'
 
     async def test_blank_text_is_a_no_op(self) -> None:
-        with _channel(TELEGRAM) as resolve:
+        with patch(f"{PLATFORM_CHAT}.BotService.get_or_create_session", AsyncMock()) as session:
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text="   ",
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=TELEGRAM,
             )
 
-        resolve.assert_not_awaited()
+        session.assert_not_called()
 
-    async def test_no_usable_platform_is_a_no_op(self) -> None:
+    @pytest.mark.parametrize("reason", ["active_in_app", "no_chat_app"])
+    async def test_a_target_in_the_app_sends_nothing_to_a_chat_app(
+        self, reason: InAppReason
+    ) -> None:
         with (
-            _channel(None),
             patch(f"{PLATFORM_CHAT}.BotService.get_or_create_session", AsyncMock()) as session,
+            patch(f"{PLATFORM_CHAT}.publish_outbound_message", AsyncMock()) as publish,
         ):
-            await deliver_result_to_platforms(
+            delivered = await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=InApp(reason=reason),
             )
 
+        assert delivered is None
         session.assert_not_called()
-
-    async def test_channel_lookup_failure_is_logged_and_sends_nothing(self) -> None:
-        with (
-            patch(f"{MODULE}.resolve_chat_channel", AsyncMock(side_effect=RuntimeError("db down"))),
-            patch(f"{PLATFORM_CHAT}.BotService.get_or_create_session", AsyncMock()) as session,
-        ):
-            async with captured_wide_event() as event:
-                await deliver_result_to_platforms(
-                    user=USER,
-                    user_id=USER_ID,
-                    notification_text=TEXT,
-                    origin=self.ORIGIN,
-                    message_class=ProactiveMessageClass.ROUTINE,
-                )
-
-        session.assert_not_called()
-        assert {
-            "msg": f"{LogTag.AGENT} workflow platform delivery: channel lookup failed",
-            "error": "db down",
-        } in event["errors"]
+        publish.assert_not_called()
 
     async def test_happy_path_persists_and_publishes_to_the_one_platform(self) -> None:
         with (
-            _channel(TELEGRAM) as resolve,
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(return_value="tg-conv"),
@@ -102,13 +193,12 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=TELEGRAM,
             )
 
-        resolve.assert_awaited_once_with(USER_ID)
         # The session must be resolved for THIS platform user and owner — a
         # wrong id here delivers someone else's conversation GAIA's message.
         session.assert_awaited_once()
@@ -136,7 +226,6 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_it_reports_which_platform_received_the_result(self) -> None:
         """A wrong verdict makes a skipped delivery look delivered in the metrics."""
         with (
-            _channel(TELEGRAM),
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(return_value="tg-conv"),
@@ -150,29 +239,25 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             delivered = await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=TELEGRAM,
             )
 
         assert delivered is ConversationSource.TELEGRAM
 
     async def test_a_message_held_for_quiet_hours_counts_as_reaching_the_platform(self) -> None:
         """A held result is not undelivered: a caller must not fall back to another surface."""
-        with (
-            _channel(TELEGRAM),
-            patch(
-                f"{MODULE}.post_to_platform_chat",
-                AsyncMock(return_value=OutboundResult.DEFERRED),
-            ) as post,
-        ):
+        with patch(
+            f"{MODULE}.post_to_platform_chat", AsyncMock(return_value=OutboundResult.DEFERRED)
+        ) as post:
             delivered = await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.USER_TIMED,
+                target=TELEGRAM,
             )
 
         assert delivered is ConversationSource.TELEGRAM
@@ -180,7 +265,6 @@ class TestDeliverWorkflowResultToPlatforms:
 
     async def test_a_skipped_publish_reports_nobody_was_reached(self) -> None:
         with (
-            _channel(TELEGRAM),
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(return_value="tg-conv"),
@@ -193,17 +277,16 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             delivered = await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=TELEGRAM,
             )
 
         assert delivered is None
 
     async def test_a_failed_publish_reports_nobody_was_reached(self) -> None:
         with (
-            _channel(TELEGRAM),
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(return_value="tg-conv"),
@@ -216,10 +299,10 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             delivered = await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=TELEGRAM,
             )
 
         assert delivered is None
@@ -228,10 +311,10 @@ class TestDeliverWorkflowResultToPlatforms:
         assert (
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text="   ",
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=TELEGRAM,
             )
             is None
         )
@@ -239,7 +322,6 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_failed_publish_is_logged_not_raised(self) -> None:
         """A failed publish is swallowed but observable: log.error lands in the wide event's errors[]."""
         with (
-            _channel(TELEGRAM),
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(return_value="tg-conv"),
@@ -253,10 +335,10 @@ class TestDeliverWorkflowResultToPlatforms:
             async with captured_wide_event() as event:
                 await deliver_result_to_platforms(
                     user=USER,
-                    user_id=USER_ID,
                     notification_text=TEXT,
                     origin=self.ORIGIN,
                     message_class=ProactiveMessageClass.ROUTINE,
+                    target=TELEGRAM,
                 )
 
         errors = [
@@ -269,17 +351,16 @@ class TestDeliverWorkflowResultToPlatforms:
 
     async def test_the_platform_that_already_has_the_result_is_not_pinged_again(self) -> None:
         with (
-            _channel(TELEGRAM),
             patch(f"{PLATFORM_CHAT}.BotService.get_or_create_session", AsyncMock()) as session,
             patch(f"{PLATFORM_CHAT}.publish_outbound_message", AsyncMock()) as publish,
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
                 exclude_source=ConversationSource.TELEGRAM,
+                target=TELEGRAM,
             )
 
         session.assert_not_called()
@@ -289,7 +370,6 @@ class TestDeliverWorkflowResultToPlatforms:
         self,
     ) -> None:
         with (
-            _channel(TELEGRAM),
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(return_value="tg-conv"),
@@ -302,18 +382,17 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
                 exclude_source=ConversationSource.SLACK,
+                target=TELEGRAM,
             )
 
         assert publish.await_args.args[0] == ConversationSource.TELEGRAM
 
     async def test_a_session_failure_is_logged_not_raised(self) -> None:
         with (
-            _channel(TELEGRAM),
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(side_effect=RuntimeError("mongo down")),
@@ -322,10 +401,10 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=TELEGRAM,
             )
 
         publish.assert_not_called()
@@ -344,7 +423,6 @@ class TestDeliveredResultsReachTheSessionThread:
     async def _deliver(self, publish_result: OutboundResult) -> AsyncMock:
         recorder = AsyncMock()
         with (
-            _channel(TELEGRAM),
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(return_value="tg-conv"),
@@ -357,10 +435,10 @@ class TestDeliveredResultsReachTheSessionThread:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=TELEGRAM,
             )
         return recorder
 
@@ -387,7 +465,6 @@ class TestDeliveredResultsReachTheSessionThread:
         """WhatsApp's display name is WhatsApp, not Whatsapp — a .capitalize() fallback would show here."""
         recorder = AsyncMock()
         with (
-            _channel(ChatChannel(source=ConversationSource.WHATSAPP, platform_user_id="wa-1")),
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(return_value="wa-conv"),
@@ -401,10 +478,10 @@ class TestDeliveredResultsReachTheSessionThread:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text="hello",
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=WHATSAPP,
             )
         assert recorder.await_args.args[1].startswith(
             "[Delivered to the user on WhatsApp (result of"
@@ -414,7 +491,6 @@ class TestDeliveredResultsReachTheSessionThread:
         """IMessage is the one platform whose display name is not a plain capitalization."""
         recorder = AsyncMock()
         with (
-            _channel(ChatChannel(source=ConversationSource.IMESSAGE, platform_user_id="im-1")),
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(return_value="im-conv"),
@@ -428,10 +504,10 @@ class TestDeliveredResultsReachTheSessionThread:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text="hello",
                 origin=self.ORIGIN,
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=IMESSAGE,
             )
         assert recorder.await_args.args[1].startswith(
             "[Delivered to the user on iMessage (result of"
@@ -450,7 +526,6 @@ class TestVariantBreakTokens:
         text = f"Report is ready.{variant}It has 3 pages."
 
         with (
-            _channel(ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-123")),
             patch(
                 f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(return_value="tg-conv"),
@@ -463,10 +538,10 @@ class TestVariantBreakTokens:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=text,
                 origin='workflow "Morning digest" (id wf-1)',
                 message_class=ProactiveMessageClass.ROUTINE,
+                target=TELEGRAM,
             )
 
         bubbles = publish.await_args.args[2]

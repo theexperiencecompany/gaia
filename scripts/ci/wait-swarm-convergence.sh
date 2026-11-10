@@ -25,8 +25,14 @@ SERVICES=("$@")
 TIMEOUT="${DEPLOY_CONVERGE_TIMEOUT:-600}"
 DEADLINE=$(( $(date +%s) + TIMEOUT ))
 
+# No `|| echo ""`: an empty state reads as "untouched", which is converged, so a
+# failed inspect (a tailnet blip, a misspelt service) used to pass on the first
+# poll. The exit inside the command substitution fails the caller's assignment.
 svc_field() {
-  docker --context prod service inspect "gaia-prod_$1" --format "$2" 2>/dev/null || echo ""
+  docker --context prod service inspect "gaia-prod_$1" --format "$2" || {
+    echo "::error::cannot inspect gaia-prod_$1 — an unreadable service is not a converged one" >&2
+    exit 1
+  }
 }
 
 echo "Waiting for ${SERVICES[*]} to converge (up to ${TIMEOUT}s)..."
@@ -36,7 +42,9 @@ while true; do
   status=""
 
   for svc in "${SERVICES[@]}"; do
-    state=$(svc_field "$svc" '{{.UpdateStatus.State}}')
+    # An untouched service has no UpdateStatus at all, and a bare
+    # .UpdateStatus.State errors on it (nil pointer) instead of printing "".
+    state=$(svc_field "$svc" '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}')
 
     case "$state" in
       rollback_*|paused)

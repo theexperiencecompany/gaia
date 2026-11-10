@@ -7,6 +7,8 @@ test worker at collection time, pulls in — can read a run's home timezone
 without dragging langchain's agent middleware (and the ~1.5 s ``transformers``
 import behind it) along. ``app.models.agent_models`` re-exports everything here
 under the same names, so consumers keep importing from there.
+
+The one ``app.models`` import, ``presence_models``, is itself an import-free leaf.
 """
 
 from collections.abc import Mapping
@@ -17,8 +19,10 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from typing_extensions import TypedDict
 
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
 from app.models.legacy_delivery import LEGACY_RUN_NOTIFY_KEY, delivery_from_legacy_flag
+from app.models.presence_models import PresenceSnapshot
 from shared.py.analytics.catalog.attribution import Actor
 from shared.py.analytics.context import AnalyticsContext, current_analytics_context
 
@@ -42,13 +46,19 @@ class SubagentKind(StrEnum):
     """Which delegation tool a subagent run came from — and so how it is rebuilt."""
 
     SPAWN = "spawn"
-    MCP = "mcp"
+
+
+class SpawnJob(StrEnum):
+    """The job a run's spawn_subagent calls hand over, which sets each spawn's step budget."""
+
+    FOCUSED = "focused"
+    # The Inbox desk's per-account pass: fetch, sweep, read and draft (INBOX_DESK_MAIL_TASK).
+    INBOX_MAIL = "inbox_mail"
 
 
 class SubagentResumeItem(TypedDict):
     """How to rebuild a background subagent run, in any process, from what its tool was given.
 
-    integration_id is the per-user MCP id for an MCP run, empty for a spawn;
     parent_configurable is the executor's configurable, persist-safe.
     """
 
@@ -56,7 +66,6 @@ class SubagentResumeItem(TypedDict):
     tool_call_id: str
     task: str
     context: str
-    integration_id: str
     inherited_tool_names: list[str]
     parent_configurable: "AgentConfigurable"
 
@@ -127,6 +136,9 @@ class AgentConfigurable(TypedDict, total=False):
     #: root from what started the turn and inherited whole, so a queued or
     #: resumed run is still attributed to it. Read via run_analytics_context.
     analytics_context: dict[str, object]
+    #: Where the user is: their per-surface last-seen stamps, captured once at the
+    #: run tree's root (before this turn's own stamp) and inherited by every child.
+    presence: PresenceSnapshot | None
 
     # --- model selection ----------------------------------------------------
     #: THE model selection, resolved once per turn and inherited verbatim.
@@ -143,11 +155,10 @@ class AgentConfigurable(TypedDict, total=False):
     selected_tool: str | None
     tool_category: str | None
     #: True only for comms_narrator re-voicing a finished executor result. It never
-    #: dispatches: call_executor refuses and the live status frame stays out, since
-    #: the narrated run still holds the busy lock.
+    #: dispatches: call_executor refuses, since the narrated run still holds the busy lock.
     is_result_narration: bool
     subagent_id: str | None
-    #: Shared VFS session, held constant across the executor and the handoff
+    #: Shared VFS session, held constant across the executor and the
     #: subagents it spawns so all resolve paths against one workspace.
     vfs_session_id: str | None
     #: OpenRouter sticky-routing key — the conversation id, pinned on every
@@ -165,18 +176,20 @@ class AgentConfigurable(TypedDict, total=False):
     #: by children; the budget wall reads it to avoid a Redis lookup, and
     #: derives the tier from the cached plan itself when absent.
     plan_type: str
+    #: What this run's spawns do, stamped by a tracked todo run whose kind
+    #: spawns one job (the Inbox desk's mail passes) and inherited by its executor.
+    spawn_job: SpawnJob
 
     # --- workflow context (must survive queueing) ---------------------------
     workflow_id: str
     workflow_title: str
     workflow_delivery: WorkflowDelivery
+    #: URGENT when the trigger gate let this workflow run through the user's quiet hours.
+    workflow_message_class: ProactiveMessageClass
     #: A playbook replay stopped partway and the agent is finishing it: the
     #: replay's own record of what already ran, carried verbatim to the
     #: executor since comms can't be trusted to transcribe it into its task.
     playbook_fallback: str | None
-    #: The calls a stopped replay made this fire, as ``RecordedCall`` dumps, so a
-    #: rewrite may freeze them. See ``PLAYBOOK_REPLAYED_CALLS_KEY``.
-    playbook_replayed_calls: list[dict[str, Any]] | None
     #: A pre-taken executor busy-lock the dispatch adopts instead of racing for
     #: a fresh one, so a queued/workflow fire hands its reservation to the run
     #: it starts. Keyed by ``WORKFLOW_LOCK_CONTEXT_KEY``.
@@ -189,8 +202,8 @@ class AgentConfigurable(TypedDict, total=False):
     langfuse_tags: list[str]
 
     # --- internal flags -----------------------------------------------------
-    #: Set only on a HIL resume re-dispatch; the handoff tool probes it to tell
-    #: a replayed call from a fresh one. Keyed by ``HIL_RESUME_CONFIG_KEY``.
+    #: Set only on a HIL resume re-dispatch, to tell a replayed call from a
+    #: fresh one. Keyed by ``HIL_RESUME_CONFIG_KEY``.
     hil_resume_replay: bool
     #: Set only on a background subagent's own run: the recipe the HIL gate files
     #: on its approvals. Keyed by ``SUBAGENT_RESUME_CONFIG_KEY``.
@@ -246,6 +259,7 @@ class AgentConfigurableView(BaseModel):
     writing_style: dict[str, object] | None = None
     root_request_id: str | None = None
     analytics_context: AnalyticsContext | None = None
+    presence: PresenceSnapshot | None = None
     lane: LaneConfig | None = None
     #: LangChain's binding key — logged, never used to pick a model (read ``lane``).
     model: str | None = None
@@ -259,9 +273,11 @@ class AgentConfigurableView(BaseModel):
     conversation_source: str | None = None
     source_category: str | None = None
     plan_type: str | None = None
+    spawn_job: SpawnJob | None = None
     workflow_id: str | None = None
     workflow_title: str = ""
     workflow_delivery: WorkflowDelivery = WorkflowDelivery.NOW
+    workflow_message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
 
@@ -329,3 +345,18 @@ def get_user_id(config: AgentRunConfig | None) -> str:
     if not user_id:
         raise RunUserMissingError("user_id not found in RunnableConfig")
     return user_id
+
+
+def get_session_id(config: AgentRunConfig | None) -> str | None:
+    """Return the workspace session a run reads and writes; None when the config names none.
+
+    vfs_session_id wins: subagent_runner pins it to the parent conversation, while
+    thread_id there is the executor_<conv> wrapper that would split the session dir.
+    """
+    configurable = read_agent_configurable(config)
+    return (
+        configurable.vfs_session_id
+        or configurable.conversation_id
+        or read_run_metadata(config).conversation_id
+        or configurable.thread_id
+    )

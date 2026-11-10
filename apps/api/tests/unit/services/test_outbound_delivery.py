@@ -1,19 +1,22 @@
 """Unit tests for publish_outbound_message — the outbound RabbitMQ publisher that replaces direct platform HTTP sends."""
 
+from collections.abc import Awaitable, Callable
 import json
 from unittest.mock import AsyncMock, patch
 
 from pydantic import ValidationError
 import pytest
 
+from app.constants.delivery_alerts import DeliveryFailureKind
 from app.constants.outbound import (
     OUTBOUND_QUEUES,
     OUTBOUND_TTL_SECONDS_DEFAULT,
     OUTBOUND_TTL_SECONDS_GREETING,
 )
 from app.models.chat_models import ConversationSource
-from app.schemas.outbound import OutboundMessageEnvelope
+from app.schemas.outbound import OutboundMessageEnvelope, OutboundReaction
 from app.services import outbound_delivery as od
+from app.services.platform_link_service import PlatformLinkService
 from app.utils.log_identifiers import hash_platform_user_id
 from tests.helpers import captured_wide_event
 
@@ -22,7 +25,7 @@ class TestPublishOutboundMessage:
     async def test_unlinked_account_is_skipped(self) -> None:
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={},
@@ -38,7 +41,7 @@ class TestPublishOutboundMessage:
 
     async def test_no_non_blank_parts_is_skipped(self) -> None:
         with patch.object(
-            od.PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
+            PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
         ) as linked:
             ok = await od.publish_outbound_message(
                 ConversationSource.WHATSAPP, "user-1", ["  ", ""]
@@ -49,7 +52,7 @@ class TestPublishOutboundMessage:
     async def test_broker_unavailable_is_failed(self) -> None:
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"whatsapp": {"platformUserId": "15551234567"}},
@@ -68,7 +71,7 @@ class TestPublishOutboundMessage:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"whatsapp": {"platformUserId": "15551234567"}},
@@ -97,7 +100,7 @@ class TestPublishOutboundMessage:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"whatsapp": {"platformUserId": "15551234567"}},
@@ -118,7 +121,7 @@ class TestPublishOutboundMessage:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"whatsapp": {"platformUserId": "15551234567"}},
@@ -137,7 +140,7 @@ class TestPublishOutboundMessage:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"whatsapp": {"platformUserId": "15551234567"}},
@@ -164,7 +167,7 @@ class TestPublishOutboundMessage:
         publisher = AsyncMock()
         resolve = AsyncMock()
         with (
-            patch.object(od.PlatformLinkService, "get_linked_platforms", resolve),
+            patch.object(PlatformLinkService, "get_linked_platforms", resolve),
             patch.object(
                 od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
             ),
@@ -187,7 +190,7 @@ class TestPublishOutboundMessage:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("telegram", "556677"),
@@ -219,7 +222,7 @@ class TestPublishOutboundMessageBrutalEdges:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("telegram", 123456789),
@@ -239,7 +242,7 @@ class TestPublishOutboundMessageBrutalEdges:
         text = 'café — "quote" 🎉\nsecond line'
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("whatsapp", "15551234567"),
@@ -260,7 +263,7 @@ class TestPublishOutboundMessageBrutalEdges:
         publisher.publish_outbound = AsyncMock(side_effect=RuntimeError("boom"))
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("whatsapp", "15551234567"),
@@ -282,7 +285,7 @@ class TestPublishOutboundFile:
     async def test_unsupported_platform_returns_false(self) -> None:
         # WEB has no outbound queue — the link lookup must not even be reached.
         with patch.object(
-            od.PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
+            PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
         ) as linked:
             ok = await od.publish_outbound_file(
                 ConversationSource.WEB, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
@@ -292,7 +295,7 @@ class TestPublishOutboundFile:
 
     async def test_unlinked_account_returns_false(self) -> None:
         with patch.object(
-            od.PlatformLinkService,
+            PlatformLinkService,
             "get_linked_platforms",
             new_callable=AsyncMock,
             return_value={},
@@ -305,7 +308,7 @@ class TestPublishOutboundFile:
     async def test_broker_unavailable_returns_false(self) -> None:
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("whatsapp", "15551234567"),
@@ -327,7 +330,7 @@ class TestPublishOutboundFile:
         publisher.publish_outbound = AsyncMock(side_effect=RuntimeError("boom"))
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("whatsapp", "15551234567"),
@@ -345,7 +348,7 @@ class TestPublishOutboundFile:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("whatsapp", "15551234567"),
@@ -391,7 +394,7 @@ class TestPublishOutboundPhoto:
 
     async def test_an_unsupported_platform_is_skipped(self) -> None:
         with patch.object(
-            od.PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
+            PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
         ) as linked:
             ok = await od.publish_outbound_photo(
                 ConversationSource.WEB, "u1", "https://cdn.test/1.png", "1.png"
@@ -405,7 +408,7 @@ class TestPublishOutboundPhoto:
         publisher = AsyncMock()
         resolve = AsyncMock()
         with (
-            patch.object(od.PlatformLinkService, "get_linked_platforms", resolve),
+            patch.object(PlatformLinkService, "get_linked_platforms", resolve),
             patch.object(
                 od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
             ),
@@ -424,7 +427,7 @@ class TestPublishOutboundPhoto:
 
     async def test_an_unlinked_account_is_skipped(self) -> None:
         with patch.object(
-            od.PlatformLinkService,
+            PlatformLinkService,
             "get_linked_platforms",
             new_callable=AsyncMock,
             return_value={},
@@ -442,7 +445,7 @@ class TestPublishOutboundPhoto:
         publisher.publish_outbound = AsyncMock(side_effect=RuntimeError("boom"))
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("telegram", "556677"),
@@ -460,7 +463,7 @@ class TestPublishOutboundPhoto:
         """The warning names which publisher skipped and for whom, or it explains nothing."""
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={},
@@ -485,7 +488,7 @@ class TestPublishOutboundPhoto:
         publisher.publish_outbound = AsyncMock(side_effect=RuntimeError("boom"))
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("telegram", "556677"),
@@ -512,7 +515,7 @@ class TestPublishOutboundPhoto:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("telegram", "556677"),
@@ -557,7 +560,7 @@ class TestNotifyAccountLinked:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"telegram": {"platformUserId": "tg-123"}},
@@ -579,7 +582,7 @@ class TestNotifyAccountLinked:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"telegram": {"platformUserId": "tg-123"}},
@@ -604,7 +607,7 @@ class TestNotifyAccountLinked:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"telegram": {"platformUserId": "tg-123"}},
@@ -627,7 +630,7 @@ class TestNotifyAccountLinked:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"whatsapp": {"platformUserId": "wa-123"}},
@@ -648,7 +651,7 @@ class TestNotifyAccountLinked:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"imessage": {"platformUserId": "im-123"}},
@@ -666,7 +669,7 @@ class TestNotifyAccountLinked:
 
     async def test_a_non_bot_platform_is_skipped(self) -> None:
         with patch.object(
-            od.PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
+            PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
         ) as linked:
             result = await od.notify_account_linked("web", "user-1")
         assert result is od.OutboundResult.SKIPPED
@@ -680,7 +683,7 @@ class TestOutboundBubbleSplitting:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"whatsapp": {"platformUserId": "15551234567"}},
@@ -702,7 +705,7 @@ class TestOutboundBubbleSplitting:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"whatsapp": {"platformUserId": "15551234567"}},
@@ -723,7 +726,7 @@ class TestPublishOutboundReaction:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"telegram": {"platformUserId": "4242"}},
@@ -747,7 +750,7 @@ class TestPublishOutboundReaction:
         env = OutboundMessageEnvelope(
             platform="telegram",
             destination_id="4242",
-            reaction={"target_platform_message_id": "777", "emoji": "👍"},
+            reaction=OutboundReaction(target_platform_message_id="777", emoji="👍"),
         )
         assert env.reaction is not None
         assert env.reaction.emoji == "👍"
@@ -764,7 +767,7 @@ class TestPublishOutboundReaction:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("telegram", "4242"),
@@ -789,7 +792,7 @@ class TestPublishOutboundReaction:
         publisher = AsyncMock()
         resolve = AsyncMock()
         with (
-            patch.object(od.PlatformLinkService, "get_linked_platforms", resolve),
+            patch.object(PlatformLinkService, "get_linked_platforms", resolve),
             patch.object(
                 od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
             ),
@@ -812,7 +815,7 @@ class TestPublishOutboundReaction:
     async def test_an_unlinked_account_skips_the_reaction(self) -> None:
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={},
@@ -829,7 +832,7 @@ class TestPublishOutboundReaction:
 
     async def test_a_platform_with_no_outbound_queue_skips_the_reaction(self) -> None:
         resolve = AsyncMock()
-        with patch.object(od.PlatformLinkService, "get_linked_platforms", resolve):
+        with patch.object(PlatformLinkService, "get_linked_platforms", resolve):
             ok = await od.publish_outbound_reaction(ConversationSource.WEB, "user-1", "777", "👍")
 
         assert ok is od.OutboundResult.SKIPPED
@@ -840,7 +843,7 @@ class TestPublishOutboundReaction:
         publisher.publish_outbound.side_effect = RuntimeError("channel closed")
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("telegram", "4242"),
@@ -874,7 +877,7 @@ class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
     async def test_an_unavailable_broker_records_the_user_platform_and_cause(self) -> None:
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("whatsapp", "15551234567"),
@@ -901,7 +904,7 @@ class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
         publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("whatsapp", "15551234567"),
@@ -924,7 +927,7 @@ class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
         publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("whatsapp", "15551234567"),
@@ -954,7 +957,7 @@ class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
         publisher = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
+                PlatformLinkService,
                 "get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value=_linked("telegram", "556677"),
@@ -975,3 +978,227 @@ class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
         assert warning["user_id"] == "u1"
         assert warning["destination_hash"] == hash_platform_user_id("556677")
         assert warning["filename"] == "step-1.png"
+
+
+def _alert(report: AsyncMock) -> dict[str, object]:
+    """Return the one failure report_delivery_failure got, minus its timestamp."""
+    (failure,) = report.await_args.args
+    return failure.model_dump(exclude={"occurred_at"})
+
+
+def _published_id(publisher: AsyncMock) -> str:
+    (_, body), _ = publisher.publish_outbound.await_args
+    return json.loads(body)["id"]
+
+
+def _enqueue_alert(**fields: object) -> dict[str, object]:
+    """Build the enqueue_failed alert the API reports, with fields overriding the defaults."""
+    return {
+        "platform": ConversationSource.WHATSAPP,
+        "kind": DeliveryFailureKind.ENQUEUE_FAILED,
+        "reason": "publish_failed",
+        "error_code": None,
+        "error_message": "ConnectionError",
+        "destination_id": "15551234567",
+        "is_channel": False,
+        "country": None,
+        "envelope_id": None,
+        "platform_message_id": None,
+        "user_id": "u1",
+        "reporter": "api",
+    } | fields
+
+
+class TestALostOutboundMessageIsAlerted:
+    """Every FAILED publish raises one enqueue_failed alert; a SKIPPED one raises none."""
+
+    @pytest.mark.parametrize(
+        ("publish", "is_channel"),
+        [
+            pytest.param(
+                lambda: od.publish_outbound_message(ConversationSource.WHATSAPP, "u1", ["hi"]),
+                False,
+                id="message",
+            ),
+            pytest.param(
+                lambda: od.publish_outbound_message(
+                    ConversationSource.WHATSAPP,
+                    "u1",
+                    ["hi"],
+                    destination_override="15551234567",
+                    is_channel=True,
+                ),
+                True,
+                id="channel-message",
+            ),
+            pytest.param(
+                lambda: od.publish_outbound_reaction(
+                    ConversationSource.WHATSAPP,
+                    "u1",
+                    "wamid.1",
+                    "👍",
+                    destination_override="15551234567",
+                    is_channel=True,
+                ),
+                True,
+                id="channel-reaction",
+            ),
+            pytest.param(
+                lambda: od.publish_outbound_file(
+                    ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
+                ),
+                False,
+                id="file",
+            ),
+            pytest.param(
+                lambda: od.publish_outbound_photo(
+                    ConversationSource.WHATSAPP, "u1", "https://cdn.test/s.png", "s.png"
+                ),
+                False,
+                id="photo",
+            ),
+        ],
+    )
+    async def test_an_unavailable_broker_alerts_with_the_user_and_destination(
+        self, publish: Callable[[], Awaitable[object]], is_channel: bool
+    ) -> None:
+        report = AsyncMock()
+        with (
+            patch.object(
+                PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value=_linked("whatsapp", "15551234567"),
+            ),
+            patch.object(
+                od,
+                "get_rabbitmq_publisher",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("amqp://user:secret@broker down"),
+            ),
+            patch.object(od, "report_delivery_failure", report),
+        ):
+            ok = await publish()
+
+        assert ok in (od.OutboundResult.FAILED, False)
+        # Only the type travels to Slack: the message can carry the broker URL.
+        assert _alert(report) == _enqueue_alert(
+            reason="broker_unavailable", error_message="RuntimeError", is_channel=is_channel
+        )
+
+    async def test_a_failed_message_publish_alerts_with_the_envelope_the_bot_never_got(
+        self,
+    ) -> None:
+        publisher = AsyncMock()
+        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
+        report = AsyncMock()
+        with (
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+            patch.object(od, "report_delivery_failure", report),
+        ):
+            ok = await od.publish_outbound_message(
+                ConversationSource.WHATSAPP,
+                "u1",
+                ["hi"],
+                destination_override="120363000000000000@g.us",
+                is_channel=True,
+            )
+
+        assert ok is od.OutboundResult.FAILED
+        assert _alert(report) == _enqueue_alert(
+            destination_id="120363000000000000@g.us",
+            is_channel=True,
+            envelope_id=_published_id(publisher),
+        )
+
+    async def test_a_failed_file_publish_alerts(self) -> None:
+        publisher = AsyncMock()
+        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
+        report = AsyncMock()
+        with (
+            patch.object(
+                PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value=_linked("whatsapp", "15551234567"),
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+            patch.object(od, "report_delivery_failure", report),
+        ):
+            ok = await od.publish_outbound_file(
+                ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
+            )
+
+        assert ok is False
+        assert _alert(report) == _enqueue_alert(envelope_id=_published_id(publisher))
+
+    async def test_a_failed_photo_publish_alerts(self) -> None:
+        publisher = AsyncMock()
+        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
+        report = AsyncMock()
+        with (
+            patch.object(
+                PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value=_linked("whatsapp", "15551234567"),
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+            patch.object(od, "report_delivery_failure", report),
+        ):
+            result = await od.publish_outbound_photo(
+                ConversationSource.WHATSAPP, "u1", "https://cdn.test/s.png", "s.png"
+            )
+
+        assert result is od.OutboundResult.FAILED
+        assert _alert(report) == _enqueue_alert(envelope_id=_published_id(publisher))
+
+    async def test_a_failed_group_reaction_alerts_as_a_channel_send(self) -> None:
+        publisher = AsyncMock()
+        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
+        report = AsyncMock()
+        with (
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+            patch.object(od, "report_delivery_failure", report),
+        ):
+            ok = await od.publish_outbound_reaction(
+                ConversationSource.TELEGRAM,
+                "user-1",
+                "777",
+                "👍",
+                destination_override="-100999",
+                is_channel=True,
+            )
+
+        assert ok is od.OutboundResult.FAILED
+        assert _alert(report) == _enqueue_alert(
+            platform=ConversationSource.TELEGRAM,
+            user_id="user-1",
+            destination_id="-100999",
+            is_channel=True,
+            envelope_id=_published_id(publisher),
+        )
+
+    async def test_a_skipped_publish_does_not_alert(self) -> None:
+        report = AsyncMock()
+        with (
+            patch.object(
+                PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch.object(od, "report_delivery_failure", report),
+        ):
+            ok = await od.publish_outbound_message(ConversationSource.WHATSAPP, "u1", ["hi"])
+
+        assert ok is od.OutboundResult.SKIPPED
+        report.assert_not_awaited()

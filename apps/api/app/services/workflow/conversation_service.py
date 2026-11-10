@@ -15,7 +15,7 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
 )
 from app.models.message_models import SelectedWorkflowData
-from app.models.playbook_models import HandoffStep, PlaybookDocument, PlaybookStep
+from app.models.playbook_models import PlaybookDocument, PlaybookStep
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import Workflow
@@ -140,19 +140,8 @@ async def add_playbook_run_messages(
 
 
 def _playbook_plan(steps: Sequence[PlaybookStep]) -> list[str]:
-    """Render the frozen steps as lines a person can read on the Run playbook card.
-
-    "todos subagent -> list_todos" says who does what; the raw document shape
-    (ids, args, nesting) belongs in read_playbook, not on a chat card.
-    """
-    lines: list[str] = []
-    for step in steps:
-        if isinstance(step, HandoffStep):
-            children = ", ".join(child.tool for child in step.steps)
-            lines.append(f"{step.handoff} subagent -> {children}")
-        else:
-            lines.append(step.tool)
-    return lines
+    """Render the frozen steps as tool names for the Run playbook card; the full shape belongs in read_playbook."""
+    return [step.tool for step in steps]
 
 
 async def build_playbook_tool_data(

@@ -25,6 +25,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.agents.tools.execute.account_choice import choose_account, tool_used, with_account
 from app.agents.tools.execute.resolver import ResolvedTool, resolve_tool
+from app.agents.tools.invocation import ViaExecute, invoke_tool
 from app.constants.execute import (
     TICKET_APPROVE_NAME,
     TICKET_NAMES,
@@ -73,15 +74,33 @@ class _TicketData(TypedDict, total=False):
     id: object
 
 
-def dispatch_config_for(user_id: str, run_config: RunnableConfig | None = None) -> RunnableConfig:
+def dispatch_config_for(
+    user_id: str,
+    run_config: RunnableConfig | None = None,
+    *,
+    stream_id: str | None = None,
+    workflow_id: str | None = None,
+    subagent_id: str | None = None,
+) -> RunnableConfig:
     """Run config carrying the caller's identity in configurable AND metadata, which wrappers split.
 
     Layered onto run_config when the call happens inside a graph run, so the tool
     keeps that run's stream writer, stream and surface; a ledger redeem without it
-    crashed on get_stream_writer.
+    crashed on get_stream_writer. stream_id and workflow_id name the run a call
+    outside any graph (a sandbox script's callback) belongs to, so a workflow
+    run's call lands in its record.
     """
     config: RunnableConfig = run_config.copy() if run_config is not None else {}
-    config["configurable"] = {**config.get("configurable", {}), "user_id": user_id}
+    run = {
+        key: value
+        for key, value in (
+            ("stream_id", stream_id),
+            ("workflow_id", workflow_id),
+            ("subagent_id", subagent_id),
+        )
+        if value
+    }
+    config["configurable"] = {**config.get("configurable", {}), "user_id": user_id, **run}
     config["metadata"] = {**config.get("metadata", {}), "user_id": user_id}
     return config
 
@@ -231,7 +250,12 @@ async def dispatch_tool(
     bound = None if resolved_name in TOOL_TIMEOUT_EXEMPT_TOOLS else TOOL_EXECUTION_TIMEOUT_SECONDS
     try:
         async with asyncio.timeout(bound):
-            output = await tool.ainvoke(validated, config=with_account(config, choice))
+            output = await invoke_tool(
+                tool,
+                validated,
+                with_account(config, choice),
+                via=ViaExecute(choice.account_id if choice is not None else None),
+            )
     except TimeoutError:
         # The only failure whose effect is unknown — the provider may have
         # applied it after we stopped waiting. Bounded here so the model gets

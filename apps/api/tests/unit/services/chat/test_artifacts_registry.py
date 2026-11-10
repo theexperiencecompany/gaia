@@ -5,6 +5,7 @@ would show a dead link; the short_links collection is the one source of truth.
 """
 
 from datetime import UTC, datetime
+import inspect
 from unittest.mock import AsyncMock, patch
 
 from app.services.artifact_events import ArtifactEventMessage
@@ -29,7 +30,7 @@ async def _upsert(update_matched: bool) -> AsyncMock:
     with patch(_REPO) as repo:
         repo.update_artifact = AsyncMock(return_value=update_matched)
         repo.push_artifact = AsyncMock()
-        await artifacts_registry.upsert_conversation_artifact.__wrapped__(
+        await inspect.unwrap(artifacts_registry.upsert_conversation_artifact)(
             "507f1f77bcf86cd799439011", "conv-1", EVENT
         )
         return repo

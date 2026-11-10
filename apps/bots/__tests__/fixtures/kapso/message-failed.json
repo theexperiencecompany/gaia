@@ -1,0 +1,19 @@
+{
+  "message": {
+    "id": "wamid.SYNTHETIC0003",
+    "to": "5511900000001",
+    "text": { "body": "Unknown command: /restart" },
+    "type": "text",
+    "timestamp": "0"
+  },
+  "conversation": {
+    "id": "conv_synthetic_3",
+    "status": "active",
+    "phone_number": "5511900000001",
+    "phone_number_id": "pn_synthetic",
+    "business_scoped_user_id": "BR.1000000000000001"
+  },
+  "phone_number_id": "pn_synthetic",
+  "is_new_conversation": false,
+  "type": "whatsapp.message.failed"
+}

@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.hil_models import HILMode, HILPreferences
+from app.models.hil_models import ApprovalScope, HILMode, HILPreferences
 from app.schemas.common import ResponseModel
 
 
@@ -13,8 +13,7 @@ class ApprovalDecisionRequest(BaseModel):
 
     decision: Literal["approve", "deny"]
     feedback: str | None = Field(None, max_length=2000)
-    # once: this call only. always_tool: also set a "never ask" override for the tool.
-    scope: Literal["once", "always_tool"] = "once"
+    scope: ApprovalScope = "once"
     # Row version the client rendered. Ledger path only: a stale v refreshes
     # instead of overwriting. Omitted (None) skips the check.
     v: int | None = None

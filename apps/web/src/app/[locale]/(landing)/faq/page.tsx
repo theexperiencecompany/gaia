@@ -7,6 +7,7 @@ import { getAllFAQs, getFAQSchema } from "@/lib/faq";
 import {
   generateBreadcrumbSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -14,7 +15,7 @@ import {
 export const metadata: Metadata = generatePageMetadata({
   title: "Frequently Asked Questions",
   description:
-    "Find answers to common questions about GAIA, your personal AI assistant. Learn about features, pricing, privacy, technical requirements, and how GAIA can boost your productivity.",
+    "Answers to common questions about GAIA: what it does, what it costs, how your data is handled, and which tools and devices it works with.",
   path: "/faq",
   keywords: [
     "GAIA FAQ",
@@ -47,7 +48,14 @@ export default function FAQPage() {
 
   return (
     <>
-      <JsonLd data={[faqSchema, webPageSchema, breadcrumbSchema]} />
+      <JsonLd
+        data={[
+          faqSchema,
+          webPageSchema,
+          breadcrumbSchema,
+          generateProductSchema(),
+        ]}
+      />
       <FAQPageClient faqs={faqs} />
       <FinalSection />
     </>

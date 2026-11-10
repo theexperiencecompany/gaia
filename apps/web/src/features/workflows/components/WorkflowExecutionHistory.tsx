@@ -91,8 +91,9 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
             </span>
           )}
         </div>
+        {/* Two lines: a skip or a quiet-hours run leads with its reason. */}
         {execution.summary && (
-          <p className="text-xs text-zinc-400 line-clamp-1">
+          <p className="text-xs text-zinc-400 line-clamp-2">
             {execution.summary}
           </p>
         )}

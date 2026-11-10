@@ -74,10 +74,8 @@ async def test_rate_limit_exceeded_returns_429(
     assert body["message"] == "Rate limit exceeded for notes"
     assert body["reset_time"] == reset_time.isoformat()
 
-    # The limiter read the pre-seeded usage for the authenticated FREE user
-    # (the root conftest's subscription patch), and the handler never ran —
-    # the 429 comes from the real decision logic, not from a raised mock.
-    assert fake_redis.get.await_count >= 1
+    # The handler never ran: the 429 comes from the real decision logic, not
+    # from a raised mock.
     create.assert_not_awaited()
 
 

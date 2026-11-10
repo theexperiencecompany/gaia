@@ -20,9 +20,9 @@ from scripts.archive_system_owned_runs import (
 
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.workflows import WorkflowDelivery
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.workflow_models import (
-    DeactivationReason,
     TriggerConfig,
     TriggerType,
     WorkflowDocument,

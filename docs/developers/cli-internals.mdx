@@ -1,0 +1,65 @@
+---
+title: "CLI internals"
+description: "The gaia CLI's developer commands, how to try unreleased CLI changes on a fresh machine, and how a CLI release ships."
+icon: "rectangle-terminal"
+---
+
+The `gaia` command lives in `packages/cli` and is published to npm as `@heygaia/cli`. Self-hosters use it to install and run GAIA. Its commands are documented in the [CLI reference](/self-hosting/cli-reference). This page is for people changing the CLI itself.
+
+## The developer commands (optional)
+
+The CLI also has an interactive wizard for setting up a source checkout. It runs the same steps as [Set up GAIA for development](/developers/development-setup), so use one or the other.
+
+| Command | Does |
+| --- | --- |
+| `gaia init` | The wizard: checks prerequisites, lets you choose developer or self-host mode, checks ports, clones the repository (`--branch <name>` picks a branch), writes the env files by hand or from Infisical, then runs `mise trust`, `mise install` and `mise run bootstrap` |
+| `gaia setup` | The same configuration steps for a checkout you already cloned. Run it inside the repository |
+| `gaia dev` | Runs `mise dev` in the foreground |
+| `gaia dev full` | Runs `mise dev:full`: API, web, ARQ worker, voice agent and all bots |
+
+`gaia dev` only works in a checkout that `gaia init` or `gaia setup` configured in developer mode. Otherwise it stops with `Developer mode is not enabled for this repo`. It has no `--agent` flag, so to skip sign-in, run `mise dev --agent` directly.
+
+## Try CLI changes on a fresh machine
+
+`mise run cli:try` lets you test an unreleased CLI on a clean virtual machine, without CI and without publishing anything:
+
+```bash
+mise run cli:try
+```
+
+It builds and packs the CLI from your branch, builds the **self-host bundle** (the compose files and configuration `gaia up` downloads) with `scripts/ci/release.sh selfhost-bundle`, and serves both, plus `packages/cli/install.sh`, over HTTP on port `CLI_TRY_PORT` (default 8790). It then prints the command to paste in the VM:
+
+```bash
+curl -fsSL http://host.orb.internal:8790/install.sh | GAIA_CLI_TARBALL=http://host.orb.internal:8790/heygaia-cli-<version>.tgz GAIA_BUNDLE_BASE_URL=http://host.orb.internal:8790 GAIA_VERSION=v0.7.0-beta.3 sh
+```
+
+`host.orb.internal` is how an [OrbStack](https://orbstack.dev) VM reaches your Mac. The script also prints the same command with your LAN address, for another machine on your network.
+
+- `GAIA_CLI_TARBALL` makes `install.sh` install that `.tgz` (an http(s) URL or an absolute path) instead of the npm package.
+- `GAIA_BUNDLE_BASE_URL` tells the CLI where to download the bundle and its `.sha256` checksum.
+- `GAIA_VERSION` picks which published release's Docker images to run. It defaults to the newest `cli-v*` tag, so nothing is built.
+
+The installer and the CLI print a line for each of these overrides when set, so you can tell a test install from a real one.
+
+## How a CLI release ships
+
+CLI versions are managed by [release-please](https://github.com/googleapis/release-please), a bot that keeps an open pull request bumping the version and changelog from the conventional commits merged since the last release. Releasing means merging that pull request for `packages/cli`. Automation does the rest, in order:
+
+1. `build.yml` publishes the `gaia` and `gaia-web` Docker images of the release commit, tagged with its commit SHA.
+2. `publish-cli.yml` checks out the `cli-v<version>` tag, then attaches the self-host bundle (`gaia-selfhost-<version>.tar.gz` and its `.sha256`) and the `gaia-connect` binaries to the GitHub Release. `gaia up` and `gaia update` download that bundle.
+3. It waits up to 30 minutes for the SHA-tagged images, then tags them `v<version>`, the version `gaia update` pins.
+4. Only then does it publish `@heygaia/cli` to npm.
+
+If a step fails, fix the cause and re-run `publish-cli.yml` with the same inputs. Re-running it for a version already on npm still attaches the binaries and tags the images.
+
+<Accordion title="Backfilling cli-v0.6.0">
+  `cli-v0.6.0` was released before images were tagged with their commit SHA, so backfilling it takes a one-time alias of that commit's API image, then a re-run:
+
+  ```bash
+  docker buildx imagetools create \
+    -t ghcr.io/theexperiencecompany/gaia:fe2676f944bc83e157fc2eece63fe8b8a4b21451 \
+    ghcr.io/theexperiencecompany/gaia:2609.13.fe2676f
+  gh workflow run publish-cli.yml --ref master \
+    -f tag=cli-v0.6.0 -f version=0.6.0 -f sha=fe2676f944bc83e157fc2eece63fe8b8a4b21451
+  ```
+</Accordion>

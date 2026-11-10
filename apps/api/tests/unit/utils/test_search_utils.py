@@ -12,8 +12,11 @@ Provider-level unit tests live in tests/unit/utils/search/.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.config.settings import settings
+from app.services.providers.provider_credentials_service import resolve
 from app.utils.search import ResearchSearchResult, perform_search, search_for_research
 from app.utils.search.models import SearchResponse, SearchResultItem
+from tests.helpers import InMemoryCredentialStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -197,16 +200,25 @@ class TestTavilyProvider:
     def test_is_configured_true_when_key_present(self) -> None:
         from app.utils.search.providers.tavily import TavilyProvider
 
-        with patch("app.utils.search.providers.tavily.settings") as mock_settings:
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
+        with patch.object(settings, "TAVILY_API_KEY", "tvly-key"):  # pragma: allowlist secret
             assert TavilyProvider().is_configured() is True
 
     def test_is_configured_false_when_key_empty(self) -> None:
         from app.utils.search.providers.tavily import TavilyProvider
 
-        with patch("app.utils.search.providers.tavily.settings") as mock_settings:
-            mock_settings.TAVILY_API_KEY = ""
+        with patch.object(settings, "TAVILY_API_KEY", ""):
             assert TavilyProvider().is_configured() is False
+
+    async def test_is_configured_true_via_a_stored_credential(
+        self, selfhost_credential_store: InMemoryCredentialStore
+    ) -> None:
+        """Env key absent but a Settings-saved credential exists → configured."""
+        from app.utils.search.providers.tavily import TavilyProvider
+
+        selfhost_credential_store.save("tavily", api_key="stored-key")  # pragma: allowlist secret
+        with patch.object(settings, "TAVILY_API_KEY", ""):
+            await resolve("tavily")
+            assert TavilyProvider().is_configured() is True
 
     async def test_search_maps_payload_to_search_response(self) -> None:
         from app.utils.search.providers.tavily import TavilyProvider
@@ -230,14 +242,14 @@ class TestTavilyProvider:
             patch(
                 "app.utils.search.providers.tavily.asyncio.to_thread", new_callable=AsyncMock
             ) as mock_thread,
-            patch("app.utils.search.providers.tavily.settings") as mock_settings,
+            patch.object(settings, "TAVILY_API_KEY", "tvly-key"),  # pragma: allowlist secret
             patch("app.utils.search.providers.tavily.TavilyClient") as mock_client_cls,
         ):
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
             mock_thread.return_value = payload
             result = await provider.search("test query", 5)
 
         # One general-topic search asking for images and favicons, sized to the caller's count.
+        mock_client_cls.assert_called_once_with(api_key="tvly-key")  # pragma: allowlist secret
         mock_thread.assert_awaited_once_with(
             mock_client_cls.return_value.search,
             query="test query",
@@ -264,9 +276,8 @@ class TestTavilyProvider:
             patch(
                 "app.utils.search.providers.tavily.asyncio.to_thread", new_callable=AsyncMock
             ) as mock_thread,
-            patch("app.utils.search.providers.tavily.settings") as mock_settings,
+            patch.object(settings, "TAVILY_API_KEY", "tvly-key"),  # pragma: allowlist secret
         ):
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
             mock_thread.return_value = payload
             result = await TavilyProvider().search("q", 3)
 
@@ -291,9 +302,8 @@ class TestTavilyProvider:
             patch(
                 "app.utils.search.providers.tavily.asyncio.to_thread", new_callable=AsyncMock
             ) as mock_thread,
-            patch("app.utils.search.providers.tavily.settings") as mock_settings,
+            patch.object(settings, "TAVILY_API_KEY", "tvly-key"),  # pragma: allowlist secret
         ):
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
             mock_thread.return_value = payload
             result = await TavilyProvider().search("q", 3)
 

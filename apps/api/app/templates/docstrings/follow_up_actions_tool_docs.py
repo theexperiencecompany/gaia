@@ -19,6 +19,9 @@ FORM:
 - Short (aim under ~30 characters), self-contained, and actionable. It must stand on its own as a message.
 - It INITIATES something. Don't ask the user a question back or request input from them.
 
+ALWAYS ANSWER BY CALLING THE TOOL, including when the answer is nothing: an
+empty list is a valid result. Never reply in prose instead of calling it.
+
 RETURN AN EMPTY ARRAY WHEN:
 - The user seems done ("thanks", "perfect", "got it") or the conversation has naturally wrapped.
 - It's a simple answered Q&A with no real next step.

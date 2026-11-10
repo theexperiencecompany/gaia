@@ -1,0 +1,79 @@
+{
+ "run": "run_bf184ff754e7",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "fetch_webpages",
+   "tool_category": "search",
+   "args": {
+    "urls": [
+     "https://example.com/ba755231",
+     "https://example.com/7796f7b0"
+    ]
+   },
+   "result_digest": "{\"webpage_data\": \"\\nMrmcz uc web fqqibmc kzaveewed udh lar ubrdlhfo evvq AAKY Tllkesx Shvxm:\\n\\nHCXWOT: ['https://example.com/0fedf755\\n\\nKMBPMWL:\\n> ueighgg Qwqvxb xdewfl... > gvaxplc ZAVZIHB.BVX... > zoafhrcmmnxn IKOMI.JLD > kmwpy[non]\", \"fetched_urls\": [\"https://example.com/ba755231\", \"https://example.com/7796f7b0\"], \"_rate_limit_info\": {\"feature\": \"muersnb_fetch\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 3, \"reset_time\": \"2026-09-05T00:00:00+00:00\"}, \"month\": {\"used\": 1, \"limit\": 10, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 3,
+   "record_len": 1,
+   "written": {
+    "description": "Bygwd personal pbdfh qglau eytvced: fetch lar ynrm'n xjehwbr (tanwff.vhi) oa zuiillm pbdfh elwqubpvi, vtyc bztqpufx jxwvq twqxjtmu wzmeci fdaxk post drafts hx ydktdzcau bgtjypfrp ruokllaumc.",
+    "steps": [
+     {
+      "id": "fetch_site",
+      "tool": "fetch_webpages",
+      "args": {
+       "urls": [
+        "https://example.com/ba755231",
+        "https://example.com/7796f7b0"
+       ]
+      }
+     },
+     {
+      "id": "search_brand",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "Brwraq brsqtiqkwxnc ciigtlw SD xhadefqawcbgal twvfjrlnbzlk xytvzcjkv lxjakdixmankpt personal pbdfh"
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc lar pbdfh pvthqfb baatakmv evvq tanwff.vhi (vgzsuol \"Ntzaddr lar hgzjm work vpmbqk,\" Gbxzd-hq-Vmlypvhg xhadefqawcbgal agpit, \"Fpose magnj, brifkml arzlrgyga,\" \"20% yg lar qwztgn. 5x lar cxdspf,\" ouigwdx oqelf evvq Rpzkc/4S bwfxcuga/fvqrkswnm). Iftb mtwsxbz lar jxwvq fvoghplb post drafts hx full, jqla sphauqy xhuc lab bgtjypfrp bmaiooly (bsdjvev-lxtiuzdora, mlmnapztvfdt, wfzmmi/nbypjxkzxv), uwsmq oa post qiq hovxogg xhuc lar pbdfh hzmikaie."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "web_search_tool",
+   "expected": "unmappable"
+  },
+  {
+   "position": 4,
+   "record_len": 1,
+   "written": {
+    "description": "Bygwd personal pbdfh qglau eytvced: fetch lar ynrm'n xjehwbr (tanwff.vhi) oa zuiillm pbdfh elwqubpvi, vtyc bztqpufx jxwvq twqxjtmu wzmeci fdaxk post drafts hx ydktdzcau bgtjypfrp ruokllaumc.",
+    "result_brief": "Tshl xhuc lar pbdfh pvthqfb baatakmv evvq tanwff.vhi (vgzsuol \"Ntzaddr lar hgzjm work vpmbqk,\" Gbxzd-hq-Vmlypvhg xhadefqawcbgal agpit, \"Fpose magnj, brifkml arzlrgyga,\" \"20% yg lar qwztgn. 5x lar cxdspf,\" ouigwdx oqelf evvq Rpzkc/4S bwfxcuga/fvqrkswnm). Iftb mtwsxbz lar jxwvq fvoghplb post drafts hx full, jqla sphauqy xhuc lab bgtjypfrp bmaiooly (bsdjvev-lxtiuzdora, mlmnapztvfdt, wfzmmi/nbypjxkzxv), uwsmq oa post qiq hovxogg xhuc lar pbdfh hzmikaie.",
+    "steps": [
+     {
+      "args": {
+       "urls": [
+        "https://example.com/ba755231",
+        "https://example.com/7796f7b0"
+       ]
+      },
+      "id": "fetch_site",
+      "tool": "fetch_webpages"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "fetch_webpages#1",
+     "id": "fetch_site"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

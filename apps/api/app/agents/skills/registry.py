@@ -12,7 +12,6 @@ and the composed skills text cache.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 from uuid import uuid4
 
 from app.agents.skills.models import Skill, SkillSource, SkillUpdate
@@ -62,30 +61,32 @@ def _skills_invalidation_keys_for_request(
     return [pattern.format(user_id=request.user_id) for pattern in _SKILLS_INVALIDATION_PATTERNS]
 
 
+async def ensure_skill_name_available(user_id: str, name: str) -> None:
+    """Raise AppError 409 when the user already has a skill with this name, on any target.
+
+    SKILL.md is stored at /skills/{user_id}/{name}, so the name is the skill's identity on
+    disk; installers call this before writing, or a clash would overwrite the existing file.
+    """
+    existing = await skill_repository.find_by_name(user_id, name)
+    if existing:
+        raise AppError(
+            message=f"A skill named '{name}' already exists (for {existing.target}).",
+            why="Skill names are unique per user.",
+            fix="Update the existing skill, uninstall it first, or use a different name.",
+            status_code=409,
+        )
+
+
 @CacheInvalidator(key_generator=_skills_invalidation_keys_for_request)
 async def install_skill(request: SkillInstallRequest) -> Skill:
-    """Register a newly installed skill in the registry.
+    """Register a newly installed skill; the installer has already claimed the name.
 
-    Returns the created Skill with its assigned ID. Raises AppError (409)
-    if a skill with the same name already exists for the same target.
+    Called only after ensure_skill_name_available, which must run before SKILL.md is written.
     """
     log.set(
         user_id=request.user_id,
         skill=SkillContext(operation="install", skill_name=request.name),
     )
-
-    # Check for duplicate by name + user_id + target
-    existing = await skill_repository.find_by_name(request.user_id, request.name, request.target)
-    if existing:
-        raise AppError(
-            message=(
-                f"Skill '{request.name}' already installed for target "
-                f"'{request.target}'. Uninstall first or use a different name."
-            ),
-            why="Skill names are unique per user and target.",
-            fix="Uninstall the existing skill first, or install under a different name.",
-            status_code=409,
-        )
 
     skill = Skill(
         id=str(uuid4()),
@@ -176,14 +177,14 @@ async def disable_skill(user_id: str, skill_id: str) -> bool:
 
 
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
-async def update_skill(user_id: str, skill_id: str, fields: dict[str, Any]) -> Skill | None:
+async def update_skill(user_id: str, skill_id: str, update: SkillUpdate) -> Skill | None:
     """Patch metadata fields on an existing skill and return the updated record.
 
     Always stamps updated_at. Scoped to {_id, user_id} so a user can only
     edit their own skills. Returns None if no matching skill exists.
     """
     log.set(user_id=user_id, skill=SkillContext(skill_id=skill_id))
-    updated = await skill_repository.patch(user_id, skill_id, update=SkillUpdate(**fields))
+    updated = await skill_repository.patch(user_id, skill_id, update=update)
     log.set_ns("skill", success=updated is not None)
     if updated is not None:
         log.info(f"{LogTag.SKILLS} Updated skill", skill_id=skill_id, user_id=user_id)

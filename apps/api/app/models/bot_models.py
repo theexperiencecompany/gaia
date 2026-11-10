@@ -5,11 +5,11 @@ Pydantic models for bot chat, sessions, and related operations.
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
+from app.constants.platform_links import Platform
 from app.db.repositories.base import MongoDocument
 from app.models.message_models import FileData
 from app.models.stream_events import EmojiAckPayload
 from app.schemas.common import ResponseModel
-from app.services.platform_link_service import Platform
 
 # Shared field docs — the same platform identity fields recur across the
 # request/response models below, so their descriptions live in one place.
@@ -92,8 +92,8 @@ class CreateLinkTokenRequest(BaseModel):
 
     platform: str = Field(..., description=_PLATFORM_DESC)
     platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
-    username: str | None = Field(None, description=_USERNAME_DESC)
-    display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
+    username: str | None = Field(default=None, description=_USERNAME_DESC)
+    display_name: str | None = Field(default=None, description=_DISPLAY_NAME_DESC)
 
     @field_validator("platform")
     @classmethod
@@ -117,8 +117,8 @@ class RedeemLinkCodeRequest(BaseModel):
     platform: str = Field(..., description=_PLATFORM_DESC)
     platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
     code: str = Field(..., description="Single-use code minted by the web at onboarding")
-    username: str | None = Field(None, description=_USERNAME_DESC)
-    display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
+    username: str | None = Field(default=None, description=_USERNAME_DESC)
+    display_name: str | None = Field(default=None, description=_DISPLAY_NAME_DESC)
     first_message: str | None = Field(
         None,
         description=(
@@ -200,8 +200,8 @@ class LinkTokenRecord(BaseModel):
 
     platform: str = Field(..., description=_PLATFORM_DESC)
     platform_user_id: str = Field("", description=_PLATFORM_USER_ID_DESC)
-    username: str | None = Field(None, description=_USERNAME_DESC)
-    display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
+    username: str | None = Field(default=None, description=_USERNAME_DESC)
+    display_name: str | None = Field(default=None, description=_DISPLAY_NAME_DESC)
 
     @field_validator("platform")
     @classmethod
@@ -216,8 +216,8 @@ class LinkTokenInfoResponse(ResponseModel):
     """Response model for the link-token confirmation page's display metadata."""
 
     platform: str = Field(..., description="Platform name")
-    username: str | None = Field(None, description=_USERNAME_DESC)
-    display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
+    username: str | None = Field(default=None, description=_USERNAME_DESC)
+    display_name: str | None = Field(default=None, description=_DISPLAY_NAME_DESC)
 
 
 class UnlinkAccountResponse(BaseModel):
@@ -304,6 +304,7 @@ class BotRateLimitCardData(BaseModel):
 
     feature: JsonValue = None
     current_plan: JsonValue = None
+    message: str | None = None
 
 
 class BotWebStreamPayload(BaseModel):

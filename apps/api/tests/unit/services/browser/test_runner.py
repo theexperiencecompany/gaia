@@ -48,6 +48,7 @@ from app.constants.browser import (
 )
 from app.schemas.browser import (
     BrowserAction,
+    BrowserCardSnapshot,
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
     BrowserStepSnapshot,
@@ -63,8 +64,9 @@ from app.services.browser.ledger import CallComponent, ModelCall, RunLedger
 from app.services.browser.run_contract import BrowserRunConfig, RunHooks, RunOutcome, StepFrame
 from app.services.browser.runner import BrowserRunnerCallbacks, BrowserTaskRunner
 from app.services.browser.session import BrowserHostSession
-from app.services.cost_budget import BudgetCheck
+from app.services.cost_budget import DAILY_BUDGET_STOP_PRO, BudgetCheck, BudgetWall
 from app.services.llm_metering import LLMCallContext, TokenUsage
+from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserEngineSwitched
 from tests.helpers import captured_wide_event
@@ -90,6 +92,7 @@ def _session(session_id: str = "s-primary") -> BrowserHostSession:
         cdp_url=f"ws://{session_id}",
         host_url=f"http://{session_id}-host",
         engine=BrowserEngine.OBSCURA if session_id == "s-primary" else BrowserEngine.CHROMIUM,
+        fortress=False,
     )
 
 
@@ -226,6 +229,7 @@ def _runner(
             handoff_timeout_seconds=handoff_timeout,  # type: ignore[arg-type]  # as above
             stream_screenshots=stream_screenshots,
             solve_captcha=False,
+            jev=True,
         ),
         secrets=SECRETS,
         user_id=user_id,
@@ -249,12 +253,14 @@ async def test_time_waiting_on_the_user_does_not_count_against_the_work_budget(
     clock = [0.0]
     monkeypatch.setattr(runner_mod, "perf_counter", lambda: clock[0])
 
+    stops: list[bool] = []
+
     async def _long_handoff(run: _ScriptedRun) -> RunOutcome:
         clock[0] += 5  # five seconds of work
-        await run.hooks.takeover("Sign in and come back", "credentials")
-        run.stop_after_wait = await run.hooks.should_stop()
+        await run.hooks.takeover("Sign in and come back", SensitiveCategory.CREDENTIALS)
+        stops.append(await run.hooks.should_stop())
         clock[0] += 30  # more work than the whole budget
-        run.stop_after_work = await run.hooks.should_stop()
+        stops.append(await run.hooks.should_stop())
         return RunOutcome(success=True, summary="booked")
 
     runner, seen = _runner(_long_handoff, task_timeout=20)
@@ -268,8 +274,7 @@ async def test_time_waiting_on_the_user_does_not_count_against_the_work_budget(
     result = await _run(runner)
 
     # Five seconds of work around a ten-minute wait is inside the budget; 35 is not.
-    [run] = _ScriptedRun.made
-    assert (run.stop_after_wait, run.stop_after_work) == (False, True)
+    assert stops == [False, True]
     assert (result.status, result.summary) == (
         BrowserSessionStatus.FAILED,
         "Browser task timed out after 20s of work.",
@@ -279,7 +284,7 @@ async def test_time_waiting_on_the_user_does_not_count_against_the_work_budget(
 async def test_a_run_past_the_users_cost_budget_stops_with_that_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stop = BudgetCheck("You've reached today's AI usage limit.", None, None)
+    stop = BudgetCheck(BudgetWall.DAILY_USAGE, None, None)
     monkeypatch.setattr(runner_mod, "get_budget_stop_reason", AsyncMock(return_value=stop))
 
     async def _checks(run: _ScriptedRun) -> RunOutcome:
@@ -289,7 +294,7 @@ async def test_a_run_past_the_users_cost_budget_stops_with_that_reason(
 
     assert (result.status, result.summary) == (
         BrowserSessionStatus.FAILED,
-        "You've reached today's AI usage limit.",
+        DAILY_BUDGET_STOP_PRO,
     )
 
 
@@ -301,9 +306,9 @@ async def test_a_run_past_the_users_cost_budget_stops_with_that_reason(
 async def test_the_handoff_past_the_limit_never_reaches_the_user() -> None:
     async def _asks_too_often(run: _ScriptedRun) -> RunOutcome:
         for _ in range(MAX_HANDOFFS_PER_TASK):
-            await run.hooks.takeover("Enter the code", "credentials")
+            await run.hooks.takeover("Enter the code", SensitiveCategory.CREDENTIALS)
         with pytest.raises(BrowserHandoffCancelled):
-            await run.hooks.takeover("Enter the code again", "credentials")
+            await run.hooks.takeover("Enter the code again", SensitiveCategory.CREDENTIALS)
         return RunOutcome(success=False, summary="")
 
     runner, seen = _runner(_asks_too_often)
@@ -316,13 +321,13 @@ async def test_the_handoff_past_the_limit_never_reaches_the_user() -> None:
 async def test_a_run_past_its_budget_does_not_ask_the_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stop = BudgetCheck("You've reached today's AI usage limit.", None, None)
+    stop = BudgetCheck(BudgetWall.DAILY_USAGE, None, None)
     monkeypatch.setattr(runner_mod, "get_budget_stop_reason", AsyncMock(return_value=stop))
 
     async def _asks_after_the_budget(run: _ScriptedRun) -> RunOutcome:
         # What the agent reads back: the run is over, not that someone declined.
         with pytest.raises(BrowserHandoffCancelled, match="^Browser task stopped.$"):
-            await run.hooks.takeover("Sign in", "credentials")
+            await run.hooks.takeover("Sign in", SensitiveCategory.CREDENTIALS)
         return RunOutcome(success=False, summary="")
 
     runner, seen = _runner(_asks_after_the_budget)
@@ -332,7 +337,7 @@ async def test_a_run_past_its_budget_does_not_ask_the_user(
     assert seen["handoffs"] == []
     assert (result.status, result.summary) == (
         BrowserSessionStatus.FAILED,
-        "You've reached today's AI usage limit.",
+        DAILY_BUDGET_STOP_PRO,
     )
 
 
@@ -342,7 +347,7 @@ async def test_a_timed_out_handoff_fails_the_run_even_when_browser_use_swallows_
     async def _swallows(run: _ScriptedRun) -> RunOutcome:
         # Browser-Use turns the raise into an action error and runs on.
         with contextlib.suppress(BrowserHandoffCancelled):
-            await run.hooks.takeover("Pay the deposit", "payment")
+            await run.hooks.takeover("Pay the deposit", SensitiveCategory.PAYMENT)
         return RunOutcome(success=True, summary="looks done")
 
     runner, _ = _runner(_swallows, handoff=HandoffOutcome(status=HandoffStatus.TIMEOUT))
@@ -390,7 +395,7 @@ async def test_waiting_on_the_user_is_not_a_stall(monkeypatch: pytest.MonkeyPatc
 
     async def _hands_over(run: _ScriptedRun) -> RunOutcome:
         run.step(1)
-        await run.hooks.takeover("Sign in", "credentials")
+        await run.hooks.takeover("Sign in", SensitiveCategory.CREDENTIALS)
         return RunOutcome(success=True, summary="done")
 
     runner, _ = _runner(_hands_over, note=(note := AsyncMock()))
@@ -526,16 +531,21 @@ async def test_an_agent_that_finds_the_fast_engine_broken_moves_to_chrome_still_
     captured: list[tuple[Any, ...]] = []
     monkeypatch.setattr(runner_mod, "capture", lambda *args: captured.append(args))
 
+    answers: list[str] = []
+    offered: list[bool] = []
+
     async def _switches(run: _ScriptedRun) -> RunOutcome:
         run.step(1)
         assert run.hooks.switch_engine is not None
-        run.answer = await run.hooks.switch_engine(
-            EngineSwitchReason.STAYS_EMPTY, "https://app.example.test/d?user=a%40b.test"
+        answers.append(
+            await run.hooks.switch_engine(
+                EngineSwitchReason.STAYS_EMPTY, "https://app.example.test/d?user=a%40b.test"
+            )
         )
         return RunOutcome(success=False, summary="")
 
     async def _finishes(run: _ScriptedRun) -> RunOutcome:
-        run.offered = run.hooks.switch_engine is not None
+        offered.append(run.hooks.switch_engine is not None)
         return await _done(run)
 
     note = AsyncMock()
@@ -544,12 +554,12 @@ async def test_an_agent_that_finds_the_fast_engine_broken_moves_to_chrome_still_
     async with captured_wide_event() as event:
         result = await _run(runner)
 
-    primary, on_fallback = _ScriptedRun.made
-    assert primary.answer == BROWSER_ENGINE_SWITCH_ACK
+    _, on_fallback = _ScriptedRun.made
+    assert answers == [BROWSER_ENGINE_SWITCH_ACK]
     seen["open_fallback"].assert_awaited_once_with(PAGE, carried)
     note.assert_awaited_once_with(BROWSER_ENGINE_FALLBACK_NOTE)
     # The run on Chrome cannot move again, and numbers its steps on.
-    assert (on_fallback.offered, on_fallback.steps_before) == (False, 1)
+    assert (offered, on_fallback.steps_before) == ([False], 1)
     assert (result.success, result.steps) == (True, 2)
     # Which sites the fast engine fails, by host only: never the page or who opened it.
     assert captured == [
@@ -562,13 +572,15 @@ async def test_an_agent_that_finds_the_fast_engine_broken_moves_to_chrome_still_
 
 
 async def test_a_run_on_chrome_is_never_offered_the_full_browser() -> None:
+    offered: list[bool] = []
+
     async def _looks(run: _ScriptedRun) -> RunOutcome:
-        run.offered = run.hooks.switch_engine is not None
+        offered.append(run.hooks.switch_engine is not None)
         return RunOutcome(success=True, summary="done")
 
     await _run(_runner(_looks, fallback=False)[0])
 
-    assert _ScriptedRun.made[0].offered is False
+    assert offered == [False]
 
 
 async def test_a_run_the_user_stopped_never_moves_even_with_its_engine_wedged(
@@ -591,7 +603,7 @@ async def test_a_run_the_user_stopped_never_moves_even_with_its_engine_wedged(
 async def test_a_run_past_its_budget_never_moves_even_with_its_engine_wedged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stop = BudgetCheck("limit", None, None)
+    stop = BudgetCheck(BudgetWall.DAILY_USAGE, None, None)
 
     async def _wedged(run: _ScriptedRun) -> RunOutcome:
         run.answers = False
@@ -604,7 +616,7 @@ async def test_a_run_past_its_budget_never_moves_even_with_its_engine_wedged(
     result = await _run(runner)
 
     seen["open_fallback"].assert_not_awaited()
-    assert result.summary == "limit"
+    assert result.summary == DAILY_BUDGET_STOP_PRO
     assert result.status == BrowserSessionStatus.FAILED
 
 
@@ -613,7 +625,7 @@ async def test_a_run_past_its_budget_never_moves_even_with_its_engine_wedged(
 # ---------------------------------------------------------------------------
 
 
-async def test_the_agent_run_works_for_this_runs_user_ledger_secrets_and_hooks() -> None:
+async def test_the_agent_run_carries_this_runs_ledger_secrets_and_hooks() -> None:
     action_results = AsyncMock()
     user_waiting = AsyncMock(return_value=False)
     runner, _ = _runner(
@@ -648,15 +660,17 @@ async def test_the_run_opens_on_its_session_and_ends_with_its_result() -> None:
 
 
 async def test_the_users_mid_task_messages_reach_the_agent_and_the_result() -> None:
+    heard: list[list[str]] = []
+
     async def _reads(run: _ScriptedRun) -> RunOutcome:
-        run.heard = await run.hooks.take_user_messages()
+        heard.append(await run.hooks.take_user_messages())
         return RunOutcome(success=True, summary="booked")
 
     runner, _ = _runner(_reads, take_user_messages=AsyncMock(return_value=["for four, not two"]))
 
     result = await _run(runner)
 
-    assert _ScriptedRun.made[0].heard == ["for four, not two"]
+    assert heard == [["for four, not two"]]
     assert result.user_notes == ["for four, not two"]
 
 
@@ -686,11 +700,10 @@ async def test_a_result_the_agent_wrote_nothing_for_still_says_how_it_ended(
 
 async def test_background_work_is_named_for_the_logs(monkeypatch: pytest.MonkeyPatch) -> None:
     names: list[str | None] = []
-    real_spawn = runner_mod.spawn_background_task
 
     def _spawn(coro: Any, *, name: str | None = None) -> asyncio.Task[Any]:
         names.append(name)
-        return real_spawn(coro, name=name)
+        return spawn_background_task(coro, name=name)
 
     monkeypatch.setattr(runner_mod, "spawn_background_task", _spawn)
     runner, _ = _runner(_done)
@@ -787,7 +800,7 @@ async def test_a_step_card_that_fails_to_send_does_not_lose_the_result() -> None
     runner, seen = _runner(_one)
     real_emit = runner._emit
 
-    async def _flaky(snapshot: object) -> None:
+    async def _flaky(snapshot: BrowserCardSnapshot) -> None:
         if isinstance(snapshot, BrowserStepSnapshot):
             raise ConnectionError("stream closed")
         await real_emit(snapshot)
@@ -843,15 +856,17 @@ async def test_the_work_budget_ends_a_run_only_once_passed(
     clock = [0.0]
     monkeypatch.setattr(runner_mod, "perf_counter", lambda: clock[0])
 
+    said: list[bool] = []
+
     async def _works(run: _ScriptedRun) -> RunOutcome:
         clock[0] += work
-        run.stops = await run.hooks.should_stop()
+        said.append(await run.hooks.should_stop())
         return RunOutcome(True, "booked")
 
     runner, _ = _runner(_works, task_timeout=20)
     await _run(runner)
 
-    assert _ScriptedRun.made[0].stops is stops
+    assert said == [stops]
     assert (runner.failure == BrowserRunFailure.TASK_TIMEOUT) is stops
 
 
@@ -861,14 +876,16 @@ async def test_waiting_on_the_user_twice_is_not_counted_twice_as_work(
     clock = [0.0]
     monkeypatch.setattr(runner_mod, "perf_counter", lambda: clock[0])
 
+    stops: list[bool] = []
+
     async def _two_handoffs(run: _ScriptedRun) -> RunOutcome:
         clock[0] += 5
-        await run.hooks.takeover("Sign in", "credentials")
+        await run.hooks.takeover("Sign in", SensitiveCategory.CREDENTIALS)
         clock[0] += 5
-        await run.hooks.takeover("Enter the code", "credentials")
-        run.after_waits = await run.hooks.should_stop()
+        await run.hooks.takeover("Enter the code", SensitiveCategory.CREDENTIALS)
+        stops.append(await run.hooks.should_stop())
         clock[0] += 15
-        run.after_work = await run.hooks.should_stop()
+        stops.append(await run.hooks.should_stop())
         return RunOutcome(True, "booked")
 
     runner, _ = _runner(_two_handoffs, task_timeout=20)
@@ -881,8 +898,7 @@ async def test_waiting_on_the_user_twice_is_not_counted_twice_as_work(
 
     await _run(runner)
 
-    [run] = _ScriptedRun.made
-    assert (run.after_waits, run.after_work) == (False, True)
+    assert stops == [False, True]
 
 
 async def test_the_cost_budget_is_read_for_this_user_and_request(
@@ -921,13 +937,17 @@ async def test_a_run_silent_from_its_start_gets_the_stall_note(
 
 
 async def test_steps_arriving_in_time_are_never_a_stall(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(runner_mod, "perf_counter", lambda: clock[0])
     monkeypatch.setattr(runner_mod, "_STALL_POLL_SECONDS", 0.01)
-    monkeypatch.setattr(runner_mod, "BROWSER_STALL_NOTE_AFTER_SECONDS", 0.2)
+    monkeypatch.setattr(runner_mod, "BROWSER_STALL_NOTE_AFTER_SECONDS", 5.0)
 
     async def _steady(run: _ScriptedRun) -> RunOutcome:
+        # Each gap is just under the threshold, and the run as a whole is far over it.
         for n in range(1, 6):
             run.step(n)
-            await asyncio.sleep(0.03)
+            clock[0] += 4.9
+            await asyncio.sleep(0.05)
         return RunOutcome(True, "booked")
 
     note = AsyncMock()
@@ -952,8 +972,10 @@ async def test_steps_arriving_in_time_are_never_a_stall(monkeypatch: pytest.Monk
 async def test_the_users_note_from_a_handoff_reaches_the_agent_and_the_result(
     message: str | None, note: str | None, notes: list[str]
 ) -> None:
+    answered: list[str | None] = []
+
     async def _hands_over(run: _ScriptedRun) -> RunOutcome:
-        run.note = await run.hooks.takeover("Pay the deposit", "payment")
+        answered.append(await run.hooks.takeover("Pay the deposit", SensitiveCategory.PAYMENT))
         return RunOutcome(True, "booked")
 
     runner, seen = _runner(
@@ -962,7 +984,7 @@ async def test_the_users_note_from_a_handoff_reaches_the_agent_and_the_result(
 
     result = await _run(runner)
 
-    assert _ScriptedRun.made[0].note == note
+    assert answered == [note]
     assert result.user_notes == notes
     [(request, session)] = seen["handoffs"]
     assert (request.category, request.reason, session) == (
@@ -973,19 +995,22 @@ async def test_the_users_note_from_a_handoff_reaches_the_agent_and_the_result(
 
 
 async def test_the_handoff_past_the_limit_stops_the_run() -> None:
+    refusals: list[str] = []
+    stops: list[bool] = []
+
     async def _asks_too_often(run: _ScriptedRun) -> RunOutcome:
         for _ in range(MAX_HANDOFFS_PER_TASK):
-            await run.hooks.takeover("Enter the code", "credentials")
+            await run.hooks.takeover("Enter the code", SensitiveCategory.CREDENTIALS)
         try:
-            await run.hooks.takeover("Enter the code again", "credentials")
+            await run.hooks.takeover("Enter the code again", SensitiveCategory.CREDENTIALS)
         except BrowserHandoffCancelled as exc:
-            run.refusal = str(exc)
-        run.stops = await run.hooks.should_stop()
+            refusals.append(str(exc))
+        stops.append(await run.hooks.should_stop())
         return RunOutcome(False, "")
 
     result = await _run(_runner(_asks_too_often)[0])
 
-    assert (_ScriptedRun.made[0].refusal, _ScriptedRun.made[0].stops) == ("max-handoffs", True)
+    assert (refusals, stops) == (["max-handoffs"], [True])
     # The earlier handoffs the user completed do not make a refused one a success,
     # and the user did not stop it: the run says it hit the limit.
     assert (result.status, result.success, result.summary) == (
@@ -998,18 +1023,20 @@ async def test_the_handoff_past_the_limit_stops_the_run() -> None:
 async def test_a_handoff_the_user_cancelled_stops_the_run_even_when_the_cancel_is_swallowed() -> (
     None
 ):
+    why: list[str] = []
+
     async def _swallows(run: _ScriptedRun) -> RunOutcome:
         try:
-            await run.hooks.takeover("Sign in", "credentials")
+            await run.hooks.takeover("Sign in", SensitiveCategory.CREDENTIALS)
         except BrowserHandoffCancelled as exc:
-            run.why = str(exc)
+            why.append(str(exc))
         return RunOutcome(True, "looks done")
 
     runner, _ = _runner(_swallows, handoff=HandoffOutcome(status=HandoffStatus.CANCELLED))
 
     result = await _run(runner)
 
-    assert _ScriptedRun.made[0].why == HandoffStatus.CANCELLED.value
+    assert why == [HandoffStatus.CANCELLED.value]
     assert (result.status, result.success, result.summary) == (
         BrowserSessionStatus.CANCELLED,
         False,
@@ -1023,7 +1050,7 @@ async def test_a_run_stopped_before_it_answered_delivers_what_it_had_found() -> 
     async def _reads_then_hands_off(run: _ScriptedRun) -> RunOutcome:
         run.gathered = ["Clef: a model of music", "Read 1 of 3 stories."]
         with contextlib.suppress(BrowserHandoffCancelled):
-            await run.hooks.takeover("Sign in", "credentials")
+            await run.hooks.takeover("Sign in", SensitiveCategory.CREDENTIALS)
         return RunOutcome(False, "")
 
     runner, _ = _runner(
@@ -1044,8 +1071,8 @@ async def test_a_run_a_cancelled_handoff_ended_is_cancelled_whatever_the_user_di
     async def _two_handoffs(run: _ScriptedRun) -> RunOutcome:
         # The agent reads an ended handoff as an error result; its next stop check ends it.
         with contextlib.suppress(BrowserHandoffCancelled):
-            await run.hooks.takeover("Sign in", "credentials")
-            await run.hooks.takeover("Pay", "payment")
+            await run.hooks.takeover("Sign in", SensitiveCategory.CREDENTIALS)
+            await run.hooks.takeover("Pay", SensitiveCategory.PAYMENT)
         return RunOutcome(True, "looks done")
 
     runner, _ = _runner(_two_handoffs)
@@ -1068,7 +1095,7 @@ async def test_a_run_a_cancelled_handoff_ended_is_cancelled_whatever_the_user_di
 async def test_a_handoff_that_timed_out_fails_the_run() -> None:
     async def _hands_over(run: _ScriptedRun) -> RunOutcome:
         with contextlib.suppress(BrowserHandoffCancelled):
-            await run.hooks.takeover("Sign in", "credentials")
+            await run.hooks.takeover("Sign in", SensitiveCategory.CREDENTIALS)
         return RunOutcome(True, "looks done")
 
     runner, _ = _runner(_hands_over, handoff=HandoffOutcome(status=HandoffStatus.TIMEOUT))
@@ -1087,7 +1114,7 @@ async def test_a_handoff_whose_browser_was_lost_fails_the_run_as_lost() -> None:
 
     async def _hands_over(run: _ScriptedRun) -> RunOutcome:
         with contextlib.suppress(BrowserHandoffCancelled):
-            await run.hooks.takeover("Sign in", "credentials")
+            await run.hooks.takeover("Sign in", SensitiveCategory.CREDENTIALS)
         return RunOutcome(True, "looks done")
 
     runner, _ = _runner(
@@ -1122,7 +1149,7 @@ async def test_a_cancelled_run_that_finished_anyway_is_reported_cancelled() -> N
 async def test_a_run_past_its_cost_budget_after_it_finished_still_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stop = BudgetCheck("limit", None, None)
+    stop = BudgetCheck(BudgetWall.DAILY_USAGE, None, None)
     monkeypatch.setattr(runner_mod, "get_budget_stop_reason", AsyncMock(return_value=stop))
 
     async def _checks_then_claims(run: _ScriptedRun) -> RunOutcome:
@@ -1134,7 +1161,7 @@ async def test_a_run_past_its_cost_budget_after_it_finished_still_fails(
     assert (result.status, result.success, result.summary) == (
         BrowserSessionStatus.FAILED,
         False,
-        "limit",
+        DAILY_BUDGET_STOP_PRO,
     )
 
 
@@ -1144,8 +1171,8 @@ async def test_what_the_user_said_mid_run_reaches_the_result_and_only_a_redirect
     """A note sent with a done is something the user said; only a redirect replaces what the run was asked."""
 
     async def _redirected(run: _ScriptedRun) -> RunOutcome:
-        await run.hooks.takeover("Pay the deposit", "payment")
-        await run.hooks.takeover("Confirm", "payment")
+        await run.hooks.takeover("Pay the deposit", SensitiveCategory.PAYMENT)
+        await run.hooks.takeover("Confirm", SensitiveCategory.PAYMENT)
         return RunOutcome(True, "booked")
 
     runner, _ = _runner(_redirected)
@@ -1473,7 +1500,7 @@ async def test_a_run_that_could_not_attach_moves_only_when_its_engine_failed(
 async def test_a_handoff_on_a_run_with_a_fallback_pauses_the_watchdog() -> None:
     async def _waits(run: _ScriptedRun) -> RunOutcome:
         run.answers = False
-        await run.hooks.takeover("Sign in", "credentials")
+        await run.hooks.takeover("Sign in", SensitiveCategory.CREDENTIALS)
         run.answers = True
         return RunOutcome(True, "booked")
 

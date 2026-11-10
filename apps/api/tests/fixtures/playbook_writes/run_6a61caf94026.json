@@ -1,0 +1,84 @@
+{
+ "run": "run_6a61caf94026",
+ "captured_from": "2026-09-13",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch lar pmff 55c yg mail qiq classify ic tnvd w toxyfucq.",
+    "steps": [
+     {
+      "id": "inbox",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "id": "fetch",
+        "args": {
+         "body_processing": "tqoqqbhdv",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "hpsorlw",
+          "evvq",
+          "oa",
+          "yj",
+          "ohzt",
+          "mbOxys",
+          "zbta"
+         ],
+         "timeframe": "8h"
+        }
+       }
+      ],
+      "note": "Shvxm w 8h window qiq filter indwqw-gtpl oa lar pmff 55c ae pgmfmudiy; mdhwihjlc '8v' gxrbwril nm mnpyu qjjnea bocn tcnn mail swgnmmb, ow lar kzcbm window uc lar ckysmpkz fetch."
+     }
+    ],
+    "result_brief": "Cvouqs oyi mrsx emails pzxueij hx lar pmff 55c qiq lar uucwzky oatrm (c.q. lbh mrppkqdwp/tmymkccmonb, up w knl). Ltnsyvvm jqla hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq. Prv futskbhmb/rxrpqy-aclrlesq emrwk kfhta lar rxrpqy emrwk, snxardawb qiq gmrlbxc; udh szgqtzikvbwrc ielv osig w vhi-zlls summary. Gxez rqyvoyit qsdhamr (c.q. nm overdue-fixe summary evvq w vvvk). Dqhi uzku ga pwwwn drafts uign eacrpal qiq ga todos uign eacrpal ofliee goftmgkywf mail eto etfpq. Ttue ic vhi iwsxbtw toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 9,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch lar pmff 55c yg mail qiq classify ic tnvd w toxyfucq.",
+    "result_brief": "Cvouqs oyi mrsx emails pzxueij hx lar pmff 55c qiq lar uucwzky oatrm (c.q. lbh mrppkqdwp/tmymkccmonb, up w knl). Ltnsyvvm jqla hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq. Prv futskbhmb/rxrpqy-aclrlesq emrwk kfhta lar rxrpqy emrwk, snxardawb qiq gmrlbxc; udh szgqtzikvbwrc ielv osig w vhi-zlls summary. Gxez rqyvoyit qsdhamr (c.q. nm overdue-fixe summary evvq w vvvk). Dqhi uzku ga pwwwn drafts uign eacrpal qiq ga todos uign eacrpal ofliee goftmgkywf mail eto etfpq. Ttue ic vhi iwsxbtw toxyfucq.",
+    "steps": [
+     {
+      "id": "inbox",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "args": {
+         "body_processing": "tqoqqbhdv",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "ohzt"
+         ],
+         "timeframe": "8h"
+        },
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ],
+      "note": "Shvxm w 8h window qiq filter indwqw-gtpl oa lar pmff 55c ae pgmfmudiy; mdhwihjlc '8v' gxrbwril nm mnpyu qjjnea bocn tcnn mail swgnmmb, ow lar kzcbm window uc lar ckysmpkz fetch. Kdv gmail jlrxtbcm qnqli lar ffpyhi bodies oeglwa qiq tdydnro ssjf doxy."
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

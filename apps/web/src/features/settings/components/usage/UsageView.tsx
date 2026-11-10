@@ -7,7 +7,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { Fire02Icon, SparklesIcon } from "@icons";
 import { USAGE_WARN_THRESHOLD } from "@shared/constants/usage";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
-import { formatCompactNumber, formatDate, formatDateUTC } from "@shared/utils";
+import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import { useMemo, useState } from "react";
 import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
@@ -15,6 +15,7 @@ import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import type { UsageHistoryEntry } from "../../api/usageApi";
 import { DayByDay } from "./DayByDay";
+import { heroStatus, type Period } from "./heroStatus";
 import { severityColor } from "./severityColor";
 import { ActivityBadge, UsageHeatmap } from "./UsageHeatmap";
 import { CARD, HEALTHY, InfoTip, NEAR } from "./usageChrome";
@@ -23,31 +24,29 @@ import { CARD, HEALTHY, InfoTip, NEAR } from "./usageChrome";
 // the settings page. The shared promise means every chart here triggers a
 // single chunk load.
 
+/** The same day one month earlier, clamped to that month's length: the allowance
+ * month runs billing day to billing day, so a Mar 31 reset opened on Feb 28. */
+function oneMonthBefore(end: Date): number {
+  const year =
+    end.getUTCMonth() === 0 ? end.getUTCFullYear() - 1 : end.getUTCFullYear();
+  const month = (end.getUTCMonth() + 11) % 12;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return Date.UTC(year, month, Math.min(end.getUTCDate(), lastDay));
+}
+
 /** Fraction (0-1) of the current window already elapsed — the "you should be
  * here by now" mark. Simple: elapsed / total, from the window's reset time. */
 function elapsedFraction(resetIso: string, period: Period): number {
   const end = new Date(resetIso);
   const start =
-    period === "day"
-      ? end.getTime() - 86_400_000
-      : Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 1, 1);
+    period === "day" ? end.getTime() - 86_400_000 : oneMonthBefore(end);
   return Math.min(
     1,
     Math.max(0, (Date.now() - start) / (end.getTime() - start)),
   );
 }
 
-type Period = "day" | "month";
 type PeriodData = NonNullable<FeatureUsage["periods"]["day"]>;
-
-/** Local wall-clock time of an instant, e.g. "5:30 AM" — "midnight" would be
- * a lie for every user outside UTC. */
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 // ---------------------------------------------------------------------------
 
@@ -141,13 +140,6 @@ function heroGauge(
   };
 }
 
-function heroResetText(win: Period, resetIso: string | undefined): string {
-  if (!resetIso) return "";
-  return win === "day"
-    ? `Resets at ${fmtTime(resetIso)}`
-    : `Resets ${formatDate(resetIso, "short")}`;
-}
-
 function HeroGauge({
   percent,
   gauge,
@@ -218,6 +210,7 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
   const [win, setWin] = useState<Period>(isPro ? "month" : "day");
   const { percent, resetIso } = heroWindow(summary, win);
   const isDay = win === "day";
+  const status = heroStatus(win, percent, resetIso);
 
   return (
     <section className={cn(CARD, "relative flex items-center gap-5 p-4")}>
@@ -249,13 +242,9 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
           <InfoTip text="How much of your usage allowance you've used this window, based on the AI compute your activity has consumed." />
         </div>
         <p className="mt-1 text-xl font-semibold text-white">
-          {isDay
-            ? "of your daily allowance used"
-            : "of your monthly allowance used"}
+          {status.headline}
         </p>
-        <p className="mt-2 text-[13px] text-zinc-500">
-          {heroResetText(win, resetIso)}
-        </p>
+        <p className="mt-2 text-[13px] text-zinc-500">{status.detail}</p>
       </div>
     </section>
   );

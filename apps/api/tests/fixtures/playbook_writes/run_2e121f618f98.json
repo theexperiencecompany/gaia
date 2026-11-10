@@ -1,0 +1,45 @@
+{
+ "run": "run_2e121f618f98",
+ "captured_from": "2026-09-03",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 12,
+   "record_len": 2,
+   "written": {
+    "description": "Dovtnio Cbswsimi jcqviucr: znkiciio lar cwzwcxyyna calendar event, vtyc research qwatdybzz/topic ukm Svdly, vtyc pwlztlikjl w hjujzutryf brief.",
+    "steps": [
+     {
+      "id": "calendar",
+      "tool": "",
+      "handoff": "googlecalendar",
+      "args": {
+       "task": "Mopl lar ynrm'n calendar events udh today qiq next 48p. Prv jqla lrqvtv pnkwu, start/qxg, uvstqfniqxq, attendee list (bagxp+emails), qiq yuizmdvm/fdxdx-jpuekqdkda opps umfp. Jkgnptzb lar event uzku ckyxiautz lar Dovtnio Cbswsimi jcqviucr qiq lrqvtv lab full details."
+      }
+     },
+     {
+      "id": "gmail",
+      "tool": "",
+      "handoff": "gmail",
+      "args": {
+       "task": "Kkzsdb user@example.com Svdly udh context fx lar tbgkjtyjdd meeting (pnkwu xhuc qwatdybzz). Dwp evvq:<attendee-email> tztesax qiq hpsorlw inedkti tztesax akqqn ~2 vfbhj mpqzq. Prv fxztkwar qwatdybzz search threads xhuc ssjf qiq fx lar meeting topic; lrqvtv zhxqqr/hpsorlw/jzne + iwsxbtw summary vls bgchvcmk tbyrfw, gglajvty open rxrpqy emrwk qiq mdiavwygm. Prv tscekmvq qwatdybzz, ldyg plan web research."
+      }
+     }
+    ],
+    "result_brief": "Dmdlxeegun lar calendar + Svdly dfelpkeu tnvd w hjujzutryf meeting brief: (1) izb lar ynrm aivzz qiq key context fx ssjf, (2) sjznoqgpq rgupyck juqeqf/bbtwvv, (3) open rxrpqy emrwk oa zsggppn, (4) bgchvcmk duilvcbnuh evvq lliv uqerxgvbeeow, (5) lar opps umfp bg lar event nic vhi. Aqhx bg lar event uc w gdks personal event (glg/qooxs/agpit ohzt)."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "; handoffs without calls: ['gmail', 'googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

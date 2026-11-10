@@ -445,6 +445,18 @@ export class SlackAdapter extends BaseBotAdapter {
     }
 
     let currentTs = ts;
+    const removePlaceholder = async (): Promise<void> => {
+      try {
+        await client.chat.delete({ channel: channelId, ts });
+      } catch (err) {
+        // The reply is already settled; a stale "Thinking..." is all this costs.
+        this.adapterLogger.error(
+          "placeholder_delete_failed",
+          { channel_hash: hashLogIdentifier(channelId) },
+          err,
+        );
+      }
+    };
 
     await handleStreamingChat(
       this.gaia,
@@ -527,18 +539,10 @@ export class SlackAdapter extends BaseBotAdapter {
           true,
         );
         if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
-        try {
-          await client.chat.delete({ channel: channelId, ts });
-        } catch (err) {
-          // The reaction is already the reply; a stale "Thinking..." is all this costs.
-          this.adapterLogger.error(
-            "placeholder_delete_failed",
-            { channel_hash: hashLogIdentifier(channelId) },
-            err,
-          );
-        }
+        await removePlaceholder();
         return outcome;
       },
+      removePlaceholder,
     );
   }
 

@@ -37,16 +37,27 @@ from shared.py.analytics.catalog.billing import (
     PaywallBlocked,
     SubscriptionActivated,
 )
-from shared.py.analytics.catalog.bots import BotChatCompleted, BotChatStarted, BotMessageReceived
+from shared.py.analytics.catalog.bots import BotMessageReceived
 from shared.py.analytics.catalog.chat import (
     ChatConversationCreated,
     ChatConversationRenamed,
     ChatMessageCompleted,
     ChatMessageSubmitted,
 )
-from shared.py.analytics.catalog.onboarding import OnboardingCompleted, OnboardingPhaseCompleted
+from shared.py.analytics.catalog.notifications import NotificationAgentSent
+from shared.py.analytics.catalog.onboarding import (
+    OnboardingCompleted,
+    OnboardingPhaseCompleted,
+    OnboardingStarted,
+)
+from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.analytics.catalog.settings import SettingsBriefingScheduleUpdated
-from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
+from shared.py.analytics.catalog.todos import TodosRunResultDelivered
+from shared.py.analytics.catalog.workflows import (
+    WorkflowCreated,
+    WorkflowExecuted,
+    WorkflowResultDelivered,
+)
 from shared.py.analytics.context import POSTHOG_SESSION_PROPERTY
 
 from . import e2e_journeys as journeys
@@ -103,6 +114,11 @@ NOT_DRIVABLE = (
     f"{UserLoggedOut.event}: POST /user/logout needs a sealed WorkOS session cookie",
     "ai:llm_call_completed: the sim stub reports zero tokens, and one-shot calls skip zero usage; "
     "the ledger row is asserted in Mongo instead",
+    f"{WorkflowResultDelivered.event} (destination, destination_basis): the workflow journey's "
+    "sim comms replies itself, so the run never reaches the executor's result delivery",
+    f"{ReminderCompleted.event}, {TodosRunResultDelivered.event} (destination, destination_basis): "
+    "no journey fires a reminder or a tracked todo run",
+    f"{NotificationAgentSent.event}: no journey's sim script calls send_notification",
 )
 
 
@@ -200,8 +216,13 @@ def build_journeys(transcript: Path) -> list[Journey]:
             "onboarding",
             journeys.onboarding,
             (
+                # Reported twice, as a reload does; the server's step stamp keeps it to one.
+                Expect(OnboardingStarted.event, BROWSER, True),
+                *(
+                    Expect(OnboardingPhaseCompleted.event, BROWSER, True, (("phase", step.value),))
+                    for step in journeys.ONBOARDING_PHASES
+                ),
                 Expect(OnboardingCompleted.event, BROWSER, True),
-                Expect(OnboardingPhaseCompleted.event, BROWSER, True),
                 Expect(UserActive.event, BROWSER, True),
                 # Onboarding opens the user's first conversation.
                 Expect(
@@ -263,8 +284,6 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 Expect(ChatMessageSubmitted.event, BOT, False, (("source", telegram),)),
                 *_agent_turn(BOT, False, telegram),
                 Expect(BotMessageReceived.event, None, False),
-                Expect(BotChatStarted.event, None, False),
-                Expect(BotChatCompleted.event, None, False),
             ),
         ),
     ]

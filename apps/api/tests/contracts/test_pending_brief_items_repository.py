@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.constants.briefing import BriefItemSource
 from app.db.repositories.pending_brief_items import PendingBriefItemsRepository
 from app.models.brief_models import PendingBriefItemDocument
 
@@ -15,8 +16,9 @@ _START = datetime(2026, 10, 14, 7, 0, tzinfo=UTC)
 def _item(user_id: str, minutes: int, text: str) -> PendingBriefItemDocument:
     return PendingBriefItemDocument(
         user_id=user_id,
-        workflow_id="wf-1",
-        workflow_title="Morning digest",
+        source=BriefItemSource.WORKFLOW,
+        source_id="wf-1",
+        source_title="Morning digest",
         conversation_id="conv-1",
         text=text,
         created_at=_START + timedelta(minutes=minutes),

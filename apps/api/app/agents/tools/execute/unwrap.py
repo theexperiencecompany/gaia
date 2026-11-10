@@ -8,6 +8,7 @@ what a proxied call "is", and five private copies of this logic would drift.
 from typing import TypedDict, cast
 
 from app.constants.execute import EXECUTE_TOOL_NAME
+from app.utils.json_args import decode_json_container
 
 
 class ExecuteCallArgs(TypedDict, total=False):
@@ -33,7 +34,8 @@ def unwrap_execute_call(name: str, args: dict[str, object]) -> tuple[str, dict[s
     real_name = execute_args.get("tool_name")
     if not isinstance(real_name, str) or not real_name:
         return name, args
-    data = execute_args.get("data")
+    # The proxy runs a JSON-encoded data as its object, so every seam reads it that way.
+    data = decode_json_container(execute_args.get("data"))
     return real_name, data if isinstance(data, dict) else {}
 
 
