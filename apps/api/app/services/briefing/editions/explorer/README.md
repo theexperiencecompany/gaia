@@ -93,6 +93,12 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    prints it as its own block after the overnight one, reusing that block's row
    markup under a "still in progress" heading in the family's voice (Air Mail
    printed running work under "Done while you slept").
+8. **No invented passenger or total.** The boarding pass's barcode line printed the
+   founder's passenger code "RANDERIYA/A"; it now prints the user's own
+   (`SURNAME/I` from `ed.recipient.name`, the single name when there is one, and
+   nothing without a recipient). The receipt totalled "1 <weekday>" under its
+   figures; that line and its now-unused `.total` rule are gone, and the double
+   rule still closes the figures.
 
 The painting that `broadsheet`, `exhibition` and `almanac` hang rotates through
 the public-domain paintings in `assets.json`, one step per edition
