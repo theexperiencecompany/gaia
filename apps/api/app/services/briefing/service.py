@@ -145,15 +145,15 @@ class VoiceUnreadableError(BriefingGenerationError):
         self.problems = problems
 
 
-def _parse_payload(raw: str) -> BriefingPayload:
-    """Extract and validate the single BriefingPayload from the agent output.
+def _parse_payload(raw: str, family: str) -> BriefingPayload:
+    """Extract and validate the single BriefingPayload from the agent output, in the family.
 
     call_agent_silent swallows its errors into a plain string, which fails validation
     here, so no partial briefing is stored.
     """
     for data in decode_json_blocks(raw).values:
         if isinstance(data, dict) and "headline" in data:
-            payload = BriefingPayload.model_validate(data)
+            payload = BriefingPayload.model_validate({**data, "template_family": family})
             item_count = sum(len(section.items) for section in payload.sections)
             if item_count > MAX_BRIEF_ITEMS:
                 raise BriefingGenerationError(
@@ -205,9 +205,9 @@ async def _run_silent(
 
 
 async def _generate_payload(
-    user: AuthenticatedUser, clock: UserClock, prompt: str, kind: BriefingKind
+    user: AuthenticatedUser, clock: UserClock, prompt: str, kind: BriefingKind, family: str
 ) -> BriefingPayload:
-    return _parse_payload(await _run_silent(user, clock, prompt, conversation_key=kind))
+    return _parse_payload(await _run_silent(user, clock, prompt, conversation_key=kind), family)
 
 
 def _gaia_shipped_lines(docs: list[TodoDocument]) -> str:
@@ -703,13 +703,12 @@ async def _persist_draws(user_id: str, draws: list[_BagDraw]) -> None:
         )
 
 
-def _assign_edition(user: UserDocument, payload: BriefingPayload, family: str) -> list[_BagDraw]:
-    """Record the edition family on the payload, and for Air Mail its stamp.
+def _draw_stamp(user: UserDocument, payload: BriefingPayload) -> list[_BagDraw]:
+    """Record an Air Mail brief's stamp city on its payload.
 
     Returns the stamp draw, persisted once the brief is delivered.
     """
-    payload.template_family = family
-    if family != POSTAL_FAMILY:
+    if payload.template_family != POSTAL_FAMILY:
         return []
     stamp = _draw_from_bag(user, BriefingBag.STAMP_CITY, hosted_stamp_weights())
     payload.stamp_city = stamp.member
@@ -813,6 +812,7 @@ def _daily_payload(
     sections: list[BriefingSection],
     stats: list[BriefingStat],
     is_winback: bool,
+    family: str,
 ) -> BriefingPayload:
     return BriefingPayload(
         kicker=DAILY_KICKER,
@@ -826,6 +826,7 @@ def _daily_payload(
         hue=hue_for_day(clock.day_of_year),
         generated_at=clock.now_local.strftime("%-I:%M %p"),
         message=voice.message,
+        template_family=family,
     )
 
 
@@ -836,14 +837,6 @@ def _is_empty_day(payload: BriefingPayload, signals: list[Signal]) -> bool:
         and not payload.calendar
         and not any(section.items for section in payload.sections)
     )
-
-
-@dataclass(frozen=True)
-class _Edition:
-    """The edition family a brief renders in, and the bag draws spent choosing it."""
-
-    family: str
-    draws: list[_BagDraw]
 
 
 @dataclass(frozen=True)
@@ -865,18 +858,18 @@ async def _publish(
     clock: UserClock,
     kind: BriefingKind,
     payload: BriefingPayload,
-    edition: _Edition,
+    draws: list[_BagDraw],
     sending: _Push,
 ) -> BriefingModel:
-    """Draw the edition, render and store the brief, deliver it and report where it went.
+    """Draw the stamp, render and store the brief, deliver it and report where it went.
 
     store_brief mints the link the edition encodes, then renders and stores it, so a
     render failure stores and sends nothing; the one image serves the in-app page, the email and the chat post. A brief
     that is not pushed (sending.push False) goes in-app only and spends no shuffle-bag draw;
     otherwise the draws (the family's and the stamp's) persist after delivery.
     """
-    family, push = edition.family, sending.push
-    draws = [*edition.draws, *_assign_edition(user, payload, family)]
+    push = sending.push
+    spent = [*draws, *_draw_stamp(user, payload)]
     if payload.stamp_city is not None:
         payload.new_stamp = await new_stamp(user.id, payload.stamp_city)
     payload.recipient_name = display_name(user)
@@ -884,12 +877,12 @@ async def _publish(
     channels = await _deliver(user, stored, payload, _NOTIFICATION_KINDS[kind], push=push)
     await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
     if push:
-        await _persist_draws(user.id, draws)
+        await _persist_draws(user.id, spent)
     capture(
         UserId(user.id),
         BriefingSent(
             kind=kind,
-            family=family,
+            family=payload.template_family,
             mood=payload.mood,
             item_count=sum(len(s.items) for s in payload.sections),
             channel_count=len(channels),
@@ -991,6 +984,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         max_message_chars=message_char_limit(len(signals)),
     )
     tallies = BriefingTallies(done_by_you=len(completed.user), done_by_gaia=len(completed.gaia))
+    family = _draw_from_bag(user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS)
     payload = await _voice_checked_against_items(
         build_user_context(user, auth_provider=None),
         clock,
@@ -1003,17 +997,16 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             link_ids=frozenset(facts.link_targets),
         ),
         lambda voice: _daily_payload(
-            clock, voice, facts.sections, facts.stats, winback.is_winback
+            clock, voice, facts.sections, facts.stats, winback.is_winback, family.member
         ).model_copy(update={"calendar": calendar, "tallies": tallies}),
     )
     await _link_voiced_items(user_id, payload, facts.link_targets)
-    family = _draw_from_bag(user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS)
     await _publish(
         user,
         clock,
         BRIEFING_KIND_DAILY,
         payload,
-        _Edition(family=family.member, draws=[family]),
+        [family],
         # The idle ladder's goal question, warning and goodbye are messages in
         # their own right, so they push even on an otherwise empty day.
         _Push(
@@ -1067,7 +1060,11 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     # worker slot (observed live 2026-08-07).
     async with asyncio.timeout(WEEKLY_GENERATION_TIMEOUT_SECONDS):
         payload = await _generate_payload(
-            build_user_context(user, auth_provider=None), clock, prompt, BRIEFING_KIND_WEEKLY
+            build_user_context(user, auth_provider=None),
+            clock,
+            prompt,
+            BRIEFING_KIND_WEEKLY,
+            WEEKLY_FAMILY,
         )
     payload.kicker = WEEKLY_KICKER
     payload.date = clock.date_str
@@ -1082,7 +1079,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         clock,
         BRIEFING_KIND_WEEKLY,
         payload,
-        _Edition(family=WEEKLY_FAMILY, draws=[]),
+        [],
         _Push(push=True),
     )
     return BriefingRunOutcome.SENT
