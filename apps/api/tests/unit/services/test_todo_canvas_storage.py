@@ -41,7 +41,7 @@ def _todo_doc(**overrides: object) -> TodoDocument:
         "updated_at": datetime.now(UTC),
     }
     data.update(overrides)
-    return TodoDocument(**data)
+    return TodoDocument.model_validate(data)
 
 
 @pytest.fixture

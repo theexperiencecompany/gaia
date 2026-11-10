@@ -1263,9 +1263,13 @@ class TestFormatCreateOutput:
 
         out = format_create_output(reopened, None, None, [])
 
-        assert out.startswith("Tracked todo reopened: 66f838cc8829054e5f10e407\n")
-        assert "initial_canvas was not written" in out
-        assert "Tracked todo created" not in out
+        assert out.startswith(
+            "Tracked todo reopened: 66f838cc8829054e5f10e407\n"
+            "What it tracks already had this todo, completed; it is open again with your title, "
+            "labels and schedule. Its canvas.md and activity.md keep their history and "
+            "initial_canvas was not written: bring its Current State up to date.\n"
+            "Title: Reply to Sam\n"
+        )
 
     def test_the_summary_routes_canvas_edits_away_from_filesystem_tools(self) -> None:
         """The create result names the exact folder (slug + short id) and both files, so the model finds its notes by path."""

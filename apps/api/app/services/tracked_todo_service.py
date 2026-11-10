@@ -17,7 +17,6 @@ JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Final
 
 from pymongo.errors import DuplicateKeyError
 
@@ -28,6 +27,7 @@ from app.constants.todos import (
     CANVAS_STANDING_RULES_SECTION,
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
+    REOPEN_CLEARED_SCHEDULE_FIELDS,
     SUB_TODO_PARENT_WAKE_DELAY,
     TodoActivityEvent,
     WaitingOn,
@@ -97,18 +97,6 @@ from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRefReopened
 from shared.py.wide_events import log
-
-# What a create sets on a todo it reopens even when left out, as a new todo starts without them.
-_REOPEN_CLEARED_SCHEDULE_FIELDS: Final[tuple[str, ...]] = (
-    "scheduled_at",
-    "recurrence",
-    "due_date",
-    "expires_at",
-    "waiting_on",
-    "question",
-    "if_no_reply",
-    "default_action",
-)
 
 CANVAS_TEMPLATE = """# {title}
 
@@ -332,23 +320,24 @@ class TrackedTodoService:
             else None
         )
         if previous is not None and previous.completed:
-            # As on a new todo, a schedule field the create leaves out ends up empty.
+            # As on a new todo, a schedule field the create leaves out ends up empty; the
+            # description, references and priority it does not give stay as they were.
+            given = {
+                "description": description,
+                "references": references,
+                "priority": None if priority is Priority.NONE else priority,
+            }
             reopen = TodoUpdate.model_validate(
                 {
-                    **dict.fromkeys(_REOPEN_CLEARED_SCHEDULE_FIELDS),
+                    **dict.fromkeys(REOPEN_CLEARED_SCHEDULE_FIELDS),
                     **schedule.model_dump(exclude_unset=True),
                     "title": title,
                     "labels": all_labels,
                     "notify_on_run": notify_on_run,
                     "parent_todo_id": parent_todo_id,
+                    **{field: value for field, value in given.items() if value is not None},
                 }
             )
-            if description is not None:
-                reopen.description = description
-            if references is not None:
-                reopen.references = references
-            if priority is not Priority.NONE:
-                reopen.priority = priority
             reopened = await TrackedTodoService._reopen_for_its_ref(
                 previous,
                 reopen,

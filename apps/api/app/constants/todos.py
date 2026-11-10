@@ -219,6 +219,22 @@ class TodoActivityEvent(StrEnum):
     REOPENED = "reopened"
 
 
+# The activity detail of a reopen made from the todos page, as completion's is "Completed via UI".
+REOPENED_IN_THE_APP_DETAIL: Final[str] = "via UI"
+
+# What a create sets on a todo it reopens even when left out, as a new todo starts without them.
+REOPEN_CLEARED_SCHEDULE_FIELDS: Final[tuple[str, ...]] = (
+    "scheduled_at",
+    "recurrence",
+    "due_date",
+    "expires_at",
+    "waiting_on",
+    "question",
+    "if_no_reply",
+    "default_action",
+)
+
+
 # The sections every canvas.md carries exactly once, in this order. Activity
 # (dated "### YYYY-MM-DD" entries, any run log) belongs in activity.md, never here.
 CANVAS_STANDING_RULES_SECTION: Final[str] = "Standing rules"

@@ -338,6 +338,26 @@ async def test_set_canvas_completed_false_opens_it_and_keeps_the_last_completion
     assert written == {"completed": False, "completed_at": stamped, "custom": "kept"}
 
 
+@pytest.mark.parametrize("completed", [True, False])
+async def test_set_canvas_completed_that_cannot_reach_chroma_logs_which_flag_it_lost(
+    completed: bool,
+) -> None:
+    with (
+        patch(
+            "app.utils.canvas_vector_utils.ChromaClient.get_client",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("chroma down"),
+        ),
+        patch("app.utils.canvas_vector_utils.log") as log,
+    ):
+        marked = await set_canvas_completed("todo-1", completed=completed)
+
+    assert marked is False
+    log.warning.assert_called_once_with(
+        "canvas.set_completed_failed", todo_id="todo-1", completed=completed, error="chroma down"
+    )
+
+
 async def test_set_canvas_completed_with_empty_stored_row_is_false() -> None:
     collection = MagicMock()
     collection.get = AsyncMock(return_value={"ids": ["canvas_todo-1"], "metadatas": [None]})

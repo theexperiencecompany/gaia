@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.todo_models import (
@@ -2091,6 +2091,107 @@ class TestReopenOfATakenRef:
             )
 
         assert raised.value is failure
+
+
+@pytest.fixture
+def reopen_seams() -> Iterator[SimpleNamespace]:
+    """Patch what a landed reopen does to a tracked todo: activity entry, search flag, sync."""
+    with (
+        patch("app.services.todos.todo_service.record_activity", new_callable=AsyncMock) as record,
+        patch(
+            "app.services.todos.todo_service.set_canvas_completed", new_callable=AsyncMock
+        ) as flag,
+        patch("app.services.todos.todo_service.schedule_gaia_tasks_sync") as sync,
+    ):
+        yield SimpleNamespace(record=record, flag=flag, sync=sync)
+
+
+def _tracked(todo_id: str, *, completed: bool) -> TodoDocument:
+    return _make_todo_doc(
+        todo_id=todo_id,
+        completed=completed,
+        labels=[GAIA_TRACKED_LABEL],
+        vfs_path=f"/workspace/gaia-tasks/{todo_id}",
+    )
+
+
+class TestAReopenedTrackedTodoIsOpenAgain:
+    """Completion logged the todo and hid its canvas from active search; a reopen undoes both."""
+
+    async def test_unticking_a_tracked_todo_logs_the_reopen_and_shows_its_canvas_again(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, reopen_seams
+    ):
+        done = _tracked(FAKE_TODO_ID, completed=True)
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[done])
+        mock_todo_repo.update = AsyncMock(return_value=_tracked(FAKE_TODO_ID, completed=False))
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+        )
+
+        reopen_seams.record.assert_awaited_once_with(
+            FAKE_TODO_ID, FAKE_USER_ID, TodoActivityEvent.REOPENED, "via UI"
+        )
+        reopen_seams.flag.assert_awaited_once_with(FAKE_TODO_ID, completed=False)
+        reopen_seams.sync.assert_called_once_with(FAKE_USER_ID)
+
+    async def test_a_bulk_reopen_settles_only_the_tracked_todos_it_reopened(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, reopen_seams
+    ):
+        done_tracked = _tracked("a", completed=True)
+        done_plain = _make_todo_doc(todo_id="b", completed=True)
+        open_tracked = _tracked("c", completed=False)
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[done_tracked, done_plain, open_tracked]
+        )
+        mock_todo_repo.bulk_update = AsyncMock(return_value=3)
+
+        await TodoService.bulk_update_todos(
+            BulkUpdateRequest(todo_ids=["a", "b", "c"], updates=TodoUpdateRequest(completed=False)),
+            FAKE_USER_ID,
+        )
+
+        reopen_seams.record.assert_awaited_once_with(
+            "a", FAKE_USER_ID, TodoActivityEvent.REOPENED, "via UI"
+        )
+        reopen_seams.flag.assert_awaited_once_with("a", completed=False)
+        reopen_seams.sync.assert_called_once_with(FAKE_USER_ID)
+
+    async def test_a_reopen_with_no_completed_tracked_todo_touches_no_tracked_state(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, reopen_seams
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[
+                _make_todo_doc(todo_id="b", completed=True),
+                _tracked("c", completed=False),
+            ]
+        )
+        mock_todo_repo.bulk_update = AsyncMock(return_value=2)
+
+        await TodoService.bulk_update_todos(
+            BulkUpdateRequest(todo_ids=["b", "c"], updates=TodoUpdateRequest(completed=False)),
+            FAKE_USER_ID,
+        )
+
+        reopen_seams.record.assert_not_awaited()
+        reopen_seams.flag.assert_not_awaited()
+        reopen_seams.sync.assert_not_called()
+
+    async def test_a_reopen_that_does_not_land_leaves_the_todo_as_completed(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, reopen_seams
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_tracked(FAKE_TODO_ID, completed=True)]
+        )
+        mock_todo_repo.update = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+        with pytest.raises(RuntimeError):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+        reopen_seams.record.assert_not_awaited()
+        reopen_seams.flag.assert_not_awaited()
 
 
 class TestReopenWatchesTheRefAgain:

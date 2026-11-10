@@ -100,7 +100,6 @@ apps/api/tests/stress/test_arq_idempotency.py	arg-type
 apps/api/tests/stress/test_arq_idempotency.py	misc
 apps/api/tests/stress/test_link_code_race.py	call-arg
 apps/api/tests/unit/agents/context/test_context_harness.py	attr-defined
-apps/api/tests/unit/agents/context/test_todo_delivery_context.py	attr-defined
 apps/api/tests/unit/agents/context/test_todo_feedback_context.py	arg-type
 apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	arg-type
 apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	attr-defined
@@ -122,11 +121,6 @@ apps/api/tests/unit/agents/test_executor_channel.py	var-annotated
 apps/api/tests/unit/agents/test_executor_queue.py	attr-defined
 apps/api/tests/unit/agents/test_executor_queue.py	misc
 apps/api/tests/unit/agents/test_executor_queue.py	typeddict-item
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	arg-type
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	attr-defined
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	func-returns-value
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	list-item
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	return-value
 apps/api/tests/unit/agents/test_github_discovery.py	arg-type
 apps/api/tests/unit/agents/test_held_replies.py	arg-type
 apps/api/tests/unit/agents/test_hil_approval_middleware.py	arg-type
@@ -137,7 +131,6 @@ apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment
 apps/api/tests/unit/agents/test_profile_crawler.py	return-value
-apps/api/tests/unit/agents/test_stream_session.py	arg-type
 apps/api/tests/unit/agents/test_subagent_channel.py	arg-type
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	arg-type
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	attr-defined
@@ -402,7 +395,6 @@ apps/api/tests/unit/services/test_share_fetcher_compat.py	misc
 apps/api/tests/unit/services/test_share_fetcher_compat.py	str-bytes-safe
 apps/api/tests/unit/services/test_social_profile_service.py	arg-type
 apps/api/tests/unit/services/test_startup_validation.py	func-returns-value
-apps/api/tests/unit/services/test_todo_canvas_storage.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers.py	union-attr
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	attr-defined

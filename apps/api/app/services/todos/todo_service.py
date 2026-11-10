@@ -10,7 +10,7 @@ import uuid
 
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
-from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.constants.todos import GAIA_TRACKED_LABEL, REOPENED_IN_THE_APP_DETAIL, TodoActivityEvent
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
@@ -79,9 +79,6 @@ from shared.py.analytics.catalog.todos import (
     TodosUpdated,
 )
 from shared.py.wide_events import log
-
-# The activity detail of a reopen made from the todos page, as completion's is "Completed via UI".
-_REOPENED_IN_THE_APP = "via UI"
 
 
 async def _get_workflow_categories_for_todos(
@@ -635,7 +632,7 @@ class TodoService:
         if reopening:
             await _refuse_a_reopen_under_a_closed_parent(user_id, [todo_id])
         async with reopening_todos(
-            user_id, [todo_id], reopening=reopening, detail=_REOPENED_IN_THE_APP
+            user_id, [todo_id], reopening=reopening, detail=REOPENED_IN_THE_APP_DETAIL
         ):
             updated = await _persist_update(todo_id, user_id, updates.workflow_id, update)
 
@@ -745,7 +742,7 @@ class TodoService:
             if reopening:
                 await _refuse_a_reopen_under_a_closed_parent(user_id, plain_ids)
             async with reopening_todos(
-                user_id, plain_ids, reopening=reopening, detail=_REOPENED_IN_THE_APP
+                user_id, plain_ids, reopening=reopening, detail=REOPENED_IN_THE_APP_DETAIL
             ):
                 try:
                     modified = await todo_repository.bulk_update(user_id, plain_ids, update)
