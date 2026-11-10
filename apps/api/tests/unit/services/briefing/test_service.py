@@ -684,6 +684,7 @@ class TestDailyBrief:
                 lede="l",
                 mood="clear",
                 caption="c",
+                template_family="postal",
                 stamp_city="tokyo",
             ),
         )
@@ -1441,6 +1442,7 @@ class TestWhatTheWriterIsShown:
                 mood="packed",
                 caption="c",
                 message=message,
+                template_family="swiss",
             )
             return BriefingModel(id="b", user_id=_USER, date="2026-10-13", payload=payload)
 
@@ -1665,7 +1667,7 @@ class TestTheDailyRunWiring:
             UserId(_USER),
             BriefingSent(
                 kind="daily",
-                family=payload.template_family or "",
+                family=payload.template_family,
                 mood="packed",
                 item_count=2,
                 channel_count=3,

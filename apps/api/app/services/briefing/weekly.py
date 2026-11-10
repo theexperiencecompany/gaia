@@ -36,7 +36,7 @@ from app.services.briefing.lifecycle import (
     already_delivered,
 )
 from app.services.briefing.prose import Prose, Writing, links_in, voiced_payload, written_brief
-from app.services.briefing.publish import Edition, Push, publish_brief
+from app.services.briefing.publish import Push, publish_brief
 from app.services.briefing.sections import (
     chosen_sections,
     event_ids,
@@ -120,7 +120,12 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         )
     links = await links_in(user_id, voice.message, facts)
     payload = voiced_payload(
-        clock, Prose(voice, draft, links), facts, kicker=WEEKLY_KICKER, mood="weekly"
+        clock,
+        Prose(voice, draft, links),
+        facts,
+        kicker=WEEKLY_KICKER,
+        mood="weekly",
+        family=WEEKLY_FAMILY,
     ).model_copy(
         update={
             "week": week,
@@ -136,7 +141,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         clock,
         BRIEFING_KIND_WEEKLY,
         payload,
-        Edition(family=WEEKLY_FAMILY, draws=[]),
+        [],
         Push(push=True),
     )
     return BriefingRunOutcome.SENT

@@ -55,6 +55,7 @@ def _brief(mood: BriefingMood, *, items: list[str] | None = None) -> BriefingMod
         date="2026-10-12",
         payload=BriefingPayload(
             kicker="K",
+            template_family="swiss",
             date="2026-10-12",
             headline="H",
             lede="L",

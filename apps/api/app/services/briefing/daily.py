@@ -51,7 +51,7 @@ from app.services.briefing.lifecycle import (
     wake_or_skip,
 )
 from app.services.briefing.prose import Prose, Writing, links_in, voiced_payload, written_brief
-from app.services.briefing.publish import Edition, Push, publish_brief
+from app.services.briefing.publish import Push, publish_brief
 from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
 from app.services.briefing.scouts.service import scout_signals
@@ -218,12 +218,14 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         ),
     )
     links = await links_in(user_id, voice.message, facts)
+    family = draw_from_bag(user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS)
     payload = voiced_payload(
         clock,
         Prose(voice, draft, links),
         facts,
         kicker=DAILY_KICKER,
         mood="winback" if winback.is_winback else draft.mood,
+        family=family.member,
     ).model_copy(
         update={
             "stats": work_stats(work),
@@ -235,13 +237,12 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             "sources_unavailable": gathered.sources_unavailable,
         }
     )
-    family = draw_from_bag(user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS)
     await publish_brief(
         user,
         clock,
         BRIEFING_KIND_DAILY,
         payload,
-        Edition(family=family.member, draws=[family]),
+        [family],
         # The idle ladder's goal question, warning and goodbye are messages in
         # their own right, so they push even on an otherwise empty day.
         Push(

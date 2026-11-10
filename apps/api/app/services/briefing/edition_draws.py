@@ -46,13 +46,12 @@ async def persist_draws(user_id: str, draws: list[BagDraw]) -> None:
         )
 
 
-def assign_edition(user: UserDocument, payload: BriefingPayload, family: str) -> list[BagDraw]:
-    """Record the edition family on the payload, and for Air Mail its stamp.
+def draw_stamp(user: UserDocument, payload: BriefingPayload) -> list[BagDraw]:
+    """Record an Air Mail brief's stamp city on its payload.
 
     Returns the stamp draw, persisted once the brief is delivered.
     """
-    payload.template_family = family
-    if family != POSTAL_FAMILY:
+    if payload.template_family != POSTAL_FAMILY:
         return []
     stamp = draw_from_bag(user, BriefingBag.STAMP_CITY, hosted_stamp_weights())
     payload.stamp_city = stamp.member

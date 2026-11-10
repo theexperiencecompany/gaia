@@ -24,21 +24,13 @@ from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing.context import UserClock
 from app.services.briefing.delivery import deliver_brief
-from app.services.briefing.edition_draws import BagDraw, assign_edition, persist_draws
+from app.services.briefing.edition_draws import BagDraw, draw_stamp, persist_draws
 from app.services.briefing.postmarks import new_stamp
 from app.services.briefing.store import store_brief
 from app.utils.user_display import display_name
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
 from shared.py.wide_events import log
-
-
-@dataclass(frozen=True)
-class Edition:
-    """The edition family a brief renders in, and the bag draws spent choosing it."""
-
-    family: str
-    draws: list[BagDraw]
 
 
 @dataclass(frozen=True)
@@ -64,18 +56,18 @@ async def publish_brief(
     clock: UserClock,
     kind: BriefingKind,
     payload: BriefingPayload,
-    edition: Edition,
+    draws: list[BagDraw],
     sending: Push,
 ) -> BriefingModel:
-    """Draw the edition, render and store the brief, deliver it and report where it went.
+    """Draw the stamp, render and store the brief, deliver it and report where it went.
 
     store_brief mints the link the edition encodes, then renders and stores it, so a
     render failure stores and sends nothing; the one image serves the in-app page, the email and the chat post. A brief
     that is not pushed (sending.push False) goes in-app only and spends no shuffle-bag draw;
     otherwise the draws (the family's and the stamp's) persist after delivery.
     """
-    family, push = edition.family, sending.push
-    draws = [*edition.draws, *assign_edition(user, payload, family)]
+    push = sending.push
+    spent = [*draws, *draw_stamp(user, payload)]
     if payload.stamp_city is not None:
         payload.new_stamp = await new_stamp(user.id, payload.stamp_city)
     payload.recipient_name = display_name(user)
@@ -83,12 +75,12 @@ async def publish_brief(
     channels = await deliver_brief(user, stored, payload, _NOTIFICATION_KINDS[kind], push=push)
     await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
     if push:
-        await persist_draws(user.id, draws)
+        await persist_draws(user.id, spent)
     capture(
         UserId(user.id),
         BriefingSent(
             kind=kind,
-            family=family,
+            family=payload.template_family,
             mood=payload.mood,
             item_count=sum(len(s.items) for s in payload.sections),
             channel_count=len(channels),

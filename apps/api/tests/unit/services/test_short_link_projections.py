@@ -104,6 +104,7 @@ class TestBriefing:
             edition_image_url="https://cdn.heygaia.io/editions/brief.png",
             payload=BriefingPayload(
                 kicker="Tuesday",
+                template_family="swiss",
                 date="Oct 14",
                 headline="A clear day",
                 lede="Two things moved.",
