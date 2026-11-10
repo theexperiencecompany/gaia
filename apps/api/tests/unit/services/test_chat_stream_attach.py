@@ -175,6 +175,7 @@ class TestFinalizeStreamBackstop:
         state.tool_entries.extend(
             [
                 {"tool_name": "search", "data": {}},
+                {"tool_name": "search", "data": {}},
                 {"tool_name": "fetch", "data": {}},
             ]
         )
