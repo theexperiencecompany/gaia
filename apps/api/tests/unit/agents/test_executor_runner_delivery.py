@@ -496,7 +496,7 @@ class TestPersistCancelledRun:
         [
             (None, CONVERSATION_MAX_MESSAGES),
             (
-                TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO),
+                TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
                 TODO_CONVERSATION_MAX_MESSAGES,
             ),
         ],

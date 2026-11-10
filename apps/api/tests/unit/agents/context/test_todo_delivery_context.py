@@ -79,7 +79,7 @@ async def _delivered_request() -> HumanMessage:
                 task_id="t1",
                 user_message_id=None,
             ),
-            TodoRun(todo_id=DESK.id, trigger_type=TriggerType.SCHEDULED_TODO),
+            TodoRun(todo_id=DESK.id, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=False),
             BRIEFING,
             "final",
         )

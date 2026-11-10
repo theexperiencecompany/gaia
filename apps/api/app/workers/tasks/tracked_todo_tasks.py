@@ -803,7 +803,9 @@ async def _execute_on_executor(
         await run_todo_on_executor(
             TodoRunRequest(
                 user=user_data,
-                todo_run=TodoRun(todo_id=todo_id, trigger_type=_trigger_type(origin)),
+                todo_run=TodoRun(
+                    todo_id=todo_id, trigger_type=_trigger_type(origin), runs_once=doc.runs_once
+                ),
                 todo_title=doc.title,
                 task=prompt,
                 conversation_id=conversation_id,
@@ -940,7 +942,9 @@ async def _resume_holding_lock(
         await run_todo_on_executor(
             TodoRunRequest(
                 user=user_data,
-                todo_run=TodoRun(todo_id=todo_id, trigger_type=_trigger_type(None)),
+                todo_run=TodoRun(
+                    todo_id=todo_id, trigger_type=_trigger_type(None), runs_once=doc.runs_once
+                ),
                 todo_title=doc.title,
                 task=message,
                 conversation_id=conversation_id,

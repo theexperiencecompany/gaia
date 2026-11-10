@@ -580,6 +580,11 @@ class TodoDocument(UserScopedDocument):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    @property
+    def runs_once(self) -> bool:
+        """Whether nothing will wake this todo again: no recurrence and no watch."""
+        return not (self.recurrence or self.trigger_subscriptions)
+
 
 class TodoUpdate(BaseModel):
     """Partial ``$set`` update for a todo — every settable field, all optional."""
