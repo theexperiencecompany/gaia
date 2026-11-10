@@ -17,7 +17,6 @@ import re
 
 from app.constants.briefing import POSTAL_FAMILY
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.editions._shared import EXPLORER_CANVAS_PX
 from app.services.briefing.editions.artworks import artwork_for
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
 from app.services.briefing.editions.stamps import (
@@ -26,6 +25,9 @@ from app.services.briefing.editions.stamps import (
     stamp_asset_key,
     stamp_asset_url,
 )
+
+# The families' portrait canvas (explorer/README.md), exported at 3x.
+EXPLORER_CANVAS_PX = 540
 
 _EXPLORER_DIR = Path(__file__).parent / "explorer"
 _JS_DIR = _EXPLORER_DIR / "js"
@@ -154,7 +156,7 @@ def render_explorer_edition(
     """Render a briefing payload through one vendored explorer family.
 
     Raises ValueError for a family not in explorer_family_ids(). skin_seed makes the skin
-    deterministic; tz_label is accepted for signature parity with render_edition, unused.
+    deterministic; tz_label is accepted for signature parity with EditionRenderer, unused.
     """
     del tz_label  # accepted for signature parity; see docstring
     if family not in explorer_family_ids():
