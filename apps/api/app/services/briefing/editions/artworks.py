@@ -12,8 +12,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
-from app.constants.briefing import ArtFamily
-from app.services.briefing.editions._shared import EXPLORER_SCALE
+from app.constants.briefing import EXPLORER_SCALE, ArtFamily
 
 ARTWORKS_JSON = Path(__file__).parent / "explorer" / "assets" / "artworks" / "artworks.json"
 

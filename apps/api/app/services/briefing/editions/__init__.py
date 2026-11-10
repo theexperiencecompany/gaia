@@ -4,29 +4,23 @@ Each edition is a pure payload-to-HTML renderer, self-contained so a headless
 browser can rasterize it. This package is also the registry of template families:
 a daily brief draws its family from the user's shuffle bag (DAILY_FAMILY_WEIGHTS),
 the weekly recap is always WEEKLY_FAMILY, and a persisted template_family selects
-the renderer forever so the archive re-renders identically. Payloads with none
-render as the classic gaia edition.
+the renderer forever so the archive re-renders identically.
 """
 
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
+from app.constants.briefing import EXPLORER_SCALE, POSTAL_FAMILY, WEEKLY_FAMILY
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.editions._shared import CANVAS_PX, EXPLORER_CANVAS_PX, EXPLORER_SCALE
 from app.services.briefing.editions.explorer_render import (
+    EXPLORER_CANVAS_PX,
     explorer_family_ids,
     render_explorer_edition,
 )
-from app.services.briefing.editions.gaia import render_edition
-
-# The classic dark-editorial family (render_edition) — the renderer for legacy
-# payloads that carry no family. Not in the registry: it is the default.
-FAMILY_EDITION = "edition"
 
 
 class EditionRenderer(Protocol):
-    """The signature every edition renderer shares (render_edition's)."""
+    """The signature every edition renderer shares."""
 
     def __call__(
         self,
@@ -39,7 +33,7 @@ class EditionRenderer(Protocol):
 
 
 def _make_explorer_renderer(family: str) -> EditionRenderer:
-    """Close over one explorer family id and return a render_edition-shaped callable."""
+    """Close over one explorer family id and return an EditionRenderer."""
 
     def _render(
         payload: BriefingPayload,
@@ -71,7 +65,7 @@ EXPLORER_RENDERER: dict[str, EditionRenderer] = {
 # (app/services/briefing/shuffle_bag.py): every daily family once, Air Mail twice.
 DAILY_FAMILY_WEIGHTS: dict[str, int] = {
     family: 2 if family == POSTAL_FAMILY else 1
-    for family in sorted({FAMILY_EDITION, *EXPLORER_RENDERER} - {WEEKLY_FAMILY})
+    for family in sorted(set(EXPLORER_RENDERER) - {WEEKLY_FAMILY})
 }
 
 
@@ -95,15 +89,10 @@ _ON_A_DESK = frozenset(
 )
 DESK_MARGIN_PX = 16
 _EXPLORER_ROOT = "#root > article"
-_CLASSIC_FRAME = EditionFrame(
-    width=CANVAS_PX, device_scale_factor=2, clip_selector=".brief", trim_margin_px=None
-)
 
 
-def edition_frame(family: str | None) -> EditionFrame:
+def edition_frame(family: str) -> EditionFrame:
     """Return how the family's page is rasterized and cropped."""
-    if family is None or family not in EXPLORER_RENDERER:
-        return _CLASSIC_FRAME
     return EditionFrame(
         width=EXPLORER_CANVAS_PX,
         device_scale_factor=EXPLORER_SCALE,
@@ -112,26 +101,12 @@ def edition_frame(family: str | None) -> EditionFrame:
     )
 
 
-def renderer_for(family: str | None) -> EditionRenderer | None:
-    """Return the registered renderer for the family.
-
-    Returns None for the classic edition, unknown names, and legacy payloads; callers
-    fall back to render_edition so every payload always renders.
-    """
-    if family is None or family == FAMILY_EDITION:
-        return None
-    return EXPLORER_RENDERER.get(family)
-
-
 __all__ = [
     "DAILY_FAMILY_WEIGHTS",
     "EXPLORER_RENDERER",
-    "FAMILY_EDITION",
     "POSTAL_FAMILY",
     "WEEKLY_FAMILY",
-    "render_edition",
     "render_explorer_edition",
     "EditionFrame",
     "edition_frame",
-    "renderer_for",
 ]

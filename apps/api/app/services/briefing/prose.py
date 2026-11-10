@@ -179,7 +179,13 @@ class Prose:
 
 
 def voiced_payload(
-    clock: UserClock, prose: Prose, facts: Facts, *, kicker: str, mood: BriefingMood
+    clock: UserClock,
+    prose: Prose,
+    facts: Facts,
+    *,
+    kicker: str,
+    mood: BriefingMood,
+    family: str,
 ) -> BriefingPayload:
     """Build the brief from its rendered prose; an item the message links carries its link."""
     linked = {todo: prose.links[i] for i, todo in facts.deliverables.items() if i in prose.links}
@@ -198,4 +204,5 @@ def voiced_payload(
         hue=hue_for_day(clock.day_of_year),
         generated_at=clock.now_local.strftime("%-I:%M %p"),
         message=render_slots(prose.written.message, facts.values, prose.links),
+        template_family=family,
     )

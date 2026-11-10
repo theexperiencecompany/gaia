@@ -10,7 +10,6 @@ from app.models.user_models import ShuffleBag
 from app.services.briefing.editions import (
     DAILY_FAMILY_WEIGHTS,
     EXPLORER_RENDERER,
-    FAMILY_EDITION,
     WEEKLY_FAMILY,
 )
 from app.services.briefing.shuffle_bag import draw
@@ -168,6 +167,12 @@ class TestEligibleDraw:
 class TestDailyFamilyWeights:
     def test_postal_is_twice_as_common_and_every_daily_family_is_in(self) -> None:
         assert DAILY_FAMILY_WEIGHTS["postal"] == 2
-        assert set(DAILY_FAMILY_WEIGHTS) == {FAMILY_EDITION, *EXPLORER_RENDERER} - {WEEKLY_FAMILY}
+        assert set(DAILY_FAMILY_WEIGHTS) == set(EXPLORER_RENDERER) - {WEEKLY_FAMILY}
         assert "metromap" in DAILY_FAMILY_WEIGHTS
         assert all(w == 1 for f, w in DAILY_FAMILY_WEIGHTS.items() if f != "postal")
+
+    def test_the_daily_bag_only_draws_families_that_have_a_renderer(self) -> None:
+        picks, _ = _draws(10 * sum(DAILY_FAMILY_WEIGHTS.values()), DAILY_FAMILY_WEIGHTS)
+
+        assert "edition" not in picks
+        assert set(picks) <= set(EXPLORER_RENDERER)

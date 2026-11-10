@@ -157,6 +157,10 @@ WEEKLY_FAMILY: Final[str] = "weekly"
 POSTAL_FAMILY: Final[str] = "postal"
 
 
+# The explorer families' export density: their 540px canvas rasterizes at 3x.
+EXPLORER_SCALE: Final[int] = 3
+
+
 class ArtFamily(StrEnum):
     """The edition families that hang a painting (their template reads ed.art)."""
 
