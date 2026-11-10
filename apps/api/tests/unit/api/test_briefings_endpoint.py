@@ -26,6 +26,7 @@ def _brief(*, opened: bool) -> BriefingModel:
         kind="daily",
         payload=BriefingPayload(
             kicker="THE MORNING BRIEF",
+            template_family="swiss",
             date="2026-10-14",
             headline="Two replies need you",
             lede="Priya and Dhruv.",

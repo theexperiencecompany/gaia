@@ -16,6 +16,7 @@ _MESSAGE = "Priya's deck is waiting on you.\n\nSequoia at 11:00.\nThen lunch wit
 def _payload(**overrides: Any) -> BriefingPayload:
     data: dict[str, Any] = {
         "kicker": "K",
+        "template_family": "swiss",
         "date": "2026-10-14",
         "headline": "The deck, then Sequoia",
         "lede": "lede",

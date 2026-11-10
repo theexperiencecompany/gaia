@@ -16,9 +16,8 @@ function BriefingView(props: z.infer<typeof briefingSchema>) {
 export const briefingDef = defineComponent({
   name: "Briefing",
   description:
-    "Editorial daily/weekly briefing artifact: masthead (kicker + date), hue-rotated hero band, serif " +
-    "display headline, lede, a stat row, Roman-numeraled sections of items (optionally linking to a " +
-    "todo), and a caption footer. Use only for GAIA's own daily/weekly briefing payloads — never " +
+    "GAIA's daily/weekly briefing: its headline, the message GAIA wrote, then its sections of items " +
+    "(optionally linking to a todo). Use only for GAIA's own daily/weekly briefing payloads — never " +
     "hand-assemble one from other components.",
   props: briefingSchema,
   component: ({ props }) => React.createElement(BriefingView, props),
