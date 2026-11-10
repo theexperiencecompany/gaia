@@ -226,8 +226,7 @@ class CallReplay:
     failure: str | None = None
 
 
-def _new_run(
-    registry: ToolRegistry,
+async def _new_run(
     subject: ReplaySubject,
     *,
     user: PlaybookUser,
@@ -244,7 +243,7 @@ def _new_run(
     }
     previous = recent_traces[0] if recent_traces else None
     return _Run(
-        registry=registry,
+        registry=await get_tool_registry(),
         base=RunContext(
             user=user,
             now=datetime.now(Timezone.parse(user.timezone).tzinfo),
@@ -268,8 +267,7 @@ async def replay_calls(
     slots = ask_slots(subject.steps)
     if slots:
         raise ValueError(f"replay_calls runs model-free bodies; {slots[0].key} is an $ask slot")
-    run = _new_run(
-        await get_tool_registry(),
+    run = await _new_run(
         subject,
         user=user,
         conversation_id=conversation_id,
@@ -300,12 +298,10 @@ async def run_playbook(
     events), addressable as $trigger.<path>. A dry run calls only its
     allowlisted reads; every other step answers with what it would have called.
     """
-    registry = await get_tool_registry()
     recent = await workflow_executions_repository.find_recent_with_trace(
         playbook.workflow_id, playbook.user_id, limit=PLAYBOOK_SUSPECT_BASELINE_WINDOW
     )
-    run = _new_run(
-        registry,
+    run = await _new_run(
         playbook,
         user=user,
         conversation_id=conversation_id,
@@ -313,7 +309,7 @@ async def run_playbook(
         recent_traces=[execution.trace for execution in recent],
         dry_run=dry_run,
     )
-    space = ToolSpace(tools=registry.get_tool_dict())
+    space = ToolSpace(tools=run.registry.get_tool_dict())
 
     failure = await _run_steps(playbook, playbook.steps, run, space)
     if failure is not None:

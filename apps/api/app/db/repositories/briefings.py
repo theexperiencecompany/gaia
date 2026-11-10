@@ -19,6 +19,7 @@ from app.models.briefing_models import (
     BriefingModel,
     BriefingPayload,
     BriefingUpdate,
+    EditionRender,
     new_briefing_id,
 )
 from app.utils.errors import AppError
@@ -96,9 +97,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         payload: BriefingPayload,
         *,
         briefing_id: str,
-        edition_image_url: str | None,
-        edition_fold: float | None = None,
-        edition_paper: list[float] | None = None,
+        edition: EditionRender,
     ) -> BriefingModel:
         """Store the payload (one per user/date/kind) under briefing_id, from briefing_id_for.
 
@@ -112,9 +111,9 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             {
                 "$set": {
                     "payload": payload.model_dump(),
-                    "edition_image_url": edition_image_url,
-                    "edition_fold": edition_fold,
-                    "edition_paper": edition_paper,
+                    "edition_image_url": edition.image_url,
+                    "edition_fold": edition.fold,
+                    "edition_paper": edition.paper,
                 },
                 "$setOnInsert": {
                     "created_at": datetime.now(UTC),

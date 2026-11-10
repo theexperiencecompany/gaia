@@ -228,6 +228,16 @@ def new_briefing_id() -> str:
     return f"brief_{uuid.uuid4().hex[:12]}"
 
 
+class EditionRender(BaseModel):
+    """Where a brief's hosted edition render lives, and where its letter sits on it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    image_url: str
+    fold: float | None = None
+    paper: list[float] | None = None
+
+
 class BriefingModel(UserScopedDocument):
     """Persisted briefing document (``briefings`` collection).
 

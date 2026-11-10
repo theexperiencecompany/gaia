@@ -96,7 +96,6 @@ from app.services.briefing.candidates.pool import CandidateSources, gather_candi
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.context import UserClock
 from app.services.briefing.conversation import post_brief_message
-from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.link_tokens import LINK_TOKEN_RE, link_token, link_token_problems
@@ -111,7 +110,7 @@ from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
 from app.services.briefing.scouts.service import scout_signals
 from app.services.briefing.shuffle_bag import draw
-from app.services.briefing.store import store_brief
+from app.services.briefing.store import StoredBrief, store_brief
 from app.services.briefing.view import briefing_card, briefing_view
 from app.services.briefing.voice_check import (
     VoicedCounts,
@@ -319,12 +318,10 @@ async def _post_to_chat(
 
 async def _deliver(
     user: UserDocument,
-    briefing: BriefingModel,
+    stored: StoredBrief,
     payload: BriefingPayload,
     notification_kind: str,
     *,
-    image: HostedEditionImage,
-    brief_url: str,
     push: bool,
 ) -> list[str]:
     """Deliver one brief in-app and, when pushed, to email and the user's chat.
@@ -332,11 +329,11 @@ async def _deliver(
     The orchestrator gets only in-app (plus email when wanted), never the chat platform:
     that message is the edition photo, posted through post_to_platform_chat.
     """
-    kind: BriefingKind = briefing.kind
+    kind: BriefingKind = stored.briefing.kind
     message = delivered_message(payload)
     target = await resolve_proactive_target(user.id) if push else None
     channel = target if isinstance(target, ChatChannel) else None
-    card = briefing_card(briefing_view(briefing))
+    card = briefing_card(briefing_view(stored.briefing))
     channels = [NotificationChannel.INAPP] + (
         [NotificationChannel.EMAIL] if push and _wants_email(user) else []
     )
@@ -357,7 +354,7 @@ async def _deliver(
                         style=ActionStyle.PRIMARY,
                         config=ActionConfig(
                             redirect=RedirectConfig(
-                                url=brief_path(briefing.id),
+                                url=brief_path(stored.briefing.id),
                                 open_in_new_tab=False,
                                 close_notification=True,
                             )
@@ -368,15 +365,15 @@ async def _deliver(
             metadata={
                 **card.model_dump(exclude={"kind"}),
                 "kind": notification_kind,
-                "brief_url": brief_url,
+                "brief_url": stored.link,
             },
         )
     )
     await post_brief_message(user.id, message, card)
     delivered = [c.channel_type for c in record.channels if c.reached_user]
     if channel:
-        text = chat_text(payload, brief_url)
-        result = await _post_to_chat(user, channel, text, image.chat_url, kind)
+        text = chat_text(payload, stored.link)
+        result = await _post_to_chat(user, channel, text, stored.image.chat_url, kind)
         if result is OutboundResult.PUBLISHED:
             delivered.append(channel.source.value)
     return delivered
@@ -872,15 +869,7 @@ async def _publish(
         payload.new_stamp = await new_stamp(user.id, payload.stamp_city)
     payload.recipient_name = display_name(user)
     stored = await store_brief(user.id, clock.date_str, kind, payload)
-    channels = await _deliver(
-        user,
-        stored.briefing,
-        payload,
-        _NOTIFICATION_KINDS[kind],
-        image=stored.image,
-        brief_url=stored.link,
-        push=push,
-    )
+    channels = await _deliver(user, stored, payload, _NOTIFICATION_KINDS[kind], push=push)
     await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
     if push:
         await _persist_draws(user.id, draws)

@@ -270,26 +270,73 @@ def _seam(
     w.reads[name] = mock
 
 
+def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
+    """Patch what the run gathers its context from (work, goals, dormancy, apps) and the scouts."""
+    _seam(monkeypatch, w, chat_sync, "format_replies_block", AsyncMock(return_value="No replies."))
+    _seam(monkeypatch, w, context, "format_goal_block", AsyncMock(return_value=("Ship v2", True)))
+    _seam(
+        monkeypatch, w, context, "get_yesterday_payload", AsyncMock(return_value=sentinel.yesterday)
+    )
+    _seam(monkeypatch, w, context, "format_lookback_block", AsyncMock(return_value="-"))
+    _seam(
+        monkeypatch,
+        w,
+        context,
+        "compute_winback_state",
+        AsyncMock(return_value=context.WinbackState(unacknowledged=0, last_was_winback=False)),
+    )
+    _seam(monkeypatch, w, context, "gather_tracked_work", AsyncMock(side_effect=lambda *_: w.work))
+    _seam(monkeypatch, w, context, "user_open_todo_summary", AsyncMock(return_value=(0, [])))
+    _seam(
+        monkeypatch,
+        w,
+        context,
+        "gather_completed_since",
+        AsyncMock(return_value=context.CompletedWork(user=[_todo("u1", "Gym")])),
+    )
+    _seam(monkeypatch, w, dormancy, "record_idle_day", AsyncMock(return_value=0))
+    _seam(monkeypatch, w, dormancy, "latest_activity_since", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        service,
+        "activity_status_of",
+        AsyncMock(side_effect=lambda user_id: w.activity if user_id == _USER else None),
+    )
+    monkeypatch.setattr(
+        service,
+        "get_connected_integrations_named",
+        AsyncMock(
+            side_effect=lambda user_id: [{"id": a.lower(), "name": a} for a in w.connected_apps]
+            if user_id == _USER
+            else []
+        ),
+    )
+
+    monkeypatch.setattr(
+        scout_service,
+        "run_scouts",
+        AsyncMock(side_effect=lambda user: w.scouts if user.id == _USER else []),
+    )
+    monkeypatch.setattr(
+        signal_memory_repository,
+        "find_for",
+        AsyncMock(side_effect=lambda user_id, signals: list(w.memory) if user_id == _USER else []),
+    )
+    monkeypatch.setattr(signal_memory_repository, "record_seen", w.seen)
+    monkeypatch.setattr(signal_memory_repository, "mark_shown", w.shown)
+
+
 @pytest.fixture
 def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     w = World(
         agent=AsyncMock(return_value=SimpleNamespace(message=_fenced(_VOICE))),
         upsert=AsyncMock(
-            side_effect=lambda user_id,
-            date,
-            kind,
-            payload,
-            *,
-            briefing_id,
-            edition_image_url,
-            edition_fold,
-            edition_paper: BriefingModel(
+            side_effect=lambda user_id, date, kind, payload, *, briefing_id, edition: BriefingModel(
                 id=briefing_id,
                 user_id=user_id,
                 date=date,
                 kind=kind,
                 payload=payload,
-                edition_image_url=edition_image_url,
+                edition_image_url=edition.image_url,
             )
         ),
         mint=AsyncMock(return_value=_BRIEF_LINK),
@@ -356,57 +403,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         AsyncMock(side_effect=lambda *_, **__: list(w.held)),
     )
     monkeypatch.setattr(pending_brief_items_repository, "consume", w.consume)
-    _seam(monkeypatch, w, chat_sync, "format_replies_block", AsyncMock(return_value="No replies."))
-    _seam(monkeypatch, w, context, "format_goal_block", AsyncMock(return_value=("Ship v2", True)))
-    _seam(
-        monkeypatch, w, context, "get_yesterday_payload", AsyncMock(return_value=sentinel.yesterday)
-    )
-    _seam(monkeypatch, w, context, "format_lookback_block", AsyncMock(return_value="-"))
-    _seam(
-        monkeypatch,
-        w,
-        context,
-        "compute_winback_state",
-        AsyncMock(return_value=context.WinbackState(unacknowledged=0, last_was_winback=False)),
-    )
-    _seam(monkeypatch, w, context, "gather_tracked_work", AsyncMock(side_effect=lambda *_: w.work))
-    _seam(monkeypatch, w, context, "user_open_todo_summary", AsyncMock(return_value=(0, [])))
-    _seam(
-        monkeypatch,
-        w,
-        context,
-        "gather_completed_since",
-        AsyncMock(return_value=context.CompletedWork(user=[_todo("u1", "Gym")])),
-    )
-    _seam(monkeypatch, w, dormancy, "record_idle_day", AsyncMock(return_value=0))
-    _seam(monkeypatch, w, dormancy, "latest_activity_since", AsyncMock(return_value=None))
-    monkeypatch.setattr(
-        service,
-        "activity_status_of",
-        AsyncMock(side_effect=lambda user_id: w.activity if user_id == _USER else None),
-    )
-    monkeypatch.setattr(
-        service,
-        "get_connected_integrations_named",
-        AsyncMock(
-            side_effect=lambda user_id: [{"id": a.lower(), "name": a} for a in w.connected_apps]
-            if user_id == _USER
-            else []
-        ),
-    )
-
-    monkeypatch.setattr(
-        scout_service,
-        "run_scouts",
-        AsyncMock(side_effect=lambda user: w.scouts if user.id == _USER else []),
-    )
-    monkeypatch.setattr(
-        signal_memory_repository,
-        "find_for",
-        AsyncMock(side_effect=lambda user_id, signals: list(w.memory) if user_id == _USER else []),
-    )
-    monkeypatch.setattr(signal_memory_repository, "record_seen", w.seen)
-    monkeypatch.setattr(signal_memory_repository, "mark_shown", w.shown)
+    _patch_context_reads(monkeypatch, w)
 
     async def set_bag(user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
         assert user_id == _USER
@@ -485,7 +482,7 @@ class TestDailyBrief:
         assert [i.todo_id for s in payload.sections for i in s.items] == ["b1", "c1"]
         message = _facts_shown(_prompt(world))
         assert payload.message == message
-        assert world.upsert.await_args.kwargs["edition_image_url"] == _EDITION.display_url
+        assert world.upsert.await_args.kwargs["edition"].image_url == _EDITION.display_url
         request = world.notify.await_args.args[0]
         assert request.metadata["edition_image_url"] == _EDITION.display_url
         # One URL, minted before the render: the edition's codes, the email image and the chat post.
