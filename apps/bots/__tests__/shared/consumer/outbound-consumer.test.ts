@@ -937,6 +937,116 @@ describe("OutboundConsumer outside a platform's messaging window", () => {
   });
 });
 
+describe("OutboundConsumer attachments and reactions outside a messaging window", () => {
+  const attachmentEnvelope = {
+    id: "env-a",
+    platform: "whatsapp",
+    destination_id: "1555",
+    attachment: {
+      conversation_id: "conv-1",
+      path: "artifacts/report.pdf",
+      filename: "report.pdf",
+    },
+    enqueued_at: "t",
+  };
+  const reactionEnvelope = {
+    id: "env-r",
+    platform: "whatsapp",
+    destination_id: "1555",
+    reaction: { target_platform_message_id: "wamid.123", emoji: "👍" },
+    enqueued_at: "t",
+  };
+
+  function notificationsWith(closed: boolean) {
+    return {
+      windowClosed: vi.fn(async () => closed),
+      deliver: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  async function boot(
+    notifications: ReturnType<typeof notificationsWith>,
+    deliverFile = vi.fn().mockResolvedValue(undefined),
+    deliverReaction = vi.fn().mockResolvedValue(undefined),
+  ) {
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      vi.fn(),
+      deliverFile,
+      "https://api.gaia.test",
+      deliverReaction,
+      notifications,
+    );
+    return { handle, deliverFile, deliverReaction };
+  }
+
+  it("sends a template notice instead of the file when the window is closed", async () => {
+    const notifications = notificationsWith(true);
+    const { handle, deliverFile } = await boot(notifications);
+    const msg = msgFor(attachmentEnvelope);
+
+    await deliverMessage(handle, msg);
+
+    expect(deliverFile).not.toHaveBeenCalled();
+    expect(notifications.deliver).toHaveBeenCalledExactlyOnceWith(
+      "1555",
+      expect.stringContaining("I have a file for you"),
+    );
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+  });
+
+  it("dead-letters the attachment when the template notice fails", async () => {
+    const notifications = notificationsWith(true);
+    notifications.deliver.mockRejectedValue(new Error("template rejected"));
+    const { handle, deliverFile } = await boot(notifications);
+    const msg = msgFor(attachmentEnvelope);
+
+    await deliverMessage(handle, msg);
+
+    expect(deliverFile).not.toHaveBeenCalled();
+    expect(channel.ack).not.toHaveBeenCalled();
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, false);
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: "send_failed",
+        error_message: "template rejected",
+      }),
+    );
+  });
+
+  it("sends the file normally while the window is open", async () => {
+    const notifications = notificationsWith(false);
+    const { handle, deliverFile } = await boot(notifications);
+
+    await deliverMessage(handle, msgFor(attachmentEnvelope));
+
+    expect(deliverFile).toHaveBeenCalledOnce();
+    expect(notifications.deliver).not.toHaveBeenCalled();
+  });
+
+  it("drops a reaction, acked and unreported, when the window is closed", async () => {
+    const notifications = notificationsWith(true);
+    const { handle, deliverReaction } = await boot(notifications);
+    const msg = msgFor(reactionEnvelope);
+
+    await deliverMessage(handle, msg);
+
+    expect(deliverReaction).not.toHaveBeenCalled();
+    expect(notifications.deliver).not.toHaveBeenCalled();
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+    expect(reportFailure).not.toHaveBeenCalled();
+  });
+
+  it("sends the reaction normally while the window is open", async () => {
+    const notifications = notificationsWith(false);
+    const { handle, deliverReaction } = await boot(notifications);
+
+    await deliverMessage(handle, msgFor(reactionEnvelope));
+
+    expect(deliverReaction).toHaveBeenCalledOnce();
+  });
+});
+
 describe("OutboundConsumer lifecycle", () => {
   it("never starts consuming when stopped while still connecting", async () => {
     // A bot whose boot fails (its health port taken) stops the consumer while

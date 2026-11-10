@@ -53,6 +53,9 @@ const RECONNECT_BASE_MS = 1_000;
 /** Lane for a message whose destination can't be read; handle() dead-letters it. */
 const UNREADABLE_LANE = "";
 const RECONNECT_MAX_MS = 30_000;
+/** Template body for a file that cannot be sent free-form until the user writes again. */
+const FILE_WAITING_NOTICE =
+  "I have a file for you, but I can only send it after you message me. Reply here and ask me for it.";
 
 /**
  * Sends one already-rendered message to a platform destination. `isChannel`
@@ -424,9 +427,20 @@ export class OutboundConsumer {
   ): Promise<void> {
     wideLog.set({ attachment_filename: attachment.filename });
     try {
-      await sendHonouringRateLimit(() =>
-        this.deliverFile(destinationId, attachment, isChannel),
+      const notifications = await this.notificationsWhenWindowClosed(
+        destinationId,
+        isChannel,
       );
+      if (notifications) {
+        wideLog.set({ outbound_mode: "notification" });
+        await sendHonouringRateLimit(() =>
+          notifications.deliver(destinationId, FILE_WAITING_NOTICE),
+        );
+      } else {
+        await sendHonouringRateLimit(() =>
+          this.deliverFile(destinationId, attachment, isChannel),
+        );
+      }
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {
       const reason = recordBotFailure("outbound_file_delivery_failed", err, {
@@ -463,7 +477,12 @@ export class OutboundConsumer {
     isChannel: boolean,
   ): Promise<void> {
     try {
-      await this.deliverReaction(destinationId, reaction, isChannel);
+      if (await this.notificationsWhenWindowClosed(destinationId, isChannel)) {
+        // A reaction to a message the user has not seen answered is meaningless later.
+        wideLog.set({ outbound_mode: "reaction_skipped_window_closed" });
+      } else {
+        await this.deliverReaction(destinationId, reaction, isChannel);
+      }
       wideLog.set({ redelivered: msg.fields.redelivered });
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {
@@ -516,12 +535,13 @@ export class OutboundConsumer {
     // many chunks already went out — a partial send must NOT requeue.
     const progress = { delivered: 0 };
     try {
-      if (
-        this.notifications &&
-        (await this.notifications.windowClosed(destinationId, isChannel))
-      ) {
+      const notifications = await this.notificationsWhenWindowClosed(
+        destinationId,
+        isChannel,
+      );
+      if (notifications) {
         await this.deliverAsNotification(
-          this.notifications,
+          notifications,
           destinationId,
           sources,
           progress,
@@ -578,6 +598,17 @@ export class OutboundConsumer {
         envelope_id: id,
       });
     }
+  }
+
+  /** The template sender when free-form sends are refused right now; null otherwise or without a window. */
+  private async notificationsWhenWindowClosed(
+    destinationId: string,
+    isChannel: boolean,
+  ): Promise<OutboundNotifications | null> {
+    if (!this.notifications) return null;
+    return (await this.notifications.windowClosed(destinationId, isChannel))
+      ? this.notifications
+      : null;
   }
 
   /**
