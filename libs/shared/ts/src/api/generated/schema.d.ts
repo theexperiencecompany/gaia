@@ -6793,6 +6793,12 @@ export interface components {
             user_name?: string | null;
         };
         /**
+         * BriefAction
+         * @description What a brief item asks the reader to do; set only on items that need them.
+         * @enum {string}
+         */
+        BriefAction: "approve" | "reply" | "review" | "retry" | "read" | "attend";
+        /**
          * BriefingEvent
          * @description One calendar event on the user's own clock, read from their calendar.
          */
@@ -6815,8 +6821,12 @@ export interface components {
         /**
          * BriefingItem
          * @description A single line inside a section, optionally bound to a todo.
+         *
+         *     It either asks something of the reader (action) or reports where a thing got to
+         *     (outcome), never both, under a short title and at most one detail line.
          */
         BriefingItem: {
+            action: components["schemas"]["BriefAction"] | null;
             /** App */
             app: string | null;
             /**
@@ -6824,6 +6834,8 @@ export interface components {
              * @default 1
              */
             count: number;
+            /** Detail */
+            detail: string | null;
             /**
              * Kind
              * @default note
@@ -6834,6 +6846,7 @@ export interface components {
             link: string | null;
             /** Offer */
             offer: string | null;
+            outcome: components["schemas"]["BriefOutcome"] | null;
             /** People */
             people: string[];
             /** Text */
@@ -6953,6 +6966,11 @@ export interface components {
             /** Items */
             items: components["schemas"]["BriefingItem"][];
             key: components["schemas"]["SectionKey"] | null;
+            /**
+             * More
+             * @default 0
+             */
+            more: number;
             /** Numeral */
             numeral: string;
             /** Title */
@@ -7058,6 +7076,12 @@ export interface components {
             /** You */
             you: number;
         };
+        /**
+         * BriefOutcome
+         * @description The state a reported brief item reached; set only on items that need nothing from the reader.
+         * @enum {string}
+         */
+        BriefOutcome: "approved" | "landed" | "drafted" | "booked" | "sent" | "finished" | "started" | "changed" | "failed";
         /**
          * BrowserImportRequest
          * @description A profile upload from the local CLI: the mint code plus a Playwright
@@ -17196,6 +17220,7 @@ export type Body_user_update_user_timezone = components['schemas']['Body_user_up
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
+export type BriefAction = components['schemas']['BriefAction'];
 export type BriefingEvent = components['schemas']['BriefingEvent'];
 export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
@@ -17208,6 +17233,7 @@ export type BriefingTallies = components['schemas']['BriefingTallies'];
 export type BriefingView = components['schemas']['BriefingView'];
 export type BriefingWeek = components['schemas']['BriefingWeek'];
 export type BriefingWeekDay = components['schemas']['BriefingWeekDay'];
+export type BriefOutcome = components['schemas']['BriefOutcome'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
 export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
 export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];

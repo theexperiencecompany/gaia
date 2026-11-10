@@ -13,7 +13,13 @@ from datetime import date, datetime
 import re
 from typing import NamedTuple, TypedDict
 
-from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
+from app.constants.briefing import (
+    POSTAL_FAMILY,
+    WEEKLY_FAMILY,
+    BriefAction,
+    BriefOutcome,
+    SectionKey,
+)
 from app.models.briefing_models import (
     NEEDS_YOU_ITEM_KINDS,
     BriefingEvent,
@@ -43,35 +49,11 @@ _MONTHS = [
     "December",
 ]
 
-# A leading "1:30 PM — " clock prefix on item text, if the payload ever
-# carries one (today's real briefing prompt never does — see module note
-# below — but a future payload variant might).
-_ITEM_TIME_PREFIX_RE = re.compile(r"^(\d{1,2}:\d{2}\s*[AaPp][Mm])\s*[-–—]\s*(.+)$")
 _GENERATED_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$")
 
 # GAIA-side state of an overnight row, as the short caps tag the templates set
 # beside it (the contract's sample data used "REVIEW", "SHIP", "DONE").
 _OVERNIGHT_TAGS: dict[BriefingItemKind, str] = {"gaia": "IN PROGRESS", "lookback": "DONE"}
-# Work GAIA is still doing: never filed under a "done while you slept" heading.
-_RUNNING_KINDS: frozenset[BriefingItemKind] = frozenset({"gaia"})
-_RETRY_VERB = "Retry"
-
-_IMPERATIVE_VERBS = {
-    "approve",
-    "decide",
-    "confirm",
-    "choose",
-    "sign",
-    "reject",
-    "accept",
-    "send",
-    "pick",
-    "cancel",
-    "review",
-    "authorize",
-    "renew",
-    "respond",
-}
 
 
 class ExplorerTodayItem(TypedDict):
@@ -89,12 +71,22 @@ class ExplorerOvernightItem(TypedDict):
     label: str
     note: str | None
     tag: str
+    outcome: str
 
 
 class ExplorerDecisionItem(TypedDict):
     verb: str
     label: str
     note: str | None
+    action: str
+
+
+class ExplorerMore(TypedDict):
+    """Per section, the items its cap left out, for "+N more in the full brief"."""
+
+    needs_you: int
+    updates: int
+    gaia_did: int
 
 
 class ExplorerStats(TypedDict):
@@ -115,6 +107,7 @@ class ExplorerContent(TypedDict):
     #: Todos waiting on the reader (a grouped ask counts each); None when nothing waits.
     awaiting: int | None
     stats: ExplorerStats | None
+    more: ExplorerMore
 
 
 class ExplorerArt(TypedDict):
@@ -221,6 +214,7 @@ def build_ed(
             "decisions": buckets.decisions,
             "awaiting": _awaiting(payload.sections),
             "stats": _build_stats(payload.tallies),
+            "more": _build_more(payload.sections),
         },
         "week": _build_week(payload.week) if family == WEEKLY_FAMILY else None,
         "stamp": _build_stamp(payload.stamp_city) if family == POSTAL_FAMILY else None,
@@ -269,35 +263,6 @@ def _time24(generated_local: str) -> str:
     return f"{hour:02d}:{minute}"
 
 
-def _split_time_prefix(text: str) -> tuple[str | None, str]:
-    """Split item text into (t24, label).
-
-    t24 is None when the text carries no leading clock prefix (the common case for our
-    payload's item text).
-    """
-    match = _ITEM_TIME_PREFIX_RE.match(text.strip())
-    if not match:
-        return None, text
-    return _time24(match.group(1)), match.group(2)
-
-
-def _decision_verb(text: str) -> tuple[str, str]:
-    """Split text into a verb and a label.
-
-    A leading imperative word ("Approve", "Decide", ...) becomes the verb and is stripped
-    from the label; otherwise the verb defaults to "Review" and the label is the text
-    verbatim.
-    """
-    words = text.strip().split(None, 1)
-    if not words:
-        return "Review", text
-    first = words[0].strip(":,.-")
-    if first.lower() in _IMPERATIVE_VERBS:
-        rest = words[1] if len(words) > 1 else ""
-        return first.capitalize(), rest.lstrip(": -–—")
-    return "Review", text
-
-
 def _clock12(t24: str) -> str:
     """24h "13:05" -> "1:05 PM"."""
     return datetime.strptime(t24, "%H:%M").strftime("%-I:%M %p")
@@ -313,21 +278,23 @@ def _event_row(event: BriefingEvent) -> ExplorerTodayItem:
     }
 
 
-def _overnight_row(item: BriefingItem) -> ExplorerOvernightItem:
-    t24, label = _split_time_prefix(item.text)
+def _overnight_row(item: BriefingItem, outcome: BriefOutcome) -> ExplorerOvernightItem:
     return {
-        "t24": t24,
-        "label": label,
-        "note": None,
+        "t24": None,
+        "label": item.text,
+        "note": item.detail,
         "tag": _OVERNIGHT_TAGS.get(item.kind, ""),
+        "outcome": outcome.value,
     }
 
 
-def _decision_row(item: BriefingItem) -> ExplorerDecisionItem:
-    if item.kind == "failed":
-        return {"verb": _RETRY_VERB, "label": item.text, "note": None}
-    verb, label = _decision_verb(item.text)
-    return {"verb": verb, "label": label, "note": None}
+def _decision_row(item: BriefingItem, action: BriefAction) -> ExplorerDecisionItem:
+    return {
+        "verb": action.value.capitalize(),
+        "label": item.text,
+        "note": item.detail,
+        "action": action.value,
+    }
 
 
 class _Buckets(NamedTuple):
@@ -338,14 +305,18 @@ class _Buckets(NamedTuple):
 
 
 def _build_buckets(sections: list[BriefingSection], calendar: list[BriefingEvent]) -> _Buckets:
-    """Map items by meaning (see the module docstring); an empty bucket stays empty."""
+    """Map items by meaning (see the module docstring); an empty bucket stays empty.
+
+    An item that asks something is a decision; one that reports is overnight, or running
+    while GAIA has only started it.
+    """
     items = [item for section in sections for item in section.items]
-    finished = [i for i in items if i.kind not in NEEDS_YOU_ITEM_KINDS | _RUNNING_KINDS]
+    reported = [(i, i.outcome) for i in items if i.outcome is not None]
     return _Buckets(
         today=[_event_row(e) for e in calendar],
-        overnight=[_overnight_row(i) for i in finished],
-        running=[_overnight_row(i) for i in items if i.kind in _RUNNING_KINDS],
-        decisions=[_decision_row(i) for i in items if i.kind in NEEDS_YOU_ITEM_KINDS],
+        overnight=[_overnight_row(i, o) for i, o in reported if o is not BriefOutcome.STARTED],
+        running=[_overnight_row(i, o) for i, o in reported if o is BriefOutcome.STARTED],
+        decisions=[_decision_row(i, i.action) for i in items if i.action is not None],
     )
 
 
@@ -357,6 +328,15 @@ def _awaiting(sections: list[BriefingSection]) -> int | None:
     return _positive(
         sum(item.count for s in sections for item in s.items if item.kind in NEEDS_YOU_ITEM_KINDS)
     )
+
+
+def _build_more(sections: list[BriefingSection]) -> ExplorerMore:
+    more = {s.key: s.more for s in sections if s.key is not None}
+    return {
+        "needs_you": more.get(SectionKey.NEEDS_YOU, 0),
+        "updates": more.get(SectionKey.UPDATES, 0),
+        "gaia_did": more.get(SectionKey.GAIA_DID, 0),
+    }
 
 
 def _build_stats(tallies: BriefingTallies | None) -> ExplorerStats | None:

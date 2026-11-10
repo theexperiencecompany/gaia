@@ -1860,6 +1860,35 @@
         "title": "BotSettingsResponse",
         "type": "object"
       },
+      "BriefAction": {
+        "description": "What a brief item asks the reader to do; set only on items that need them.",
+        "enum": [
+          "approve",
+          "reply",
+          "review",
+          "retry",
+          "read",
+          "attend"
+        ],
+        "title": "BriefAction",
+        "type": "string"
+      },
+      "BriefOutcome": {
+        "description": "The state a reported brief item reached; set only on items that need nothing from the reader.",
+        "enum": [
+          "approved",
+          "landed",
+          "drafted",
+          "booked",
+          "sent",
+          "finished",
+          "started",
+          "changed",
+          "failed"
+        ],
+        "title": "BriefOutcome",
+        "type": "string"
+      },
       "BriefingEvent": {
         "description": "One calendar event on the user's own clock, read from their calendar.",
         "properties": {
@@ -1913,8 +1942,18 @@
         "type": "string"
       },
       "BriefingItem": {
-        "description": "A single line inside a section, optionally bound to a todo.",
+        "description": "A single line inside a section, optionally bound to a todo.\n\nIt either asks something of the reader (action) or reports where a thing got to\n(outcome), never both, under a short title and at most one detail line.",
         "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "app": {
             "anyOf": [
               {
@@ -1931,6 +1970,19 @@
             "minimum": 1.0,
             "title": "Count",
             "type": "integer"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
           },
           "kind": {
             "default": "note",
@@ -1966,6 +2018,16 @@
             ],
             "title": "Offer"
           },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "people": {
             "items": {
               "type": "string"
@@ -1974,6 +2036,8 @@
             "type": "array"
           },
           "text": {
+            "maxLength": 50,
+            "minLength": 1,
             "title": "Text",
             "type": "string"
           },
@@ -2002,6 +2066,9 @@
         },
         "required": [
           "text",
+          "action",
+          "outcome",
+          "detail",
           "todo_id",
           "kind",
           "link",
@@ -2283,6 +2350,12 @@
               }
             ]
           },
+          "more": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "More",
+            "type": "integer"
+          },
           "numeral": {
             "title": "Numeral",
             "type": "string"
@@ -2296,7 +2369,8 @@
           "numeral",
           "title",
           "items",
-          "key"
+          "key",
+          "more"
         ],
         "title": "BriefingSection",
         "type": "object"

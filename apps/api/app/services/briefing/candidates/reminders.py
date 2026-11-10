@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE
+from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefAction
 from app.db.repositories.reminders import reminder_repository
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
 from app.models.reminder_models import StaticReminderPayload
@@ -21,6 +21,7 @@ async def reminder_candidates(
             title=reminder.payload.title,
             detail=reminder.payload.body or None,
             due_at=reminder.scheduled_at,
+            action=BriefAction.ATTEND,
         )
         for reminder in await reminder_repository.find_scheduled_between(
             user_id, day_start, day_end

@@ -17,6 +17,7 @@ from app.constants.briefing import (
     SECTION_TITLES,
     WEEKLY_FAMILY,
     ArtFamily,
+    BriefOutcome,
     SectionKey,
     hue_for_day,
 )
@@ -143,10 +144,12 @@ async def test_a_day_with_asks_and_work_reads_as_two_numbered_sections(user, see
         (SECTION_NUMERALS[1], SectionKey.GAIA_DID, SECTION_TITLES[SectionKey.GAIA_DID]),
     ]
     asks, work = brief.sections
-    assert [(i.text, i.kind) for i in asks.items] == [(t, "you") for t in seed.needs_you]
-    assert [(i.text, i.kind) for i in work.items] == [(t, "lookback") for t in seed.done] + [
-        (t, "gaia") for t in seed.running
+    assert [(i.action, i.text, i.kind) for i in asks.items] == [
+        (action, t, "you") for action, t in seed.needs_you
     ]
+    assert [(i.outcome, i.text, i.kind) for i in work.items] == [
+        (outcome, t, "lookback") for outcome, t in seed.done
+    ] + [(BriefOutcome.STARTED, t, "gaia") for t in seed.running]
     assert [(e.date, e.start, e.title, e.location) for e in brief.calendar] == [
         (day.isoformat(), e.start, e.title, e.location) for e in seed.events
     ]

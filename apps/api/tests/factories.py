@@ -8,14 +8,33 @@ from uuid import uuid4
 from bson import ObjectId
 from composio.types import Tool
 import composio_client
+from composio_client.types.tool_list_response import ItemDeprecated, ItemToolkit
 import httpx
 
+from app.constants.briefing import BriefAction, BriefOutcome
+from app.models.briefing_models import BriefingItemKind
 from app.models.user_models import AuthenticatedUser
 
 
 def make_user_id() -> str:
     """Return a fresh GAIA user id: a real ObjectId, as UserId and every capture require."""
     return str(ObjectId())
+
+
+# How a brief item of each kind reads when a test does not say: asks act, the rest report.
+_BRIEF_ITEM_READS_AS: dict[BriefingItemKind, dict[str, BriefAction | BriefOutcome]] = {
+    "you": {"action": BriefAction.APPROVE},
+    "failed": {"action": BriefAction.RETRY},
+    "gaia": {"outcome": BriefOutcome.STARTED},
+    "lookback": {"outcome": BriefOutcome.FINISHED},
+    "note": {"outcome": BriefOutcome.CHANGED},
+}
+
+
+def make_brief_item(text: str, kind: BriefingItemKind = "note", **fields: Any) -> dict[str, Any]:
+    """Build a BriefingItem's fields; without an action or outcome it reads as its kind does."""
+    reads_as = {} if {"action", "outcome"} & fields.keys() else _BRIEF_ITEM_READS_AS[kind]
+    return {"text": text, "kind": kind, **reads_as, **fields}
 
 
 def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
@@ -96,20 +115,22 @@ def make_composio_tool(
         input_parameters={"type": "object", "title": "GmailFetchMessagesRequest", "properties": {}},
         output_parameters=output_parameters
         or {"type": "object", "title": "GmailFetchMessagesResponse", "properties": {}},
-        toolkit={"slug": "gmail", "name": "Gmail", "logo": ""},
+        toolkit=ItemToolkit(slug="gmail", name="Gmail", logo=""),
         tags=[],
         scopes=[],
         version="latest",
         available_versions=["latest"],
         # Mixed casing is the SDK's, not a typo: `displayName` is aliased while its
         # siblings are not.
-        deprecated={
-            "available_versions": ["latest"],
-            "displayName": "Fetch messages",
-            "is_deprecated": False,
-            "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
-            "version": "latest",
-        },
+        deprecated=ItemDeprecated.model_validate(
+            {
+                "available_versions": ["latest"],
+                "displayName": "Fetch messages",
+                "is_deprecated": False,
+                "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
+                "version": "latest",
+            }
+        ),
         is_deprecated=False,
         no_auth=False,
     )

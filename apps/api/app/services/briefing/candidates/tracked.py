@@ -1,6 +1,6 @@
 """Todos as candidates: what waits on the user, what GAIA did or is doing, and what the user finished."""
 
-from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE
+from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefAction, BriefOutcome
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
 from app.models.briefing_models import BriefingItemKind
@@ -18,7 +18,12 @@ def _source(doc: TodoDocument) -> tuple[str, str]:
 
 
 def _grouped(
-    docs: list[TodoDocument], kind: CandidateKind, state: BriefingItemKind
+    docs: list[TodoDocument],
+    kind: CandidateKind,
+    state: BriefingItemKind,
+    *,
+    action: BriefAction | None = None,
+    outcome: BriefOutcome | None = None,
 ) -> list[BriefCandidate]:
     """One candidate per subject, counting the todos it stands for, in first-seen order."""
     by_subject: dict[str, BriefCandidate] = {}
@@ -37,24 +42,26 @@ def _grouped(
             detail=doc.description or None,
             due_at=doc.due_date,
             todo_id=doc.id,
+            action=action,
+            outcome=outcome,
         )
     return list(by_subject.values())
 
 
 def waiting_candidates(work: TrackedWork) -> list[BriefCandidate]:
     """Return the tracked todos waiting on the user, then the ones that failed."""
-    return _grouped(work.blocked, CandidateKind.NEEDS_YOU, "you") + _grouped(
-        work.failed, CandidateKind.NEEDS_YOU, "failed"
-    )
+    return _grouped(
+        work.blocked, CandidateKind.NEEDS_YOU, "you", action=BriefAction.REVIEW
+    ) + _grouped(work.failed, CandidateKind.NEEDS_YOU, "failed", action=BriefAction.RETRY)
 
 
 def gaia_work_candidates(work: TrackedWork) -> list[BriefCandidate]:
     """Return what GAIA finished since the last brief, then what it is still working on."""
-    return _grouped(work.completed, CandidateKind.GAIA_DID, "lookback") + _grouped(
-        work.running, CandidateKind.GAIA_DID, "gaia"
-    )
+    return _grouped(
+        work.completed, CandidateKind.GAIA_DID, "lookback", outcome=BriefOutcome.FINISHED
+    ) + _grouped(work.running, CandidateKind.GAIA_DID, "gaia", outcome=BriefOutcome.STARTED)
 
 
 def user_done_candidates(docs: list[TodoDocument]) -> list[BriefCandidate]:
     """Return what the user finished themselves, one candidate per subject."""
-    return _grouped(docs, CandidateKind.UPDATE, "lookback")
+    return _grouped(docs, CandidateKind.UPDATE, "lookback", outcome=BriefOutcome.FINISHED)

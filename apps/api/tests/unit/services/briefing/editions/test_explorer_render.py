@@ -351,7 +351,9 @@ class TestScriptEscaping:
                     {
                         "numeral": "I",
                         "title": "Today",
-                        "items": [{"text": "</script>alert(1)", "kind": "note"}],
+                        "items": [
+                            {"text": "</script>alert(1)", "kind": "note", "outcome": "changed"}
+                        ],
                     }
                 ]
             )

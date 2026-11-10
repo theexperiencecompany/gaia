@@ -3,18 +3,9 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from app.constants.briefing import (
-    SECTION_NUMERALS,
-    SECTION_ORDER,
-    SectionKey,
-)
+from app.constants.briefing import SECTION_NUMERALS, SECTION_ORDER, SectionKey
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
-from app.models.briefing_models import (
-    NEEDS_YOU_ITEM_KINDS,
-    BriefingItem,
-    BriefingItemKind,
-    BriefingSection,
-)
+from app.models.briefing_models import BriefingSection
 from app.models.scout_models import RememberedSignal
 from app.services.briefing.candidates.judge import BriefSelection, CandidatePool
 from shared.py.wide_events import log
@@ -28,36 +19,12 @@ class Chosen:
     picked: list[list[tuple[int, BriefCandidate]]]
 
 
-def _item_kind(key: SectionKey, candidate: BriefCandidate) -> BriefingItemKind:
-    """How a kept candidate reads: its own state, unless its section says it waits on the user or not."""
-    if key is SectionKey.NEEDS_YOU and candidate.state not in NEEDS_YOU_ITEM_KINDS:
-        return "you"
-    if key in (SectionKey.UPDATES, SectionKey.GAIA_DID) and candidate.state in NEEDS_YOU_ITEM_KINDS:
-        return "note"
-    return candidate.state
-
-
-def _item(key: SectionKey, candidate: BriefCandidate, offer: str | None) -> BriefingItem:
-    return BriefingItem(
-        text=candidate.title,
-        todo_id=candidate.todo_id,
-        kind=_item_kind(key, candidate),
-        count=candidate.count,
-        app=candidate.app,
-        url=candidate.url,
-        people=list(candidate.people),
-        offer=offer if key is SectionKey.LEAD else None,
-    )
-
-
 def chosen_sections(
     selection: BriefSelection, pool: CandidatePool, titles: Mapping[SectionKey, str]
 ) -> Chosen:
     """Lay the judge's selection out as the brief's sections, in reading order, empty ones left out."""
     filled = [
-        (key, [(i, pool[i]) for i in selection.sections[key]])
-        for key in SECTION_ORDER
-        if selection.sections.get(key)
+        (key, selection.sections[key]) for key in SECTION_ORDER if selection.sections.get(key)
     ]
     return Chosen(
         sections=[
@@ -65,11 +32,12 @@ def chosen_sections(
                 numeral=SECTION_NUMERALS[n],
                 title=titles[key],
                 key=key,
-                items=[_item(key, c, selection.offer) for _, c in picked],
+                items=[selection.items[i] for i in ids],
+                more=selection.more.get(key, 0),
             )
-            for n, (key, picked) in enumerate(filled)
+            for n, (key, ids) in enumerate(filled)
         ],
-        picked=[picked for _, picked in filled],
+        picked=[[(i, pool[i]) for i in ids] for _, ids in filled],
     )
 
 
@@ -101,7 +69,7 @@ def log_selection(candidates: int, selection: BriefSelection) -> None:
         candidates=candidates,
         kept={key.value: len(ids) for key, ids in selection.sections.items()},
         dropped=len(selection.dropped),
-        capped=len(selection.capped),
+        more={key.value: count for key, count in selection.more.items()},
     )
 
 

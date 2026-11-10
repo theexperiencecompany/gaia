@@ -50,6 +50,31 @@ class SectionKey(StrEnum):
     GAIA_DID = "gaia_did"
 
 
+class BriefAction(StrEnum):
+    """What a brief item asks the reader to do; set only on items that need them."""
+
+    APPROVE = "approve"
+    REPLY = "reply"
+    REVIEW = "review"
+    RETRY = "retry"
+    READ = "read"
+    ATTEND = "attend"
+
+
+class BriefOutcome(StrEnum):
+    """The state a reported brief item reached; set only on items that need nothing from the reader."""
+
+    APPROVED = "approved"
+    LANDED = "landed"
+    DRAFTED = "drafted"
+    BOOKED = "booked"
+    SENT = "sent"
+    FINISHED = "finished"
+    STARTED = "started"
+    CHANGED = "changed"
+    FAILED = "failed"
+
+
 # Daily brief section heads, numbered in order. Display casing: every surface shows
 # these as written; an edition that sets its heads in capitals does so in its own CSS.
 SECTION_TITLES: Final[dict[SectionKey, str]] = {
@@ -78,6 +103,11 @@ SECTION_CAPS: Final[dict[SectionKey, int]] = {
     SectionKey.UPDATES: 3,
     SectionKey.GAIA_DID: 3,
 }
+# The sections whose items ask something of the reader; every other section reports.
+ACTION_SECTIONS: Final[frozenset[SectionKey]] = frozenset({SectionKey.LEAD, SectionKey.NEEDS_YOU})
+# Every brief item is a short noun-phrase title and at most one muted detail line.
+BRIEF_ITEM_TITLE_MAX_CHARS: Final[int] = 50
+BRIEF_ITEM_DETAIL_MAX_CHARS: Final[int] = 80
 #: Selection judge calls per brief: one more when its answer breaks the contract, then the run fails.
 MAX_SELECTION_ATTEMPTS: Final[int] = 2
 #: The selection judge's metering label.
