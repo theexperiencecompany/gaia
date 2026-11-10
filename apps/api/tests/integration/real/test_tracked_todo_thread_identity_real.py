@@ -25,6 +25,7 @@ from app.models.todo_models import (
     TodoResponse,
     TodoUpdate,
     TodoUpdateRequest,
+    TrackedTodoCreation,
 )
 from app.models.trigger_subscription_models import ConditionOperator, SubscriptionAction
 from app.models.workflow_models import TriggerConfig
@@ -164,6 +165,58 @@ async def test_a_reopened_todo_starts_with_its_retry_and_re_ask_budgets_back(
     assert todo.id == first.id and not todo.completed
     assert (todo.gaia_retry_count, todo.reasks_used, todo.hold_checks) == (0, 0, 0)
     assert todo.if_no_reply is NoReplyPlan.ASK_AGAIN
+
+
+async def test_concurrent_creates_for_a_completed_thread_todo_reopen_it_once(
+    mongo_db: AsyncIOMotorDatabase, user_id: str
+) -> None:
+    first = await _create(user_id)
+    await TrackedTodoService.complete_tracked_todo(first.id, user_id, summary="Sam replied")
+
+    async def create_again(done_when: str) -> TrackedTodoCreation:
+        return await TrackedTodoService.create_tracked_todo(
+            user_id,
+            "Sam wrote back",
+            external_ref=_THREAD,
+            schedule=TodoUpdate(
+                waiting_on=WaitingOn.EVENT, scheduled_at=datetime.now(UTC) + timedelta(days=2)
+            ),
+            done_when=[done_when],
+        )
+
+    outcomes = await asyncio.gather(
+        create_again("Sam has the lease"),
+        create_again("Sam paid the deposit"),
+        return_exceptions=True,
+    )
+
+    reopened = [o for o in outcomes if isinstance(o, TrackedTodoCreation)]
+    taken = [o for o in outcomes if isinstance(o, ExternalRefTakenError)]
+    assert len(reopened) == 1 and len(taken) == 1, outcomes
+    assert reopened[0].reopened and reopened[0].todo.id == first.id
+    assert taken[0].existing.id == first.id
+    (todo,) = await _stored(mongo_db, user_id)
+    assert not todo.completed and todo.canvas_content is not None
+    # Only the winning create's done-when is on the canvas: the loser wrote nothing.
+    assert ("Sam has the lease" in todo.canvas_content) != (
+        "Sam paid the deposit" in todo.canvas_content
+    )
+
+
+async def test_a_reopen_write_lands_only_on_a_todo_still_completed(
+    mongo_db: AsyncIOMotorDatabase, user_id: str
+) -> None:
+    first = await _create(user_id)
+    reopen = TodoUpdate(completed=False, completed_at=None)
+
+    assert await todo_repository.update_if_completed(first.id, user_id, update=reopen) is None
+
+    await TrackedTodoService.complete_tracked_todo(first.id, user_id, summary="Sam replied")
+    written = await todo_repository.update_if_completed(first.id, user_id, update=reopen)
+
+    assert written is not None and written.id == first.id and not written.completed
+    (todo,) = await _stored(mongo_db, user_id)
+    assert not todo.completed
 
 
 async def test_a_create_for_a_thread_whose_todo_is_open_is_still_refused(

@@ -19,6 +19,7 @@ import time_machine
 from app.constants import todos as todo_constants
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
+    CANVAS_CURRENT_STATE_SECTION,
     CANVAS_DONE_WHEN_SECTION,
     CANVAS_EVIDENCE_SECTION,
     CANVAS_SECTIONS,
@@ -443,7 +444,7 @@ class TestReopenForItsRef:
     def seams(self, mock_repo):
         reopened = _closed_thread_todo(completed=False, completed_at=None)
         mock_repo.get = AsyncMock(return_value=reopened)
-        mock_repo.update = AsyncMock(return_value=reopened)
+        mock_repo.update_if_completed = AsyncMock(return_value=reopened)
         with (
             patch(f"{_MOD}.reopening_todos", side_effect=_reopening) as m_reopening,
             patch(f"{_MOD}.record_field_changes", new_callable=AsyncMock) as m_fields,
@@ -487,8 +488,8 @@ class TestReopenForItsRef:
         response = await self._reopen()
 
         assert response == seams.responses.return_value[0]
-        args, kwargs = mock_repo.update.await_args
-        assert args == (_REOPENED_ID,) and kwargs["user_id"] == USER_ID
+        args, kwargs = mock_repo.update_if_completed.await_args
+        assert args == (_REOPENED_ID, USER_ID)
         update: TodoUpdate = kwargs["update"]
         # Only what the create set is written: an unset field keeps the todo's own value.
         assert update.model_fields_set == {"title", "canvas_content", "completed", "completed_at"}
@@ -537,7 +538,7 @@ class TestReopenForItsRef:
             actor="GAIA",
         )
 
-        update: TodoUpdate = mock_repo.update.await_args.kwargs["update"]
+        update: TodoUpdate = mock_repo.update_if_completed.await_args.kwargs["update"]
         assert update.canvas_content == CANVAS_TEMPLATE.format(title=_todo_doc().title)
 
     async def test_a_reopened_sub_todo_is_reconciled_against_its_parent(self, mock_repo, seams):
@@ -549,7 +550,7 @@ class TestReopenForItsRef:
 
     async def test_a_ref_another_create_took_meanwhile_is_a_named_conflict(self, mock_repo, seams):
         holder = _todo_doc(id="66f838cc8829054e5f10e40a", title="Reply to Sam")
-        mock_repo.update.side_effect = DuplicateKeyError("E11000")
+        mock_repo.update_if_completed.side_effect = DuplicateKeyError("E11000")
         mock_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
 
         with (
@@ -572,7 +573,7 @@ class TestReopenForItsRef:
         with pytest.raises(CanvasShapeError):
             await self._reopen(done_when=[], evidence="## Activity Log\n- smuggled in")
 
-        mock_repo.update.assert_not_awaited()
+        mock_repo.update_if_completed.assert_not_awaited()
 
     async def test_a_todo_vanished_after_the_write_fails_loud(self, mock_repo, seams):
         mock_repo.get.return_value = None
@@ -591,7 +592,66 @@ class TestReopenForItsRef:
                 actor="GAIA",
             )
 
-        mock_repo.update.assert_not_awaited()
+        mock_repo.update_if_completed.assert_not_awaited()
+
+    async def test_a_todo_another_create_reopened_first_is_a_named_conflict(self, mock_repo, seams):
+        holder = _closed_thread_todo(completed=False, completed_at=None)
+        mock_repo.update_if_completed.return_value = None
+        mock_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
+
+        with pytest.raises(ExternalRefTakenError) as taken:
+            await self._reopen()
+
+        assert taken.value.existing is holder
+        mock_repo.find_open_by_external_ref.assert_awaited_once_with(USER_ID, _THREAD)
+        seams.fields.assert_not_awaited()
+        seams.waiting.assert_not_awaited()
+        seams.index.assert_not_awaited()
+        seams.capture.assert_not_called()
+
+    async def test_a_todo_neither_completed_nor_open_fails_loud(self, mock_repo, seams):
+        mock_repo.update_if_completed.return_value = None
+        mock_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+
+        with pytest.raises(
+            LookupError, match=f"Todo {_REOPENED_ID} was neither completed nor open to reopen"
+        ):
+            await self._reopen()
+
+        seams.fields.assert_not_awaited()
+
+    async def test_a_legacy_activity_section_moves_into_activity_md_ahead_of_its_log(
+        self, mock_repo, seams
+    ):
+        legacy = (
+            "# Reply to Sam\n\n## Current State\nWaiting.\n\n"
+            "## Activity Log\n- 2026-09-12: drafted a reply\n\n## Learnings\n"
+        )
+
+        await TrackedTodoService._reopen_for_its_ref(
+            _closed_thread_todo(
+                canvas_content=legacy, activity_content="- 2026-11-01 [completed] Sam replied"
+            ),
+            TodoUpdate(title="Sam wrote back"),
+            TodoUpdate(scheduled_at=_NEXT_CHECK),
+            done_when=(),
+            evidence=None,
+            actor="GAIA",
+        )
+
+        update: TodoUpdate = mock_repo.update_if_completed.await_args.kwargs["update"]
+        assert update.canvas_content is not None
+        assert "## Activity Log" not in update.canvas_content
+        assert section_body(update.canvas_content, CANVAS_CURRENT_STATE_SECTION) == "Waiting."
+        assert update.activity_content == (
+            "- 2026-09-12: drafted a reply\n\n- 2026-11-01 [completed] Sam replied"
+        )
+
+    async def test_a_canvas_with_nothing_to_move_leaves_activity_md_alone(self, mock_repo, seams):
+        await self._reopen()
+
+        update: TodoUpdate = mock_repo.update_if_completed.await_args.kwargs["update"]
+        assert "activity_content" not in update.model_fields_set
 
 
 class TestCreateTrackedTodo:

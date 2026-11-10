@@ -70,6 +70,7 @@ from app.services.todo_canvas_storage import (
 )
 from app.services.todos.errors import (
     CanvasShapeError,
+    ExternalRefTakenError,
     SubTodoParentError,
     UnwatchedTodoKeptError,
 )
@@ -457,27 +458,44 @@ class TrackedTodoService:
         if previous.external_ref is None:
             raise ValueError(f"Todo {previous.id} has no outside object to reopen for")
         user_id = previous.user_id
-        canvas = _with_ownership(
-            previous.canvas_content or CANVAS_TEMPLATE.format(title=previous.title),
-            done_when,
-            evidence,
+        # An older canvas can still hold activity or repeated sections; repair it as a create would.
+        stored, moved_activity = normalize_canvas(
+            previous.canvas_content or CANVAS_TEMPLATE.format(title=previous.title)
         )
+        canvas = _with_ownership(stored, done_when, evidence)
         if problems := canvas_problems(canvas):
             raise CanvasShapeError(problems)
+        notes: dict[str, str] = {"canvas_content": canvas}
+        if moved_activity:
+            notes["activity_content"] = "\n\n".join(
+                p for p in (moved_activity, previous.activity_content) if p
+            )
         update = TodoUpdate.model_validate(
             {
                 **update.model_dump(exclude_unset=True),
-                "canvas_content": canvas,
+                **notes,
                 "completed": False,
                 "completed_at": None,
             }
         )
         async with reopening_todos(user_id, [previous.id], reopening=True, detail=f"by {actor}"):
             try:
-                await todo_repository.update(previous.id, user_id=user_id, update=update)
+                written = await todo_repository.update_if_completed(
+                    previous.id, user_id, update=update
+                )
             except DuplicateKeyError as taken:
                 # Another create opened a todo for the object after the lookup.
                 await raise_ref_taken(user_id, previous.external_ref, taken)
+            if written is None:
+                # A concurrent create reopened it first; that open todo owns the object now.
+                holder = await todo_repository.find_open_by_external_ref(
+                    user_id, previous.external_ref
+                )
+                if holder is None:
+                    raise LookupError(
+                        f"Todo {previous.id} was neither completed nor open to reopen"
+                    )
+                raise ExternalRefTakenError(holder)
         await record_field_changes(previous.id, user_id, schedule, by=actor)
         await record_waiting_change(previous.id, user_id, schedule, by=actor)
 
@@ -508,7 +526,7 @@ class TrackedTodoService:
 
     @staticmethod
     async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
-        """Complete a tracked todo and its open sub-todos: log it, mark done, archive label."""
+        """Complete a tracked todo and its open sub-todos: log it, mark it done, stop its watches."""
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             return False
