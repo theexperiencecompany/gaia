@@ -58,7 +58,8 @@ replacement, never a hand patch to the CSS.
 The founder's fixture filled every slot with plausible demo content, so the
 templates print fixture text or invent figures for a real brief. Each edit below
 makes a template read the real value, or print nothing. None touches layout, CSS
-or a skin axis, except where an entry says it is a founder-approved layout change.
+or a skin axis, except where an entry says it is a founder-approved layout change
+(6) or a real code cannot be drawn any smaller (8).
 
 1. **Untimed items.** Real overnight work carries no clock time. `clock()` in
    tpl-brand.js and tpl-postal.js returns an empty string for a missing time
@@ -93,6 +94,26 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    prints it as its own block after the overnight one, reusing that block's row
    markup under a "still in progress" heading in the family's voice (Air Mail
    printed running work under "Done while you slept").
+
+8. **Every code scans to the brief's link (2026-11-10).** The Invoice's QR, the
+   Receipt's barcode and the Boarding Pass's barcode were pixels seeded by the
+   edition number, and encoded nothing. `qr()` (tpl-paper.js) and both `barcode()`
+   functions (tpl-receipt.js, tpl-transit.js) are deleted. `editions/codes.py`
+   encodes `payload.link` (its heygaia.link, or its page URL when minting failed)
+   and passes the geometry as `ed.codes`. Each template draws it with
+   `EXPLORER.code`, which `explorer_render.py` defines. The Invoice draws a QR
+   (segno) in the same 108px box. The Receipt draws a Code 128 (python-barcode) at
+   1px per module, up to the tape's width. The Boarding Pass's `code` axis now
+   names a symbology instead of a row count. `linear` is a Code 128 at 1px per
+   module, and `stacked` is a real PDF417 (pdf417gen) at 2px per module, 64px tall
+   as before. Two founder-approved shapes change, because a real code cannot be
+   smaller. The Receipt's barcode is about 387px wide instead of about 145px. The
+   Boarding Pass's linear code is about 387px wide instead of 360px. The stacked
+   code has no 2px gaps between its rows, because a PDF417 with gaps does not
+   scan. If the page URL is too long for the width, it is squeezed below 1px per
+   module, and the Code 128 then reads only at render size, not at the delivered
+   1080px. `tests/integration/test_edition_codes_scan.py` decodes each code from
+   the rendered PNG.
 
 The painting that `broadsheet`, `exhibition` and `almanac` hang rotates through
 the public-domain paintings in `assets.json`, one step per edition

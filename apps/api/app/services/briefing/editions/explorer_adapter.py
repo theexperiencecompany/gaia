@@ -23,6 +23,7 @@ from app.models.briefing_models import (
     BriefingTallies,
     BriefingWeek,
 )
+from app.services.briefing.editions.codes import CodeGeometry, Symbology, family_codes
 from app.services.briefing.editions.stamps import Stamp, stamp_for
 
 _WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -178,6 +179,8 @@ class ExplorerEdition(TypedDict):
     stamp: Stamp | None
     art: ExplorerArt
     assets: dict[str, str]
+    #: The codes the family prints (none for most), each encoding the brief's link.
+    codes: dict[Symbology, CodeGeometry]
 
 
 def build_ed(
@@ -223,6 +226,7 @@ def build_ed(
         "stamp": _build_stamp(payload.stamp_city) if family == POSTAL_FAMILY else None,
         "art": art,
         "assets": assets,
+        "codes": family_codes(family, payload.link),
     }
 
 

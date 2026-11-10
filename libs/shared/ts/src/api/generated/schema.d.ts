@@ -6874,6 +6874,11 @@ export interface components {
             /** Lede */
             lede: string;
             /**
+             * Link
+             * @description The brief's link, set before its edition renders: its heygaia.link, or its page URL when minting failed. The edition's QR and barcodes encode it; None on legacy rows.
+             */
+            link: string | null;
+            /**
              * Message
              * @description The brief as the user reads it: the text GAIA writes over the code-built facts, sent after the edition image in chat, under it in the email and on the brief's page. None on legacy rows.
              */

@@ -73,6 +73,8 @@ _DAILY: dict[str, Any] = {
         "ahead": [{"date": "2026-10-19", "start": "09:00", "title": "Board call"}],
     },
     "generated_at": "6:02 AM",
+    # Set before every render (store_brief): the Invoice, Receipt and Boarding Pass encode it.
+    "link": "https://heygaia.link/aB3dE5gH7jK",
     "mood": "packed",
     "caption": "Coffee first, Priya second.",
     "hue": 120,

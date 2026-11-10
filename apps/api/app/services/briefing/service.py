@@ -91,7 +91,7 @@ from app.services.analytics_service import capture
 from app.services.briefing import chat_sync, context, dormancy
 from app.services.briefing.context import UserClock
 from app.services.briefing.conversation import post_brief_message
-from app.services.briefing.edition_email import HostedEditionImage, host_edition_image
+from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.link_tokens import LINK_TOKEN_RE, link_token, link_token_problems
@@ -100,13 +100,13 @@ from app.services.briefing.message import (
     brief_path,
     chat_text,
     delivered_message,
-    full_brief_url,
 )
 from app.services.briefing.postmarks import new_stamp
 from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
 from app.services.briefing.scouts.service import scout_signals
 from app.services.briefing.shuffle_bag import draw
+from app.services.briefing.store import store_brief
 from app.services.briefing.view import briefing_card, briefing_view
 from app.services.briefing.voice_check import (
     VoicedCounts,
@@ -318,6 +318,7 @@ async def _deliver(
     notification_kind: str,
     *,
     image: HostedEditionImage,
+    brief_url: str,
     push: bool,
 ) -> list[str]:
     """Deliver one brief in-app and, when pushed, to email and the user's chat.
@@ -327,11 +328,6 @@ async def _deliver(
     """
     kind: BriefingKind = briefing.kind
     message = delivered_message(payload)
-    # Without a heygaia.link (mint failed) the brief still goes out, pointing at
-    # its in-app page, which its owner can always open.
-    brief_url = await optional_short_link(
-        user.id, ShortLinkTargetType.BRIEFING, briefing.id
-    ) or full_brief_url(briefing.id)
     target = await resolve_proactive_target(user.id) if push else None
     channel = target if isinstance(target, ChatChannel) else None
     card = briefing_card(briefing_view(briefing))
@@ -877,8 +873,8 @@ async def _publish(
 ) -> BriefingModel:
     """Draw the edition, render and store the brief, deliver it and report where it went.
 
-    The edition is rendered and hosted first, so a render failure stores and sends
-    nothing; the one image serves the in-app page, the email and the chat post. A brief
+    store_brief mints the link the edition encodes, then renders and stores it, so a
+    render failure stores and sends nothing; the one image serves the in-app page, the email and the chat post. A brief
     that is not pushed (sending.push False) goes in-app only and spends no shuffle-bag draw;
     otherwise the draws (the family's and the stamp's) persist after delivery.
     """
@@ -887,19 +883,15 @@ async def _publish(
     if payload.stamp_city is not None:
         payload.new_stamp = await new_stamp(user.id, payload.stamp_city)
     payload.recipient_name = display_name(user)
-    # A fresh random key per render: the hosted URL reaches emails and public links.
-    image = await host_edition_image(payload, owner_id=user.id, render_key=uuid4().hex)
-    briefing = await briefing_repository.upsert_briefing(
-        user.id,
-        clock.date_str,
-        kind,
-        payload,
-        edition_image_url=image.display_url,
-        edition_fold=image.fold,
-        edition_paper=list(image.paper) if image.paper else None,
-    )
+    stored = await store_brief(user.id, clock.date_str, kind, payload)
     channels = await _deliver(
-        user, briefing, payload, _NOTIFICATION_KINDS[kind], image=image, push=push
+        user,
+        stored.briefing,
+        payload,
+        _NOTIFICATION_KINDS[kind],
+        image=stored.image,
+        brief_url=stored.link,
+        push=push,
     )
     await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
     if push:
@@ -917,7 +909,7 @@ async def _publish(
         ),
     )
     log.info("briefing.sent", user_id=user.id, kind=kind, channels=channels, pushed=push)
-    return briefing
+    return stored.briefing
 
 
 async def _already_delivered(user_id: str, clock: UserClock, kind: BriefingKind) -> bool:

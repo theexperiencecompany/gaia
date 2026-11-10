@@ -9,10 +9,12 @@ from typing import Any
 import pytest
 
 from app.models.briefing_models import BriefingPayload
+from app.services.briefing.editions.codes import Symbology, code_geometry
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
 from app.services.briefing.editions.explorer_render import explorer_family_ids
 from app.services.briefing.editions.stamps import stamp_for
 
+LINK = "https://heygaia.link/aB3dE5gH7jK"
 ASSETS = {"ART1": "data:image/jpeg;base64,AAAA", "BAND": "data:image/webp;base64,BBBB"}
 ART: ExplorerArt = {
     "src": "data:image/jpeg;base64,AAAA",
@@ -37,6 +39,7 @@ def _payload(**overrides: Any) -> BriefingPayload:
         "sections": [],
         "mood": "clear",
         "caption": "",
+        "link": LINK,
     }
     payload.update(overrides)
     return BriefingPayload.model_validate(payload)
@@ -467,3 +470,29 @@ class TestStamp:
 
     def test_other_families_carry_no_stamp(self) -> None:
         assert _build(_payload(stamp_city="paris"), family="swiss")["stamp"] is None
+
+
+@pytest.mark.unit
+class TestCodes:
+    @pytest.mark.parametrize(
+        ("family", "symbologies"),
+        [
+            ("invoice", [Symbology.QR]),
+            ("receipt", [Symbology.CODE128]),
+            ("boardingpass", [Symbology.CODE128, Symbology.PDF417]),
+            ("swiss", []),
+        ],
+    )
+    def test_a_family_carries_only_the_codes_it_prints_each_encoding_the_link(
+        self, family: str, symbologies: list[Symbology]
+    ) -> None:
+        codes = _build(_payload(), family=family)["codes"]
+
+        assert codes == {s: code_geometry(s, LINK) for s in symbologies}
+
+    def test_a_family_that_prints_a_code_refuses_a_brief_without_a_link(self) -> None:
+        with pytest.raises(ValueError, match="invoice"):
+            _build(_payload(link=None), family="invoice")
+
+    def test_a_family_without_a_code_renders_a_legacy_brief_without_a_link(self) -> None:
+        assert _build(_payload(link=None), family="swiss")["codes"] == {}

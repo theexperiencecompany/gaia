@@ -80,7 +80,7 @@ from app.models.user_models import (
     ShuffleBag,
     UserDocument,
 )
-from app.services.briefing import chat_sync, context, dormancy, service
+from app.services.briefing import chat_sync, context, dormancy, service, store
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
@@ -220,10 +220,11 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
             kind,
             payload,
             *,
+            briefing_id,
             edition_image_url,
             edition_fold,
             edition_paper: BriefingModel(
-                id=_BRIEF_ID,
+                id=briefing_id,
                 user_id=user_id,
                 date=date,
                 kind=kind,
@@ -268,8 +269,10 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(briefing_repository, "list_recent", w.recent)
     monkeypatch.setattr(briefing_repository, "list_stamped", w.stamped)
     monkeypatch.setattr(briefing_repository, "upsert_briefing", w.upsert)
+    monkeypatch.setattr(briefing_repository, "briefing_id_for", AsyncMock(return_value=_BRIEF_ID))
     monkeypatch.setattr(briefing_repository, "set_delivered_channels", w.set_channels)
     monkeypatch.setattr(service, "optional_short_link", w.mint)
+    monkeypatch.setattr(store, "optional_short_link", w.mint)
     _seam(monkeypatch, w, briefing_repository, "has_daily_briefing", AsyncMock(return_value=True))
     monkeypatch.setattr(notification_service, "create_notification", w.notify)
     monkeypatch.setattr(service, "post_brief_message", w.brief_message)
@@ -282,7 +285,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
             )
         ),
     )
-    monkeypatch.setattr(service, "host_edition_image", w.host_image)
+    monkeypatch.setattr(store, "host_edition_image", w.host_image)
     monkeypatch.setattr(service, "post_to_platform_chat", w.post)
     monkeypatch.setattr(service, "capture", w.capture)
     _seam(
@@ -406,8 +409,9 @@ class TestDailyBrief:
         assert world.upsert.await_args.kwargs["edition_image_url"] == _EDITION.display_url
         request = world.notify.await_args.args[0]
         assert request.metadata["edition_image_url"] == _EDITION.display_url
-        # One URL, minted for the persisted brief, behind the email image and the chat post.
+        # One URL, minted before the render: the edition's codes, the email image and the chat post.
         world.mint.assert_awaited_with(_USER, ShortLinkTargetType.BRIEFING, _BRIEF_ID)
+        assert world.host_image.await_args.args[0].link == _BRIEF_LINK
         assert request.metadata["brief_url"] == _BRIEF_LINK
         assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
@@ -1632,6 +1636,7 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
 
         request = world.notify.await_args.args[0]
         assert request.metadata["brief_url"] == f"https://app.test/brief/{_BRIEF_ID}"
+        assert world.host_image.await_args.args[0].link == f"https://app.test/brief/{_BRIEF_ID}"
         world.post.assert_awaited_once()
         assert world.post.await_args.kwargs["text"].endswith(
             f"Full brief: https://app.test/brief/{_BRIEF_ID}"

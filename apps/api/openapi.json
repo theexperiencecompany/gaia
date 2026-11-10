@@ -2037,6 +2037,18 @@
             "title": "Lede",
             "type": "string"
           },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The brief's link, set before its edition renders: its heygaia.link, or its page URL when minting failed. The edition's QR and barcodes encode it; None on legacy rows.",
+            "title": "Link"
+          },
           "message": {
             "anyOf": [
               {
@@ -2157,6 +2169,7 @@
           "new_stamp",
           "recipient_name",
           "generated_at",
+          "link",
           "calendar",
           "tallies",
           "week",

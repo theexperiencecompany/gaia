@@ -116,23 +116,6 @@ ${legend}
      hole, a faint security guilloche, a serrated stub edge, a stacked
      PDF417-style code, a gate cell.
      ======================================================================== */
-  function barcode(seed, rows, width) {
-    let v = Math.imul(seed, 2654435761) >>> 0;
-    const out = [];
-    for (let r = 0; r < rows; r++) {
-      const stops = [];
-      let x = 0;
-      while (x < width) {
-        v = (Math.imul(v, 1103515245) + 12345) >>> 0;
-        const w = 1 + (v % 4);
-        const gap = 1 + ((v >> 5) % 3);
-        stops.push(`var(--ink) ${x}px ${x + w}px, transparent ${x + w}px ${x + w + gap}px`);
-        x += w + gap;
-      }
-      out.push(`linear-gradient(90deg, ${stops.join(", ")})`);
-    }
-    return out;
-  }
   /* Security guilloche: interleaved sine ribbons, drawn once as an SVG. */
   function guilloche(col) {
     const paths = [];
@@ -161,8 +144,8 @@ ${legend}
         { id: "ivory", label: "ivory card", paper: "#f7f1e2", desk: "#b9b2a3" },
       ],
       code: [
-        { id: "linear", label: "linear barcode", rows: 1 },
-        { id: "stacked", label: "stacked PDF417", rows: 6 },
+        { id: "linear", label: "linear barcode", symbology: "code128", modulePx: 1 },
+        { id: "stacked", label: "stacked PDF417", symbology: "pdf417", modulePx: 2 },
       ],
     },
     css: `
@@ -212,8 +195,8 @@ ${legend}
 .t-boardingpass .svc > span:first-child { font-weight: 700; font-variant-numeric: tabular-nums; }
 .t-boardingpass .svc > span:last-child, .t-boardingpass .it > span:last-child { text-wrap: pretty; }
 .t-boardingpass .svc .n { color: #5b5c63; }
-.t-boardingpass .code { display: grid; gap: 2px; margin: 16px auto 0; width: 360px; }
-.t-boardingpass .code div { height: var(--bh); }
+.t-boardingpass .code { margin: 16px auto 0; height: 64px; }
+.t-boardingpass .code svg { display: block; width: 100%; height: 100%; }
 .t-boardingpass .codeno { text-align: center; font: 600 13px/1 Menlo, monospace; letter-spacing: .24em; margin-top: 8px; color: #3c3c42; }
 `,
     render(ed, skin) {
@@ -230,10 +213,9 @@ ${legend}
       const stats = s ? `<div class="sec" style="padding-top:0"><div class="stats"><div><b>${s.done}</b><span class="lbl">done</span></div>${s.mail ? `<div><b>${s.mail}</b><span class="lbl">emails handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="lbl">focus</span></div>` : ""}</div></div>` : "";
       const svcRows = (rows) => rows.map((e) => `<div class="svc" data-role="body"><span>${esc(e.t24)}</span><span>${esc(e.label)}${e.note ? ` <span class="n">— ${esc(e.note)}</span>` : ""}</span></div>`).join("");
       const svc = `${c.overnight.length ? `<span class="lbl">Services completed in transit</span>${svcRows(c.overnight)}` : ""}${c.running.length ? `<span class="lbl">Services still in progress</span>${svcRows(c.running)}` : ""}`;
-      const bars = barcode(ed.editionNo, skin.code.rows, 360);
-      const bh = skin.code.rows === 1 ? "64px" : "9px";
+      const bars = ed.codes[skin.code.symbology];
       const flight = `GA-${String(ed.editionNo).padStart(3, "0")}`;
-      return `<article class="t-boardingpass" style="--liv:${skin.livery.liv}; --acc:${skin.livery.acc}; --accOn:${skin.livery.accOn}; --paper:${skin.card.paper}; --desk:${skin.card.desk}; --bh:${bh}">
+      return `<article class="t-boardingpass" style="--liv:${skin.livery.liv}; --acc:${skin.livery.acc}; --accOn:${skin.livery.accOn}; --paper:${skin.card.paper}; --desk:${skin.card.desk}">
 <div class="pass" data-paper>
   <div class="body">${grain("bp2-g", 0.9)}${guilloche(skin.livery.acc + "33")}
     <div class="top"><div><span class="air">GAIA AIR</span><small>Briefing class</small></div><div class="r">Boarding pass<b>${flight}</b></div></div>
@@ -248,7 +230,7 @@ ${legend}
   <div class="stub"><div class="sec"><i class="hole" aria-hidden="true"></i>
     <div class="sh"><b>GAIA AIR</b><span class="lbl">${flight} · seat ${ed.editionNo}A · ${pad2(ed.day)} ${esc(ed.monthShort.toUpperCase())}</span></div>
     ${svc}
-    <div class="code">${bars.map((g) => `<div style="background:${g}"></div>`).join("")}</div>
+    <div class="code" style="width:min(100%, ${bars.width * skin.code.modulePx}px)">${EXPLORER.code(bars, "bars")}</div>
     <p class="codeno">GA${ed.editionNo} ${ed.time24.replace(":", "")} RANDERIYA/A</p>
   </div></div>
 </div></article>`;

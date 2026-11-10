@@ -174,6 +174,14 @@ class BriefingPayload(BaseModel):
     generated_at: str | None = Field(
         default=None, description='User-local generation time, e.g. "6:02 AM".'
     )
+    link: str | None = Field(
+        default=None,
+        description=(
+            "The brief's link, set before its edition renders: its heygaia.link, or its "
+            "page URL when minting failed. The edition's QR and barcodes encode it; "
+            "None on legacy rows."
+        ),
+    )
     calendar: list[BriefingEvent] = Field(
         default_factory=list, description="Today's calendar events, in start order."
     )
@@ -187,6 +195,11 @@ class BriefingPayload(BaseModel):
             "the brief's page. None on legacy rows."
         ),
     )
+
+
+def new_briefing_id() -> str:
+    """Return a fresh brief id."""
+    return f"brief_{uuid.uuid4().hex[:12]}"
 
 
 class BriefingModel(UserScopedDocument):
@@ -203,7 +216,7 @@ class BriefingModel(UserScopedDocument):
         extra="ignore", from_attributes=True, json_schema_serialization_defaults_required=True
     )
 
-    id: str = Field(default_factory=lambda: f"brief_{uuid.uuid4().hex[:12]}")
+    id: str = Field(default_factory=new_briefing_id)
     date: str  # user-local YYYY-MM-DD
     kind: BriefingKind = BRIEFING_KIND_DAILY
     payload: BriefingPayload

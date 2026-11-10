@@ -29,6 +29,8 @@ from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmark
 from app.utils.errors import AppError
 
 MODULE = "app.services.dev_postmarks_seed"
+STORE = "app.services.briefing.store"
+SHORT_LINK = "https://heygaia.link/seededBrief"
 LAST_DAY = date(2026, 10, 1)
 # Unsorted on purpose, and more cities than seed days, so the cycle and the ordering show.
 CITIES = [f"city-{n:02d}" for n in (13, 2, 7, 1, 12, 4, 9, 3, 11, 5, 14, 8, 6, 10)]
@@ -71,7 +73,12 @@ def seeded() -> Iterator[Seeded]:
 
     with (
         patch(f"{MODULE}.hosted_stamp_weights", return_value=dict.fromkeys(CITIES, 1)),
-        patch(f"{MODULE}.host_edition_image", side_effect=fake_host),
+        patch(f"{STORE}.host_edition_image", side_effect=fake_host),
+        patch(f"{STORE}.optional_short_link", AsyncMock(return_value=SHORT_LINK)),
+        patch(
+            f"{MODULE}.briefing_repository.briefing_id_for",
+            AsyncMock(side_effect=lambda user_id, date, kind: f"brief_{date}"),
+        ),
         patch(f"{MODULE}.briefing_repository.upsert_briefing", new_callable=AsyncMock) as upsert,
         patch(
             f"{MODULE}.briefing_repository.set_delivered_channels", new_callable=AsyncMock
@@ -110,7 +117,9 @@ async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its
         seeded.rendered, seeded.upsert.await_args_list, seeded.deliver.await_args_list, strict=True
     ):
         assert upsert_call.args == (user.id, payload.date, BRIEFING_KIND_DAILY, payload)
+        assert payload.link == SHORT_LINK
         assert upsert_call.kwargs == {
+            "briefing_id": f"brief_{payload.date}",
             "edition_image_url": f"https://cdn.test/{key}.png",
             "edition_fold": None,
             "edition_paper": None,

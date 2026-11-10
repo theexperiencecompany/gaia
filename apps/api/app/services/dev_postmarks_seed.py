@@ -9,7 +9,6 @@ editions draws one per other daily family, plus a weekly recap. Fixed dates key 
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from uuid import uuid4
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
@@ -37,9 +36,9 @@ from app.models.briefing_models import (
     BriefingWeekDay,
 )
 from app.models.user_models import UserDocument
-from app.services.briefing.edition_email import host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.store import store_brief
 from app.utils.errors import create_error
 
 _SEEDED_CHANNELS: list[str] = [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value]
@@ -352,15 +351,6 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
 
 
 async def _store(user: UserDocument, payload: BriefingPayload, kind: BriefingKind) -> None:
-    """Render and host the edition, then upsert the brief as delivered in-app and by email."""
-    image = await host_edition_image(payload, owner_id=user.id, render_key=uuid4().hex)
-    await briefing_repository.upsert_briefing(
-        user.id,
-        payload.date,
-        kind,
-        payload,
-        edition_image_url=image.display_url,
-        edition_fold=image.fold,
-        edition_paper=list(image.paper) if image.paper else None,
-    )
+    """Store the brief with its rendered edition, marked delivered in-app and by email."""
+    await store_brief(user.id, payload.date, kind, payload)
     await briefing_repository.set_delivered_channels(user.id, payload.date, kind, _SEEDED_CHANNELS)
