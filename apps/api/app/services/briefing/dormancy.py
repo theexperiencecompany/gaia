@@ -22,9 +22,19 @@ from app.constants.briefing import FIRST_WEEK_DAYS, IDLE_DORMANT_DAYS, IDLE_WARN
 from app.db.repositories.users import user_repository
 from app.models.user_models import BriefingDormancy, UserDocument
 from app.utils.timezone import as_utc
+from shared.py.wide_events import log
 
 WIND_DOWN_WARN = "warn"
 WIND_DOWN_FINAL = "final"
+
+
+@dataclass(frozen=True)
+class IdleLadder:
+    """Where today's run leaves the user on the ladder; wind_down is None off its rungs."""
+
+    first_week: bool
+    idle_days: int
+    wind_down: str | None
 
 
 @dataclass
@@ -81,6 +91,30 @@ async def record_idle_day(user_id: str, prior: DormancyState, idle: bool, date_s
     idle_days = prior.idle_days + 1 if idle else 0
     await user_repository.set_dormancy_day(user_id, idle_days=idle_days, date_str=date_str)
     return idle_days
+
+
+async def climb_idle_ladder(
+    user: UserDocument, prior: DormancyState, date_str: str, *, has_news: bool, has_goal: bool
+) -> IdleLadder:
+    """Record today as idle (nothing to report, no goal) or active, and return the rung it reached.
+
+    A new account's first week is never idle.
+    """
+    first_week = in_first_week(user, datetime.now(UTC))
+    idle = not has_news and not has_goal and not first_week
+    idle_days = await record_idle_day(user.id, prior, idle, date_str)
+    return IdleLadder(
+        first_week=first_week,
+        idle_days=idle_days,
+        wind_down=wind_down_stage(idle_days) if idle else None,
+    )
+
+
+async def leave_idle_ladder(user_id: str, ladder: IdleLadder) -> None:
+    """Pause the loop once the goodbye went out, until a reactivation signal."""
+    if ladder.wind_down == WIND_DOWN_FINAL:
+        await enter_dormancy(user_id)
+        log.info("briefing.dormancy_entered", user_id=user_id, idle_days=ladder.idle_days)
 
 
 async def enter_dormancy(user_id: str) -> None:

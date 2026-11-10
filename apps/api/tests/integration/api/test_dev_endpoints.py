@@ -310,7 +310,15 @@ class TestDevRouterMounting:
         assert body["editions_created"] == 5
         assert body["pro"] is True
         mock_seed.assert_awaited_once_with(
-            DEV_EMAIL, 3, 2, ["telegram"], postmarks=12, editions=5, pro=True
+            SeedDevDataRequest(
+                email=DEV_EMAIL,
+                todos=3,
+                conversations=2,
+                platform_links=["telegram"],
+                postmarks=12,
+                editions=5,
+                pro=True,
+            )
         )
 
     async def test_seed_wide_event_records_the_requested_counts(self):
@@ -462,12 +470,14 @@ class TestDevServiceLogic:
             patch.object(dev_service, "seed_dev_editions", new_callable=AsyncMock) as mock_editions,
         ):
             result = await dev_service.seed_dev_data(
-                DEV_EMAIL,
-                todos=3,
-                conversations=2,
-                platform_links=["telegram", "slack"],
-                postmarks=4,
-                editions=3,
+                SeedDevDataRequest(
+                    email=DEV_EMAIL,
+                    todos=3,
+                    conversations=2,
+                    platform_links=["telegram", "slack"],
+                    postmarks=4,
+                    editions=3,
+                )
             )
 
         assert mock_todo.await_count == 3
@@ -530,7 +540,9 @@ class TestDevServiceLogic:
             ) as mock_invalidate,
         ):
             result = await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=0, conversations=0, platform_links=[], pro=True
+                SeedDevDataRequest(
+                    email=DEV_EMAIL, todos=0, conversations=0, platform_links=[], pro=True
+                )
             )
 
         assert result.pro is True
@@ -590,7 +602,9 @@ class TestDevServiceLogic:
             patch.object(PlatformLinkService, "unlink_account", side_effect=unlink_account),
         ):
             return await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram"]
+                SeedDevDataRequest(
+                    email=DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram"]
+                )
             )
 
     async def test_seed_links_the_seeded_identity_the_harness_injects_as(self):
@@ -652,7 +666,9 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=1, conversations=0, platform_links=["myspace"]
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL, todos=1, conversations=0, platform_links=["myspace"]
+                    )
                 )
 
         assert exc.value.status_code == 400
@@ -688,7 +704,9 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=2, conversations=1, platform_links=["telegram"]
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL, todos=2, conversations=1, platform_links=["telegram"]
+                    )
                 )
 
         assert exc.value.status_code == 409
@@ -726,7 +744,12 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram", "slack"]
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL,
+                        todos=0,
+                        conversations=0,
+                        platform_links=["telegram", "slack"],
+                    )
                 )
 
         assert exc.value.code == LINK_CONFLICT_PLATFORM_TAKEN
@@ -741,7 +764,7 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=1, conversations=0, platform_links=[]
+                    SeedDevDataRequest(email=DEV_EMAIL, todos=1, conversations=0, platform_links=[])
                 )
 
         assert exc.value.status_code == 404

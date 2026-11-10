@@ -40,6 +40,7 @@ from app.models.user_models import (
 from app.schemas.dev_schemas import (
     DeleteDevUserResponse,
     DevDeletedCounts,
+    SeedDevDataRequest,
     SeedDevDataResponse,
 )
 from app.services.conversation_service import create_conversation_service
@@ -131,18 +132,9 @@ async def attach_dev_file(
     return document
 
 
-async def seed_dev_data(
-    email: str,
-    todos: int,
-    conversations: int,
-    platform_links: list[str],
-    *,
-    postmarks: int = 0,
-    editions: int = 0,
-    pro: bool = False,
-) -> SeedDevDataResponse:
+async def seed_dev_data(request: SeedDevDataRequest) -> SeedDevDataResponse:
     """Create deterministic sample data for an existing dev user via real services."""
-    for platform in platform_links:
+    for platform in request.platform_links:
         if not Platform.is_valid(platform):
             raise create_error(
                 message=f"Unknown platform {platform!r}",
@@ -151,7 +143,7 @@ async def seed_dev_data(
                 status_code=400,
             )
 
-    user = await require_dev_user(email)
+    user = await require_dev_user(request.email)
     user_id = user.id
 
     # Same complete_onboarding() gate/phase/bio placeholder, minus background
@@ -166,7 +158,9 @@ async def seed_dev_data(
     # The seeded platform_user_id is part of the seed CONTRACT (harness clients
     # inject messages as it) — it is returned in the response, never re-derived
     # by consumers.
-    platform_user_ids = {platform: f"dev-{platform}-{user_id}" for platform in platform_links}
+    platform_user_ids = {
+        platform: f"dev-{platform}-{user_id}" for platform in request.platform_links
+    }
 
     # Every link is checked before any is written, so another user's account is a 409
     # with nothing written; a different account of this user's own is replaced, since
@@ -188,7 +182,7 @@ async def seed_dev_data(
                     platform_user_id=platform_user_id,
                     profile={
                         "username": f"dev_{platform}",
-                        "display_name": user.name or email,
+                        "display_name": user.name or request.email,
                     },
                 )
                 for platform, platform_user_id in platform_user_ids.items()
@@ -197,13 +191,13 @@ async def seed_dev_data(
     except (PlatformAccountTakenError, AccountHasDifferentPlatformError) as e:
         raise link_conflict_error(e) from e
 
-    if pro:
+    if request.pro:
         await _grant_dev_pro(user_id)
 
     await asyncio.gather(
         *(
             TodoService.create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id)
-            for i in range(todos)
+            for i in range(request.todos)
         ),
         *(
             create_conversation_service(
@@ -214,32 +208,32 @@ async def seed_dev_data(
                 ),
                 AuthenticatedUser(user_id=user_id),
             )
-            for i in range(conversations)
+            for i in range(request.conversations)
         ),
     )
-    await seed_dev_postmarks(user, postmarks)
-    await seed_dev_editions(user, editions)
+    await seed_dev_postmarks(user, request.postmarks)
+    await seed_dev_editions(user, request.editions)
 
     log.info(
         f"{LogTag.DEV} seeded dev data",
-        email=email,
+        email=request.email,
         user_id=user_id,
-        todos=todos,
-        conversations=conversations,
-        postmarks=postmarks,
-        editions=editions,
-        platforms=platform_links,
+        todos=request.todos,
+        conversations=request.conversations,
+        postmarks=request.postmarks,
+        editions=request.editions,
+        platforms=request.platform_links,
     )
     return SeedDevDataResponse(
-        email=email,
+        email=request.email,
         user_id=user_id,
-        todos_created=todos,
-        conversations_created=conversations,
-        postmarks_created=postmarks,
-        editions_created=editions,
-        platforms_linked=platform_links,
+        todos_created=request.todos,
+        conversations_created=request.conversations,
+        postmarks_created=request.postmarks,
+        editions_created=request.editions,
+        platforms_linked=request.platform_links,
         platform_user_ids=platform_user_ids,
-        pro=pro,
+        pro=request.pro,
     )
 
 
