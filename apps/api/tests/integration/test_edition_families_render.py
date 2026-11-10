@@ -80,7 +80,7 @@ _DAILY: dict[str, Any] = {
     "hue": 120,
 }
 # The weekly family only ever renders the weekly recap, which carries its own
-# week-level headline (build_weekly_digest_prompt asks for the week's shape).
+# week-level headline (build_weekly_voice_prompt asks for the week's shape).
 _WEEKLY_HEADLINE = "A steady week: twelve things done, four of them by you."
 
 

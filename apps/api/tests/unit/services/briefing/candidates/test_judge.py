@@ -9,7 +9,13 @@ from unittest.mock import AsyncMock
 import pytest
 from tests.factories import make_user_id
 
-from app.constants.briefing import BRIEF_SELECTION_LABEL, SECTION_CAPS, SectionKey
+from app.constants.briefing import (
+    BRIEF_SELECTION_LABEL,
+    BRIEFING_KIND_DAILY,
+    BRIEFING_KIND_WEEKLY,
+    SECTION_CAPS,
+    SectionKey,
+)
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
 from app.models.briefing_models import BriefingItemKind
 from app.models.scout_models import SignalImportance
@@ -141,7 +147,9 @@ class TestTheCall:
     ) -> None:
         criteria = {"PumpGTM": "replies from leads that wait on the user's decision"}
 
-        selection = await select_candidates(USER_ID, POOL, criteria, NOW, "Asia/Kolkata")
+        selection = await select_candidates(
+            USER_ID, POOL, criteria, NOW, "Asia/Kolkata", kind=BRIEFING_KIND_DAILY
+        )
 
         assert selection.sections[SectionKey.LEAD] == [1]
         model.assert_awaited_once()
@@ -149,14 +157,25 @@ class TestTheCall:
         assert "- PumpGTM: replies from leads that wait on the user's decision" in prompt
         assert "1. [PumpGTM] needs_you, important: Neha: can you send pricing" in prompt
         assert "7. [Google Calendar] event: Sequoia" in prompt
+        assert "morning brief" in prompt
         assert model.await_args.kwargs["label"] == BRIEF_SELECTION_LABEL
+
+    async def test_the_weekly_is_chosen_for_the_week_keeping_finished_work(
+        self, model: AsyncMock
+    ) -> None:
+        await select_candidates(USER_ID, POOL, {}, NOW, "UTC", kind=BRIEFING_KIND_WEEKLY)
+
+        prompt = model.await_args.args[1]
+        assert "weekly digest" in prompt and "morning brief" not in prompt
+        assert "a finished item is never dropped for being done" in prompt
+        assert "6. [GAIA] gaia_did: Investor update" in prompt
 
     async def test_a_rejected_answer_is_asked_again_once_with_the_problem_named(
         self, model: AsyncMock
     ) -> None:
         model.side_effect = [_answer(needs_you=[3, 4, 99]), _answer()]
 
-        selection = await select_candidates(USER_ID, POOL, {}, NOW, "UTC")
+        selection = await select_candidates(USER_ID, POOL, {}, NOW, "UTC", kind=BRIEFING_KIND_DAILY)
 
         assert selection.sections[SectionKey.NEEDS_YOU] == [3, 4]
         retry_prompt = model.await_args_list[1].args[1]
@@ -166,12 +185,14 @@ class TestTheCall:
         model.return_value = _answer(dropped=[])
 
         with pytest.raises(AppError, match="selection judge broke its contract"):
-            await select_candidates(USER_ID, POOL, {}, NOW, "UTC")
+            await select_candidates(USER_ID, POOL, {}, NOW, "UTC", kind=BRIEFING_KIND_DAILY)
 
         assert model.await_count == 2
 
     async def test_a_day_with_only_the_calendar_makes_no_call(self, model: AsyncMock) -> None:
-        selection = await select_candidates(USER_ID, {7: POOL[7]}, {}, NOW, "UTC")
+        selection = await select_candidates(
+            USER_ID, {7: POOL[7]}, {}, NOW, "UTC", kind=BRIEFING_KIND_DAILY
+        )
 
         assert selection.sections == {}
         model.assert_not_awaited()

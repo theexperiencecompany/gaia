@@ -159,13 +159,13 @@ class NewStamp(BaseModel):
 
 
 class BriefVoice(BaseModel):
-    """The prose the daily brief's model writes over code-built facts, as written or as rendered."""
+    """The prose a brief's model writes over code-built facts, as written or as rendered."""
 
     headline: str = Field(max_length=MAX_BRIEF_HEADLINE_CHARS)
     lede: str = Field(max_length=MAX_BRIEF_LEDE_CHARS)
     caption: str = Field(max_length=MAX_BRIEF_CAPTION_CHARS)
     mood: BriefingMood
-    message: str = Field(max_length=MAX_BRIEF_MESSAGE_CHARS)
+    message: str = Field(min_length=1, max_length=MAX_BRIEF_MESSAGE_CHARS)
 
 
 class BriefingPayload(BaseModel):

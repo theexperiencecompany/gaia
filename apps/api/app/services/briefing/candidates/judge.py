@@ -1,4 +1,4 @@
-"""Choose the daily brief's sections from every candidate in one structured call.
+"""Choose a brief's sections, daily or weekly, from every candidate in one structured call.
 
 The judge returns the lead (with what GAIA offers to do), the needs-you, updates and
 GAIA's-work lists in order, and what it dropped. Code holds it to the contract: an
@@ -14,19 +14,30 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import ainvoke_structured, metered_config
-from app.agents.prompts.brief_selection_prompts import BRIEF_SELECTION_PROMPT
+from app.agents.prompts.brief_selection_prompts import (
+    BRIEF_SELECTION_PROMPT,
+    WEEKLY_SELECTION_PROMPT,
+)
 from app.constants.briefing import (
     BRIEF_SELECTION_LABEL,
+    BRIEFING_KIND_DAILY,
+    BRIEFING_KIND_WEEKLY,
     MAX_SELECTION_ATTEMPTS,
     SECTION_CAPS,
     SectionKey,
 )
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
+from app.models.briefing_models import BriefingKind
 from app.models.scout_models import SignalImportance
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 CandidatePool = Mapping[int, BriefCandidate]
+
+_SELECTION_PROMPTS: dict[BriefingKind, str] = {
+    BRIEFING_KIND_DAILY: BRIEF_SELECTION_PROMPT,
+    BRIEFING_KIND_WEEKLY: WEEKLY_SELECTION_PROMPT,
+}
 
 
 class BriefSelectionAnswer(BaseModel):
@@ -135,14 +146,16 @@ async def select_candidates(
     criteria: Mapping[str, str],
     now: datetime,
     timezone: str,
+    *,
+    kind: BriefingKind,
 ) -> BriefSelection:
-    """Choose the brief's sections from the pool; a pool with nothing but events needs no call.
+    """Choose the kind of brief's sections from the pool; a pool with nothing but events needs no call.
 
     criteria maps an app's display name to how its scout tells what needs this user.
     """
     if all(c.kind is CandidateKind.EVENT for c in pool.values()):
         return EMPTY_SELECTION
-    prompt = BRIEF_SELECTION_PROMPT.format(
+    prompt = _SELECTION_PROMPTS[kind].format(
         today=now.date().isoformat(),
         timezone=timezone,
         criteria="\n".join(f"- {app}: {text}" for app, text in criteria.items())

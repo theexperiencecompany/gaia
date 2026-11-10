@@ -1,4 +1,4 @@
-"""GAIA's tracked todos as candidates: what waits on the user, and what GAIA did or is doing."""
+"""Todos as candidates: what waits on the user, what GAIA did or is doing, and what the user finished."""
 
 from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE
 from app.constants.integrations import GMAIL_INTEGRATION_ID
@@ -53,3 +53,8 @@ def gaia_work_candidates(work: TrackedWork) -> list[BriefCandidate]:
     return _grouped(work.completed, CandidateKind.GAIA_DID, "lookback") + _grouped(
         work.running, CandidateKind.GAIA_DID, "gaia"
     )
+
+
+def user_done_candidates(docs: list[TodoDocument]) -> list[BriefCandidate]:
+    """Return what the user finished themselves, one candidate per subject."""
+    return _grouped(docs, CandidateKind.UPDATE, "lookback")

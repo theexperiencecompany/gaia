@@ -14049,7 +14049,7 @@ export interface components {
          * @description What one section of a brief holds; every surface reads the key, never the title or position.
          * @enum {string}
          */
-        SectionKey: "lead" | "needs_you" | "updates" | "gaia_did" | "week";
+        SectionKey: "lead" | "needs_you" | "updates" | "gaia_did";
         /**
          * SelectedCalendarEventData
          * @description Calendar event the user attached to a message.

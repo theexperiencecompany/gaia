@@ -1,14 +1,14 @@
 """BriefingService: the daily/weekly run pipeline.
 
-The agent only turns gathered context into one BriefingPayload; invalid output fails
-the run loudly and stores nothing. Persistence precedes delivery so the dashboard
-never misses a brief that reached a channel.
+Code builds every fact and section; the agent writes only the voice, held to those facts.
+Invalid output fails the run loudly and stores nothing. Persistence precedes delivery so
+the dashboard never misses a brief that reached a channel.
 """
 
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 import random
 from uuid import uuid4
 
@@ -21,7 +21,7 @@ from app.agents.prompts.briefing_prompts import (
     VoicePromptBlocks,
     VoiceSituation,
     build_briefing_voice_prompt,
-    build_weekly_digest_prompt,
+    build_weekly_voice_prompt,
     reader_line,
     voice_correction_note,
     voice_unreadable_note,
@@ -31,17 +31,17 @@ from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
-    DAILY_SECTION_ORDER,
     GAIA_APP_NAME,
-    MAX_BRIEF_ITEMS,
     MAX_VOICE_ATTEMPTS,
     POSTAL_FAMILY,
     RECENT_OPENINGS_SHOWN,
     SECTION_NUMERALS,
+    SECTION_ORDER,
     SECTION_TITLES,
     WEEKLY_FAMILY,
     WEEKLY_GENERATION_TIMEOUT_SECONDS,
     WEEKLY_KICKER,
+    WEEKLY_SECTION_TITLES,
     BriefingBag,
     BriefingRunOutcome,
     SectionKey,
@@ -67,6 +67,7 @@ from app.models.briefing_models import (
     BriefingItemKind,
     BriefingKind,
     BriefingModel,
+    BriefingMood,
     BriefingPayload,
     BriefingSection,
     BriefingStat,
@@ -87,12 +88,15 @@ from app.models.notification.notification_models import (
 )
 from app.models.scout_models import RememberedSignal, Signal
 from app.models.short_link_models import ShortLinkTargetType
-from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser, ShuffleBag, UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing import chat_sync, context, dormancy
 from app.services.briefing.candidates.judge import BriefSelection, CandidatePool, select_candidates
-from app.services.briefing.candidates.pool import CandidateSources, gather_candidates
+from app.services.briefing.candidates.pool import (
+    CandidateSources,
+    gather_candidates,
+    gather_week_candidates,
+)
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.context import UserClock
 from app.services.briefing.conversation import post_brief_message
@@ -131,7 +135,7 @@ from app.services.outbound_delivery import OutboundResult
 from app.services.short_link_service import optional_short_link
 from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import build_user_context
-from app.utils.markdown_utils import decode_json_blocks, model_from_reply
+from app.utils.markdown_utils import model_from_reply
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name, display_name
@@ -141,7 +145,7 @@ from shared.py.wide_events import log
 
 
 class BriefingGenerationError(Exception):
-    """The agent did not produce a valid BriefingPayload — the run failed."""
+    """The agent did not produce a valid brief — the run failed."""
 
 
 class VoiceUnreadableError(BriefingGenerationError):
@@ -150,29 +154,6 @@ class VoiceUnreadableError(BriefingGenerationError):
     def __init__(self, problems: list[str]) -> None:
         super().__init__(f"No valid voice JSON in agent output: {'; '.join(problems)}")
         self.problems = problems
-
-
-def _parse_payload(raw: str) -> BriefingPayload:
-    """Extract and validate the single BriefingPayload from the agent output.
-
-    call_agent_silent swallows its errors into a plain string, which fails validation
-    here, so no partial briefing is stored.
-    """
-    for data in decode_json_blocks(raw).values:
-        if isinstance(data, dict) and "headline" in data:
-            payload = BriefingPayload.model_validate(data)
-            item_count = sum(len(section.items) for section in payload.sections)
-            if item_count > MAX_BRIEF_ITEMS:
-                raise BriefingGenerationError(
-                    f"BriefingPayload has {item_count} items; a brief holds at most "
-                    f"{MAX_BRIEF_ITEMS}"
-                )
-            if not payload.message:
-                raise BriefingGenerationError("BriefingPayload has no message to deliver")
-            return payload
-    raise BriefingGenerationError(
-        f"No valid BriefingPayload in agent output (first 300 chars): {raw[:300]!r}"
-    )
 
 
 async def run_silent_turn(
@@ -209,37 +190,6 @@ async def _run_silent(
         ),
         source="briefing",
     )
-
-
-async def _generate_payload(
-    user: AuthenticatedUser, clock: UserClock, prompt: str, kind: BriefingKind
-) -> BriefingPayload:
-    return _parse_payload(await _run_silent(user, clock, prompt, conversation_key=kind))
-
-
-def _gaia_shipped_lines(docs: list[TodoDocument]) -> str:
-    """List GAIA completions, each with a canvas snippet.
-
-    The snippet lets the digest voice specifics instead of bare titles.
-    """
-    lines: list[str] = []
-    for d in docs[:15]:
-        snippet = _canvas_snippet(d.canvas_content or "")
-        title = d.title or "untitled"
-        lines.append(f"- {title}" + (f": {snippet}" if snippet else ""))
-    return "\n".join(lines)
-
-
-def _format_week(completed: context.CompletedWork) -> str:
-    gaia_n, user_n = len(completed.gaia), len(completed.user)
-    lines = [f"GAIA completed {gaia_n} todo(s); you completed {user_n}."]
-    if completed.gaia:
-        lines.append("GAIA shipped:\n" + _gaia_shipped_lines(completed.gaia))
-    if completed.user:
-        lines.append(
-            "You finished:\n" + "\n".join(f"- {d.title or 'untitled'}" for d in completed.user[:15])
-        )
-    return "\n\n".join(lines)
 
 
 _ARTIFACT_PREVIEW_CHARS = 240
@@ -412,18 +362,20 @@ def _item(key: SectionKey, candidate: BriefCandidate, offer: str | None) -> Brie
     )
 
 
-def _chosen(selection: BriefSelection, pool: CandidatePool) -> _Chosen:
+def _chosen(
+    selection: BriefSelection, pool: CandidatePool, titles: Mapping[SectionKey, str]
+) -> _Chosen:
     """Lay the judge's selection out as the brief's sections, in reading order, empty ones left out."""
     filled = [
         (key, [(i, pool[i]) for i in selection.sections[key]])
-        for key in DAILY_SECTION_ORDER
+        for key in SECTION_ORDER
         if selection.sections.get(key)
     ]
     return _Chosen(
         sections=[
             BriefingSection(
                 numeral=SECTION_NUMERALS[n],
-                title=SECTION_TITLES[key],
+                title=titles[key],
                 key=key,
                 items=[_item(key, c, selection.offer) for _, c in picked],
             )
@@ -490,7 +442,6 @@ class _Facts:
     """
 
     sections: list[BriefingSection]
-    stats: list[BriefingStat]
     block: str
     values: SlotValues
     deliverables: dict[int, str]
@@ -518,10 +469,11 @@ def _due_on(due_at: datetime, clock: UserClock) -> str:
     return "today" if day.isoformat() == clock.date_str else day.strftime("%a %b %-d")
 
 
-def _event_time(event: BriefingEvent) -> str | None:
-    if event.start is None:
-        return None
-    return datetime.strptime(event.start, "%H:%M").strftime("%-I:%M %p")
+def _event_time(event: BriefingEvent, clock: UserClock) -> str | None:
+    """Say when an event starts; one on another day than the brief's names its weekday too."""
+    day = "" if event.date == clock.date_str else date.fromisoformat(event.date).strftime("%a")
+    start = datetime.strptime(event.start, "%H:%M").strftime("%-I:%M %p") if event.start else ""
+    return " ".join(part for part in (day, start) if part) or None
 
 
 def _counts(items: list[BriefingItem], open_todos: int, events: int) -> dict[CountSlot, int]:
@@ -538,16 +490,52 @@ def _counts(items: list[BriefingItem], open_todos: int, events: int) -> dict[Cou
 
 
 @dataclass(frozen=True)
-class _FactSources:
-    """What the facts block is built from besides the chosen sections."""
+class _CalendarSpan:
+    """How the facts head the brief's calendar, and say it is empty."""
 
-    work: context.TrackedWork
+    heading: str
+    empty: str
+
+
+_TODAY = _CalendarSpan(
+    heading="Today's calendar",
+    empty="The user's calendar has nothing today (or no calendar is connected).",
+)
+_WEEK_AHEAD = _CalendarSpan(
+    heading="The week ahead",
+    empty="The user's calendar has nothing in the week ahead (or no calendar is connected).",
+)
+
+
+@dataclass(frozen=True)
+class _FactSources:
+    """What the facts block is built from besides the chosen sections.
+
+    todos_note says what the user's own todo list holds; None when the brief did not read it.
+    """
+
     artifacts: dict[str, _ArtifactFact]
     open_todos: int
     calendar: list[BriefingEvent]
     #: The pool id of each calendar event, in calendar order.
     event_ids: list[int]
-    todos_note: str
+    span: _CalendarSpan
+    todos_note: str | None
+
+
+def _log_selection(candidates: int, selection: BriefSelection) -> None:
+    log.set_ns(
+        "brief_selection",
+        candidates=candidates,
+        kept={key.value: len(ids) for key, ids in selection.sections.items()},
+        dropped=len(selection.dropped),
+        capped=len(selection.capped),
+    )
+
+
+def _event_ids(pool: CandidatePool) -> list[int]:
+    """Return the pool id of each calendar event, in calendar order."""
+    return [i for i, c in pool.items() if c.kind is CandidateKind.EVENT]
 
 
 def _build_facts(chosen: _Chosen, sources: _FactSources, clock: UserClock) -> _Facts:
@@ -588,17 +576,17 @@ def _build_facts(chosen: _Chosen, sources: _FactSources, clock: UserClock) -> _F
             )
             fact_lines.append(f"{line} | linkable" if linkable else line)
     for fact_id, event in zip(sources.event_ids, sources.calendar, strict=True):
-        facts[fact_id] = BriefFact(title=event.title, time=_event_time(event))
+        facts[fact_id] = BriefFact(title=event.title, time=_event_time(event, clock))
     if not chosen.sections:
         fact_lines.append(
             "GAIA has no tracked work and no background work ran. Do not claim anything "
             "ran, finished, or is pending beyond what is stated here."
         )
-    fact_lines.append(sources.todos_note)
-    fact_lines.append(_calendar_note(sources.calendar, sources.event_ids))
+    if sources.todos_note is not None:
+        fact_lines.append(sources.todos_note)
+    fact_lines.append(_calendar_note(sources, clock))
     return _Facts(
         sections=chosen.sections,
-        stats=_work_stats(sources.work),
         block="\n".join(fact_lines),
         values=SlotValues(facts=facts, counts=counts),
         deliverables=deliverables,
@@ -691,14 +679,14 @@ async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: b
     return "\n".join(lines)
 
 
-def _calendar_note(events: list[BriefingEvent], event_ids: list[int]) -> str:
-    if not events:
-        return "The user's calendar has nothing today (or no calendar is connected)."
+def _calendar_note(sources: _FactSources, clock: UserClock) -> str:
+    if not sources.calendar:
+        return sources.span.empty
     lines = [
-        f"- fact {fact_id} | {_event_time(e) or 'all day'}: {e.title}"
-        for fact_id, e in zip(event_ids, events, strict=True)
+        f"- fact {fact_id} | {_event_time(e, clock) or 'all day'}: {e.title}"
+        for fact_id, e in zip(sources.event_ids, sources.calendar, strict=True)
     ]
-    return "Today's calendar:\n" + "\n".join(lines)
+    return f"{sources.span.heading}:\n" + "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -769,6 +757,7 @@ class _Writing:
     context: str
     #: The facts the message must refer to by a slot; empty for a winback or wind-down note.
     must_mention: frozenset[int]
+    kind: BriefingKind
 
 
 _VOICED_FIELDS = ("headline", "lede", "caption", "message")
@@ -842,7 +831,7 @@ async def _written_brief(
     failure = BriefingGenerationError("the brief was never voiced")
     for _ in range(MAX_VOICE_ATTEMPTS):
         attempt_prompt = f"{prompt}\n\n{note}" if note else prompt
-        raw = await _run_silent(user, clock, attempt_prompt, conversation_key=BRIEFING_KIND_DAILY)
+        raw = await _run_silent(user, clock, attempt_prompt, conversation_key=writing.kind)
         try:
             voice = _parse_voice(raw)
         except VoiceUnreadableError as exc:
@@ -868,8 +857,8 @@ class _Prose:
     links: dict[int, str]
 
 
-def _daily_payload(
-    clock: UserClock, prose: _Prose, facts: _Facts, is_winback: bool
+def _voiced_payload(
+    clock: UserClock, prose: _Prose, facts: _Facts, *, kicker: str, mood: BriefingMood
 ) -> BriefingPayload:
     """Build the brief from its rendered prose; an item the message links carries its link."""
     linked = {todo: prose.links[i] for i, todo in facts.deliverables.items() if i in prose.links}
@@ -878,13 +867,12 @@ def _daily_payload(
             item.link = linked[item.todo_id]
     draft = prose.draft
     return BriefingPayload(
-        kicker=DAILY_KICKER,
+        kicker=kicker,
         date=clock.date_str,
         headline=draft.headline,
         lede=draft.lede,
-        stats=facts.stats,
         sections=facts.sections,
-        mood="winback" if is_winback else draft.mood,
+        mood=mood,
         caption=draft.caption,
         hue=hue_for_day(clock.day_of_year),
         generated_at=clock.now_local.strftime("%-I:%M %p"),
@@ -1033,26 +1021,25 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         user_id, clock, since, seen_at, CandidateSources(work, held, scouts, calendar)
     )
     selection = await select_candidates(
-        user_id, gathered.pool, scouts.criteria, seen_at, user.timezone or Timezone.utc().value
+        user_id,
+        gathered.pool,
+        scouts.criteria,
+        seen_at,
+        user.timezone or Timezone.utc().value,
+        kind=BRIEFING_KIND_DAILY,
     )
-    log.set_ns(
-        "brief_selection",
-        candidates=len(gathered.pool),
-        kept={key.value: len(ids) for key, ids in selection.sections.items()},
-        dropped=len(selection.dropped),
-        capped=len(selection.capped),
-    )
-    chosen = _chosen(selection, gathered.pool)
+    _log_selection(len(gathered.pool), selection)
+    chosen = _chosen(selection, gathered.pool, SECTION_TITLES)
     remembered = _chosen_signals(chosen, scouts.remembered)
     signals = [item.signal for _, item in remembered]
     facts = _build_facts(
         chosen,
         _FactSources(
-            work=work,
             artifacts=artifacts,
             open_todos=open_count,
             calendar=calendar,
-            event_ids=[i for i, c in gathered.pool.items() if c.kind is CandidateKind.EVENT],
+            event_ids=_event_ids(gathered.pool),
+            span=_TODAY,
             todos_note=_user_todos_note(open_count, open_titles),
         ),
         clock,
@@ -1099,13 +1086,19 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             must_mention=frozenset()
             if winback.is_winback or wind_down is not None
             else facts.must_mention,
+            kind=BRIEFING_KIND_DAILY,
         ),
     )
     links = await _links_in(user_id, voice.message, facts)
-    payload = _daily_payload(
-        clock, _Prose(voice, draft, links), facts, winback.is_winback
+    payload = _voiced_payload(
+        clock,
+        _Prose(voice, draft, links),
+        facts,
+        kicker=DAILY_KICKER,
+        mood="winback" if winback.is_winback else draft.mood,
     ).model_copy(
         update={
+            "stats": _work_stats(work),
             "calendar": calendar,
             "tallies": BriefingTallies(
                 done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
@@ -1145,7 +1138,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
 
 
 async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
-    """Zoom out on the week: completed work, GAIA's and the user's; return how it ended."""
+    """Zoom out on the week since Monday and the week ahead; return how it ended."""
     log.set(component="briefing", operation="run_weekly_digest", user_id=user_id)
     user = await user_repository.get(user_id)
     if user is None:
@@ -1163,28 +1156,69 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         log.info("briefing.weekly_dormant_skip", user_id=user_id)
         return BriefingRunOutcome.DORMANT
 
-    # One window for the prose and the tallies: this week, Monday to now.
-    completed = await context.gather_completed_since(user_id, context.week_start_utc(clock))
+    # One window for the candidates, the prose and the tallies: this week, Monday to now.
+    since = context.week_start_utc(clock)
+    completed = await context.gather_completed_since(user_id, since)
     week = await context.gather_week(user_id, clock, completed)
-
-    prompt = build_weekly_digest_prompt(
-        date_local=clock.date_str,
-        week_summary_block=_format_week(completed),
+    seen_at = datetime.now(UTC)
+    gathered = await gather_week_candidates(user_id, since, completed, week.ahead)
+    selection = await select_candidates(
+        user_id,
+        gathered.pool,
+        {},
+        seen_at,
+        user.timezone or Timezone.utc().value,
+        kind=BRIEFING_KIND_WEEKLY,
     )
-
+    _log_selection(len(gathered.pool), selection)
+    facts = _build_facts(
+        _chosen(selection, gathered.pool, WEEKLY_SECTION_TITLES),
+        _FactSources(
+            artifacts=_gather_artifacts(
+                context.TrackedWork(completed=[*completed.gaia, *completed.user])
+            ),
+            open_todos=0,
+            calendar=week.ahead,
+            event_ids=_event_ids(gathered.pool),
+            span=_WEEK_AHEAD,
+            todos_note=None,
+        ),
+        clock,
+    )
+    goal_block, _ = await context.format_goal_block(user_id, user)
+    blocks = VoicePromptBlocks(
+        reader=reader_line(display_first_name(user)),
+        facts=facts.block,
+        goal=goal_block,
+        lookback="",
+        replies="",
+    )
     # Bounded: a stalled agent run must fail the cron loudly, not hang the
     # worker slot (observed live 2026-08-07).
     async with asyncio.timeout(WEEKLY_GENERATION_TIMEOUT_SECONDS):
-        payload = await _generate_payload(
-            build_user_context(user, auth_provider=None), clock, prompt, BRIEFING_KIND_WEEKLY
+        voice, draft = await _written_brief(
+            build_user_context(user, auth_provider=None),
+            clock,
+            build_weekly_voice_prompt(date_local=clock.date_str, blocks=blocks),
+            _Writing(
+                values=facts.values,
+                context=blocks.context,
+                must_mention=facts.must_mention,
+                kind=BRIEFING_KIND_WEEKLY,
+            ),
         )
-    payload.kicker = WEEKLY_KICKER
-    payload.date = clock.date_str
-    payload.hue = hue_for_day(clock.day_of_year)
-    payload.generated_at = clock.now_local.strftime("%-I:%M %p")
-    payload.week = week
-    payload.tallies = BriefingTallies(
-        done_by_you=sum(d.you for d in week.days), done_by_gaia=sum(d.gaia for d in week.days)
+    links = await _links_in(user_id, voice.message, facts)
+    payload = _voiced_payload(
+        clock, _Prose(voice, draft, links), facts, kicker=WEEKLY_KICKER, mood="weekly"
+    ).model_copy(
+        update={
+            "week": week,
+            "tallies": BriefingTallies(
+                done_by_you=sum(d.you for d in week.days),
+                done_by_gaia=sum(d.gaia for d in week.days),
+            ),
+            "sources_read": gathered.sources_read,
+        }
     )
     await _publish(
         user,

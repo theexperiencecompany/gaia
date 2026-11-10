@@ -1,4 +1,4 @@
-"""Gather every producer's candidates for one daily brief, numbered once and deduplicated."""
+"""Gather every producer's candidates for one brief, daily or weekly, numbered once and deduplicated."""
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -16,8 +16,12 @@ from app.services.briefing.candidates.held import held_candidates
 from app.services.briefing.candidates.judge import CandidatePool
 from app.services.briefing.candidates.reminders import reminder_candidates
 from app.services.briefing.candidates.subjects import same_text_key
-from app.services.briefing.candidates.tracked import gaia_work_candidates, waiting_candidates
-from app.services.briefing.context import TrackedWork, UserClock, day_start_utc
+from app.services.briefing.candidates.tracked import (
+    gaia_work_candidates,
+    user_done_candidates,
+    waiting_candidates,
+)
+from app.services.briefing.context import CompletedWork, TrackedWork, UserClock, day_start_utc
 from app.services.briefing.scouts.service import ScoutSignals
 
 
@@ -66,9 +70,13 @@ def _numbered(candidates: list[BriefCandidate]) -> tuple[dict[int, BriefCandidat
     return pool, duplicates
 
 
+def _apps_in(pool: CandidatePool) -> list[str]:
+    return [c.app for c in pool.values() if c.source != GAIA_SOURCE]
+
+
 def _sources(scouts: ScoutSignals, pool: CandidatePool) -> tuple[list[str], list[UnreadSource]]:
     read = [r.app for r in scouts.results if r.outcome is not ScoutOutcome.SKIPPED]
-    read += [c.app for c in pool.values() if c.source != GAIA_SOURCE]
+    read += _apps_in(pool)
     unavailable = [
         UnreadSource(app=r.app, reason=r.skip_reason)
         for r in scouts.results
@@ -97,3 +105,17 @@ async def gather_candidates(
     pool, duplicates = _numbered(candidates)
     read, unavailable = _sources(sources.scouts, pool)
     return GatheredCandidates(pool, duplicates, read, unavailable)
+
+
+async def gather_week_candidates(
+    user_id: str, since: datetime, completed: CompletedWork, ahead: list[BriefingEvent]
+) -> GatheredCandidates:
+    """Run the producers over the week since Monday: failed runs, what got done, the week ahead."""
+    candidates = [
+        *await failed_run_candidates(user_id, since),
+        *user_done_candidates(completed.user),
+        *gaia_work_candidates(TrackedWork(completed=completed.gaia)),
+        *calendar_candidates(ahead),
+    ]
+    pool, duplicates = _numbered(candidates)
+    return GatheredCandidates(pool, duplicates, list(dict.fromkeys(_apps_in(pool))), [])

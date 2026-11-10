@@ -17193,8 +17193,7 @@
           "lead",
           "needs_you",
           "updates",
-          "gaia_did",
-          "week"
+          "gaia_did"
         ],
         "title": "SectionKey",
         "type": "string"

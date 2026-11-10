@@ -17,7 +17,7 @@ from app.agents.prompts.briefing_prompts import (
     VoiceSituation,
     build_briefing_voice_prompt,
     build_day_zero_hello_prompt,
-    build_weekly_digest_prompt,
+    build_weekly_voice_prompt,
     reader_line,
     voice_correction_note,
 )
@@ -267,14 +267,29 @@ def test_without_recent_briefs_no_openings_block_is_added() -> None:
 
 @pytest.mark.parametrize(
     "build",
-    [_prompt, partial(build_weekly_digest_prompt, date_local="2026-10-18", week_summary_block="-")],
+    [_prompt, partial(build_weekly_voice_prompt, date_local="2026-10-18", blocks=_BLOCKS)],
     ids=["daily", "weekly"],
 )
-def test_daily_and_weekly_share_one_message_voice(build: Callable[[], str]) -> None:
+def test_daily_and_weekly_share_one_message_voice_and_slot_grammar(
+    build: Callable[[], str],
+) -> None:
     prompt = build()
 
     assert "## THE MESSAGE (``message``)" in prompt
     assert '"message": "<the brief as a text, see THE MESSAGE>"' in prompt
+    assert "## SLOTS (how every count, time and link gets into your prose)" in prompt
+    assert "You are writing VOICE ONLY." in prompt
+
+
+def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() -> None:
+    prompt = build_weekly_voice_prompt(date_local="2026-10-18", blocks=_BLOCKS)
+
+    assert f"## THIS WEEK'S FACTS (final: voice them, never alter them)\n{_BLOCKS.facts}" in prompt
+    assert _GOAL in prompt
+    assert '"mood": "<weekly>"' in prompt
+    assert "## NEXT WEEK'S EDGE" in prompt
+    for daily_only in (_BLOCKS.lookback, _BLOCKS.replies, "TODAY'S FACTS", "EMPTY DAYS"):
+        assert daily_only not in prompt
 
 
 def test_everything_the_model_is_shown_is_what_its_prose_may_cite() -> None:

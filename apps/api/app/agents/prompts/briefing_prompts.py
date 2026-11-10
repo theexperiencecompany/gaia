@@ -1,8 +1,8 @@
 """Briefing generation prompts, the retention keystone.
 
 The builders assemble the contract the silent agent runs against; the service feeds in
-the formatted blocks. The agent proposes work with the create_tracked_todo tool, then
-emits exactly one BriefingPayload JSON object as its entire final message.
+the code-built facts. The agent writes only the voice: one JSON object of headline, lede,
+caption, mood and message as its entire final message.
 """
 
 from dataclasses import dataclass
@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from app.constants.briefing import (
     MAX_BRIEF_CAPTION_CHARS,
     MAX_BRIEF_HEADLINE_CHARS,
-    MAX_BRIEF_ITEMS,
     MAX_BRIEF_LEDE_CHARS,
     MAX_BRIEF_MESSAGE_CHARS,
 )
@@ -61,85 +60,6 @@ useful specific thing, named: the person, the decision, the time.
   and an item is linked only by its link slot, at most once per item.
 """.strip()
 
-# The exact output contract, shared by daily and weekly so the parser sees one
-# shape. ``hue`` is set deterministically in code post-run, so the model leaves
-# it at 0. Kept as a single block so the two prompts never drift.
-_PAYLOAD_SCHEMA = """
-## OUTPUT (read twice)
-
-Your ENTIRE final message MUST be a single JSON object inside one ```json code
-fence. No prose before it, no prose after it, no second fence. If you have
-nothing else to say, the JSON is the whole message.
-
-Schema (all fields required unless marked optional):
-
-```json
-{
-  "kicker": "THE MORNING BRIEF",        // short all-caps masthead label
-  "date": "<date exactly as given>",
-  "headline": "<one sharp plain-voice line, no markup, no emoji>",
-  "lede": "<1-2 sentences setting up the day>",
-  "stats": [                              // 0-3 real numbers, never invented
-    { "value": "3", "label": "queued for you", "delta": "+1" }  // delta optional
-  ],
-  "sections": [                           // Roman-numeraled, in order
-    {
-      "numeral": "I",
-      "title": "<section title>",
-      "items": [
-        { "text": "<see ITEM QUALITY>", "todo_id": "<id or omit>", "kind": "gaia" }
-      ]
-    }
-  ],
-  "mood": "<clear | packed | idle | winback>",  // keys the hero treatment
-  "caption": "<one witty closing line>",
-  "hue": 0,                               // leave 0; set deterministically later
-  "message": "<the brief as a text, see THE MESSAGE>"
-}
-```
-""".strip()
-
-_ITEM_KINDS = """
-Item ``kind`` is one of: ``gaia`` (GAIA is doing it), ``you`` (needs the user),
-``lookback`` (yesterday's result), or ``note`` (a plain highlight). Set ``todo_id`` only for items bound to a real
-todo you can see or just created. When an item is anchored to a real clock time
-(a calendar event, a deadline today), START its text with that user-local time
-in "H:MM AM — " form (e.g. "1:30 PM — Design review with Dhruv"); never invent
-a time for untimed work. Never emit HTML or Markdown styling inside any
-string; the renderer owns all styling.
-""".strip()
-
-_PAYLOAD_CONTRACT = f"{_PAYLOAD_SCHEMA}\n\n{_MESSAGE_VOICE}\n\n{_ITEM_KINDS}"
-
-# What separates a briefing the user acts on from a list they ignore. Shared by
-# both prompts so item quality never drifts between daily and weekly.
-_ITEM_QUALITY = f"""
-## ITEM QUALITY (this is the whole product)
-
-A bare todo title is a failure: a title alone tells the user nothing they can
-act on. Every item is one complete, self-sufficient sentence that answers:
-what, why now, and what happens next. Shape (not content) of each kind:
-
-- "you" item: the ONE concrete action plus the reason it is today's.
-- "gaia" item: what GAIA is doing and what the user gets, with when. Work still
-  running says so ("I'm on it, drafts land by ..."); failed work is reported
-  plainly with its cause, never hidden.
-- "lookback" item: the named outcome, not the activity.
-
-TRUTH RULE, absolute: every fact in an item (names, dates, documents, people,
-deadlines, numbers) must come from the context you were given or from tool
-results in this run. If you do not know a specific, write the item without it
-rather than inventing one. A fabricated "your lawyer needs this by Friday" for
-a user who has no lawyer destroys trust in one message.
-
-Selection beats coverage: pick items by leverage toward the user's goal, never
-by listing whatever todos exist. A brief is finite: at most {MAX_BRIEF_ITEMS} items
-across all sections, fewer when fewer matter. If a todo's title is vague, use its canvas,
-description, or serves to say something specific; if you know nothing concrete
-about it, it does not belong in the brief.
-""".strip()
-
-
 _SLOTS = f"""
 ## SLOTS (how every count, time and link gets into your prose)
 You never type a count, a time, a date or a web address. Where one goes, write a slot; the
@@ -164,36 +84,34 @@ most {MAX_BRIEF_HEADLINE_CHARS} characters, lede {MAX_BRIEF_LEDE_CHARS}, caption
 """.strip()
 
 
-_VOICE_CONTRACT = """
+# The voice JSON both briefs return; each fills in what its lede sets up and its moods.
+_VOICE_OUTPUT = """
 ## OUTPUT (read twice)
 
 Your ENTIRE final message MUST be a single JSON object inside one ```json code
 fence. No prose before or after it.
 
 ```json
-{
+{{
   "headline": "<one sharp plain-voice line, no markup, no emoji>",
-  "lede": "<1-2 sentences setting up the day>",
+  "lede": "<{lede}>",
   "caption": "<one witty closing line>",
-  "mood": "<clear | packed | idle | winback>",
+  "mood": "<{moods}>",
   "message": "<the brief as a text, see THE MESSAGE>"
-}
+}}
 ```
+""".strip()
 
+_VOICE_ONLY = """
 You are writing VOICE ONLY. The facts (what completed, what is running, what
 failed, what needs the user) are assembled by the system and shown below; they
-are already final. You cannot add, remove, or reword facts, only give the day
+are already final. You cannot add, remove, or reword facts, only give the brief
 its voice. Every specific in your prose must appear in the facts below; if it is
 not there, you do not say it.
+""".strip()
 
-The HEADLINE and LEDE are printed above the brief's items, so they are written
-from TODAY'S FACTS alone: name only people and things that appear in an item or
-in today's calendar, and never say something needs the user, or mention an event,
-unless an item or the calendar shows it. Yesterday, the user's replies and goal
-memory may shape the message and caption, never the headline or lede. Once the
-slots are filled, a checker reads the headline, lede, caption and message against
-these facts and rejects any claim they do not support.
-
+# How every brief's prose reads, past what its headline and lede are written from.
+_VOICE_CRAFT = """
 Be CONCRETE, not vague. A fact's ``detail:`` or ``summary:`` names specifics: use
 them ("vetted twelve investors, Elad Gil, Nat Friedman, Daniel Gross and more" beats
 "the investor list is ready"). Pull real names and choices straight from them;
@@ -254,6 +172,29 @@ applies, that is your one ask, nothing else gets asked.
 NEVER COUNT ZEROS: name what exists, never tally what does not. "0 items
 waiting, 0 done, 0 in progress" is a status report, not a person talking; leave
 out anything with no count instead of saying it is zero.
+""".strip()
+
+_WORDS = """
+WORDS: never name the brief's internal machinery to the user: no "lane", "held
+results", "sections", "facts", a fact's number or "[COUNTS]" (say you'll track it as a goal, or
+just name the work). Never use em dashes or en dashes anywhere in any
+string; use commas, periods, or parentheses.
+""".strip()
+
+_VOICE_CONTRACT = """
+{output}
+
+{only}
+
+The HEADLINE and LEDE are printed above the brief's items, so they are written
+from TODAY'S FACTS alone: name only people and things that appear in an item or
+in today's calendar, and never say something needs the user, or mention an event,
+unless an item or the calendar shows it. Yesterday, the user's replies and goal
+memory may shape the message and caption, never the headline or lede. Once the
+slots are filled, a checker reads the headline, lede, caption and message against
+these facts and rejects any claim they do not support.
+
+{craft}
 
 EMPTY DAYS STAY TRUE: when the facts show no tracked work and no results, the
 headline and lede are one short, warm, true line about the day (the calendar,
@@ -264,11 +205,15 @@ never mention workflows, runs, or "everything ran smoothly" unless the facts
 name a workflow. A reassuring line about things that do not exist is a lie the
 user can check in one tap.
 
-WORDS: never name the brief's internal machinery to the user: no "lane", "held
-results", "sections", "facts", a fact's number or "[COUNTS]" (say you'll track it as a goal, or
-just name the work). Never use em dashes or en dashes anywhere in any
-string; use commas, periods, or parentheses.
-""".strip()
+{words}
+""".strip().format(
+    output=_VOICE_OUTPUT.format(
+        lede="1-2 sentences setting up the day", moods="clear | packed | idle | winback"
+    ),
+    only=_VOICE_ONLY,
+    craft=_VOICE_CRAFT,
+    words=_WORDS,
+)
 
 
 @dataclass(frozen=True)
@@ -475,38 +420,54 @@ def voice_unreadable_note(problems: list[str]) -> str:
     )
 
 
-def build_weekly_digest_prompt(
-    *,
-    date_local: str,
-    week_summary_block: str,
-) -> str:
-    """Assemble the weekly digest contract (kind=weekly payload)."""
+_WEEKLY_HEADLINE = """
+The HEADLINE names the week's shape in one plain line and the LEDE sets the week up in
+1-2 sentences, both from THIS WEEK'S FACTS alone: name only people and things that appear
+in an item or in the week ahead, and never say something needs the user unless an item
+shows it. Goal memory may shape the message and caption, never the headline or lede. Once
+the slots are filled, a checker reads the headline, lede, caption and message against these
+facts and rejects any claim they do not support.
+""".strip()
 
-    return f"""You are GAIA writing this user's weekly digest for the week ending {date_local}.
+_WEEKLY_VOICE_CONTRACT = f"""
+{_VOICE_OUTPUT.format(lede="1-2 sentences setting up the week", moods="weekly")}
 
-This is a zoom-out, not a to-do list. Celebrate the week honestly, real numbers
-only. Produce ONE structured payload.
+{_VOICE_ONLY}
 
-## THE WEEK
-{week_summary_block}
+{_WEEKLY_HEADLINE}
 
-{_ITEM_QUALITY}
+{_VOICE_CRAFT}
 
-## VOICE
-Warm but not saccharine; write like a person, vary sentence length, open on the
-point. The headline names the week's shape in one plain line. Stats carry the
-week's real totals (completed by GAIA, completed by you); never estimate a
-figure you were not given.
-Set mood to "weekly". The caption is one witty line worth sharing.
+{_WORDS}
+""".strip()
+
+
+def build_weekly_voice_prompt(*, date_local: str, blocks: VoicePromptBlocks) -> str:
+    """Voice pass over the week's code-built facts: what got done since Monday and what is ahead."""
+    return f"""You are GAIA voicing this user's weekly digest for the week ending {date_local}.
+
+This is a zoom-out, not a to-do list: the week since Monday, and the seven days ahead.
+Celebrate the week honestly.
+
+## WHO YOU'RE WRITING TO
+{blocks.reader}
+
+## THIS WEEK'S FACTS (final: voice them, never alter them)
+{blocks.facts}
+
+## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
+{blocks.goal}
 
 ## NEXT WEEK'S EDGE
-End the digest with ONE suggestion to sharpen a goal's strategy, grounded in the
-week's actual pattern ("3 of 5 cold investor emails went unanswered; warm intros
-through Elad's network look stronger. Want me to build that list?"). One suggestion,
-phrased as one question the user can answer with a single word. Never a generic
-"next week let's keep the momentum going".
+End the message with ONE suggestion that sharpens how they work toward a goal, grounded in
+this week's facts and phrased as one question they can answer with a single word. It is the
+digest's one ask. Never a generic "next week let's keep the momentum going".
 
-{_PAYLOAD_CONTRACT}
+{_MESSAGE_VOICE}
+
+{_SLOTS}
+
+{_WEEKLY_VOICE_CONTRACT}
 """
 
 

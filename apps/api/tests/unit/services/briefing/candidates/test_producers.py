@@ -44,7 +44,11 @@ from app.services.briefing.candidates.calendar import calendar_candidates
 from app.services.briefing.candidates.failed_runs import failed_run_candidates
 from app.services.briefing.candidates.held import held_candidates
 from app.services.briefing.candidates.reminders import reminder_candidates
-from app.services.briefing.candidates.tracked import gaia_work_candidates, waiting_candidates
+from app.services.briefing.candidates.tracked import (
+    gaia_work_candidates,
+    user_done_candidates,
+    waiting_candidates,
+)
 from app.services.briefing.context import TrackedWork
 
 USER_ID = make_user_id()
@@ -95,6 +99,20 @@ class TestTrackedTodos:
         assert [(c.title, c.kind, c.state) for c in found] == [
             ("Investor update", CandidateKind.GAIA_DID, "lookback"),
             ("Vet the Q4 leads", CandidateKind.GAIA_DID, "gaia"),
+        ]
+
+    def test_what_the_user_finished_is_an_update_one_per_subject(self) -> None:
+        done = [
+            _todo("u1", "Send the deck to Priya"),
+            _todo("u2", "send the  deck to priya"),
+            _todo("u3", "File the VAT return"),
+        ]
+
+        found = user_done_candidates(done)
+
+        assert [(c.title, c.kind, c.state, c.todo_id, c.count) for c in found] == [
+            ("Send the deck to Priya", CandidateKind.UPDATE, "lookback", "u1", 2),
+            ("File the VAT return", CandidateKind.UPDATE, "lookback", "u3", 1),
         ]
 
 

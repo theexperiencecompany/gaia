@@ -25,13 +25,12 @@ import time_machine
 from app.agents.prompts.briefing_prompts import (
     VoiceSituation,
     build_briefing_voice_prompt,
-    build_weekly_digest_prompt,
+    build_weekly_voice_prompt,
 )
 from app.constants.briefing import (
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
     MAX_BRIEF_HEADLINE_CHARS,
-    MAX_BRIEF_ITEMS,
     WEEKLY_KICKER,
     WINBACK_THRESHOLD,
     BriefingBag,
@@ -132,7 +131,10 @@ _ORCHESTRATED = ["inapp", "email"]
 # this token gets, in its place, one title slot per fact the facts block numbers, and
 # "<fact of TITLE>" becomes the number of the fact with that title.
 _FACTS_SHOWN = "<the facts shown>"
-_FACTS_HEADER = "## TODAY'S FACTS (final: voice them, never alter them)\n"
+# The daily's facts are today's, the weekly's this week's.
+_FACTS_HEADER = re.compile(
+    r"## (?:TODAY'S|THIS WEEK'S) FACTS \(final: voice them, never alter them\)\n"
+)
 
 _VOICE = {
     "headline": "Your morning, sorted",
@@ -148,7 +150,7 @@ _FACT_LINE = re.compile(r"^- fact (\d+) \| ", re.M)
 
 def _facts_shown(prompt: str) -> str:
     """Return the prompt's facts block."""
-    return prompt.split(_FACTS_HEADER, 1)[1].split("\n\n## ", 1)[0]
+    return _FACTS_HEADER.split(prompt, maxsplit=1)[1].split("\n\n## ", 1)[0]
 
 
 _FACT_OF = re.compile(r"<fact of ([^>]+)>")
@@ -168,7 +170,7 @@ def _fact_of(prompt: str, title: str) -> str:
 
 def _message_written(prompt: str, reply: str) -> str:
     """Return reply with the facts token and each fact-of token filled in from the prompt."""
-    if _FACTS_HEADER not in prompt:
+    if not _FACTS_HEADER.search(prompt):
         return reply
     reply = _FACT_OF.sub(lambda m: _fact_of(prompt, m.group(1)), reply)
     return reply.replace(_FACTS_SHOWN, json.dumps(_naming_every_fact(prompt))[1:-1])
@@ -336,7 +338,7 @@ def world(monkeypatch: pytest.MonkeyPatch, checker: AsyncMock) -> Iterator[World
         consume=AsyncMock(),
         capture=MagicMock(),
         voice_prompt=MagicMock(wraps=build_briefing_voice_prompt),
-        weekly_prompt=MagicMock(wraps=build_weekly_digest_prompt),
+        weekly_prompt=MagicMock(wraps=build_weekly_voice_prompt),
     )
 
     # Seams keyed on the user: a read for anyone else finds nothing. The stored
@@ -353,7 +355,7 @@ def world(monkeypatch: pytest.MonkeyPatch, checker: AsyncMock) -> Iterator[World
     monkeypatch.setattr(dormancy, "clear_dormancy", w.clear_dormancy)
     monkeypatch.setattr(dormancy, "enter_dormancy", w.enter_dormancy)
     monkeypatch.setattr(service, "build_briefing_voice_prompt", w.voice_prompt)
-    monkeypatch.setattr(service, "build_weekly_digest_prompt", w.weekly_prompt)
+    monkeypatch.setattr(service, "build_weekly_voice_prompt", w.weekly_prompt)
 
     async def model(**kwargs: Any) -> SimpleNamespace:
         reply = await w.agent(**kwargs)
@@ -834,44 +836,88 @@ class TestDailyBrief:
         assert await service.run_daily_briefing(_USER) is BriefingRunOutcome.SENT
 
 
-def _weekly(item_count: int) -> dict[str, Any]:
-    return {
-        "kicker": "THE WEEK IN REVIEW",
-        "date": "2026-10-11",
-        "headline": "A good week",
-        "lede": "Nine things shipped.",
-        "stats": [{"value": "3 hrs", "label": "saved"}],
-        "sections": [
-            {
-                "numeral": "I",
-                "title": "WHAT SHIPPED",
-                "items": [{"text": f"Item {i}", "kind": "lookback"} for i in range(item_count)],
-            }
-        ],
-        "mood": "weekly",
-        "caption": "Same time next week.",
-        "hue": 0,
-        "message": "good week!",
-    }
+_WEEKLY_VOICE = {
+    "headline": "A good week",
+    "lede": "The deck went out and the CRM sync needs a look.",
+    "caption": "Same time next week.",
+    "mood": "weekly",
+    "message": _FACTS_SHOWN,
+}
+
+
+def _weekly_voiced(**fields: str) -> SimpleNamespace:
+    return SimpleNamespace(message=_fenced({**_WEEKLY_VOICE, **fields}))
+
+
+def _failed_run(monkeypatch: pytest.MonkeyPatch, world: World) -> None:
+    """Have the CRM sync workflow fail this week."""
+    world.reads["list_since"].return_value = [
+        WorkflowExecutionDocument(
+            execution_id="e1",
+            workflow_id="wf-sync",
+            user_id=_USER,
+            status="failed",
+            started_at=_NOW - timedelta(days=1),
+            error_message="HubSpot token expired",
+        )
+    ]
+    monkeypatch.setattr(
+        workflow_repository,
+        "find_by_ids_for_user",
+        AsyncMock(return_value=[SimpleNamespace(id="wf-sync", title="CRM sync")]),
+    )
+
+
+_FRIDAY_PITCH = BriefingEvent(date="2026-10-16", start="15:00", title="Pitch to Accel")
+
+
+def _a_full_week(monkeypatch: pytest.MonkeyPatch, world: World) -> None:
+    """Fill every weekly source: GAIA's and the user's work, a failed run and an event ahead."""
+    _failed_run(monkeypatch, world)
+    deck = _todo("g1", "Investor deck")
+    deck.canvas_content = "# Deck\nFinal numbers in"
+    _seam(
+        monkeypatch,
+        world,
+        context,
+        "gather_completed_since",
+        AsyncMock(
+            return_value=context.CompletedWork(gaia=[deck], user=[_todo("u1", "Send the deck")])
+        ),
+    )
+    _seam(
+        monkeypatch,
+        world,
+        context,
+        "gather_week",
+        AsyncMock(
+            return_value=BriefingWeek(
+                days=[BriefingWeekDay(you=1, gaia=2)] * 7,
+                shipped=["Send the deck"],
+                handled=["Investor deck"],
+                ahead=[_FRIDAY_PITCH],
+            )
+        ),
+    )
 
 
 class TestWeeklyRecap:
     async def test_recap_is_stored_and_delivered_as_weekly(self, world: World) -> None:
-        world.agent.return_value = SimpleNamespace(message=_fenced(_weekly(3)))
+        world.agent.return_value = _weekly_voiced()
 
         assert await service.run_weekly_digest(_USER) is BriefingRunOutcome.SENT
 
         payload = _stored_payload(world)
-        # Masthead and date come from code, whatever the model wrote.
-        assert (payload.kicker, payload.date) == (WEEKLY_KICKER, _DATE)
+        # Masthead, date and mood come from code, whatever the model wrote.
+        assert (payload.kicker, payload.date, payload.mood) == (WEEKLY_KICKER, _DATE, "weekly")
         assert world.upsert.await_args.args[2] == "weekly"
         assert payload.template_family == "weekly"
-        assert payload.week is not None
+        assert payload.week == world.reads["gather_week"].return_value
         assert payload.tallies == BriefingTallies(done_by_you=7, done_by_gaia=14)
         assert payload.headline == "A good week"
         request = world.notify.await_args.args[0]
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_WEEKLY
-        assert request.content.body == "good week!"
+        assert request.content.body == payload.message == "Gym"
         # The recap is always pushed: it reaches the chat app, not only the in-app page.
         assert world.post.await_args.kwargs["origin"] == "weekly brief"
         world.consume.assert_not_awaited()
@@ -885,25 +931,108 @@ class TestWeeklyRecap:
         world.agent.assert_not_awaited()
         _assert_nothing_sent(world)
 
-    async def test_recap_over_the_item_cap_fails_and_sends_nothing(self, world: World) -> None:
-        world.agent.return_value = SimpleNamespace(message=_fenced(_weekly(MAX_BRIEF_ITEMS + 1)))
-
-        with pytest.raises(service.BriefingGenerationError, match="at most"):
-            await service.run_weekly_digest(_USER)
-
-        _assert_nothing_sent(world)
-
-    @pytest.mark.parametrize("message", [None, ""])
-    async def test_a_recap_without_a_message_fails_and_sends_nothing(
-        self, world: World, message: str | None
+    async def test_code_builds_the_sections_from_the_weeks_candidates(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        world.agent.return_value = SimpleNamespace(
-            message=_fenced({**_weekly(3), "message": message})
+        """Regression: the model wrote the whole weekly payload, its sections and items included."""
+        _a_full_week(monkeypatch, world)
+        world.agent.return_value = _weekly_voiced()
+
+        await service.run_weekly_digest(_USER)
+
+        payload = _stored_payload(world)
+        assert [
+            (s.key, s.title, [(i.text, i.kind) for i in s.items]) for s in payload.sections
+        ] == [
+            (SectionKey.NEEDS_YOU, "Needs you", [("CRM sync failed", "failed")]),
+            (SectionKey.UPDATES, "You finished", [("Send the deck", "lookback")]),
+            (SectionKey.GAIA_DID, "GAIA's work", [("Investor deck", "lookback")]),
+        ]
+        assert payload.message == "CRM sync failed\nSend the deck\nInvestor deck\nPitch to Accel"
+        assert payload.week == world.reads["gather_week"].return_value
+        (since,) = world.reads["list_since"].await_args.args[1:2]
+        assert since == _WEEK_START
+
+    async def test_the_week_ahead_is_timed_by_its_day_and_the_judge_reads_the_week(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _a_full_week(monkeypatch, world)
+        world.agent.return_value = _weekly_voiced(
+            lede="Then [[fact:<fact of Pitch to Accel>]] on [[fact:<fact of Pitch to Accel>.time]]."
         )
 
-        with pytest.raises(
-            service.BriefingGenerationError, match="^BriefingPayload has no message to deliver$"
-        ):
+        await service.run_weekly_digest(_USER)
+
+        assert _stored_payload(world).lede == "Then Pitch to Accel on Fri 3:00 PM."
+        facts = _facts_shown(_prompt(world))
+        assert "The week ahead:\n- fact " in facts and "| Fri 3:00 PM: Pitch to Accel" in facts
+        assert "summary: Final numbers in" in facts
+        assert "weekly digest" in world.judge.await_args.args[1]
+        assert "## THIS WEEK'S FACTS" in _prompt(world)
+
+
+class TestTheWeeklyHoldsToItsFacts:
+    """The weekly's prose is held to its facts by the daily's slots, coverage and faithfulness check."""
+
+    async def test_an_unsupported_claim_is_regenerated_once_with_the_claim_named(
+        self, world: World
+    ) -> None:
+        invented = UnsupportedClaim(
+            quote="closed the Sequoia round", fact="absent", truth="no fact names a round"
+        )
+        world.agent.side_effect = [
+            _weekly_voiced(lede="You closed the Sequoia round."),
+            _weekly_voiced(),
+        ]
+        world.checker.side_effect = [_claims(invented), _claims()]
+
+        await service.run_weekly_digest(_USER)
+
+        assert world.agent.await_count == 2
+        assert invented.problem() in world.agent.await_args_list[1].kwargs["request"].message
+        assert _stored_payload(world).lede == _WEEKLY_VOICE["lede"]
+        assert "lede: You closed the Sequoia round.\n" in _checked_prompt(world)
+        assert world.weekly_prompt.call_args.kwargs["blocks"].context in _checked_prompt(world)
+
+    async def test_a_recap_unsupported_twice_fails_and_sends_nothing(self, world: World) -> None:
+        invented = UnsupportedClaim(quote="shipped twelve features", fact="absent", truth="one")
+        world.agent.return_value = _weekly_voiced(lede="You shipped twelve features.")
+        world.checker.return_value = _claims(invented)
+
+        with pytest.raises(service.BriefingGenerationError, match="no fact holds it"):
+            await service.run_weekly_digest(_USER)
+
+        assert world.checker.await_count == 2
+        _assert_nothing_sent(world)
+
+    async def test_a_typed_count_is_sent_back_before_the_checker_runs(self, world: World) -> None:
+        world.agent.side_effect = [_weekly_voiced(lede="You finished 9 things."), _weekly_voiced()]
+
+        await service.run_weekly_digest(_USER)
+
+        retry = world.agent.await_args_list[1].kwargs["request"].message
+        assert "the lede types '9' itself" in retry
+        assert world.checker.await_count == 1
+
+    async def test_a_message_that_skips_the_failed_run_or_the_week_ahead_is_sent_back(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _a_full_week(monkeypatch, world)
+        world.agent.side_effect = [
+            _weekly_voiced(message="Good week. [Send the deck](fact:<fact of Send the deck>)."),
+            _weekly_voiced(),
+        ]
+
+        await service.run_weekly_digest(_USER)
+
+        retry = world.agent.await_args_list[1].kwargs["request"].message
+        assert "the message never refers to fact" in retry
+        assert "(CRM sync failed)" in retry and "(Pitch to Accel)" in retry
+
+    async def test_a_recap_without_a_message_fails_and_sends_nothing(self, world: World) -> None:
+        world.agent.return_value = _weekly_voiced(message="")
+
+        with pytest.raises(service.BriefingGenerationError, match="message"):
             await service.run_weekly_digest(_USER)
 
         _assert_nothing_sent(world)
@@ -1293,8 +1422,14 @@ def _wrote(message: str) -> SimpleNamespace:
 class TestWhatTheWriterIsShown:
     async def test_the_model_sees_how_recent_briefs_opened(self, world: World) -> None:
         def brief(message: str | None) -> BriefingModel:
-            payload = BriefingPayload.model_validate(
-                {**_weekly(0), "mood": "packed", "message": message}
+            payload = BriefingPayload(
+                kicker="K",
+                date="2026-10-13",
+                headline="h",
+                lede="l",
+                mood="packed",
+                caption="c",
+                message=message,
             )
             return BriefingModel(id="b", user_id=_USER, date="2026-10-13", payload=payload)
 
@@ -2226,13 +2361,13 @@ class TestTheAgentOutput:
 def _weekly_completed() -> context.CompletedWork:
     deck = _todo("g0", "Deck")
     deck.canvas_content = "# Deck\nFinal numbers in"
-    gaia = [deck, _todo("g1", ""), *[_todo(f"g{i}", f"G{i}") for i in range(2, 16)]]
-    user = [_todo("u0", ""), *[_todo(f"u{i}", f"U{i}") for i in range(1, 16)]]
+    gaia = [deck, *[_todo(f"g{i}", f"G{i}") for i in range(1, 16)]]
+    user = [_todo(f"u{i}", f"U{i}") for i in range(16)]
     return context.CompletedWork(gaia=gaia, user=user)
 
 
 class TestTheWeeklyRunWiring:
-    async def test_the_week_is_read_for_this_user_and_summarised_for_the_model(
+    async def test_the_week_is_read_for_this_user_from_monday_in_one_window(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seam(
@@ -2242,7 +2377,7 @@ class TestTheWeeklyRunWiring:
             "gather_completed_since",
             AsyncMock(return_value=_weekly_completed()),
         )
-        world.agent.return_value = SimpleNamespace(message=_fenced(_weekly(3)))
+        world.agent.return_value = _weekly_voiced()
 
         async with captured_wide_event() as event:
             await service.run_weekly_digest(_USER)
@@ -2250,19 +2385,11 @@ class TestTheWeeklyRunWiring:
         world.reads["gather_completed_since"].assert_awaited_once_with(_USER, _WEEK_START)
         week_call = world.reads["gather_week"].await_args
         assert (week_call.args[0], week_call.args[1].date_str) == (_USER, _DATE)
-        # The prose and the tallies read the same completions: one window for both.
+        # The sections, the prose and the tallies read the same completions: one window for all.
         assert week_call.args[2] is world.reads["gather_completed_since"].return_value
-        shipped = "\n".join(
-            ["- Deck: Final numbers in", "- untitled", *[f"- G{i}" for i in range(2, 15)]]
-        )
-        finished = "\n".join(["- untitled", *[f"- U{i}" for i in range(1, 15)]])
-        assert world.weekly_prompt.call_args.kwargs == {
-            "date_local": _DATE,
-            "week_summary_block": (
-                "GAIA completed 16 todo(s); you completed 16.\n\n"
-                f"GAIA shipped:\n{shipped}\n\nYou finished:\n{finished}"
-            ),
-        }
+        judged = world.judge.await_args.args[1]
+        assert "[GAIA] gaia_did: Deck" in judged
+        assert "[GAIA] update: U15" in judged
         assert world.agent.await_args.kwargs["conversation_id"].startswith(
             f"briefing-weekly-{_USER}-{_DATE}-"
         )
@@ -2273,26 +2400,27 @@ class TestTheWeeklyRunWiring:
             "run_weekly_digest",
             _USER,
         )
+        assert event["brief_selection"]["candidates"] == 32
 
-    async def test_a_recap_exactly_at_the_cap_is_kept_past_other_blocks(self, world: World) -> None:
-        world.agent.return_value = SimpleNamespace(
-            message=_NOISE_BLOCKS + _fenced(_weekly(MAX_BRIEF_ITEMS))
-        )
+    async def test_the_voice_is_found_past_other_blocks(self, world: World) -> None:
+        world.agent.return_value = SimpleNamespace(message=_NOISE_BLOCKS + _fenced(_WEEKLY_VOICE))
 
         await service.run_weekly_digest(_USER)
 
-        assert sum(len(s.items) for s in _stored_payload(world).sections) == MAX_BRIEF_ITEMS
+        assert _stored_payload(world).headline == "A good week"
 
-    async def test_a_recap_missing_from_the_output_names_its_start(self, world: World) -> None:
-        raw = "z" * 400
-        world.agent.return_value = SimpleNamespace(message=raw)
+    async def test_a_recap_missing_from_the_output_twice_fails_naming_why(
+        self, world: World
+    ) -> None:
+        world.agent.return_value = SimpleNamespace(message="z" * 400)
 
         with pytest.raises(service.BriefingGenerationError) as err:
             await service.run_weekly_digest(_USER)
 
         assert str(err.value) == (
-            f"No valid BriefingPayload in agent output (first 300 chars): {raw[:300]!r}"
+            "No valid voice JSON in agent output: invalid JSON: Expecting value (char 0 of 400)"
         )
+        assert world.agent.await_count == 2
         _assert_nothing_sent(world)
 
     async def test_an_unknown_user_fails_loud(self, world: World) -> None:
@@ -2308,7 +2436,7 @@ class TestTheWeeklyRunWiring:
         self, world: World, monkeypatch: pytest.MonkeyPatch, came_back: bool
     ) -> None:
         _dormant(world)
-        world.agent.return_value = SimpleNamespace(message=_fenced(_weekly(3)))
+        world.agent.return_value = _weekly_voiced()
         _seam(
             monkeypatch,
             world,

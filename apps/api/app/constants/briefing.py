@@ -8,7 +8,7 @@ workflow-execution branch so nothing hardcodes these values.
 from enum import StrEnum
 from typing import Final, Literal
 
-# Hard ceiling on the unsupervised weekly agent run; expiry raises so a stalled
+# Hard ceiling on the weekly digest's voice runs; expiry raises so a stalled
 # run fails loud and retries next week instead of hanging the worker slot.
 WEEKLY_GENERATION_TIMEOUT_SECONDS: Final[int] = 420
 
@@ -48,7 +48,6 @@ class SectionKey(StrEnum):
     NEEDS_YOU = "needs_you"
     UPDATES = "updates"
     GAIA_DID = "gaia_did"
-    WEEK = "week"
 
 
 # Daily brief section heads, numbered in order. Display casing: every surface shows
@@ -58,12 +57,16 @@ SECTION_TITLES: Final[dict[SectionKey, str]] = {
     SectionKey.NEEDS_YOU: "Needs you",
     SectionKey.UPDATES: "From your apps",
     SectionKey.GAIA_DID: "GAIA's work",
-    SectionKey.WEEK: "This week",
+}
+# The weekly digest's updates are what the user finished this week.
+WEEKLY_SECTION_TITLES: Final[dict[SectionKey, str]] = {
+    **SECTION_TITLES,
+    SectionKey.UPDATES: "You finished",
 }
 SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV")
-# The daily brief's sections in reading order, and the most items the selection judge
+# Every brief's sections in reading order, and the most items the selection judge
 # may put in each: the brief reads in under a minute.
-DAILY_SECTION_ORDER: Final[tuple[SectionKey, ...]] = (
+SECTION_ORDER: Final[tuple[SectionKey, ...]] = (
     SectionKey.LEAD,
     SectionKey.NEEDS_YOU,
     SectionKey.UPDATES,
@@ -75,8 +78,6 @@ SECTION_CAPS: Final[dict[SectionKey, int]] = {
     SectionKey.UPDATES: 3,
     SectionKey.GAIA_DID: 3,
 }
-# The model-written weekly payload holds at most this many items across its sections.
-MAX_BRIEF_ITEMS: Final[int] = 8
 #: Selection judge calls per brief: one more when its answer breaks the contract, then the run fails.
 MAX_SELECTION_ATTEMPTS: Final[int] = 2
 #: The selection judge's metering label.
@@ -93,7 +94,7 @@ MAX_BRIEF_CAPTION_CHARS: Final[int] = 148
 MAX_BRIEF_MESSAGE_CHARS: Final[int] = 2700
 # How many recent briefs' opening lines the model sees, so today's opens differently.
 RECENT_OPENINGS_SHOWN: Final[int] = 5
-# Voice attempts per daily brief: one regeneration when its slots or its claims fail the
+# Voice attempts per brief: one regeneration when its slots or its claims fail the
 # facts, then the run fails rather than ship it.
 MAX_VOICE_ATTEMPTS: Final[int] = 2
 #: The faithfulness check's metering label.
