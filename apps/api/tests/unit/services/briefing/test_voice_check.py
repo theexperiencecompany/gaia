@@ -21,6 +21,7 @@ from app.services.briefing.voice_check import (
 def _payload(**overrides: Any) -> BriefingPayload:
     data: dict[str, Any] = {
         "kicker": "THE MORNING BRIEF",
+        "template_family": "swiss",
         "date": "2026-10-14",
         "headline": "",
         "lede": "",
