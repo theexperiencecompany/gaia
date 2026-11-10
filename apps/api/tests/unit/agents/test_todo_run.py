@@ -40,7 +40,7 @@ WAKE = TodoRunWake(
 )
 REQUEST = TodoRunRequest(
     user=AuthenticatedUser(user_id="user-1"),
-    todo_run=TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO),
+    todo_run=TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
     todo_title="Watch the deploy",
     task="Execute the following scheduled task: Watch the deploy",
     conversation_id="run-conv",

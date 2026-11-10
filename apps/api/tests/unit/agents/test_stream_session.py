@@ -27,7 +27,7 @@ from app.agents.core.background.session import (
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 
-TODO_RUN = TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO)
+TODO_RUN = TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True)
 
 
 @pytest.fixture(autouse=True)

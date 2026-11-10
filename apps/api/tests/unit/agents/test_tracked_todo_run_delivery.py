@@ -169,7 +169,7 @@ def _no_backoff() -> AbstractContextManager[AsyncMock]:
 def _request() -> TodoRunRequest:
     return TodoRunRequest(
         user=USER,
-        todo_run=TodoRun(todo_id=TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO),
+        todo_run=TodoRun(todo_id=TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
         todo_title="Watch the staging deploy",
         task="Execute the following scheduled task: Watch the staging deploy",
         conversation_id="run-conv-1",
@@ -308,7 +308,9 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert configurable["stream_id"] == run.stream_id
         # The todo's title stands in for the user's words for the approval judge.
         assert "Tracked todo: Watch the staging deploy" in configurable["user_messages"]
-        assert run.todo_run == TodoRun(todo_id=TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO)
+        assert run.todo_run == TodoRun(
+            todo_id=TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+        )
         assert (run.kind, run.conversation_id, run.user_message_id) == (
             RunKind.LIVE,
             "run-conv-1",
@@ -597,6 +599,7 @@ def _undelivered() -> "trd.FinishedTodoRun":
         user_id=USER.user_id,
         conversation_id="run-conv-1",
         trigger_type=TriggerType.SCHEDULED_TODO,
+        runs_once=True,
         result_text=EXECUTOR_REPORT,
     )
 

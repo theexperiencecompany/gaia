@@ -75,6 +75,9 @@ class TodoRun:
 
     todo_id: str
     trigger_type: TriggerType
+    #: Read when the run starts: a run that completes its todo tears its watches
+    #: down, so the todo read at delivery would look like one that runs once.
+    runs_once: bool
 
 
 @dataclass(frozen=True)

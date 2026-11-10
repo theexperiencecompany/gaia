@@ -3492,13 +3492,41 @@ class TestExecuteOnExecutor:
         request = self._request()
         assert request.user is user
         assert request.todo_run == TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO
+            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
         )
         assert request.todo_title == "Check the deploy"
         assert "Execute the following scheduled task: Check the deploy" in request.task
         assert "Details: verify staging" in request.task
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
         assert "Recent activity (activity.md):\n- earlier run" in request.task
+
+    @pytest.mark.parametrize(
+        ("fields", "runs_once"),
+        [
+            ({}, True),
+            ({"recurrence": "daily"}, False),
+            (
+                {
+                    "trigger_subscriptions": [
+                        TriggerSubscription(
+                            trigger_name="gmail_new_message",
+                            action=SubscriptionAction.EXECUTE,
+                            resolution=SubscriptionResolution.ACCOUNT,
+                        )
+                    ]
+                },
+                False,
+            ),
+        ],
+        ids=["once", "recurring", "watching"],
+    )
+    async def test_the_run_says_whether_its_todo_runs_again_as_it_starts(
+        self, fields: dict[str, object], runs_once: bool
+    ) -> None:
+        """Delivery cannot read it later: completing a todo tears its watches down mid-run."""
+        await self._execute(_doc(**fields))
+
+        assert self._request().todo_run.runs_once is runs_once
 
     @pytest.mark.regression
     async def test_an_inbox_desk_run_hands_its_spawns_the_mail_pass_budget(self) -> None:
@@ -4060,7 +4088,7 @@ class TestResumeTrackedTodo:
         assert request.fresh_thread is False
         assert request.user is run.user
         assert request.todo_run == TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO
+            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
         )
         assert request.todo_title == "Check the deploy"
 

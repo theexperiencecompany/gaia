@@ -22,11 +22,6 @@ from app.models import todo_models
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import NotificationType
 from app.models.todo_models import TodoDocument
-from app.models.trigger_subscription_models import (
-    SubscriptionAction,
-    SubscriptionResolution,
-    TriggerSubscription,
-)
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import ChatChannel, InApp
@@ -49,7 +44,7 @@ RUN = ExecutorRun(
     task_id="t1",
     user_message_id=None,
 )
-SCHEDULED = TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO)
+SCHEDULED = TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True)
 
 
 @dataclass
@@ -250,34 +245,29 @@ class TestAOneTimeTodoAlwaysAnswers:
 
         assert "This todo runs once" in seams.narrate.await_args.kwargs["preamble"]
 
-    @pytest.mark.parametrize(
-        "fields",
-        [
-            {"recurrence": "daily"},
-            {
-                "trigger_subscriptions": [
-                    TriggerSubscription(
-                        trigger_name="gmail_new_message",
-                        action=SubscriptionAction.EXECUTE,
-                        resolution=SubscriptionResolution.ACCOUNT,
-                    )
-                ]
-            },
-        ],
-        ids=["recurring", "watching"],
-    )
-    async def test_a_todo_that_runs_again_keeps_the_silence_rule(
-        self, fields: dict[str, object]
-    ) -> None:
-        with _seams(todo=_todo(**fields)) as seams:
-            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+    @pytest.mark.regression
+    async def test_a_watching_todo_that_completes_itself_keeps_the_silence_rule(self) -> None:
+        """Regression: completing a todo tore its watch down before delivery read it."""
+        completed_thread = _todo(
+            completed=True,
+            external_ref=todo_models.ExternalRef(
+                source=todo_models.ExternalRefSource.GMAIL_THREAD, id="t1"
+            ),
+        )
+        watching = TodoRun(todo_id="todo-1", trigger_type=TriggerType.TODO_TRIGGER, runs_once=False)
+        with _seams(todo=completed_thread) as seams:
+            await deliver_todo_run_result(RUN, watching, "report", "final")
 
-        assert "Nobody asked for it just now" in seams.narrate.await_args.kwargs["preamble"]
+        preamble = seams.narrate.await_args.kwargs["preamble"]
+        assert "Nobody asked for it just now" in preamble
+        assert "This todo runs once" not in preamble
 
 
 class TestAttribution:
     async def test_the_event_names_what_woke_the_run_and_whose_it_is(self) -> None:
-        triggered = TodoRun(todo_id="todo-1", trigger_type=TriggerType.TODO_TRIGGER)
+        triggered = TodoRun(
+            todo_id="todo-1", trigger_type=TriggerType.TODO_TRIGGER, runs_once=False
+        )
         with _seams(todo=_todo(recurrence="daily", user_id=OWNER_ID)) as seams:
             await deliver_todo_run_result(RUN, triggered, "report", "final")
 
