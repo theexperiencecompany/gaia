@@ -15,7 +15,7 @@ from app.services.briefing.view import briefing_view
 
 def _brief(
     *,
-    template_family: str | None,
+    template_family: str,
     stamp_city: str | None = None,
     sections: list[BriefingSection] | None = None,
 ) -> BriefingModel:
@@ -42,12 +42,6 @@ def test_an_air_mail_brief_names_its_family_and_stamp_city() -> None:
 
     assert (view.edition_name, view.stamp_city_name) == ("Air Mail", "Bogotá")
     assert view.id == "brief_1"
-
-
-def test_a_legacy_brief_has_no_edition_names() -> None:
-    view = briefing_view(_brief(template_family=None))
-
-    assert (view.edition_name, view.stamp_city_name) == (None, None)
 
 
 def test_needs_you_counts_only_that_sections_listed_items() -> None:

@@ -2120,16 +2120,9 @@
             ]
           },
           "template_family": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever; None on legacy rows.",
-            "title": "Template Family"
+            "description": "The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever.",
+            "title": "Template Family",
+            "type": "string"
           },
           "week": {
             "anyOf": [
