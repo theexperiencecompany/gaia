@@ -1,0 +1,115 @@
+# Over-proactivity traps: nothing was asked. GAIA must not invent reminders,
+# tracked todos or follow-up promises, and must not hand small talk to the
+# executor. A short warm reply; at most one offer/question.
+
+- id: own-op-sister-birthday
+  ticket: "Past event shared: don't create a reminder for next year unasked."
+  prompt: "my sister's birthday was yesterday, we had a great dinner"
+  tags: [ownership, over_proactive]
+  expected:
+    category: over_proactive
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 0, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've set a reminder", "i've added", "i'll remind you", "i've created"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-op-mondays
+  ticket: "Venting: empathise briefly, set nothing up."
+  prompt: "ugh mondays"
+  tags: [ownership, over_proactive]
+  expected:
+    category: over_proactive
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 0, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've set", "i've created", "i'll check in", "i'll follow up"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-op-10k
+  ticket: "Achievement shared: celebrate, don't schedule a training plan."
+  prompt: "just finished a 10k run"
+  tags: [ownership, over_proactive]
+  expected:
+    category: over_proactive
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 0, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've set", "i've created", "training plan", "i'll remind you"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-op-dentist-done
+  ticket: "Status update with nothing open: acknowledge, create no follow-up."
+  prompt: "the dentist appointment went fine today"
+  tags: [ownership, over_proactive]
+  expected:
+    category: over_proactive
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 0, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've set", "i've scheduled", "i'll remind you", "next cleaning"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-op-thats-all
+  ticket: "Sign-off: end cleanly, no 'anything else?' loop, nothing created."
+  prompt: "thanks, that's all for now"
+  tags: [ownership, over_proactive]
+  expected:
+    category: over_proactive
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 0, max: 0}
+      max_words: 25
+    must_not_communicate: ["anything else", "i'll check in", "i'll follow up"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-op-credit-card
+  ticket: "Milestone shared: congratulate, don't create a budgeting plan or reminders."
+  prompt: "i finally paid off my credit card"
+  tags: [ownership, over_proactive]
+  expected:
+    category: over_proactive
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 0, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've set", "i've created", "budget plan", "i'll remind you"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-op-raining
+  ticket: "Weather small talk: short reply, no forecast job, no reminders."
+  prompt: "it's raining again here"
+  tags: [ownership, over_proactive]
+  expected:
+    category: over_proactive
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 0, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've set", "i'll alert you", "i'll remind you", "i've created"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-op-dune
+  ticket: "Opinion shared: chat back, don't add a watchlist todo."
+  prompt: "i watched dune last night, loved it"
+  tags: [ownership, over_proactive]
+  expected:
+    category: over_proactive
+    delegation: forbidden
+    ownership:
+      followup: forbidden
+      questions: {min: 0, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've added", "watchlist", "i've created", "i'll remind you"]
+    score: {gates: [delegation, followup, question_budget, reply_brevity, must_not_communicate]}

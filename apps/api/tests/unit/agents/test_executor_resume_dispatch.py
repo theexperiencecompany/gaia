@@ -202,8 +202,23 @@ async def test_a_run_without_a_task_id_records_under_its_stream(fake_redis: Any)
 
 
 async def test_a_resume_is_driven_with_its_command(fake_redis: Any) -> None:
-    command = Command(resume={"status": "approved"})
+    command: Command[str] = Command(resume={"status": "approved"})
 
     seen = await _record_through_the_run("task-1", resume=command)
 
     assert seen["resume"] is command
+
+
+async def test_whether_the_users_stop_cut_the_run_short_reaches_the_result() -> None:
+    """Finalize discards only a run the Stop cut short, so the subagent's own verdict must survive."""
+    results = []
+    for stopped in (True, False):
+        execute = AsyncMock(return_value=SubagentOutcome(text="so far", stopped=stopped))
+        with (
+            patch(f"{RUNNER}.prepare_executor_execution", AsyncMock(return_value=(_Ctx(), None))),
+            patch(f"{RUNNER}.make_redis_stream_writer", lambda _stream_id: None),
+            patch(f"{RUNNER}.execute_subagent_stream", execute),
+        ):
+            results.append((await _execute_executor("task", {"user_id": "u1"}, _RUN)).stopped)
+
+    assert results == [True, False]

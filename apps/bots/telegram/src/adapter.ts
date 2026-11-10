@@ -600,6 +600,21 @@ export class TelegramAdapter extends BaseBotAdapter {
 
     const loading = await ctx.reply("Thinking...");
     let currentMessageId = loading.message_id;
+    const removePlaceholder = async (): Promise<void> => {
+      try {
+        await ctx.api.deleteMessage(chatId, loading.message_id);
+      } catch (e) {
+        // The reply is already settled; a stale "Thinking..." is all this costs.
+        this.adapterLogger.error(
+          "placeholder_delete_failed",
+          {
+            channel_hash: hashLogIdentifier(chatId),
+            message_id: loading.message_id,
+          },
+          e,
+        );
+      }
+    };
 
     // Typing indicator with 5s refresh (Telegram expires it after ~5s).
     const clearTyping = this.startTypingIndicator(
@@ -761,21 +776,10 @@ export class TelegramAdapter extends BaseBotAdapter {
             ctx.chat?.type !== "private",
           );
           if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
-          try {
-            await ctx.api.deleteMessage(chatId, loading.message_id);
-          } catch (e) {
-            // The reaction is already the reply; a stale "Thinking..." is all this costs.
-            this.adapterLogger.error(
-              "placeholder_delete_failed",
-              {
-                channel_hash: hashLogIdentifier(chatId),
-                message_id: loading.message_id,
-              },
-              e,
-            );
-          }
+          await removePlaceholder();
           return outcome;
         },
+        removePlaceholder,
       );
     } finally {
       clearTyping();

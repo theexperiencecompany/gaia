@@ -92,7 +92,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
 
         # The platform just linked, regardless of priority or preferences: the
         # hello greets the account the user connected.
-        channel = pick_chat_channel([source.value], linked_platforms_of(user), {})
+        channel = pick_chat_channel([source.value], linked_platforms_of(user), {}, active=None)
         if channel is None:
             log.set(skipped="not_linked")
             return f"skip {user_id}: {platform} not linked"

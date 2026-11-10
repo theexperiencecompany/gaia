@@ -5,8 +5,9 @@
  *
  * What is pinned here: the minted code reaches every button (so nobody has to
  * type /auth), the mint failing still lets a user through on the old links,
- * and skipping just advances the wizard — the post-onboarding opener is now a
- * server-seeded conversation, not a prompt staged into the web composer.
+ * picking a platform submits only once its link has landed (submitting on the
+ * click seeded the first conversation before the link existed, so its
+ * "I'm on your Telegram too" line never appeared), and skipping just advances.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -15,11 +16,13 @@ import { type ReactNode, StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mintLinkCode = vi.fn();
+const fetchPlatformLinks = vi.fn();
 const apiPost = vi.fn();
 const setPendingPrompt = vi.fn();
 
 vi.mock("@/features/onboarding/api/onboardingApi", () => ({
   mintLinkCode: () => mintLinkCode(),
+  fetchPlatformLinks: () => fetchPlatformLinks(),
 }));
 
 vi.mock("@/lib/api/typed", () => ({
@@ -46,7 +49,7 @@ const MINTED = {
   handoff_text: `${FIRST_MESSAGE} #${CODE}`,
   links: {
     telegram: `https://t.me/heygaia_bot?start=${CODE}`,
-    whatsapp: `https://wa.me/12762088737?text=encoded%20${CODE}`,
+    whatsapp: `https://wa.me/12038429512?text=encoded%20${CODE}`,
   },
 };
 
@@ -96,6 +99,7 @@ describe("useConnectPlatform", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mintLinkCode.mockResolvedValue(MINTED);
+    fetchPlatformLinks.mockResolvedValue({ platform_links: {} });
     openSpy = vi.fn();
     vi.stubGlobal("open", openSpy);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -155,7 +159,7 @@ describe("useConnectPlatform", () => {
     expect(mintLinkCode).toHaveBeenCalledOnce();
   });
 
-  it("opens the code-carrying deep link for telegram", async () => {
+  it("opens the code-carrying deep link for telegram and waits for the link", async () => {
     const { result, dispatch, onConfirmed } = await renderConnect();
 
     act(() => result.current.connect("telegram"));
@@ -165,11 +169,73 @@ describe("useConnectPlatform", () => {
       "_blank",
       "noopener,noreferrer",
     );
+    expect(result.current.awaitingPlatform).toBe("telegram");
+    await waitFor(() => expect(fetchPlatformLinks).toHaveBeenCalled());
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(onConfirmed).not.toHaveBeenCalled();
+  });
+
+  it("submits onboarding once the chosen platform's link lands", async () => {
+    const { result, dispatch, onConfirmed } = await renderConnect();
+    fetchPlatformLinks.mockResolvedValue({
+      platform_links: { telegram: { platformUserId: "tg-1" } },
+    });
+
+    act(() => result.current.connect("telegram"));
+
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce());
     expect(dispatch).toHaveBeenCalledWith({
       type: "platformConnected",
       platform: "telegram",
     });
-    expect(onConfirmed).toHaveBeenCalledOnce();
+  });
+
+  it("does not take another platform's link as the chosen one", async () => {
+    const { result, onConfirmed } = await renderConnect();
+    fetchPlatformLinks.mockResolvedValue({
+      platform_links: { whatsapp: { platformUserId: "wa-1" } },
+    });
+
+    act(() => result.current.connect("telegram"));
+
+    await waitFor(() => expect(fetchPlatformLinks).toHaveBeenCalled());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onConfirmed).not.toHaveBeenCalled();
+  });
+
+  it("finishes with an app the user walked away from if that is where they linked", async () => {
+    // One code rides every app's link, so whichever app redeems it is the link:
+    // opening Telegram, switching to WhatsApp, then tapping Start in Telegram
+    // links Telegram, and the stage must not wait on WhatsApp forever.
+    const { result, dispatch, onConfirmed } = await renderConnect();
+
+    act(() => result.current.connect("telegram"));
+    act(() => result.current.chooseAnother());
+    fetchPlatformLinks.mockResolvedValue({
+      platform_links: { telegram: { platformUserId: "tg-1" } },
+    });
+    act(() => result.current.connect("whatsapp"));
+
+    // Within one poll interval of the link landing.
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "platformConnected",
+      platform: "telegram",
+    });
+  });
+
+  it("goes back to the picker on choose-another without submitting", async () => {
+    const { result, onConfirmed } = await renderConnect();
+
+    act(() => result.current.connect("telegram"));
+    act(() => result.current.chooseAnother());
+
+    expect(result.current.awaitingPlatform).toBeNull();
+    expect(onConfirmed).not.toHaveBeenCalled();
   });
 
   it("opens the code-carrying deep link for whatsapp", async () => {
@@ -209,6 +275,9 @@ describe("useConnectPlatform", () => {
       command: MINTED.handoff_text,
       actionLink: `sms:+15551234567&body=${encodeURIComponent(MINTED.handoff_text)}`,
     });
+
+    act(() => result.current.closePhoneModal());
+    expect(result.current.awaitingPlatform).toBe("imessage");
   });
 
   it("keeps the /auth instructions for iMessage when minting failed", async () => {

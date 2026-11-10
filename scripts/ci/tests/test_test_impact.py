@@ -22,11 +22,14 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 from types import ModuleType
 from typing import Any
 
+from github_fake import FakeGitHub, Reply, Request
 import pytest
 
 CI = Path(__file__).resolve().parent.parent
@@ -85,12 +88,12 @@ def _hermetic_env(monkeypatch: pytest.MonkeyPatch) -> None:
         # directory, each of which decides something the map cannot see.
         "scripts/ci/test-services.sh",
         "scripts/ci/embedding-sidecar.sh",
-        "scripts/ci/runner.sh",
+        "scripts/ci/runner.py",
         "scripts/ci/lib/service-images.sh",
         "scripts/ci/lib/log.sh",
         "scripts/ci/pytest.sh",
         ".github/actions/setup-python-test-env/action.yml",
-        ".github/workflows/main.yml",
+        ".github/workflows/ci.yml",
     ],
 )
 def test_every_environment_shaping_file_is_suite_config(path: str) -> None:
@@ -119,8 +122,12 @@ def test_an_unrelated_script_outside_scripts_ci_is_not_suite_config() -> None:
 # ── a slice honours its own exclusions ───────────────────────────────────────
 
 
+# The repo root, the map's source-file index, and its test-file index.
+TwoSliceSuite = tuple[Path, dict[str, Any], dict[str, Any]]
+
+
 @pytest.fixture
-def two_slice_suite(tmp_path: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
+def two_slice_suite(tmp_path: Path) -> TwoSliceSuite:
     """Return a map shaped like unit-a's directories plus the rest of unit-b's."""
     files = {
         "app/svc.py": ["tests/unit/services/test_svc.py::test_a"],
@@ -144,7 +151,7 @@ UNIT_B_PATHS = ["tests/unit"]
 UNIT_B_IGNORE = ["tests/unit/services"]
 
 
-def test_unit_b_does_not_rerun_a_file_unit_a_owns(two_slice_suite) -> None:
+def test_unit_b_does_not_rerun_a_file_unit_a_owns(two_slice_suite: TwoSliceSuite) -> None:
     root, files, test_files = two_slice_suite
     ids, _, _, _ = ti.select_tests(
         ["apps/api/app/svc.py"],
@@ -157,7 +164,9 @@ def test_unit_b_does_not_rerun_a_file_unit_a_owns(two_slice_suite) -> None:
     assert ids == []
 
 
-def test_a_changed_test_file_in_the_excluded_directory_is_dropped(two_slice_suite) -> None:
+def test_a_changed_test_file_in_the_excluded_directory_is_dropped(
+    two_slice_suite: TwoSliceSuite,
+) -> None:
     root, files, test_files = two_slice_suite
     ids, _, _, _ = ti.select_tests(
         ["apps/api/tests/unit/services/test_svc.py"],
@@ -169,7 +178,9 @@ def test_a_changed_test_file_in_the_excluded_directory_is_dropped(two_slice_suit
     assert ids == []
 
 
-def test_the_total_denominator_excludes_the_other_slices_tests(two_slice_suite) -> None:
+def test_the_total_denominator_excludes_the_other_slices_tests(
+    two_slice_suite: TwoSliceSuite,
+) -> None:
     root, files, test_files = two_slice_suite
     _, _, _, total = ti.select_tests(
         ["apps/api/app/util.py"],
@@ -184,7 +195,7 @@ def test_the_total_denominator_excludes_the_other_slices_tests(two_slice_suite) 
 
 
 def test_without_the_exclusions_the_same_change_selects_the_other_slices_tests(
-    two_slice_suite,
+    two_slice_suite: TwoSliceSuite,
 ) -> None:
     # The control: same inputs, no exclusions — this is the behaviour the
     # --exclude plumbing exists to stop, and it must still be reachable so the
@@ -234,49 +245,42 @@ def _run(**overrides: Any) -> dict[str, Any]:
     return run
 
 
-def _with_runs(monkeypatch: pytest.MonkeyPatch, runs: list[dict[str, Any]]) -> list[str]:
-    """Stub the API and record the endpoints asked for."""
-    asked: list[str] = []
-
-    def fake(endpoint: str) -> dict[str, Any]:
-        asked.append(endpoint)
-        return {"workflow_runs": runs}
-
-    monkeypatch.setattr(ti, "_gh_json", fake)
-    return asked
+def _with_runs(api: FakeGitHub, runs: list[dict[str, Any]]) -> list[Request]:
+    """Serve these runs as ci.yml's run listing; return every request the client made."""
+    api.on("GET", r"/actions/workflows/ci\.yml/runs$", Reply(body={"workflow_runs": runs}))
+    return api.requests
 
 
-def test_the_run_query_asks_for_successful_pushes_to_master(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    asked = _with_runs(monkeypatch, [_run(id=7)])
+def test_the_run_query_asks_for_successful_pushes_to_master(api: FakeGitHub) -> None:
+    asked = _with_runs(api, [_run(id=7)])
     assert ti._trusted_runs(REPO) == [(7, "2026-08-30T00:00:00Z")]
-    (endpoint,) = asked
-    assert "actions/workflows/main.yml/runs" in endpoint
-    for required in ("branch=master", "event=push", "status=success"):
-        assert required in endpoint
+    (request,) = asked
+    assert request.path == f"/repos/{REPO}/actions/workflows/ci.yml/runs"
+    assert {
+        "branch": "master",
+        "event": "push",
+        "status": "success",
+    }.items() <= request.query.items()
 
 
-def test_a_pull_request_run_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_pull_request_run_is_rejected(api: FakeGitHub) -> None:
     # The query says event=push; this re-checks the run itself, because a
     # query parameter is a filter, not a guarantee.
-    _with_runs(monkeypatch, [_run(id=7, event="pull_request")])
+    _with_runs(api, [_run(id=7, event="pull_request")])
     assert ti._trusted_runs(REPO) == []
 
 
-def test_a_run_from_a_fork_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_run_from_a_fork_is_rejected(api: FakeGitHub) -> None:
     # The attack this closes: a fork branch NAMED master. The head repository,
     # not the branch string, is what says whose code produced the map.
-    _with_runs(monkeypatch, [_run(id=7, head_repository={"full_name": "attacker/gaia"})])
+    _with_runs(api, [_run(id=7, head_repository={"full_name": "attacker/gaia"})])
     assert ti._trusted_runs(REPO) == []
 
 
-def test_the_newest_trusted_run_wins_over_an_untrusted_newer_one(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_the_newest_trusted_run_wins_over_an_untrusted_newer_one(api: FakeGitHub) -> None:
     # The API returns newest first; the fork's run is skipped, not taken.
     _with_runs(
-        monkeypatch,
+        api,
         [
             _run(id=9, head_repository={"full_name": "attacker/gaia"}),
             _run(id=8, created_at="2026-08-29T00:00:00Z"),
@@ -285,27 +289,103 @@ def test_the_newest_trusted_run_wins_over_an_untrusted_newer_one(
     assert ti._trusted_runs(REPO) == [(8, "2026-08-29T00:00:00Z")]
 
 
-def test_no_trusted_run_leaves_no_map(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(ti, "_gh_json", lambda endpoint: {"workflow_runs": []})
+def _fetch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, slice_name: str) -> int:
     monkeypatch.setenv("GITHUB_REPOSITORY", REPO)
     monkeypatch.setenv("MAP_DIR", str(tmp_path / "maps"))
     monkeypatch.chdir(tmp_path)
-    args = ti.build_parser().parse_args(["fetch", "--slice", "unit-a"])
-    assert ti.cmd_fetch(args) == 0
+    code: int = ti.main(["fetch", "--slice", slice_name])
+    return code
+
+
+def test_no_trusted_run_leaves_no_map(
+    api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _with_runs(api, [])
+    assert _fetch(monkeypatch, tmp_path, "unit-a") == 0
     # No map, so `select` widens to ALL — never a narrower run.
     assert list((tmp_path / "maps").iterdir()) == []
 
 
-def test_a_head_repository_of_null_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Deleted forks come back with head_repository: null; `or {}` must not turn
-    # that into a match.
-    _with_runs(monkeypatch, [_run(id=7, head_repository=None)])
+def test_an_unreadable_run_listing_leaves_no_map_and_says_so(
+    api: FakeGitHub,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # An outage once read as "no trusted master run with a map yet": the
+    # fallback is right (run everything), the reason it printed was not.
+    api.on("GET", r".", Reply(503, {"message": "unavailable"}))
+
+    assert _fetch(monkeypatch, tmp_path, "unit-a") == 0
+    assert list((tmp_path / "maps").iterdir()) == []
+    assert "trusted master runs are unreadable" in capsys.readouterr().out
+
+
+def test_fetch_walks_trusted_runs_until_a_map_lands(
+    api: FakeGitHub,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A missing map on the newest run must fall through to the next-newest."""
+    newest, older = 33135783419, 35056052489
+    _with_runs(
+        api,
+        [
+            _run(id=newest, created_at="2026-08-28T00:00:00Z"),
+            _run(id=older, created_at="2026-09-16T04:33:18Z"),
+        ],
+    )
+    tried: list[int] = []
+
+    def fake_download(_repo: str, _artifact: str, run_id: int, _map_dir: Path) -> bool:
+        tried.append(run_id)
+        return run_id == older
+
+    monkeypatch.setattr(ti, "_download_map", fake_download)
+
+    assert _fetch(monkeypatch, tmp_path, "unit-b") == 0
+    assert tried == [newest, older]
+    assert f"map from run {older}" in capsys.readouterr().out
+
+
+def test_fetch_warns_only_when_every_trusted_run_lacks_a_map(
+    api: FakeGitHub,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    newest, older = 33135783419, 35056052489
+    _with_runs(
+        api,
+        [
+            _run(id=newest, created_at="2026-08-28T00:00:00Z"),
+            _run(id=older, created_at="2026-09-16T04:33:18Z"),
+        ],
+    )
+    monkeypatch.setattr(ti, "_download_map", lambda *_args: False)
+
+    assert _fetch(monkeypatch, tmp_path, "unit-a") == 0
+    out = capsys.readouterr().out
+    assert (
+        f"no test-impact-map-unit-a in any of the 2 newest trusted master runs (newest {newest})"
+        in out
+    )
+    assert "running the whole slice" in out
+    # The failed attempts must not leave a half-downloaded map behind: `select`
+    # keys off the file's presence and a stale/empty blob would be trusted.
+    assert not (tmp_path / "maps" / "test-impact-map-unit-a.json").exists()
+
+
+def test_a_head_repository_of_null_is_rejected(api: FakeGitHub) -> None:
+    # Deleted forks come back with head_repository: null, which must not match.
+    _with_runs(api, [_run(id=7, head_repository=None)])
     assert ti._trusted_runs(REPO) == []
 
 
 def test_fetch_json_shape_matches_the_real_api(tmp_path: Path) -> None:
     # Guards the field names the rejection rules read. Recorded from
-    # `gh api repos/:owner/:repo/actions/workflows/main.yml/runs`.
+    # `gh api repos/:owner/:repo/actions/workflows/ci.yml/runs`.
     sample = json.loads(
         json.dumps(
             {
@@ -327,3 +407,194 @@ def test_fetch_json_shape_matches_the_real_api(tmp_path: Path) -> None:
     assert run["event"] == "push"
     assert run["head_repository"]["full_name"] == REPO
     assert isinstance(run["id"], int)
+
+
+def _git_in(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=root, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def test_a_test_added_on_master_after_the_map_is_selected(tmp_path: Path) -> None:
+    """The map at A knows nothing of the test master added at B, so diffing from B dropped it."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "master", str(origin)], check=True)
+    root = tmp_path / "repo"
+    api = root / "apps" / "api"
+    (api / "app").mkdir(parents=True)
+    (api / "tests" / "unit").mkdir(parents=True)
+    (api / "app" / "foo.py").write_text("x = 1\n")
+    (api / "tests" / "unit" / "test_foo.py").write_text("def test_foo():\n    pass\n")
+    _git_in(root, "init", "-q", "-b", "master")
+    _git_in(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    _git_in(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "A")
+    map_sha = _git_in(root, "rev-parse", "HEAD")
+    (api / "tests" / "unit" / "test_new.py").write_text("def test_new():\n    pass\n")
+    _git_in(root, "add", "-A")
+    _git_in(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "B")
+    _git_in(root, "remote", "add", "origin", str(origin))
+    _git_in(root, "push", "-q", "origin", "master")
+    _git_in(root, "checkout", "-qb", "pr")
+    (api / "app" / "foo.py").write_text("x = 2\n")
+    _git_in(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "C")
+
+    impact_map = tmp_path / "map.json"
+    impact_map.write_text(
+        json.dumps(
+            {
+                "meta": {"sha": map_sha, "slice": "unit-a", "version": 1},
+                "files": {"app/foo.py": ["tests/unit/test_foo.py::test_foo"]},
+                # Unrelated tests, so one selected test stays under ALL_THRESHOLD.
+                "test_files": {
+                    "tests/unit/test_foo.py": ["tests/unit/test_foo.py::test_foo"],
+                    **{
+                        f"tests/unit/test_o{i}.py": [f"tests/unit/test_o{i}.py::t"]
+                        for i in range(9)
+                    },
+                },
+            }
+        )
+    )
+    out = tmp_path / "selected.txt"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CI / "test_impact.py"),
+            "select",
+            "--slice",
+            "unit-a",
+            "--map",
+            str(impact_map),
+            "--out",
+            str(out),
+            "--repo-root",
+            str(api),
+        ],
+        cwd=root,
+        env={**os.environ, "BASE_REF": "master", "SLICE_PATHS": "tests/unit"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "tests/unit/test_new.py" in out.read_text(), out.read_text()
+
+
+def test_a_map_commit_outside_a_shallow_checkout_is_fetched_not_given_up_on(tmp_path: Path) -> None:
+    """A depth-limited runner checkout lacked the map's commit, and selection quietly ran ALL."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "master", str(origin)], check=True)
+    # GitHub serves any reachable commit by its SHA; a local bare repo does only when asked.
+    _git_in(origin, "config", "uploadpack.allowReachableSHA1InWant", "true")
+    seed = tmp_path / "seed"
+    api = seed / "apps" / "api"
+    (api / "app").mkdir(parents=True)
+    (api / "tests" / "unit").mkdir(parents=True)
+    (api / "app" / "foo.py").write_text("x = 1\n")
+    (api / "tests" / "unit" / "test_foo.py").write_text("def test_foo():\n    pass\n")
+    ident = ["-c", "user.email=t@t", "-c", "user.name=t"]
+    _git_in(seed, "init", "-q", "-b", "master")
+    _git_in(seed, "add", "-A")
+    _git_in(seed, *ident, "commit", "-qm", "A")
+    map_sha = _git_in(seed, "rev-parse", "HEAD")
+    (api / "tests" / "unit" / "test_new.py").write_text("def test_new():\n    pass\n")
+    _git_in(seed, "add", "-A")
+    _git_in(seed, *ident, "commit", "-qm", "B")
+    _git_in(seed, "push", "-q", str(origin), "master")
+    root = tmp_path / "repo"
+    subprocess.run(["git", "clone", "-q", "--depth=1", f"file://{origin}", str(root)], check=True)
+    (root / "apps" / "api" / "app" / "foo.py").write_text("x = 2\n")
+    _git_in(root, *ident, "commit", "-qam", "C")
+
+    impact_map = tmp_path / "map.json"
+    impact_map.write_text(
+        json.dumps(
+            {
+                "meta": {"sha": map_sha, "slice": "unit-a", "version": 1},
+                "files": {"app/foo.py": ["tests/unit/test_foo.py::test_foo"]},
+                "test_files": {
+                    "tests/unit/test_foo.py": ["tests/unit/test_foo.py::test_foo"],
+                    **{
+                        f"tests/unit/test_o{i}.py": [f"tests/unit/test_o{i}.py::t"]
+                        for i in range(9)
+                    },
+                },
+            }
+        )
+    )
+    out = tmp_path / "selected.txt"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CI / "test_impact.py"),
+            "select",
+            "--slice",
+            "unit-a",
+            "--map",
+            str(impact_map),
+            "--out",
+            str(out),
+            "--repo-root",
+            str(root / "apps" / "api"),
+        ],
+        cwd=root,
+        env={**os.environ, "SLICE_PATHS": "tests/unit"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    selected = out.read_text().split()
+    assert "tests/unit/test_foo.py::test_foo" in selected, result.stdout
+    assert "ALL" not in selected
+
+
+def test_fetching_the_maps_commit_never_makes_a_full_checkout_shallow(tmp_path: Path) -> None:
+    """A --depth=1 fetch writes .git/shallow, and the persistent box's later merge-base diffs fail."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "master", str(origin)], check=True)
+    _git_in(origin, "config", "uploadpack.allowReachableSHA1InWant", "true")
+    seed = tmp_path / "seed"
+    api = seed / "apps" / "api"
+    (api / "app").mkdir(parents=True)
+    (api / "app" / "foo.py").write_text("x = 1\n")
+    ident = ["-c", "user.email=t@t", "-c", "user.name=t"]
+    _git_in(seed, "init", "-q", "-b", "master")
+    _git_in(seed, "add", "-A")
+    _git_in(seed, *ident, "commit", "-qm", "A")
+    _git_in(seed, "push", "-q", str(origin), "master")
+    root = tmp_path / "repo"
+    subprocess.run(["git", "clone", "-q", f"file://{origin}", str(root)], check=True)
+    # The map was recorded on a commit the checkout has never seen.
+    _git_in(seed, "checkout", "-qb", "later")
+    (api / "app" / "foo.py").write_text("x = 3\n")
+    _git_in(seed, *ident, "commit", "-qam", "M")
+    map_sha = _git_in(seed, "rev-parse", "HEAD")
+    _git_in(seed, "push", "-q", str(origin), "later")
+
+    impact_map = tmp_path / "map.json"
+    impact_map.write_text(
+        json.dumps(
+            {
+                "meta": {"sha": map_sha, "slice": "unit-a", "version": 1},
+                "files": {"app/foo.py": ["tests/unit/test_foo.py::test_foo"]},
+                "test_files": {"tests/unit/test_foo.py": ["tests/unit/test_foo.py::test_foo"]},
+            }
+        )
+    )
+    subprocess.run(
+        [
+            sys.executable, str(CI / "test_impact.py"), "select", "--slice", "unit-a",
+            "--map", str(impact_map), "--out", str(tmp_path / "selected.txt"),
+            "--repo-root", str(root / "apps" / "api"),
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )  # fmt: skip
+
+    assert _git_in(root, "cat-file", "-t", map_sha) == "commit"
+    assert not (root / ".git" / "shallow").exists()

@@ -15,7 +15,10 @@ from shared.py.wide_events import log
 class BaseAppSettings(BaseSettings):
     """Base configuration settings for all GAIA applications."""
 
-    ENV: Literal["production", "staging", "development"] = "production"
+    # "selfhost" is admitted here (not per-app) because every app that extends
+    # this base must boot under a self-hosted deployment; redeclaring ENV with
+    # a wider Literal in a subclass is an incompatible override under mypy.
+    ENV: Literal["production", "staging", "development", "selfhost"] = "production"
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
     model_config = SettingsConfigDict(

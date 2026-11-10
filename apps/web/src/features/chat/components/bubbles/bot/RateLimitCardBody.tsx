@@ -1,10 +1,25 @@
 import { Alert01Icon, CheckmarkCircle02Icon, Clock01Icon } from "@icons";
+import type { ReactNode } from "react";
 
 const PRO_BENEFITS = [
   "Much higher limits on every feature",
   "Unlimited chat messages",
   "Priority responses and faster processing",
 ];
+
+interface LimitExplanationProps {
+  message?: string;
+  children: ReactNode;
+}
+
+/** What happened: the backend's copy wins when sent (it names the limit that bound), else the generic copy. */
+function LimitExplanation({ message, children }: LimitExplanationProps) {
+  return (
+    <p className="text-xs leading-relaxed text-zinc-400">
+      {message ?? children}
+    </p>
+  );
+}
 
 interface UpgradeRequiredBodyProps {
   featureName: string;
@@ -20,18 +35,12 @@ export function UpgradeRequiredBody({
 }: UpgradeRequiredBodyProps) {
   return (
     <>
-      {/* Explanation — backend copy wins when provided (capped feature),
-          otherwise the generic plan-gated copy applies. */}
-      {message ? (
-        <p className="text-xs leading-relaxed text-zinc-400">{message}</p>
-      ) : (
-        <p className="text-xs leading-relaxed text-zinc-400">
-          <span className="font-medium text-zinc-200">{featureName}</span> is a{" "}
-          <span className="font-medium text-warning-400">{planName}</span>{" "}
-          feature and isn&apos;t included in your current plan. Upgrade to
-          unlock it and get significantly higher limits across every feature.
-        </p>
-      )}
+      <LimitExplanation message={message}>
+        <span className="font-medium text-zinc-200">{featureName}</span> is a{" "}
+        <span className="font-medium text-warning-400">{planName}</span> feature
+        and isn&apos;t included in your current plan. Upgrade to unlock it and
+        get significantly higher limits across every feature.
+      </LimitExplanation>
 
       {/* Benefits */}
       <div className="flex flex-col gap-1.5">
@@ -48,24 +57,25 @@ export function UpgradeRequiredBody({
 
 interface DailyLimitBodyProps {
   featureName: string;
-  isPro: boolean;
+  showUpgradeNudge: boolean;
   resetInfo: { label: string; detail: string } | null;
+  message?: string;
 }
 
-/** Daily cap: say when it lifts, and nudge only when there is a tier above. */
+/** Usage cap: say what bound and when it lifts, and nudge only when there is a tier above. */
 export function DailyLimitBody({
   featureName,
-  isPro,
+  showUpgradeNudge,
   resetInfo,
+  message,
 }: DailyLimitBodyProps) {
   return (
     <>
-      {/* What happened */}
-      <p className="text-xs leading-relaxed text-zinc-400">
+      <LimitExplanation message={message}>
         You&apos;ve used all your{" "}
         <span className="font-medium text-zinc-200">{featureName}</span> calls
         for today. Your limit will automatically reset — no action needed.
-      </p>
+      </LimitExplanation>
 
       {/* Reset time block */}
       {resetInfo && (
@@ -82,8 +92,7 @@ export function DailyLimitBody({
         </div>
       )}
 
-      {/* Upgrade nudge — hidden for users already on the top tier */}
-      {!isPro && (
+      {showUpgradeNudge && (
         <div className="flex items-start gap-2 px-3">
           <Alert01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
           <p className="text-xs text-zinc-400">

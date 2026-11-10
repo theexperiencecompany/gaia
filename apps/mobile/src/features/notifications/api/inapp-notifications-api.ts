@@ -1,3 +1,4 @@
+import type { QuietHours } from "@gaia/shared/api/generated";
 import { apiService } from "@/lib/api";
 import type {
   ChannelPlatform,
@@ -7,7 +8,6 @@ import type {
   NotificationActionResponse,
   NotificationPreferences,
   PlatformLinksResponse,
-  QuietHours,
 } from "../types/inapp-notification-types";
 
 export const BULK_NOTIFICATION_ACTION = {
@@ -190,16 +190,12 @@ export const inAppNotificationsApi = {
     );
   },
 
-  getQuietHours: async (): Promise<QuietHours> => {
-    return apiService.get<QuietHours>("/notifications/preferences/quiet-hours");
-  },
+  // The hours in which GAIA holds what can wait; the same setting the web app edits.
+  getQuietHours: async (): Promise<QuietHours> =>
+    apiService.get<QuietHours>("/user/quiet-hours"),
 
-  updateQuietHours: async (quietHours: QuietHours): Promise<QuietHours> => {
-    return apiService.put<QuietHours>(
-      "/notifications/preferences/quiet-hours",
-      quietHours,
-    );
-  },
+  updateQuietHours: async (hours: QuietHours): Promise<QuietHours> =>
+    apiService.patch<QuietHours>("/user/quiet-hours", hours),
 
   getChannelPreferences: async (): Promise<ChannelPreferences> => {
     return apiService.get<ChannelPreferences>(

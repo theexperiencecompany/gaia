@@ -19,7 +19,7 @@ tests:
             exp_annotations:
               description: >-
                 Data loss is happening now, not merely threatened. Enqueued ARQ jobs can vanish so reminders and workflows silently never run, in-flight SSE buffers can be evicted mid-response so chat replies truncate, and rate-limit counters reset. This is the companion to the Redis memory warning — that one predicts, this one confirms.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-evictions
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-redis-evictions
               __dashboardUid__: gaia-databases
               __panelId__: '12'
 

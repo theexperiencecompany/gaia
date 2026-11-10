@@ -1,7 +1,7 @@
 """Durable and indexed storage for uploaded files.
 
 Three backends, one per concern:
-- Cloudinary — the durable blob copy.
+- The blob store (app.services.blob_store) — the durable blob copy.
 - MongoDB (via file_repository) — authoritative file metadata + summary.
 - ChromaDB documents — the vector index powering search_uploaded_files.
 
@@ -9,13 +9,8 @@ ChromaDB writes are best-effort: a failure degrades search but must never fail
 the upload, so the blob + metadata are still persisted.
 """
 
-import asyncio
-import io
-from typing import cast
 import uuid
 
-import cloudinary.uploader
-from fastapi import HTTPException
 from langchain_core.documents import Document
 
 from app.constants.files import CHROMA_DOCUMENTS_COLLECTION
@@ -24,38 +19,6 @@ from app.db.repositories.files import file_repository
 from app.models.files_models import FileDocument
 from app.services.files.summaries import GeneratedSummary
 from shared.py.wide_events import log
-
-
-async def upload_to_cloudinary(content: bytes, resource_type: str, public_id: str) -> str:
-    """Upload bytes to Cloudinary and return the durable secure URL."""
-    result = await asyncio.to_thread(
-        cloudinary.uploader.upload,
-        io.BytesIO(content),
-        resource_type=resource_type,
-        public_id=public_id,
-        overwrite=True,
-    )
-    url = result.get("secure_url")
-    if not url:
-        log.error("[files] cloudinary upload returned no secure_url")
-        raise HTTPException(status_code=500, detail="Invalid response from file upload service")
-    # cloudinary ships no type stubs; secure_url is documented as a string.
-    return cast(str, url)
-
-
-def destroy_in_cloudinary(public_id: str) -> None:
-    """Best-effort delete of a Cloudinary blob."""
-    try:
-        result = cloudinary.uploader.destroy(public_id)
-        if result.get("result") != "ok":
-            log.warning("[files] cloudinary delete did not confirm", result=result)
-    except Exception as e:
-        log.error(
-            "[files] cloudinary delete failed",
-            error=str(e),
-            error_type=type(e).__name__,
-            exc_info=True,
-        )
 
 
 async def insert_metadata(document: FileDocument) -> None:

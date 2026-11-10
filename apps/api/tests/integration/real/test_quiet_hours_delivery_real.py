@@ -17,11 +17,14 @@ import time_machine
 
 from app.agents.core.background import platform_chat
 from app.constants.notifications import DEFERRED_CHAT_MESSAGE_TASK, ProactiveMessageClass
+from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
-from app.models.notification.notification_models import QuietHours
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.bot_service import BotService
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
+from app.utils.redis_utils import RedisPoolManager
 from app.worker import WorkerSettings
 from tests.helpers import worker_redis_url
 
@@ -32,9 +35,9 @@ OWNER = UserDocument(
     id="6812f0b3c9a14e2b7d5a91cc",
     email="owner@gaia.local",
     timezone="Asia/Kolkata",
-    quiet_hours=QuietHours(start_hour=22, end_hour=8),
+    quiet_hours=QuietHours(enabled=True, start_hour=22, end_hour=8),
 )
-CHANNEL = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-7")
+CHANNEL = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-7", basis="priority")
 
 
 def _registered(name: str) -> Function:
@@ -59,11 +62,9 @@ async def arq_pool(redis_url: str) -> AsyncIterator[ArqRedis]:
 async def test_a_message_held_overnight_is_posted_when_the_window_ends(arq_pool: ArqRedis) -> None:
     publish = AsyncMock(return_value=OutboundResult.PUBLISHED)
     with (
-        patch.object(platform_chat.user_repository, "get", AsyncMock(return_value=OWNER)),
-        patch.object(platform_chat.RedisPoolManager, "get_pool", AsyncMock(return_value=arq_pool)),
-        patch.object(
-            platform_chat.BotService, "get_or_create_session", AsyncMock(return_value="dm-conv")
-        ),
+        patch.object(user_repository, "get", AsyncMock(return_value=OWNER)),
+        patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=arq_pool)),
+        patch.object(BotService, "get_or_create_session", AsyncMock(return_value="dm-conv")),
         patch.object(platform_chat, "update_messages", AsyncMock()),
         patch.object(platform_chat, "publish_outbound_message", publish),
         patch.object(platform_chat, "record_platform_delivery", AsyncMock()),

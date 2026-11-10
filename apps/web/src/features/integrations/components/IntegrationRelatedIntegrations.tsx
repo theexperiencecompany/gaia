@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { integrationsApi } from "../api/integrationsApi";
+import type { CommunityIntegration } from "../types";
 import { PublicIntegrationCard } from "./PublicIntegrationCard";
 
 interface IntegrationRelatedIntegrationsProps {
@@ -10,10 +11,10 @@ interface IntegrationRelatedIntegrationsProps {
   readonly currentSlug: string;
   /** Category used to find similar integrations. */
   readonly category: string;
-  /** Name of the current integration, for the section copy. */
-  readonly integrationName?: string;
   /** Max number of related integrations to show. */
   readonly limit?: number;
+  /** Server-fetched siblings; when present no client fetch runs. */
+  readonly initialIntegrations?: CommunityIntegration[];
 }
 
 function getCategoryLabel(category: string): string {
@@ -29,8 +30,8 @@ function getCategoryLabel(category: string): string {
 export function IntegrationRelatedIntegrations({
   currentSlug,
   category,
-  integrationName,
   limit = 6,
+  initialIntegrations,
 }: IntegrationRelatedIntegrationsProps) {
   const { data, isLoading } = useQuery({
     queryKey: ["related-integrations", category, currentSlug, limit],
@@ -41,12 +42,12 @@ export function IntegrationRelatedIntegrations({
         limit: limit + 1,
       }),
     staleTime: 5 * 60 * 1000,
-    enabled: !!category,
+    enabled: !initialIntegrations && !!category,
   });
 
-  if (isLoading) return null;
+  if (!initialIntegrations && isLoading) return null;
 
-  const integrations = (data?.integrations ?? [])
+  const integrations = (initialIntegrations ?? data?.integrations ?? [])
     .filter((integration) => integration.slug !== currentSlug)
     .slice(0, limit);
 
@@ -59,9 +60,8 @@ export function IntegrationRelatedIntegrations({
           Related integrations
         </h2>
         <p className="text-sm leading-relaxed text-zinc-400">
-          {integrationName
-            ? `More ${getCategoryLabel(category)} integrations like ${integrationName} you can connect to GAIA.`
-            : "More integrations in this category you can connect to GAIA."}
+          More {getCategoryLabel(category)} integrations you can connect to
+          GAIA.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">

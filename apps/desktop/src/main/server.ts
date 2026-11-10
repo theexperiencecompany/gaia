@@ -24,6 +24,7 @@ import {
   getWindowRoute,
   isProductionServer,
 } from "./server-config";
+import { getDesktopSettings } from "./settings";
 
 /** Milliseconds to wait for the server to report ready before proceeding. */
 const SERVER_STARTUP_TIMEOUT_MS = 15_000;
@@ -196,6 +197,8 @@ export async function startNextServer(): Promise<void> {
 
       // Unexpected post-startup crash — attempt to recover.
       console.error(`Next.js server crashed unexpectedly (code ${code})`);
+      const localOrigin = `${getServerUrl()}/`;
+      const { selfHostOrigin } = getDesktopSettings();
 
       if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
         console.error(
@@ -218,6 +221,12 @@ export async function startNextServer(): Promise<void> {
           // islands to the wrong page, silently breaking them until restart.
           for (const win of BrowserWindow.getAllWindows()) {
             if (win.isDestroyed()) continue;
+            // Windows on a self-hosted server never used this one.
+            if (
+              selfHostOrigin &&
+              !win.webContents.getURL().startsWith(localOrigin)
+            )
+              continue;
             const route = getWindowRoute(win);
             if (!route) continue; // splash / untracked windows keep their page
             win.loadURL(`${newUrl}${route}`).catch(console.error);

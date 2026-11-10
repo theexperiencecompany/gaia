@@ -1,46 +1,54 @@
 import * as fs from "fs";
 import * as path from "path";
 import {
+  runConcurrentInteractiveCommands,
+  runInteractiveCommand,
+} from "../../lib/child-process.js";
+import {
+  DEV_LOG_FILE,
+  isPidAlive,
+  readStoredDevPid,
+} from "../../lib/dev-processes.js";
+import {
   portOverridesToDockerEnv,
   readDockerComposePortOverrides,
 } from "../../lib/env-writer.js";
+import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
+import { DEV_DOCKER_DIR, selfhostDir } from "../../lib/paths.js";
 import {
-  runConcurrentInteractiveCommands,
-  runInteractiveCommand,
-} from "../../lib/interactive.js";
-import {
-  DEV_LOG_FILE,
-  detectSetupMode,
-  findRepoRoot,
-  isPidAlive,
-  readStoredDevPid,
+  composeFileArgs,
+  getEnvFileArgs,
+  selfhostComposeFiles,
 } from "../../lib/service-starter.js";
+import { printHeader } from "../../ui/header/header-lines.js";
 
-function getDockerEnvFileArgs(dockerDir: string): string[] {
-  const envPath = path.join(dockerDir, ".env");
-  if (fs.existsSync(envPath)) {
-    return ["--env-file", ".env"];
-  }
-  return [];
+function out(line: string): void {
+  process.stdout.write(`${line}\n`);
 }
 
 export async function runLogs(): Promise<void> {
-  const repoPath = findRepoRoot();
+  await printHeader({ showStatus: false });
+  const repoPath = findInstallRoot();
   if (!repoPath) {
     throw new Error(
-      "Could not find GAIA repository. Run from within a cloned gaia repo.",
+      "GAIA isn't installed here, so it has no logs yet.\nInstall it with 'gaia up'.",
     );
   }
 
   const setupMode = await detectSetupMode(repoPath);
   if (!setupMode) {
     throw new Error(
-      "No .env file found. Run 'gaia init' for fresh setup, or 'gaia setup' to configure an existing repo.",
+      "This GAIA install isn't set up yet, so it has no logs.\nFinish it with 'gaia up'.",
     );
   }
+  out("  Following GAIA's logs. Ctrl-C stops.");
+  out("");
 
-  const dockerDir = path.join(repoPath, "infra", "docker");
-  const envArgs = getDockerEnvFileArgs(dockerDir);
+  const dockerDir =
+    setupMode === "selfhost"
+      ? selfhostDir(repoPath)
+      : path.join(repoPath, DEV_DOCKER_DIR);
+  const envArgs = getEnvFileArgs(dockerDir);
   const portOverrides = readDockerComposePortOverrides(repoPath);
   const dockerEnv =
     Object.keys(portOverrides).length > 0
@@ -52,8 +60,7 @@ export async function runLogs(): Promise<void> {
       "docker",
       [
         "compose",
-        "-f",
-        "docker-compose.selfhost.yml",
+        ...composeFileArgs(selfhostComposeFiles()),
         ...envArgs,
         "logs",
         "-f",
@@ -73,7 +80,7 @@ export async function runLogs(): Promise<void> {
     typeof devPid === "number" && isPidAlive(devPid);
 
   if (fs.existsSync(devLogPath) && isDeveloperProcessAlive) {
-    console.log("Streaming app and infrastructure logs...");
+    out("  App and infrastructure logs:");
     if (process.platform === "win32") {
       await runConcurrentInteractiveCommands([
         {
@@ -109,15 +116,8 @@ export async function runLogs(): Promise<void> {
     return;
   }
 
-  if (fs.existsSync(devLogPath) && !isDeveloperProcessAlive) {
-    console.log(
-      "Detected stale developer app logs from a previous run. Streaming Docker logs only.",
-    );
-    await runInteractiveCommand("docker", dockerArgs, dockerDir, dockerEnv);
-  } else {
-    console.log(
-      "No active developer process detected. Streaming Docker service logs. Run `gaia dev` in another terminal for live Nx app logs.",
-    );
-    await runInteractiveCommand("docker", dockerArgs, dockerDir, dockerEnv);
-  }
+  out(
+    "  'gaia dev' isn't running, so these are the Docker services' logs only.",
+  );
+  await runInteractiveCommand("docker", dockerArgs, dockerDir, dockerEnv);
 }

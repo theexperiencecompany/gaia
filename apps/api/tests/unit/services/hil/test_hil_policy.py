@@ -21,8 +21,9 @@ from langchain_core.tools import BaseTool
 import pytest
 
 from app.constants.execute import EXECUTE_TOOL_NAME
-from app.models.hil_models import HILPreferences
+from app.models.hil_models import HILMode, HILPreferences
 from app.services.hil.policy import (
+    gated_tool_key,
     gated_tool_object,
     has_pausing_sibling,
     is_gated,
@@ -41,7 +42,7 @@ from .conftest import (
 MODULE = "app.services.hil.policy"
 
 
-def prefs(mode: str = "always_ask", **overrides: bool) -> HILPreferences:
+def prefs(mode: HILMode = "always_ask", **overrides: bool) -> HILPreferences:
     return HILPreferences(mode=mode, tool_overrides=overrides)
 
 
@@ -84,7 +85,7 @@ class TestResolvePolicy:
         ],
     )
     async def test_mode_and_destructiveness_resolve_to_the_right_policy(
-        self, mode: str, destructive: bool, expected: str
+        self, mode: HILMode, destructive: bool, expected: str
     ) -> None:
         with (
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs(mode))),
@@ -157,6 +158,57 @@ class TestOverrides:
         # would let one tool's "always allow" silently ungate every other tool.
         with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)):
             assert await is_gated(prefs(list_files=False), "send_email", make_tool()) is True
+
+
+def _mcp_tool(name: str, *, integration_id: str, server_name: str | None = None) -> BaseTool:
+    return make_tool(
+        name=name,
+        metadata={"integration_id": integration_id, "mcp_server_name": server_name or name},
+    )
+
+
+class TestScopedOverrides:
+    """MCP overrides are keyed per server on the server's own tool name."""
+
+    async def test_an_override_on_one_server_does_not_apply_to_the_same_name_on_another(
+        self,
+    ) -> None:
+        overrides = HILPreferences(
+            mode="always_ask", tool_overrides={"mcp:srv_a:delete_item": False}
+        )
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)):
+            on_a = await is_gated(
+                overrides, "delete_item", _mcp_tool("delete_item", integration_id="srv_a")
+            )
+            on_b = await is_gated(
+                overrides, "delete_item", _mcp_tool("delete_item", integration_id="srv_b")
+            )
+        assert on_a is False
+        assert on_b is True
+
+    async def test_the_override_survives_a_collision_rename(self) -> None:
+        overrides = HILPreferences(
+            mode="always_ask", tool_overrides={"mcp:srv_a:delete_item": False}
+        )
+        renamed = _mcp_tool(
+            "posthog_delete_item", integration_id="srv_a", server_name="delete_item"
+        )
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)):
+            assert await is_gated(overrides, "posthog_delete_item", renamed) is False
+
+    async def test_a_bare_name_override_does_not_reach_an_mcp_tool_of_that_name(self) -> None:
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)):
+            gated = await is_gated(
+                prefs(delete_item=False),
+                "delete_item",
+                _mcp_tool("delete_item", integration_id="srv_a"),
+            )
+        assert gated is True
+
+    async def test_a_registry_tool_override_is_still_keyed_by_its_bare_name(self) -> None:
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)):
+            gated = await is_gated(prefs(GMAIL_SEND_EMAIL=False), "GMAIL_SEND_EMAIL", make_tool())
+        assert gated is False
 
 
 class TestPreferencesFailure:
@@ -747,6 +799,19 @@ class TestTheRealToolBehindACall:
             "error": "mcp down",
             "error_type": "RuntimeError",
         }
+
+    async def test_a_registry_tools_key_is_its_bare_name(self) -> None:
+        request = make_request(name="send_email", tool=make_tool(name="send_email"))
+        with patch(f"{MODULE}.resolve_tool", new=resolver_returning()):
+            assert await gated_tool_key(request, USER_ID, "send_email") == "send_email"
+
+    async def test_a_proxied_mcp_tools_key_is_scoped_to_its_server(self) -> None:
+        real = _mcp_tool("posthog_delete_item", integration_id="srv_a", server_name="delete_item")
+        with patch(f"{MODULE}.resolve_tool", new=resolver_returning(real)):
+            key = await gated_tool_key(
+                _proxied("posthog_delete_item"), USER_ID, "posthog_delete_item"
+            )
+        assert key == "mcp:srv_a:delete_item"
 
     async def test_a_proxied_calls_real_hint_gates_it(self) -> None:
         real = make_tool(name="mcp_wipe", description="Tidy up.", metadata=_HINTED)

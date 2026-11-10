@@ -7,10 +7,9 @@ import { homepageFAQs } from "@/lib/faq";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
-  generateOrganizationSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
-  generateWebSiteSchema,
   siteConfig,
 } from "@/lib/seo";
 
@@ -21,6 +20,8 @@ export const revalidate = 3600;
 
 export const metadata: Metadata = generatePageMetadata({
   title: siteConfig.name,
+  description:
+    "GAIA is the proactive personal AI assistant that triages your email, plans your calendar, and runs your workflows, right inside WhatsApp and Telegram.",
   path: "/",
   keywords: [
     "personal AI assistant",
@@ -38,8 +39,6 @@ export const metadata: Metadata = generatePageMetadata({
 
 export default function LandingPage() {
   const latestRelease = getLatestRelease();
-  const organizationSchema = generateOrganizationSchema();
-  const websiteSchema = generateWebSiteSchema();
   const webPageSchema = generateWebPageSchema(
     siteConfig.name,
     siteConfig.description,
@@ -60,11 +59,10 @@ export default function LandingPage() {
           it just wastes bandwidth on the LCP path. */}
       <JsonLd
         data={[
-          organizationSchema,
-          websiteSchema,
           webPageSchema,
           breadcrumbSchema,
           faqSchema,
+          generateProductSchema(),
         ]}
       />
       <LandingPageClient latestRelease={latestRelease} />

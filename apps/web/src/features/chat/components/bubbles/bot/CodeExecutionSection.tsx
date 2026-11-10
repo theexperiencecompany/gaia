@@ -4,9 +4,9 @@ import dynamic from "next/dynamic";
 import type React from "react";
 import { useState } from "react";
 
-import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
+import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
+import { copyWithFeedback } from "@/lib/clipboard";
 import type { CodeData } from "@/types/features/toolDataTypes";
-
 import CodeExecutionOutput from "./CodeExecutionOutput";
 
 // recharts (~100 KB gz) is only needed when a code-execution result actually
@@ -25,8 +25,8 @@ const createCopyHandler = (
   text: string,
   setCopied: (value: boolean) => void,
 ) => {
-  return () => {
-    navigator.clipboard.writeText(text);
+  return async () => {
+    if (!(await copyWithFeedback(text))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -66,9 +66,9 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           }}
         >
           <div className="w-full max-w-[30vw] overflow-hidden rounded-[15px] rounded-b-[20px]">
-            <CodeBlock className={`language-${code_data.language}`}>
+            <ChatCodeBlock className={`language-${code_data.language}`}>
               {code_data.code}
-            </CodeBlock>
+            </ChatCodeBlock>
           </div>
         </AccordionItem>
 

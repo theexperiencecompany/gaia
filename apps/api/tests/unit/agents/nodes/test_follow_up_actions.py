@@ -1,14 +1,14 @@
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from prometheus_client import REGISTRY
 import pytest
 
+from app.agents.context.slots import PRESENCE_NOTE_MARKER, mark
 from app.agents.core.nodes.follow_up_actions_node import (
     _FOLLOW_UP_CONTEXT_MAX_CHARS,
     _PREVIOUS_ACTIONS_MESSAGE_WINDOW,
-    SUGGEST_FOLLOW_UP_ACTIONS,
     FollowUpActions,
     _delegated_to_executor,
     _pretty_print_messages,
@@ -18,6 +18,7 @@ from app.agents.core.nodes.follow_up_actions_node import (
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
 from app.models import integration_models
+from app.templates.docstrings.follow_up_actions_tool_docs import SUGGEST_FOLLOW_UP_ACTIONS
 from tests.helpers import captured_wide_event
 
 
@@ -149,6 +150,21 @@ class TestFollowUpActionsNode:
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
+
+        assert result is state
+        assert {"follow_up_actions": []} in written_values
+
+    @pytest.mark.asyncio
+    async def test_a_state_without_messages_writes_empty_actions(self):
+        state = {"selected_tool_ids": [], "todos": []}
+        written_values = []
+        mock_writer = MagicMock(side_effect=written_values.append)
+
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+            return_value=mock_writer,
+        ):
+            result = await follow_up_actions_node(state, _make_config(), _make_store())
 
         assert result is state
         assert {"follow_up_actions": []} in written_values
@@ -549,21 +565,21 @@ def _call(name: str) -> dict[str, object]:
 
 class TestDelegatedToExecutor:
     def test_a_call_to_the_executor_this_turn_is_delegation(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             HumanMessage(content="hi"),
             AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
         ]
         assert _delegated_to_executor(messages) is True
 
     def test_a_call_to_another_tool_is_not_delegation(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             HumanMessage(content="hi"),
             AIMessage(content="", tool_calls=[_call("web_search")]),
         ]
         assert _delegated_to_executor(messages) is False
 
     def test_a_non_ai_message_before_the_call_does_not_hide_it(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             HumanMessage(content="hi"),
             ToolMessage(content="ok", tool_call_id="x"),
             AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
@@ -571,7 +587,7 @@ class TestDelegatedToExecutor:
         assert _delegated_to_executor(messages) is True
 
     def test_a_delegation_before_the_last_human_turn_does_not_count(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             HumanMessage(content="first"),
             AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
             HumanMessage(content="second"),
@@ -710,3 +726,26 @@ class TestPreviousActionsContext:
         llm.assert_not_awaited()
         (error,) = [e for e in event["errors"] if e.get("error") == "mongo down"]
         assert error["user_id"] == "user-123"
+
+
+class TestThePresenceNoteIsNotContext:
+    """GAIA's surface-change note is not part of the exchange follow-ups react to."""
+
+    async def test_the_note_never_reaches_the_follow_up_context(self) -> None:
+        note = mark(
+            HumanMessage(content="[Surface change: now on Telegram.]"), PRESENCE_NOTE_MARKER
+        )
+        messages = [
+            HumanMessage(content="first question"),
+            AIMessage(content="first answer"),
+            note,
+            HumanMessage(content="Weather?"),
+            AIMessage(content="Sunny."),
+        ]
+
+        _, generate = await TestExecutorDelegationSkip._run(messages)
+
+        context = generate.await_args.args[0]
+        assert "Surface change" not in context
+        # The note does not take a slot in the four-message window either.
+        assert "first question" in context

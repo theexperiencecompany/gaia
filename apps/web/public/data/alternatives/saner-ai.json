@@ -1,0 +1,110 @@
+{
+  "slug": "saner-ai",
+  "name": "Saner.AI",
+  "domain": "saner.ai",
+  "category": "notes",
+  "tagline": "From notes about your work to an assistant that does it.",
+  "metaTitle": "Saner.AI Alternative: An AI Assistant Beyond Your Notes",
+  "metaDescription": "Looking for a Saner.AI alternative? GAIA acts on your email, calendar and tasks, runs workflows across your tools and works from chat apps and desktop.",
+  "keywords": [
+    "saner.ai alternative",
+    "saner ai alternative",
+    "saner ai alternatives",
+    "apps like saner ai",
+    "ai assistant for adhd",
+    "saner ai competitors"
+  ],
+  "whyPeopleLook": "Saner.AI is a thoughtful product for people with ADHD: one place for notes, emails and to-dos, with an assistant called Skai that organizes what you capture and drafts a plan each morning. People look for an alternative when their work outgrows the note app. They want replies drafted, meetings booked, tasks created in the tools their team already uses and routines that run on their own, and they want to reach the assistant from the chat apps they already check.",
+  "painPoints": [
+    "Email and calendar arrive as information to read, not work that gets done",
+    "No workflow builder for routines that should run on their own",
+    "Tasks live in Saner.AI rather than in the task tools your team uses",
+    "No way to reach it from WhatsApp, Telegram, Slack or iMessage",
+    "Proprietary, with no way to self-host or read the code"
+  ],
+  "gaiaReplaces": [
+    "Reading emails in Saner.AI and then replying in another app",
+    "Copying tasks from your notes into Todoist, Asana or Linear",
+    "Morning planning you redo by hand every day",
+    "Switching apps to check your calendar before booking a meeting"
+  ],
+  "gaiaAdvantages": [
+    "Drafts email replies and turns threads into tasks in your own task tool",
+    "Workflows on a schedule or triggered by Gmail, Calendar, Slack and GitHub",
+    "Reachable from iMessage, WhatsApp, Telegram, Slack and Discord",
+    "Memory of your preferences that you can view, edit and delete",
+    "Source-available, with self-hosting via Docker"
+  ],
+  "gaiaFitScore": 3,
+  "migrationSteps": [
+    "Export your notes from Saner.AI and keep the ones you still need in Notion or Google Docs",
+    "Connect Gmail or Outlook, your calendar and your task tool to GAIA",
+    "Tell GAIA the preferences and routines Saner.AI used to plan around",
+    "Rebuild your morning plan as a scheduled GAIA workflow"
+  ],
+  "faqs": [
+    {
+      "question": "What is the best Saner.AI alternative?",
+      "answer": "It depends on why you are leaving. If you want a different note app, tools such as Mem or Notion AI are closer. If you want an assistant that acts on your email, calendar and tasks and runs workflows for you, GAIA is the closer fit."
+    },
+    {
+      "question": "Does GAIA take notes like Saner.AI?",
+      "answer": "No. GAIA is not a note-taking app. It remembers what you tell it and can write to Notion or Google Docs, but it has no note editor, tagging or folders. Many people keep a note app for notes and use GAIA for the work."
+    },
+    {
+      "question": "How much does GAIA cost?",
+      "answer": "GAIA's hosted service is a paid subscription per person, with Pro at ${{PRO_MONTHLY_PRICE}}/month, and GAIA Enterprise is priced on request. The code is source-available under the PolyForm Noncommercial license, so self-hosting is free for personal, noncommercial use, and for-profit organizations self-host under an enterprise license (contact the GAIA team)."
+    },
+    {
+      "question": "How do I switch from Saner.AI to GAIA?",
+      "answer": "Export the notes you want to keep, connect your email, calendar and task tool to GAIA, then rebuild your morning plan as a scheduled workflow. Move one routine at a time."
+    }
+  ],
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "A personal AI assistant that works across email, calendar, tasks and your other connected tools",
+      "competitor": "A note-first AI assistant for ADHD that combines notes, emails and a to-do list in one app"
+    },
+    {
+      "feature": "Notes and capture",
+      "gaia": "Not a note-taking app; it remembers facts and preferences you share and can save content to Notion or Google Docs",
+      "competitor": "Core strength: capture by voice, Chrome extension, PDF upload and import, with AI tags, folders and related-note suggestions"
+    },
+    {
+      "feature": "Email",
+      "gaia": "Triages Gmail and Outlook, drafts replies and turns threads into tasks",
+      "competitor": "Pulls in Gmail and shows what needs attention; an Outlook connector arrived in late 2025 as early access"
+    },
+    {
+      "feature": "Tasks and planning",
+      "gaia": "Creates and manages tasks in GAIA, Todoist, Google Tasks, Asana, Linear and more, and plans your day on request",
+      "competitor": "Turns emails and brain dumps into tasks, prioritizes them and drafts a daily plan each morning"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Multi-step workflows on a schedule or triggered by Gmail, Google Calendar, Slack, GitHub and more",
+      "competitor": "No general workflow builder; proactive help centers on the daily plan and reminders"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot and more, plus custom MCP servers",
+      "competitor": "Gmail, Slack, Google Calendar and Google Drive, plus Outlook in early access"
+    },
+    {
+      "feature": "Where you use it",
+      "gaia": "iMessage, WhatsApp, Telegram, Slack and Discord, plus a web app and a desktop app for macOS, Windows and Linux",
+      "competitor": "Web app, Chrome extension and mobile apps for iOS and Android"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Source-available (PolyForm Noncommercial) with self-hosting via Docker; for-profit organizations self-host under an enterprise license",
+      "competitor": "Proprietary and cloud-hosted; says it does not train on, sell or share your data"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted Pro at ${{PRO_MONTHLY_PRICE}}/month per person; GAIA Enterprise priced on request",
+      "competitor": "A free plan with monthly AI limits, then paid Starter and Standard plans billed monthly or yearly"
+    }
+  ]
+}

@@ -12,7 +12,6 @@ export type {
   NotificationStatus,
   PlatformLink,
   PlatformLinksResponse,
-  QuietHours,
 } from "@gaia/shared/types";
 export {
   NOTIFICATION_CHANNELS,

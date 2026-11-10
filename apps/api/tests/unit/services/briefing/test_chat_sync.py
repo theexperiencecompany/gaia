@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.db.repositories.conversations import conversation_repository
 from app.models.conversation_models import BotReplyRow
 from app.services.briefing import chat_sync
 
@@ -15,7 +16,7 @@ _SINCE = datetime(2026, 10, 13, 8, tzinfo=UTC)
 @pytest.fixture
 def replies(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     listing = AsyncMock(return_value=[])
-    monkeypatch.setattr(chat_sync.conversation_repository, "list_bot_replies_since", listing)
+    monkeypatch.setattr(conversation_repository, "list_bot_replies_since", listing)
     return listing
 
 

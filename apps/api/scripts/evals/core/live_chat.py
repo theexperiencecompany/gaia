@@ -182,7 +182,9 @@ async def await_delivery(
             return last_seen, real_tools
         if delivered:
             last_seen = "\n".join(delivered)
-        elif real_tools:
+        elif len(bots) > 1 and real_tools:
+            # A card-only result. Cards on the ack itself (a connect card the turn
+            # streamed) are not the result: its text lands a few seconds later.
             return "", real_tools
     return last_seen, []
 

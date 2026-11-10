@@ -24,14 +24,16 @@ const { posthogMock, capture, identify, setPersonProperties } = vi.hoisted(
         setPersonProperties,
         reset: vi.fn(),
         _isIdentified: vi.fn(() => true),
+        captureException: vi.fn(),
+        get_distinct_id: vi.fn(() => "0192f0b3-anonymous"),
+        get_session_id: vi.fn(),
       },
     };
   },
 );
 
-vi.mock("posthog-js", () => ({ default: posthogMock }));
-
 import {
+  connectPostHog,
   flushPendingAnalytics,
   identifyUser,
   resetUser,
@@ -39,6 +41,8 @@ import {
 } from "@/lib/analytics";
 
 const USER_ID = "6812f0b3c9a14e2b7d5a91cc";
+
+connectPostHog(posthogMock);
 
 beforeEach(() => {
   posthogMock.__loaded = false;
@@ -52,7 +56,7 @@ beforeEach(() => {
 describe("analytics buffering before posthog.init", () => {
   it("replays identify and events in order once posthog is ready", () => {
     identifyUser(parseUserId(USER_ID), { email: "a@b.co" });
-    track("onboarding:started", { has_saved_state: false });
+    track("onboarding:checkout_retried", { reason: "declined" });
     expect(identify).not.toHaveBeenCalled();
     expect(capture).not.toHaveBeenCalled();
 
@@ -64,8 +68,8 @@ describe("analytics buffering before posthog.init", () => {
       expect.objectContaining({ email: "a@b.co" }),
     );
     expect(capture).toHaveBeenCalledWith(
-      "onboarding:started",
-      expect.objectContaining({ has_saved_state: false }),
+      "onboarding:checkout_retried",
+      expect.objectContaining({ reason: "declined" }),
     );
     // Identity has to land before the event it attributes.
     expect(identify.mock.invocationCallOrder[0]).toBeLessThan(
@@ -74,7 +78,7 @@ describe("analytics buffering before posthog.init", () => {
   });
 
   it("keeps the event's own time, not the flush time", () => {
-    track("onboarding:started", { has_saved_state: false });
+    track("onboarding:checkout_retried", { reason: "declined" });
     const queuedAt = new Date().toISOString();
 
     posthogMock.__loaded = true;
@@ -89,7 +93,7 @@ describe("analytics buffering before posthog.init", () => {
 
   it("sends straight through once initialised, and replays nothing twice", () => {
     posthogMock.__loaded = true;
-    track("onboarding:started", { has_saved_state: false });
+    track("onboarding:checkout_retried", { reason: "declined" });
     flushPendingAnalytics();
 
     expect(capture).toHaveBeenCalledTimes(1);
@@ -97,7 +101,7 @@ describe("analytics buffering before posthog.init", () => {
 
   it("keeps an identity reset that arrives after the queue is full, in order", () => {
     for (let i = 0; i < 60; i++) {
-      track("onboarding:started", { has_saved_state: false });
+      track("onboarding:checkout_retried", { reason: "declined" });
     }
     resetUser();
 

@@ -1,8 +1,8 @@
-"""Root-mounted authenticated browser live view.
+"""The browser links a user is handed: the live view, its handoff decision, recaps and step frames.
 
-Root-mounted (no /api/v1 prefix), so the recap and screenshot links can sit on a
-friendly public vhost that reverse-proxies to THIS api service. The browser host
-is never exposed directly.
+Under /api/v1/browser like every client-facing route, the one prefix the deployed
+proxies forward (with WebSocket upgrades). The browser host is never exposed
+directly; each route authenticates itself with the capability in its own URL.
 
 WS /live/{id} proxies frames and input between a viewer (the chat card, or the
 web app's full-page live view a bot link opens), dialled on the API's own
@@ -24,7 +24,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, status
 from fastapi.responses import HTMLResponse, Response
-from jose import JWTError
+from jwt import PyJWTError
 from starlette.websockets import WebSocketState
 import websockets
 
@@ -47,7 +47,7 @@ from app.services.browser.takeover_token import (
 )
 from shared.py.wide_events import log
 
-router = APIRouter(tags=["Browser"])
+router = APIRouter(prefix="/browser", tags=["Browser"])
 
 # WebSocket close code for "session unknown or has no live stream" (app 4xxx range).
 _WS_SESSION_GONE = 4404
@@ -86,7 +86,7 @@ async def _authorize(code: str, token: str | None) -> _Target | _Denied:
     else:
         try:
             claims = verify_takeover_token(token)
-        except JWTError:
+        except PyJWTError:
             return _Denied("Invalid or expired link")
         if claims.session_id != code:
             return _Denied("Link does not match this session")

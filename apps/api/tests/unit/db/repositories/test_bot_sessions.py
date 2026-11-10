@@ -197,3 +197,47 @@ class TestSessionWritesBustTheGlobalCache:
             await repo.delete_by_session_key(LEGACY_KEY)
 
         invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
+
+
+class TestDeleteForPlatformUser:
+    async def test_it_deletes_by_platform_and_account_and_reports_the_count(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        collection.delete_many = AsyncMock(return_value=MagicMock(deleted_count=2))
+
+        deleted = await repo.delete_for_platform_user(
+            platform="telegram", platform_user_id=TELEGRAM_USER
+        )
+
+        assert deleted == 2
+        assert collection.delete_many.await_args.args[0] == {
+            "platform": "telegram",
+            "platform_user_id": TELEGRAM_USER,
+        }
+
+    async def test_it_invalidates_the_global_scope(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        collection.delete_many = AsyncMock(return_value=MagicMock(deleted_count=1))
+
+        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
+            await repo.delete_for_platform_user(platform="telegram", platform_user_id=TELEGRAM_USER)
+
+        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
+
+
+class TestListSessions:
+    async def test_without_a_platform_it_scans_every_session(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        found = await repo.list_sessions()
+
+        assert collection.find.call_args.args[0] == {}
+        assert [s.session_key for s in found] == [LEGACY_KEY]
+
+    async def test_a_platform_narrows_the_scan(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        await repo.list_sessions(platform="slack")
+
+        assert collection.find.call_args.args[0] == {"platform": "slack"}

@@ -38,7 +38,7 @@ _MIN_PNG_BYTES = 20_000
 
 _HEADLINE = "Two replies need you before your 11:00 with Sequoia."
 
-_DAILY = {
+_DAILY: dict[str, Any] = {
     "kicker": "THE MORNING BRIEF",
     "date": "2026-10-14",
     "headline": _HEADLINE,

@@ -18,8 +18,6 @@ import {
 } from "../lib";
 import { CategoryBadge } from "../shared";
 
-export const runtime = "edge";
-
 interface OgIntegration {
   name?: string;
   description?: string;

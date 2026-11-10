@@ -1,15 +1,16 @@
 """Unit tests for the application lifespan PostHog config guard.
 
-The guard must never block boot: token-less environments (local dev without
-Infisical, the schemathesis live server) legitimately run without analytics —
-the SILENT loader no-ops captures. Missing config is a loud log line, not a
-fatal error. The client-init path (tokens present) must fetch the provider and
+The guard must never block boot: token-less environments (a self-hosted
+instance, local dev without Infisical, the schemathesis live server) legitimately
+run without analytics — the SILENT loader no-ops captures. Missing config is an
+error only where GAIA Cloud's product analytics are expected, never a boot failure. The client-init path (tokens present) must fetch the provider and
 close it when the lifespan ends.
 """
 
 import pytest
 from pytest_mock import MockerFixture
 
+from app.config.deployment import DeploymentKind, baseline_profile
 from app.core.lifespan import lifespan
 
 
@@ -25,9 +26,14 @@ def _boot_patches(mocker: MockerFixture) -> None:
     mocker.patch("app.core.lifespan._CONTEXT_EXECUTOR.shutdown")
 
 
-def _set_posthog(mocker: MockerFixture, token: str | None, host: str | None) -> None:
+def _set_posthog(
+    mocker: MockerFixture,
+    token: str | None,
+    host: str | None,
+    kind: DeploymentKind = DeploymentKind.PRODUCTION,
+) -> None:
     settings = mocker.patch("app.core.lifespan.settings")
-    settings.ENV = "development"
+    settings.deployment = baseline_profile(kind)
     settings.POSTHOG_PROJECT_TOKEN = token
     settings.POSTHOG_HOST = host
 
@@ -41,13 +47,13 @@ def _set_posthog(mocker: MockerFixture, token: str | None, host: str | None) -> 
         (None, None, "POSTHOG_PROJECT_TOKEN"),
     ],
 )
-async def test_missing_posthog_config_logs_loudly_but_boots(
+async def test_missing_posthog_config_in_production_logs_an_error_but_boots(
     mocker: MockerFixture,
     token: str | None,
     host: str | None,
     expected_missing: str,
 ) -> None:
-    """Any missing piece of the PostHog config is a loud startup log line, never a boot failure — no matter the ENV."""
+    """Any missing piece of GAIA Cloud's PostHog config is an error log line, never a boot failure."""
     _set_posthog(mocker, token, host)
     _boot_patches(mocker)
     log_error = mocker.patch("app.core.lifespan.log.error")
@@ -60,6 +66,26 @@ async def test_missing_posthog_config_logs_loudly_but_boots(
     assert log_error.call_args.kwargs["missing_var"] == expected_missing
     assert "PostHog not configured" in log_error.call_args.args[0]
     providers_get.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", [DeploymentKind.SELFHOST, DeploymentKind.DEVELOPMENT])
+async def test_missing_posthog_config_off_gaia_cloud_is_info_not_error(
+    mocker: MockerFixture, kind: DeploymentKind
+) -> None:
+    """Analytics off is the normal state of a self-hosted or dev instance, so every boot must not log an error."""
+    _set_posthog(mocker, None, None, kind)
+    _boot_patches(mocker)
+    log_error = mocker.patch("app.core.lifespan.log.error")
+    log_info = mocker.patch("app.core.lifespan.log.info")
+
+    async with lifespan(None):
+        pass
+
+    log_error.assert_not_called()
+    posthog_lines = [c for c in log_info.call_args_list if "PostHog not configured" in c.args[0]]
+    assert len(posthog_lines) == 1
+    assert posthog_lines[0].kwargs["missing_var"] == "POSTHOG_PROJECT_TOKEN"
 
 
 @pytest.mark.asyncio

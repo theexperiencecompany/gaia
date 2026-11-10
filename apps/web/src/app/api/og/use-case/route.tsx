@@ -23,8 +23,6 @@ import {
   truncateText,
 } from "../lib";
 
-export const runtime = "edge";
-
 interface OgWorkflow {
   id?: string;
   title?: string;

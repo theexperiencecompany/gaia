@@ -5,19 +5,16 @@
 "use client";
 
 import { DiscordIcon, SlackIcon, TelegramIcon, WhatsappIcon } from "@icons";
+import type { BotPlatform } from "@shared/constants/platforms";
 import Image from "next/image";
 import type React from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
+import { vanityTarget } from "../../../../../vanity-redirects.mjs";
 
-export type ChatPlatform =
-  | "imessage"
-  | "whatsapp"
-  | "slack"
-  | "discord"
-  | "telegram";
+export type ChatPlatform = BotPlatform;
 
 export interface ChatMessageItem {
   id?: string | number;
@@ -79,14 +76,13 @@ const REVEAL_TYPING_MESSAGE: ChatMessageItem = {
 
 const DEMO_CTA: Record<
   ChatPlatform,
-  { label: string; href: string; accent: string; darkText?: boolean }
+  { label: string; href: string; accent: string }
 > = {
   imessage: { label: "Chat with GAIA", href: "/signup", accent: "#0A84FF" },
   whatsapp: {
     label: "Chat on WhatsApp",
-    href: "/whatsapp",
+    href: vanityTarget("/whatsapp"),
     accent: "#25D366",
-    darkText: true,
   },
   telegram: { label: "Chat on Telegram", href: "/bots", accent: "#037EE5" },
   slack: { label: "Chat on Slack", href: "/slack-bot", accent: "#611F69" },
@@ -133,18 +129,14 @@ function DemoCtaIcon({
 
 /** Rendered OUTSIDE the message bubble, like a platform inline-keyboard button. */
 function DemoCta({ platform }: { platform: ChatPlatform }) {
-  const { label, href, accent, darkText } = DEMO_CTA[platform];
+  const { label, href, accent } = DEMO_CTA[platform];
   return (
-    <Link href={href} className="chat-bubble-pop mt-1 w-fit">
-      <RaisedButton
-        color={accent}
-        size="sm"
-        className={cn("px-4 text-sm", darkText && "text-black!")}
-      >
-        <DemoCtaIcon platform={platform} color={darkText ? "#000" : "#fff"} />
+    <SiteLink href={href} className="chat-bubble-pop mt-1 w-fit">
+      <RaisedButton color={accent} size="sm" className="px-4 text-sm">
+        <DemoCtaIcon platform={platform} color="currentColor" />
         {label}
       </RaisedButton>
-    </Link>
+    </SiteLink>
   );
 }
 
@@ -470,7 +462,7 @@ function CurvedBubble({
               marginLeft: 6,
               marginRight: -2,
               marginBottom: -1,
-              fontSize: 11,
+              fontSize: 12,
               lineHeight: "14px",
               letterSpacing: "-0.01em",
               whiteSpace: "nowrap",
@@ -627,7 +619,7 @@ function IMessageDemo({
           {subtitle && (
             <span
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 color: "rgba(60,60,67,0.55)",
                 marginTop: 2,
               }}
@@ -649,7 +641,7 @@ function IMessageDemo({
                 key={`div-${gi}`}
                 className="chat-bubble-pop self-center text-center"
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   color: "rgba(60,60,67,0.6)",
                   fontWeight: 500,
                   letterSpacing: "-0.01em",
@@ -667,7 +659,7 @@ function IMessageDemo({
                 <div
                   className="self-center text-center"
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     color: "rgba(60,60,67,0.6)",
                     fontWeight: 500,
                     letterSpacing: "-0.01em",
@@ -724,13 +716,8 @@ function IMessageDemo({
           <button
             type="button"
             aria-label="More"
-            className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-[filter,background] duration-150 hover:brightness-95 active:brightness-90"
-            style={{
-              width: 30,
-              height: 30,
-              background: "#E9E9EB",
-              color: "rgba(60,60,67,0.7)",
-            }}
+            className="chat-demo-tap size-7.5 flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-[filter,background] duration-150 hover:brightness-95 active:brightness-90"
+            style={{ background: "#E9E9EB", color: "rgba(60,60,67,0.7)" }}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
               <path
@@ -746,7 +733,7 @@ function IMessageDemo({
             style={{
               border: "1px solid rgba(60,60,67,0.18)",
               borderRadius: 18,
-              padding: "5px 4px 5px 19px",
+              padding: "0 4px 0 19px",
               background: "#fff",
               minHeight: 32,
             }}
@@ -758,7 +745,7 @@ function IMessageDemo({
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
               onKeyDown={composerKeyHandler(onComposerSend)}
-              className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[rgba(60,60,67,0.5)]"
+              className="chat-demo-input min-w-0 flex-1 self-stretch border-0 bg-transparent p-0 outline-none placeholder:text-[rgba(60,60,67,0.5)]"
               style={{
                 fontSize: 15,
                 color: "#000",
@@ -769,8 +756,8 @@ function IMessageDemo({
             <button
               type="button"
               aria-label="Audio"
-              className="ml-2 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-              style={{ color: "rgba(60,60,67,0.7)", width: 22, height: 22 }}
+              className="chat-demo-tap size-6 ml-2 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+              style={{ color: "rgba(60,60,67,0.7)" }}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
                 <path
@@ -877,7 +864,7 @@ function WhatsAppDemo({
               </div>
               <span
                 style={{
-                  fontSize: 10,
+                  fontSize: 12,
                   marginTop: 2,
                   color: textColor,
                   letterSpacing: "-0.01em",
@@ -1007,8 +994,8 @@ function WhatsAppDemo({
           <button
             type="button"
             aria-label="Camera"
-            className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-            style={{ width: 32, height: 32, color: "#3C3C43" }}
+            className="chat-demo-tap size-8 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+            style={{ color: "#3C3C43" }}
           >
             <CameraIcon />
           </button>
@@ -1030,7 +1017,7 @@ function WhatsAppDemo({
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
               onKeyDown={composerKeyHandler(onComposerSend)}
-              className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[#8E8E93]"
+              className="chat-demo-input min-w-0 flex-1 self-stretch border-0 bg-transparent p-0 outline-none placeholder:text-[#8E8E93]"
               style={{
                 fontSize: 15,
                 color: "#000",
@@ -1041,8 +1028,8 @@ function WhatsAppDemo({
             <button
               type="button"
               aria-label="Emoji"
-              className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-              style={{ color: "#8E8E93", width: 22, height: 22 }}
+              className="chat-demo-tap size-6 flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+              style={{ color: "#8E8E93" }}
             >
               <EmojiIcon size={18} />
             </button>
@@ -1050,8 +1037,8 @@ function WhatsAppDemo({
           <button
             type="button"
             aria-label="Voice message"
-            className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-            style={{ width: 32, height: 32, color: "#3C3C43" }}
+            className="chat-demo-tap size-8 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+            style={{ color: "#3C3C43" }}
           >
             <MicIcon />
           </button>
@@ -1288,7 +1275,7 @@ function TelegramDemo({
           gap: 8,
           backgroundColor: blueOverlay,
           backgroundImage:
-            'linear-gradient(rgba(43,120,205,0.5), rgba(43,120,205,0.5)), url("/telegram-doodle.png")',
+            'linear-gradient(rgba(43,120,205,0.5), rgba(43,120,205,0.5)), url("/telegram-doodle.webp")',
           backgroundSize: "auto, 480px auto",
           backgroundRepeat: "repeat",
           paddingTop: 8,
@@ -1344,8 +1331,8 @@ function TelegramDemo({
           <button
             type="button"
             aria-label="Attach"
-            className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-            style={{ width: 30, height: 30, color: accent }}
+            className="chat-demo-tap size-7.5 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+            style={{ color: accent }}
           >
             <AttachmentIcon />
           </button>
@@ -1367,7 +1354,7 @@ function TelegramDemo({
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
               onKeyDown={composerKeyHandler(onComposerSend)}
-              className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[#858E99]"
+              className="chat-demo-input min-w-0 flex-1 self-stretch border-0 bg-transparent p-0 outline-none placeholder:text-[#858E99]"
               style={{
                 fontSize: 15,
                 color: "#000",
@@ -1378,8 +1365,8 @@ function TelegramDemo({
             <button
               type="button"
               aria-label="Emoji"
-              className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-              style={{ color: metaColor, width: 22, height: 22 }}
+              className="chat-demo-tap size-6 flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+              style={{ color: metaColor }}
             >
               <EmojiIcon size={18} />
             </button>
@@ -1387,8 +1374,8 @@ function TelegramDemo({
           <button
             type="button"
             aria-label="Voice"
-            className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-            style={{ width: 30, height: 30, color: accent }}
+            className="chat-demo-tap size-7.5 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+            style={{ color: accent }}
           >
             <MicIcon />
           </button>
@@ -1568,8 +1555,7 @@ function SlackHeader({
         <button
           type="button"
           aria-label="Activity"
-          className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-          style={{ width: 32, height: 32 }}
+          className="chat-demo-tap size-8 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
         >
           <svg
             width="22"
@@ -1584,8 +1570,7 @@ function SlackHeader({
         <button
           type="button"
           aria-label="Search"
-          className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-          style={{ width: 32, height: 32 }}
+          className="chat-demo-tap size-8 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
         >
           <svg
             width="22"
@@ -1902,8 +1887,8 @@ function SlackComposer({
               type="button"
               aria-label="Send"
               onClick={onComposerSend}
-              className="flex cursor-pointer items-center justify-center transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-              style={{ width: 24, height: 22, color: muted }}
+              className="chat-demo-tap w-6 h-5.5 flex cursor-pointer items-center justify-center transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+              style={{ color: muted }}
             >
               <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden>
                 <path
@@ -1921,8 +1906,8 @@ function SlackComposer({
             <button
               type="button"
               aria-label="Schedule"
-              className="flex cursor-pointer items-center justify-center transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-              style={{ width: 20, height: 22, color: muted }}
+              className="chat-demo-tap w-5 h-5.5 flex cursor-pointer items-center justify-center transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+              style={{ color: muted }}
             >
               <svg width="12" height="12" viewBox="0 0 20 20" aria-hidden>
                 <path
@@ -1951,8 +1936,7 @@ function SlackToolbarButton({
     <button
       type="button"
       aria-label={label}
-      className="flex cursor-pointer items-center justify-center rounded transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-      style={{ width: 26, height: 24 }}
+      className="chat-demo-tap w-6.5 h-6 flex cursor-pointer items-center justify-center rounded transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
     >
       <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden>
         {children}
@@ -2079,8 +2063,8 @@ function DiscordDemo({
           <button
             type="button"
             aria-label="Back"
-            className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/[0.06]"
-            style={{ width: 28, height: 28, color: fg }}
+            className="chat-demo-tap size-7 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/[0.06]"
+            style={{ color: fg }}
           >
             <svg
               width="20"
@@ -2129,8 +2113,8 @@ function DiscordDemo({
           <button
             type="button"
             aria-label="Search"
-            className="flex cursor-pointer items-center justify-center rounded-full transition-[filter] duration-150 hover:brightness-125 active:brightness-90"
-            style={{ width: 32, height: 32, background: iconBg, color: muted }}
+            className="chat-demo-tap size-8 flex cursor-pointer items-center justify-center rounded-full transition-[filter] duration-150 hover:brightness-125 active:brightness-90"
+            style={{ background: iconBg, color: muted }}
           >
             <svg
               width="16"
@@ -2300,7 +2284,7 @@ function DiscordDemo({
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
               onKeyDown={composerKeyHandler(onComposerSend)}
-              className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[#949BA4]"
+              className="chat-demo-input min-w-0 flex-1 self-stretch border-0 bg-transparent p-0 outline-none placeholder:text-[#949BA4]"
               style={{
                 fontSize: 15,
                 color: fg,
@@ -2332,8 +2316,8 @@ function DiscordCircleButton({
     <button
       type="button"
       aria-label={label}
-      className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-[filter,opacity] duration-150 hover:brightness-125 active:brightness-90"
-      style={{ width: 36, height: 36, background: bg, color: fg }}
+      className="chat-demo-tap size-9 flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-[filter,opacity] duration-150 hover:brightness-125 active:brightness-90"
+      style={{ background: bg, color: fg }}
     >
       {children}
     </button>

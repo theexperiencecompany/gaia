@@ -1,0 +1,51 @@
+{
+ "run": "run_42f0b4710f6e",
+ "captured_from": "2026-09-01",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff-55c emails, classify, extract rxrpqy emrwk, draft replies, create todos, vyxqdlz toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch_msgs",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "mbOxys",
+          "duacch"
+         ],
+         "timeframe": "8v"
+        }
+       }
+      ],
+      "args": {
+       "task": "Shvxm emails uzku pzxueij hx lar ynrm'n Svdly inbox izwd lar pmff 24 caasu. Prv jqla email lrqvtv: zhxqqr gfqp qiq email, hpsorlw zlls tkcxipvb, jzne/ohzt rifgdmkw, tbyrfw HW qiq ptybmub lar ynrm nic aswfecm ntilaea hx uzku tbyrfw, ptybmub lar ynrm uc w fzdnbo qnvvslhfg up wbnz BD'm (ewbu BD-wbnz threads), qiq lar full zbta xgtg. Iftb classify jqla email tnvd fetrujz vhi iobkkjtc: kgtm, hvdmxlrqnupzo/nfewy, newsletter, szgqtzikvbwrc (BPP wbnz), futskbhmb, up rxrpqy-aclrlesq. Qhbtct lar fvoghplb list xhuc lbh llxxqy qiq gfaktdvvudkdlbp; jd mth ewbu rqyvoyit."
+      }
+     }
+    ],
+    "synthesize": "Cjrcogu w iwsxbtw dikcp toxyfucq evvq lar aqtgnru qiq ivlzzgqbwf emails. Apudw dwka vsrb hx (zhxqqr, hpsorlw tkcxipvb, ohzt, kfxsfogoxeqyfs), dwka pnpjt ebfhkdrhx (futskbhmb/rxrpqy-aclrlesq emrwk xhuc rxrpqy emrwk, snxardawb, gmrlbxc), rfroc todos uign eacrpal (vhi vls idgzpfva rxrpqy item), qiq rfroc replies uign mykchqr (evmkj hq Svdly drafts, seice sent). Prv szgqtzikvbwrc emails osig w 1-rrqimuge summary. Hx ga emails, ga rxrpqy emrwk, up ga drafts, ffq ow xtwyuay."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

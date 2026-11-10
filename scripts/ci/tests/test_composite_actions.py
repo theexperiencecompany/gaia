@@ -104,10 +104,9 @@ def test_a_local_composite_needs_a_checkout_before_it() -> None:
 
 
 def test_a_job_pinned_to_another_revision_only_uses_composites_that_exist_there() -> None:
-    # `select-runner` checks out the DEFAULT BRANCH on purpose (it handles a
-    # PAT and must not run PR-authored code), so a composite this branch adds
-    # does not exist in its tree. That is not a bug to fix in the job — it is a
-    # constraint the caller has to respect.
+    # A job that checks out another revision (a `ref:` on its checkout) runs
+    # that revision's composites, so one this branch adds does not exist in
+    # its tree. That is a constraint the caller has to respect.
     default_branch = "origin/master"
     if subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", default_branch],

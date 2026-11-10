@@ -7,6 +7,8 @@ from app.db.repositories.base import UserScopedDocument
 
 
 class DocumentPageModel(BaseModel):
+    """One extracted page: its 1-based number and its text."""
+
     page_number: int = Field(
         ...,
         gt=0,
@@ -16,6 +18,8 @@ class DocumentPageModel(BaseModel):
 
 
 class DocumentSummaryModel(BaseModel):
+    """A page's extracted content paired with its summary."""
+
     data: DocumentPageModel
     summary: str = Field(
         ...,
@@ -50,6 +54,19 @@ class FileDocument(UserScopedDocument):
     updated_at: datetime | None = None
 
 
+class FileMimetypeRow(BaseModel):
+    """One file row's mimetype fields, readable even when the row is legacy.
+
+    The migration needs rows that ``FileDocument`` rejects (no ``type``), so
+    this carries both field names without requiring either.
+    """
+
+    file_id: str
+    filename: str
+    type: str | None = None
+    content_type: str | None = None
+
+
 class FileUpdate(BaseModel):
     """Editable file-metadata fields (server-controlled, never the raw payload)."""
 
@@ -58,6 +75,9 @@ class FileUpdate(BaseModel):
     filename: str | None = None
     description: str | None = None
     page_wise_summary: PageWiseSummary = None
-    # Server-set only: stamped when a pre-conversation upload is seeded into the
-    # session that adopted it. Never accepted from a client update payload.
+    # Server-set only: stamped when an upload is attached to the conversation
+    # that adopted it. Never accepted from a client update payload.
     conversation_id: str | None = None
+    # Server-set only: the /workspace path the bytes were mirrored to. Written
+    # by the attach path so the agent reads the real file, never a guess.
+    sandbox_path: str | None = None

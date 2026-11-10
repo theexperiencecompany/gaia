@@ -11,19 +11,25 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from workos import WorkOSClient
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
+from app.api.v1.dependencies.oauth_dependencies import (
+    get_current_user,
+    get_user_id,
+    get_user_timezone_from_preferences,
+)
 from app.config.settings import settings
+from app.config.workos import get_workos_client
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.chat_channel_models import ChannelPriorityList
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     AuthenticatedUser,
     AuthenticatedUserResponse,
     LogoutResponse,
     OnboardingSubdocument,
+    ProfilePictureUpload,
     PublicHoloCardResponse,
     UpdateHoloCardColorsResponse,
     UpdateTimezoneResponse,
@@ -36,8 +42,11 @@ from app.services.delivery.chat_channel import (
     set_chat_channel_priority,
 )
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
-from app.services.user_service import update_user_profile
+from app.services.user_quiet_hours import set_quiet_hours
+from app.services.user_service import get_quiet_hours, update_user_profile
 from app.services.user_timezone import set_user_timezone
+from app.utils.auth_utils import clear_session_cookie
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
 from app.utils.timezone import is_valid_timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import UserLoggedOut
@@ -50,8 +59,6 @@ router = APIRouter()
 #: serialized only when set.
 _AUTH_PATH_FLAGS = ("impersonated", "bot_authenticated", "dev_bypass")
 
-workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
-
 
 # exclude_none: the per-auth-path flags and optional profile fields are only
 # meaningful when set; the response has always omitted nulls, and clients rely on that.
@@ -59,11 +66,9 @@ workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS
 @router.get("/me", response_model_exclude_none=True)
 async def get_me(
     user: AuthenticatedUser = Depends(get_current_user),
+    home_timezone: str = Depends(get_user_timezone_from_preferences),
 ) -> AuthenticatedUserResponse:
-    """
-    Returns the current authenticated user's details.
-    Uses the dependency injection to fetch user data.
-    """
+    """Return the signed-in user; the app's session load also stores the browser's zone when none is saved."""
     onboarding_status = await get_user_onboarding_status(user.user_id)
 
     log.set(
@@ -86,6 +91,7 @@ async def get_me(
     response = AuthenticatedUserResponse.model_validate(
         {
             **user.model_dump(exclude=set(_AUTH_PATH_FLAGS)),
+            "timezone": home_timezone,
             **flags,
             "message": "User retrieved successfully",
             "onboarding": onboarding_status,
@@ -117,7 +123,7 @@ async def update_me(
         raise HTTPException(status_code=400, detail="Invalid user ID")
 
     # Process profile picture if provided
-    picture_data = None
+    picture_upload: ProfilePictureUpload | None = None
     if picture and picture.size and picture.size > 0:
         # Validate file type
         allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
@@ -132,14 +138,16 @@ async def update_me(
         if picture.size > max_size:
             raise HTTPException(status_code=400, detail="File size too large. Maximum size is 5MB")
 
-        picture_data = await picture.read()
+        picture_upload = ProfilePictureUpload(
+            data=await picture.read(), content_type=picture.content_type
+        )
         log.set(picture_size_bytes=picture.size)
 
-    updated_user = await update_user_profile(user_id=user_id, name=name, picture_data=picture_data)
+    updated_user = await update_user_profile(user_id=user_id, name=name, picture=picture_upload)
 
     changed_fields = [
         field
-        for field, changed in (("name", name is not None), ("picture", picture_data is not None))
+        for field, changed in (("name", name is not None), ("picture", picture_upload is not None))
         if changed
     ]
     log.audit("profile updated", actor=user_id, changed_fields=changed_fields)
@@ -147,7 +155,7 @@ async def update_me(
         UserId(user_id),
         ProfileUpdated(
             changed_field_count=len(changed_fields),
-            has_picture_upload=picture_data is not None,
+            has_picture_upload=picture_upload is not None,
         ),
     )
     log.set(outcome="success")
@@ -372,6 +380,18 @@ async def logout(
     """
     Logout user and return logout URL for frontend redirection.
     """
+    # Local mode: no hosted session to revoke; the JWT dies with the cookie.
+    # This route still passes the auth middleware, so a valid session is
+    # required to reach this point.
+    if settings.deployment.local_auth:
+        log.set(operation="logout")
+        log.audit("logged out", actor=user.user_id, mode="local")
+        # No logout_url: there is no hosted logout page, so the client stays put
+        # and drops its state. The cookie still dies here, not client-side.
+        clear_session_cookie(response, request, name=LOCAL_SESSION_COOKIE)
+        log.set(outcome="success")
+        return LogoutResponse(logout_url=None)
+
     wos_session = request.cookies.get(WOS_SESSION_COOKIE)
 
     if not wos_session:
@@ -380,7 +400,7 @@ async def logout(
     try:
         log.set(operation="logout")
 
-        session = workos.user_management.load_sealed_session(
+        session = get_workos_client().user_management.load_sealed_session(
             sealed_session=wos_session,
             cookie_password=settings.WORKOS_COOKIE_PASSWORD,
         )
@@ -401,14 +421,7 @@ async def logout(
 
         log.audit("logged out", actor=user_id)
 
-        # Clear the session cookie
-        response.delete_cookie(
-            WOS_SESSION_COOKIE,
-            httponly=True,
-            path="/",
-            secure=settings.ENV == "production",
-            samesite="lax",
-        )
+        clear_session_cookie(response, request, name=WOS_SESSION_COOKIE)
 
         log.set(outcome="success")
         return LogoutResponse(logout_url=logout_url)
@@ -451,3 +464,20 @@ async def update_chat_channel_priority(
     await set_chat_channel_priority(user_id, body.priority)
     log.audit("chat channel priority updated", actor=user_id, priority=body.priority)
     return body
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/quiet-hours")
+async def read_quiet_hours(user_id: str = Depends(get_user_id)) -> QuietHours:
+    """The local hours in which GAIA holds what can wait for the morning."""
+    log.set(user={"id": user_id}, operation="read_quiet_hours")
+    return await get_quiet_hours(user_id)
+
+
+@router.patch("/quiet-hours")
+async def update_quiet_hours(body: QuietHours, user_id: str = Depends(get_user_id)) -> QuietHours:
+    """Store the user's quiet hours and echo what was saved."""
+    log.set(user={"id": user_id}, operation="update_quiet_hours")
+    saved = await set_quiet_hours(user_id, body)
+    log.audit("quiet hours updated", actor=user_id, quiet_hours=saved.model_dump())
+    return saved

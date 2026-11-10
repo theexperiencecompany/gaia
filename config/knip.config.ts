@@ -97,6 +97,9 @@ const config: KnipConfig = {
     // imported as modules — so knip reads them as unused files.
     "scripts/ci/wide-event-conformance/emit_typescript.ts",
 
+    // Deploy workflow helper: run by node from web-build.yml, never imported.
+    "scripts/ci/strip-source-maps.mjs",
+
     // Agent skill templates (not app code, used by Claude Code skill system)
     ".agents/skills/**",
     ".claude/skills/**",
@@ -176,6 +179,21 @@ const config: KnipConfig = {
   // package.json). Includes nx target names invoked as `nx run <target>`.
   ignoreBinaries: [
     "wrangler",
+    // shadow-utils on the self-host box: the CLI re-runs itself under the
+    // docker group right after adding the user to it (packages/cli docker-group).
+    "sg",
+    // apt on the self-host box: the CLI asks it how big Docker's packages are
+    // to show the download's total (packages/cli apt-activity).
+    "apt-get",
+    // avahi-utils on a Linux self-host box: the CLI checks that gaia.local is
+    // announced over mDNS (packages/cli local-name).
+    "avahi-resolve-host-name",
+    // iproute2 on a Linux self-host box: the CLI reads the host's stable IPv6
+    // address to announce gaia.local's AAAA record (packages/cli local-name-ipv6).
+    "ip",
+    // iproute2 on a Linux self-host box: the CLI asks it whether a port GAIA
+    // needs is taken (packages/cli prerequisites).
+    "ss",
     "biome",
     "clean",
     "check",
@@ -196,6 +214,7 @@ const config: KnipConfig = {
     "web",
     "eslint",
     "prettier",
+    "vm_stat",
     "lsof",
     "netstat",
     "tasklist",
@@ -227,6 +246,9 @@ const config: KnipConfig = {
     // ── Root ──────────────────────────────────────────────────────────
     ".": {
       ignoreDependencies: [
+        // Spawned by scripts/ts/type-check.mjs at runtime. knip only traces
+        // imports, so a compiler invoked through spawnSync reads as unused.
+        "tsrs",
         // Hoisted for React Native / Expo resolution
         "@react-navigation/native",
         "@react-navigation/native-stack",
@@ -291,6 +313,8 @@ const config: KnipConfig = {
       ignore: ["src/components/ui/**"],
 
       ignoreDependencies: [
+        // Spawned by the cf:build shell script; knip only traces imports.
+        "@opennextjs/cloudflare",
         // Path alias, not a package (see paths above).
         "@icons",
         // HeroUI ships per-component subpackages pulled in transitively.
@@ -412,7 +436,12 @@ const config: KnipConfig = {
 
     // ── CLI Package ──────────────────────────────────────────────────
     "packages/cli": {
-      entry: ["src/index.{ts,tsx}", "src/commands/**/*.{ts,tsx}"],
+      // scripts/: generators run from package.json (bake:logo), not imported.
+      entry: [
+        "src/index.{ts,tsx}",
+        "src/commands/**/*.{ts,tsx}",
+        "scripts/*.mjs",
+      ],
       // Tests are not live references — see apps/bots note.
       project: [
         "src/**/*.{ts,tsx}",
@@ -447,11 +476,6 @@ const config: KnipConfig = {
       ignoreDependencies: [
         // Audio capture used by the React Native build path.
         "react-native-live-audio-stream",
-        // Vitest internals listed as devDeps but pulled in transitively.
-        "loupe",
-        "tinybench",
-        "tinypool",
-        "tinyrainbow",
         // Optional peers resolved by the consuming app (web vs native).
         "onnxruntime-react-native",
         "onnxruntime-web",

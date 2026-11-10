@@ -35,7 +35,7 @@ tests:
             exp_annotations:
               description: >-
                 The container is gone or its metrics endpoint is unreachable. What this means depends on the job — gaia-api means the API container is down or /metrics is rejecting the bearer token; arq_worker means background jobs have stopped; rabbitmq is the broker itself. Note that postgres and redis scrape their exporter sidecars, not the databases, so those two mean the exporter died and say nothing about whether the database is healthy.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-target-down
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-target-down
               __dashboardUid__: gaia-overview
               __panelId__: '5'
 

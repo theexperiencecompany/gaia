@@ -2,6 +2,7 @@ import type {
   ApprovalDecisionResponse,
   ImageData,
   ReplyToMessageData,
+  TodoRunWake,
 } from "@gaia/shared/api/generated";
 
 export type { ImageData, ReplyToMessageData } from "@gaia/shared/api/generated";
@@ -51,6 +52,8 @@ export interface ApiMessage {
   kind?: string | null;
   /** GAIA id of the message an emoji_ack reacts to. */
   reacts_to_message_id?: string | null;
+  /** What woke a tracked todo's run; set on that run's user message. */
+  todo_run_wake?: TodoRunWake | null;
 }
 
 export interface ApiConversationDetail {
@@ -96,6 +99,8 @@ export interface Message {
   reacts_to_message_id?: string | null;
   /** Reactions folded onto this message for render (see foldReactionAcks). */
   reactions?: ReactionBadge[] | null;
+  /** What woke a tracked todo's run; set on that run's user message. */
+  todoRunWake?: TodoRunWake | null;
 }
 
 export interface ConversationDetail {
@@ -127,6 +132,7 @@ function normalizeMessage(apiMsg: ApiMessage): Message {
     replyToMessage,
     kind: apiMsg.kind ?? null,
     reacts_to_message_id: apiMsg.reacts_to_message_id ?? null,
+    todoRunWake: apiMsg.todo_run_wake ?? null,
   };
 }
 

@@ -112,7 +112,7 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
         # This adapter's platform only, ignoring preferences: the orchestrator
         # already decided this channel should get the notification.
         channel = (
-            pick_chat_channel([self.platform.value], linked_platforms_of(user_doc), {})
+            pick_chat_channel([self.platform.value], linked_platforms_of(user_doc), {}, active=None)
             if user_doc
             else None
         )

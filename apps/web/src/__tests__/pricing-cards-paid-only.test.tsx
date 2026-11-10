@@ -4,6 +4,11 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { Plan } from "@/features/pricing/api/pricingApi";
 
+let billingEnabled = true;
+vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
+  useDeployment: () => ({ bills: billingEnabled }),
+}));
+
 vi.mock("@/lib/analytics", () => ({
   track: vi.fn(),
 }));
@@ -114,6 +119,18 @@ beforeAll(() => {
 });
 
 describe("PricingCards paid-only rendering", () => {
+  afterEach(() => {
+    billingEnabled = true;
+  });
+
+  it("renders no plan on an instance that does not bill", () => {
+    billingEnabled = false;
+    mockPlans = [PRO_PLAN];
+    render(<PricingCards durationIsMonth hideEnterprise />);
+
+    expect(screen.queryByText("GAIA")).toBeNull();
+  });
+
   it("renders only the paid plan when the backend returns no $0 row", () => {
     mockPlans = [PRO_PLAN];
     render(<PricingCards durationIsMonth hideEnterprise />);

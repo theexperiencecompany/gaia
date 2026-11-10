@@ -7,6 +7,7 @@ import ModelSelectorDevControls from "@/components/layout/headers/ModelSelectorD
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
+import { TodoChatBackLink } from "@/features/todo/components/TodoChatBackLink";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 
 function preloadCommandMenu() {
@@ -31,6 +32,9 @@ export default function ChatHeader() {
 
   return (
     <div className="flex w-full justify-between">
+      <div className="flex items-center">
+        <TodoChatBackLink />
+      </div>
       <div className="relative ml-auto flex items-center">
         <ModelSelectorDevControls />
         <SidebarHeaderButton

@@ -11,9 +11,16 @@ import {
 } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Components } from "react-markdown";
+// The renderer takes streamdown's Components, not react-markdown's: the two are
+// structurally incompatible, and react-markdown's is not assignable to it.
+import type { Components } from "streamdown";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import {
+  InstructionsConflictNotice,
+  MAX_INSTRUCTIONS_CHARS,
+  type UseInstructionsResult,
+} from "@/features/instructions";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { MentionChip } from "@/features/integrations/components/MentionChip";
 import { MentionEditor } from "@/features/integrations/components/MentionEditor";
@@ -25,49 +32,51 @@ import {
 } from "@/features/integrations/utils/toolMentions";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 
-// Matches the backend cap in integration_instructions_models.py
-const MAX_CHARS = 8000;
-
 const MENTION_PROTOCOLS = [MENTION_LINK_PROTOCOL];
 
 interface IntegrationInstructionsModalProps {
   isOpen: boolean;
   onClose: () => void;
   integration: Integration;
-  savedContent: string;
-  isSaving: boolean;
+  instructions: UseInstructionsResult;
   toolNames: string[];
-  onSave: (content: string) => Promise<void>;
 }
 
 export const IntegrationInstructionsModal = ({
   isOpen,
   onClose,
   integration,
-  savedContent,
-  isSaving,
+  instructions,
   toolNames,
-  onSave,
 }: IntegrationInstructionsModalProps) => {
-  const [value, setValue] = useState(savedContent);
+  const {
+    draft: value,
+    setDraft: setValue,
+    isDirty,
+    isSaving,
+    isRefreshing,
+    hasConflict,
+    save,
+    keepMine,
+    loadLatest,
+    discard,
+  } = instructions;
   const [tab, setTab] = useState("write");
   const [wasOpen, setWasOpen] = useState(isOpen);
   const { isMac, modifierKeyName } = usePlatform();
 
-  // Reset the draft to persisted content only on the closed->open transition,
-  // not on every savedContent change (would clobber in-progress edits on
-  // refetch). Render-phase state adjustment, not an effect, avoids a stale frame.
+  // Render-phase state adjustment, not an effect, avoids a stale frame.
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen);
-    if (isOpen) {
-      setValue(savedContent);
-      setTab("write");
-    }
+    if (isOpen) setTab("write");
   }
 
-  // Raw compare: leading/trailing whitespace can be meaningful in Markdown,
-  // and the backend already normalizes whitespace-only content to empty.
-  const isDirty = value !== savedContent;
+  // The draft lives in the hook, so closing without saving must drop it.
+  const handleClose = useCallback(() => {
+    discard();
+    onClose();
+  }, [discard, onClose]);
+
   const canMention = toolNames.length > 0;
 
   const renderMentionIcon = useCallback(
@@ -106,12 +115,15 @@ export const IntegrationInstructionsModal = ({
     [renderMentionIcon],
   );
 
-  const canSave = isDirty && !isSaving;
+  const canSave = isDirty && !isSaving && !hasConflict;
 
   const handleSave = useCallback(async () => {
-    await onSave(value);
-    onClose();
-  }, [onSave, value, onClose]);
+    if (await save()) onClose();
+  }, [save, onClose]);
+
+  const handleKeepMine = useCallback(async () => {
+    if (await keepMine()) onClose();
+  }, [keepMine, onClose]);
 
   // Cmd/Ctrl+Enter saves. Mirror BearerTokenModal: a ref keeps the listener
   // stable while always reading the latest state. (Escape is handled by the
@@ -142,7 +154,7 @@ export const IntegrationInstructionsModal = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       size="2xl"
       backdrop="blur"
       scrollBehavior="inside"
@@ -188,7 +200,7 @@ export const IntegrationInstructionsModal = ({
                 onChange={setValue}
                 toolNames={toolNames}
                 renderMentionIcon={renderMentionIcon}
-                maxLength={MAX_CHARS}
+                maxLength={MAX_INSTRUCTIONS_CHARS}
                 placeholder={`e.g. Focus on #eng, #design, and #pm.\nNever post to #general.\nDefault to a friendly, concise tone.`}
               />
 
@@ -199,7 +211,7 @@ export const IntegrationInstructionsModal = ({
                     : "Markdown supported"}
                 </span>
                 <span>
-                  {value.length} / {MAX_CHARS}
+                  {value.length} / {MAX_INSTRUCTIONS_CHARS}
                 </span>
               </div>
             </Tab>
@@ -222,12 +234,21 @@ export const IntegrationInstructionsModal = ({
               </div>
             </Tab>
           </Tabs>
+
+          {hasConflict && (
+            <InstructionsConflictNotice
+              isSaving={isSaving}
+              isRefreshing={isRefreshing}
+              onLoadLatest={loadLatest}
+              onKeepMine={handleKeepMine}
+            />
+          )}
         </ModalBody>
 
         <ModalFooter>
           <Button
             variant="light"
-            onPress={onClose}
+            onPress={handleClose}
             isDisabled={isSaving}
             endContent={<Kbd keys={["escape"]} />}
           >
