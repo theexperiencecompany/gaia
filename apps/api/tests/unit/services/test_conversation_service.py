@@ -472,8 +472,30 @@ class TestBatchSyncConversations:
         assert result.conversations == []
         mock_repo.find_updated_since.assert_not_called()
 
-    async def test_returns_rows_with_active_stream_id(self, mock_repo, test_user):
+    async def test_reports_active_stream_of_an_up_to_date_conversation(self, mock_repo, test_user):
+        """A reloading client holding current history is sent no row, yet must still learn its turn is live."""
+        mock_repo.find_updated_since.return_value = []
+        mock_repo.owned_ids.return_value = {"conv_abc"}
+        with patch.object(
+            conversation_service.stream_manager,
+            "get_resumable_stream_id",
+            new=AsyncMock(return_value="stream-1"),
+        ):
+            request = BatchSyncRequest(
+                conversations=[
+                    ConversationSyncItem(
+                        conversation_id="conv_abc", last_updated="2026-01-01T00:00:00+00:00"
+                    )
+                ]
+            )
+            result = await batch_sync_conversations(request, test_user)
+
+        assert result.conversations == []
+        assert result.active_streams == {"conv_abc": "stream-1"}
+
+    async def test_returns_rows_and_active_streams(self, mock_repo, test_user):
         mock_repo.find_updated_since.return_value = [_document(description="Updated Chat")]
+        mock_repo.owned_ids.return_value = {"conv_abc"}
         with patch.object(
             conversation_service.stream_manager,
             "get_resumable_stream_id",
@@ -487,7 +509,7 @@ class TestBatchSyncConversations:
         assert len(result.conversations) == 1
         row = result.conversations[0]
         assert row.conversation_id == "conv_abc"
-        assert row.active_stream_id == "stream-1"
+        assert result.active_streams == {"conv_abc": "stream-1"}
         # The internal user_id/_id must not leak into a serialized sync row.
         serialized = row.model_dump()
         assert "user_id" not in serialized and "_id" not in serialized

@@ -10,6 +10,7 @@ import {
   apiRowHasLiveApproval,
   isApprovalFlagStale,
 } from "@/features/chat/utils/approvalFlag";
+import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
 import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
@@ -155,6 +156,7 @@ const toStoredConversation = (
   isUnread: conversation.is_unread ?? false,
   hasLiveApproval: apiRowHasLiveApproval(conversation),
   todoId: conversation.todo_id ?? null,
+  source: conversation.source ?? undefined,
   artifacts,
   createdAt: new Date(conversation.createdAt ?? 0),
   updatedAt: conversation.updatedAt
@@ -243,8 +245,8 @@ const identifyDeletedConversations = (
     // Skip if conversation exists on remote
     if (remoteIds.has(local.id)) continue;
 
-    // A tracked todo's chat is never in the remote list, by design: absent there is not deleted.
-    if (local.todoId) continue;
+    // A todo chat or bot DM is never in the remote list, by design: absent there is not deleted.
+    if (isUnlistedConversation(local)) continue;
 
     // Skip if conversation is currently being streamed
     if (isConversationStreamingNow(local.id)) continue;
@@ -323,10 +325,11 @@ export const batchSyncConversations = async (
       db.getAllConversations(),
     ]);
 
-    // A todo chat is never listed, so only asking about it shows a new run or its deletion.
-    const todoChatItems = localConversations.flatMap(
+    // An unlisted chat (todo chat, bot DM) is never in the list, so only asking about it by id
+    // shows a new message or its deletion. last_updated keeps the reply to what changed.
+    const unlistedChatItems = localConversations.flatMap(
       (conv): ConversationSyncItem[] =>
-        conv.todoId
+        isUnlistedConversation(conv)
           ? [
               {
                 conversation_id: conv.id,
@@ -336,13 +339,13 @@ export const batchSyncConversations = async (
           : [],
     );
 
-    if (remoteConversations.length === 0 && todoChatItems.length === 0) {
+    if (remoteConversations.length === 0 && unlistedChatItems.length === 0) {
       return;
     }
 
     const staleItems = [
       ...identifyStaleConversations(localConversations, remoteConversations),
-      ...todoChatItems,
+      ...unlistedChatItems,
     ];
 
     // Identify conversations that exist locally but were deleted on the server

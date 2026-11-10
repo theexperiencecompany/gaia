@@ -3,11 +3,13 @@ import { useEffect } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
 import { turnManager } from "@/features/chat/stream/turnManager";
+import { db } from "@/lib/db/chatDb";
 import { applySyncedConversation } from "@/services/syncService";
 
 /**
  * Reconcile a conversation on open: one sync fetch returns the active-stream
- * verdict and the messages.
+ * verdict and, only when the server's copy is newer than the cached one, the
+ * messages. A long chat (a bot DM) is downloaded once, not on every open.
  *
  * Order is load-bearing — resume must attach to a live turn's event log
  * before messages apply, or an apply that runs ahead sweeps the optimistic
@@ -17,17 +19,22 @@ export const useStreamResume = (conversationId: string | null): void => {
   useEffect(() => {
     if (!conversationId) return;
     const resumeThenApply = async (): Promise<void> => {
-      // Sending undefined for last_updated forces the backend to return the
-      // full conversation, alongside its active-stream verdict.
-      const { conversations } = await chatApi.batchSyncConversations([
-        { conversation_id: conversationId, last_updated: undefined },
-      ]);
+      // Without a cached copy last_updated is undefined, which makes the
+      // backend return the full conversation.
+      const cached = await db.getConversation(conversationId);
+      const { conversations, active_streams } =
+        await chatApi.batchSyncConversations([
+          {
+            conversation_id: conversationId,
+            last_updated: cached?.updatedAt.toISOString(),
+          },
+        ]);
       const conversation = conversations.at(0);
       // resumeIfActive never rejects (attach failures are logged internally).
-      // A missing conversation cannot have a live turn — null verdict.
+      // A conversation the server does not have cannot have a live turn.
       await turnManager.resumeIfActive(
         conversationId,
-        conversation?.active_stream_id ?? null,
+        active_streams[conversationId] ?? null,
       );
       if (conversation) {
         await applySyncedConversation(conversationId, conversation);

@@ -117,6 +117,11 @@ def test_the_crash_catch_all_runs_inside_cors(middleware_names: list[str]) -> No
     )
 
 
+def test_json_bodies_are_compressed_inside_cors(middleware_names: list[str]) -> None:
+    """Large sync bodies must be compressed, and inside CORS so the CORS headers reach the compressed response."""
+    assert middleware_names.index("CORSMiddleware") < middleware_names.index("GZipMiddleware")
+
+
 def test_the_crash_catch_all_covers_every_layer_inside_cors(
     middleware_names: list[str],
 ) -> None:
