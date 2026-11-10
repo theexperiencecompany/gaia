@@ -7,7 +7,13 @@ emits exactly one BriefingPayload JSON object as its entire final message.
 
 from dataclasses import dataclass
 
-from app.constants.briefing import MAX_BRIEF_ITEMS
+from app.constants.briefing import (
+    MAX_BRIEF_CAPTION_CHARS,
+    MAX_BRIEF_HEADLINE_CHARS,
+    MAX_BRIEF_ITEMS,
+    MAX_BRIEF_LEDE_CHARS,
+    MAX_BRIEF_MESSAGE_CHARS,
+)
 
 # How the brief's one message reads, shared by daily and weekly: every surface
 # (chat, email, the app) shows this text under the edition image.
@@ -52,8 +58,7 @@ useful specific thing, named: the person, the decision, the time.
 - At most ONE gentle suggestion, only when the facts support it (a deadline
   lands right before a meeting, a failed task needs a decision).
 - Never paste a raw URL: every surface adds the link to the full brief itself,
-  and a deliverable is linked only by wrapping its phrase in its fact's link
-  token, at most once per item.
+  and an item is linked only by its link slot, at most once per item.
 """.strip()
 
 # The exact output contract, shared by daily and weekly so the parser sees one
@@ -135,6 +140,27 @@ about it, it does not belong in the brief.
 """.strip()
 
 
+_SLOTS = f"""
+## SLOTS (how every count, time and link gets into your prose)
+You never type a count, a time, a date or a web address. Where one goes, write a slot; the
+system fills it in from the facts:
+- ``[[count:needs_you]]``: a count from [COUNTS], by its name there.
+- ``[[fact:N.time]]``: fact N's time or date, when its line has one ("Sequoia at
+  [[fact:9.time]]").
+- ``[[fact:N.count]]``: how many requests fact N stands for, when its line says so.
+- ``[the phrase](fact:N)``: your own words for fact N, linked to what it opens when it is
+  marked ``linkable`` and plain text otherwise.
+- ``[[fact:N]]``: fact N's title exactly as listed, capital letter and all. Use it only where
+  the title stands on its own like a name; "approve the [[fact:3]]" reads "approve the
+  Approve the ...". Mostly say a fact in your own words.
+A figure you type must stand as it is in a fact's title ("the Q3 interviews"); any other is
+said in words or left out. A slot naming no fact shown, a count not in [COUNTS] or a field
+the fact lacks is rejected. Lengths count the prose with its slots filled in: headline at
+most {MAX_BRIEF_HEADLINE_CHARS} characters, lede {MAX_BRIEF_LEDE_CHARS}, caption
+{MAX_BRIEF_CAPTION_CHARS}, message {MAX_BRIEF_MESSAGE_CHARS}.
+""".strip()
+
+
 _VOICE_CONTRACT = """
 ## OUTPUT (read twice)
 
@@ -159,18 +185,16 @@ not there, you do not say it.
 
 The HEADLINE and LEDE are printed above the brief's items, so they are written
 from TODAY'S FACTS alone: name only people and things that appear in an item or
-in today's calendar, use only the non-zero numbers in [COUNTS] or the calendar, and never
-say something needs the user, or mention an event, unless an item or the
-calendar shows it. Yesterday, the user's replies and goal memory may shape the
-message and caption, never the headline or lede. The system checks the headline,
-lede and message against these facts, checks that the message mentions every item
-waiting on the user and every calendar event, and rejects a brief that does not
-match.
+in today's calendar, and never say something needs the user, or mention an event,
+unless an item or the calendar shows it. Yesterday, the user's replies and goal
+memory may shape the message and caption, never the headline or lede. Once the
+slots are filled, a checker reads the headline, lede, caption and message against
+these facts and rejects any claim they do not support.
 
-Be CONCRETE, not vague. Each fact carries a ``detail:`` snippet — use it to name
-specifics ("vetted 12 investors — Elad Gil, Nat Friedman, Daniel Gross and 9
-more" beats "the investor list is ready"). Pull real names, counts, and choices
-straight from the detail; never invent ones that are not there.
+Be CONCRETE, not vague. A fact's ``detail:`` or ``summary:`` names specifics: use
+them ("vetted twelve investors, Elad Gil, Nat Friedman, Daniel Gross and more" beats
+"the investor list is ready"). Pull real names and choices straight from them;
+never invent ones that are not there.
 
 ## VOICE BAR (bad vs good)
 Horoscope filler is a defect. Never write these or their cousins: "You're making
@@ -179,7 +203,7 @@ great progress!", "Let's make today count", "Another productive day ahead",
 with a specific pulled from the facts, in second person, naming the goal it
 serves:
 - BAD headline: "A productive day ahead" / GOOD: "Two investor drafts are
-  written and waiting in your drafts folder"
+  waiting in your folder"
 - BAD lede: "You're making steady progress on your goals." / GOOD: "The Sequoia
   and Accel drafts are ready; the only open question is whether the deck link
   goes in the first email."
@@ -194,10 +218,10 @@ lede puts it in front of them. Finished work is the supporting cast, never the
 opener, whenever something is waiting on them. If nothing needs the user, open
 on the biggest finished result instead.
 
-ALWAYS summarise, THEN maybe link — never a bare link. Every fact carries a
-``summary:`` (concrete specifics) you MUST voice, a size hint (``artifact holds
-~N chars``); a fact with something to open also carries a ``link:`` you decide
-whether to use. A fact with no ``link:`` cannot be linked.
+ALWAYS summarise, THEN maybe link — never a bare link. A work fact carries a
+``summary:`` (concrete specifics) you MUST voice and a size hint (``artifact holds
+~N chars``); a fact with something to open is marked ``linkable`` and you decide
+whether to link it. A fact not marked ``linkable`` has nothing to link.
 
 Link when the artifact is something the user OPENS AND USES — a list they'll work
 from, drafts they'll send, posts they'll publish, a document — or when the fact
@@ -207,13 +231,13 @@ even if a big pile of research sits behind it, the conclusion is the value and
 there is nothing to open. Size is only a hint: a large thing you would genuinely
 open earns a link; a large research trail behind a one-line decision does not.
 
-When you do link, write a markdown link: the item's natural phrase in square
-brackets, then its ``link:`` value copied exactly, with nothing in between. For a
-fact ending ``link: (link:0)``: "I vetted 12 investors (Elad Gil, Nat Friedman,
-Daniel Gross and more), the [full list](link:0) is ready". The phrase becomes the
+When you do link, write the item's natural phrase in square brackets, then
+``(fact:N)`` with its fact's number, nothing in between. For fact 4, marked
+``linkable``: "I vetted twelve investors (Elad Gil, Nat Friedman, Daniel Gross and
+more), the [full list](fact:4) is ready". The phrase becomes the
 tappable link on every surface, and only the items you link get one. One link per
 item, once: never a link on its own, never a "here:" followed by links, never two
-links for one thing. Never invent a link number, and never paste an artifact's contents
+links for one thing. Never invent a fact number, and never paste an artifact's contents
 into the message. Do not overcorrect into forced
 quirkiness.
 
@@ -238,7 +262,7 @@ name a workflow. A reassuring line about things that do not exist is a lie the
 user can check in one tap.
 
 WORDS: never name the brief's internal machinery to the user: no "lane", "held
-results", "sections", "facts" or "[COUNTS]" (say you'll track it as a goal, or
+results", "sections", "facts", a fact's number or "[COUNTS]" (say you'll track it as a goal, or
 just name the work). Never use em dashes or en dashes anywhere in any
 string; use commas, periods, or parentheses.
 """.strip()
@@ -274,8 +298,8 @@ def _signals_section(signals: str) -> str:
 ## ACROSS THEIR APPS (real, current state of their connected apps)
 {signals}
 Voice these in the message, grouped by app. An important item gets its own line, named
-concretely, linked to its link when it has one. The rest of an app's items share one line
-("plus 3 more open in Linear"), linking the ones you name. Use each item's memory: an item
+concretely, linked with its fact's link slot when it is linkable. The rest of an app's items
+share one line ("plus a few more open in Linear"), linking the ones you name. Use each item's memory: an item
 mentioned yesterday and unchanged gets a short "still" or is left out; one that moved gets
 the move; a new one is news. Never invent an item, a link, a date or a person not shown here.
 """
@@ -319,12 +343,10 @@ def build_briefing_voice_prompt(
     blocks: VoicePromptBlocks,
     situation: VoiceSituation,
     recent_openings: list[str],
-    max_message_chars: int,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
     recent_openings are the first lines of the last few messages, so today's opens differently.
-    max_message_chars is the length cap the written message is checked against.
     """
     wind_down_note = ""
     if situation.wind_down == "warn":
@@ -422,8 +444,9 @@ onboarding focus, recent activity). Generic buckets (Work / Personal / Other) ar
 a hard failure. Never ask an open-ended "what can I help with".
 {_recent_openings_block(recent_openings)}
 {_MESSAGE_VOICE}
-- Hard limit: ``message`` stays under {max_message_chars} characters. A longer one is
-  rejected, so on a full day fold an app's routine items into one line.
+- On a full day fold an app's routine items into one line rather than run long.
+
+{_SLOTS}
 
 {_VOICE_CONTRACT}
 """

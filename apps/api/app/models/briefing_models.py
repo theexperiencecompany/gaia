@@ -16,6 +16,10 @@ from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     DAILY_BRIEFING_HOUR,
     HUE_MAX,
+    MAX_BRIEF_CAPTION_CHARS,
+    MAX_BRIEF_HEADLINE_CHARS,
+    MAX_BRIEF_LEDE_CHARS,
+    MAX_BRIEF_MESSAGE_CHARS,
     BriefingFrequency,
     SectionKey,
 )
@@ -152,6 +156,16 @@ class NewStamp(BaseModel):
     country: str
     collected: int = Field(ge=1, description="Stamps collected, this one included.")
     total: int = Field(ge=1, description="How many city stamps can be collected.")
+
+
+class BriefVoice(BaseModel):
+    """The prose the daily brief's model writes over code-built facts, as written or as rendered."""
+
+    headline: str = Field(max_length=MAX_BRIEF_HEADLINE_CHARS)
+    lede: str = Field(max_length=MAX_BRIEF_LEDE_CHARS)
+    caption: str = Field(max_length=MAX_BRIEF_CAPTION_CHARS)
+    mood: BriefingMood
+    message: str = Field(max_length=MAX_BRIEF_MESSAGE_CHARS)
 
 
 class BriefingPayload(BaseModel):

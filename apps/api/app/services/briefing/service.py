@@ -6,14 +6,14 @@ never misses a brief that reached a channel.
 """
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import random
-import re
 from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import ValidationError
+from pydantic_core import ErrorDetails
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.core.background.platform_chat import PlatformImage, post_to_platform_chat
@@ -58,7 +58,7 @@ from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.users import user_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateKind
 from app.models.briefing_models import (
     BRIEFING_ITEM_STATES,
     NEEDS_YOU_ITEM_KINDS,
@@ -67,11 +67,11 @@ from app.models.briefing_models import (
     BriefingItemKind,
     BriefingKind,
     BriefingModel,
-    BriefingMood,
     BriefingPayload,
     BriefingSection,
     BriefingStat,
     BriefingTallies,
+    BriefVoice,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -99,9 +99,8 @@ from app.services.briefing.conversation import post_brief_message
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
-from app.services.briefing.link_tokens import LINK_TOKEN_RE, link_token, link_token_problems
+from app.services.briefing.faithfulness import CheckedProse, unsupported_claims
 from app.services.briefing.message import (
-    brief_message,
     brief_path,
     chat_text,
     delivered_message,
@@ -111,15 +110,16 @@ from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
 from app.services.briefing.scouts.service import scout_signals
 from app.services.briefing.shuffle_bag import draw
+from app.services.briefing.slots import (
+    BriefFact,
+    CountSlot,
+    SlotValues,
+    referenced_facts,
+    render_slots,
+    slot_problems,
+)
 from app.services.briefing.store import store_brief
 from app.services.briefing.view import briefing_card, briefing_view
-from app.services.briefing.voice_check import (
-    VoicedCounts,
-    message_char_limit,
-    message_contradictions,
-    voice_contradictions,
-    voiced_signals,
-)
 from app.services.canvas_markdown import deliverable_size
 from app.services.delivery.chat_channel import ChatChannel, resolve_proactive_target
 from app.services.integrations.user_integrations import (
@@ -384,10 +384,10 @@ async def _deliver(
 
 @dataclass(frozen=True)
 class _Chosen:
-    """The brief's sections, each item beside the candidate it came from, in the same order."""
+    """The brief's sections, each item beside the pool id and candidate it came from, in order."""
 
     sections: list[BriefingSection]
-    picked: list[list[BriefCandidate]]
+    picked: list[list[tuple[int, BriefCandidate]]]
 
 
 def _item_kind(key: SectionKey, candidate: BriefCandidate) -> BriefingItemKind:
@@ -415,7 +415,7 @@ def _item(key: SectionKey, candidate: BriefCandidate, offer: str | None) -> Brie
 def _chosen(selection: BriefSelection, pool: CandidatePool) -> _Chosen:
     """Lay the judge's selection out as the brief's sections, in reading order, empty ones left out."""
     filled = [
-        (key, [pool[i] for i in selection.sections[key]])
+        (key, [(i, pool[i]) for i in selection.sections[key]])
         for key in DAILY_SECTION_ORDER
         if selection.sections.get(key)
     ]
@@ -425,7 +425,7 @@ def _chosen(selection: BriefSelection, pool: CandidatePool) -> _Chosen:
                 numeral=SECTION_NUMERALS[n],
                 title=SECTION_TITLES[key],
                 key=key,
-                items=[_item(key, c, selection.offer) for c in picked],
+                items=[_item(key, c, selection.offer) for _, c in picked],
             )
             for n, (key, picked) in enumerate(filled)
         ],
@@ -444,48 +444,56 @@ def _carried_ids(
     return [held for i in accounted if (held := pool[i].held_id) is not None] + duplicates
 
 
-def _chosen_signals(chosen: _Chosen, remembered: list[RememberedSignal]) -> list[RememberedSignal]:
-    """Return the app signals the judge kept, with their memory, for the writer's apps block."""
-    kept = {
-        (c.signal.integration_id, c.signal.external_id)
+def _chosen_signals(
+    chosen: _Chosen, remembered: list[RememberedSignal]
+) -> list[tuple[int, RememberedSignal]]:
+    """Return the app signals the judge kept, by fact id, with their memory for the apps block."""
+    by_key = {(r.signal.integration_id, r.signal.external_id): r for r in remembered}
+    return [
+        (fact_id, by_key[(c.signal.integration_id, c.signal.external_id)])
         for picked in chosen.picked
-        for c in picked
+        for fact_id, c in picked
         if c.signal is not None
-    }
-    return [r for r in remembered if (r.signal.integration_id, r.signal.external_id) in kept]
+    ]
 
 
-def _fact_line(item: BriefingItem, detail: str | None = None) -> str:
-    line = f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
+def _fact_line(fact_id: int, item: BriefingItem, fact: BriefFact, detail: str | None) -> str:
+    line = f"- fact {fact_id} | {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
     if item.app and item.app != GAIA_APP_NAME:
         line += f" | in {item.app}"
+    if fact.time:
+        line += f" | time: {fact.time}"
     if detail:
         line += f" | detail: {detail}"
-    if item.count > 1:
-        line += f" | {item.count} requests, one item"
+    if fact.count > 1:
+        line += f" | {fact.count} requests, one item"
     return line
 
 
-def _work_fact_line(item: BriefingItem, art: _ArtifactFact, token: str | None) -> str:
-    line = _fact_line(item)
+def _work_fact_line(fact_id: int, item: BriefingItem, fact: BriefFact, art: _ArtifactFact) -> str:
+    line = _fact_line(fact_id, item, fact, None)
     if art.snippet:
         line += f" | summary: {art.snippet}"
     line += f" | artifact holds ~{art.chars} chars"
     if art.action:
         line += " | waiting on you"
-    return line if token is None else f"{line} | link: {token}"
+    return line
 
 
 @dataclass
 class _Facts:
-    """The brief's sections and stats, and the facts block the model voices."""
+    """The brief's sections and stats, the facts block the model voices, and what its slots render.
+
+    deliverables maps a fact id to the todo whose deliverable it links (minted only when the
+    message links it); addresses maps a fact id to the app link it carries.
+    """
 
     sections: list[BriefingSection]
     stats: list[BriefingStat]
-    counts: VoicedCounts
     block: str
-    # Link-token number -> the todo it stands for, resolved by _link_voiced_items.
-    link_targets: dict[int, str]
+    values: SlotValues
+    deliverables: dict[int, str]
+    addresses: dict[int, str]
 
 
 def _work_stats(work: context.TrackedWork) -> list[BriefingStat]:
@@ -502,104 +510,121 @@ def _work_stats(work: context.TrackedWork) -> list[BriefingStat]:
     ]
 
 
-def _build_facts(
-    chosen: _Chosen,
-    work: context.TrackedWork,
-    artifacts: dict[str, _ArtifactFact],
-    open_todos: int,
-    notes: str,
-) -> _Facts:
-    """Assemble the facts block the model voices from the chosen sections.
+def _due_on(due_at: datetime, clock: UserClock) -> str:
+    """Say a due date the way the brief does: today, or its weekday and date."""
+    day = due_at.date()
+    return "today" if day.isoformat() == clock.date_str else day.strftime("%a %b %-d")
 
-    The rendered sections come from the selection so the brief cannot lie. Each todo fact
-    gives the model a summary, whether it is big or waiting on the user, and a link token
-    that becomes the item's heygaia.link only if the voice pass writes it into the message.
-    App signals are voiced from their own block, with what earlier briefs said of them.
+
+def _event_time(event: BriefingEvent) -> str | None:
+    if event.start is None:
+        return None
+    return datetime.strptime(event.start, "%H:%M").strftime("%-I:%M %p")
+
+
+def _counts(items: list[BriefingItem], open_todos: int, events: int) -> dict[CountSlot, int]:
+    """Return the counts a [[count:...]] slot voices, zeros left out."""
+    counts = {
+        CountSlot.NEEDS_YOU: sum(1 for it in items if it.kind in NEEDS_YOU_ITEM_KINDS),
+        CountSlot.DONE: sum(1 for it in items if it.kind == "lookback"),
+        CountSlot.IN_PROGRESS: sum(1 for it in items if it.kind == "gaia"),
+        CountSlot.WHILE_AWAY: sum(1 for it in items if it.kind == "note"),
+        CountSlot.OPEN_TODOS: open_todos,
+        CountSlot.EVENTS: events,
+    }
+    return {slot: n for slot, n in counts.items() if n}
+
+
+@dataclass(frozen=True)
+class _FactSources:
+    """What the facts block is built from besides the chosen sections."""
+
+    work: context.TrackedWork
+    artifacts: dict[str, _ArtifactFact]
+    open_todos: int
+    calendar: list[BriefingEvent]
+    #: The pool id of each calendar event, in calendar order.
+    event_ids: list[int]
+    todos_note: str
+
+
+def _build_facts(chosen: _Chosen, sources: _FactSources, clock: UserClock) -> _Facts:
+    """Assemble the facts block the model voices, and what each of its slots renders.
+
+    Every item, signal and event is a fact numbered by its candidate id. A todo fact gives
+    the model a summary, whether it is big or waiting on the user, and whether it opens a
+    deliverable; app signals are voiced from their own block, with their memory.
     """
-    link_targets: dict[int, str] = {}
+    facts: dict[int, BriefFact] = {}
+    deliverables: dict[int, str] = {}
+    addresses: dict[int, str] = {}
     items = [it for sec in chosen.sections for it in sec.items]
-    counts = VoicedCounts(
-        waiting_on_you=sum(1 for it in items if it.kind in NEEDS_YOU_ITEM_KINDS),
-        done=sum(1 for it in items if it.kind == "lookback"),
-        in_progress=sum(1 for it in items if it.kind == "gaia"),
-        while_away=sum(1 for it in items if it.kind == "note"),
-        open_todos=open_todos,
-    )
-    voiced = " · ".join(f"{label}: {n}" for label, n in counts.shown())
-    fact_lines: list[str] = [f"[COUNTS] {voiced}"] if voiced else []
+    counts = _counts(items, sources.open_todos, len(sources.calendar))
+    voiced = " · ".join(f"{slot.value}: {n}" for slot, n in counts.items())
+    fact_lines = [f"[COUNTS] {voiced}"] if voiced else []
     for sec, picked in zip(chosen.sections, chosen.picked, strict=True):
         fact_lines.append(f"[{sec.title}]")
-        for it, candidate in zip(sec.items, picked, strict=True):
+        for it, (fact_id, candidate) in zip(sec.items, picked, strict=True):
+            art = sources.artifacts[it.todo_id] if it.todo_id is not None else None
+            # An empty deliverable has nothing to open, so nothing to link.
+            if art is not None and art.chars and it.todo_id is not None:
+                deliverables[fact_id] = it.todo_id
+            elif candidate.url:
+                addresses[fact_id] = candidate.url
+            facts[fact_id] = BriefFact(
+                title=it.text,
+                time=_due_on(candidate.due_at, clock) if candidate.due_at else None,
+                count=it.count,
+            )
+            linkable = fact_id in deliverables or fact_id in addresses
             if candidate.signal is not None:
                 continue
-            if it.todo_id is None:
-                fact_lines.append(_fact_line(it, candidate.detail))
-                continue
-            art = artifacts[it.todo_id]
-            token = None
-            if art.chars:  # an empty deliverable has nothing to open, so nothing to link
-                token = link_token(len(link_targets))
-                link_targets[len(link_targets)] = it.todo_id
-            fact_lines.append(_work_fact_line(it, art, token))
+            line = (
+                _fact_line(fact_id, it, facts[fact_id], candidate.detail)
+                if art is None
+                else _work_fact_line(fact_id, it, facts[fact_id], art)
+            )
+            fact_lines.append(f"{line} | linkable" if linkable else line)
+    for fact_id, event in zip(sources.event_ids, sources.calendar, strict=True):
+        facts[fact_id] = BriefFact(title=event.title, time=_event_time(event))
     if not chosen.sections:
         fact_lines.append(
             "GAIA has no tracked work and no background work ran. Do not claim anything "
             "ran, finished, or is pending beyond what is stated here."
         )
-    fact_lines.append(notes)
-    return _Facts(chosen.sections, _work_stats(work), counts, "\n".join(fact_lines), link_targets)
+    fact_lines.append(sources.todos_note)
+    fact_lines.append(_calendar_note(sources.calendar, sources.event_ids))
+    return _Facts(
+        sections=chosen.sections,
+        stats=_work_stats(sources.work),
+        block="\n".join(fact_lines),
+        values=SlotValues(facts=facts, counts=counts),
+        deliverables=deliverables,
+        addresses=addresses,
+    )
 
 
-async def _link_voiced_items(
-    user_id: str, payload: BriefingPayload, link_targets: dict[int, str]
-) -> None:
-    """Turn each link token the voice pass wrote into a markdown link on its phrase.
+async def _links_in(user_id: str, message: str, facts: _Facts) -> dict[int, str]:
+    """Return the address of each fact the message links, minting a deliverable's heygaia.link.
 
-    Only a linked item is minted and carries the link on the stored brief, so a
-    forwarded brief exposes exactly what it links. An item is linked once: a repeat,
-    or an item whose sharing is off, leaves just its phrase.
+    Only a linked deliverable is minted, so a forwarded brief exposes exactly what it links;
+    one whose sharing is off has no address, and its phrase stays text.
     """
-    message = brief_message(payload)
-    used = {int(m.group(2)) for m in LINK_TOKEN_RE.finditer(message)}
-    urls: dict[int, str] = {}
-    for index in sorted(used & link_targets.keys()):
-        url = await optional_short_link(
-            user_id, ShortLinkTargetType.TODO_DELIVERABLE, link_targets[index]
-        )
+    linked = referenced_facts(message)
+    links = {i: url for i, url in facts.addresses.items() if i in linked}
+    for fact_id, todo_id in facts.deliverables.items():
+        if fact_id not in linked:
+            continue
+        url = await optional_short_link(user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
         if url is not None:
-            urls[index] = url
-    linked = {link_targets[index]: url for index, url in urls.items()}
-    for section in payload.sections:
-        for item in section.items:
-            if item.todo_id in linked:
-                item.link = linked[item.todo_id]
-    linked_once: set[int] = set()
-
-    def phrase_link(match: re.Match[str]) -> str:
-        phrase, index = match.group(1), int(match.group(2))
-        url = urls.get(index)
-        if url is None or index in linked_once:
-            return phrase
-        linked_once.add(index)
-        return f"[{phrase}]({url})"
-
-    payload.message = LINK_TOKEN_RE.sub(phrase_link, message)
+            links[fact_id] = url
+    return links
 
 
-class _Voice(BaseModel):
-    """The voice-only JSON the daily run's agent writes over the code-built facts."""
-
-    headline: str
-    lede: str
-    caption: str
-    mood: BriefingMood
-    message: str
-
-
-def _parse_voice(raw: str) -> _Voice:
+def _parse_voice(raw: str) -> BriefVoice:
     """Extract the voice-only JSON (headline/lede/caption/mood/message)."""
-    parsed = model_from_reply(raw, _Voice)
-    if isinstance(parsed, _Voice):
+    parsed = model_from_reply(raw, BriefVoice)
+    if isinstance(parsed, BriefVoice):
         return parsed
     log.warning("briefing.voice_unreadable", raw_length=len(raw), problems=parsed)
     raise VoiceUnreadableError(parsed)
@@ -655,11 +680,14 @@ async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: b
     return "\n".join(lines)
 
 
-def _calendar_note(events: list[BriefingEvent]) -> str:
+def _calendar_note(events: list[BriefingEvent], event_ids: list[int]) -> str:
     if not events:
         return "The user's calendar has nothing today (or no calendar is connected)."
-    lines = [f"- {e.start or 'all day'}: {e.title}" for e in events]
-    return "Today's calendar (user-local 24h times):\n" + "\n".join(lines)
+    lines = [
+        f"- fact {fact_id} | {_event_time(e) or 'all day'}: {e.title}"
+        for fact_id, e in zip(event_ids, events, strict=True)
+    ]
+    return "Today's calendar:\n" + "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -723,55 +751,74 @@ async def _recent_openings(user_id: str) -> list[str]:
 
 
 @dataclass(frozen=True)
-class _ProseRules:
-    """What the written brief is checked against.
+class _Writing:
+    """What the written brief is held to: the values its slots render and everything the model was shown."""
 
-    context is everything else the model was shown; require_coverage holds the message
-    to every needs-you item and event (a winback or wind-down note is exempt); link_ids
-    are the link tokens the facts offered.
-    """
-
-    counts: VoicedCounts
+    values: SlotValues
     context: str
-    require_coverage: bool
-    signals: list[Signal]
-    link_ids: frozenset[int]
 
 
-def _prose_problems(payload: BriefingPayload, rules: _ProseRules) -> list[str]:
-    message = brief_message(payload)
-    return (
-        voice_contradictions(
-            payload.headline,
-            payload.lede,
-            payload,
-            rules.counts,
-            context=rules.context,
-            signals=rules.signals,
-        )
-        + message_contradictions(
-            message,
-            payload,
-            rules.counts,
-            context=rules.context,
-            require_coverage=rules.require_coverage,
-            signals=rules.signals,
-        )
-        + link_token_problems(message, rules.link_ids)
+_VOICED_FIELDS = ("headline", "lede", "caption", "message")
+
+
+def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
+    """Fill the voice's slots, each link as its phrase; raises ValidationError past a field's limit."""
+    return BriefVoice.model_validate(
+        {
+            "mood": voice.mood,
+            **{name: render_slots(getattr(voice, name), values, {}) for name in _VOICED_FIELDS},
+        }
     )
 
 
-async def _voice_checked_against_items(
-    user: AuthenticatedUser,
-    clock: UserClock,
-    prompt: str,
-    rules: _ProseRules,
-    build: Callable[[_Voice], BriefingPayload],
-) -> BriefingPayload:
-    """Voice the brief, then check its headline, lede and message against its final items.
+def _length_problems(exc: ValidationError) -> list[str]:
+    errors: list[ErrorDetails] = exc.errors(include_url=False, include_input=False)
+    return [
+        f"the {'.'.join(map(str, error['loc']))} once its slots are filled: {error['msg']}"
+        for error in errors
+    ]
 
-    An unreadable reply or a contradiction is sent back to the model once with the problems
-    named; a second failure fails the run before anything is stored or sent.
+
+async def _held_to_facts(
+    user_id: str, voice: BriefVoice, writing: _Writing
+) -> BriefVoice | list[str]:
+    """Return the voice rendered from its facts, or every way it breaks them.
+
+    Slots and lengths are checked in code; the claims of the rendered prose by one model call.
+    """
+    problems = [
+        problem
+        for name in _VOICED_FIELDS
+        for problem in slot_problems(name, getattr(voice, name), writing.values)
+    ]
+    if problems:
+        return problems
+    try:
+        draft = _draft(voice, writing.values)
+    except ValidationError as exc:
+        return _length_problems(exc)
+
+    def marked(text: str) -> str:
+        return render_slots(text, writing.values, {}, mark_filled=True)
+
+    prose = CheckedProse(
+        headline=marked(voice.headline),
+        lede=marked(voice.lede),
+        caption=marked(voice.caption),
+        message=marked(voice.message),
+    )
+    claims = await unsupported_claims(user_id, writing.context, prose)
+    return claims or draft
+
+
+async def _written_brief(
+    user: AuthenticatedUser, clock: UserClock, prompt: str, writing: _Writing
+) -> tuple[BriefVoice, BriefVoice]:
+    """Voice the brief and hold it to its facts; return what the model wrote and its rendered draft.
+
+    An unreadable reply, a bad slot, an overlong field or an unsupported claim is sent back to
+    the model once with the problems named; a second failure fails the run before anything is
+    stored or sent.
     """
     note = ""
     failure = BriefingGenerationError("the brief was never voiced")
@@ -779,40 +826,51 @@ async def _voice_checked_against_items(
         attempt_prompt = f"{prompt}\n\n{note}" if note else prompt
         raw = await _run_silent(user, clock, attempt_prompt, conversation_key=BRIEFING_KIND_DAILY)
         try:
-            payload = build(_parse_voice(raw))
+            voice = _parse_voice(raw)
         except VoiceUnreadableError as exc:
             failure, note = exc, voice_unreadable_note(exc.problems)
             continue
-        problems = _prose_problems(payload, rules)
-        if not problems:
-            return payload
-        log.warning("briefing.voice_contradicted_items", problems=problems)
+        checked = await _held_to_facts(user.user_id, voice, writing)
+        if isinstance(checked, BriefVoice):
+            return voice, checked
+        log.warning("briefing.voice_rejected", problems=checked)
         failure = BriefingGenerationError(
-            f"The brief's prose contradicts its items: {'; '.join(problems)}"
+            f"The brief's prose does not hold to its facts: {'; '.join(checked)}"
         )
-        note = voice_correction_note(problems)
+        note = voice_correction_note(checked)
     raise failure
 
 
+@dataclass(frozen=True)
+class _Prose:
+    """The voice as written, its rendered draft, and the address of each fact its message links."""
+
+    written: BriefVoice
+    draft: BriefVoice
+    links: dict[int, str]
+
+
 def _daily_payload(
-    clock: UserClock,
-    voice: _Voice,
-    sections: list[BriefingSection],
-    stats: list[BriefingStat],
-    is_winback: bool,
+    clock: UserClock, prose: _Prose, facts: _Facts, is_winback: bool
 ) -> BriefingPayload:
+    """Build the brief from its rendered prose; an item the message links carries its link."""
+    linked = {todo: prose.links[i] for i, todo in facts.deliverables.items() if i in prose.links}
+    for item in (item for section in facts.sections for item in section.items):
+        if item.todo_id in linked:
+            item.link = linked[item.todo_id]
+    draft = prose.draft
     return BriefingPayload(
         kicker=DAILY_KICKER,
         date=clock.date_str,
-        headline=voice.headline,
-        lede=voice.lede,
-        stats=stats,
-        sections=sections,
-        mood="winback" if is_winback else voice.mood,
-        caption=voice.caption,
+        headline=draft.headline,
+        lede=draft.lede,
+        stats=facts.stats,
+        sections=facts.sections,
+        mood="winback" if is_winback else draft.mood,
+        caption=draft.caption,
         hue=hue_for_day(clock.day_of_year),
         generated_at=clock.now_local.strftime("%-I:%M %p"),
-        message=voice.message,
+        message=render_slots(prose.written.message, facts.values, prose.links),
     )
 
 
@@ -968,13 +1026,18 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     )
     chosen = _chosen(selection, gathered.pool)
     remembered = _chosen_signals(chosen, scouts.remembered)
-    signals = [item.signal for item in remembered]
+    signals = [item.signal for _, item in remembered]
     facts = _build_facts(
         chosen,
-        work,
-        artifacts,
-        open_count,
-        _user_todos_note(open_count, open_titles) + "\n" + _calendar_note(calendar),
+        _FactSources(
+            work=work,
+            artifacts=artifacts,
+            open_todos=open_count,
+            calendar=calendar,
+            event_ids=[i for i, c in gathered.pool.items() if c.kind is CandidateKind.EVENT],
+            todos_note=_user_todos_note(open_count, open_titles),
+        ),
+        clock,
     )
 
     # Idle ladder: nothing to report (no candidate beyond the calendar, no goal
@@ -1007,32 +1070,26 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             offer_lighter_cadence=offer_lighter,
         ),
         recent_openings=await _recent_openings(user_id),
-        max_message_chars=message_char_limit(len(signals)),
     )
-    tallies = BriefingTallies(done_by_you=len(completed.user), done_by_gaia=len(completed.gaia))
-    payload = await _voice_checked_against_items(
+    voice, draft = await _written_brief(
         build_user_context(user, auth_provider=None),
         clock,
         prompt,
-        _ProseRules(
-            counts=facts.counts,
-            context=blocks.context,
-            require_coverage=not winback.is_winback and wind_down is None,
-            signals=signals,
-            link_ids=frozenset(facts.link_targets),
-        ),
-        lambda voice: _daily_payload(
-            clock, voice, facts.sections, facts.stats, winback.is_winback
-        ).model_copy(
-            update={
-                "calendar": calendar,
-                "tallies": tallies,
-                "sources_read": gathered.sources_read,
-                "sources_unavailable": gathered.sources_unavailable,
-            }
-        ),
+        _Writing(values=facts.values, context=blocks.context),
     )
-    await _link_voiced_items(user_id, payload, facts.link_targets)
+    links = await _links_in(user_id, voice.message, facts)
+    payload = _daily_payload(
+        clock, _Prose(voice, draft, links), facts, winback.is_winback
+    ).model_copy(
+        update={
+            "calendar": calendar,
+            "tallies": BriefingTallies(
+                done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
+            ),
+            "sources_read": gathered.sources_read,
+            "sources_unavailable": gathered.sources_unavailable,
+        }
+    )
     family = _draw_from_bag(user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS)
     await _publish(
         user,
@@ -1047,8 +1104,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             signal_count=len(signals),
         ),
     )
+    spoken = referenced_facts(voice.message)
     await signal_memory_repository.mark_shown(
-        user_id, voiced_signals(payload.message, signals), datetime.now(UTC)
+        user_id, [item.signal for i, item in remembered if i in spoken], datetime.now(UTC)
     )
     carried = _carried_ids(selection, gathered.pool, gathered.duplicate_held_ids)
     if carried:

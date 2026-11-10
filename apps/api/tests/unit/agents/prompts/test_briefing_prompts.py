@@ -21,6 +21,12 @@ from app.agents.prompts.briefing_prompts import (
     reader_line,
     voice_correction_note,
 )
+from app.constants.briefing import (
+    MAX_BRIEF_CAPTION_CHARS,
+    MAX_BRIEF_HEADLINE_CHARS,
+    MAX_BRIEF_LEDE_CHARS,
+    MAX_BRIEF_MESSAGE_CHARS,
+)
 
 _GOAL = "Raising a seed round [mentioned 2026-10-01]"
 
@@ -132,22 +138,32 @@ def _prompt(
             offer_lighter_cadence=offer_lighter_cadence,
         ),
         recent_openings=recent_openings or [],
-        max_message_chars=1500,
     )
 
 
 @pytest.mark.regression
-def test_the_prompt_states_the_length_cap_the_message_is_checked_against() -> None:
+def test_the_prompt_states_every_length_cap_the_prose_is_held_to() -> None:
     """The writer was never told the cap, so a busy day ran over it on both attempts."""
-    prompt = build_briefing_voice_prompt(
-        date_local="Tuesday, October 14",
-        blocks=_BLOCKS,
-        situation=VoiceSituation(),
-        recent_openings=[],
-        max_message_chars=2100,
-    )
+    prompt = " ".join(_prompt().split())
 
-    assert "``message`` stays under 2100 characters" in prompt
+    assert (
+        f"headline at most {MAX_BRIEF_HEADLINE_CHARS} characters, lede {MAX_BRIEF_LEDE_CHARS}, "
+        f"caption {MAX_BRIEF_CAPTION_CHARS}, message {MAX_BRIEF_MESSAGE_CHARS}."
+    ) in prompt
+
+
+def test_the_voice_is_taught_every_slot_and_never_to_type_a_count() -> None:
+    prompt = " ".join(_prompt().split())
+
+    assert "You never type a count, a time, a date or a web address." in prompt
+    for slot in (
+        "[[count:needs_you]]",
+        "[[fact:N]]",
+        "[[fact:N.time]]",
+        "[[fact:N.count]]",
+        "[the phrase](fact:N)",
+    ):
+        assert f"``{slot}``" in prompt
 
 
 def test_an_ordinary_morning_goes_straight_from_goal_memory_to_the_goal_guidance() -> None:
@@ -206,13 +222,13 @@ def test_the_voice_is_told_to_summarise_first_and_link_only_what_the_user_opens(
 
     assert "ALWAYS summarise, THEN maybe link — never a bare link." in prompt
     assert (
-        "Every fact carries a ``summary:`` (concrete specifics) you MUST voice, a size hint "
-        "(``artifact holds ~N chars``); a fact with something to open also carries a "
-        "``link:`` you decide whether to use. A fact with no ``link:`` cannot be linked."
+        "A work fact carries a ``summary:`` (concrete specifics) you MUST voice and a size hint "
+        "(``artifact holds ~N chars``); a fact with something to open is marked ``linkable`` "
+        "and you decide whether to link it. A fact not marked ``linkable`` has nothing to link."
     ) in prompt
-    assert "the [full list](link:0) is ready" in prompt
+    assert "the [full list](fact:4) is ready" in prompt
     assert (
-        "Never invent a link number, and never paste an artifact's contents into the message."
+        "Never invent a fact number, and never paste an artifact's contents into the message."
     ) in prompt
 
 

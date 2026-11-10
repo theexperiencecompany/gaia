@@ -84,16 +84,20 @@ BRIEF_SELECTION_LABEL: Final[str] = "brief_selection_judge"
 #: What a candidate's source is when GAIA itself, not a connected app, produced it.
 GAIA_SOURCE: Final[str] = "gaia"
 GAIA_APP_NAME: Final[str] = "GAIA"
-# The written brief message is a text, not a wall: a busy day fits in about 20 short lines.
-MAX_BRIEF_MESSAGE_CHARS: Final[int] = 1500
-# Room each app signal adds to that, up to a hard ceiling however much the apps hold.
-BRIEF_MESSAGE_CHARS_PER_SIGNAL: Final[int] = 60
-BRIEF_MESSAGE_CHAR_CEILING: Final[int] = 2700
+# Longest render that fits (Chromium, real renderers, worst of 20 skin seeds): headline 3 lines
+# of gradient's 46px h1, the tightest family; lede 3 lines, caption 1, of the classic edition.
+MAX_BRIEF_HEADLINE_CHARS: Final[int] = 52
+MAX_BRIEF_LEDE_CHARS: Final[int] = 247
+MAX_BRIEF_CAPTION_CHARS: Final[int] = 148
+# The message is a text, not a wall: about 20 short lines on the busiest day.
+MAX_BRIEF_MESSAGE_CHARS: Final[int] = 2700
 # How many recent briefs' opening lines the model sees, so today's opens differently.
 RECENT_OPENINGS_SHOWN: Final[int] = 5
-# Voice attempts per daily brief: one regeneration when the prose contradicts the items
-# (briefing/voice_check.py), then the run fails rather than ship it.
+# Voice attempts per daily brief: one regeneration when its slots or its claims fail the
+# facts, then the run fails rather than ship it.
 MAX_VOICE_ATTEMPTS: Final[int] = 2
+#: The faithfulness check's metering label.
+BRIEF_FAITHFULNESS_LABEL: Final[str] = "brief_faithfulness_check"
 
 # Rows per list in the weekly edition (shipped, handled, the week ahead).
 WEEK_LIST_LIMIT: Final[int] = 5

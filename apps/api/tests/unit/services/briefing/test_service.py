@@ -30,6 +30,7 @@ from app.agents.prompts.briefing_prompts import (
 from app.constants.briefing import (
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
+    MAX_BRIEF_HEADLINE_CHARS,
     MAX_BRIEF_ITEMS,
     WEEKLY_KICKER,
     WINBACK_THRESHOLD,
@@ -90,12 +91,13 @@ from app.models.user_models import (
     UserDocument,
 )
 from app.models.workflow_execution_models import WorkflowExecutionDocument
-from app.services.briefing import chat_sync, context, dormancy, service, store
+from app.services.briefing import chat_sync, context, dormancy, faithfulness, service, store
 from app.services.briefing.candidates import judge
 from app.services.briefing.candidates.judge import BriefSelectionAnswer
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.faithfulness import UnsupportedClaims
 from app.services.briefing.scouts import service as scout_service
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
@@ -122,9 +124,9 @@ _BRIEF_ID = "brief_abc123"
 _BRIEF_LINK = "https://heygaia.link/briefabc123"
 _ORCHESTRATED = ["inapp", "email"]
 
-# The fake model writes its message from exactly the facts it was shown, so it
-# mentions every need and event and cites nothing else; a reply holding this token
-# gets the prompt's facts block in its place.
+# The fake model writes its message from exactly the facts it was shown: a reply holding
+# this token gets, in its place, one title slot per fact the facts block numbers, and
+# "<fact of TITLE>" becomes the number of the fact with that title.
 _FACTS_SHOWN = "<the facts shown>"
 _FACTS_HEADER = "## TODAY'S FACTS (final: voice them, never alter them)\n"
 
@@ -137,17 +139,35 @@ _VOICE = {
 }
 
 
+_FACT_LINE = re.compile(r"^- fact (\d+) \| ", re.M)
+
+
 def _facts_shown(prompt: str) -> str:
-    """Return the prompt's facts block, minus the link tokens a writer may leave out."""
-    facts = prompt.split(_FACTS_HEADER, 1)[1].split("\n\n## ", 1)[0]
-    return re.sub(r" \| link: \(link:\d+\)", "", facts)
+    """Return the prompt's facts block."""
+    return prompt.split(_FACTS_HEADER, 1)[1].split("\n\n## ", 1)[0]
+
+
+_FACT_OF = re.compile(r"<fact of ([^>]+)>")
+
+
+def _naming_every_fact(prompt: str) -> str:
+    """Return a message naming each fact of the facts block by its title slot, in order."""
+    ids = dict.fromkeys(_FACT_LINE.findall(_facts_shown(prompt)))
+    return "\n".join(f"[[fact:{fact_id}]]" for fact_id in ids) or "A quiet day."
+
+
+def _fact_of(prompt: str, title: str) -> str:
+    found = re.search(rf"^- fact (\d+) \| [^\n]*{re.escape(title)}", prompt, re.M)
+    assert found is not None, f"no fact is titled {title!r}"
+    return found.group(1)
 
 
 def _message_written(prompt: str, reply: str) -> str:
-    """Return reply with the facts token replaced by the prompt's facts, JSON-escaped."""
+    """Return reply with the facts token and each fact-of token filled in from the prompt."""
     if _FACTS_HEADER not in prompt:
         return reply
-    return reply.replace(_FACTS_SHOWN, json.dumps(_facts_shown(prompt))[1:-1])
+    reply = _FACT_OF.sub(lambda m: _fact_of(prompt, m.group(1)), reply)
+    return reply.replace(_FACTS_SHOWN, json.dumps(_naming_every_fact(prompt))[1:-1])
 
 
 _DIGEST_REPORT = "3 new papers on retrieval\nThe longest is 40 pages; two cite your draft."
@@ -237,6 +257,8 @@ class World:
     capture: MagicMock
     voice_prompt: MagicMock
     weekly_prompt: MagicMock
+    #: The faithfulness model; by default every claim holds.
+    checker: AsyncMock
     recent: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
     stamped: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
     clear_bootstrap: AsyncMock = field(default_factory=AsyncMock)
@@ -271,8 +293,16 @@ def _seam(
 
 
 @pytest.fixture
-def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
+def checker(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    model = AsyncMock(return_value=UnsupportedClaims(claims=[]))
+    monkeypatch.setattr(faithfulness, "ainvoke_structured", model)
+    return model
+
+
+@pytest.fixture
+def world(monkeypatch: pytest.MonkeyPatch, checker: AsyncMock) -> Iterator[World]:
     w = World(
+        checker=checker,
         agent=AsyncMock(return_value=SimpleNamespace(message=_fenced(_VOICE))),
         upsert=AsyncMock(
             side_effect=lambda user_id,
@@ -470,13 +500,13 @@ class TestDailyBrief:
         assert world.bags["edition_family"].order.count(payload.template_family) >= 1
         assert payload.calendar == [_EVENT]
         assert payload.tallies == BriefingTallies(done_by_you=1, done_by_gaia=0)
-        assert "11:00: Sequoia" in _prompt(world)
+        assert "11:00 AM: Sequoia" in _prompt(world)
         assert [(s.title, [i.text for i in s.items]) for s in payload.sections] == [
             ("Needs you", ["Approve the Priya reply"]),
             ("GAIA's work", ["Investor update"]),
         ]
         assert [i.todo_id for s in payload.sections for i in s.items] == ["b1", "c1"]
-        message = _facts_shown(_prompt(world))
+        message = "Approve the Priya reply\nInvestor update\nSequoia"
         assert payload.message == message
         assert world.upsert.await_args.kwargs["edition_image_url"] == _EDITION.display_url
         request = world.notify.await_args.args[0]
@@ -969,45 +999,84 @@ def _voiced(headline: str, lede: str) -> SimpleNamespace:
 
 _LIVE_CONTRADICTION = _voiced(
     "Arjun's contract redlines need you today",
-    "The Inbox desk also flagged 2 items needing you, and 1 event today.",
+    "The Inbox desk also flagged a few items needing you, and an event today.",
 )
+_ARJUN = '"Arjun\'s contract redlines need you": no fact names Arjun or a contract'
 
 
-class TestTheProseMatchesTheItems:
-    """The headline and lede are checked against the final items before anything renders.
+def _claims(*claims: str) -> UnsupportedClaims:
+    return UnsupportedClaims(claims=list(claims))
+
+
+def _checked_prompt(world: World, call: int = 0) -> str:
+    return world.checker.await_args_list[call].args[1]
+
+
+class TestTheProseHoldsToItsFacts:
+    """The rendered headline, lede, caption and message are checked against the facts before anything renders.
 
     Regression: a live brief's headline named a need over an empty needs-you section and
     its lede counted an event over an empty calendar.
     """
 
-    async def test_a_contradicting_voice_is_regenerated_once_with_the_problems(
+    async def test_an_unsupported_claim_is_regenerated_once_with_the_claims_named(
         self, world: World
     ) -> None:
         world.work = context.TrackedWork(completed=[_todo("c1", "Investor update")])
         world.agent.side_effect = [
             _LIVE_CONTRADICTION,
-            _voiced("The investor update is done", "Nothing on the calendar today."),
+            _voiced("The investor update is done", "Sequoia is the one thing on today."),
         ]
+        world.checker.side_effect = [_claims(_ARJUN), _claims()]
 
         await service.run_daily_briefing(_USER)
 
         assert world.agent.await_count == 2
         retry = world.agent.await_args_list[1].kwargs["request"].message
-        assert "no item needs them" in retry
+        assert (
+            f"YOUR LAST BRIEF WAS REJECTED\nIt did not match today's facts:\n- {_ARJUN}\n" in retry
+        )
         assert _stored_payload(world).headline == "The investor update is done"
 
-    async def test_a_voice_that_contradicts_twice_fails_and_sends_nothing(
-        self, world: World
-    ) -> None:
+    async def test_a_brief_unsupported_twice_fails_and_sends_nothing(self, world: World) -> None:
         world.work = context.TrackedWork(completed=[_todo("c1", "Investor update")])
         world.agent.side_effect = [_LIVE_CONTRADICTION, _LIVE_CONTRADICTION]
+        world.checker.return_value = _claims(_ARJUN)
 
-        with pytest.raises(service.BriefingGenerationError, match="needs them; the prose"):
+        with pytest.raises(service.BriefingGenerationError, match="no fact names Arjun"):
             await service.run_daily_briefing(_USER)
 
+        assert world.checker.await_count == 2
         _assert_nothing_sent(world)
 
-    async def test_a_count_the_model_was_shown_may_be_voiced(
+    async def test_the_checker_reads_the_rendered_prose_and_everything_the_writer_was_shown(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seam(
+            monkeypatch,
+            world,
+            context,
+            "format_goal_block",
+            AsyncMock(return_value=("Raise a seed round from Accel", True)),
+        )
+        world.agent.return_value = _voiced(
+            "Sequoia at [[fact:<fact of Sequoia>.time]]", "Then the Accel intro."
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        checked = _checked_prompt(world)
+        assert "headline: Sequoia at ⟦11:00 AM⟧\n" in checked
+        assert "lede: Then the Accel intro.\n" in checked
+        assert "message:\n⟦Sequoia⟧\n" in checked
+        assert "[[" not in checked.split("## THE BRIEF", 1)[1]
+        assert _stored_payload(world).headline == "Sequoia at 11:00 AM"
+        blocks = world.voice_prompt.call_args.kwargs["blocks"]
+        assert blocks.context in checked
+        assert "Raise a seed round from Accel" in checked
+        assert world.checker.await_args.args[0] is UnsupportedClaims
+
+    async def test_a_count_the_model_was_shown_is_voiced_by_its_slot(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Regression: 5 open todos were shown to the model, then rejected when it said 5."""
@@ -1019,26 +1088,65 @@ class TestTheProseMatchesTheItems:
             AsyncMock(return_value=(5, ["Gym"])),
         )
         _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
-        world.agent.return_value = _voiced("5 open todos, a quiet morning", "Nothing else today.")
+        world.agent.return_value = _voiced(
+            "[[count:open_todos]] open todos, a quiet morning", "Nothing else today."
+        )
 
         await service.run_daily_briefing(_USER)
 
-        assert "[COUNTS] your open todos: 5\n" in _prompt(world)
+        assert "[COUNTS] open_todos: 5\n" in _prompt(world)
         assert world.agent.await_count == 1
         assert _stored_payload(world).headline == "5 open todos, a quiet morning"
 
-    async def test_a_count_the_model_was_not_shown_is_still_rejected(
-        self, world: World, monkeypatch: pytest.MonkeyPatch
+    @pytest.mark.parametrize(
+        ("headline", "named"),
+        [
+            ("6 open todos", "the headline types '6' itself"),
+            ("[[count:done]] done overnight", "[[count:done]] is not a count the facts list"),
+            ("[[fact:9]] is waiting", "fact:9 is no fact shown today"),
+        ],
+    )
+    async def test_a_figure_typed_or_a_slot_naming_nothing_shown_is_regenerated(
+        self, world: World, monkeypatch: pytest.MonkeyPatch, headline: str, named: str
     ) -> None:
         _seam(
             monkeypatch, world, context, "user_open_todo_summary", AsyncMock(return_value=(5, []))
         )
-        world.agent.return_value = _voiced("6 open todos", "A quiet morning.")
+        world.agent.side_effect = [
+            _voiced(headline, "A quiet morning."),
+            _voiced("A quiet one", "-"),
+        ]
 
-        with pytest.raises(service.BriefingGenerationError, match="counts 6"):
-            await service.run_daily_briefing(_USER)
+        await service.run_daily_briefing(_USER)
 
-        _assert_nothing_sent(world)
+        assert named in world.agent.await_args_list[1].kwargs["request"].message
+        assert world.checker.await_count == 1
+        assert _stored_payload(world).headline == "A quiet one"
+
+    async def test_a_headline_past_its_limit_once_filled_is_regenerated(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        long_title = "Sign " + "the long agreement " * 6
+        _seam(
+            monkeypatch,
+            world,
+            context,
+            "gather_calendar",
+            AsyncMock(return_value=[BriefingEvent(date=_DATE, start="11:00", title=long_title)]),
+        )
+        world.agent.side_effect = [
+            _voiced("Today: [[fact:1]]", "One event."),
+            _voiced("One long signing today", "One event."),
+        ]
+
+        await service.run_daily_briefing(_USER)
+
+        retry = world.agent.await_args_list[1].kwargs["request"].message
+        assert (
+            f"the headline once its slots are filled: String should have at most "
+            f"{MAX_BRIEF_HEADLINE_CHARS} characters"
+        ) in retry
+        assert _stored_payload(world).headline == "One long signing today"
 
 
 _RAW_NEWLINE_PARAGRAPHS = SimpleNamespace(
@@ -1101,77 +1209,7 @@ def _wrote(message: str) -> SimpleNamespace:
     return SimpleNamespace(message=_fenced({**_VOICE, "message": message}))
 
 
-_SKIPS_PRIYA = _wrote("Sequoia at 11:00, and the investor update went out.")
-
-
-class TestTheMessageCoversTheDay:
-    """The written message is checked for everything waiting on the user and every event."""
-
-    async def test_a_message_that_skips_a_need_is_regenerated_with_it_named(
-        self, world: World
-    ) -> None:
-        world.work = _brief_work()
-        world.agent.side_effect = [_SKIPS_PRIYA, _wrote(_FACTS_SHOWN)]
-
-        await service.run_daily_briefing(_USER)
-
-        assert world.agent.await_count == 2
-        retry = world.agent.await_args_list[1].kwargs["request"].message
-        assert "never mentions 'Approve the Priya reply'" in retry
-        assert _stored_payload(world).message == _facts_shown(_prompt(world))
-
-    async def test_a_headline_may_name_what_only_the_goal_mentions(
-        self, world: World, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seam(
-            monkeypatch,
-            world,
-            context,
-            "format_goal_block",
-            AsyncMock(return_value=("Raise a seed round from Accel", True)),
-        )
-        world.agent.return_value = SimpleNamespace(
-            message=_fenced({**_VOICE, "headline": "Next up, the Accel intro"})
-        )
-
-        await service.run_daily_briefing(_USER)
-
-        assert world.agent.await_count == 1
-        assert _stored_payload(world).headline == "Next up, the Accel intro"
-
-    async def test_a_message_that_skips_a_need_twice_fails_and_sends_nothing(
-        self, world: World
-    ) -> None:
-        world.work = _brief_work()
-        world.agent.side_effect = [_SKIPS_PRIYA, _SKIPS_PRIYA]
-
-        with pytest.raises(service.BriefingGenerationError, match="Priya"):
-            await service.run_daily_briefing(_USER)
-
-        _assert_nothing_sent(world)
-
-    async def test_a_winback_note_need_not_cover_everything(
-        self, world: World, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        world.work = _brief_work()
-        _seam(
-            monkeypatch,
-            world,
-            context,
-            "compute_winback_state",
-            AsyncMock(
-                return_value=context.WinbackState(
-                    unacknowledged=WINBACK_THRESHOLD, last_was_winback=False
-                )
-            ),
-        )
-        world.agent.return_value = _wrote("The investor update is still sitting here, want it?")
-
-        await service.run_daily_briefing(_USER)
-
-        assert world.agent.await_count == 1
-        assert _stored_payload(world).mood == "winback"
-
+class TestWhatTheWriterIsShown:
     async def test_the_model_sees_how_recent_briefs_opened(self, world: World) -> None:
         def brief(message: str | None) -> BriefingModel:
             payload = BriefingPayload.model_validate(
@@ -1212,7 +1250,7 @@ class TestOneSubjectIsOneItem:
         assert facts.count("Acme MSA renewal") == 1
         assert "Approve the Acme MSA renewal | 3 requests, one item" in facts
         assert "Reply to Daniel | 1 requests" not in facts
-        assert "waiting on you: 2" in facts
+        assert "[COUNTS] needs_you: 2 · events: 1\n" in facts
         assert [(s.value, s.label) for s in payload.stats] == [("2", "waiting on you")]
 
     async def test_two_requests_for_one_subject_are_counted_as_two(self, world: World) -> None:
@@ -1351,7 +1389,7 @@ class TestTheDailyRunWiring:
         assert payload.hue == 79
         assert payload.mood == "packed"
         assert payload.caption == "Onward."
-        assert payload.message == _facts_shown(_prompt(world))
+        assert payload.message == "Approve the Priya reply\nInvestor update\nSequoia"
         assert [(s.value, s.label) for s in payload.stats] == [
             ("1", "done since yesterday"),
             ("1", "waiting on you"),
@@ -1362,7 +1400,7 @@ class TestTheDailyRunWiring:
 
         await service.run_daily_briefing(_USER)
 
-        assert "[COUNTS] in progress: 1\n" in _prompt(world)
+        assert "[COUNTS] in_progress: 1 · events: 1\n" in _prompt(world)
 
     async def test_delivery_opens_the_brief_and_posts_the_image_as_the_daily_brief(
         self, world: World
@@ -1452,17 +1490,19 @@ class TestTheFactsTheModelVoices:
         await service.run_daily_briefing(_USER)
 
         assert (
-            "[COUNTS] waiting on you: 3 · done: 1 · in progress: 1 · while you were away: 1\n"
+            "[COUNTS] needs_you: 3 · done: 1 · in_progress: 1 · while_away: 1 · events: 1\n"
             "[Needs you]\n"
-            "- Waiting on you: Approve the reply | summary: Draft ready"
-            " | artifact holds ~11 chars | waiting on you | link: (link:0)\n"
-            "- Failed: Sync | artifact holds ~0 chars\n"
-            "- Failed: Scrape | artifact holds ~0 chars\n"
+            "- fact 1 | Waiting on you: Approve the reply | summary: Draft ready"
+            " | artifact holds ~11 chars | waiting on you | linkable\n"
+            "- fact 2 | Failed: Sync | artifact holds ~0 chars\n"
+            "- fact 3 | Failed: Scrape | artifact holds ~0 chars\n"
             "[GAIA's work]\n"
-            "- Note: Digest: first\n"
-            "- Done: Deck | artifact holds ~0 chars\n"
-            "- In progress: Research | artifact holds ~0 chars\n"
-            "The user's own todo list is empty."
+            "- fact 4 | Note: Digest: first\n"
+            "- fact 5 | Done: Deck | artifact holds ~0 chars\n"
+            "- fact 6 | In progress: Research | artifact holds ~0 chars\n"
+            "The user's own todo list is empty.\n"
+            "Today's calendar:\n"
+            "- fact 8 | 11:00 AM: Sequoia"
         ) in _prompt(world)
         assert "GAIA has no tracked work" not in _prompt(world)
         assert [(s.value, s.label) for s in _stored_payload(world).stats] == [
@@ -1483,8 +1523,8 @@ class TestTheFactsTheModelVoices:
 
         await service.run_daily_briefing(_USER)
 
-        assert "- Done: Deck | summary: First line Second line | artifact holds" in _prompt(world)
-        assert f"- Done: Long | summary: {'x' * 239} | artifact holds" in _prompt(world)
+        assert "| Done: Deck | summary: First line Second line | artifact holds" in _prompt(world)
+        assert f"| Done: Long | summary: {'x' * 239} | artifact holds" in _prompt(world)
 
     async def test_the_size_hint_counts_the_deliverable_not_its_logs(self, world: World) -> None:
         doc = _todo("c1", "Pick a forum")
@@ -1506,24 +1546,27 @@ class TestTheFactsTheModelVoices:
         await service.run_daily_briefing(_USER)
 
         prompt = _prompt(world)
-        assert "- Done: Deck | summary: One | artifact holds ~3 chars | link: (link:1)\n" in prompt
         assert (
-            "- In progress: Deck | summary: One | artifact holds ~3 chars | link: (link:2)\n"
+            "- fact 2 | Done: Deck | summary: One | artifact holds ~3 chars | linkable\n" in prompt
+        )
+        assert (
+            "- fact 3 | In progress: Deck | summary: One | artifact holds ~3 chars | linkable\n"
             in prompt
         )
         assert (
-            "- Waiting on you: Reply | summary: Three | artifact holds ~5 chars | waiting" in prompt
+            "- fact 1 | Waiting on you: Reply | summary: Three | artifact holds ~5 chars | waiting"
+            in prompt
         )
 
     async def test_with_nothing_tracked_the_model_is_told_nothing_ran(self, world: World) -> None:
         await service.run_daily_briefing(_USER)
 
-        assert "\n[COUNTS]" not in _prompt(world)
         assert (
+            "[COUNTS] events: 1\n"
             "GAIA has no tracked work and no background work ran. Do not claim anything "
             "ran, finished, or is pending beyond what is stated here.\n"
             "The user's own todo list is empty.\n"
-            "Today's calendar (user-local 24h times):\n- 11:00: Sequoia"
+            "Today's calendar:\n- fact 1 | 11:00 AM: Sequoia"
         ) in _prompt(world)
 
     @pytest.mark.parametrize(
@@ -1531,13 +1574,13 @@ class TestTheFactsTheModelVoices:
         [
             (
                 (2, ["Gym", "Taxes"]),
-                "[COUNTS] your open todos: 2\n",
+                "[COUNTS] open_todos: 2 · events: 1\n",
                 "The user's own open todos (first few: Gym; Taxes) are counted in [COUNTS]"
                 "; never voice that list as clear or empty.\n",
             ),
             (
                 (3, []),
-                "[COUNTS] your open todos: 3\n",
+                "[COUNTS] open_todos: 3 · events: 1\n",
                 "The user's own open todos are counted in [COUNTS]"
                 "; never voice that list as clear or empty.\n",
             ),
@@ -1573,8 +1616,8 @@ class TestTheFactsTheModelVoices:
         )
         await service.run_daily_briefing(_USER)
         assert (
-            "is empty.\nToday's calendar (user-local 24h times):\n"
-            "- all day: Offsite\n- 11:00: Sequoia\n\n## YESTERDAY"
+            "is empty.\nToday's calendar:\n"
+            "- fact 1 | all day: Offsite\n- fact 2 | 11:00 AM: Sequoia\n\n## YESTERDAY"
         ) in _prompt(world)
 
         _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
@@ -1617,33 +1660,30 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
 
     @staticmethod
     def _voice(world: World, message: str) -> None:
-        world.agent.return_value = _wrote(f"{message}\nSequoia at 11:00.")
+        world.agent.return_value = _wrote(f"{message}\nSequoia at [[fact:3.time]].")
 
     async def test_a_linked_item_gets_its_link_on_its_phrase_and_an_unlinked_one_is_never_minted(
         self, world: World
     ) -> None:
-        # b1 (needs you) is token 0, c1 (done) token 1; the voice links only the deck.
-        self._voice(world, "the [deck](link:1) is done\nreply waits on you")
+        # b1 (needs you) is fact 1, c1 (done) fact 2, Sequoia fact 3; the voice links only the deck.
+        self._voice(world, "the [deck](fact:2) is done\nreply waits on you")
 
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
         assert payload.message == (
-            f"the [deck]({_todo_link('c1')}) is done\nreply waits on you\nSequoia at 11:00."
+            f"the [deck]({_todo_link('c1')}) is done\nreply waits on you\nSequoia at 11:00 AM."
         )
         links = {it.todo_id: it.link for sec in payload.sections for it in sec.items}
         assert links == {"b1": None, "c1": _todo_link("c1")}
         minted = [c.args[2] for c in world.mint.await_args_list]
         assert minted == ["c1", _BRIEF_ID]
 
-    async def test_one_item_is_linked_once_however_often_its_token_is_written(
+    async def test_one_item_is_linked_once_however_often_its_slot_is_written(
         self, world: World
     ) -> None:
         """Regression: one approval became one line with three raw links."""
-        self._voice(
-            world,
-            "the [deck](link:1) is done, [open it](link:1)\nreply waits on you",
-        )
+        self._voice(world, "the [deck](fact:2) is done, [open it](fact:2)\nreply waits on you")
 
         await service.run_daily_briefing(_USER)
 
@@ -1651,25 +1691,25 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
         assert message.count(_todo_link("c1")) == 1
         assert message.startswith(f"the [deck]({_todo_link('c1')}) is done, open it\n")
 
-    async def test_a_token_with_no_link_behind_it_leaves_its_phrase_as_text(
+    async def test_a_slot_with_no_link_behind_it_leaves_its_phrase_as_text(
         self, world: World
     ) -> None:
-        """Sharing turned off (or a failed mint) leaves the sentence, not a raw token."""
+        """Sharing turned off (or a failed mint) leaves the sentence, not a raw slot."""
         world.mint.side_effect = lambda user_id, target_type, target_id: (
             None if target_type is ShortLinkTargetType.TODO_DELIVERABLE else _BRIEF_LINK
         )
-        self._voice(world, "the [deck](link:1) is done\nthe [reply](link:0) waits")
+        self._voice(world, "the [deck](fact:2) is done\nthe [reply](fact:1) waits")
 
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
-        assert payload.message == "the deck is done\nthe reply waits\nSequoia at 11:00."
+        assert payload.message == "the deck is done\nthe reply waits\nSequoia at 11:00 AM."
         assert all(it.link is None for sec in payload.sections for it in sec.items)
 
     async def test_a_resolved_link_is_markdown_on_its_phrase_in_the_chat_post(
         self, world: World
     ) -> None:
-        self._voice(world, "[The shortlist is ready](link:1)\nreply waits on you")
+        self._voice(world, "[The shortlist is ready](fact:2)\nreply waits on you")
 
         await service.run_daily_briefing(_USER)
 
@@ -1680,57 +1720,58 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
         ("written", "named"),
         [
             # Live: the model wrapped the facts' token in its phrase and "[...|]" reached users.
-            ("[Book flights for the Berlin offsite|[[link:1]]]", "offsite|[[link:1]]]"),
-            ("[The shortlist is ready|[[link:1]]]", "ready|[[link:1]]]"),
-            ("[[link:1|The shortlist is ready]]", "[[link:1|The"),
-            ("[The shortlist is ready|(link:1)]", "ready|(link:1)]"),
-            ("[The shortlist is ready] (link:1)", "(link:1)"),
-            ("[The shortlist is ready](link:7)", "[The shortlist is ready](link:7)"),
+            ("[Book flights for the Berlin offsite|[[fact:2]]]", "'offsite|]'"),
+            ("[[fact:2|The shortlist is ready]]", "'[[fact:2|The'"),
+            ("[The shortlist is ready|(fact:2)]", "'ready|(fact:2)]'"),
+            ("[The shortlist is ready] (fact:2)", "'(fact:2)'"),
+            ("[The shortlist is ready](link:1)", "'[The shortlist is ready](link:1)'"),
+            ("[The shortlist is ready](fact:7)", "fact:7 is no fact shown today"),
         ],
     )
     async def test_a_malformed_or_unknown_link_is_regenerated_once_with_it_named(
         self, world: World, written: str, named: str
     ) -> None:
         world.agent.side_effect = [
-            _wrote(f"{written}\nreply waits on you\nSequoia at 11:00."),
-            _wrote("[The shortlist is ready](link:1)\nreply waits on you\nSequoia at 11:00."),
+            _wrote(f"{written}\nreply waits on you"),
+            _wrote("[The shortlist is ready](fact:2)\nreply waits on you"),
         ]
 
         await service.run_daily_briefing(_USER)
 
         assert world.agent.await_count == 2
         retry = world.agent.await_args_list[1].kwargs["request"].message
-        assert repr(named) in retry
+        assert named in retry
         assert _stored_payload(world).message == (
-            f"[The shortlist is ready]({_todo_link('c1')})\nreply waits on you\nSequoia at 11:00."
+            f"[The shortlist is ready]({_todo_link('c1')})\nreply waits on you"
         )
 
     async def test_a_link_malformed_twice_fails_and_sends_nothing(self, world: World) -> None:
         world.agent.side_effect = [
-            _wrote("[Book flights for the Berlin offsite|[[link:1]]]\nreply waits on you")
+            _wrote("[Book flights for the Berlin offsite|[[fact:2]]]\nreply waits on you")
         ] * 2
 
-        with pytest.raises(service.BriefingGenerationError, match="malformed link"):
+        with pytest.raises(service.BriefingGenerationError, match="malformed slot"):
             await service.run_daily_briefing(_USER)
 
         _assert_nothing_sent(world)
 
-    async def test_an_item_with_nothing_to_open_gets_no_link_to_write(self, world: World) -> None:
+    async def test_an_item_with_nothing_to_open_is_not_linkable(self, world: World) -> None:
         deck = _todo("c1", "Deck")
         deck.canvas_content = "Ten slides"
         world.work = context.TrackedWork(failed=[_todo("f1", "Sync")], completed=[deck])
-        self._voice(world, "sync failed\nthe [deck](link:0) is done")
+        self._voice(world, "the [sync](fact:1) failed\nthe [deck](fact:2) is done")
 
         await service.run_daily_briefing(_USER)
 
-        assert "- Failed: Sync | artifact holds ~0 chars\n" in _prompt(world)
+        assert "- fact 1 | Failed: Sync | artifact holds ~0 chars\n" in _prompt(world)
         assert (
-            "- Done: Deck | summary: Ten slides | artifact holds ~10 chars | link: (link:0)\n"
+            "- fact 2 | Done: Deck | summary: Ten slides | artifact holds ~10 chars | linkable\n"
             in (_prompt(world))
         )
         assert (_stored_payload(world).message or "").startswith(
-            f"sync failed\nthe [deck]({_todo_link('c1')}) is done"
+            f"the sync failed\nthe [deck]({_todo_link('c1')}) is done"
         )
+        assert [c.args[2] for c in world.mint.await_args_list] == ["c1", _BRIEF_ID]
 
     async def test_a_brief_without_a_heygaia_link_still_goes_out_to_its_app_page(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -2068,7 +2109,7 @@ class TestTheAgentOutput:
             "No valid voice JSON in agent output: invalid JSON: Expecting value (char 0 of 400)"
         )
 
-    async def test_a_lede_alone_contradicting_the_items_is_sent_back(
+    async def test_a_lede_alone_making_an_unsupported_claim_is_sent_back(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
@@ -2077,15 +2118,15 @@ class TestTheAgentOutput:
             _voiced("The investor update is done", "You have a meeting at noon."),
             _voiced("The investor update is done", "Nothing else today."),
         ]
-        problem = "the prose mentions an event, but today's calendar is empty"
+        claim = '"a meeting at noon": the calendar is empty today'
+        world.checker.side_effect = [_claims(claim), _claims()]
 
         async with captured_wide_event() as event:
             await service.run_daily_briefing(_USER)
 
         assert world.agent.await_count == 2
-        assert problem in world.agent.await_args_list[1].kwargs["request"].message
-        warning = {"msg": "briefing.voice_contradicted_items", "problems": [problem]}
-        assert warning in event["warnings"]
+        assert claim in world.agent.await_args_list[1].kwargs["request"].message
+        assert {"msg": "briefing.voice_rejected", "problems": [claim]} in event["warnings"]
 
 
 def _weekly_completed() -> context.CompletedWork:
@@ -2259,19 +2300,22 @@ class TestSignalsInTheBrief:
             )
         ]
         world.judge.side_effect = _judged(needs_you=[_LOGIN.title], updates=[_DOCS.title])
-        world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) still needs you.")
+        world.agent.return_value = _saying("[the login redirect](fact:1) still needs you.")
 
         await service.run_daily_briefing(_USER)
 
         prompt = _prompt(world)
         assert "[ACROSS THEIR APPS] 2 item(s) in 1 app(s)\n[Linear] 2 item(s)\n" in prompt
         assert (
-            "- important | issue assigned to you: Fix the login redirect | state: In Progress"
-            " | link: https://linear.app/acme/issue/ENG-12 | first seen 3 days ago, mentioned"
+            "- fact 1 | important | issue assigned to you: Fix the login redirect"
+            " | state: In Progress | linkable | first seen 3 days ago, mentioned"
             " 1 time(s), last 2 days ago, moved from Todo to In Progress"
         ) in prompt
-        assert "- other | issue assigned to you: Refresh the onboarding docs" in prompt
+        assert "- fact 2 | other | issue assigned to you: Refresh the onboarding docs" in prompt
         assert "new today" in prompt
+        assert (_stored_payload(world).message or "").endswith(
+            f"[the login redirect]({_LOGIN.url}) still needs you."
+        )
 
     async def test_a_day_with_only_signals_is_pushed_and_counted(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -2290,7 +2334,7 @@ class TestSignalsInTheBrief:
     ) -> None:
         world.scouts = _scouted(_LOGIN, _DOCS)
         world.judge.side_effect = _judged(needs_you=[_LOGIN.title], updates=[_DOCS.title])
-        world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) is yours today.")
+        world.agent.return_value = _saying("[[fact:<fact of Fix the login>]] is yours today.")
 
         await service.run_daily_briefing(_USER)
 
@@ -2298,15 +2342,6 @@ class TestSignalsInTheBrief:
         world.seen.assert_awaited_once_with(_USER, [_LOGIN, _DOCS], _NOW)
         needs_you, updates = _stored_payload(world).sections
         assert [(i.text, i.kind) for i in updates.items] == [(_DOCS.title, "note")]
-
-    async def test_a_message_that_skips_an_important_signal_is_rejected(self, world: World) -> None:
-        world.scouts = _scouted(_LOGIN)
-
-        with pytest.raises(service.BriefingGenerationError, match="Fix the login redirect"):
-            await service.run_daily_briefing(_USER)
-
-        _assert_nothing_sent(world)
-        world.shown.assert_not_awaited()
 
 
 class TestEverySourceReachesItsSection:
@@ -2359,7 +2394,7 @@ class TestEverySourceReachesItsSection:
             "find_by_ids_for_user",
             AsyncMock(return_value=[SimpleNamespace(id="wf-sync", title="CRM sync")]),
         )
-        world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) is yours today.")
+        world.agent.return_value = _saying("[Fix the login](fact:<fact of Fix the login>) today.")
 
         await service.run_daily_briefing(_USER)
 
