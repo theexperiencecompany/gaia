@@ -11,6 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 import cloudinary
+from pydantic import ValidationError
 import pytest
 
 from app.config.settings import settings
@@ -28,6 +29,7 @@ from app.services.briefing.edition_email import (
     is_edition_kind,
     render_edition_email,
 )
+from app.services.briefing.editions import EXPLORER_RENDERER
 from app.services.briefing.message import full_brief_url
 
 USER_ID = "user-abc"
@@ -86,6 +88,7 @@ def make_payload(**overrides: Any) -> BriefingPayload:
         "mood": "clear",
         "caption": "Onward.",
         "message": MESSAGE,
+        "template_family": "swiss",
     }
     payload.update(overrides)
     return BriefingPayload.model_validate(payload)
@@ -98,7 +101,6 @@ class Harness:
         self.render_calls: list[dict[str, Any]] = []
         self.image_calls: list[dict[str, Any]] = []
         self.upload_calls: list[dict[str, Any]] = []
-        self.family_renderers: dict[str | None, Any] = {}
         self.render_error: Exception | None = None
         self.upload_error: Exception | None = None
 
@@ -107,12 +109,12 @@ class Harness:
 def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     h = Harness()
 
-    def fake_render_edition(payload: BriefingPayload, **kwargs: Any) -> str:
-        h.render_calls.append({"renderer": "classic", "payload": payload, **kwargs})
-        return "<edition>classic</edition>"
+    def fake_renderer(family: str) -> Any:
+        def render(payload: BriefingPayload, **kwargs: Any) -> str:
+            h.render_calls.append({"renderer": family, "payload": payload, **kwargs})
+            return f"<edition>{family}</edition>"
 
-    def fake_renderer_for(family: str | None) -> Any:
-        return h.family_renderers.get(family)
+        return render
 
     async def fake_render_html_to_image(html: str, options: Any) -> bytes:
         h.image_calls.append({"html": html, "options": options})
@@ -126,8 +128,11 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
             raise h.upload_error
         return h.image_url
 
-    monkeypatch.setattr(edition_email, "render_edition", fake_render_edition)
-    monkeypatch.setattr(edition_email, "renderer_for", fake_renderer_for)
+    monkeypatch.setattr(
+        edition_email,
+        "EXPLORER_RENDERER",
+        {family: fake_renderer(family) for family in EXPLORER_RENDERER},
+    )
     monkeypatch.setattr(edition_email, "render_html_to_image", fake_render_html_to_image)
     monkeypatch.setattr(edition_email.EDITION_IMAGE_STORE, "put", fake_upload)
     monkeypatch.setattr(settings, "FRONTEND_URL", FRONTEND_URL)
@@ -154,37 +159,36 @@ async def host(payload: BriefingPayload) -> HostedEditionImage:
 
 @pytest.mark.unit
 class TestEditionRendering:
-    async def test_classic_renderer_receives_the_edition_number_and_no_generation_time(
+    async def test_the_payloads_family_renders_with_the_edition_number_and_no_generation_time(
         self, harness: Harness
     ) -> None:
-        await host(make_payload(date="2026-01-10"))
+        await host(make_payload(date="2026-01-10", template_family="receipt"))
 
         assert harness.render_calls == [
             {
-                "renderer": "classic",
-                "payload": make_payload(date="2026-01-10"),
+                "renderer": "receipt",
+                "payload": make_payload(date="2026-01-10", template_family="receipt"),
                 "edition_no": 10,
                 "generated_local": "",
             }
         ]
+        assert harness.image_calls[0]["html"] == "<edition>receipt</edition>"
 
-    async def test_family_renderer_is_used_when_the_rotation_assigns_one(
+    def test_a_payload_without_a_family_fails_validation(self) -> None:
+        data = make_payload().model_dump()
+        del data["template_family"]
+
+        with pytest.raises(ValidationError, match="template_family"):
+            BriefingPayload.model_validate(data)
+
+    async def test_the_retired_classic_family_fails_the_render_instead_of_falling_back(
         self, harness: Harness
     ) -> None:
-        seen: list[dict[str, Any]] = []
-
-        def family(payload: BriefingPayload, **kwargs: Any) -> str:
-            seen.append({"payload": payload, **kwargs})
-            return "<edition>family</edition>"
-
-        harness.family_renderers["dispatch"] = family
-
-        await host(make_payload(template_family="dispatch"))
+        with pytest.raises(KeyError, match="edition"):
+            await host(make_payload(template_family="edition"))
 
         assert harness.render_calls == []
-        assert len(seen) == 1
-        assert seen[0]["edition_no"] == 10
-        assert harness.image_calls[0]["html"] == "<edition>family</edition>"
+        assert harness.upload_calls == []
 
     async def test_edition_epoch_makes_the_first_of_january_2026_edition_one(
         self, harness: Harness
@@ -205,16 +209,6 @@ class TestEditionRendering:
 
 @pytest.mark.unit
 class TestImageAndUpload:
-    async def test_the_classic_edition_is_its_1180px_page_at_retina_scale(
-        self, harness: Harness
-    ) -> None:
-        await host(make_payload())
-
-        options = harness.image_calls[0]["options"]
-        assert (options.width, options.device_scale_factor) == (1180, 2)
-        assert (options.clip_selector, options.trim_margin_px) == (".brief", None)
-        assert options.image_format == "png"
-
     async def test_a_paper_on_a_desk_is_trimmed_to_an_even_margin(self, harness: Harness) -> None:
         await host(make_payload(template_family="memo"))
 

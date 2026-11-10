@@ -75,6 +75,7 @@ _UNSUB_URL = _expected_unsubscribe_url(_USER_ID)
 _UNSUB_HEADERS = _expected_unsubscribe_headers(_USER_ID)
 _BRIEF_PAYLOAD: dict[str, Any] = {
     "kicker": "THE MORNING BRIEF",
+    "template_family": "swiss",
     "date": "2026-10-14",
     "headline": "Three things today",
     "lede": "A calm morning.",
