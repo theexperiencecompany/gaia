@@ -71,6 +71,7 @@ from app.services.todos.todo_service import (
     get_all_projects,
     get_all_todos,
     get_todo,
+    require_project,
     update_project,
 )
 from app.services.triggers.subscription_service import SubscriptionError
@@ -1649,6 +1650,79 @@ class TestProjectService:
         mock_todo_repo.move_todos_to_project.assert_awaited_once_with(
             FAKE_USER_ID, FAKE_PROJECT_ID, FAKE_INBOX_ID
         )
+        mock_project_repo.delete.assert_awaited_once_with(FAKE_PROJECT_ID, user_id=FAKE_USER_ID)
+
+
+class TestEveryProjectLookupIsTheUsersOwn:
+    """Each project check reads this user's project by its id; any other read finds nothing."""
+
+    @pytest.fixture
+    def work(self, mock_project_repo) -> ProjectDocument:
+        work = _make_project_doc(project_id=FAKE_PROJECT_ID, name="Work")
+
+        async def owned(project_id: str, *, user_id: str) -> ProjectDocument | None:
+            return work if (project_id, user_id) == (FAKE_PROJECT_ID, FAKE_USER_ID) else None
+
+        mock_project_repo.get = AsyncMock(side_effect=owned)
+        return work
+
+    async def test_require_project_returns_the_users_project(self, mock_project_repo, work):
+        assert await require_project(FAKE_USER_ID, FAKE_PROJECT_ID) is work
+
+    async def test_require_project_refuses_another_users_project(self, mock_project_repo, work):
+        with pytest.raises(ValueError) as raised:
+            await require_project(UNKNOWN_USER_ID, FAKE_PROJECT_ID)
+
+        assert str(raised.value) == f"Project {FAKE_PROJECT_ID} not found"
+
+    async def test_a_todo_is_created_in_the_users_project(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, work
+    ):
+        mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc(project_id=FAKE_PROJECT_ID))
+
+        await TodoService.create_todo(
+            TodoModel(title="Buy milk", project_id=FAKE_PROJECT_ID), FAKE_USER_ID
+        )
+
+        mock_todo_repo.create.assert_awaited_once()
+
+    async def test_a_todo_moves_into_the_users_project(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, work
+    ):
+        moved = _make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_PROJECT_ID)
+        mock_todo_repo.update = AsyncMock(return_value=moved)
+
+        result = await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(project_id=FAKE_PROJECT_ID), FAKE_USER_ID
+        )
+
+        assert result.project_id == FAKE_PROJECT_ID
+
+    async def test_a_bulk_move_goes_into_the_users_project(
+        self, mock_todo_repo, mock_project_repo, mock_sync, work
+    ):
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+
+        result = await TodoService.bulk_move_todos(
+            BulkMoveRequest(todo_ids=["a"], project_id=FAKE_PROJECT_ID), FAKE_USER_ID
+        )
+
+        assert "Moved 1" in result.message
+
+    async def test_the_users_project_is_renamed(self, mock_todo_repo, mock_project_repo, work):
+        mock_project_repo.update = AsyncMock(
+            return_value=_make_project_doc(project_id=FAKE_PROJECT_ID, name="New")
+        )
+
+        result = await ProjectService.update_project(
+            FAKE_PROJECT_ID, UpdateProjectRequest(name="New"), FAKE_USER_ID
+        )
+
+        assert result.name == "New"
+
+    async def test_the_users_project_is_deleted(self, mock_todo_repo, mock_project_repo, work):
+        await ProjectService.delete_project(FAKE_PROJECT_ID, FAKE_USER_ID)
+
         mock_project_repo.delete.assert_awaited_once_with(FAKE_PROJECT_ID, user_id=FAKE_USER_ID)
 
 
