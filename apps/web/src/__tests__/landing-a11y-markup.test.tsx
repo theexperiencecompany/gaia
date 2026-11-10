@@ -189,7 +189,7 @@ describe("landing markup accessibility", () => {
         !file.endsWith("layout.tsx") &&
         /<main\b/.test(readFileSync(path.join(appDir, file), "utf8")),
     );
-    expect(pagesWithMain).toEqual(["[locale]/file-icons/page.tsx"]);
+    expect(pagesWithMain).toEqual(["[locale]/dev/files/page.dev.tsx"]);
   });
 
   it("keeps the app layout to a single main", () => {
