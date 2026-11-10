@@ -175,8 +175,7 @@ class TestFinalizeStreamBackstop:
         state.tool_entries.extend(
             [
                 {"tool_name": "search", "data": {}},
-                {"tool_name": "search", "data": {}},
-                {"data": {}},
+                {"tool_name": "fetch", "data": {}},
             ]
         )
 
@@ -190,7 +189,7 @@ class TestFinalizeStreamBackstop:
                 "s1", MagicMock(), AuthenticatedUser(user_id=USER_ID), "conv-1", state, None
             )
 
-        assert log.set.call_args.kwargs["tool_types"] == ["search"]
+        assert sorted(log.set.call_args.kwargs["tool_types"]) == ["fetch", "search"]
         assert log.set.call_args.kwargs["tool_calls_count"] == 3
 
     async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:

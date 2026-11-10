@@ -289,7 +289,6 @@ apps/api/tests/unit/services/browser/test_storage_persistence.py	attr-defined
 apps/api/tests/unit/services/browser/test_storage_persistence.py	list-item
 apps/api/tests/unit/services/browser/test_storage_persistence.py	return-value
 apps/api/tests/unit/services/chat/test_normalize_custom_event.py	arg-type
-apps/api/tests/unit/services/chat/test_stream_presence.py	attr-defined
 apps/api/tests/unit/services/chat/test_workspace.py	attr-defined
 apps/api/tests/unit/services/composio/test_toolkit_enablement.py	arg-type
 apps/api/tests/unit/services/composio/test_wrap_tool_output_schema.py	arg-type
@@ -301,7 +300,6 @@ apps/api/tests/unit/services/delivery_alerts/test_incidents.py	arg-type
 apps/api/tests/unit/services/desktop/test_bridge.py	attr-defined
 apps/api/tests/unit/services/desktop/test_bridge.py	list-item
 apps/api/tests/unit/services/embedding_sidecar/test_server.py	attr-defined
-apps/api/tests/unit/services/files/test_sandbox.py	arg-type
 apps/api/tests/unit/services/hil/test_hil_jev_judge.py	attr-defined
 apps/api/tests/unit/services/hil/test_hil_resolution.py	arg-type
 apps/api/tests/unit/services/hil/test_ledger_publish.py	attr-defined
@@ -316,9 +314,6 @@ apps/api/tests/unit/services/sandbox/test_execute_client.py	attr-defined
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined
 apps/api/tests/unit/services/test_canvas_storage_atomic.py	arg-type
-apps/api/tests/unit/services/test_chat_stream_attach.py	arg-type
-apps/api/tests/unit/services/test_chat_stream_attach.py	attr-defined
-apps/api/tests/unit/services/test_chat_stream_attach.py	typeddict-item
 apps/api/tests/unit/services/test_composio_service.py	assignment
 apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
 apps/api/tests/unit/services/test_conversation_service.py	arg-type
