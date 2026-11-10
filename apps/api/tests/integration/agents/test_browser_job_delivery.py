@@ -28,6 +28,7 @@ from app.constants.browser import (
     HandoffStatus,
 )
 from app.constants.chat import SourceCategory
+from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.bot_models import BotSessionDocument
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
@@ -40,7 +41,6 @@ from app.schemas.browser import (
     BrowserStepSnapshot,
 )
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
-from app.services import platform_message_service
 from app.services.browser import (
     bot_delivery as bot_mod,
     job_runner as jr,
@@ -50,6 +50,7 @@ from app.services.browser.job_runner import execute_browser_job
 from app.services.browser.jobs import put_job_state
 from app.services.browser.ledger import RunLedger
 from app.services.outbox.transport import bot_queue as outbound_mod
+from app.services.platform_link_service import PlatformLinkService
 
 pytestmark = pytest.mark.integration
 
@@ -317,7 +318,7 @@ def queue(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         outbound_mod, "get_rabbitmq_publisher", AsyncMock(return_value=_Publisher())
     )
     monkeypatch.setattr(
-        outbound_mod.PlatformLinkService,
+        PlatformLinkService,
         "get_linked_platforms",
         AsyncMock(return_value={"discord": {"platformUserId": DM_ID}}),
     )
@@ -361,7 +362,7 @@ async def test_a_run_asked_for_in_a_group_keeps_its_live_link_and_photos_in_the_
     """The live link drives the user's browser and a step photo can show a signed-in page, so a group that asked sees neither; only the final answer goes back there."""
     monkeypatch.setattr(jr, "BrowserTaskRunner", _ScriptedBrowserWithHandoff)
     monkeypatch.setattr(
-        platform_message_service.bot_session_repository,
+        bot_session_repository,
         "get_by_conversation_id",
         AsyncMock(return_value=_bot_session(GROUP_CHANNEL_ID)),
     )

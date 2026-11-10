@@ -47,7 +47,6 @@ apps/api/tests/e2e/test_webhook_fanout_e2e.py	arg-type
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	func-returns-value
 apps/api/tests/factories.py	arg-type
 apps/api/tests/integration/agents/conftest.py	attr-defined
-apps/api/tests/integration/agents/test_browser_job_delivery.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_relay.py	attr-defined
 apps/api/tests/integration/agents/test_executor_queue_roundtrip.py	arg-type
 apps/api/tests/integration/agents/test_graph_routing.py	attr-defined
@@ -208,9 +207,6 @@ apps/api/tests/unit/db/test_chroma_triggers_store_hash.py	arg-type
 apps/api/tests/unit/db/test_chroma_triggers_store_hash.py	dict-item
 apps/api/tests/unit/db/test_chroma_triggers_store_hash.py	list-item
 apps/api/tests/unit/db/test_postgresql.py	func-returns-value
-apps/api/tests/unit/db/test_rabbitmq_outbound.py	attr-defined
-apps/api/tests/unit/db/test_rabbitmq_outbound.py	method-assign
-apps/api/tests/unit/db/test_rabbitmq_outbound.py	syntax
 apps/api/tests/unit/decorators/test_entitlements.py	index
 apps/api/tests/unit/decorators/test_timing.py	arg-type
 apps/api/tests/unit/decorators/test_timing.py	func-returns-value
@@ -337,8 +333,6 @@ apps/api/tests/unit/services/integrations/test_integration_status.py	arg-type
 apps/api/tests/unit/services/mcp/test_device_connector.py	union-attr
 apps/api/tests/unit/services/oauth/test_oauth_service_helpers.py	arg-type
 apps/api/tests/unit/services/onboarding/test_intelligence_service_pipeline.py	attr-defined
-apps/api/tests/unit/services/outbox/transport/test_bot_queue.py	arg-type
-apps/api/tests/unit/services/outbox/transport/test_bot_queue.py	attr-defined
 apps/api/tests/unit/services/photon/test_photon_client.py	arg-type
 apps/api/tests/unit/services/photon/test_photon_client.py	attr-defined
 apps/api/tests/unit/services/photon/test_photon_client.py	index
@@ -376,7 +370,6 @@ apps/api/tests/unit/services/test_mcp_tool_result.py	arg-type
 apps/api/tests/unit/services/test_mcp_tool_result.py	index
 apps/api/tests/unit/services/test_nurture_service.py	arg-type
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
-apps/api/tests/unit/services/test_platform_message_service.py	attr-defined
 apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
 apps/api/tests/unit/services/test_provider_credentials_service.py	assignment
 apps/api/tests/unit/services/test_provider_credentials_service.py	index

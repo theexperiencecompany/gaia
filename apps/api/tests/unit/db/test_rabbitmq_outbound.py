@@ -13,7 +13,14 @@ from aio_pika.exceptions import ChannelPreconditionFailed
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.constants.outbound import OUTBOUND_DLX, OUTBOUND_QUEUES, dlq_name, work_queue_arguments
+from app.constants.outbound import (
+    OUTBOUND_DLX,
+    OUTBOUND_QUEUES,
+    RABBITMQ_CONNECT_TIMEOUT_SECONDS,
+    RABBITMQ_HEARTBEAT_SECONDS,
+    dlq_name,
+    work_queue_arguments,
+)
 from app.db import rabbitmq
 from app.db.rabbitmq import RabbitMQPublisher
 from tests.helpers import captured_wide_event
@@ -302,8 +309,8 @@ class TestAmqpAwaitsAreBounded:
         await pub.connect()
 
         kwargs = connect_robust.await_args.kwargs
-        assert kwargs["timeout"] == rabbitmq.RABBITMQ_CONNECT_TIMEOUT_SECONDS
-        assert kwargs["heartbeat"] == rabbitmq.RABBITMQ_HEARTBEAT_SECONDS
+        assert kwargs["timeout"] == RABBITMQ_CONNECT_TIMEOUT_SECONDS
+        assert kwargs["heartbeat"] == RABBITMQ_HEARTBEAT_SECONDS
 
     async def test_concurrent_ensure_connected_creates_one_connection(self, monkeypatch) -> None:
         pub = RabbitMQPublisher("amqp://test")
@@ -361,9 +368,11 @@ class TestTopologyArgumentsMatchTheConsumer:
         assert channel.declare_queue.await_count == 2 * len(OUTBOUND_QUEUES)
         assert pub._outbound_topology_declared is True
 
-    async def test_no_channel_after_connecting_is_a_named_failure(self) -> None:
+    async def test_no_channel_after_connecting_is_a_named_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         pub = RabbitMQPublisher("amqp://test")
-        pub.ensure_connected = AsyncMock()  # type: ignore[method-assign] -- the seam under test is what follows it
+        monkeypatch.setattr(pub, "ensure_connected", AsyncMock())
 
         with pytest.raises(RuntimeError, match="^Failed to establish RabbitMQ connection$"):
             await pub.declare_outbound_topology()
