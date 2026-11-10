@@ -476,10 +476,9 @@ class TestBatchSyncConversations:
         """A reloading client holding current history is sent no row, yet must still learn its turn is live."""
         mock_repo.find_updated_since.return_value = []
         mock_repo.owned_ids.return_value = {"conv_abc"}
+        resumable = AsyncMock(return_value="stream-1")
         with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value="stream-1"),
+            conversation_service.stream_manager, "get_resumable_stream_id", new=resumable
         ):
             request = BatchSyncRequest(
                 conversations=[
@@ -492,6 +491,7 @@ class TestBatchSyncConversations:
 
         assert result.conversations == []
         assert result.active_streams == {"conv_abc": "stream-1"}
+        resumable.assert_awaited_once_with(USER_ID, "conv_abc")
 
     async def test_returns_rows_and_active_streams(self, mock_repo, test_user):
         mock_repo.find_updated_since.return_value = [_document(description="Updated Chat")]

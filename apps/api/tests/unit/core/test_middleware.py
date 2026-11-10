@@ -5,6 +5,7 @@ IS its execution order. Two orderings here are load-bearing and neither was
 asserted anywhere; the module had no unit test at all.
 """
 
+import gzip
 import inspect
 from unittest.mock import MagicMock, patch
 
@@ -15,9 +16,11 @@ import pytest
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.wrappers import Limit
+from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
@@ -120,6 +123,43 @@ def test_the_crash_catch_all_runs_inside_cors(middleware_names: list[str]) -> No
 def test_json_bodies_are_compressed_inside_cors(middleware_names: list[str]) -> None:
     """Large sync bodies must be compressed, and inside CORS so the CORS headers reach the compressed response."""
     assert middleware_names.index("CORSMiddleware") < middleware_names.index("GZipMiddleware")
+
+
+def _gzip_client(body: bytes) -> TestClient:
+    """Wrap the configured GZipMiddleware around an app that returns body as JSON."""
+    configured = FastAPI()
+    configure_middleware(configured)
+    (entry,) = (m for m in configured.user_middleware if m.cls.__name__ == "GZipMiddleware")
+
+    async def endpoint(request: Request) -> Response:
+        return Response(body, media_type="application/json")
+
+    inner = Starlette(routes=[Route("/", endpoint)])
+    return TestClient(entry.cls(inner, *entry.args, **entry.kwargs))
+
+
+def _body_of_size(size: int) -> bytes:
+    return b'"' + b"abcdefgh" * ((size - 2) // 8) + b"a" * ((size - 2) % 8) + b'"'
+
+
+class TestResponseCompression:
+    def test_a_body_of_the_minimum_size_is_compressed(self) -> None:
+        response = _gzip_client(_body_of_size(1024)).get("/", headers={"accept-encoding": "gzip"})
+        assert response.headers["content-encoding"] == "gzip"
+
+    def test_a_body_under_the_minimum_size_is_sent_as_is(self) -> None:
+        response = _gzip_client(_body_of_size(1023)).get("/", headers={"accept-encoding": "gzip"})
+        assert "content-encoding" not in response.headers
+
+    def test_a_body_is_compressed_at_level_5(self) -> None:
+        body = (
+            b'{"messages":['
+            + b",".join(b'{"id":%d,"text":"hello world %d"}' % (i, i * 7919) for i in range(2000))
+            + b"]}"
+        )
+        raw = _gzip_client(body).get("/", headers={"accept-encoding": "gzip"}).headers
+        # The 10-byte gzip header is the same size at every level, so equal lengths mean equal level.
+        assert int(raw["content-length"]) == len(gzip.compress(body, compresslevel=5))
 
 
 def test_the_crash_catch_all_covers_every_layer_inside_cors(
