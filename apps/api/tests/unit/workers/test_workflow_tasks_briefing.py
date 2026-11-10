@@ -127,7 +127,7 @@ class _FireHarness:
     def patches(self) -> list:
         return [
             patch(f"{MODULE}.workflow_scheduler", self.scheduler),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(f"{MODULE}.create_execution", AsyncMock(return_value=self.execution)),
             patch(f"{MODULE}.complete_execution", self.complete_execution),
             patch(f"{MODULE}.WorkflowService", MagicMock(increment_execution_count=self.increment)),

@@ -5,13 +5,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.db.repositories.signal_memory import signal_memory_repository
 from app.models.scout_models import (
     RememberedSignal,
     Signal,
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.services.briefing.scouts import memory
 from app.services.briefing.scouts.facts import signals_block
 from app.services.briefing.scouts.memory import remember
 
@@ -53,7 +53,7 @@ def _memory(
 def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, AsyncMock]:
     seams = {"find_for": AsyncMock(return_value=[]), "record_seen": AsyncMock()}
     for name, mock in seams.items():
-        monkeypatch.setattr(memory.signal_memory_repository, name, mock)
+        monkeypatch.setattr(signal_memory_repository, name, mock)
     return seams
 
 

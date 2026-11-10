@@ -4,7 +4,8 @@ The run is the real one: run_executor_background on the REAL compiled executor
 graph (only the model is scripted), the real stream writer, keep-alive beat,
 finalize and lock release, over fakeredis. The model is gated on its second
 call, which holds the run mid-flight right after it planned and called a tool;
-comms' real status hook is read at that moment.
+the real executor-status section comms' next turn would be seeded with is read
+at that moment.
 
 Not exercised: delivery of the result to the conversation (deliver_result is
 doubled, it has its own suite) and a real LLM choosing these calls.
@@ -13,24 +14,26 @@ doubled, it has its own suite) and a real LLM choosing these calls.
 import asyncio
 from collections.abc import AsyncIterator
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from pydantic import PrivateAttr
 import pytest
 
+from app.agents.context.live_work import build_executor_status_block
+from app.agents.context.section_context import SectionContext
+from app.agents.context.tiers import AgentTier
 from app.agents.core.background import executor_runner as er
 from app.agents.core.background.executor_progress import progress_key
 from app.agents.core.background.executor_queue import build_lock_value
 from app.agents.core.background.session import ExecutorRun, RunKind, create_session
-from app.agents.core.nodes.executor_status import executor_status_hook
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     SubagentInitialState,
 )
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
-from app.constants.general import CALL_EXECUTOR_NAME, EXECUTOR_THREAD_PREFIX
+from app.constants.general import EXECUTOR_THREAD_PREFIX
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig
 from app.models.user_models import AuthenticatedUser
 from tests.e2e._harness.graph_run import RecordingFakeModel, call, executor_graph
@@ -103,19 +106,11 @@ def _context(graph: Any) -> SubagentExecutionContext:
     )
 
 
-async def _comms_status() -> str | None:
-    """Return the status frame comms' next turn would get: the real hook on a thread that handed off."""
-    messages = [
-        HumanMessage(content="archive this week's promo emails"),
-        AIMessage(content="", tool_calls=[{"name": CALL_EXECUTOR_NAME, "args": {}, "id": "c1"}]),
-        ToolMessage(content="Handed to the executor.", tool_call_id="c1"),
-        HumanMessage(content="how's it going?"),
-    ]
-    out = await executor_status_hook(
-        {"messages": messages}, {"configurable": {"thread_id": CONV}}, MagicMock()
+async def _comms_status() -> str:
+    """Return the executor status comms' next turn is seeded with: the real section for this conversation."""
+    return await build_executor_status_block(
+        SectionContext(tier=AgentTier.COMMS, conversation_id=CONV, user_id=USER_ID)
     )
-    added = out["messages"][len(messages) :]
-    return str(added[0].content) if added else None
 
 
 @pytest.fixture
@@ -158,7 +153,6 @@ async def test_mid_run_comms_sees_the_plan_and_the_calls_with_their_inputs(
 
     frame = await _comms_status()
 
-    assert frame is not None
     assert f"running right now (task_id: {TASK_ID})" in frame
     assert "Plan (executor):" in frame
     assert "- [in_progress] Find this week's promo emails" in frame
@@ -182,6 +176,5 @@ async def test_once_the_run_ends_its_progress_is_gone(
     assert await fake_redis.get(LOCK_KEY) is None
     assert await fake_redis.exists(progress_key(CONV, HOLDER)) == 0
     frame = await _comms_status()
-    assert frame is not None
     assert "No background work is running right now" in frame
     assert "get_tool_schema" not in frame

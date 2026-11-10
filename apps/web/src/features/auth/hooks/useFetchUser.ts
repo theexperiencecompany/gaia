@@ -10,7 +10,7 @@ import {
   clearCurrentUser,
   currentUserQueryOptions,
 } from "@/features/auth/hooks/useCurrentUser";
-import { readPendingCheckout } from "@/features/pricing/lib/pendingCheckout";
+import { usePendingCheckout } from "@/features/pricing/hooks/usePendingCheckout";
 import { usePathname } from "@/i18n/navigation";
 import { identifyUser, resetUser, track } from "@/lib/analytics";
 import { HTTP_UNAUTHORIZED } from "@/lib/api/outcome";
@@ -26,6 +26,7 @@ const useFetchUser = () => {
   const hasIdentified = useRef(false);
   const hasClearedOnError = useRef(false);
   const hasResetOnUnauthorized = useRef(false);
+  const pendingCheckout = usePendingCheckout();
 
   // The one place the current-user query is driven — the cache *is* the
   // state, nothing is copied out. Persisted for instant paint, so this
@@ -80,7 +81,7 @@ const useFetchUser = () => {
     data &&
     accessToken &&
     refreshToken &&
-    !readPendingCheckout() &&
+    !pendingCheckout &&
     !hasTrackedOAuthLogin
   ) {
     hasTrackedOAuthLogin = true;

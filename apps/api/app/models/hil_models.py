@@ -37,6 +37,8 @@ class HILApprovalStatus(StrEnum):
 # The three global approval modes. Launch switch: the default stays
 # ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.
 HILMode = Literal["always_allow", "always_ask", "auto"]
+# once: this call only. always_tool: also set a "never ask" override for the tool.
+ApprovalScope = Literal["once", "always_tool"]
 HIL_DEFAULT_MODE: HILMode = "always_allow"
 
 
@@ -240,6 +242,9 @@ class ApprovalProposal(BaseModel):
     user_id: str = ""
     fingerprint: str
     tool_name: str
+    # HIL key (services/hil/tool_key) of the tool behind the call, for the card's
+    # "always allow". None on rows registered before keys were MCP-scoped.
+    tool_key: str | None = None
     args: dict[str, Any] = Field(default_factory=dict)
     # The connected account the call acts as; None is the integration's primary.
     account: str | None = None

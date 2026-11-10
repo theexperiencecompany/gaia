@@ -2,6 +2,7 @@ import {
   formatFeatureName,
   formatPlanName,
   type RateLimitData,
+  rateLimitResetInfo,
 } from "@gaia/shared";
 import { Button, Chip } from "heroui-native";
 import { View } from "react-native";
@@ -16,37 +17,6 @@ import { Text } from "@/components/ui/text";
 
 // Ported 1:1 from
 // apps/web/src/features/chat/components/bubbles/bot/RateLimitCard.tsx
-
-// -- Helpers -----------------------------------------------------------------
-
-interface ResetInfo {
-  label: string;
-  detail: string;
-}
-
-function getResetInfo(resetTime?: string): ResetInfo | null {
-  if (!resetTime) return null;
-  const reset = new Date(resetTime);
-  const diffMs = reset.getTime() - Date.now();
-  if (diffMs <= 0) {
-    return {
-      label: "Resets very soon",
-      detail: "Your limit will refresh shortly.",
-    };
-  }
-  const diffMins = Math.ceil(diffMs / 60_000);
-  if (diffMins > 60) {
-    const hours = Math.ceil(diffMins / 60);
-    return {
-      label: `Resets in ${hours} hour${hours !== 1 ? "s" : ""}`,
-      detail: `Available again at ${reset.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
-    };
-  }
-  return {
-    label: `Resets in ${diffMins} minute${diffMins !== 1 ? "s" : ""}`,
-    detail: `Available again at ${reset.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
-  };
-}
 
 const PRO_BENEFITS = [
   "Much higher limits on every feature",
@@ -66,7 +36,7 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
   const isUpgradeRequired = !!plan_required;
   // A user already on the top tier has nothing to upgrade to — hide the pitch.
   const isPro = current_plan === "pro";
-  const resetInfo = getResetInfo(reset_time);
+  const resetInfo = rateLimitResetInfo(reset_time);
   const featureName = formatFeatureName(feature);
   const planName = formatPlanName(plan_required);
   // The footer is either an "Upgrade to X" CTA or a neutral "View Plans" link.
@@ -161,13 +131,20 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
           </>
         ) : (
           <>
-            {/* What happened */}
-            <Text className="text-xs leading-relaxed text-zinc-400">
-              You{"'"}ve used all your{" "}
-              <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
-              calls for today. Your limit will automatically reset, no action
-              needed.
-            </Text>
+            {/* What happened — backend copy wins when provided (it names the
+                wall that bound), otherwise the generic daily-count copy applies. */}
+            {message ? (
+              <Text className="text-xs leading-relaxed text-zinc-400">
+                {message}
+              </Text>
+            ) : (
+              <Text className="text-xs leading-relaxed text-zinc-400">
+                You{"'"}ve used all your{" "}
+                <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
+                calls for today. Your limit will automatically reset, no action
+                needed.
+              </Text>
+            )}
 
             {/* Reset time block — web `bg-zinc-700` */}
             {resetInfo && (

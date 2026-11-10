@@ -16,6 +16,7 @@ from tests.helpers import local_timezone
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, WEEK_LIST_LIMIT, WINBACK_THRESHOLD
 from app.constants.todos import (
+    ACTION_NEEDED_LABEL,
     BLOCKING_LABEL,
     FAILED_LABEL,
     GAIA_TRACKED_LABEL,
@@ -23,12 +24,23 @@ from app.constants.todos import (
     WAITING_FOR_APPROVAL_LABEL,
     WAITING_FOR_REPLY_LABEL,
 )
-from app.models.briefing_models import BriefingEvent, BriefingModel, BriefingPayload
+from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.workflow_executions import workflow_executions_repository
+from app.db.repositories.workflows import workflow_repository
+from app.models.briefing_models import (
+    BriefingEvent,
+    BriefingItem,
+    BriefingModel,
+    BriefingMood,
+    BriefingPayload,
+    BriefingSection,
+)
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
-from app.services.briefing import context
+from app.services.briefing import context, dormancy
 
 _USER = "user-1"
 
@@ -37,7 +49,7 @@ def _todo(todo_id: str, title: str, *labels: str) -> TodoDocument:
     return TodoDocument(id=todo_id, user_id=_USER, title=title, labels=list(labels))
 
 
-def _brief(mood: str, *, items: list[str] | None = None) -> BriefingModel:
+def _brief(mood: BriefingMood, *, items: list[str] | None = None) -> BriefingModel:
     return BriefingModel(
         user_id=_USER,
         date="2026-10-12",
@@ -49,7 +61,9 @@ def _brief(mood: str, *, items: list[str] | None = None) -> BriefingModel:
             mood=mood,
             caption="C",
             sections=[
-                {"numeral": "I", "title": "T", "items": [{"text": t} for t in (items or [])]}
+                BriefingSection(
+                    numeral="I", title="T", items=[BriefingItem(text=t) for t in (items or [])]
+                )
             ],
         ),
         created_at=datetime(2026, 10, 12, 8, tzinfo=UTC),
@@ -127,7 +141,7 @@ class TestTrackedWork:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            context.todo_repository,
+            todo_repository,
             "list_completed_since",
             AsyncMock(
                 return_value=[
@@ -137,7 +151,7 @@ class TestTrackedWork:
             ),
         )
         monkeypatch.setattr(
-            context.todo_repository,
+            todo_repository,
             "list_active_tracked",
             AsyncMock(
                 return_value=[
@@ -159,17 +173,16 @@ class TestTrackedWork:
     async def test_a_thread_the_user_owes_needs_them_and_one_awaiting_others_does_not(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The inbox desk's thread todos are its findings: needs-reply waits on the user."""
+        """The inbox desk's thread todos are its findings: needs-reply and action-needed wait on the user."""
+        monkeypatch.setattr(todo_repository, "list_completed_since", AsyncMock(return_value=[]))
         monkeypatch.setattr(
-            context.todo_repository, "list_completed_since", AsyncMock(return_value=[])
-        )
-        monkeypatch.setattr(
-            context.todo_repository,
+            todo_repository,
             "list_active_tracked",
             AsyncMock(
                 return_value=[
                     _todo("n1", "Priya · pitch deck", GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL),
                     _todo("a1", "Add Arjun call", GAIA_TRACKED_LABEL, WAITING_FOR_APPROVAL_LABEL),
+                    _todo("k1", "Kotak · card declined", GAIA_TRACKED_LABEL, ACTION_NEEDED_LABEL),
                     _todo("w1", "Dhruv · offer", GAIA_TRACKED_LABEL, WAITING_FOR_REPLY_LABEL),
                 ]
             ),
@@ -177,7 +190,7 @@ class TestTrackedWork:
 
         work = await context.gather_tracked_work(_USER, datetime.now(UTC))
 
-        assert [d.id for d in work.blocked] == ["n1", "a1"]
+        assert [d.id for d in work.blocked] == ["n1", "a1", "k1"]
         assert [d.id for d in work.running] == ["w1"]
 
     async def test_the_inbox_desk_is_reported_through_its_findings_not_as_work(
@@ -185,11 +198,9 @@ class TestTrackedWork:
     ) -> None:
         desk = _todo("d1", "Inbox desk", GAIA_TRACKED_LABEL)
         desk.external_ref = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        monkeypatch.setattr(todo_repository, "list_completed_since", AsyncMock(return_value=[]))
         monkeypatch.setattr(
-            context.todo_repository, "list_completed_since", AsyncMock(return_value=[])
-        )
-        monkeypatch.setattr(
-            context.todo_repository,
+            todo_repository,
             "list_active_tracked",
             AsyncMock(
                 return_value=[
@@ -207,9 +218,7 @@ class TestTrackedWork:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         docs = [_todo(f"t{i}", f"Todo {i}") for i in range(7)]
-        monkeypatch.setattr(
-            context.todo_repository, "list_open_user_todos", AsyncMock(return_value=docs)
-        )
+        monkeypatch.setattr(todo_repository, "list_open_user_todos", AsyncMock(return_value=docs))
 
         count, titles = await context.user_open_todo_summary(_USER)
 
@@ -221,15 +230,13 @@ class TestLookback:
     @pytest.fixture(autouse=True)
     def no_briefing_workflows(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            context.workflow_repository, "find_system_workflows", AsyncMock(return_value=[])
+            workflow_repository, "find_system_workflows", AsyncMock(return_value=[])
         )
 
     async def test_first_look_back_with_nothing_done(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(todo_repository, "list_completed_since", AsyncMock(return_value=[]))
         monkeypatch.setattr(
-            context.todo_repository, "list_completed_since", AsyncMock(return_value=[])
-        )
-        monkeypatch.setattr(
-            context.workflow_executions_repository, "list_since", AsyncMock(return_value=[])
+            workflow_executions_repository, "list_since", AsyncMock(return_value=[])
         )
 
         block = await context.format_lookback_block(_USER, None, datetime.now(UTC))
@@ -242,12 +249,12 @@ class TestLookback:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            context.todo_repository,
+            todo_repository,
             "list_completed_since",
             AsyncMock(return_value=[_todo("c1", "Deck", GAIA_TRACKED_LABEL), _todo("c2", "Gym")]),
         )
         monkeypatch.setattr(
-            context.workflow_executions_repository,
+            workflow_executions_repository,
             "list_since",
             AsyncMock(return_value=[SimpleNamespace(status="success", summary="3 drafts")]),
         )
@@ -274,13 +281,13 @@ class TestWinback:
     @pytest.fixture
     def briefs(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         listing = AsyncMock(return_value=[])
-        monkeypatch.setattr(context.briefing_repository, "list_recent", listing)
+        monkeypatch.setattr(briefing_repository, "list_recent", listing)
         return listing
 
     @pytest.fixture
     def last_active(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         read = AsyncMock(return_value=None)
-        monkeypatch.setattr(context.dormancy, "latest_activity_since", read)
+        monkeypatch.setattr(dormancy, "latest_activity_since", read)
         return read
 
     async def test_no_briefs_is_not_winback(
@@ -514,8 +521,8 @@ class TestReadsAreScopedToTheUser:
     ) -> None:
         completed = AsyncMock(return_value=[])
         active = AsyncMock(return_value=[])
-        monkeypatch.setattr(context.todo_repository, "list_completed_since", completed)
-        monkeypatch.setattr(context.todo_repository, "list_active_tracked", active)
+        monkeypatch.setattr(todo_repository, "list_completed_since", completed)
+        monkeypatch.setattr(todo_repository, "list_active_tracked", active)
         since = datetime(2026, 10, 13, tzinfo=UTC)
 
         work = await context.gather_tracked_work(_USER, since)
@@ -528,7 +535,7 @@ class TestReadsAreScopedToTheUser:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         completed = AsyncMock(return_value=[])
-        monkeypatch.setattr(context.todo_repository, "list_completed_since", completed)
+        monkeypatch.setattr(todo_repository, "list_completed_since", completed)
         since = datetime(2026, 10, 13, tzinfo=UTC)
 
         await context.gather_completed_since(_USER, since)
@@ -541,7 +548,7 @@ class TestReadsAreScopedToTheUser:
         untitled = _todo("t2", "x")
         untitled.title = ""
         listing = AsyncMock(return_value=[_todo("t1", "Pay rent"), untitled])
-        monkeypatch.setattr(context.todo_repository, "list_open_user_todos", listing)
+        monkeypatch.setattr(todo_repository, "list_open_user_todos", listing)
 
         assert await context.user_open_todo_summary(_USER) == (2, ["Pay rent", "untitled"])
         listing.assert_awaited_once_with(_USER, limit=50)
@@ -576,11 +583,9 @@ class TestLookbackBlock:
                 return_value=[SimpleNamespace(id="wf-daily"), SimpleNamespace(id="wf-weekly")]
             ),
         )
-        monkeypatch.setattr(context.todo_repository, "list_completed_since", reads.completed)
-        monkeypatch.setattr(context.workflow_executions_repository, "list_since", reads.executions)
-        monkeypatch.setattr(
-            context.workflow_repository, "find_system_workflows", reads.briefing_workflows
-        )
+        monkeypatch.setattr(todo_repository, "list_completed_since", reads.completed)
+        monkeypatch.setattr(workflow_executions_repository, "list_since", reads.executions)
+        monkeypatch.setattr(workflow_repository, "find_system_workflows", reads.briefing_workflows)
         return reads
 
     async def test_the_whole_block_reads_plan_then_done_then_runs(
@@ -649,8 +654,8 @@ class TestWinbackReads:
     ) -> None:
         listing = AsyncMock(return_value=[_brief("clear")])
         signal = AsyncMock(return_value=None)
-        monkeypatch.setattr(context.briefing_repository, "list_recent", listing)
-        monkeypatch.setattr(context.dormancy, "latest_activity_since", signal)
+        monkeypatch.setattr(briefing_repository, "list_recent", listing)
+        monkeypatch.setattr(dormancy, "latest_activity_since", signal)
 
         await context.compute_winback_state(_WINBACK_USER)
 
@@ -660,7 +665,7 @@ class TestWinbackReads:
     async def test_no_briefs_means_no_winback_went_out(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(context.briefing_repository, "list_recent", AsyncMock(return_value=[]))
+        monkeypatch.setattr(briefing_repository, "list_recent", AsyncMock(return_value=[]))
 
         state = await context.compute_winback_state(_WINBACK_USER)
 

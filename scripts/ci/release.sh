@@ -11,6 +11,22 @@
 #                        not own (gaia-web, gaia-grafana), registry-side.
 #   dispatch-cli-publish Dispatch the CLI publish workflow and block until the
 #                        version is actually on npm.
+#   cli-release-images   Does HEAD release the CLI? Its gaia + gaia-web images
+#                        must then be published even when nx sees api/web
+#                        unaffected. Writes required=true|false.
+#   pin-selfhost-release Wait for the release commit's gaia + gaia-web +
+#                        self-host bot :<sha> images and ci.yml's quality
+#                        gate on it, then tag them v<CLI version>, the set that
+#                        CLI release's `gaia update` pins.
+#   cli-beta-release     Create the cli-v<beta> GitHub Release as a
+#                        prerelease, or mark an existing one; release-please
+#                        owns every stable release, so a stable tag is refused.
+#   selfhost-bots-arm64  Build the self-host bot images for linux/arm64 and
+#                        push them by digest, untagged. Writes digests to
+#                        $GITHUB_OUTPUT.
+#   selfhost-bots-manifest Fold those arm64 digests and the release's amd64
+#                        bot images into multi-arch :<sha> indexes, the tag
+#                        pin-selfhost-release waits for.
 #   connect-cross-check  Cross-compile tools/gaia-connect for every published
 #                        target and discard the result — the pre-merge proof
 #                        that a release build cannot fail on a target the
@@ -18,8 +34,24 @@
 #   connect-binaries     Cross-compile tools/gaia-connect for every published
 #                        target and attach the binaries + a sha256sum manifest
 #                        to the cli-v<version> GitHub Release.
+#   selfhost-bundle      Build gaia-selfhost-<version>.tar.gz (the compose
+#                        files and Caddyfile a self-host install runs, plus a
+#                        manifest) and its .sha256, and attach both to the
+#                        cli-v<version> GitHub Release.
 #   disable-cf-builds    Probe Cloudflare for a Git-connected Workers Build and
 #                        say how to disconnect it (dashboard-only API).
+#   sync-uv-lock         Re-lock uv.lock on the open release PR branch: the api
+#                        version bump changes the lock, which release-please
+#                        does not touch, so the release PR's uv-lock check fails.
+#   missing-latest       Print the image groups (apps, bots) any of whose repos
+#                        has no :latest in GHCR yet, so build.yml builds them.
+#   desktop-tag          Print the desktop release tag release-please's
+#                        manifest names (desktop-v<apps/desktop>).
+#   mark-desktop-latest  Mark that release Latest once its latest*.yml updater
+#                        files are attached; electron-updater resolves Latest.
+#   wait-quality-gate    Wait for ci.yml's quality gate on RELEASE_TAG's commit;
+#                        fail when it failed, re-run a run a newer push
+#                        cancelled. Desktop installers wait on it.
 #
 # Env contract:
 #   resolve-image-tags    VERSION_SCHEME, APPS_RELEASE_OUTCOME,
@@ -27,12 +59,36 @@
 #   promote-latest        WEB_IMAGE_TAG / GRAFANA_IMAGE_TAG — the immutable tag
 #                         pushed by this run's build phase; empty means that
 #                         image wasn't built this run. Needs a GHCR login.
-#   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION (required).
+#   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION, SHA (required).
+#   cli-release-images    GITHUB_OUTPUT; full history (HEAD^ must exist);
+#                         RELEASE_IMAGES=true (optional) requires the images
+#                         for any commit (build.yml's release_images input).
+#   cli-beta-release      GH_TOKEN (contents:write), RELEASE_TAG (required).
+#   selfhost-bots-arm64   GIT_COMMIT_SHA (required); GITHUB_OUTPUT. Needs a
+#                         GHCR login and an arm64 buildx builder.
+#   selfhost-bots-manifest BOTS_TAG, COMMIT_SHA, ARM64_DIGESTS (required; the
+#                         digests output of selfhost-bots-arm64). Needs a
+#                         GHCR login.
+#   pin-selfhost-release  VERSION, SHA (required; HEAD must be SHA);
+#                         GH_TOKEN (actions:read), GITHUB_REPOSITORY;
+#                         PIN_WAIT_SECONDS (default 1800), PIN_POLL_SECONDS
+#                         (default 30). Needs a GHCR login.
 #   connect-cross-check   none.
 #   connect-binaries      GH_TOKEN (contents:write), RELEASE_TAG (required);
 #                         OUT_DIR (optional, default tools/gaia-connect/dist).
+#   selfhost-bundle       VERSION (required); OUT_DIR (optional, default
+#                         dist/selfhost); RELEASE_TAG (optional: cli-v<VERSION>,
+#                         uploads; needs GH_TOKEN contents:write); DRY_RUN=1
+#                         builds and names the upload without making it.
 #   disable-cf-builds     CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
 #                         WORKER_NAME (all optional; no token = manual steps).
+#   sync-uv-lock          RELEASE_BRANCH (required); a checkout whose origin
+#                         push credentials can update that branch; uv on PATH.
+#   missing-latest        docker logged in to GHCR.
+#   mark-desktop-latest   GITHUB_REPOSITORY, GH_TOKEN (contents: write).
+#   wait-quality-gate     RELEASE_TAG, GITHUB_REPOSITORY, GH_TOKEN (actions: write, to re-run a cancelled run), a
+#                         checkout holding the tag; GATE_WAIT_SECONDS (1800),
+#                         GATE_POLL_SECONDS (30).
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -51,22 +107,31 @@ source "$(dirname "$0")/lib/image-repos.sh"
 # timezone handling) can never silently produce a tag the images don't carry.
 #
 # VERSION_SCHEME is production | develop; deploys only run from master, where
-# the scheme is production, and anything else resolves to empty tags. The
-# outputs are empty when that group was not released this run (the deploy then
-# falls back to :latest via the compose file's ${VAR:-latest} defaults).
+# the scheme is production. The outputs are empty when that group was not
+# released this run (the deploy then falls back to :latest via the compose
+# file's ${VAR:-latest} defaults).
 cmd_resolve_image_tags() {
 
   : "${VERSION_SCHEME:?VERSION_SCHEME is required}"
   : "${APPS_RELEASE_OUTCOME:?APPS_RELEASE_OUTCOME is required}"
   : "${BOTS_RELEASE_OUTCOME:?BOTS_RELEASE_OUTCOME is required}"
 
-  # Production scheme: YYMM.DD.<short sha>. Anchored so :latest and dev tags
-  # never match.
-  local TAG_RE='^[0-9]{4}\.[0-9]{2}\.[0-9a-f]{6,12}$'
+  # The tag shape each nx.json versionScheme produces, anchored so :latest and
+  # the other scheme's tags never match. Branch runs resolve their develop tag
+  # too: the multi-arch API manifest needs it, and deploys stay master-only.
+  local TAG_RE
+  case "$VERSION_SCHEME" in
+    production) TAG_RE='^[0-9]{4}\.[0-9]{2}\.[0-9a-f]{6,12}$' ;;
+    develop) TAG_RE='^develop-[0-9a-f]{6,12}$' ;;
+    *)
+      echo "::error::release: unknown VERSION_SCHEME '$VERSION_SCHEME'" >&2
+      return 1
+      ;;
+  esac
 
   # Prints the group's tag on stdout (empty = group not released). Fails loud
   # when a released group's local images carry no/ambiguous/mismatched
-  # production tags, or when the tag cannot be made to exist in GHCR — a deploy
+  # tags of this run's scheme, or when the tag cannot be made to exist in GHCR — a deploy
   # pinned to a missing tag would fail far later, on the Swarm host.
   resolve_group() {
     local group="$1" outcome="$2"
@@ -83,11 +148,11 @@ cmd_resolve_image_tags() {
     for repo in "${repos[@]}"; do
       candidates=$(docker image ls --format '{{.Tag}}' "$GHCR_NAMESPACE/$repo" | grep -E "$TAG_RE" || true)
       if [[ -z "$candidates" ]]; then
-        echo "::error::release: $group released but $GHCR_NAMESPACE/$repo has no local production tag matching $TAG_RE" >&2
+        echo "::error::release: $group released but $GHCR_NAMESPACE/$repo has no local $VERSION_SCHEME tag matching $TAG_RE" >&2
         return 1
       fi
       if [[ "$(echo "$candidates" | wc -l)" -ne 1 ]]; then
-        echo "::error::release: $GHCR_NAMESPACE/$repo has multiple production tags locally: $(echo "$candidates" | tr '\n' ' ')" >&2
+        echo "::error::release: $GHCR_NAMESPACE/$repo has multiple $VERSION_SCHEME tags locally: $(echo "$candidates" | tr '\n' ' ')" >&2
         return 1
       fi
       if [[ -z "$tag" ]]; then
@@ -117,13 +182,9 @@ cmd_resolve_image_tags() {
     echo "$tag"
   }
 
-  local apps_tag="" bots_tag=""
-  if [[ "$VERSION_SCHEME" = "production" ]]; then
-    apps_tag=$(resolve_group apps "$APPS_RELEASE_OUTCOME" "${APPS_IMAGE_REPOS[@]}")
-    bots_tag=$(resolve_group bots "$BOTS_RELEASE_OUTCOME" "${BOTS_IMAGE_REPOS[@]}")
-  else
-    echo "release: scheme is '$VERSION_SCHEME' (not production) — deploys are disabled off-master, skipping tag resolution"
-  fi
+  local apps_tag bots_tag
+  apps_tag=$(resolve_group apps "$APPS_RELEASE_OUTCOME" "${APPS_IMAGE_REPOS[@]}")
+  bots_tag=$(resolve_group bots "$BOTS_RELEASE_OUTCOME" "${BOTS_IMAGE_REPOS[@]}")
 
   {
     echo "apps_tag=$apps_tag"
@@ -176,39 +237,65 @@ cmd_promote_latest() {
 # back to the caller — so any attempt to pick "our" run out of the recent list
 # is a guess that a concurrent dispatch (a manual catch-up publish during a
 # release, say) silently breaks. Instead this waits on the outcome that
-# actually matters and that no other run can fake: the version being on npm.
+# actually matters and that no other run can fake: the version on npm and its
+# release carrying the self-host bundle.
 # Run identity never enters into it.
 cmd_dispatch_cli_publish() {
 
   : "${GH_TOKEN:?GH_TOKEN is required}"
   : "${TAG:?TAG is required}"
   : "${VERSION:?VERSION is required}"
+  : "${SHA:?SHA is required (the release commit)}"
 
   local WORKFLOW="publish-cli.yml"
   local PACKAGE="@heygaia/cli"
   local POLL_SECONDS=20
-  local TIMEOUT_SECONDS=900
+  # npm publish is the last job: gaia-connect binaries (~15 min), then the
+  # image pin's wait for the release commit's build (<= 30 min), then npm.
+  local TIMEOUT_SECONDS=3600
+  # npm's registry read lags a publish by up to a minute; a finished run is
+  # judged only after the read has had that long to catch up.
+  local REGISTRY_RETRIES=6
+  local REGISTRY_RETRY_SECONDS=10
 
   published() {
     # Exits non-zero when the exact version is absent from the registry.
     npm view "${PACKAGE}@${VERSION}" version >/dev/null 2>&1
   }
 
-  # Counts publish runs that have not finished yet — any run, not just one we
-  # started. It only ever makes us wait longer, never mistake someone else's
-  # result for ours.
-  active_runs() {
-    gh run list --workflow "$WORKFLOW" --limit 20 --json status \
-      --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0
+  published_after_lag() {
+    local attempt
+    for ((attempt = 1; attempt <= REGISTRY_RETRIES; attempt++)); do
+      published && return 0
+      sleep "$REGISTRY_RETRY_SECONDS"
+    done
+    return 1
   }
 
-  if published; then
-    ci_ok "${PACKAGE}@${VERSION} is already on npm — nothing to dispatch."
+  # npm alone is not the whole release: publish-cli.yml also attaches the
+  # self-host bundle and gaia-connect binaries and pins the images, before npm.
+  # A version published by hand has npm and none of those, so both are waited on.
+  released() {
+    published &&
+      gh release view "$TAG" --json assets --jq '.assets[].name' | grep -q '^gaia-selfhost-'
+  }
+
+  # Counts publish runs that have not finished yet — any run, not just one we
+  # started. It only ever makes us wait longer, never mistake someone else's
+  # result for ours. A failed read fails here: read as 0, one API blip made a
+  # running publish look finished.
+  active_runs() {
+    gh run list --workflow "$WORKFLOW" --limit 20 --json status \
+      --jq '[.[] | select(.status != "completed")] | length'
+  }
+
+  if released; then
+    ci_ok "${PACKAGE}@${VERSION} is on npm and ${TAG} has its self-host bundle — nothing to dispatch."
     return 0
   fi
 
   echo "Dispatching $WORKFLOW for $TAG ($VERSION)"
-  gh workflow run "$WORKFLOW" --ref master -f "tag=$TAG" -f "version=$VERSION"
+  gh workflow run "$WORKFLOW" --ref master -f "tag=$TAG" -f "version=$VERSION" -f "sha=$SHA"
 
   local runs_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-theexperiencecompany/gaia}/actions/workflows/${WORKFLOW}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -218,24 +305,37 @@ cmd_dispatch_cli_publish() {
   while ((SECONDS < deadline)); do
     sleep "$POLL_SECONDS"
 
-    if published; then
+    if released; then
       ci_ok "${PACKAGE}@${VERSION} published."
       return 0
     fi
 
-    active=$(active_runs)
+    if ! active=$(active_runs); then
+      ci_warn "could not list ${WORKFLOW} runs — polling again"
+      continue
+    fi
     if ((active > 0)); then
       # A publish is still running; keep waiting for it to land.
       seen_active=1
     elif ((seen_active == 1)); then
-      # We watched a publish run start and finish, and the version still is not
-      # on the registry — that is a failed publish, reported now rather than at
-      # the timeout.
-      ci_die "Publish finished but ${PACKAGE}@${VERSION} is not on npm. See ${runs_url}"
+      # We watched a publish run start and finish. Still absent once the
+      # registry read has had time to catch up, that is a failed publish,
+      # reported now rather than at the timeout.
+      if published_after_lag && released; then
+        ci_ok "${PACKAGE}@${VERSION} published."
+        return 0
+      fi
+      ci_die "Publish finished but ${PACKAGE}@${VERSION} is not on npm with ${TAG}'s self-host bundle attached. See ${runs_url}"
     fi
   done
 
   ci_die "Timed out after ${TIMEOUT_SECONDS}s waiting for ${PACKAGE}@${VERSION} on npm. See ${runs_url}"
+}
+
+# Whether a CLI version is a beta (X.Y.Z-beta.N): npm dist-tag beta, a
+# prerelease GitHub Release, and a quality gate that may come from its PR.
+is_cli_beta() {
+  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
 }
 
 # Best-effort probe/disable for Cloudflare Workers Builds. If a Git-connected
@@ -375,8 +475,382 @@ cmd_connect_binaries() {
   ci_ok "gaia-connect: OK (${#ASSETS[@]} binaries + $SUMS attached to $RELEASE_TAG in ${SECONDS}s)"
 }
 
+# Whether HEAD is a CLI release commit: release-please bumps packages/cli's
+# version in the commit it tags cli-v<version>. pin-selfhost-release waits for
+# that commit's gaia, gaia-web and self-host bot :<sha> images, so build.yml
+# publishes them for a release commit even when nx sees none of them as
+# affected (a CLI-only release).
+# A repo whose :latest does not exist yet (first-time bootstrap) forces its
+# group's build even when nx sees nothing affected.
+cmd_missing_latest() {
+  local group repo
+  local -a repos
+  for group in apps bots; do
+    if [ "$group" = apps ]; then repos=("${APPS_IMAGE_REPOS[@]}"); else repos=("${BOTS_IMAGE_REPOS[@]}"); fi
+    for repo in "${repos[@]}"; do
+      if ! docker manifest inspect "$GHCR_NAMESPACE/$repo:latest" >/dev/null 2>&1; then
+        echo "$group"
+        break
+      fi
+    done
+  done
+}
+
+RELEASE_MANIFEST="$(dirname "$0")/../../config/.release-please-manifest.json"
+
+cmd_desktop_tag() {
+  echo "desktop-v$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["apps/desktop"])' "$RELEASE_MANIFEST")"
+}
+
+# Every non-desktop release takes Latest by default, and electron-updater reads
+# Latest, so the desktop release is put back; never before its updater files
+# exist, or the app's update check 404s until the installers land.
+cmd_mark_desktop_latest() {
+  local tag assets
+  tag="$(cmd_desktop_tag)"
+  assets="$(gh release view "$tag" --repo "${GITHUB_REPOSITORY:?}" --json assets --jq '.assets[].name')"
+  if ! grep -qE '^latest.*\.yml$' <<< "$assets"; then
+    ci_ok "$tag has no updater files yet — desktop-release marks it Latest after the upload"
+    return 0
+  fi
+  gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --latest
+  ci_ok "$tag is Latest"
+}
+
+cmd_cli_release_images() {
+
+  : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+
+  local required=false
+  if [[ "${RELEASE_IMAGES:-false}" == "true" ]]; then
+    required=true
+  else
+    local manifest="packages/cli/package.json" before after
+    before=$(git show "HEAD^:$manifest" | jq -r .version)
+    after=$(git show "HEAD:$manifest" | jq -r .version)
+    [[ "$before" != "$after" ]] && required=true
+  fi
+  echo "required=$required" >> "$GITHUB_OUTPUT"
+  ci_ok "cli-release-images: required=$required"
+}
+
+# Gives a CLI release its own immutable image set. `gaia update` pins
+# GAIA_VERSION=v<CLI version> for gaia (API + worker), gaia-web and the
+# self-host bots together, so each must carry that tag before the CLI reaches
+# npm, and each must be the release commit's own build (build.yml tags every
+# master build :<sha>). That
+# build runs alongside this publish, so the pair is awaited, bounded, and a
+# timeout fails loud instead of falling back to whatever :latest is. Nothing is
+# tagged until all exist, so a timeout never leaves a partial set. Idempotent:
+# an existing v<version> tag is kept, because an install may already run it.
+# ci.yml's quality-gate verdict across the runs on <sha> of the given events:
+# passed when any run's gate succeeded; failed when every run finished and a
+# gate failed; "cancelled <run ids>" when every run finished and each was
+# cancelled (a newer master push force-cancels the run before or during its
+# gate); pending while one is still running or no run exists yet.
+ci_quality_gate() {
+  local sha="$1"
+  shift
+  local api="repos/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}/actions"
+  local event event_runs run_ids="" run_id state verdict=pending finished=0 running=0 cancelled=""
+  # Called inside $(...), where errexit does not reach: every gh call returns
+  # its own failure so the caller can die on it.
+  for event in "$@"; do
+    event_runs=$(gh api "$api/workflows/ci.yml/runs?head_sha=$sha&event=$event" --jq '.workflow_runs[].id') || return 1
+    run_ids+=" $event_runs"
+  done
+  for run_id in $run_ids; do
+    state=$(gh api "$api/runs/$run_id/jobs?filter=latest&per_page=100" \
+      --jq '.jobs[] | select(.name == "quality-gate") | "\(.status) \(.conclusion)"') || return 1
+    # A force-cancelled run may never have created its gate job.
+    if [[ -z "$state" ]]; then
+      state=$(gh api "$api/runs/$run_id" --jq '"\(.status) \(.conclusion)"') || return 1
+    fi
+    case "$state" in
+      "completed success") verdict=passed ;;
+      "completed cancelled") cancelled+=" $run_id" ;;
+      completed\ *) finished=1 ;;
+      *) running=1 ;;
+    esac
+  done
+  if [[ "$verdict" != passed ]] && ((running == 0)); then
+    if ((finished == 1)); then
+      verdict=failed
+    elif [[ -n "$cancelled" ]]; then
+      verdict="cancelled$cancelled"
+    fi
+  fi
+  echo "$verdict"
+}
+
+# A merge right after the release superseded its runs; the release still needs
+# its own verdict, so re-run each cancelled one (GH_TOKEN needs actions:write).
+rerun_cancelled_gate() {
+  local sha="$1" run_id
+  shift
+  for run_id in "$@"; do
+    gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" >/dev/null ||
+      ci_die "could not re-run ci.yml run $run_id, cancelled before it judged $sha (GH_TOKEN needs actions:write)."
+    echo "Re-ran ci.yml run $run_id, which a newer master push cancelled before it judged $sha"
+  done
+}
+
+cmd_wait_quality_gate() {
+  : "${RELEASE_TAG:?RELEASE_TAG is required}"
+  local sha gate deadline=$((SECONDS + ${GATE_WAIT_SECONDS:-1800}))
+  sha="$(git rev-parse "$RELEASE_TAG^{commit}")"
+  while :; do
+    gate=$(ci_quality_gate "$sha" push) ||
+      ci_die "could not read ci.yml's runs for $sha from the Actions API (GH_TOKEN needs actions:read)."
+    case "$gate" in
+      passed) ci_ok "ci.yml's quality gate passed on $sha ($RELEASE_TAG)"; return 0 ;;
+      failed) ci_die "ci.yml's quality gate failed on $sha ($RELEASE_TAG); a release commit must pass it. Fix master and cut the release from a green commit." ;;
+      cancelled*) rerun_cancelled_gate "$sha" ${gate#cancelled} ;;
+    esac
+    ((SECONDS >= deadline)) && ci_die "Timed out waiting for ci.yml's quality gate on $sha ($RELEASE_TAG)."
+    echo "Waiting for ci.yml's quality gate on $sha"
+    sleep "${GATE_POLL_SECONDS:-30}"
+  done
+}
+
+cmd_pin_selfhost_release() {
+
+  : "${VERSION:?VERSION is required}"
+  : "${SHA:?SHA is required (the release commit)}"
+  local wait_seconds="${PIN_WAIT_SECONDS:-1800}"
+  local poll_seconds="${PIN_POLL_SECONDS:-30}"
+
+  [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || ci_die "SHA '$SHA' must be a full 40-character commit sha"
+  local head
+  head=$(git rev-parse HEAD)
+  [[ "$head" == "$SHA" ]] || ci_die "checked-out commit $head is not the release commit $SHA"
+
+  local tag="v${VERSION}"
+  # A stable release is a master commit, judged by its push run. A beta may be
+  # cut from a PR head, whose only gate is that PR's run on the same sha.
+  local gate_events=(push)
+  is_cli_beta "$VERSION" && gate_events+=(pull_request)
+  local repo pending=()
+  for repo in gaia "$WEB_IMAGE_REPO" "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    if docker buildx imagetools inspect "$GHCR_NAMESPACE/$repo:$tag" >/dev/null 2>&1; then
+      ci_ok "$GHCR_NAMESPACE/$repo:$tag already exists; keeping it."
+    else
+      pending+=("$repo")
+    fi
+  done
+
+  # build.yml publishes :<sha> before ci.yml's quality gate has judged the
+  # commit, so the images alone do not say the release commit is green.
+  local deadline=$((SECONDS + wait_seconds))
+  local missing gate
+  while :; do
+    missing=()
+    for repo in ${pending[@]+"${pending[@]}"}; do
+      if ! docker buildx imagetools inspect "$GHCR_NAMESPACE/$repo:$SHA" >/dev/null 2>&1; then
+        missing+=("$GHCR_NAMESPACE/$repo:$SHA")
+      fi
+    done
+    gate=$(ci_quality_gate "$SHA" "${gate_events[@]}") ||
+      ci_die "could not read ci.yml's runs for $SHA from the Actions API (GH_TOKEN needs actions:read)."
+    case "$gate" in
+      failed) ci_die "ci.yml's quality gate failed on $SHA; a release commit must pass it. Fix master and cut the release from a green commit." ;;
+      cancelled*) rerun_cancelled_gate "$SHA" ${gate#cancelled} ;;
+    esac
+    [[ "$gate" == passed ]] && ((${#missing[@]} == 0)) && break
+    if ((SECONDS >= deadline)); then
+      [[ "$gate" == passed ]] || ci_die "Timed out after ${wait_seconds}s waiting for ci.yml's quality gate to pass on $SHA, then re-dispatch this publish."
+      ci_die "Timed out after ${wait_seconds}s waiting for ${missing[*]}. build.yml publishes them for the release commit: re-run the master run for $SHA, then re-dispatch this publish."
+    fi
+    echo "Waiting for: quality gate ${gate}${missing[*]:+, ${missing[*]}}"
+    sleep "$poll_seconds"
+  done
+
+  for repo in ${pending[@]+"${pending[@]}"}; do
+    echo "Tagging $GHCR_NAMESPACE/$repo:$SHA as :$tag"
+    docker buildx imagetools create -t "$GHCR_NAMESPACE/$repo:$tag" "$GHCR_NAMESPACE/$repo:$SHA"
+  done
+  echo "### Self-host release pinned: \`GAIA_VERSION=$tag\` (images of \`$SHA\`)" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+}
+
+# A beta has no release-please release, so its publish creates one, marked
+# prerelease so neither GitHub's "latest release" nor connect.sh's newest
+# stable cli-v* lookup ever lands on it. Idempotent across re-dispatches.
+cmd_cli_beta_release() {
+
+  : "${GH_TOKEN:?GH_TOKEN is required}"
+  : "${RELEASE_TAG:?RELEASE_TAG is required (e.g. cli-v0.7.0-beta.1)}"
+
+  local version="${RELEASE_TAG#cli-v}"
+  [[ "$RELEASE_TAG" == cli-v* ]] && is_cli_beta "$version" ||
+    ci_die "RELEASE_TAG '$RELEASE_TAG' is not a CLI beta (cli-vX.Y.Z-beta.N); release-please creates stable releases"
+
+  local prerelease
+  if prerelease=$(gh release view "$RELEASE_TAG" --json isPrerelease --jq .isPrerelease 2>/dev/null); then
+    if [[ "$prerelease" == "true" ]]; then
+      ci_ok "$RELEASE_TAG is already a prerelease."
+      return 0
+    fi
+    gh release edit "$RELEASE_TAG" --prerelease --latest=false
+    ci_ok "$RELEASE_TAG marked prerelease."
+    return 0
+  fi
+  gh release create "$RELEASE_TAG" --verify-tag --prerelease --latest=false \
+    --title "GAIA CLI $version (beta)" \
+    --notes "Beta of the GAIA CLI. Install it with: curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh"
+  ci_ok "$RELEASE_TAG created as a prerelease."
+}
+
+# Self-hosters run the bots on arm64 too, while production's bot images stay
+# amd64-only. Only a CLI release commit builds the arm64 half: nx release keeps
+# publishing the amd64 tag the Swarm deploy pins, untouched.
+cmd_selfhost_bots_arm64() {
+
+  : "${GIT_COMMIT_SHA:?GIT_COMMIT_SHA is required}"
+  : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+  local repo metadata digest digests=()
+  metadata=$(mktemp)
+  for repo in "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    ci_group "build $GHCR_NAMESPACE/$repo (linux/arm64)"
+    docker buildx build \
+      --platform linux/arm64 \
+      --file apps/bots/Dockerfile \
+      --build-arg "BOT_NAME=${repo#gaia-bot-}" \
+      --build-arg "GIT_COMMIT_SHA=$GIT_COMMIT_SHA" \
+      --cache-from "type=registry,ref=$GHCR_NAMESPACE/$repo:buildcache-arm64" \
+      --cache-to "type=registry,ref=$GHCR_NAMESPACE/$repo:buildcache-arm64,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd" \
+      --output "type=image,name=$GHCR_NAMESPACE/$repo,push-by-digest=true,name-canonical=true,push=true" \
+      --metadata-file "$metadata" \
+      .
+    ci_endgroup
+    digest=$(jq -r '."containerimage.digest"' "$metadata")
+    [[ "$digest" == sha256:* ]] || ci_die "no digest recorded for the $repo arm64 build"
+    digests+=("$repo@$digest")
+  done
+  echo "digests=${digests[*]}" >> "$GITHUB_OUTPUT"
+  ci_ok "selfhost-bots-arm64: ${digests[*]}"
+}
+
+# Tags each self-host bot :<sha> as an index of the release's amd64 image
+# (:<bots tag>, left as it is) and its arm64 digest. Every digest is checked
+# before anything is tagged, so a missing one never leaves a partial set.
+cmd_selfhost_bots_manifest() {
+
+  : "${BOTS_TAG:?BOTS_TAG is required}"
+  : "${COMMIT_SHA:?COMMIT_SHA is required}"
+  : "${ARM64_DIGESTS:?ARM64_DIGESTS is required (selfhost-bots-arm64 did not succeed)}"
+  local repo digest digests=()
+  for repo in "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    digest=$(tr ' ' '\n' <<< "$ARM64_DIGESTS" | sed -n "s|^$repo@||p")
+    [[ -n "$digest" ]] || ci_die "no arm64 image for $repo in ARM64_DIGESTS; its :$COMMIT_SHA would be amd64-only"
+    digests+=("$digest")
+  done
+  local i
+  for i in "${!SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    repo="${SELFHOST_BOT_IMAGE_REPOS[$i]}"
+    docker buildx imagetools create -t "$GHCR_NAMESPACE/$repo:$COMMIT_SHA" \
+      "$GHCR_NAMESPACE/$repo:$BOTS_TAG" "$GHCR_NAMESPACE/$repo@${digests[$i]}"
+  done
+  ci_ok "selfhost-bots-manifest: ${SELFHOST_BOT_IMAGE_REPOS[*]} tagged :$COMMIT_SHA (amd64 + arm64)"
+}
+
+# What a self-host install runs from disk, relative to the repo root: the
+# compose files (the stack, the code-sandbox and bot overrides) and the files
+# they mount or extend. Never docker-compose.build.yml: building needs the
+# whole source tree, which a bundle install does not have.
+SELFHOST_BUNDLE_GLOBS=(
+  packages/cli/selfhost/docker-compose.selfhost.yml
+  packages/cli/selfhost/docker-compose.sandbox.yml
+  "packages/cli/selfhost/docker-compose.bot-*.yml"
+  packages/cli/selfhost/Caddyfile
+  packages/cli/selfhost/bot.yml
+  packages/cli/selfhost/seccomp-mongo.json
+)
+SELFHOST_BUNDLE_MANIFEST="gaia-selfhost.json"
+
+# Builds gaia-selfhost-<version>.tar.gz (+ .sha256) from the checked-out tree;
+# with RELEASE_TAG it attaches both to that release, unless DRY_RUN=1.
+cmd_selfhost_bundle() {
+
+  : "${VERSION:?VERSION is required (e.g. 0.7.0 or 0.7.0-beta.4)}"
+  [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] ||
+    ci_die "VERSION '$VERSION' must be X.Y.Z or X.Y.Z-beta.N"
+  if [[ -n "${RELEASE_TAG:-}" && "$RELEASE_TAG" != "cli-v$VERSION" ]]; then
+    ci_die "RELEASE_TAG '$RELEASE_TAG' is not the release of VERSION $VERSION (cli-v$VERSION)"
+  fi
+
+  local root out_dir asset staging
+  root="$(cd "$(dirname "$0")/../.." && pwd)"
+  out_dir="${OUT_DIR:-dist/selfhost}"
+  asset="gaia-selfhost-${VERSION}.tar.gz"
+  mkdir -p "$out_dir"
+  out_dir="$(cd "$out_dir" && pwd)"
+  staging="$(mktemp -d)"
+
+  local pattern file files=()
+  for pattern in "${SELFHOST_BUNDLE_GLOBS[@]}"; do
+    local matched=0
+    # shellcheck disable=SC2086 # the pattern is a glob on purpose
+    for file in $(cd "$root" && compgen -G "$pattern"); do
+      files+=("$file")
+      matched=1
+    done
+    ((matched)) || ci_die "selfhost-bundle: nothing matches $pattern"
+  done
+  for file in "${files[@]}"; do
+    mkdir -p "$staging/$(dirname "$file")"
+    cp "$root/$file" "$staging/$file"
+  done
+  files+=("$SELFHOST_BUNDLE_MANIFEST")
+  local sorted
+  sorted="$(printf '%s\n' "${files[@]}" | LC_ALL=C sort)"
+  jq -n --arg version "v$VERSION" --arg files "$sorted" \
+    '{version: $version, files: ($files | split("\n"))}' \
+    > "$staging/$SELFHOST_BUNDLE_MANIFEST"
+
+  # ustar carries no extended attributes, so GNU tar unpacks a macOS-built
+  # bundle without warnings; COPYFILE_DISABLE keeps out macOS ._ files.
+  # shellcheck disable=SC2086 # one path per line, none with spaces
+  COPYFILE_DISABLE=1 tar --format ustar -czf "$out_dir/$asset" -C "$staging" $sorted
+  rm -rf "$staging"
+  (cd "$out_dir" && sha256sum "$asset" > "$asset.sha256")
+  ci_ok "selfhost-bundle: $out_dir/$asset ($(wc -l <<< "$sorted" | tr -d ' ') files)"
+
+  [[ -n "${RELEASE_TAG:-}" ]] || return 0
+  if [[ "${DRY_RUN:-}" == "1" ]]; then
+    ci_ok "selfhost-bundle: dry run, not uploading: gh release upload $RELEASE_TAG $asset $asset.sha256 --clobber"
+    return 0
+  fi
+  : "${GH_TOKEN:?GH_TOKEN is required (contents:write on the release)}"
+  (cd "$out_dir" && gh release upload "$RELEASE_TAG" "$asset" "$asset.sha256" --clobber)
+  echo "### self-host bundle — ✅ \`$asset\` + \`$asset.sha256\` attached to \`$RELEASE_TAG\`" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+  ci_ok "selfhost-bundle: attached $asset to $RELEASE_TAG"
+}
+
+cmd_sync_uv_lock() {
+  : "${RELEASE_BRANCH:?RELEASE_BRANCH is required}"
+  # --exit-code exits 2 only for "no such ref"; anything else (auth, network) is a failure.
+  local status=0
+  git ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null || status=$?
+  if ((status == 2)); then
+    ci_ok "sync-uv-lock: no $RELEASE_BRANCH branch, no release PR open"
+    return 0
+  fi
+  ((status == 0)) || ci_die "sync-uv-lock: git ls-remote origin failed (exit $status)"
+  git fetch --quiet --depth=1 origin "$RELEASE_BRANCH"
+  git checkout --quiet -B "$RELEASE_BRANCH" FETCH_HEAD
+  uv lock
+  if git diff --quiet -- uv.lock; then
+    ci_ok "sync-uv-lock: uv.lock on $RELEASE_BRANCH already matches its pyproject versions"
+    return 0
+  fi
+  git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" \
+    commit --quiet -m "chore: sync uv.lock with the release versions" -- uv.lock
+  git push --quiet origin "HEAD:$RELEASE_BRANCH"
+  ci_ok "sync-uv-lock: pushed the re-locked uv.lock to $RELEASE_BRANCH"
+}
+
 usage() {
-  sed -n '2,19p' "$0" >&2
+  sed -n '2,/^# Env contract/p' "$0" >&2
 }
 
 main() {
@@ -386,9 +860,20 @@ main() {
     resolve-image-tags)   cmd_resolve_image_tags "$@" ;;
     promote-latest)       cmd_promote_latest "$@" ;;
     dispatch-cli-publish) cmd_dispatch_cli_publish "$@" ;;
+    cli-release-images)   cmd_cli_release_images "$@" ;;
+    pin-selfhost-release) cmd_pin_selfhost_release "$@" ;;
+    cli-beta-release)     cmd_cli_beta_release "$@" ;;
+    selfhost-bots-arm64)  cmd_selfhost_bots_arm64 "$@" ;;
+    selfhost-bots-manifest) cmd_selfhost_bots_manifest "$@" ;;
     connect-cross-check) cmd_connect_cross_check "$@" ;;
     connect-binaries)     cmd_connect_binaries "$@" ;;
+    selfhost-bundle)      cmd_selfhost_bundle "$@" ;;
     disable-cf-builds)    cmd_disable_cf_builds "$@" ;;
+    sync-uv-lock)         cmd_sync_uv_lock "$@" ;;
+    missing-latest)       cmd_missing_latest "$@" ;;
+    desktop-tag)          cmd_desktop_tag "$@" ;;
+    mark-desktop-latest)  cmd_mark_desktop_latest "$@" ;;
+    wait-quality-gate)    cmd_wait_quality_gate "$@" ;;
     *)
       echo "release.sh: unknown subcommand '${sub}'" >&2
       usage

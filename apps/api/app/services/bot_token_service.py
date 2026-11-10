@@ -6,10 +6,36 @@ by issuing tokens only after legitimate platform messages.
 
 from datetime import UTC, datetime, timedelta
 
-from jose import JWTError, jwt
+import jwt
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
+
+
+class BotSessionClaims(BaseModel):
+    """The identity claims ``verify_bot_session_token`` decodes from a bot JWT.
+
+    Each is optional: a token missing any of them authenticates nobody.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str | None = None
+    platform: str | None = None
+    platform_user_id: str | None = None
+
+
+class _BotTokenPayload(BaseModel):
+    """The raw claims of a bot session JWT."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    sub: str | None = None
+    role: str | None = None
+    platform: str | None = None
+    platform_user_id: str | None = None
+
 
 # Default bot session token expiry (15 minutes)
 BOT_SESSION_TOKEN_EXPIRY_MINUTES = 15
@@ -38,28 +64,30 @@ def create_bot_session_token(
     return token
 
 
-def verify_bot_session_token(token: str) -> dict:
+def verify_bot_session_token(token: str) -> BotSessionClaims:
     """Decode and verify a bot session token, returning user_id/platform/platform_user_id.
 
-    Raises JWTError if invalid, expired, malformed, or not a bot-role token.
+    Raises InvalidTokenError if invalid, expired, malformed, or not a bot-role token.
     """
     secret = _get_bot_session_secret()
 
     try:
-        payload = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
+        payload = _BotTokenPayload.model_validate(
+            jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
+        )
 
         # Verify it's a bot session token
-        if payload.get("role") != "bot":
-            raise JWTError("Invalid token role")
+        if payload.role != "bot":
+            raise jwt.InvalidTokenError("Invalid token role")
 
-        return {
-            "user_id": payload.get("sub"),
-            "platform": payload.get("platform"),
-            "platform_user_id": payload.get("platform_user_id"),
-        }
+        return BotSessionClaims(
+            user_id=payload.sub,
+            platform=payload.platform,
+            platform_user_id=payload.platform_user_id,
+        )
 
-    except JWTError as e:
-        raise JWTError(f"Token verification failed: {e!s}") from e
+    except (jwt.PyJWTError, ValidationError) as e:
+        raise jwt.InvalidTokenError(f"Token verification failed: {e!s}") from e
 
 
 def _get_bot_session_secret() -> str:

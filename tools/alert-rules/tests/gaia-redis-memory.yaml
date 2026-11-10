@@ -23,7 +23,7 @@ tests:
             exp_annotations:
               description: >-
                 Redis holds more than a cache here — it is the ARQ job queue itself, the SSE chat stream channels, stream-cancellation flags, response caching and rate-limit counters. On the cache instance the eviction policy is allkeys-lru, so crossing the limit starts dropping any of those at random; on jfs_meta_redis the policy is noeviction, so metadata writes start failing instead. This is the warning before either happens.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-memory
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-redis-memory
               __dashboardUid__: gaia-databases
               __panelId__: '8'
 
@@ -45,7 +45,7 @@ tests:
             exp_annotations:
               description: >-
                 Redis holds more than a cache here — it is the ARQ job queue itself, the SSE chat stream channels, stream-cancellation flags, response caching and rate-limit counters. On the cache instance the eviction policy is allkeys-lru, so crossing the limit starts dropping any of those at random; on jfs_meta_redis the policy is noeviction, so metadata writes start failing instead. This is the warning before either happens.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-memory
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-redis-memory
               __dashboardUid__: gaia-databases
               __panelId__: '8'
 

@@ -1,31 +1,38 @@
 """Terminal delivery for a tracked todo's own background run.
 
-The run's conversation is a throwaway with no transport, so its result is never
-saved there: comms decides whether it is worth a message at all, the user's chat
-app gets it only if so, and activity.md records what happened either way. A step
-the todo store fails is finished by a durable job, keyed by the run, never by
-running the todo again.
+The run executes in its todo's chat, which result_delivery has already given the
+executor's report. What reaches the user is decided here, by one rule: what can
+wait until tomorrow morning goes into the next brief, the rest is sent now. Code
+decides what may wait at all; comms decides whether a result is worth anything,
+and for one that may wait, whether it can. activity.md records what happened either way. A step the todo store fails is
+finished by a durable job, keyed by the run, never by running the todo again.
 """
 
+import asyncio
+from collections.abc import Iterable
 from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
-from app.agents.core.background.comms_narrator import narrate_executor_result
+from app.agents.core.background.comms_narrator import (
+    narrate_executor_result,
+    record_executor_report,
+)
 from app.agents.core.background.session import ExecutorRun, TodoRun
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
-from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefItemSource
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
-from app.constants.notifications import ProactiveMessageClass
+from app.constants.notifications import QUIET_HOURS_EXEMPT, ProactiveMessageClass
 from app.constants.todos import (
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
     DELIVERY_KEY_DETAILS_MAX_CHARS,
+    DELIVERY_RUN_HISTORY_LINES,
     RUN_SUMMARY_ACTIVITY_CHARS,
     STANDING_RULES_MAX_CHARS,
     TODO_RUN_FINISH_JOB_PREFIX,
@@ -35,8 +42,10 @@ from app.constants.todos import (
     TodoRunFinishFailure,
 )
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
+from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.brief_models import PendingBriefItemDocument
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -48,8 +57,17 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import section_body
+from app.services.delivery.chat_channel import (
+    ProactiveTarget,
+    proactive_destination,
+    resolve_proactive_target,
+)
 from app.services.notification_service import notification_service
-from app.services.todo_activity import record_run_finished, run_finished_marker
+from app.services.todo_activity import (
+    recent_run_outcomes,
+    record_run_finished,
+    run_finished_marker,
+)
 from app.utils.message_breaks import split_message_bubbles
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
@@ -62,16 +80,17 @@ _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
     TodoRunDeliveryOutcome.NOTIFY_OFF: "result not sent: delivery is off for this todo",
     TodoRunDeliveryOutcome.NARRATION_FAILED: "result not sent: it could not be written up",
     TodoRunDeliveryOutcome.INVALID_DIRECTIVE: "result not sent: the write-up was a reaction",
-    TodoRunDeliveryOutcome.HELD_FOR_BRIEF: "folded into the morning brief",
+    TodoRunDeliveryOutcome.HELD_FOR_BRIEF: "result held for the next brief",
 }
 
 
 class _Resolution(NamedTuple):
-    """What became of one run's result: the outcome, its activity note, and the platform."""
+    """What became of one run's result: outcome, activity note, platform, and the target a sent result was routed by."""
 
     outcome: TodoRunDeliveryOutcome
     note: str
     platform: ConversationSource | None = None
+    target: ProactiveTarget | None = None
 
 
 def _not_sent(outcome: TodoRunDeliveryOutcome) -> _Resolution:
@@ -93,6 +112,8 @@ class FinishedTodoRun(BaseModel):
     conversation_id: str
     trigger_type: TriggerType
     result_text: str
+    #: Defaulted for a job queued before the class was carried.
+    message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
     #: Set once the message step is done; only the finish entry is left then.
     finish_entry: str | None = None
 
@@ -108,6 +129,8 @@ async def deliver_todo_run_result(
     """
     log.set_ns("todo_delivery", todo_id=todo_run.todo_id, result_type=result_type)
     if result_type == "error":
+        # Not narrated, but the chat shows it, so the chat's next turn must know it.
+        await record_executor_report(run.conversation_id, result_text, result_type)
         return
     finished = FinishedTodoRun(
         run_id=run.stream_id,
@@ -116,6 +139,7 @@ async def deliver_todo_run_result(
         conversation_id=run.conversation_id,
         trigger_type=todo_run.trigger_type,
         result_text=result_text,
+        message_class=todo_run.message_class,
     )
     if (undone := await finish_todo_run(finished, run.user)) is not None:
         await hand_unfinished_run_to_job(undone)
@@ -203,12 +227,11 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
         return None
 
     # Read now, not when the run started: the run itself may have turned it off.
-    if not todo.notify_on_run:
-        resolution = _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
-    elif _is_desk_sweep(todo, finished) and await _has_live_daily_brief(todo.user_id):
-        resolution = _not_sent(TodoRunDeliveryOutcome.HELD_FOR_BRIEF)
+    if todo.notify_on_run:
+        resolution = await _narrate_and_deliver(finished, user, todo)
     else:
-        resolution = await _narrate_and_send(finished, user, todo)
+        await record_executor_report(finished.conversation_id, finished.result_text, "result")
+        resolution = _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.
@@ -220,6 +243,7 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
             platform=resolution.platform.value if resolution.platform else None,
             trigger_type=finished.trigger_type.value,
             recurring=bool(todo.recurrence),
+            **proactive_destination(resolution.target),
         ),
     )
     summary = finished.result_text.strip().replace("\n", " ")[:RUN_SUMMARY_ACTIVITY_CHARS]
@@ -227,11 +251,7 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
 
 
 def _is_desk_sweep(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
-    """Return whether this is the inbox desk's scheduled sweep, which the brief reports.
-
-    The brief reads the desk's findings itself (its thread sub-todos and the calendar), so
-    the sweep's report is neither written up nor sent; mail-woken alerts still go out.
-    """
+    """Return whether this is the inbox desk's scheduled sweep, whose findings feed the brief."""
     return (
         todo.external_ref is not None
         and todo.external_ref.source is ExternalRefSource.INBOX_DESK
@@ -239,10 +259,25 @@ def _is_desk_sweep(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
     )
 
 
+def _can_wait(todo: TodoDocument, finished: FinishedTodoRun, *, runs_once: bool) -> bool:
+    """Whether code lets this result wait for the brief; comms still decides if it can.
+
+    Never a one-time todo's answer, a watch the user set, a reminder they timed, a reply
+    to what they just did, or a run the trigger gate let through as urgent. A thread
+    the inbox desk opened alerts only when the user cannot wait, so comms judges it.
+    """
+    if runs_once or finished.message_class in QUIET_HOURS_EXEMPT:
+        return False
+    desk_thread = (
+        todo.external_ref is not None and todo.external_ref.source is ExternalRefSource.GMAIL_THREAD
+    )
+    return desk_thread or finished.trigger_type is TriggerType.SCHEDULED_TODO
+
+
 async def _has_live_daily_brief(user_id: str) -> bool:
     """Whether a daily brief will run for the user: its workflow exists and is switched on.
 
-    Without one, folding the sweep into "the brief" would mean nobody ever sees it.
+    Without one, holding a result for "the brief" would mean nobody ever sees it.
     """
     workflow = await workflow_repository.find_system_workflow(user_id, DAILY_BRIEFING_WORKFLOW_KEY)
     return workflow is not None and workflow.activated
@@ -255,7 +290,7 @@ def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | N
 
 
 async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
-    """Deliver a result as an in-app notification, for a user with no chat app linked."""
+    """Deliver a result as an in-app notification: the fallback, or the target for an in-app user."""
     try:
         await notification_service.create_notification(
             NotificationRequest(
@@ -278,23 +313,72 @@ async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
     return _Resolution(TodoRunDeliveryOutcome.DELIVERED, "result sent as an in-app notification")
 
 
-async def _narrate_and_send(
+async def _lookup_target(todo: TodoDocument) -> ProactiveTarget | None:
+    """Resolve where the result goes; None (logged) when the lookup fails, so it falls back in-app."""
+    try:
+        return await resolve_proactive_target(todo.user_id)
+    except Exception as e:
+        log.error(
+            f"{LogTag.AGENT} todo run target lookup failed, falling back to in-app",
+            todo_id=todo.id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+
+
+async def _hold_for_brief(
+    finished: FinishedTodoRun, todo: TodoDocument, lines: Iterable[str]
+) -> _Resolution:
+    """Hold each line as one item of the user's next brief.
+
+    A retry that writes a line twice is harmless: the brief carries one item per text.
+    """
+    for line in lines:
+        if text := line.strip().removeprefix("- ").strip():
+            await pending_brief_items_repository.create(
+                PendingBriefItemDocument(
+                    user_id=todo.user_id,
+                    source=BriefItemSource.TODO,
+                    source_id=todo.id,
+                    source_title=todo.title,
+                    conversation_id=finished.conversation_id,
+                    text=text,
+                )
+            )
+    return _not_sent(TodoRunDeliveryOutcome.HELD_FOR_BRIEF)
+
+
+async def _narrate_and_deliver(
     finished: FinishedTodoRun, user: AuthenticatedUser, todo: TodoDocument
 ) -> _Resolution:
-    """Have comms write the result up (or decline to), then send it to the chat app.
+    """Have comms write the result up (or decline to), then send it or hold it for the brief.
 
-    A report whose form its todo's guidance sets is sent as written: comms decides only whether.
+    A report whose form its todo's guidance sets is delivered as written: comms decides
+    only whether. The inbox desk's scheduled findings go into the next brief, never a message.
     """
-    text = await narrate_executor_result(
-        finished.result_text,
-        "result",
-        finished.conversation_id,
-        user,
-        preamble=tracked_todo_delivery_note(
-            todo.title,
-            _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
-            _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
+    runs_once = not (todo.recurrence or todo.trigger_subscriptions)
+    desk_sweep = _is_desk_sweep(todo, finished)
+    may_wait = (
+        desk_sweep or _can_wait(todo, finished, runs_once=runs_once)
+    ) and await _has_live_daily_brief(todo.user_id)
+    # Where it goes is looked up while comms writes it up: neither waits on the other.
+    text, target = await asyncio.gather(
+        narrate_executor_result(
+            finished.result_text,
+            "result",
+            finished.conversation_id,
+            user,
+            preamble=tracked_todo_delivery_note(
+                todo.title,
+                _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
+                _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
+                runs_once=runs_once,
+                run_history=recent_run_outcomes(todo.activity_content, DELIVERY_RUN_HISTORY_LINES),
+                may_wait=may_wait and not desk_sweep,
+            ),
         ),
+        _lookup_target(todo),
     )
     if not text:
         log.error(f"{LogTag.AGENT} todo run result narration failed", todo_id=todo.id)
@@ -316,15 +400,28 @@ async def _narrate_and_send(
     # comms' retelling dropped the headings a report-form owner's guidance requires.
     owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
     message = finished.result_text if owns_form else directive.payload
-    platform = await deliver_result_to_platforms(
-        user=user,
-        user_id=todo.user_id,
-        notification_text=message,
-        origin=f'tracked todo "{todo.title}" (id {todo.id})',
-        message_class=ProactiveMessageClass.ROUTINE,
+    if desk_sweep and may_wait:
+        return await _hold_for_brief(finished, todo, message.splitlines())
+    if directive.kind is CommsDirectiveKind.BRIEF:
+        if may_wait:
+            return await _hold_for_brief(finished, todo, [directive.payload])
+        log.warning(
+            f"{LogTag.AGENT} comms held a result that must go now; it is sent",
+            todo_id=todo.id,
+        )
+    platform = (
+        await deliver_result_to_platforms(
+            user=user,
+            notification_text=message,
+            origin=f'tracked todo "{todo.title}" (id {todo.id})',
+            message_class=finished.message_class,
+            target=target,
+        )
+        if target is not None
+        else None
     )
     if platform is None:
-        return await _send_in_app(todo, message)
+        return (await _send_in_app(todo, message))._replace(target=target)
     return _Resolution(
-        TodoRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform
+        TodoRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform, target
     )

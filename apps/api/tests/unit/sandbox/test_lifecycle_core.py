@@ -38,6 +38,7 @@ from app.constants import sandbox as sandbox_limits
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.sandbox import lifecycle, pool as pool_module
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.pool import PooledSandbox, SandboxPool, get_sandbox_pool
@@ -183,7 +184,7 @@ def test_r2_credentials_are_stripped_of_secret_store_whitespace() -> None:
 
 
 def test_unset_r2_settings_become_empty_strings_not_the_literal_none() -> None:
-    # DevelopmentSettings leaves these None; `str(None)` would ship the literal
+    # Development leaves these None; `str(None)` would ship the literal
     # "None" as an R2 key and produce an unreadable auth error.
     with (
         patch.object(lifecycle.settings, "R2_ACCESS_KEY", None),
@@ -252,7 +253,7 @@ async def test_missing_e2b_api_key_fails_before_any_sandbox_is_provisioned() -> 
     # an opaque auth error instead of naming the missing config.
     cls = _sandbox_class(_fake_sandbox())
     with (
-        patch.object(lifecycle.settings, "E2B_API_KEY", None),
+        patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "tpl"),
         patch.object(lifecycle, "AsyncSandbox", cls),
     ):
@@ -307,7 +308,6 @@ async def test_fresh_sandbox_is_created_with_the_full_lifetime_and_owner_metadat
     sbx = _fake_sandbox("sbx-new")
     cls = _sandbox_class(sbx)
     with (
-        patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
         patch.object(lifecycle, "AsyncSandbox", cls),
         patch.object(lifecycle, "_run_mount_script", AsyncMock()),
@@ -318,6 +318,9 @@ async def test_fresh_sandbox_is_created_with_the_full_lifetime_and_owner_metadat
     assert kwargs["template"] == "gaia-coder"
     assert kwargs["timeout"] == SANDBOX_LIFETIME_SECONDS
     assert kwargs["metadata"] == {"user_id": "u1", "shard_id": "2"}
+    # The resolved credential rides on the create call — the SDK must never
+    # depend on an env var for it (the key may live only in the store).
+    assert kwargs["api_key"] == "test-e2b-key"
 
 
 async def test_a_fresh_sandbox_is_mounted_with_its_own_shard_credentials() -> None:
@@ -326,7 +329,6 @@ async def test_a_fresh_sandbox_is_mounted_with_its_own_shard_credentials() -> No
     sbx = _fake_sandbox()
     mount = AsyncMock()
     with (
-        patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
         patch.object(lifecycle.settings, "JUICEFS_META_URL_TEMPLATE", "postgres://db/jfs{shard}"),
         patch.object(lifecycle, "AsyncSandbox", _sandbox_class(sbx)),
@@ -589,7 +591,10 @@ async def test_connect_refreshes_the_server_side_lifetime_of_a_resumed_sandbox()
     cls = _sandbox_class(sbx)
     with patch.object(lifecycle, "AsyncSandbox", cls):
         assert await lifecycle._connect_sandbox("sbx-old", SANDBOX_LIFETIME_SECONDS) is sbx
+    assert cls.connect.await_args.args == ("sbx-old",)
     assert cls.connect.await_args.kwargs["timeout"] == SANDBOX_LIFETIME_SECONDS
+    # The credential rides on the connect call, resolved store-first.
+    assert cls.connect.await_args.kwargs["api_key"] == "test-e2b-key"
 
 
 async def test_a_resumed_agent_lab_sandbox_asks_for_the_lab_lifetime() -> None:
@@ -652,7 +657,7 @@ async def test_an_unreachable_control_plane_is_logged_and_a_longer_probe_decides
             patch.object(lifecycle.AsyncSandbox, "get_info", get_info),
         ):
             assert await lifecycle._liveness(sbx) == lifecycle.SandboxLiveness.ALIVE
-    get_info.assert_awaited_once_with("sbx-7")
+    get_info.assert_awaited_once_with("sbx-7", api_key="test-e2b-key")
     assert probe.await_args_list == [
         call(sbx),
         call(
@@ -850,7 +855,6 @@ async def test_a_resumed_sandbox_is_remounted_before_it_is_used() -> None:
 def _acquire_patches(sbx: AsyncMock, repo: AsyncMock, *, lab: bool = False) -> list[Any]:
     """Patch only the true boundaries: e2b, Mongo, PostHog, the limiter, host JuiceFS."""
     return [
-        patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
         patch.object(lifecycle.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
         patch.object(lifecycle.settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", LAB_LIFETIME),
@@ -1100,7 +1104,7 @@ async def test_a_flagged_users_recorded_default_sandbox_is_killed_and_replaced()
     try:
         entry = await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
         assert recorded["resume_status"] == "template_upgrade"
-        cls.kill.assert_awaited_once_with("sbx-small")
+        cls.kill.assert_awaited_once_with("sbx-small", api_key="test-e2b-key")
         cls.connect.assert_not_awaited()
         assert cls.create.await_args.kwargs["template"] == "gaia-coder-8gb"
         assert entry.sandbox is sbx
@@ -1403,7 +1407,7 @@ async def test_renewing_pauses_then_resumes_with_a_full_lifetime_and_swaps_the_h
             p.stop()
     try:
         old.beta_pause.assert_awaited_once()
-        cls.connect.assert_awaited_once_with("sbx-1", timeout=LAB_LIFETIME)
+        cls.connect.assert_awaited_once_with("sbx-1", timeout=LAB_LIFETIME, api_key="test-e2b-key")
         assert get_sandbox_pool().get(uid).sandbox is resumed
     finally:
         get_sandbox_pool().evict(uid)
@@ -1740,6 +1744,54 @@ async def test_a_finished_acquisition_schedules_the_pause_under_the_user_lock() 
     dlock.assert_called_once_with(uid)
     acquire.assert_awaited_once_with(uid, "gaia-coder-8gb")
     schedule_pause.assert_called_once_with(uid, entry)
+
+
+_E2B_UNCONFIGURED_WARNING = (
+    "E2B is not configured (no stored credential and no E2B_API_KEY): "
+    "hosted sandboxes are unavailable. On self-host, coding tools "
+    "fall back to the local Docker backend."
+)
+
+
+def _resolve_e2b_only(config: ProviderConfig | None) -> AsyncMock:
+    async def _resolve(name: str) -> ProviderConfig | None:
+        if name != "e2b":
+            raise AssertionError(f"pool resolved the wrong provider: {name!r}")
+        return config
+
+    return AsyncMock(side_effect=_resolve)
+
+
+async def test_the_pool_provider_warns_when_no_e2b_credential_resolves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pool_module, "_pool_singleton", None)
+    monkeypatch.setattr(pool_module, "resolve_e2b_config", _resolve_e2b_only(None))
+
+    load_pool = pool_module.init_sandbox_pool().loader_func
+    async with captured_wide_event() as event:
+        pool = await load_pool()
+
+    assert isinstance(pool, SandboxPool)
+    assert pool is get_sandbox_pool()
+    assert [w["msg"] for w in event.get("warnings", [])] == [_E2B_UNCONFIGURED_WARNING]
+
+
+async def test_the_pool_provider_is_silent_when_e2b_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    existing = SandboxPool()
+    monkeypatch.setattr(pool_module, "_pool_singleton", existing)
+    monkeypatch.setattr(
+        pool_module, "resolve_e2b_config", _resolve_e2b_only(ProviderConfig(api_key="k"))
+    )
+
+    load_pool = pool_module.init_sandbox_pool().loader_func
+    async with captured_wide_event() as event:
+        pool = await load_pool()
+
+    assert pool is existing
+    assert event.get("warnings", []) == []
 
 
 def _renew_world(uid: str, *, connect: AsyncMock) -> tuple[AsyncMock, AsyncMock, list[Any]]:

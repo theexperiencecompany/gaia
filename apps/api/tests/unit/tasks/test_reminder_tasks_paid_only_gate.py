@@ -57,7 +57,7 @@ async def test_free_user_reminder_does_not_fire() -> None:
         patch(
             f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
         ) as notify,
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock) as deliver,
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)) as deliver,
         patch(f"{MODULE}.capture") as capture,
     ):
         await execute_reminder_by_agent(_reminder())
@@ -73,7 +73,7 @@ async def test_the_block_reaches_the_funnel_under_the_blocked_users_own_id() -> 
     """Unable to use require_active_subscription (it raises), so the paywall event must be fired here with an explicit user_id since a worker has no request context to attribute it."""
     with (
         patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch(f"{MODULE}.capture_paywall_block") as block,
     ):
         await execute_reminder_by_agent(_reminder())
@@ -85,7 +85,7 @@ async def test_a_paying_users_reminder_is_never_captured_as_blocked() -> None:
     with (
         patch(f"{MODULE}.is_paid", AsyncMock(return_value=True)),
         patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch(f"{MODULE}.capture_paywall_block") as block,
     ):
         await execute_reminder_by_agent(_reminder())
@@ -98,7 +98,7 @@ async def test_the_skip_is_recorded_on_the_wide_event_with_both_ids() -> None:
     """log.warning writes both ids into the wide event's warnings[] so "why did my reminder stop?" is answerable from Loki."""
     with (
         patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch(f"{MODULE}.log") as mock_log,
     ):
         await execute_reminder_by_agent(_reminder())
@@ -126,7 +126,7 @@ async def test_a_user_who_just_paid_fires_off_the_row_not_the_stale_cache() -> N
         patch(
             f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
         ) as notify,
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch(f"{MODULE}.capture"),
     ):
         await execute_reminder_by_agent(_reminder())
@@ -140,7 +140,7 @@ async def test_the_gate_asks_about_the_reminders_own_owner() -> None:
     with (
         patch(f"{MODULE}.is_paid", is_active),
         patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch(f"{MODULE}.capture"),
     ):
         await execute_reminder_by_agent(_reminder())

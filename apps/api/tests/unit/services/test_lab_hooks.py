@@ -6,16 +6,20 @@ scripts. Not exercised: E2B, JuiceFS latency, the CLIs actually firing hooks.
 """
 
 import base64
+from collections.abc import Callable
+import contextlib
 import json
 import os
 from pathlib import Path
 import shlex
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
 import tarfile
 import textwrap
+import time
 from unittest.mock import patch
 
 import pytest
@@ -25,6 +29,7 @@ from app.services.agent_lab.agents_home import (
     AGENTS_HOME,
     AGENTS_SAVE,
     CLAUDE_SETTINGS_PATH,
+    HOOK_LOG,
     HOOK_SCRIPT,
     HOOK_TIMEOUT_SECONDS,
     OPENCODE_CONFIG_DIR,
@@ -84,6 +89,17 @@ def _host_shims(bin_dir: Path) -> None:
         _executable(bin_dir / "flock", "#!/usr/bin/env bash\nexit 0\n")
     if shutil.which("timeout") is None:
         _executable(bin_dir / "timeout", '#!/usr/bin/env bash\nshift\nexec "$@"\n')
+    if shutil.which("setsid") is None:
+        # util-linux setsid --fork: run argv in a new session in a child, and return at once.
+        _executable(
+            bin_dir / "setsid",
+            f"#!{sys.executable}\n"
+            "import os, sys\n"
+            "argv = [a for a in sys.argv[1:] if a != '--fork']\n"
+            "if os.fork() == 0:\n"
+            "    os.setsid()\n"
+            "    os.execvp(argv[0], argv)\n",
+        )
     if shutil.which("sqlite3") is None:
         # Only the `.backup 'dest'` form gaia-save runs, via the same online-backup API.
         _executable(
@@ -175,7 +191,11 @@ class TestRenderVendored:
         )
         assert writes[HOOK_SCRIPT] == render_vendored(
             "gaia_hook.sh",
-            {"SAVE_SCRIPT": SAVE_SCRIPT, "SAVE_TIMEOUT_SECONDS": str(SAVE_TIMEOUT_SECONDS)},
+            {
+                "SAVE_SCRIPT": SAVE_SCRIPT,
+                "SAVE_TIMEOUT_SECONDS": str(SAVE_TIMEOUT_SECONDS),
+                "HOOK_LOG": HOOK_LOG,
+            },
         )
         assert writes[f"{OPENCODE_CONFIG_DIR}/plugins/gaia_notify.js"] == render_vendored(
             "opencode_notify_plugin.js",
@@ -366,7 +386,12 @@ def _render_scripts(root: Path, *, save_body: str | None = None) -> tuple[Path, 
     _executable(
         hook,
         render_vendored(
-            "gaia_hook.sh", {"SAVE_SCRIPT": str(save_script), "SAVE_TIMEOUT_SECONDS": "30"}
+            "gaia_hook.sh",
+            {
+                "SAVE_SCRIPT": str(save_script),
+                "SAVE_TIMEOUT_SECONDS": "30",
+                "HOOK_LOG": str(root / "hook.log"),
+            },
         ),
     )
     return save_script, hook
@@ -393,6 +418,38 @@ def _recording_curl(root: Path, log: Path) -> Path:
     return shims
 
 
+_DETACHED_VAR = "GAIA_HOOK_DETACHED"
+
+
+def _lines(log: Path) -> list[str]:
+    return log.read_text().splitlines() if log.exists() else []
+
+
+def _kill_tree(pid: int) -> None:
+    """SIGKILL a process and every descendant, as claude -p does to its hooks on exit."""
+    table = subprocess.run(
+        ["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True, check=True
+    )
+    children: dict[int, list[int]] = {}
+    for row in table.stdout.splitlines():
+        child, parent = (int(field) for field in row.split())
+        children.setdefault(parent, []).append(child)
+    tree, pending = [], [pid]
+    while pending:
+        current = pending.pop()
+        tree.append(current)
+        pending.extend(children.get(current, []))
+    for member in tree:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(member, signal.SIGKILL)
+
+
+def _wait_until(done: Callable[[], bool], seconds: float = 10) -> None:
+    deadline = time.monotonic() + seconds
+    while not done() and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+
 @pytest.mark.unit
 class TestGaiaHook:
     def _fire(
@@ -407,6 +464,8 @@ class TestGaiaHook:
         env = {**os.environ, "PATH": f"{shims}:{os.environ['PATH']}"}
         env.pop(LAB_CALLBACK_URL_VAR, None)
         env.pop(LAB_TOKEN_VAR, None)
+        # The detached half, run in the foreground so its result can be read when it returns.
+        env[_DETACHED_VAR] = "1"
         if run_env:
             env |= {LAB_CALLBACK_URL_VAR: EVENTS_URL, LAB_TOKEN_VAR: "tok-1"}
         result = subprocess.run(
@@ -434,6 +493,37 @@ class TestGaiaHook:
         assert code == 0
         assert calls == ["SAVE"]
 
+    def test_the_relay_outlives_the_cli_killing_the_hook(self, tmp_path: Path) -> None:
+        """Regression: claude -p kills its StopFailure hook on exit, so the failure never relayed."""
+        log = tmp_path / "calls.log"
+        started = tmp_path / "save-started"
+        save_body = (
+            f"#!/usr/bin/env bash\ntouch {shlex.quote(str(started))}\nsleep 1\n"
+            f"echo SAVE >> {shlex.quote(str(log))}\n"
+        )
+        _, hook = _render_scripts(tmp_path, save_body=save_body)
+        shims = _recording_curl(tmp_path, log)
+        env = {
+            **os.environ,
+            "PATH": f"{shims}:{os.environ['PATH']}",
+            LAB_CALLBACK_URL_VAR: EVENTS_URL,
+            LAB_TOKEN_VAR: "tok-1",
+        }
+        hook_proc = subprocess.Popen(
+            [str(hook)], stdin=subprocess.PIPE, env=env, text=True, start_new_session=True
+        )
+        assert hook_proc.stdin is not None
+        hook_proc.stdin.write('{"hook_event_name":"StopFailure"}')
+        hook_proc.stdin.close()
+        _wait_until(started.exists)
+        _kill_tree(hook_proc.pid)
+        hook_proc.wait()
+        _wait_until(lambda: len(_lines(log)) >= 2)
+        assert _lines(log) == [
+            "SAVE",
+            'POST Authorization: Bearer tok-1 {"hook_event_name":"StopFailure"}',
+        ]
+
     def test_never_exits_2_even_when_everything_fails(self, tmp_path: Path) -> None:
         """A Stop hook exiting 2 makes Claude keep going instead of stopping."""
         log = tmp_path / "calls.log"
@@ -447,10 +537,16 @@ class TestGaiaHook:
             LAB_CALLBACK_URL_VAR: EVENTS_URL,
             LAB_TOKEN_VAR: "tok-1",
         }
-        result = subprocess.run(
-            [str(hook)], input="{}", env=env, capture_output=True, text=True, check=False
-        )
-        assert result.returncode == 0
+        for detached in ({}, {_DETACHED_VAR: "1"}):
+            result = subprocess.run(
+                [str(hook)],
+                input="{}",
+                env=env | detached,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert result.returncode == 0
         assert not log.exists()
 
 
@@ -583,5 +679,5 @@ class TestLabHooksToken:
     def test_unconfigured_events_url_fails_loud(self) -> None:
         with patch.object(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", None):
             with pytest.raises(AppError) as err:
-                sandbox_setup.lab_events_url()
+                sandbox_setup.lab_events_url(object())
         assert err.value.status_code == 503

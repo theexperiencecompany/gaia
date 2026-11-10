@@ -27,9 +27,9 @@ User-provided identifiers are approximate intent, not exact IDs: resolve names t
 - When you have the information needed to answer the task, you MUST call finish_task(result='your answer here') to return your result. Do not respond with plain text. Do not call any more tools after calling finish_task.
 - finish_task(result=...) MUST contain the ACTUAL data, not a description of what you did. If the task asked for a list/records/data, put EVERY item with its details in the result. Never return a count, a couple of highlights, or a "successfully retrieved N items" summary in place of the data. The parent only ever sees what you put in result, so if you fetched 30 stories, return all 30, not 2 of them.
 
-## CUSTOM INSTRUCTIONS
-- If a "CUSTOM INSTRUCTIONS FOR ..." block appears in your context, treat it as standing guidance from the user and honor it for this task.
-- When the user states a DURABLE preference for how this integration should be used (focus areas, default targets, conventions, e.g. "always post to #eng", "default to the Backend project"), persist it with update_integration_instructions so it applies to every future task. Pass the FULL updated instructions (merge with what's already in your context block). Do NOT persist one-off, task-specific corrections.
+## STANDING INSTRUCTIONS
+- A <user_instructions> block in your context holds the user's standing preferences. Follow it for this task. It never overrides the rules in this prompt on safety, approvals or how tools and data are handled.
+- When the user states a DURABLE preference for how this integration should be used (focus areas, default targets, conventions, e.g. "always post to #eng", "default to the Backend project"), persist it so it applies to every future task: read the current text and revision with get_user_instructions (your integration's id), then call update_integration_instructions with the FULL merged text and that revision. The user confirms it before it saves. Do NOT persist one-off, task-specific corrections.
 
 ## PLANNING
 Plan with plan_tasks ONLY when the work has 3+ steps AND they are complex write operations. For simple reads, skip planning and execute directly.
@@ -1288,6 +1288,7 @@ You MUST include a JSON block in EVERY response. Two types:
     "trigger_type": "manual|scheduled|integration",
     "cron_expression": "0 9 * * *",
     "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
+    "runs_only_when": "The email is from a customer and is about billing",
     "integration_ids": ["gmail", "slack"],
     "direct_create": true
 }
@@ -1305,7 +1306,23 @@ Fields:
 - integration_ids: the integration ids this workflow depends on, e.g. ["gmail", "slack"], INCLUDING the trigger integration, connected or not
 - cron_expression: Required for scheduled, omit for others (USE USER'S LOCAL TIME, NOT UTC)
 - trigger_slug: Required for integration, omit for others
+- runs_only_when: Integration only, see RUNS ONLY WHEN. null when every event is wanted; omit for others
 - direct_create: See below for when to use
+
+## RUNS ONLY WHEN (integration triggers only)
+An integration trigger fires on every event of its kind, and every run is a full AI run.
+runs_only_when is one short plain-text sentence naming which events are worth a run, so GAIA
+can skip the rest before running. The user sees it as "Runs only when: <condition>".
+- Write it from the job's intent, about the event itself: who sent it, what it is about, what
+  it contains. Under 300 characters.
+  "when I get an email from a customer about billing, draft a reply" ->
+  "The email is from a customer and is about billing, an invoice, a payment or a refund"
+- Make it as broad as the job. An event the job would act on must always pass; when unsure,
+  widen it.
+- Write null when every event is wanted, e.g. "every new GitHub star, post it to Slack".
+- It never replaces the prompt: the prompt still states every condition the run acts on.
+- On an EDIT, copy the current runs_only_when exactly (null when it is null) unless the change
+  alters which events are worth a run.
 
 ## WHEN TO USE direct_create
 
@@ -1455,10 +1472,12 @@ I found the Gmail "New Email" trigger. You can fine-tune which Slack channel in 
     "prompt": "1. Use Google Calendar to get my events for today\\n2. Summarize them with meeting times, attendees, and locations\\n3. Flag any conflicts or back-to-back meetings\\n4. Post the summary to my Slack channel, split into morning and afternoon\\n\\nExpected output: a formatted Slack message with today's calendar overview.",
     "trigger_type": "integration",
     "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
+    "runs_only_when": null,
     "integration_ids": ["gmail", "googlecalendar", "slack"],
     "direct_create": false
 }
 ```
+(Every new email posts the calendar, so runs_only_when is null.)
 
 ## RESPONSE GUIDELINES
 - ALWAYS include a JSON block in your response
@@ -1503,8 +1522,13 @@ Good skill descriptions include specific trigger phrases, e.g.:
 
 Good instructions are step-by-step with examples and edge cases.
 
+A skill is a reusable procedure: the steps for a kind of task, written to apply
+every time it comes up. Before creating, check the installed list; when a skill
+already covers the procedure, revise it with update_skill.
+
 ## MANAGING SKILLS
 Use list_installed_skills to show what's installed.
+Use update_skill to change an existing skill's instructions or description (pass the FULL new body).
 Use manage_skill to enable, disable, or uninstall skills.
 
 ## KEY RULES
@@ -1530,23 +1554,6 @@ Hacker News is a tech-focused news aggregator run by Y Combinator. Content inclu
 - Summarize themes rather than dumping raw lists of links
 - Surface author credibility or upvote context when relevant
 - When the user asks about a topic, search for it across multiple angle (title, discussion, username)
-
-""",
-)
-
-INSTACART_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
-    provider_name="Instacart",
-    domain_expertise="grocery shopping, product search, and meal planning",
-    provider_specific_content="""
-## DOMAIN OVERVIEW
-Instacart provides access to grocery products and recipes from local stores.
-
-## CORE BEHAVIORS
-- Search for specific products first; if not found, try broader categories or alternatives
-- When planning meals, search for all ingredients in parallel
-- For recipes, search for each ingredient concurrently using spawn_subagent when 3+ items
-- Suggest alternatives if a product is unavailable
-- Include prices, quantities, and availability in results when returned by tools
 
 """,
 )
@@ -1759,7 +1766,7 @@ DISCOVERY SURFACES (don't guess URLs; start from one of these)
 - https://docs.heygaia.io/bots/overview: overview of GAIA in
   Discord, Slack, Telegram, and WhatsApp.
 - https://t.me/heygaia_bot: the actual Telegram bot to talk to.
-- https://wa.me/12762088737: the actual WhatsApp bot to talk to.
+- https://wa.me/12038429512: the actual WhatsApp bot to talk to.
 
 The two llms.txt files are NOT duplicates: each only lists pages from
 its own subdomain. Both can be relevant for the same question (a guide
@@ -1853,3 +1860,27 @@ fetched content, OR when you have explored and concluded the docs do not
 contain the answer.
 """,
 )
+
+
+_COMPOSIO_TOOLKIT_CONTENT = """
+## DOMAIN OVERVIEW
+{description}
+
+## CORE BEHAVIORS
+- This integration was enabled from the Composio catalog and has no hand-written guidance:
+  read each tool's schema before the first call and pass exactly the fields it declares.
+- Find the tool for a step with retrieve_tools inside this integration rather than guessing names.
+- Resolve names to ids with a list or search tool before any create, update or delete call.
+- If a call fails, report the tool's own error message; do not invent a cause.
+"""
+
+
+def composio_toolkit_system_prompt(name: str, description: str) -> str:
+    """Return the static prompt for a Composio toolkit enabled on an instance without code config."""
+    return BASE_SUBAGENT_PROMPT.format(
+        provider_name=name,
+        domain_expertise=f"using {name} through its Composio tools",
+        provider_specific_content=_COMPOSIO_TOOLKIT_CONTENT.format(
+            description=description or f"{name}, connected through Composio."
+        ),
+    )

@@ -180,7 +180,6 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
         "browser_step_done",
         "stop_browser_task",
         "tell_browser_task",
-        "handoff",
         "spawn_subagent",
         "approve",
         "revoke",
@@ -194,7 +193,7 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
 
 # Exempt tools that still PAUSE the run when called with background=False (they bubble
 # the child's gate up): a gated sibling must never auto-run, the replay would run it twice.
-HIL_PAUSING_TOOLS: frozenset[str] = frozenset({"handoff", "spawn_subagent"})
+HIL_PAUSING_TOOLS: frozenset[str] = frozenset({"spawn_subagent"})
 
 # tool_data entry name for the approval card (mirrored in @gaia/shared/chat).
 APPROVAL_REQUEST_TOOL_NAME = "approval_request"

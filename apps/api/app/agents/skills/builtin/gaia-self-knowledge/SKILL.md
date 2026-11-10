@@ -20,9 +20,12 @@ GAIA runs as a small graph of agents:
 - **Executor agent**: the generalist with the full tool registry. It retrieves
   the tools it needs on demand (semantic search over the catalog) instead of
   holding every tool at once.
-- **Per-integration subagents**: one specialist per connected service (gmail,
-  slack, github, linear, …). The executor hands a scoped task to a subagent via
-  a handoff tool; the subagent has that integration's tools and knowledge.
+- **Integrations**: every connected service (gmail, slack, github, linear, MCP
+  servers including the user's own custom MCP connections, …) is loaded by the
+  executor with `activate_integration`, which brings that integration's tools,
+  notes and skills into the executor's own context. The executor runs those
+  tools itself through `execute`; isolated or noisy work goes to
+  `spawn_subagent`.
 
 You don't see every tool until you retrieve it. That's by design. It keeps the
 context lean. Use `retrieve_tools` to discover and bind what a task needs.
@@ -41,13 +44,18 @@ context lean. Use `retrieve_tools` to discover and bind what a task needs.
 
 Skills are addressable how-to docs (like this one). Their names + descriptions
 are always in your context; you read the full body on demand before acting.
-System skills ship with GAIA; users can install their own. Per-integration
-skills live under `integrations/<id>/agent/skills/`.
+System skills ship with GAIA; users can install their own, and you can save one
+(`save_learned_skill`) or revise one (`update_skill`). Per-integration skills
+live under `integrations/<id>/agent/skills/`.
+
+A skill is a reusable procedure: how to do a kind of task. `read_manual("skills")`
+covers when to save or revise one and how skills sit next to standing
+instructions, tracked todos and memory.
 
 ## Integrations
 
-Each service the user connects becomes available as a subagent with its own
-tools. The connected list is summarized in your context ("Connected
+Each service the user connects becomes an integration with its own tools,
+loaded with `activate_integration`. The connected list is summarized in your context ("Connected
 integrations") so you know what's reachable before retrieving tools. Users
 manage connections on the integrations page.
 
@@ -61,9 +69,9 @@ outputs go in the current session's `artifacts/`.
 
 Two distinct levers. Don't conflate them:
 
-- **Global preferences** (voice, tone, profession) come from onboarding and
-  apply everywhere.
-- **Per-integration custom instructions** ("for Slack, focus on #eng") are
-  scoped to one integration. See the `gaia-custom-instructions` skill for how to
-  read and update these. This is how you let a user shape how you use a
-  specific service, and how you persist a durable preference yourself.
+- **Settings** (voice, response style, profession, timezone) come from
+  onboarding and the account tools, and apply everywhere.
+- **Standing instructions** are free-text preferences, either global ("always
+  reply in Spanish") or scoped to one integration ("for Slack, focus on #eng").
+  See the `gaia-custom-instructions` skill for how to read and update them and
+  how they rank below platform rules.

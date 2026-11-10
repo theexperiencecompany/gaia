@@ -3,11 +3,9 @@
 from dataclasses import dataclass
 import re
 
-from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import ValidationError
 
-from app.agents.llm.client import ainvoke_structured, metered_config
+from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
 from app.agents.prompts.trigger_prompts import generate_trigger_context
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
@@ -15,8 +13,9 @@ from app.agents.prompts.workflow_prompts import (
 )
 from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.integrations import MANAGED_BY_INTERNAL
+from app.constants.llm import ReasoningLevel
 from app.constants.log_tags import LogTag
 from app.models.workflow_models import (
     GeneratedPromptOutput,
@@ -30,7 +29,9 @@ from app.models.workflow_models import (
 )
 from shared.py.wide_events import log
 
-_MAX_GENERATION_ATTEMPTS = 2
+# A schema fill over the tool catalog, not a plan: reasoning was 94% of prod output and
+# overran the 8k helper cap (finish_reason=length), every cut re-asked, 100-160s per request.
+_GENERATION_OPTIONS = StructuredCallOptions(reasoning=ReasoningLevel.OFF)
 
 # Provider messages can be long (OpenRouter's 402 body quotes credit figures);
 # the modal shows this inline, so keep it to one readable line.
@@ -65,7 +66,7 @@ def _failure_reason(error: BaseException) -> str:
 
 
 def _slug_to_friendly_name(slug: str) -> str:
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if integration.id == slug:
             return integration.name
     return slug
@@ -94,7 +95,7 @@ def _extract_explicit_mentions(prompt: str) -> set[str]:
     """
     lower_prompt = prompt.lower()
     mentioned: set[str] = set()
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         # Word-boundary match so short/common names/ids (e.g. "box" in "inbox")
         # don't get flagged as explicit mentions and force-include integrations.
         for token in (integration.name.lower(), integration.id.lower()):
@@ -147,7 +148,7 @@ def _build_available_triggers(
     the user can't actually use.
     """
     lines: list[str] = []
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if (
             connected_integration_ids is not None
             and integration.id not in connected_integration_ids
@@ -210,7 +211,7 @@ def _collect_subagent_categories(active_set: set[str]) -> tuple[list[str], list[
     """
     category_names: list[str] = []
     tools_with_categories: list[str] = []
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if integration.subagent_config and integration.subagent_config.has_subagent:
             is_internal = integration.managed_by == MANAGED_BY_INTERNAL
             if not is_internal and integration.id.lower() not in active_set:
@@ -296,26 +297,11 @@ def _build_integration_hints(
     return hint_parts
 
 
-def _validated_steps(result: GeneratedWorkflow | None) -> list[WorkflowStep] | None:
-    """Enrich a candidate generation result, or return None when it is unusable.
+async def _draft_steps(formatted_prompt: str, *, user_id: str) -> list[WorkflowStep]:
+    """Draft the steps in one structured call, raising WorkflowStepGenerationError on failure.
 
-    An empty result is regenerable rather than fatal, so it is reported as
-    absence instead of raising.
-    """
-    if not result or not result.steps:
-        return None
-    return enrich_steps(result.steps)
-
-
-async def _run_generation_attempt(
-    formatted_prompt: str, *, user_id: str, attempt: int
-) -> tuple[list[WorkflowStep] | None, Exception | None]:
-    """Run one generation attempt and classify its outcome.
-
-    Returns (steps, None) on success and (None, error) when the attempt
-    is regenerable — empty output or schema-invalid structured output. Provider
-    failures are not regenerable and are raised as
-    WorkflowStepGenerationError.
+    ainvoke_llm already re-asks a malformed or empty draft (GeneratedWorkflow needs
+    one step), so nothing here asks again.
     """
     try:
         result = await ainvoke_structured(
@@ -323,42 +309,20 @@ async def _run_generation_attempt(
             formatted_prompt,
             label="workflow_generation",
             config=metered_config(user_id),
+            options=_GENERATION_OPTIONS,
         )
-    except (ValidationError, OutputParserException) as e:
-        # Schema-invalid structured output is regenerable; the provider's
-        # own retry/fallback already ran inside ainvoke_llm.
-        log.warning(
-            f"{LogTag.WORKFLOW} Structured output invalid; regenerating",
-            attempt=attempt + 1,
-            max_attempts=_MAX_GENERATION_ATTEMPTS,
-            error_type=type(e).__name__,
-        )
-        return None, e
     except Exception as e:
-        # Not regenerable: provider failure after ainvoke_llm's own retry+fallback.
-        # Re-raise typed so the API answers with the reason instead of a blank 500.
         log.error(
-            f"{LogTag.WORKFLOW} ========== FAILED: provider error",
-            attempt=attempt + 1,
+            f"{LogTag.WORKFLOW} ========== FAILED",
             error_type=type(e).__name__,
             error=str(e),
             user_id=user_id,
         )
         raise WorkflowStepGenerationError(_failure_reason(e)) from e
 
-    steps_data = _validated_steps(result)
-    if steps_data is not None:
-        log.info(f"{LogTag.WORKFLOW} ========== DONE: steps", steps_data_count=len(steps_data))
-        return steps_data, None
-
-    log.warning(
-        f"{LogTag.WORKFLOW} No steps; regenerating",
-        attempt=attempt + 1,
-        max_attempts=_MAX_GENERATION_ATTEMPTS,
-    )
-    return None, ValueError(
-        "LLM returned a workflow with no steps. The model may not have understood the request"
-    )
+    steps = enrich_steps(result.steps)
+    log.info(f"{LogTag.WORKFLOW} ========== DONE: steps", steps_data_count=len(steps))
+    return steps
 
 
 @dataclass(frozen=True)
@@ -392,13 +356,7 @@ class WorkflowGenerationService:
         *,
         user_id: str,
     ) -> list[WorkflowStep]:
-        """Generate workflow steps using the LLM's native structured output.
-
-        Raises:
-            WorkflowStepGenerationError: If generation fails — either the
-                provider call failed outright or every attempt came back
-                empty/schema-invalid. Carries a user-showable reason.
-        """
+        """Generate workflow steps; a failed draft raises WorkflowStepGenerationError."""
         log.info(f"{LogTag.WORKFLOW} ========== START", title=title)
 
         log.info(f"{LogTag.WORKFLOW} Getting tool registry...")
@@ -471,34 +429,7 @@ class WorkflowGenerationService:
         )
         log.info(f"{LogTag.WORKFLOW} Prompt built", prompt_chars=len(formatted_prompt))
 
-        # Transient provider errors are retried inside ainvoke_llm; this loop
-        # only regenerates when the model returns an empty or schema-invalid result.
-        last_error: Exception | None = None
-        for attempt in range(_MAX_GENERATION_ATTEMPTS):
-            if attempt > 0:
-                log.info(
-                    f"{LogTag.WORKFLOW} Regeneration attempt for", attempt=attempt, title=title
-                )
-
-            steps_data, last_error = await _run_generation_attempt(
-                formatted_prompt, user_id=user_id, attempt=attempt
-            )
-            if steps_data is not None:
-                return steps_data
-
-        log.error(
-            f"{LogTag.WORKFLOW} ========== FAILED after attempts",
-            _max_generation_attempts=_MAX_GENERATION_ATTEMPTS,
-            last_error=last_error,
-            user_id=user_id,
-        )
-        # Every exhausted attempt returned a reason, so there is always one to
-        # show: `_run_generation_attempt` only yields no steps together with the
-        # error that explains why.
-        reason = f"the model returned no usable steps after {_MAX_GENERATION_ATTEMPTS} attempts"
-        if last_error:
-            reason += f" ({_failure_reason(last_error)})"
-        raise WorkflowStepGenerationError(reason) from last_error
+        return await _draft_steps(formatted_prompt, user_id=user_id)
 
     @staticmethod
     async def generate_workflow_prompt(

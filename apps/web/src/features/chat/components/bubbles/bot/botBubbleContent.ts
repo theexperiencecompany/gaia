@@ -9,6 +9,8 @@ interface BotBubbleContentInput {
   systemPurpose: SystemPurpose | undefined;
   toolDataLength: number | undefined;
   emailProcessingPurpose: SystemPurpose;
+  /** The user stopped this turn: the "Stopped" line is content on its own. */
+  stopped?: boolean | null;
 }
 
 /** What a bot bubble has to show: the quiet error bubble for a failed turn
@@ -23,11 +25,17 @@ export function describeBotBubbleContent({
   systemPurpose,
   toolDataLength,
   emailProcessingPurpose,
+  stopped,
 }: BotBubbleContentInput): { hasError: boolean; hasContent: boolean } {
   const hasError = !showsTextBubble && !!error;
   const isEmailProcessing =
     !!isConvoSystemGenerated && systemPurpose === emailProcessingPurpose;
   const hasContent =
-    !!imageData || !!text || hasError || isEmailProcessing || !!toolDataLength;
+    !!imageData ||
+    !!text ||
+    hasError ||
+    isEmailProcessing ||
+    !!toolDataLength ||
+    !!stopped;
   return { hasError, hasContent };
 }

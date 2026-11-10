@@ -1,4 +1,4 @@
-"""The root-mounted live view, recap and step frames, opened only by the authority each was handed out with.
+"""The live view, recap and step frames, opened only by the authority each was handed out with.
 
 Runs the real live codes, takeover tokens and session registry against a
 per-test Redis; only the viewer's socket and the host's stream are stand-ins.
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
+import time
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -16,10 +17,11 @@ from fastapi import FastAPI, Request, Response, WebSocket, status
 from httpx import ASGITransport, AsyncClient
 import pytest
 from starlette.websockets import WebSocketDisconnect, WebSocketState
-from tests.helpers import captured_wide_event
+from tests.helpers import JOSE_MINTED_TAKEOVER_TOKEN, captured_wide_event, hostile_jwts
 
 from app.api.v1.endpoints import browser_live_view as blv
 from app.config.settings import settings
+from app.constants.http import API_V1_PREFIX
 from app.services.browser import takeover_token
 from app.services.browser.live_code import mint_live_code, revoke_handoff_live_code
 from app.services.browser.registry import register_session
@@ -36,7 +38,7 @@ _HOST_STREAM = "ws://host/live/sess-1"
 @pytest.fixture(autouse=True)
 def _live_view_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "s" * 40, raising=False)
-    monkeypatch.setattr("app.services.browser.links.settings.BROWSER_LIVE_VIEW_BASE_URL", _BASE)
+    monkeypatch.setattr("app.services.browser.links.settings.HOST", _BASE)
 
 
 @pytest.fixture
@@ -50,7 +52,7 @@ async def client(
     fake_redis: fakeredis.aioredis.FakeRedis, events: list[dict[str, Any]]
 ) -> AsyncIterator[AsyncClient]:
     app = FastAPI()
-    app.include_router(blv.router)
+    app.include_router(blv.router, prefix=API_V1_PREFIX)
 
     @app.middleware("http")
     async def _wide_event(
@@ -182,7 +184,10 @@ async def test_a_frame_the_worker_stored_is_served_by_the_url_it_returned(
 
     assert (resp.status_code, resp.content) == (200, b"\xff\xd8jpeg-payload")
     assert resp.headers["content-type"] == "image/jpeg"
-    for missing in (url.removeprefix(_BASE).replace("/2.jpg", "/3.jpg"), "/shots/never/2.jpg"):
+    for missing in (
+        url.removeprefix(_BASE).replace("/2.jpg", "/3.jpg"),
+        "/api/v1/browser/shots/never/2.jpg",
+    ):
         resp = await client.get(missing)
         assert (resp.status_code, resp.json()["detail"]) == (404, "Screenshot not found or expired")
     assert [event["browser"]["operation"] for event in events] == ["step_screenshot"] * 3
@@ -196,7 +201,7 @@ async def test_a_non_integer_frame_index_is_refused_by_the_route_itself(
     assert url is not None
     code = url.split("/shots/")[1].split("/")[0]
 
-    assert (await client.get(f"/shots/{code}/{index}.jpg")).status_code == 422
+    assert (await client.get(f"/api/v1/browser/shots/{code}/{index}.jpg")).status_code == 422
 
 
 async def test_a_recap_link_opens_its_slideshow_and_an_unknown_one_does_not(
@@ -206,7 +211,7 @@ async def test_a_recap_link_opens_its_slideshow_and_an_unknown_one_does_not(
     assert link is not None
 
     page = await client.get(link.removeprefix(_BASE))
-    missing = await client.get("/replays/never-minted")
+    missing = await client.get("/api/v1/browser/replays/never-minted")
 
     assert page.status_code == 200
     assert "https://cdn/1.jpg" in page.text
@@ -277,6 +282,39 @@ async def test_anything_else_is_closed_as_a_policy_violation_unopened_saying_why
     (refusal,) = event["warnings"]
     assert "refused" in refusal["msg"]
     assert refusal["reason"] == why
+
+
+@pytest.mark.parametrize("kind", sorted(hostile_jwts({}, "s")))
+async def test_a_hostile_takeover_token_is_refused_unopened(
+    fake_redis: fakeredis.aioredis.FakeRedis, host: _HostStream, kind: str
+) -> None:
+    await register_session("sess-1", "u1", live_ws=_HOST_STREAM)
+    claims = {"sub": "u1", "session_id": "sess-1", "role": "browser_takeover"}
+    token = hostile_jwts({**claims, "exp": int(time.time()) + 600}, "s" * 40)[kind]
+    viewer = _Viewer()
+
+    async with captured_wide_event() as event:
+        await _watch(viewer, "sess-1", token)
+
+    assert (viewer.accepted, viewer.close_code) == (False, status.WS_1008_POLICY_VIOLATION)
+    assert host.dialed == []
+    assert event["warnings"][-1]["reason"] == "Invalid or expired link"
+
+
+async def test_a_takeover_token_minted_by_python_jose_opens_its_session(
+    fake_redis: fakeredis.aioredis.FakeRedis, host: _HostStream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "x" * 40, raising=False)
+    await register_session("sess-jose", "u-jose", live_ws=_HOST_STREAM)
+    viewer = _Viewer()
+
+    watching = _watch(viewer, "sess-jose", JOSE_MINTED_TAKEOVER_TOKEN)
+    await host.until(lambda: bool(host.dialed))
+
+    assert viewer.accepted
+    assert host.dialed == [(_HOST_STREAM, None)]
+    watching.cancel()
+    await asyncio.gather(watching, return_exceptions=True)
 
 
 async def test_a_session_with_no_host_stream_closes_as_gone(

@@ -1,0 +1,195 @@
+{
+ "run": "run_397b97b178a8",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_CREATE_EMAIL_DRAFT"
+  },
+  {
+   "tool_name": "GMAIL_SEND_DRAFT"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle SD/OG research brief: scan Svdly udh SD/OG whtnfvqn/newsletter hqyukdy hx lar pmff 55c, vtyc email w brief (up w ga-hqyukdy lswycqi) oa lar ynrm'n mtx inbox.",
+    "steps": [
+     {
+      "id": "scan",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "window",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "ssjzq:$now-1d mbmdhn:$now",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys",
+          "duacch",
+          "zbta"
+         ],
+         "max_messages": 100
+        }
+       },
+       {
+        "id": "keywords",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "ssjzq:$now-1d mbmdhn:$now (wsutmbc YU update YU yrreasswypa YU \"gys wmgug\" YU zbsrmj YU nwlaesxhs YU iopyhkstgxkg YU tdjm)",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100
+        }
+       },
+       {
+        "id": "providers",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "ssjzq:$now-1d mbmdhn:$now (evvq:eolynz YU evvq:openai YU evvq:zvzviucsp YU evvq:gtqeulwqzta YU evvq:rdpuplv YU evvq:meta YU evvq:google YU evvq:clsydfcbr)",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100
+        }
+       }
+      ]
+     },
+     {
+      "id": "draft",
+      "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+      "args": {
+       "recipient_email": "$user.email",
+       "subject": "SD/OG Aqrpudxf Nhgkq e $today",
+       "body": {
+        "$ask": "lar brief zbta: 3 bllqesj (iqiswc/whtnfvqn, dwka qguzysi, wypmfswsl jxmrdrfhewx) bg rdthudqvrwl hqyukdy etfpq, uhge 'Ccur E rdthudqvrwl hqyukdy etfpq today' xhuc qsdhamr qjfysghy, uhge 'Xw rdthudqvrwl SD/OG hqyukdy zatmwjim today.'"
+       }
+      }
+     },
+     {
+      "id": "send",
+      "tool": "GMAIL_SEND_DRAFT",
+      "args": {
+       "draft_id": "$steps.draft.id"
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar outcome yg lar dikcp SD/OG brief. Hx lar scan etfpq rdthudqvrwl SD/OG whtnfvqn up newsletter hqyukdy hx lar pmff 55c, avloxtnrc lar 3-svnuuf brief (iqiswc/whtnfvqn, dwka qguzysi, wypmfswsl jxmrdrfhewx) uzku eto pyyqhoc. Hx smnmt wqbg 3 rdthudqvrwl hqyukdy uign etfpq, gvrz 'Ccur E rdthudqvrwl hqyukdy etfpq today' qiq list lar qsdhamr qjfysghy brqs oa fjlf lar brief. Hx ga bgchvcmk emails uign etfpq, kfhta uzku lar 'Xw rdthudqvrwl SD/OG hqyukdy zatmwjim today.' lswycqi eto sent oa lar ynrm'n mtx inbox. Fubbovh lar sent lswycqi lm qiq tbyrfw lm."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 9,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle SD/OG research brief: scan Svdly udh SD/OG whtnfvqn/newsletter hqyukdy hx lar pmff 55c, vtyc email w brief (up w ga-hqyukdy lswycqi) oa lar ynrm'n mtx inbox.",
+    "result_brief": "Cvouqs lar outcome yg lar dikcp SD/OG brief. Hx lar scan etfpq rdthudqvrwl SD/OG whtnfvqn up newsletter hqyukdy hx lar pmff 55c, avloxtnrc lar 3-svnuuf brief (iqiswc/whtnfvqn, dwka qguzysi, wypmfswsl jxmrdrfhewx) uzku eto pyyqhoc. Hx smnmt wqbg 3 rdthudqvrwl hqyukdy uign etfpq, gvrz 'Ccur E rdthudqvrwl hqyukdy etfpq today' qiq list lar qsdhamr qjfysghy brqs oa fjlf lar brief. Hx ga bgchvcmk emails uign etfpq, kfhta uzku lar 'Xw rdthudqvrwl SD/OG hqyukdy zatmwjim today.' lswycqi eto sent oa lar ynrm'n mtx inbox. Fubbovh lar sent lswycqi lm qiq tbyrfw lm.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "scan",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys",
+          "duacch",
+          "zbta"
+         ],
+         "max_messages": 100,
+         "query": "ssjzq:$now-1d mbmdhn:$now"
+        },
+        "id": "window",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100,
+         "query": "ssjzq:$now-1d mbmdhn:$now (wsutmbc YU update YU yrreasswypa YU \"gys wmgug\" YU zbsrmj YU nwlaesxhs YU iopyhkstgxkg YU tdjm)"
+        },
+        "id": "keywords",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100,
+         "query": "ssjzq:$now-1d mbmdhn:$now (evvq:eolynz YU evvq:openai YU evvq:zvzviucsp YU evvq:gtqeulwqzta YU evvq:rdpuplv YU evvq:meta YU evvq:google YU evvq:clsydfcbr)"
+        },
+        "id": "providers",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     },
+     {
+      "args": {
+       "body": {
+        "$ask": "lar brief zbta: 3 bllqesj (iqiswc/whtnfvqn, dwka qguzysi, wypmfswsl jxmrdrfhewx) bg rdthudqvrwl hqyukdy etfpq, uhge 'Ccur E rdthudqvrwl hqyukdy etfpq today' xhuc qsdhamr qjfysghy, uhge 'Xw rdthudqvrwl SD/OG hqyukdy zatmwjim today.'"
+       },
+       "recipient_email": "$user.email",
+       "subject": "SD/OG Aqrpudxf Nhgkq e $today"
+      },
+      "id": "draft",
+      "tool": "GMAIL_CREATE_EMAIL_DRAFT"
+     },
+     {
+      "args": {
+       "draft_id": "$steps.draft.data.id"
+      },
+      "id": "send",
+      "tool": "GMAIL_SEND_DRAFT"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -43,7 +43,7 @@ def read_only_space(tools: dict[str, BaseTool]) -> ToolSpace:
     The space replays as a read-only run, so the HIL gate refuses any tool not classified
     read-only even if one ever got into tools.
     """
-    return ToolSpace(tools=tools, runtime=None, subagent_id=None, read_only=True)
+    return ToolSpace(tools=tools, read_only=True)
 
 
 @dataclass(frozen=True, slots=True)

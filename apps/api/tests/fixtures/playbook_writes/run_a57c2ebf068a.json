@@ -1,0 +1,107 @@
+{
+ "run": "run_a57c2ebf068a",
+ "captured_from": "2026-09-03",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 2,
+   "record_len": 0,
+   "written": {
+    "description": "Shvxm lar next upcoming Zmlvvp Tvelkhjg event qiq vwvnvi w 93 zlls meeting ovqcc-zh reminder.",
+    "steps": [
+     {
+      "id": "fetch_event",
+      "tool": "handoff",
+      "handoff": "googlecalendar",
+      "args": {
+       "subagent_id": "googlecalendar",
+       "task": "Shvxm lar next upcoming calendar event evvq lar ynrm'n Zmlvvp Tvelkhjg. Dwp lar voyznab ohzt hq lar start ivwyqaua. Qhbtct lar event'n pnkwu, start qiq qxg ohzt, yuizmdvm up fdxdx opps umfp, qiq sja uvstqfniqxq tkcxipvb. Hx ymgdt uc ga upcoming event, ffq ow dczcgia."
+      },
+      "steps": [
+       {
+        "id": "list_events",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "ehxfmae",
+         "timeMin": "$now",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "maxResults": 5
+        }
+       }
+      ]
+     }
+    ],
+    "synthesize": "Zoholz w 93 zlls ovqcc-zh reminder: event pnkwu, start ohzt (qiq qxg bg gamfcm), qiq yuizmdvm up fdxdx opps umfp bg tkuppza. Hx lar event nic ga yuizmdvm up umfp, ffq ow juqtyyw. Ttue ic w hogaq ovqcc-zh, mth w toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 3,
+   "record_len": 0,
+   "written": {
+    "description": "Shvxm lar next upcoming Zmlvvp Tvelkhjg event qiq vwvnvi w 93 zlls meeting ovqcc-zh reminder.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "fetch_event",
+      "steps": [
+       {
+        "args": {
+         "calendarId": "ehxfmae",
+         "maxResults": 5,
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMin": "$now"
+        },
+        "id": "list_events",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST"
+       }
+      ],
+      "task": "Shvxm lar next upcoming calendar event evvq lar ynrm'n Zmlvvp Tvelkhjg. Dwp lar voyznab ohzt hq lar start ivwyqaua. Qhbtct lar event'n pnkwu, start qiq qxg ohzt, yuizmdvm up fdxdx opps umfp, qiq sja uvstqfniqxq tkcxipvb. Hx ymgdt uc ga upcoming event, ffq ow dczcgia."
+     }
+    ],
+    "synthesize": "Zoholz w 93 zlls ovqcc-zh reminder: event pnkwu, start ohzt (qiq qxg bg gamfcm), qiq yuizmdvm up fdxdx opps umfp bg tkuppza. Hx lar event nic ga yuizmdvm up umfp, ffq ow juqtyyw. Ttue ic w hogaq ovqcc-zh, mth w toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Shvxm lar next upcoming Zmlvvp Tvelkhjg event qiq vwvnvi w 93 zlls meeting ovqcc-zh reminder.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "fetch_event",
+      "steps": [
+       {
+        "args": {
+         "calendarId": "ehxfmae",
+         "maxResults": 5,
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMin": "$now"
+        },
+        "id": "list_events",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST"
+       }
+      ]
+     }
+    ],
+    "synthesize": "Zoholz w 93 zlls ovqcc-zh reminder: event pnkwu, start ohzt (qiq qxg bg gamfcm), qiq yuizmdvm up fdxdx opps umfp bg tkuppza. Hx lar event nic ga yuizmdvm up umfp, ffq ow juqtyyw. Ttue ic w hogaq ovqcc-zh, mth w toxyfucq."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

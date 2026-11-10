@@ -29,7 +29,7 @@ from app.agents.context.text import (
     MEMORY_RECALL_HEADER,
     MULTI_ACCOUNT_INSTRUCTION,
 )
-from app.agents.prompts.new_user_prompts import build_new_user_guidance
+from app.agents.prompts.new_user_prompts import NewUserFacts, build_new_user_guidance
 from app.agents.workspace.paths import session_dir
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
@@ -42,8 +42,9 @@ from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.memory_models import MemorySearchResult
+from app.models.onboarding_models import PersistedTriageSummary
 from app.models.todo_models import TodoDocument
-from app.models.user_models import OnboardingNeed, OnboardingPreferences
+from app.models.user_models import BioStatus, OnboardingNeed, OnboardingSubdocument
 from app.services.device.device_service import (
     get_device_manifest,
 )
@@ -288,6 +289,37 @@ def _selected_needs(preferences: OnboardingPreferencesRecord) -> list[Onboarding
     return selected
 
 
+async def _welcome_chips(ctx: SectionContext) -> tuple[str, ...]:
+    """Return the jobs the welcome thread offered, when this turn is in that thread."""
+    onboarding = ctx.onboarding
+    if not (
+        ctx.user_id
+        and onboarding
+        and onboarding.preferences
+        and ctx.conversation_id
+        and ctx.conversation_id == onboarding.getting_started_conversation_id
+    ):
+        return ()
+    try:
+        return tuple(await seeded_chips(ctx.user_id, onboarding.preferences))
+    except Exception as e:
+        log.warning(
+            "Error reading the welcome chips for new-user guidance",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=ctx.user_id,
+        )
+        return ()
+
+
+def _mail_facts(onboarding: OnboardingSubdocument | None) -> tuple[str | None, str | None]:
+    """(inbox summary, sent-mail portrait) once the Gmail pipeline has finished, else Nones."""
+    if onboarding is None or onboarding.bio_status is not BioStatus.COMPLETED:
+        return None, None
+    summary = PersistedTriageSummary.model_validate(onboarding.triage_summary or {}).summary
+    return summary or None, onboarding.user_bio.strip() or None
+
+
 async def build_new_user_guidance_block(ctx: SectionContext) -> str:
     """Per-need first-conversation playbooks, while the user is still new.
 
@@ -318,22 +350,16 @@ async def build_new_user_guidance_block(ctx: SectionContext) -> str:
     if conversations > NEW_USER_CONVERSATION_LIMIT:
         return ""
     profession = preferences.get("profession")
-    # The chips GAIA itself offered at the end of the seeded conversation. Their
-    # first message is usually one of them, and without this the model treats a
-    # one-word choice as a fragment it has to ask about.
-    chips = await seeded_chips(
-        ctx.user_id,
-        OnboardingPreferences(
-            profession=str(profession) if profession else None,
+    inbox_summary, mail_portrait = _mail_facts(ctx.onboarding)
+    return build_new_user_guidance(
+        NewUserFacts(
+            profession=str(profession) if profession else "",
             needs=needs,
             other_need=other_need,
-        ),
-    )
-    return build_new_user_guidance(
-        str(profession) if profession else "",
-        needs,
-        other_need,
-        chips,
+            seeded_chips=await _welcome_chips(ctx),
+            inbox_summary=inbox_summary,
+            mail_portrait=mail_portrait,
+        )
     )
 
 
@@ -398,7 +424,7 @@ def _dedupe_by_provider(items: list[ConnectedIntegration]) -> list[ConnectedInte
 
     A connected set can hold two ids for the same account (a legacy
     google_calendar beside today's googlecalendar) — rendering both once gave
-    the agent two handoff targets, one resolving to no subagent.
+    the agent two activation targets, one resolving to no integration.
     """
     by_provider: dict[str, ConnectedIntegration] = {}
     for item in items:
@@ -542,15 +568,8 @@ async def build_connected_devices_manifest(user_id: str, header: str) -> str:
     return "\n".join(lines)
 
 
-async def build_provider_metadata_block(integration_id: str | None, user_id: str | None) -> str:
-    """Who the user is on this provider: the identity of one account, or the list of several.
-
-    Shared by the worker context sections and activate_integration: an
-    executor acting on an integration directly needs the same identity a
-    worker got, or it does not know which account it is operating.
-    """
-    if not (integration_id and user_id):
-        return ""
+async def build_provider_metadata_block(integration_id: str, user_id: str) -> str:
+    """Who the user is on this provider, for activate_integration: one account's identity, or the list of several."""
     integration = get_integration_by_id(integration_id)
     if not integration:
         return ""

@@ -10,6 +10,7 @@ export type { ArgsPreviewRow, FlattenedArgs } from "./argsPreview";
 export { flattenArgsPreview } from "./argsPreview";
 export type { JwtPayload, TokenStorage } from "./auth";
 export { isTokenExpired, parseJwt, shouldRefreshToken } from "./auth";
+export { discordInviteUrl, telegramBotUrl } from "./botLinks";
 export type { DueChipTone } from "./dateUtils";
 export {
   formatDate,
@@ -40,6 +41,12 @@ export {
   getSimpleTimeGreeting,
 } from "./greetingUtils";
 export { formatHour12, to12Hour, to24Hour } from "./hours";
+export type {
+  InstructionsDraftView,
+  InstructionsEdit,
+  InstructionsRecordLike,
+} from "./instructionsDraft";
+export { editInstructions, viewInstructionsDraft } from "./instructionsDraft";
 export type {
   ConnectionPromptState,
   IntegrationConnectionState,
@@ -81,6 +88,8 @@ export type {
   QuickAddResult,
 } from "./quickAdd";
 export { parseQuickAdd } from "./quickAdd";
+export type { RateLimitResetInfo } from "./rateLimitReset";
+export { rateLimitResetInfo } from "./rateLimitReset";
 export type { ReactionBadge, ReactionFoldable } from "./reactions";
 export { foldReactionAcks, groupReactions, isReactionAck } from "./reactions";
 export type { SimilarityConfig } from "./similarity";

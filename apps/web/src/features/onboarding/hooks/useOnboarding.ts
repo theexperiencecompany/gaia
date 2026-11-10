@@ -1,6 +1,6 @@
 /**
  * Top-level orchestrator hook for the onboarding flow. Wires the reducer to
- * every effect (persistence, analytics) and exposes the derived stage, the
+ * every effect (persistence, the answers save, step reports) and exposes the derived stage, the
  * click-driven `submission`, and a `restart` action that wipes local state and
  * asks the server to reset.
  *
@@ -24,9 +24,12 @@ import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { resetOnboarding } from "../api/onboardingApi";
-import { useOnboardingAnalytics } from "../effects/useOnboardingAnalytics";
 import { useOnboardingPersistence } from "../effects/useOnboardingPersistence";
-import { useOnboardingPreferences } from "../effects/useOnboardingPreferences";
+import {
+  type AnswersSave,
+  useOnboardingPreferences,
+} from "../effects/useOnboardingPreferences";
+import { useOnboardingStepReports } from "../effects/useOnboardingStepReports";
 import { draftFromServerPreferences, getStage } from "../state/derive";
 import { initialState } from "../state/initial";
 import { usePaceStore } from "../state/paceStore";
@@ -51,6 +54,7 @@ interface UseOnboardingReturn {
   markIntroSeen: () => void;
   restart: () => Promise<void>;
   submission: OnboardingSubmission;
+  answersSave: AnswersSave;
 }
 
 export function useOnboarding(): UseOnboardingReturn {
@@ -60,7 +64,7 @@ export function useOnboarding(): UseOnboardingReturn {
   // reset; the draft is only reconciled against an answer from this session.
   const userIsFresh = useCurrentUserIsFresh();
   const [state, dispatch] = useReducer(reducer, initialState);
-  const { isPaid } = useIsPaid();
+  const { isPaid, isUnknown: planStatusUnknown } = useIsPaid();
   const stage = getStage(state, isPaid);
 
   // Stable per user record: the hydrate effect takes it as a dependency.
@@ -75,7 +79,7 @@ export function useOnboarding(): UseOnboardingReturn {
     state,
     dispatch,
   );
-  useOnboardingPreferences(state, dispatch);
+  const answersSave = useOnboardingPreferences(state, dispatch);
 
   // The onboarding endpoint's `user` is the raw stored document, not the
   // /user/me contract; refetching keeps the one source of truth honest.
@@ -84,7 +88,12 @@ export function useOnboarding(): UseOnboardingReturn {
   }, [queryClient]);
   const submission = useOnboardingSubmission(state, handleSubmissionSuccess);
 
-  useOnboardingAnalytics(state, stage, hydrated);
+  useOnboardingStepReports(
+    stage,
+    hydrated,
+    !planStatusUnknown,
+    state.isRestarting,
+  );
 
   const markIntroSeen = useCallback(() => {
     saveIntroSeen(userId);
@@ -124,5 +133,6 @@ export function useOnboarding(): UseOnboardingReturn {
     markIntroSeen,
     restart,
     submission,
+    answersSave,
   };
 }

@@ -9,10 +9,12 @@ be served by a single-id entity cache.
 """
 
 from datetime import UTC, datetime
+from typing import ClassVar
 import uuid
 
 from app.constants.briefing import BRIEFING_KIND_DAILY
 from app.db.repositories.base import UserScopedRepository
+from app.db.repositories.cache import CachePolicy
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload, BriefingUpdate
 from app.utils.errors import AppError
 
@@ -26,7 +28,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
     document_model = BriefingModel
     update_model = BriefingUpdate
     uses_object_id = False
-    cache_policy = None
+    cache_policy: ClassVar[CachePolicy | None] = None
 
     # ------------------------------------------------------------------ reads
 

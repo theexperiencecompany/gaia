@@ -14,7 +14,6 @@ from unittest.mock import AsyncMock, Mock, patch
 from fastapi import HTTPException
 import pytest
 
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.models.calendar_models import (
     CalendarEventDisplay,
     CalendarPreferencesDocument,
@@ -50,7 +49,8 @@ from app.services.calendar_service import (
     update_calendar_event,
     update_user_calendar_preferences,
 )
-from app.utils.errors import AppError
+from app.services.integrations.integration_accounts import toolkit_not_connected
+from app.utils.errors import AppError, IntegrationNotConnectedError
 
 USER_ID = "user_test_123"
 PROXY_PATH = "app.services.calendar_service.proxy_request"
@@ -196,22 +196,24 @@ class TestListCalendars:
         assert exc.value.status_code == 500
         assert "boom" in str(exc.value.detail)
 
-    async def test_a_disconnected_integration_is_the_structured_reconnect_detail(self, mock_proxy):
-        mock_proxy.side_effect = AppError(
-            message="Google Calendar is not connected",
-            status_code=403,
-            code=INTEGRATION_NOT_CONNECTED,
-            public={"toolkit": "googlecalendar"},
-        )
+    @pytest.mark.parametrize(
+        "body",
+        [{}, {"error": "invalid_grant"}, {"error": {"code": 500}}],
+        ids=["empty", "oauth_string_error", "no_message"],
+    )
+    async def test_a_body_without_a_google_message_keeps_the_proxy_message(self, mock_proxy, body):
+        mock_proxy.side_effect = _http_error(502, body)
         with pytest.raises(HTTPException) as exc:
             await list_calendars(USER_ID)
-        assert exc.value.status_code == 403
-        assert exc.value.detail == {
-            "type": "integration",
-            "code": INTEGRATION_NOT_CONNECTED,
-            "toolkit": "googlecalendar",
-            "message": "Reconnect Google Calendar to load your events.",
-        }
+        assert exc.value.detail == "GOOGLECALENDAR API error (502)"
+
+    async def test_a_disconnected_integration_forwards_the_one_typed_error(self, mock_proxy):
+        """The app's AppError handler renders it; a hand-built detail here was a second copy."""
+        not_connected = toolkit_not_connected("GOOGLECALENDAR", "no account")
+        mock_proxy.side_effect = not_connected
+        with pytest.raises(IntegrationNotConnectedError) as exc:
+            await list_calendars(USER_ID)
+        assert exc.value is not_connected
 
 
 class TestGetCalendarMetadataMap:

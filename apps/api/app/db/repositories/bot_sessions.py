@@ -75,6 +75,10 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         """
         return await self._find_one({"conversation_id": conversation_id})
 
+    async def list_sessions(self, *, platform: str | None = None) -> list[BotSessionDocument]:
+        """Every session, optionally on one platform — the offline repair scans."""
+        return await self._find({} if platform is None else {"platform": platform})
+
     async def list_legacy_dm_sessions(
         self, *, platform: str | None = None
     ) -> list[BotSessionDocument]:
@@ -115,6 +119,13 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
     async def delete_by_session_key(self, session_key: str) -> int:
         """Remove the session on this key, returning how many rows were deleted."""
         return await self._delete_many({"session_key": session_key}, scope=REPO_GLOBAL_SCOPE)
+
+    async def delete_for_platform_user(self, *, platform: str, platform_user_id: str) -> int:
+        """Remove every session (DM and channels) of one platform account, returning the count."""
+        return await self._delete_many(
+            {"platform": platform, "platform_user_id": platform_user_id},
+            scope=REPO_GLOBAL_SCOPE,
+        )
 
 
 bot_session_repository = BotSessionsRepository()

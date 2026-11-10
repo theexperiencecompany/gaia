@@ -12,12 +12,12 @@ import pytest
 from tests.factories import make_user_id
 import time_machine
 
-from app.config.rate_limits import RateLimitPeriod
+from app.config.rate_limits import RateLimitPeriod, get_daily_cost_budget_usd
 from app.constants.scouts import SCOUT_DAILY_COST_CEILING_USD, SCOUT_SPEND_TTL_SECONDS
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.services.briefing.scouts.spend import ScoutSpend, may_learn
-from app.services.cost_budget import _budget_key, get_daily_cost_budget_usd
+from app.services.cost_budget import _budget_key
 from app.utils.errors import AppError
 
 USER_ID = make_user_id()
@@ -35,7 +35,7 @@ def today() -> Iterator[None]:
 
 
 async def _spent_today(redis: fakeredis.aioredis.FakeRedis, usd: float) -> None:
-    await redis.set(_budget_key(USER_ID, RateLimitPeriod.DAY), str(usd))
+    await redis.set(await _budget_key(USER_ID, RateLimitPeriod.DAY), str(usd))
 
 
 class TestBook:
@@ -55,7 +55,7 @@ class TestBook:
     ) -> None:
         await ScoutSpend(USER_ID).book(0.04)
 
-        assert await fake_redis.get(_budget_key(USER_ID, RateLimitPeriod.DAY)) is None
+        assert await fake_redis.get(await _budget_key(USER_ID, RateLimitPeriod.DAY)) is None
 
 
 class TestMayLearn:

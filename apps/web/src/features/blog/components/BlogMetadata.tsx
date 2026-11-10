@@ -16,14 +16,18 @@ interface TeamMember {
 interface BlogMetadataProps {
   authors?: TeamMember[];
   date: string;
+  /** Revision date — renders a visible "Updated" label when set. */
+  updated?: string;
   className?: string;
 }
 
 export default function BlogMetadata({
   authors,
   date,
+  updated,
   className = "",
 }: BlogMetadataProps) {
+  const showUpdated = updated !== undefined && updated !== date;
   return (
     <div className={`flex items-center justify-center space-x-4 ${className}`}>
       <div className="flex -space-x-2">
@@ -52,6 +56,11 @@ export default function BlogMetadata({
           <span className="text-foreground-500">
             {formatRelativeDate(date)}
           </span>
+          {showUpdated && (
+            <span className="text-foreground-500">
+              &nbsp;(Updated {formatRelativeDate(updated)})
+            </span>
+          )}
         </div>
       </div>
       <div>·</div>

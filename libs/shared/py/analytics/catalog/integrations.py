@@ -17,7 +17,9 @@ __all__ = [
     "IntegrationCustomUpdated",
     "IntegrationDisconnected",
     "IntegrationError",
-    "IntegrationInstructionsUpdated",
+    "IntegrationInstanceSetupSaved",
+    "IntegrationToolkitDisabled",
+    "IntegrationToolkitEnabled",
     "IntegrationPrimaryChanged",
     "McpConnectionTested",
     "SkillDisabled",
@@ -110,13 +112,35 @@ class IntegrationPrimaryChanged(ServerEvent):
     account_count: int
 
 
-class IntegrationInstructionsUpdated(ServerEvent):
-    """A user edited an integration's custom instructions."""
+class IntegrationInstanceSetupSaved(ServerEvent):
+    """A self-host admin saved which Composio auth config each integration connects through."""
 
-    event: ClassVar[str] = "integration:instructions_updated"
-    budget_per_user_day: ClassVar[int] = 10
+    event: ClassVar[str] = "integration:instance_setup_saved"
+    budget_per_user_day: ClassVar[int] = 50
 
-    integration_id: Identifier
+    stored_count: int
+    set_up_count: int
+    total_count: int
+
+
+class IntegrationToolkitEnabled(ServerEvent):
+    """A self-host admin enabled a Composio toolkit; GAIA created its auth config."""
+
+    event: ClassVar[str] = "integration:toolkit_enabled"
+    budget_per_user_day: ClassVar[int] = 50
+
+    toolkit: Identifier
+    origin: Literal["code", "instance"]
+    composio_managed: bool
+
+
+class IntegrationToolkitDisabled(ServerEvent):
+    """A self-host admin removed a Composio toolkit they had enabled."""
+
+    event: ClassVar[str] = "integration:toolkit_disabled"
+    budget_per_user_day: ClassVar[int] = 50
+
+    toolkit: Identifier
 
 
 class IntegrationCustomUpdated(ServerEvent):
@@ -178,21 +202,27 @@ class McpConnectionTested(ServerEvent):
 
 
 class SkillInstalled(ServerEvent):
-    """A user installed a skill from GitHub or inline."""
+    """A skill was installed from GitHub, written inline, or learned by GAIA's agent."""
 
     event: ClassVar[str] = "skill:installed"
     budget_per_user_day: ClassVar[int] = 10
 
     target: Identifier
-    source: Literal["github", "inline"]
+    source: Literal["github", "inline", "learned"]
+    # Who did it: "user" in Settings, or "agent" for GAIA's own skill tools.
+    author: Identifier
     skill_id: Identifier | None = None
 
 
 class SkillUpdated(ServerEvent):
-    """A user edited a skill."""
+    """A skill's instructions were edited, by the user or by GAIA's agent."""
 
     event: ClassVar[str] = "skill:updated"
     budget_per_user_day: ClassVar[int] = 50
+
+    target: Identifier
+    # Who did it: "user" in Settings, or "agent" for GAIA's own skill tools.
+    author: Identifier
 
 
 class SkillEnabled(ServerEvent):

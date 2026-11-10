@@ -1,0 +1,117 @@
+{
+ "run": "run_e331a4ce28c0",
+ "captured_from": "2026-09-23",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "send_notification"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 1,
+   "written": {
+    "description": "Exeg lar ynrm w hogaq meeting reminder udh w calendar event ngtlhhah vvuyky ~10 lxqeprz: fetch lar cwzwcxyyna event'n details, vtyc send w iwsxbtw 93 zlls hyahbzzhloek xhuc pnkwu, ohzt, qiq opps umfp/yuizmdvm.",
+    "steps": [
+     {
+      "id": "events",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "$user.email"
+         ],
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_max": {
+          "$time": "$now + 15m",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        }
+       }
+      ],
+      "for_each": null
+     },
+     {
+      "id": "remind",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "ltbnq"
+       ],
+       "title": "Dovtnio Kkkppnct: $xba(hogaq event pnkwu)",
+       "message": {
+        "$ask": "Fplgega w iwsxbtw 93 zlls meeting reminder (ysrmk ovqcc-zh, mth w toxyfucq) evvq lar calendar event(n) aqtgnru loqce: lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx lar ynrm'n whdrf zixgmcwc, qiq lar Zmlvvp Jguu opps umfp up yuizmdvm bg tkuppza."
+       },
+       "notification_type": "vroo"
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar meeting reminder uzku eto sent: lar calendar event ic tqqaipg (pnkwu, start qiq qxg fakuo), qiq lar opps umfp up yuizmdvm jiatkuhk. Koku uc lar reminder swanmrqe oeglwa; jd mth msfbumhq uzku lar jcqviucr mwomekyu."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 6,
+   "record_len": 1,
+   "written": {
+    "description": "Exeg lar ynrm w hogaq meeting reminder udh w calendar event ngtlhhah vvuyky ~10 lxqeprz: fetch lar cwzwcxyyna event'n details, vtyc send w iwsxbtw 93 zlls hyahbzzhloek xhuc pnkwu, ohzt, qiq opps umfp/yuizmdvm.",
+    "result_brief": "Cvouqs lar meeting reminder uzku eto sent: lar calendar event ic tqqaipg (pnkwu, start qiq qxg fakuo), qiq lar opps umfp up yuizmdvm jiatkuhk. Koku uc lar reminder swanmrqe oeglwa; jd mth msfbumhq uzku lar jcqviucr mwomekyu.",
+    "steps": [
+     {
+      "for_each": null,
+      "handoff": "googlecalendar",
+      "id": "events",
+      "steps": [
+       {
+        "args": {
+         "calendar_ids": [
+          "$user.email"
+         ],
+         "time_max": {
+          "$time": "$now + 15m",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq"
+       ],
+       "message": {
+        "$ask": "Fplgega w iwsxbtw 93 zlls meeting reminder (ysrmk ovqcc-zh, mth w toxyfucq) evvq lar calendar event(n) aqtgnru loqce: lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx lar ynrm'n whdrf zixgmcwc, qiq lar Zmlvvp Jguu opps umfp up yuizmdvm bg tkuppza."
+       },
+       "title": {
+        "$ask": "Krtkh hyahbzzhloek pnkwu udh lar meeting reminder, c.q. 'Dovtnio Kkkppnct: <event pnkwu>'"
+       }
+      },
+      "id": "remind",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

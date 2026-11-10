@@ -3,6 +3,7 @@ import type React from "react";
 import Composer from "@/features/chat/components/composer/Composer";
 import { PaywallNotice } from "@/features/chat/components/composer/PaywallNotice";
 import StarterText from "@/features/chat/components/interface/StarterText";
+import { SetupChecklistBanner } from "@/features/setup-wizard/components/SetupChecklistBanner";
 
 import { ChatSuggestions } from "./ChatSuggestions";
 
@@ -24,8 +25,9 @@ export const NewChatSection: React.FC<NewChatSectionProps> = ({
   showUseCases,
 }) => {
   return (
-    <div className="relative flex w-full snap-start items-center justify-center px-4 pt-[12vh] scrollbar-default sm:pt-[25vh]">
-      <div className="flex w-full max-w-7xl flex-col items-center justify-center">
+    <div className="relative flex w-full snap-start flex-col items-center px-4 scrollbar-default">
+      <SetupChecklistBanner className="pt-4" />
+      <div className="flex w-full max-w-7xl flex-col items-center justify-center pt-[12vh] sm:pt-[25vh]">
         <PaywallNotice className="mb-8" />
         <div className="flex flex-col items-center gap-2">
           <StarterText />

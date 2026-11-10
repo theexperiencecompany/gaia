@@ -1,0 +1,82 @@
+name: PR title
+
+# `Validate PR Title` (a required check), plus the one PR edit that changes
+# what CI checks. Its own workflow so that ci.yml need not run on `edited`: a
+# run there creates every job's check row, and a title or body edit replaced
+# the commit's real rows with "Skipped".
+#
+# A retarget fires only `edited`, and the lanes must re-scope to the new base
+# (#1202 mutated 119 modules for a diff of 11 on a stale master base). One
+# step, not a job of its own: a job skipped on every other edit would be the
+# same stale "Skipped" row this file exists to remove.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  # A required check must report on the merge group too, or the queue waits for
+  # it forever. The title was validated on the PR before it could be queued.
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    name: Validate PR Title
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    # The rescope step waits up to CANCEL_WAIT_SECS (180 s) for a cancel.
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write # rescope: force-cancel and re-run this head's CI run
+    steps:
+      - name: Validate PR title follows Conventional Commit format
+        if: github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            test
+            chore
+            ci
+            build
+            revert
+            perf
+            release
+            deps
+            infra
+            security
+            env
+            i18n
+            ux
+            config
+            assets
+            meta
+          requireScope: false
+          validateSingleCommit: false
+
+      - name: Pass in the merge queue (the title was validated on the PR)
+        if: github.event_name == 'merge_group'
+        run: echo "Merge group - every queued PR passed this check before it could be queued." >> "$GITHUB_STEP_SUMMARY"
+
+      # `changes.base` is in the payload only on a retarget; absent it is null,
+      # which compares equal to ''.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event.action == 'edited' && github.event.changes.base != ''
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Re-run CI against the new base
+        if: github.event.action == 'edited' && github.event.changes.base != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # The head, not github.sha: a pull_request run's github.sha is the merge.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/ci/runner.py rescope ci.yml

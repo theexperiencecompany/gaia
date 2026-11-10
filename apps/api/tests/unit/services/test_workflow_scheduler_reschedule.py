@@ -264,7 +264,7 @@ class TestWorkerRejectsStaleFire:
             # emitted there.
             patch("app.utils.occurrence.log") as mock_stamp_log,
             patch(
-                "app.workers.tasks.workflow_tasks.enforce_daily_cost_budget",
+                "app.workers.tasks.workflow_tasks.enforce_cost_budget",
                 AsyncMock(),
             ),
             patch(

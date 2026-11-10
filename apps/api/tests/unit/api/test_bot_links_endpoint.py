@@ -48,18 +48,20 @@ from app.api.v1.endpoints.bot_links import (  # isort: skip
     redeem_link_code,
 )
 
+pytestmark = pytest.mark.usefixtures("onboarding_finish_on_link")
+
 BOT_BASE = "/api/v1/bot"
 PLAN_PATCH = "app.services.platform_link_service.payment_service.get_cached_plan_type"
 
 
-def _make_request(bot_api_key_valid: bool = True, **extra_state: object) -> MagicMock:
+def _make_request(**state_kwargs: object) -> MagicMock:
     """Build a fake Request whose .state carries bot auth attributes."""
     state = MagicMock()
-    state.bot_api_key_valid = bot_api_key_valid
-    state.bot_platform = extra_state.get("bot_platform")
-    state.bot_platform_user_id = extra_state.get("bot_platform_user_id")
-    state.user = extra_state.get("user")
-    state.authenticated = extra_state.get("authenticated", False)
+    state.bot_api_key_valid = state_kwargs.get("bot_api_key_valid", True)
+    state.bot_platform = state_kwargs.get("bot_platform")
+    state.bot_platform_user_id = state_kwargs.get("bot_platform_user_id")
+    state.user = state_kwargs.get("user")
+    state.authenticated = state_kwargs.get("authenticated", False)
     return state
 
 

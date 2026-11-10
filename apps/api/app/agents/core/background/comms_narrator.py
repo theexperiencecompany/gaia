@@ -9,6 +9,7 @@ persona. This module owns that single invocation.
 from langchain_core.messages import HumanMessage
 
 from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
+from app.agents.core.background.thread_record import append_to_thread
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.core.thread_writes import with_message_ids
 from app.agents.llm.lane import AgentRole
@@ -42,8 +43,6 @@ async def narrate_executor_result(
     instructions for where the reply goes. Returns the comms-generated text,
     or an empty string on failure.
     """
-    tag = AgentTag.EXECUTOR_ERROR if msg_type == "error" else AgentTag.EXECUTOR_RESULT
-    content = f"{preamble}{wrap_agent_payload(tag, result_text)}"
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
     except GraphUnavailableError as e:
@@ -74,16 +73,11 @@ async def narrate_executor_result(
             ),
         )
         # This turn's only job is to re-voice result_text. Stamp it so
-        # call_executor refuses and executor_status_hook stays quiet.
+        # call_executor refuses to dispatch from it.
         config["configurable"]["is_result_narration"] = True
         initial_state = {
             "messages": [
-                # MUST be a HumanMessage: a SystemMessage evicts
-                # COMMS_AGENT_PROMPT; an AIMessage makes Gemini return empty.
-                HumanMessage(
-                    content=content,
-                    name=BACKGROUND_EXECUTOR_NAME,
-                ),
+                _executor_report(result_text, msg_type, preamble),
             ],
         }
         notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
@@ -91,6 +85,24 @@ async def narrate_executor_result(
     except Exception as e:
         log.error(f"{LogTag.AGENT} narrate_executor_result: failed", error=str(e))
         return ""
+
+
+def _executor_report(result_text: str, msg_type: str, preamble: str = "") -> HumanMessage:
+    # MUST be a HumanMessage: a SystemMessage evicts COMMS_AGENT_PROMPT; an
+    # AIMessage makes Gemini return empty.
+    tag = AgentTag.EXECUTOR_ERROR if msg_type == "error" else AgentTag.EXECUTOR_RESULT
+    return HumanMessage(
+        content=f"{preamble}{wrap_agent_payload(tag, result_text)}", name=BACKGROUND_EXECUTOR_NAME
+    )
+
+
+async def record_executor_report(conversation_id: str, result_text: str, msg_type: str) -> None:
+    """Append a background run's report to the comms thread, for a run comms never narrated.
+
+    A narrated report reaches the thread through narration; one nobody is told
+    of must still be known to the chat's next turn, which sees it on screen.
+    """
+    await append_to_thread(conversation_id, [_executor_report(result_text, msg_type)])
 
 
 async def record_executor_cancellation(

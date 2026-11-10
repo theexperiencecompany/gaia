@@ -35,7 +35,7 @@ async def memory_saver():
     """LangGraph checkpointer.
 
     Returns AsyncPostgresSaver backed by real Postgres when USE_REAL_SERVICES=1
-    (Dagger CI), otherwise falls back to in-process MemorySaver.
+    (CI), otherwise falls back to in-process MemorySaver.
     """
     if _USE_REAL_SERVICES:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -119,7 +119,7 @@ def sample_config() -> dict:
 async def real_redis(monkeypatch):
     """Real Redis connection, patched into the app's redis_cache singleton.
 
-    USE_REAL_SERVICES=1 (Dagger CI) makes connection failure fatal; otherwise
+    USE_REAL_SERVICES=1 (CI) makes connection failure fatal; otherwise
     the test skips if Redis is unreachable, so local runs without Docker still
     work. Each xdist worker gets its own Redis DB so parallel flushdb()
     teardowns can't clobber each other.

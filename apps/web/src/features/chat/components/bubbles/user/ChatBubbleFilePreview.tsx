@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { FileCard } from "@/features/chat/components/files/FileCard";
 import { useFilePreview } from "@/features/chat/hooks/useFilePreview";
+import { isPrivateBlobUrl } from "@/lib/privateBlob";
 import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 interface ChatBubbleFilePreviewProps {
@@ -44,6 +45,7 @@ const ChatBubbleFilePreview: React.FC<ChatBubbleFilePreviewProps> = ({
           >
             <Image
               src={file.url}
+              unoptimized={isPrivateBlobUrl(file.url)}
               alt={file.filename}
               width={1000}
               height={1000}
