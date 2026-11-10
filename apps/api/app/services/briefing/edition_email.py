@@ -28,7 +28,7 @@ from app.constants.notifications import (
 )
 from app.models.briefing_models import BriefingPayload
 from app.services.blob_store import CloudinaryBlobStore
-from app.services.briefing.editions import edition_frame, render_edition, renderer_for
+from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
 from app.services.briefing.message import (
     MESSAGE_LINK_RE,
     delivered_message,
@@ -115,9 +115,7 @@ def _text_strip(message: str, brief_url: str, unsubscribe_url: str) -> str:
 async def render_edition_png(payload: BriefingPayload) -> RenderedImage:
     """Render the edition as a PNG cropped tight to its paper, with where its letter folds."""
     family = payload.template_family
-    # The classic edition (and every legacy payload without a family) renders
-    # via render_edition.
-    render = renderer_for(family) or render_edition
+    render = EXPLORER_RENDERER[family]
     edition_html = render(payload, edition_no=_edition_no(payload.date), generated_local="")
     frame = edition_frame(family)
     # The image is hosted and referenced by URL (Gmail blocks base64 data: URIs),

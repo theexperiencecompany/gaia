@@ -22,6 +22,7 @@ from tests.helpers import local_timezone
 def _payload(**overrides: object) -> BriefingPayload:
     data: dict[str, object] = {
         "kicker": "THE MORNING BRIEF",
+        "template_family": "swiss",
         "date": "2026-08-06",
         "headline": "All quiet",
         "lede": "Nothing urgent today.",
