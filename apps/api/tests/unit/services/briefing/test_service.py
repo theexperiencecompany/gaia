@@ -335,6 +335,13 @@ def _prompt(w: World) -> str:
     return w.agent.await_args.kwargs["request"].message
 
 
+def _family_first(w: World, family: str) -> None:
+    """Pin today's edition family: the default draw is random, and Air Mail adds a stamp line."""
+    pool = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]
+    pool.remove(family)
+    w.bags["edition_family"] = ShuffleBag(order=[family, *pool], index=0)
+
+
 def _assert_nothing_sent(w: World) -> None:
     w.upsert.assert_not_awaited()
     w.notify.assert_not_awaited()
@@ -350,13 +357,13 @@ class TestDailyBrief:
             blocked=[_todo("b1", "Approve the Priya reply")],
             completed=[_todo("c1", "Investor update")],
         )
+        _family_first(world, "memo")
 
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
         assert payload.headline == "Your morning, sorted"
-        assert payload.template_family in DAILY_FAMILY_WEIGHTS
-        assert world.bags["edition_family"].order.count(payload.template_family) >= 1
+        assert payload.template_family == "memo"
         assert payload.calendar == [_EVENT]
         assert payload.tallies == BriefingTallies(done_by_you=1, done_by_gaia=0)
         assert "11:00: Sequoia" in _prompt(world)
@@ -449,19 +456,13 @@ class TestDailyBrief:
         request = world.notify.await_args.args[0]
         assert [c.channel_type for c in request.channels] == ["inapp"]
 
-    @staticmethod
-    def _postal_first(world: World) -> None:
-        pool = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]
-        pool.remove("postal")
-        world.bags["edition_family"] = ShuffleBag(order=["postal", *pool], index=0)
-
     async def test_an_air_mail_brief_records_its_stamp_city(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
             service, "hosted_stamp_weights", lambda: {"paris": 1, "tokyo": 1, "lima": 1}
         )
-        self._postal_first(world)
+        _family_first(world, "postal")
         seeded = world.bags["edition_family"].order
 
         await service.run_daily_briefing(_USER)
@@ -478,7 +479,7 @@ class TestDailyBrief:
     ) -> None:
         """A draw is spent only by a brief that went out: a failed run burns no member."""
         monkeypatch.setattr(service, "hosted_stamp_weights", lambda: {"paris": 1, "tokyo": 1})
-        self._postal_first(world)
+        _family_first(world, "postal")
         family_before = world.bags["edition_family"]
         world.notify.side_effect = RuntimeError("orchestrator down")
 
@@ -492,7 +493,7 @@ class TestDailyBrief:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(service, "hosted_stamp_weights", lambda: {"tokyo": 1})
-        self._postal_first(world)
+        _family_first(world, "postal")
 
         await service.run_daily_briefing(_USER)
 
@@ -508,7 +509,7 @@ class TestDailyBrief:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(service, "hosted_stamp_weights", lambda: {"tokyo": 1})
-        self._postal_first(world)
+        _family_first(world, "postal")
         earlier = BriefingModel(
             user_id=_USER,
             date="2026-09-01",
@@ -531,9 +532,7 @@ class TestDailyBrief:
         assert "New stamp" not in world.post.await_args.kwargs["text"]
 
     async def test_a_non_postal_brief_draws_no_stamp(self, world: World) -> None:
-        pool = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]
-        pool.remove("memo")
-        world.bags["edition_family"] = ShuffleBag(order=["memo", *pool], index=0)
+        _family_first(world, "memo")
 
         await service.run_daily_briefing(_USER)
 
@@ -1184,6 +1183,7 @@ class TestTheDailyRunWiring:
         self, world: World
     ) -> None:
         world.work = _brief_work()
+        _family_first(world, "memo")
 
         await service.run_daily_briefing(_USER)
 
