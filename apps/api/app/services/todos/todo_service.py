@@ -10,7 +10,7 @@ import uuid
 
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
@@ -45,6 +45,8 @@ from app.models.todo_models import (
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
 from app.services.conversation_service import delete_todo_conversations
+from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
+from app.services.todo_activity import record_activity
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
@@ -58,7 +60,7 @@ from app.services.todos.external_ref_watch import release_watches, watch_externa
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.auth_utils import require_owner
-from app.utils.canvas_vector_utils import delete_canvas_embedding
+from app.utils.canvas_vector_utils import delete_canvas_embedding, set_canvas_completed
 from app.utils.errors import AppError
 from app.utils.schedule import InvalidScheduleError
 from app.utils.todo_vector_utils import (
@@ -77,6 +79,9 @@ from shared.py.analytics.catalog.todos import (
     TodosUpdated,
 )
 from shared.py.wide_events import log
+
+# The activity detail of a reopen made from the todos page, as completion's is "Completed via UI".
+_REOPENED_IN_THE_APP = "via UI"
 
 
 async def _get_workflow_categories_for_todos(
@@ -218,7 +223,7 @@ async def _refuse_a_bulk_bad_run_schedule(
         _refuse_a_bad_run_schedule(recurrence)
 
 
-async def _raise_ref_taken(
+async def raise_ref_taken(
     user_id: str, ref: ExternalRef | None, error: DuplicateKeyError
 ) -> NoReturn:
     """Re-raise the open-ref index's rejection as a conflict naming the open todo holding ref."""
@@ -229,15 +234,15 @@ async def _raise_ref_taken(
 
 
 async def _refuse_a_reopen_of_a_taken_ref(
-    user_id: str, todo_ids: list[str]
+    user_id: str, todos: list[TodoDocument]
 ) -> list[tuple[TodoDocument, ExternalRef]]:
     """Refuse a reopen that would give an outside object a second open todo.
 
-    Returns each completed todo among todo_ids that holds a ref, with that ref.
+    Returns each completed todo among todos that holds a ref, with that ref.
     """
     reopened = [
         (todo, todo.external_ref)
-        for todo in await todo_repository.find_by_ids(user_id, todo_ids)
+        for todo in todos
         if todo.completed and todo.external_ref is not None
     ]
     ref_counts = Counter(ref for _, ref in reopened)
@@ -273,22 +278,26 @@ async def _refuse_a_reopen_under_a_closed_parent(user_id: str, todo_ids: list[st
 
 
 @asynccontextmanager
-async def _watching_refs_to_reopen(
-    user_id: str, todo_ids: list[str], *, reopening: bool
+async def reopening_todos(
+    user_id: str, todo_ids: list[str], *, reopening: bool, detail: str
 ) -> AsyncIterator[None]:
-    """Watch each reopened todo's ref again for the reopen; a completed todo's watch never fires.
+    """Wrap the write that reopens the completed todos among todo_ids.
 
-    When the reopen does not land, the watches added here leave every todo still completed.
+    Before it, a ref another open todo holds is refused and each reopened todo's ref is
+    watched again, as a completed todo's watch never fires; when the write does not land,
+    those watches go and every todo stays completed. Once it lands, each reopened tracked
+    todo logs the reopen (detail) and shows as open in canvas search again.
     """
-    if reopening:
-        await _refuse_a_reopen_under_a_closed_parent(user_id, todo_ids)
+    if not reopening:
+        yield
+        return
+    todos = await todo_repository.find_by_ids(user_id, todo_ids)
     added: dict[str, list[TriggerSubscription]] = {}
     try:
-        if reopening:
-            for todo, ref in await _refuse_a_reopen_of_a_taken_ref(user_id, todo_ids):
-                added[todo.id] = await watch_external_ref(
-                    todo.id, user_id, ref, todo.trigger_subscriptions
-                )
+        for todo, ref in await _refuse_a_reopen_of_a_taken_ref(user_id, todos):
+            added[todo.id] = await watch_external_ref(
+                todo.id, user_id, ref, todo.trigger_subscriptions
+            )
         yield
     except Exception:
         if added:
@@ -298,6 +307,12 @@ async def _watching_refs_to_reopen(
                 if todo_id in still_completed:
                     await release_watches(todo_id, user_id, watches)
         raise
+    reopened_tracked = [todo.id for todo in todos if todo.completed and todo.vfs_path]
+    for todo_id in reopened_tracked:
+        await record_activity(todo_id, user_id, TodoActivityEvent.REOPENED, detail)
+        await set_canvas_completed(todo_id, completed=False)
+    if reopened_tracked:
+        schedule_gaia_tasks_sync(user_id)
 
 
 async def _persist_update(
@@ -317,7 +332,7 @@ async def _persist_update(
     except DuplicateKeyError as e:
         # Reopening a todo whose outside object another open todo now holds.
         reopened = await todo_repository.get(todo_id, user_id=user_id)
-        await _raise_ref_taken(user_id, reopened.external_ref if reopened else None, e)
+        await raise_ref_taken(user_id, reopened.external_ref if reopened else None, e)
 
 
 async def with_sub_todos(user_id: str, todo_ids: list[str]) -> list[str]:
@@ -515,7 +530,7 @@ class TodoService:
             created = await todo_repository.create(document)
         except DuplicateKeyError as e:
             # The open-ref unique index turned this insert away: the loser reads the winner.
-            await _raise_ref_taken(user_id, external_ref, e)
+            await raise_ref_taken(user_id, external_ref, e)
 
         # Index for search
         try:
@@ -616,8 +631,11 @@ class TodoService:
             # so a failure here saves nothing rather than half a rename.
             await conversation_repository.retitle_todo_chats(user_id, [todo_id], update.title)
 
-        async with _watching_refs_to_reopen(
-            user_id, [todo_id], reopening=update.completed is False
+        reopening = update.completed is False
+        if reopening:
+            await _refuse_a_reopen_under_a_closed_parent(user_id, [todo_id])
+        async with reopening_todos(
+            user_id, [todo_id], reopening=reopening, detail=_REOPENED_IN_THE_APP
         ):
             updated = await _persist_update(todo_id, user_id, updates.workflow_id, update)
 
@@ -724,13 +742,19 @@ class TodoService:
 
         succeeded = list(completed_tracked)
         if plain_ids:
-            async with _watching_refs_to_reopen(user_id, plain_ids, reopening=reopening):
+            if reopening:
+                await _refuse_a_reopen_under_a_closed_parent(user_id, plain_ids)
+            async with reopening_todos(
+                user_id, plain_ids, reopening=reopening, detail=_REOPENED_IN_THE_APP
+            ):
                 try:
                     modified = await todo_repository.bulk_update(user_id, plain_ids, update)
                 except BulkWriteError:
                     # A create or reopen took a ref after the check above; the writes before it landed.
                     if reopening:
-                        await _refuse_a_reopen_of_a_taken_ref(user_id, request.todo_ids)
+                        await _refuse_a_reopen_of_a_taken_ref(
+                            user_id, await todo_repository.find_by_ids(user_id, request.todo_ids)
+                        )
                     raise
             succeeded.extend(plain_ids[:modified])
 

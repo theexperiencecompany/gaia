@@ -102,6 +102,7 @@ def mock_repo():
         m.get = AsyncMock(return_value=None)
         m.update = AsyncMock(return_value=None)
         m.list_active_tracked = AsyncMock(return_value=[])
+        m.find_latest_by_external_ref = AsyncMock(return_value=None)
         m.find_sub_todos = AsyncMock(return_value=[])
         m.count_open_sub_todos = AsyncMock(return_value={})
         m.is_valid_id = MagicMock(side_effect=lambda todo_id: len(todo_id) == 24)
@@ -113,7 +114,7 @@ def mock_deps():
     with (
         patch(f"{_MOD}.TodoService.create_todo", new_callable=AsyncMock) as m_create,
         patch(f"{_MOD}.store_canvas_embedding", new_callable=AsyncMock) as m_store,
-        patch(f"{_MOD}.mark_canvas_completed", new_callable=AsyncMock) as m_mark,
+        patch(f"{_MOD}.set_canvas_completed", new_callable=AsyncMock) as m_mark,
         patch(f"{_MOD}.schedule_gaia_tasks_sync", new_callable=MagicMock) as m_sync,
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as m_pool,
         # create=True: append_activity is imported into the service only on
@@ -455,8 +456,8 @@ class TestCreateTrackedTodo:
 
         result = await TrackedTodoService.create_tracked_todo(USER_ID, "Prepare Q3 report")
 
-        assert result.id == TODO_ID
-        assert result.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
+        assert result.todo.id == TODO_ID and not result.reopened
+        assert result.todo.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
 
         todo_model: TodoModel = mock_deps.create.call_args.args[0]
         assert GAIA_TRACKED_LABEL in todo_model.labels
@@ -1039,7 +1040,9 @@ class TestCompleteTrackedTodo:
         mock_deps.record.assert_not_awaited()
         mock_repo.update.assert_not_awaited()
 
-    async def test_appends_log_marks_completed_and_archives_path(self, mock_repo, mock_deps):
+    async def test_appends_log_marks_completed_and_keeps_its_folder_label(
+        self, mock_repo, mock_deps
+    ):
         mock_repo.get.return_value = _todo_doc()
 
         ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "Wrapped it up")
@@ -1052,8 +1055,8 @@ class TestCompleteTrackedTodo:
         update = mock_repo.update.await_args.kwargs["update"]
         assert update.completed is True
         assert update.completed_at is not None
-        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
-        mock_deps.mark.assert_awaited_once_with(TODO_ID)
+        assert update.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
+        mock_deps.mark.assert_awaited_once_with(TODO_ID, completed=True)
         mock_deps.sync.assert_called_once_with(USER_ID)
 
     async def test_completion_stops_the_todo_watching(self, mock_repo, mock_deps):
@@ -1082,7 +1085,7 @@ class TestCompleteTrackedTodo:
 
         assert ok is True
         update = mock_repo.update.await_args.kwargs["update"]
-        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
+        assert update.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
 
     async def test_legacy_user_scoped_label_is_healed_on_completion(
         self, mock_repo: MagicMock, mock_deps: SimpleNamespace
@@ -1094,7 +1097,7 @@ class TestCompleteTrackedTodo:
 
         assert ok is True
         update = mock_repo.update.await_args.kwargs["update"]
-        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
+        assert update.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
 
 
 class TestGetActiveTrackedSummary:

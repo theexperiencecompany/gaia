@@ -216,6 +216,7 @@ class TodoActivityEvent(StrEnum):
     OPEN_STATE_REPAIRED = "open_state_repaired"
     SANDBOX_EVENT = "sandbox_event"
     COMPLETED = "completed"
+    REOPENED = "reopened"
 
 
 # The sections every canvas.md carries exactly once, in this order. Activity

@@ -25,6 +25,7 @@ from app.models.todo_models import (
     TodoDocument,
     TodoResponse,
     TodoUpdate,
+    TrackedTodoCreation,
 )
 from app.models.user_models import UserDocument
 from app.services.canvas_markdown import canvas_problems, normalize_canvas
@@ -71,11 +72,12 @@ async def _provision() -> dict[str, object]:
     return event["inbox_desk"]
 
 
-def _response() -> TodoResponse:
+def _response() -> TrackedTodoCreation:
     now = datetime.now(UTC)
-    return TodoResponse(
+    desk = TodoResponse(
         id=DESK_ID, user_id=USER_ID, title=INBOX_DESK_TITLE, created_at=now, updated_at=now
     )
+    return TrackedTodoCreation(todo=desk, reopened=False)
 
 
 @pytest.fixture
@@ -83,7 +85,7 @@ def seams() -> Iterator[SimpleNamespace]:
     """Every call the provisioner makes; the repository holds whatever desk a test puts in it."""
     stored: dict[str, TodoDocument] = {}
 
-    async def _create(*_args: object, **kwargs: object) -> TodoResponse:
+    async def _create(*_args: object, **kwargs: object) -> TrackedTodoCreation:
         schedule = kwargs["schedule"]
         assert isinstance(schedule, TodoUpdate)
         stored[DESK_ID] = _desk(scheduled_at=schedule.scheduled_at, recurrence=schedule.recurrence)

@@ -248,6 +248,14 @@ class TodoResponse(TodoBase, ResponseModel):
 
 
 # Project models
+@dataclass(frozen=True)
+class TrackedTodoCreation:
+    """What create_tracked_todo made: a new todo, or the completed one its ref had, reopened."""
+
+    todo: TodoResponse
+    reopened: bool
+
+
 class ProjectBase(BaseModel):
     """Base model for project fields"""
 

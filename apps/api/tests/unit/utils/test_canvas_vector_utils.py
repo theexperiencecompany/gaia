@@ -14,8 +14,8 @@ import pytest
 from app.utils.canvas_vector_utils import (
     COLLECTION_NAME,
     delete_canvas_embedding,
-    mark_canvas_completed,
     search_canvas_context,
+    set_canvas_completed,
     store_canvas_embedding,
     update_canvas_embedding,
 )
@@ -284,7 +284,7 @@ async def test_delete_canvas_embedding() -> None:
     collection.adelete.assert_awaited_once_with(ids=["canvas_todo-1"])
 
 
-async def test_mark_canvas_completed() -> None:
+async def test_set_canvas_completed_stamps_the_completion() -> None:
     collection = MagicMock()
     collection.get = AsyncMock(
         return_value={
@@ -300,7 +300,7 @@ async def test_mark_canvas_completed() -> None:
         new_callable=AsyncMock,
         return_value=raw_client,
     ) as get_client:
-        marked = await mark_canvas_completed("todo-1")
+        marked = await set_canvas_completed("todo-1", completed=True)
 
     assert marked is True
     get_client.assert_awaited_once()
@@ -314,7 +314,31 @@ async def test_mark_canvas_completed() -> None:
     assert datetime.fromisoformat(written["completed_at"]).tzinfo == UTC
 
 
-async def test_mark_canvas_completed_with_empty_stored_row_is_false() -> None:
+async def test_set_canvas_completed_false_opens_it_and_keeps_the_last_completion() -> None:
+    collection = MagicMock()
+    stamped = "2026-11-01T09:00:00+00:00"
+    collection.get = AsyncMock(
+        return_value={
+            "ids": ["canvas_todo-1"],
+            "metadatas": [{"completed": True, "completed_at": stamped, "custom": "kept"}],
+        }
+    )
+    collection.update = AsyncMock()
+    raw_client = MagicMock()
+    raw_client.get_collection = AsyncMock(return_value=collection)
+    with patch(
+        "app.utils.canvas_vector_utils.ChromaClient.get_client",
+        new_callable=AsyncMock,
+        return_value=raw_client,
+    ):
+        opened = await set_canvas_completed("todo-1", completed=False)
+
+    assert opened is True
+    written = collection.update.await_args.kwargs["metadatas"][0]
+    assert written == {"completed": False, "completed_at": stamped, "custom": "kept"}
+
+
+async def test_set_canvas_completed_with_empty_stored_row_is_false() -> None:
     collection = MagicMock()
     collection.get = AsyncMock(return_value={"ids": ["canvas_todo-1"], "metadatas": [None]})
     collection.update = AsyncMock()
@@ -325,7 +349,7 @@ async def test_mark_canvas_completed_with_empty_stored_row_is_false() -> None:
         new_callable=AsyncMock,
         return_value=raw_client,
     ):
-        marked = await mark_canvas_completed("todo-1")
+        marked = await set_canvas_completed("todo-1", completed=True)
 
     assert marked is False
     collection.update.assert_not_awaited()
@@ -357,7 +381,7 @@ async def test_update_canvas_embedding_restores_completed_status() -> None:
             return_value=True,
         ),
         patch(
-            "app.utils.canvas_vector_utils.mark_canvas_completed",
+            "app.utils.canvas_vector_utils.set_canvas_completed",
             new_callable=AsyncMock,
             return_value=True,
         ) as mark_completed,
@@ -365,7 +389,7 @@ async def test_update_canvas_embedding_restores_completed_status() -> None:
         ok = await update_canvas_embedding("todo-1", "new text", "user-1")
 
     assert ok is True
-    mark_completed.assert_awaited_once_with("todo-1")
+    mark_completed.assert_awaited_once_with("todo-1", completed=True)
 
 
 async def test_search_canvas_context_excludes_completed_when_requested() -> None:

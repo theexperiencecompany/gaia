@@ -306,7 +306,7 @@ async def _new_tracked_todo(owner: AuthenticatedUser, title: str = TITLE) -> str
     created = await TrackedTodoService.create_tracked_todo(
         owner.user_id, title, schedule=_daily_watch()
     )
-    return created.id
+    return created.todo.id
 
 
 async def _new_due_tracked_todo(owner: AuthenticatedUser, due: datetime) -> str:
@@ -630,7 +630,7 @@ class TestAFollowUpKnowsTheRunsAboveIt:
             await TrackedTodoService.create_tracked_todo(
                 owner.user_id, TITLE, notify_on_run=notify_on_run, schedule=_daily_watch()
             )
-        ).id
+        ).todo.id
         comms = [NARRATED, FOLLOW_UP_REPLY] if notify_on_run else [FOLLOW_UP_REPLY]
 
         async with open_stack(executor=executor_run(REPORT), comms=comms) as stack:
@@ -1140,10 +1140,10 @@ class TestTheChatFollowsItsTodo:
         )
 
         async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
-            await _run(created.id, owner)
+            await _run(created.todo.id, owner)
 
         assert [
-            m["response"] for m in _reports((await _chat_of(mongo_db, created.id))["messages"])
+            m["response"] for m in _reports((await _chat_of(mongo_db, created.todo.id))["messages"])
         ] == [REPORT]
         assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
 
@@ -1177,7 +1177,7 @@ class TestNoChatOutlivesItsTodo:
                 parent_todo_id=parent,
                 schedule=_daily_watch(),
             )
-        ).id
+        ).todo.id
         for todo_id in (parent, child):
             assert (await client.post(f"/api/v1/todos/{todo_id}/conversation")).status_code == 200
 
