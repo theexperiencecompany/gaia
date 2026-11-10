@@ -2,7 +2,12 @@
 
 from datetime import datetime
 
-from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS, GAIA_APP_NAME, GAIA_SOURCE
+from app.constants.briefing import (
+    BRIEFING_RHYTHM_WORKFLOW_KEYS,
+    GAIA_APP_NAME,
+    GAIA_SOURCE,
+    BriefAction,
+)
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
@@ -38,6 +43,7 @@ async def failed_run_candidates(user_id: str, since: datetime) -> list[BriefCand
             state="failed",
             title=f"{titles[run.workflow_id]} failed",
             detail=run.error_message,
+            action=BriefAction.RETRY,
         )
         for run in runs
         if run.workflow_id in titles

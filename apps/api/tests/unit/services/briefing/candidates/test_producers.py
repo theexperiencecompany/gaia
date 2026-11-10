@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 from tests.factories import make_user_id
 
-from app.constants.briefing import BriefItemSource
+from app.constants.briefing import BriefAction, BriefItemSource, BriefOutcome
 from app.constants.todos import (
     FAILED_LABEL,
     GAIA_TRACKED_LABEL,
@@ -71,10 +71,25 @@ class TestTrackedTodos:
 
         found = waiting_candidates(work)
 
-        assert [(c.title, c.kind, c.state, c.todo_id, c.app) for c in found] == [
-            ("Approve the Priya reply", CandidateKind.NEEDS_YOU, "you", "b1", "GAIA"),
-            ("Book the Lisbon flights", CandidateKind.NEEDS_YOU, "failed", "f1", "GAIA"),
+        assert [(c.title, c.kind, c.state, c.todo_id, c.app, c.action) for c in found] == [
+            (
+                "Approve the Priya reply",
+                CandidateKind.NEEDS_YOU,
+                "you",
+                "b1",
+                "GAIA",
+                BriefAction.REVIEW,
+            ),
+            (
+                "Book the Lisbon flights",
+                CandidateKind.NEEDS_YOU,
+                "failed",
+                "f1",
+                "GAIA",
+                BriefAction.RETRY,
+            ),
         ]
+        assert all(c.outcome is None for c in found)
 
     def test_an_inbox_desk_thread_is_a_gmail_item_and_one_subject_counts_its_todos(self) -> None:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f")
@@ -96,10 +111,11 @@ class TestTrackedTodos:
 
         found = gaia_work_candidates(work)
 
-        assert [(c.title, c.kind, c.state) for c in found] == [
-            ("Investor update", CandidateKind.GAIA_DID, "lookback"),
-            ("Vet the Q4 leads", CandidateKind.GAIA_DID, "gaia"),
+        assert [(c.title, c.kind, c.state, c.outcome) for c in found] == [
+            ("Investor update", CandidateKind.GAIA_DID, "lookback", BriefOutcome.FINISHED),
+            ("Vet the Q4 leads", CandidateKind.GAIA_DID, "gaia", BriefOutcome.STARTED),
         ]
+        assert all(c.action is None for c in found)
 
     def test_what_the_user_finished_is_an_update_one_per_subject(self) -> None:
         done = [
@@ -152,9 +168,15 @@ class TestHeldResults:
 
         found = await held_candidates(USER_ID, held)
 
-        assert [(c.app, c.kind, c.title, c.held_id) for c in found] == [
-            ("Gmail", CandidateKind.UPDATE, "Stripe payout of $2,400 landed", "h1"),
-            ("GAIA", CandidateKind.GAIA_DID, "Research digest: 3 new papers on retrieval", "h2"),
+        assert [(c.app, c.kind, c.title, c.held_id, c.outcome) for c in found] == [
+            ("Gmail", CandidateKind.UPDATE, "Stripe payout of $2,400 landed", "h1", None),
+            (
+                "GAIA",
+                CandidateKind.GAIA_DID,
+                "Research digest: 3 new papers on retrieval",
+                "h2",
+                BriefOutcome.FINISHED,
+            ),
         ]
         assert found[1].detail is None
         assert find_desk.await_args.args[0] == USER_ID
@@ -203,6 +225,7 @@ class TestAppSignals:
             SignalImportance.HIGH,
         )
         assert (found.url, found.people, found.signal) == (signal.url, ["Priya"], signal)
+        assert (found.action, found.outcome) == (None, None)
         assert found.detail == (
             "issue assigned to you | state: In Progress | why: due tomorrow | first seen "
             "2 days ago, mentioned 1 time(s), last yesterday, moved from Todo to In Progress"
@@ -218,9 +241,15 @@ class TestCalendar:
 
         found = calendar_candidates(events)
 
-        assert [(c.app, c.kind, c.title, c.detail) for c in found] == [
-            ("Google Calendar", CandidateKind.EVENT, "Sequoia", "at 11:00 | Zoom"),
-            ("Google Calendar", CandidateKind.EVENT, "Diwali", "all day"),
+        assert [(c.app, c.kind, c.title, c.detail, c.action) for c in found] == [
+            (
+                "Google Calendar",
+                CandidateKind.EVENT,
+                "Sequoia",
+                "at 11:00 | Zoom",
+                BriefAction.ATTEND,
+            ),
+            ("Google Calendar", CandidateKind.EVENT, "Diwali", "all day", BriefAction.ATTEND),
         ]
 
 
@@ -273,6 +302,7 @@ class TestApprovals:
             ("GAIA", "Approve create_reminder", CandidateKind.NEEDS_YOU, "you"),
             ("Slack", "Message #launch on Slack", CandidateKind.NEEDS_YOU, "you"),
         ]
+        assert {c.action for c in found} == {BriefAction.APPROVE}
         assert ledger.await_args.args == (USER_ID,)
         assert gate.await_args.args == (USER_ID, NOW)
 
@@ -294,11 +324,12 @@ class TestReminders:
 
         [found] = await reminder_candidates(USER_ID, start, end)
 
-        assert (found.title, found.detail, found.due_at, found.kind) == (
+        assert (found.title, found.detail, found.due_at, found.kind, found.action) == (
             "Call the dentist",
             "Six-month cleaning appointment",
             due.scheduled_at,
             CandidateKind.NEEDS_YOU,
+            BriefAction.ATTEND,
         )
         assert read.await_args.args == (USER_ID, start, end)
 
@@ -355,9 +386,9 @@ class TestFailedRuns:
 
         found = await failed_run_candidates(USER_ID, since)
 
-        assert [(c.title, c.detail, c.state) for c in found] == [
-            ("CRM sync failed", "HubSpot token expired", "failed"),
-            ("Digest failed", "Timed out", "failed"),
+        assert [(c.title, c.detail, c.state, c.action) for c in found] == [
+            ("CRM sync failed", "HubSpot token expired", "failed", BriefAction.RETRY),
+            ("Digest failed", "Timed out", "failed", BriefAction.RETRY),
         ]
         assert list_since.await_args.kwargs["status"] == "failed"
         assert list_since.await_args.kwargs["exclude_workflow_ids"] == ["wf-brief"]

@@ -4,7 +4,7 @@ A held report is carried by its first line alone: its body never reaches a promp
 claimed from.
 """
 
-from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefItemSource
+from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefItemSource, BriefOutcome
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.db.repositories.todos import todo_repository
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
@@ -51,6 +51,7 @@ async def held_candidates(
                 state="note",
                 title=f"{doc.source_title}: {first}" if first else doc.source_title,
                 held_id=doc.id,
+                outcome=BriefOutcome.FINISHED,
             )
         )
     return candidates
