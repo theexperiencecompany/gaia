@@ -70,6 +70,7 @@ EXPECTED_ASSET_KEYS = {"BAND", "TEC_MARK"}
 def _payload(**overrides: Any) -> BriefingPayload:
     payload: dict[str, Any] = {
         "kicker": "Daily brief",
+        "template_family": "swiss",
         "date": "2026-07-05",
         "headline": "A quiet Sunday",
         "lede": "Two approvals and one flight.",
