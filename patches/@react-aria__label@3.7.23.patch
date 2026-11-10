@@ -1,0 +1,38 @@
+diff --git a/dist/useField.main.js b/dist/useField.main.js
+index 7ffb7240d183accdc16298a9bd478281672c2bfb..b0279fcb6d80292332993ef8603b50cc31011bc0 100644
+--- a/dist/useField.main.js
++++ b/dist/useField.main.js
+@@ -36,9 +36,12 @@ function $50e2f39368b9c636$export$294aa081a6c6f55d(props) {
+     ]);
+     fieldProps = (0, $iujgQ$reactariautils.mergeProps)(fieldProps, {
+         'aria-describedby': [
+-            descriptionId,
++            // Only reference an element this render actually mounts: HeroUI renders
++            // the description/error wrapper only when one of these props is set, so
++            // an unconditional id is a dangling SSR reference.
++            description ? descriptionId : null,
+             // Use aria-describedby for error message because aria-errormessage is unsupported using VoiceOver or NVDA. See https://github.com/adobe/react-spectrum/issues/1346#issuecomment-740136268
+-            errorMessageId,
++            errorMessage ? errorMessageId : null,
+             props['aria-describedby']
+         ].filter(Boolean).join(' ') || undefined
+     });
+diff --git a/dist/useField.mjs b/dist/useField.mjs
+index e1c50f7e952818517aa519edbb8a47b8fa3f6579..1fc19e0c3beb64ff340e95d4b403e240e63c7ea0 100644
+--- a/dist/useField.mjs
++++ b/dist/useField.mjs
+@@ -30,9 +30,12 @@ function $2baaea4c71418dea$export$294aa081a6c6f55d(props) {
+     ]);
+     fieldProps = (0, $2kC82$mergeProps)(fieldProps, {
+         'aria-describedby': [
+-            descriptionId,
++            // Only reference an element this render actually mounts: HeroUI renders
++            // the description/error wrapper only when one of these props is set, so
++            // an unconditional id is a dangling SSR reference.
++            description ? descriptionId : null,
+             // Use aria-describedby for error message because aria-errormessage is unsupported using VoiceOver or NVDA. See https://github.com/adobe/react-spectrum/issues/1346#issuecomment-740136268
+-            errorMessageId,
++            errorMessage ? errorMessageId : null,
+             props['aria-describedby']
+         ].filter(Boolean).join(' ') || undefined
+     });

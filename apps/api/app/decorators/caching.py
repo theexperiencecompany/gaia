@@ -3,7 +3,7 @@
 Cacheable: key_pattern/key_generator/smart_hash pick how the key is built;
 model gives typed serialization via Pydantic; a result that reports itself
 degraded is returned but never stored. CacheInvalidator:
-key_patterns/key_generator/key clear related entries after a write.
+key_patterns/key_generator/key clear related entries once a write succeeds.
 """
 
 import asyncio
@@ -144,7 +144,9 @@ class Cacheable:
 
 
 class CacheInvalidator:
-    """Clear related cache entries via key_patterns, key_generator, or a static key, before calling func.
+    """Clear the entries named by key_patterns, key_generator or key once func succeeds.
+
+    Clearing first would let a read during the write re-cache the old value.
 
     Wildcard patterns are expensive on large Redis instances — prefer specific keys.
     """
@@ -200,13 +202,15 @@ class CacheInvalidator:
                     for pattern in self.key_patterns
                 ]
 
-            log.debug(f"{LogTag.API} Cache invalidation for keys", cache_keys=cache_keys)
-
-            await asyncio.gather(*[delete_cache(key) for key in cache_keys])
-
+            result: R
             if asyncio.iscoroutinefunction(func):
-                return cast(R, await func(*args, **kwargs))
-            return cast(R, func(*args, **kwargs))
+                result = await func(*args, **kwargs)
+            else:
+                result = cast(R, func(*args, **kwargs))
+
+            log.debug(f"{LogTag.API} Cache invalidation for keys", cache_keys=cache_keys)
+            await asyncio.gather(*[delete_cache(key) for key in cache_keys])
+            return result
 
         return wrapper
 

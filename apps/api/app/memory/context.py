@@ -10,6 +10,8 @@ only a backstop.
 import asyncio
 from datetime import date as date_type, timedelta
 
+from pydantic import BaseModel, ConfigDict
+
 from app.constants.memory import (
     CORE_CONTEXT_CACHE_KEY,
     CORE_CONTEXT_CACHE_TTL,
@@ -28,9 +30,10 @@ from shared.py.wide_events import log
 # separate the volatile agenda/journal from the cacheable documents.
 AGENDA_HEADING = "## Current agenda"
 RECENT_ACTIVITY_HEADING = "## Recent activity"
+ABOUT_USER_HEADING = "## About the user"
 
 _DOC_SECTIONS: list[tuple[MemoryDocType, str]] = [
-    (MemoryDocType.USER_MD, "## About the user"),
+    (MemoryDocType.USER_MD, ABOUT_USER_HEADING),
     (MemoryDocType.MEMORY_MD, "## Assistant conventions"),
     (MemoryDocType.AGENDA_MD, AGENDA_HEADING),
 ]
@@ -104,6 +107,14 @@ async def get_core_context(user_id: str) -> str:
     return context
 
 
+def about_the_user(core_context: str) -> str:
+    """Return the About-the-user section of an assembled core context, or "" when it has none."""
+    if not core_context.startswith(f"{ABOUT_USER_HEADING}\n"):
+        return ""
+    body = core_context[len(ABOUT_USER_HEADING) + 1 :]
+    return body.split("\n\n## ", 1)[0].strip()  # pragma: no mutate — only [0] is read
+
+
 async def invalidate_core_context(user_id: str) -> None:
     """Drop the cached core context (call after ingestion or document writes)."""
     await delete_cache(CORE_CONTEXT_CACHE_KEY.format(user_id=user_id))
@@ -117,6 +128,15 @@ async def invalidate_user_memory_caches(user_id: str) -> None:
     """
     await invalidate_recall_cache(user_id)
     await invalidate_core_context(user_id)
+
+
+class _JournalLine(BaseModel):
+    """One journal entry as the recent-activity block reads it; an old row may carry only its text."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    time: str = ""
+    text: str = ""
 
 
 def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> str:
@@ -137,7 +157,8 @@ def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> 
         # Emit the NEWEST entries (last-2), not an anchored-at-start window, and
         # no numbered counter — the omitted-note is byte-identical across turns.
         recent = episode.entries[-2:] if len(episode.entries) > 2 else episode.entries
-        lines = [f"- {entry.get('time', '')} {entry.get('text', '')}".rstrip() for entry in recent]
+        journal = [_JournalLine.model_validate(entry) for entry in recent]
+        lines = [f"- {line.time} {line.text}".rstrip() for line in journal]
         if len(episode.entries) > 2:
             lines.append("- (earlier entries omitted)")
         blocks.append(f"### {label} ({episode.date.isoformat()})\n" + "\n".join(lines))

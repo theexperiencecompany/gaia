@@ -26,15 +26,10 @@ USER_ID = "507f1f77bcf86cd799439011"
 SESSION_ID = "sess-1"
 
 
-def _artifact_info(**overrides: object) -> ArtifactInfo:
-    data: dict[str, object] = {
-        "path": "artifacts/notes.md",
-        "size_bytes": 12,
-        "mtime": 1234.5,
-        "content_type": "text/markdown",
-    }
-    data.update(overrides)
-    return ArtifactInfo(**data)
+def _artifact_info() -> ArtifactInfo:
+    return ArtifactInfo(
+        path="artifacts/notes.md", size_bytes=12, mtime=1234.5, content_type="text/markdown"
+    )
 
 
 class TestArtifactChannel:

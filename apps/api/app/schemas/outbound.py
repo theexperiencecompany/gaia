@@ -18,16 +18,9 @@ from app.config.settings import settings
 
 
 def _is_own_api(url: str) -> bool:
-    """Whether this URL is served by this API, compared by origin rather than prefix.
-
-    The API answers on HOST and, for browser links, on BROWSER_LIVE_VIEW_BASE_URL;
-    step screenshots are built on the latter, so both origins are ours.
-    """
-    target = urlsplit(url)
-    return any(
-        own.netloc and (target.scheme, target.netloc) == (own.scheme, own.netloc)
-        for own in map(urlsplit, filter(None, (settings.HOST, settings.BROWSER_LIVE_VIEW_BASE_URL)))
-    )
+    """Whether this URL is served by this API (HOST), compared by origin rather than prefix."""
+    target, own = urlsplit(url), urlsplit(settings.HOST)
+    return bool(own.netloc) and (target.scheme, target.netloc) == (own.scheme, own.netloc)
 
 
 class OutboundAttachment(BaseModel):

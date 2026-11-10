@@ -1,0 +1,60 @@
+{
+ "run": "run_c2c9df5dd0a4",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Cbswsimi: avloxtnrc unread emails ae aegwjeac, today'n meetings, open todos, qiq 2026 OOYE Qjvnt Pri Qglbv yg 32 nnbmddb.",
+    "steps": [
+     {
+      "id": "emails",
+      "handoff": "gmail",
+      "steps": []
+     },
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": []
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "open",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ]
+     },
+     {
+      "id": "worldcup",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "2026 OOYE Qjvnt Pri Qglbv yg 32 nnbmddb"
+      }
+     }
+    ],
+    "result_brief": "Cjrcogu w obvuob dikcp toxyfucq udh lar ynrm (whdrf jzne $today, Chvv/Xckhiim). Zqnsmdqy: (1) Fnkbcu emails ae aegwjeac e bg Svdly uc mth qtlgdynes, kfhta uzku qiq osig lar mondsseazv ESP tkcxipvb (nntfd 1 miby). (2) Anubd'n meetings e bg Zmlvvp Tvelkhjg uc mth qtlgdynes, kfhta uzku qiq osig lar mondsseazv ESP tkcxipvb. (3) Dlyt todos e list awnwii, cwf swvao, aegwjeac, vqpa overdue. (52485 OOYE Qjvnt Pri Qglbv yg 32 nnbmddb e avloxtnrc lar gdbrsc etfpq ukm search (c.q. Qdmnh Npzpif 67 Nqyjhh, Pzdndw 33 Jwqad, Ctfmkgsh 26 Enakf, Anabeb 72 Ipecako, Vnqnpcr 33 QC Oijhd, Ysrmajx 25 Wostetl NIA). Ttue ic bmdmnu qiq isuevyht."
+   },
+   "old_outcome": "refused",
+   "unmappable": "handoff_without_steps",
+   "unmappable_detail": "gmail",
+   "expected": "unmappable"
+  }
+ ]
+}

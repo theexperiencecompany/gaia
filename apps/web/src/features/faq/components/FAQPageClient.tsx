@@ -24,7 +24,8 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
           variant="light"
           className="cursor-pointer p-0!"
           itemClasses={{ titleWrapper: "cursor-pointer" }}
-          defaultSelectedKeys={["0"]}
+          defaultSelectedKeys={faqs[0] ? [faqs[0].question] : []}
+          keepContentMounted
         >
           {faqs.map((item) => (
             <AccordionItem

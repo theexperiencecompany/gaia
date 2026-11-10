@@ -1,4 +1,4 @@
-# Prompt-cache measurements — tail layout vs leading layout
+# Prompt-cache measurements — tail layout vs leading layout (superseded: see "What changed")
 
 Live A/B measured on the production lane (OpenRouter → `deepseek/deepseek-v4-flash-0731`,
 DeepSeek's automatic prefix cache). Two complementary measurements:
@@ -170,21 +170,31 @@ pipeline change, not a cache-layout one.
 
 ## What changed
 
-`apps/api/app/agents/core/nodes/manage_system_prompts.py` — provider-aware
-layout:
+The tail layout below was superseded by an append-only request on every
+provider (`apps/api/app/agents/context/slots.py`,
+`apps/api/app/agents/core/nodes/manage_system_prompts.py`):
 
-- `openrouter` / `custom` (OpenAI-wire): volatile slots move after the
-  conversation → tail layout.
-- `openai` (direct): every singleton slot, the clock included, leads the
-  conversation. OpenAI reuses an earlier request only whole: replaying one
-  executor run on gpt-5.6-luna, any message trailing the conversation held
-  every call at 23,814 cached tokens (the tools and first system message),
-  while with nothing trailing each call read the previous one in full
-  (38,262 of 38,329). A change to the bound tool set still costs one fully
+- Only the static prompt, the stable context and the onboarding block lead,
+  latest copy only. Every other message — each turn's recall block and clock
+  included — stays where its turn wrote it, so a call begins with the previous
+  call on its thread byte for byte.
+- There are no per-call frames. Executor and browser-task status are turn
+  context sections read once as a comms turn starts; the execution plan
+  travels in the `plan_tasks` / `update_tasks` results and its instructions
+  in the executor's static prompt.
+- Why not the tail layout everywhere: OpenAI reuses an earlier request only
+  whole. Replaying one executor run on gpt-5.6-luna, any message trailing the
+  conversation held every call at 23,814 cached tokens (the tools and first
+  system message), while with nothing trailing each call read the previous one
+  in full (38,262 of 38,329). Leading per-turn slots failed the same way one
+  turn later: the first call of every new turn read 0 cached (production ~30%).
+  Through the real node on the real API, new-turn first calls went from 0% to
+  91-92% cached.
+- Gemini: langchain-google-genai moves every system message, wherever it sits,
+  into `system_instruction` (verified against the installed adapter), so no
+  content is lost; the per-turn blocks change that instruction each turn.
+- A change to the bound tool set or to a leading slot still costs one fully
   cold call.
-- `gemini`: unchanged leading-block layout (its API silently drops
-  non-leading system messages).
-- Missing provider: defaults to the leading layout (today's behavior).
 
 ## How it was measured
 

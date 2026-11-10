@@ -20,15 +20,13 @@ async def get_weather(
     writer = current_stream_writer()
     writer({"progress": f"Fetching weather information for {location}..."})
 
-    # Get the raw weather data
     weather = await user_weather(location)
-    weather_data = (
-        weather.model_dump(  # pragma: no mutate -- dropping mode= is unobservable here and banned by tool-dump-boundary
-            mode="json",  # pragma: no mutate -- a WeatherReport holds only JSON-native values, so json and python dumps match
-            exclude_unset=True,
-        )
-        if isinstance(weather, WeatherReport)
-        else weather
+    if not isinstance(weather, WeatherReport):
+        # A failure or "not configured" sentence: no card, so nothing invites a made-up forecast.
+        return weather
+    weather_data = weather.model_dump(  # pragma: no mutate -- dropping mode= is unobservable here and banned by tool-dump-boundary
+        mode="json",  # pragma: no mutate -- a WeatherReport holds only JSON-native values, so json and python dumps match
+        exclude_unset=True,
     )
 
     # Send weather data to frontend via writer

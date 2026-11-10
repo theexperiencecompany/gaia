@@ -21,6 +21,8 @@ from e2b import AsyncSandbox
 import pytest
 
 from app.agents.workspace.paths import session_artifacts
+from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
+from app.services.artifact_events import ArtifactFileEvent, upsert_event
 from app.services.sandbox import artifact_watcher as aw
 from app.services.sandbox.artifact_watcher import ArtifactWatcher, _strip_artifacts_prefix
 from app.services.storage import JuiceFSUnavailable
@@ -104,9 +106,9 @@ def upserts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     from the guard working.
     """
     calls: list[tuple[str, Any]] = []
-    real = aw.upsert_event
+    real = upsert_event
 
-    def record(session_id: str, art: Any, **kw: Any) -> dict[str, Any]:
+    def record(session_id: str, art: Any, **kw: Any) -> ArtifactFileEvent:
         calls.append((session_id, art))
         return real(session_id, art, **kw)
 
@@ -141,7 +143,7 @@ async def test_a_temp_file_write_publishes_nothing(
     # Atomic writes land as `<name>.gaia-tmp` then rename. Publishing the temp
     # file makes a half-written artifact flash in the user's panel.
     w = ArtifactWatcher(USER, fake_sandbox())
-    await w._on_fs_event(fs_event(f"{CONV}/artifacts/report.md{aw.WORKSPACE_TMP_SUFFIX}"))
+    await w._on_fs_event(fs_event(f"{CONV}/artifacts/report.md{WORKSPACE_TMP_SUFFIX}"))
     assert published == []
 
 

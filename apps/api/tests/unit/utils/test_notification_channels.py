@@ -276,7 +276,7 @@ class TestExternalPlatformDeliver:
         kwargs = post.await_args.kwargs
         assert kwargs["user"].user_id == "user-1"
         assert kwargs["channel"] == ChatChannel(
-            source=ConversationSource.DISCORD, platform_user_id="dc-7"
+            source=ConversationSource.DISCORD, platform_user_id="dc-7", basis="priority"
         )
         assert (kwargs["text"], kwargs["origin"]) == ("hello", "notification from ai_agent")
         assert kwargs["message_class"] is ProactiveMessageClass.ROUTINE

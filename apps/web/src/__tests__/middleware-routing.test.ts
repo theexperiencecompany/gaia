@@ -21,10 +21,12 @@ function request(url: string): NextRequest {
 describe("heygaia.link slugs", () => {
   it.each(["apiXk3Lm9Qz", "connectAb12", "ingestZZ9xy", "sitemapQ1w2"])(
     "redirects %s even though it starts with a bypassed word",
-    (slug) => {
+    async (slug) => {
       expect(matches(`/${slug}`)).toBe(true);
 
-      const response = middleware(request(`https://heygaia.link/${slug}`));
+      const response = await middleware(
+        request(`https://heygaia.link/${slug}`),
+      );
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
@@ -36,10 +38,10 @@ describe("heygaia.link slugs", () => {
 });
 
 describe("locale-invariant paths on the app host", () => {
-  it.each(["/connect", "/connect/c0de", "/api/blog", "/ingest/e"])(
+  it.each(["/connect", "/connect/c0de", "/api/blog", "/ingest/e", "/feed"])(
     "passes %s through without next-intl",
-    (path) => {
-      const response = middleware(request(`https://heygaia.io${path}`));
+    async (path) => {
+      const response = await middleware(request(`https://heygaia.io${path}`));
 
       expect(response.headers.get("x-middleware-next")).toBe("1");
       expect(intlHandler).not.toHaveBeenCalled();

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import TypeAdapter
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.repositories.integrations import integration_repository
@@ -17,7 +17,7 @@ from app.helpers.integration_helpers import (
     parse_integration_slug,
 )
 from app.helpers.slug_helpers import generate_integration_slug
-from app.models.integration_models import McpConnectTarget, PublicIntegrationSearchHit
+from app.models.integration_models import PublicIntegrationSearchHit
 from app.models.workflow_models import (
     PublicWorkflowCard,
     PublicWorkflowsResponse,
@@ -62,7 +62,7 @@ async def get_public_integration(
         # 1. Check platform (native) integrations first — in-memory, instant
         # Platform integrations use their ID as slug (e.g., "googlecalendar", "slack")
         native = next(
-            (i for i in OAUTH_INTEGRATIONS if i.id == identifier and i.managed_by != "internal"),
+            (i for i in all_integrations() if i.id == identifier and i.managed_by != "internal"),
             None,
         )
         if native:
@@ -193,14 +193,13 @@ async def add_public_integration(
             )
 
         connect_result = await connect_mcp_integration(
-            McpConnectTarget(
-                user_id=user_id,
-                integration_id=integration_id,
-                integration_name=integration_name,
-                redirect_path=request.redirect_path,
-            ),
+            user_id=user_id,
+            integration_id=integration_id,
+            integration_name=integration_name,
             requires_auth=requires_auth,
+            redirect_path=request.redirect_path,
             server_url=server_url,
+            is_platform=False,
             bearer_token=request.bearer_token,
         )
 

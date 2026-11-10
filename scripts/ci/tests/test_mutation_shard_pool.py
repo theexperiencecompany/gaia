@@ -1,4 +1,4 @@
-"""`mutation.sh shard` refuses to run contract-mapped work without services.
+"""`mutation.py shard` refuses to run contract-mapped work without services.
 
 The plan sends contract-mapped modules to the services pool, but nothing about
 a runner guarantees the services are actually there — the composite can be
@@ -20,9 +20,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MUTATION_SH = REPO_ROOT / "scripts" / "ci" / "mutation.sh"
+MUTATION_PY = REPO_ROOT / "scripts" / "ci" / "mutation.py"
 
 # A port nothing listens on, so the reachability probe fails the way an absent
 # service does rather than by name resolution.
@@ -44,7 +45,7 @@ def _group(testfile: str) -> str:
 
 def _shard(tmp_path: Path, testfile: str, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["bash", str(MUTATION_SH), "shard"],
+        [sys.executable, str(MUTATION_PY), "shard"],
         env={
             "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
             "HOME": str(tmp_path),
@@ -56,6 +57,9 @@ def _shard(tmp_path: Path, testfile: str, **env: str) -> subprocess.CompletedPro
             # `mutation/app/does_not_exist.py` reached the gate of run
             # 34586506166 from a fixture just like this one.
             "GAIA_VERDICT_DIR": str(tmp_path / "verdicts"),
+            # Its env is built from scratch, so conftest's staging dir does not reach it:
+            # off Linux the shard would stage in apps/api, under other tests' tree walks.
+            "MUTMUT_WORKDIR_BASE": str(tmp_path / "mutation-work"),
             **env,
         },
         capture_output=True,

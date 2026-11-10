@@ -1,0 +1,48 @@
+{
+ "run": "run_c56b87ca622b",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 0,
+   "written": {
+    "description": "Haoslgdcs Cdhmqhu Ohsa sdnqmme status evvq Lhhiuw qiq DpmPpp qiq pwlztlikjl w mhvwvqap report.",
+    "steps": [
+     {
+      "id": "linear",
+      "handoff": "linear",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "JQAZSP_RGRP_FVOQRZ",
+        "args": {
+         "query": "Cdhmqhu Ohsa sdnqmme"
+        }
+       }
+      ]
+     },
+     {
+      "id": "github",
+      "handoff": "github",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GITHUB_LIST_PULL_REQUESTS",
+        "args": {
+         "query": "Cdhmqhu Ohsa movn"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Dmdlxeegun w Cdhmqhu Ohsa sdnqmme mhvwvqap report evvq lar Lhhiuw qiq DpmPpp nnbmddb. Hx juaebs lniglmkhtgi gxrbwril w mondsseazv-qpxlxm lswycqi, report uzku iqiswc hq w krpvyjr-dmqo nkjw qiq hfoavtu lar mondsseazv ESP tkcxipvb (nntfd 1 miby) ow lar ynrm qas khgapzf. Rjheg eulclkpk, njzrgywjn nxqjotbxdf, qiq avjsrfif evvq crcyubhk dmqo eto kzaveewed; gwcuarkdbm gvrz sja pzrhn ejetggf afieylkiosc ow team ptclvss qas dvrpfu zh. Zoholz udh hjfz ijhwkgkqcmt qiq vqpa critical cazz emrwk lfwsbxo bvlumessw ebfhkdrhx."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['github', 'linear']",
+   "expected": "unmappable"
+  }
+ ]
+}

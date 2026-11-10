@@ -3,8 +3,8 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import { PlayIcon } from "@icons";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { Link } from "@/i18n/navigation";
 import type {
   CommunityWorkflow,
   IntegrationRef,
@@ -182,7 +182,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       tabIndex={!href && isClickable ? 0 : undefined}
     >
       {href && (
-        <Link
+        <SiteLink
           href={href}
           aria-label={title}
           className="absolute inset-0 z-[1] rounded-3xl"

@@ -29,12 +29,17 @@ import re
 import signal
 import subprocess
 import time
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+import websockets
 
+from app.api.v1.middleware.agent_auth import create_agent_token
+from app.config.settings import settings
+from app.services.integrations import custom_crud
 from app.workers.tasks.device_tasks import warm_device_servers
-from tests.helpers import pick_free_port
+from tests.helpers import forge_jwt, hostile_jwts, pick_free_port, read_jwt
 
 pytestmark = [pytest.mark.service, pytest.mark.slow]
 
@@ -565,6 +570,16 @@ class TestFullDeviceLifecycle:
 class TestDeviceServerRemoval:
     """Remove a device MCP server end to end, through the real daemon and real HTTP (no internal calls)."""
 
+    @pytest.fixture(autouse=True)
+    def _record_chroma_cleanup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Record the Chroma cleanup instead of running it.
+
+        The live app runs without ChromaDB (see _device_bridge_lifespan), so the
+        cleanup's first store access would embed every builtin tool inside the request.
+        """
+        self.chroma_cleanup = AsyncMock()
+        monkeypatch.setattr(custom_crud, "cleanup_integration_chroma_data", self.chroma_cleanup)
+
     async def _pair_and_expose_everything(
         self, daemon: BridgeDaemon, owner: httpx.AsyncClient, api_url: str, entry: Path
     ) -> str:
@@ -642,6 +657,8 @@ class TestDeviceServerRemoval:
 
             deleted = await owner.delete(f"/api/v1/integrations/custom/{integration_id}")
             assert deleted.status_code == 200, deleted.text
+            self.chroma_cleanup.assert_awaited_once()
+            assert self.chroma_cleanup.await_args.args[0] == integration_id
             daemon.mark("integration deleted in cloud")
 
             # The cloud drops the server row immediately...
@@ -786,3 +803,66 @@ class TestRefreshTokenReuseDetection:
         finally:
             await owner.aclose()
             await anon.aclose()
+
+
+class TestDeviceSocketAuth:
+    """The device JWT a paired daemon gets from /device/token opens the live socket; nothing else does."""
+
+    async def _pair_and_exchange(self, live_api_server, make_user) -> str:
+        owner = _client(live_api_server.url, await make_user())
+        anon = _client(live_api_server.url)
+        try:
+            start = await anon.post(
+                "/api/v1/device/pair/start",
+                json={"name": "socket-auth", "platform": "test", "daemon_version": "0.0.0"},
+            )
+            approve = await owner.post(
+                "/api/v1/device/pair/approve", json={"user_code": start.json()["user_code"]}
+            )
+            assert approve.status_code == 200, approve.text
+            poll = await anon.post(
+                "/api/v1/device/pair/poll", json={"device_code": start.json()["device_code"]}
+            )
+            exchange = await anon.post(
+                "/api/v1/device/token", json={"refresh_token": poll.json()["refresh_token"]}
+            )
+            assert exchange.status_code == 200, exchange.text
+            access_token: str = exchange.json()["access_token"]
+            return access_token
+        finally:
+            await owner.aclose()
+            await anon.aclose()
+
+    async def _dial(self, live_api_server, token: str) -> int:
+        """Open the device socket the way the daemon does; return the handshake status."""
+        url = live_api_server.url.replace("http", "ws", 1) + "/api/v1/ws/device"
+        try:
+            async with websockets.connect(
+                url, additional_headers={"Authorization": f"Bearer {token}"}, open_timeout=10
+            ) as socket:
+                return socket.response.status_code
+        except websockets.InvalidStatus as refused:
+            return refused.response.status_code
+
+    async def test_an_exchanged_device_token_opens_the_socket(
+        self, live_api_server, clean_bridge_tables, pro_plan, make_user
+    ):
+        token = await self._pair_and_exchange(live_api_server, make_user)
+
+        assert await self._dial(live_api_server, token) == 101
+
+    @pytest.mark.parametrize("kind", [*sorted(hostile_jwts({}, "s")), "agent_token", "no_audience"])
+    async def test_a_bad_device_token_is_refused_at_the_handshake(
+        self, live_api_server, clean_bridge_tables, pro_plan, kind, make_user
+    ):
+        genuine = await self._pair_and_exchange(live_api_server, make_user)
+        claims = read_jwt(genuine)[1]
+        tokens = {
+            **hostile_jwts(claims, settings.AGENT_SECRET),
+            "agent_token": create_agent_token(claims["sub"]),
+            "no_audience": forge_jwt(
+                {k: v for k, v in claims.items() if k != "aud"}, settings.AGENT_SECRET
+            ),
+        }
+
+        assert await self._dial(live_api_server, tokens[kind]) == 403

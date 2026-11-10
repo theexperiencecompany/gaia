@@ -4,20 +4,22 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.constants.briefing import BriefItemSource
 from app.db.repositories.base import UserScopedDocument
 
 
 class PendingBriefItemDocument(UserScopedDocument):
-    """A finished workflow run held for the user's next brief instead of being pushed.
+    """A result that can wait, held for the user's next brief instead of being pushed.
 
-    Written when a workflow whose delivery is brief completes with something
-    worth reporting. The brief collects the items written since it last ran;
-    text is the run's already-narrated result and conversation_id is
-    where the full run lives.
+    Written by a workflow whose delivery is brief, or by a tracked todo's run. The
+    brief collects the items written since it last ran; source_id and source_title
+    name the workflow or todo, text is the already-written result and
+    conversation_id is where the full run lives.
     """
 
-    workflow_id: str
-    workflow_title: str
+    source: BriefItemSource
+    source_id: str
+    source_title: str
     conversation_id: str
     text: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

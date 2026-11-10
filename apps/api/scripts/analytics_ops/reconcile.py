@@ -188,8 +188,15 @@ def human_messages_by_source(db: Database[Document], window: Window) -> dict[str
     pipeline: list[Document] = [
         {"$match": {"messages.type": "user", "is_system_generated": {"$ne": True}}},
         {"$unwind": "$messages"},
-        # A first-contact message was stored at account linking, with no chat turn behind it.
-        {"$match": {"messages.type": "user", "messages.first_contact": {"$ne": True}}},
+        # A first-contact message was stored at account linking, and a todo-run wake by its
+        # schedule or trigger: neither has a chat turn the user sent behind it.
+        {
+            "$match": {
+                "messages.type": "user",
+                "messages.first_contact": {"$ne": True},
+                "messages.todo_run_wake": None,
+            }
+        },
         {
             "$project": {
                 "source": {"$ifNull": ["$source", WEB_AND_DESKTOP]},
@@ -266,7 +273,10 @@ def mongo_signals(db: Database[Document], window: Window) -> Signals:
     webhooks = _state_changes(db, window)
     return Signals(
         signups=db.users.count_documents(in_window),
-        support_requests=db.support_requests.count_documents(in_window),
+        # A visitor's ticket has no user_id, so no event to match it.
+        support_requests=db.support_requests.count_documents(
+            in_window | {"user_id": {"$ne": None}}
+        ),
         subscriptions_started=db.subscriptions.count_documents(in_window),
         billing={event: webhooks.get(kind.value, 0) for event, kind in WEBHOOK_EVENTS.items()}
         | {SubscriptionCancelled.event: _cancelled_subscriptions(db, window)},

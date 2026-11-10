@@ -67,7 +67,7 @@ Inbox Audit:
   Cleanup opportunities:
   1. 78 unread promotions → Archive all? (saves 78 emails)
   2. 45 GitHub notifications older than 7 days → Archive? (saves 45)
-  3. 32 newsletter emails → Archive + create filter? (saves 32)
+  3. 32 newsletter emails → Archive and label "newsletters"? (saves 32)
   4. 28 old calendar notifications → Trash? (saves 28)
   
   Estimated cleanup: 183 emails (78% of unread)
@@ -101,9 +101,9 @@ Inbox Cleanup Complete:
   - Archived 45 old GitHub notifications
   - Trashed 28 calendar notifications
   - Labeled 32 newsletters as "newsletters"
-  
-  Tip: I can help set up Gmail filters to auto-archive these in the future.
 ```
+
+Never offer to create Gmail filters: the Gmail connection is not allowed to, and every attempt fails.
 
 ## Safety Rules
 - NEVER delete/trash without explicit user consent

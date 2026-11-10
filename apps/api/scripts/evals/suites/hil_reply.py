@@ -17,7 +17,6 @@ approve runs an action the user did not accept), stable across 3 runs.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable
 import os
 from pathlib import Path
 import time
@@ -44,12 +43,11 @@ from app.services.hil.conversational import (
 from app.services.hil.jev_reply import ask_jev_reply, settle_reply
 from app.services.hil.prompts import JEV_REPLY_QUESTIONS_VERSION
 from scripts.evals.core.app_boot import ensure_app_registered
-from scripts.evals.core.cases import load_case_files
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
-from scripts.evals.core.gates import score_gates
 from scripts.evals.core.journal import RunJournal
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
-from scripts.evals.core.runner import Suite, register_suite
+from scripts.evals.core.runner import register_suite
+from scripts.evals.core.transport_suite import TransportSuite
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 from scripts.evals.suites.hil_reply_models import (
     JevReplyJournal,
@@ -275,31 +273,10 @@ def sweep_journal(run_dir: Path) -> str:
 
 
 @register_suite("hil-reply")
-class HilReplySuite(Suite):
+class HilReplySuite(TransportSuite):
     name = "hil-reply"
     project = "gaia-hil"
     label = "HIL chat-reply classifier calibration"
-
-    def __init__(self, cfg: EvalConfig) -> None:
-        del cfg
-        self._transport = ReplyTransport()
-
-    def load_cases(self, cfg: EvalConfig) -> list[Case]:
-        del cfg
-        return load_case_files(DATA_DIR, self.name, EXTRA)
-
-    def transport(
-        self,
-        case: Case,
-        cfg: EvalConfig,
-        tracker: EvalCostTracker,
-        provider: ProviderConfig,
-    ) -> Awaitable[CaseRun]:
-        return self._transport.run(case, cfg, tracker, provider)
-
-    def score(self, case: Case, run: CaseRun) -> dict[str, float]:
-        return score_gates(case, run, EXTRA)
-
-    def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
-        del cfg
-        return []  # exact-match gate only; no rubric judge, no second model bill
+    data_dir = DATA_DIR
+    extra = EXTRA
+    transport_type = ReplyTransport

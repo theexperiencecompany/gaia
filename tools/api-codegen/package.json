@@ -1,0 +1,13 @@
+{
+  "name": "@gaia/api-codegen",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Generates libs/shared/ts/src/api/generated/schema.d.ts from apps/api/openapi.json. Needs a compiler with the JS API; see README.md for why it is outside the workspace and when to delete it.",
+  "dependencies": {
+    "openapi-typescript": "^7.13.0",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "generate": "openapi-typescript ../../apps/api/openapi.json --alphabetize --default-non-nullable=false --root-types --root-types-no-schema-prefix --root-types-keep-casing --output ../../libs/shared/ts/src/api/generated/schema.d.ts"
+  }
+}

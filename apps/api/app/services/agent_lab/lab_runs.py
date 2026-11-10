@@ -127,9 +127,9 @@ async def subscribe_todo_to_run(todo: TodoDocument, run_id: str) -> TriggerSubsc
     if stored is None:
         raise AppError(
             message="the todo could not be subscribed to its sandbox run",
-            why=f"todo {todo.id} is gone, or its watches kept changing while subscribing",
+            why=f"todo {todo.id} is gone",
             fix="check the tracked todo still exists, then launch the run again",
-            status_code=409,
+            status_code=404,
             code="todo_subscription_not_stored",
         )
     return stored[0]

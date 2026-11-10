@@ -81,7 +81,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
       <div className="flex flex-shrink-0 items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           {icon}
-          <h3 className="font-medium text-zinc-300">{title}</h3>
+          <h2 className="font-medium text-zinc-300">{title}</h2>
           {onRefresh && isConnected && (
             <Tooltip content="Refresh" showArrow placement="bottom">
               <Button

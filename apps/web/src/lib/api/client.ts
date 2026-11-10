@@ -1,7 +1,7 @@
 import { getUserTimezone } from "@shared/api/timezone";
 import type { AxiosError, InternalAxiosRequestConfig } from "axios";
 import axios from "axios";
-import { analyticsRequestHeaders } from "@/lib/analytics";
+import { analyticsRequestHeaders } from "@/lib/analytics-headers";
 import { desktopClientHeaders } from "@/lib/electron/api";
 import { toApiOrigin } from "./origin";
 

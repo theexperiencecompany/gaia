@@ -45,8 +45,14 @@ from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_H
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
-from app.models.chat_models import MessageKind, ToolDataEntry
+from app.models.chat_models import (
+    ConversationSource,
+    MessageKind,
+    SourceCategory,
+    ToolDataEntry,
+)
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.presence_models import PresenceSnapshot
 from app.models.stream_events import (
     ConversationDescriptionFrame,
     ConversationInitializedFrame,
@@ -60,6 +66,7 @@ from app.services.analytics_service import capture
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import ChunkAccumulators, extract_response_text, process_data_chunk
 from app.services.chat.persistence import (
+    BotReply,
     initialize_new_conversation,
     save_bot_reply,
     save_user_message,
@@ -72,6 +79,7 @@ from app.services.chat.state import (
     recover_stream_state,
 )
 from app.services.chat.workspace import schedule_last_active_touch
+from app.services.delivery.presence import record_turn_presence
 from app.services.files import FileService
 from app.services.hil.conversational import resolve_pending_from_message
 from app.services.latency_metrics import (
@@ -85,6 +93,7 @@ from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.message_breaks import strip_partial_message_break
+from app.utils.presence_utils import is_presence_surface
 from app.utils.stream_utils import (
     REASONING_STEP,
     ReasoningEvent,
@@ -92,7 +101,7 @@ from app.utils.stream_utils import (
     reconstruct_subagent_groups,
 )
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.attribution import Actor
+from shared.py.analytics.catalog.attribution import Actor, Trigger
 from shared.py.analytics.catalog.chat import (
     ChatMessageCancelled,
     ChatMessageCompleted,
@@ -133,6 +142,19 @@ async def run_chat_stream_background(
             source=source,
             t0_perf=t0_perf,
         )
+
+
+async def _capture_presence(user_id: str, source: str | None) -> PresenceSnapshot | None:
+    """Stamp a turn the user sent on its surface and return where they were before it; agent-driven turns record nothing."""
+    attribution = current_analytics_context().attribution
+    if attribution.actor is not Actor.USER or attribution.trigger is not Trigger.INTERACTIVE:
+        return None
+    if not is_presence_surface(attribution.surface):
+        return None
+    surface = ConversationSource.coerce(source)
+    if surface is None or SourceCategory.from_source(surface) is SourceCategory.BG:
+        return None
+    return await record_turn_presence(user_id, surface)
 
 
 class _ErrorOrReasoningChunk(BaseModel):
@@ -189,7 +211,10 @@ class _TurnContext:
     conversation_id: str
     stream_id: str
     source: str | None
+    presence: PresenceSnapshot | None
     usage_callback: UsageMetadataCallbackHandler
+    #: The tracked todo this conversation is the chat of, when it is one.
+    todo_id: str | None
 
 
 class _StreamState:
@@ -297,6 +322,7 @@ async def _run_chat_stream(
 
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
+        presence = await _capture_presence(user_id, source)
 
         await _publish_init_chunk(
             body,
@@ -319,7 +345,7 @@ async def _run_chat_stream(
         if user_id:
             # Keeps the session alive for idle-prune and bridges the executor's
             # artifact events to this stream. Starts before upload seeding since
-            # pubsub has no replay — must be live before seed_uploads publishes.
+            # pubsub has no replay — must be live before attach_uploads publishes.
             schedule_last_active_touch(user_id, conversation_id)
             artifact_task = asyncio.create_task(
                 forward_artifact_events(
@@ -332,12 +358,11 @@ async def _run_chat_stream(
                 )
             )
 
-        # For new conversations, files were uploaded without a conversation_id
-        # so they only landed in Cloudinary — not JuiceFS. Seed them now, before
-        # the agent runs, so they're on disk at the expected user-uploaded/ path.
-        if is_new_conversation and user_id and body.fileData:
+        # A file can arrive before its conversation exists (new chat) or from a
+        # client that omitted conversation_id. Attach it before the agent runs.
+        if user_id and body.uploaded_file_ids:
             await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
-            await FileService.seed_uploads(body.fileData, user_id, conversation_id)
+            await FileService.attach_uploads(body.uploaded_file_ids, user_id, conversation_id)
 
         # Starts only after the conversation row exists (_publish_init_chunk);
         # starting earlier races the insert and the $set description update can
@@ -352,7 +377,12 @@ async def _run_chat_stream(
                 conversation_id=conversation_id,
                 stream_id=stream_id,
                 source=source,
+                presence=presence,
                 usage_callback=usage_callback,
+                # A new conversation is never a todo's chat: that is created only for its todo.
+                todo_id=None
+                if is_new_conversation
+                else await conversation_repository.get_todo_id(conversation_id, user_id=user_id),
             ),
             description_task,
             state,
@@ -368,30 +398,15 @@ async def _run_chat_stream(
         # so its array position is correct even if a concurrent stream finishes
         # while we wait for the executor below.
         await _persist_turn(stream_id, body, user, conversation_id, state)
+        # Before the executor wait: a reaction acknowledging a hand-off lands now,
+        # not beside the result the work produces minutes later.
+        await _publish_emoji_ack(stream_id, state)
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         # A stop pressed during the executor wait arrives after the consume
         # loop's check: re-read it here or the turn closes as completed.
         await _note_cancellation(stream_id, state)
 
         await _finalize_description(description_task, stream_id)
-        # Unmutated: resolve_turn_emoji_ack sets kind and target together, so and/or agree.
-        if (
-            state.message_kind is MessageKind.EMOJI_ACK  # pragma: no mutate
-            and state.reacts_to_message_id
-        ):
-            # The driver held the directive's text back, so this frame is all the
-            # client learns of the turn: attach the emoji as a reaction badge.
-            await stream_manager.publish_chunk(
-                stream_id,
-                format_sse_data(
-                    EmojiAckFrame(
-                        emoji_ack=EmojiAckPayload(
-                            emoji=state.complete_message,
-                            reacts_to_message_id=state.reacts_to_message_id,
-                        )
-                    ).model_dump()
-                ),
-            )
         await stream_manager.publish_chunk(
             stream_id,
             format_sse_data(
@@ -490,7 +505,7 @@ async def _resolve_pending_approval_turn(
     """Resolve a pending HIL approval from a bot user's free-text chat reply.
 
     Classifies "yes"/"no"/"do X instead" into approve/deny; runs only for button-less bot
-    channels (WhatsApp/Telegram/Slack/Discord) since UI clients resolve via real buttons and
+    channels (WhatsApp/Telegram/Slack/Discord/iMessage) since UI clients resolve via real buttons and
     guessing risks misreading a destructive action. Returns True only when a bot reply
     resolved it — the turn is then fully handled here and the caller must not run the agent.
     """
@@ -689,7 +704,12 @@ async def _consume_agent_stream(
         request=body,
         user=user,
         conversation_id=turn.conversation_id,
-        options=AgentRunOptions(usage_metadata_callback=turn.usage_callback, source=turn.source),
+        options=AgentRunOptions(
+            usage_metadata_callback=turn.usage_callback,
+            source=turn.source,
+            presence=turn.presence,
+            active_todo_id=turn.todo_id,
+        ),
         ids=StreamMessageIds(
             stream_id=stream_id,
             user_message_id=state.user_message_id,
@@ -929,6 +949,27 @@ async def _handle_stream_error(
     return user_error
 
 
+async def _publish_emoji_ack(stream_id: str, state: _StreamState) -> None:
+    """Attach the turn's emoji ack as a reaction badge; the frame is all the client learns of it."""
+    # Unmutated: resolve_turn_emoji_ack sets kind and target together, so and/or agree.
+    if (
+        state.message_kind is not MessageKind.EMOJI_ACK  # pragma: no mutate
+        or not state.reacts_to_message_id
+    ):
+        return
+    await stream_manager.publish_chunk(
+        stream_id,
+        format_sse_data(
+            EmojiAckFrame(
+                emoji_ack=EmojiAckPayload(
+                    emoji=state.complete_message,
+                    reacts_to_message_id=state.reacts_to_message_id,
+                )
+            ).model_dump()
+        ),
+    )
+
+
 def resolve_turn_emoji_ack(
     complete_message: str, user_message_id: str
 ) -> tuple[str, MessageKind, str | None]:
@@ -1006,12 +1047,12 @@ async def _persist_turn(
             body=body,
             user=user,
             conversation_id=conversation_id,
-            complete_message="",
-            tool_data={},
-            metadata={},
-            bot_message_id=state.bot_message_id,
-            bot_timestamp=state.turn_completed_at,
-            error=TURN_REPLY_NOT_SAVED,
+            reply=BotReply(
+                complete_message="",
+                bot_message_id=state.bot_message_id,
+                bot_timestamp=state.turn_completed_at,
+                error=TURN_REPLY_NOT_SAVED,
+            ),
         )
     state.saved = True
 
@@ -1046,15 +1087,18 @@ async def _save_reply(
         body=body,
         user=user,
         conversation_id=conversation_id,
-        complete_message=state.complete_message,
-        tool_data=state.tool_data,
-        metadata=state.usage_metadata,
-        bot_message_id=state.bot_message_id,
-        bot_timestamp=state.turn_completed_at,
-        error=state.error or None,
-        follow_up_actions=state.follow_up_actions or None,
-        kind=state.message_kind,
-        reacts_to_message_id=state.reacts_to_message_id,
+        reply=BotReply(
+            complete_message=state.complete_message,
+            bot_message_id=state.bot_message_id,
+            tool_data=state.tool_data,
+            metadata=state.usage_metadata,
+            bot_timestamp=state.turn_completed_at,
+            error=state.error or None,
+            follow_up_actions=state.follow_up_actions or None,
+            kind=state.message_kind,
+            reacts_to_message_id=state.reacts_to_message_id,
+            stopped=state.is_cancelled,
+        ),
     )
     if state.message_kind is MessageKind.EMOJI_ACK:
         capture(UserId(user.user_id), ChatTurnReacted(emoji=state.complete_message))

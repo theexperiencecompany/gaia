@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { useState } from "react";
+import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 
 interface CopyLinkButtonProps {
@@ -15,7 +16,7 @@ export default function CopyLinkButton({
 
   const handleCopyLink = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      await copyText(window.location.href);
       setCopied(true);
       toast.success("Link copied to clipboard!");
 

@@ -21,7 +21,7 @@ import pytest
 
 from app.browser_host import host as host_mod, proxy, storage
 from app.browser_host.cdp_mux import CdpCommandError, CdpMux, sinks_for
-from app.browser_host.engine import Engine
+from app.browser_host.engine import ChromiumBinary, Engine
 from app.browser_host.host import BrowserHost, HostSession, LaunchEngine, MemoryProbe
 from app.constants.browser import BrowserEngine, EngineExit
 
@@ -383,8 +383,15 @@ class FakeEngine(FakeMux):
 class StubEngine:
     """A launched engine the host can drive without a process: alive until told otherwise."""
 
-    def __init__(self, *, rss_mb: float = 100.0, kind: BrowserEngine = BrowserEngine.OBSCURA):
+    def __init__(
+        self,
+        *,
+        rss_mb: float = 100.0,
+        kind: BrowserEngine = BrowserEngine.OBSCURA,
+        fortress: bool = False,
+    ):
         self.kind = kind
+        self.fortress = fortress
         self.root_ws_url = FAKE_ROOT_WS_URL
         self.base_rss_mb = 0.0
         self.sampler = MagicMock(sample=MagicMock(return_value=(512.0, 10.0)))
@@ -433,7 +440,7 @@ class Launcher:
         self._changed = asyncio.Condition()
 
     async def __call__(
-        self, kind: BrowserEngine, chromium_path: str | None, user_agent: str | None
+        self, kind: BrowserEngine, chromium: ChromiumBinary | None, user_agent: str | None
     ) -> tuple[Engine, str | None]:
         stub = self._queue.pop(0)
         self.launched.append(stub)
@@ -459,10 +466,14 @@ def make_host(
 
     Every connection dials mux when one is given, else a FakeEngine of its own.
     """
+
+    def _connect(url: str) -> CdpMux:
+        return cast(CdpMux, mux.build(url) if mux is not None else FakeEngine())
+
     host = BrowserHost(
         on_fatal=on_fatal if on_fatal is not None else MagicMock(),
         launch=launch if launch is not None else Launcher(),
-        connect=mux.build if mux is not None else (lambda _url: cast(CdpMux, FakeEngine())),
+        connect=_connect,
         memory=memory if memory is not None else AdmissionProbe(),
     )
     if launch is None:

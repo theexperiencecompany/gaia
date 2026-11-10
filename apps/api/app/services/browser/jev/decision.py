@@ -377,6 +377,9 @@ async def decide(client: JevDecider, situation: Situation) -> Decision:
     left_out = page.omitted_actions + space.left_out
     if left_out:
         state["elements_left_out"] = left_out
+    if page.disabled:
+        # Shown but not yet usable (an Authorize button a page enables after a moment): WAIT, not BLOCKED.
+        state["disabled_elements"] = list(page.disabled)
     evaluation = await _ask(client, state, questions, situation.mask)
     operation = JevOperation(_validate_choice(evaluation, _OPERATION_QUESTION, set(operations)))
     chosen: PageAction | None = None

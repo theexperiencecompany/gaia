@@ -19,6 +19,7 @@ import {
 } from "./components/layout";
 import { avatarDef, progressDef } from "./components/primitives";
 import { timelineDef } from "./components/timeline";
+import "./openui.css";
 
 /**
  * Merged OpenUI component library.

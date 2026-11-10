@@ -24,6 +24,7 @@ import { useFileText } from "@/features/chat/hooks/useFileText";
 import { getExtension } from "@/features/chat/utils/fileExtension";
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
+import { copyWithFeedback } from "@/lib/clipboard";
 import { useCloseRightSidebar } from "@/stores/layoutStore";
 
 export interface FileViewerPanelProps {
@@ -63,13 +64,9 @@ export default function FileViewerPanel({
   const handleCopy = useCallback(async () => {
     if (content === null) return;
 
-    try {
-      await navigator.clipboard.writeText(content);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // no-op
-    }
+    if (!(await copyWithFeedback(content))) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
   }, [content]);
 
   const handleDownload = useCallback(() => {

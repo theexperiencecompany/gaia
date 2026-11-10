@@ -8,8 +8,7 @@ from shared.py.analytics.catalog.properties import Identifier
 __all__ = [
     "BotAudioTranscribed",
     "BotAuthInitiated",
-    "BotChatCompleted",
-    "BotChatStarted",
+    "BotChatOpened",
     "BotCommandExecuted",
     "BotError",
     "BotFileDelivered",
@@ -44,27 +43,6 @@ class BotCommandExecuted(BotEvent):
     success: bool
     # The error class name only: raw messages can carry paths or echoed tokens.
     error_type: Identifier | None = None
-
-
-class BotChatStarted(BotEvent):
-    """A bot began streaming a chat turn for a platform user."""
-
-    event: ClassVar[str] = "bot:chat_started"
-    budget_per_user_day: ClassVar[int] = 50
-
-    message_length: int
-    streaming_enabled: bool
-
-
-class BotChatCompleted(BotEvent):
-    """A bot chat turn finished without an auth or generic error."""
-
-    event: ClassVar[str] = "bot:chat_completed"
-    budget_per_user_day: ClassVar[int] = 50
-
-    duration_ms: int
-    response_length: int
-    streaming_enabled: bool
 
 
 class BotAuthInitiated(BotEvent):
@@ -119,6 +97,15 @@ class BotReactionDelivered(BotEvent):
     surface: Literal["live", "outbound"]
     delivery: Literal["native", "fallback_text"]
     reason: Identifier | None = None
+
+
+class BotChatOpened(ServerEvent):
+    """A user opened a linked bot's DM chat from the web settings page."""
+
+    event: ClassVar[str] = "bot:chat_opened"
+    budget_per_user_day: ClassVar[int] = 50
+
+    platform: Identifier
 
 
 class BotSessionReset(ServerEvent):

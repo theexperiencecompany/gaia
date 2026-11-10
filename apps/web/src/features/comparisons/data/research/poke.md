@@ -1,6 +1,9 @@
 # Poke — Competitive Research
-Last updated: 2026-05-05
+Last updated: 2026-10-18
 Sources:
+- https://poke.com
+- https://appleinsider.com/articles/26/06/04/first-ai-agent-for-messages-business-chat-approved-by-apple
+- https://startupfortune.com/cognition-buys-poke-to-plant-its-ai-agent-inside-your-text-messages/
 - https://techcrunch.com/2026/04/08/poke-makes-ai-agents-as-easy-as-sending-a-text/
 - https://aitoolinsight.com/poke-ai-agent-text-message/
 - https://poke.com/faq
@@ -11,6 +14,8 @@ Sources:
 - https://www.webwire.com/ViewPressRel.asp?aId=343533
 
 ## Product Overview
+Update 2026-10-18: Apple approved Poke as the first third-party AI agent on Messages for Business (June 2026), and Cognition acquired The Interaction Company in July 2026 (terms undisclosed). poke.com now names Messages, WhatsApp and Telegram as its channels, lists Gmail, Google Calendar, Outlook, Notion, Asana, Todoist, Linear, GitHub, Fitbit and Oura among integrations, and offers custom recipes through Poke Kitchen.
+
 Poke (by The Interaction Company) is an AI personal assistant that lives entirely inside iMessage, SMS, and Telegram — no app to download, no account setup beyond a phone number. It launched publicly in March 2026 after raising $25M total ($15M seed from General Catalyst + $10M follow-on) at a $300M post-money valuation. The core concept: make AI agents as approachable as texting a friend. Poke monitors your inbox and calendar, sends proactive nudges, and executes pre-built automations ("recipes") on behalf of the user.
 
 ## Pricing

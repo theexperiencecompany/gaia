@@ -4,6 +4,7 @@ A message that bypassed the comms graph must still land in the thread the next
 turn reads: the comms graph's checkpoint, written as the tools node.
 """
 
+from contextlib import AbstractContextManager
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -40,7 +41,7 @@ def _fake_comms_graph(*, interrupted: bool = False) -> MagicMock:
     return graph
 
 
-def _patch_graph(graph: MagicMock) -> MagicMock:
+def _patch_graph(graph: MagicMock) -> AbstractContextManager[AsyncMock]:
     return patch(f"{MODULE}.GraphManager.get_graph", AsyncMock(return_value=graph))
 
 

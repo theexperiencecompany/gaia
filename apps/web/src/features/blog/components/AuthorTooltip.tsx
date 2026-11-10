@@ -23,7 +23,14 @@ export function AuthorTooltip({
             src={author.avatar}
             size="sm"
             className="h-8 w-8"
+            imgProps={{
+              width: 32,
+              height: 32,
+              loading: "lazy",
+              decoding: "async",
+            }}
             name={author.name}
+            alt=""
           />
           <div className="flex flex-col">
             <span className="text-medium">{author.name}</span>
@@ -63,7 +70,14 @@ export function AuthorTooltip({
         src={author.avatar}
         size={avatarSize}
         className={avatarClassName}
+        imgProps={{
+          width: 32,
+          height: 32,
+          loading: "lazy",
+          decoding: "async",
+        }}
         name={author.name}
+        alt={author.role ? `${author.name}, ${author.role}` : author.name}
       />
     </Tooltip>
   );

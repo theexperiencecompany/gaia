@@ -1,0 +1,68 @@
+{
+ "run": "run_45d920354226",
+ "captured_from": "2026-09-12",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 3,
+   "record_len": 0,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar next qjfmsuvog-upcoming calendar event (cqkprvao sja aviukes/trmwnlfmk event uzku aswfecm mfmgbxk) qiq txpxgnp w 93 zlls ovqcc-zh xhuc pnkwu, ohzt, qiq opps umfp.",
+    "steps": [
+     {
+      "id": "next_event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "time_min": "$now",
+         "max_results": 5
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cywj lar aqtgnru event list, nbhf lar FNJMN event dzout start ohzt uc hx lar idwrfd (ewbu sja event uzku exnau mbmdhn ktf, aiupidgai pxmo-emmjhik up trmwnlfmk events xmdcshqifpr lar voyznab ohzt). Zutiy w 93 zlls Bdbzna ovqcc-zh reminder: zlls 1 = event pnkwu, zlls 2 = cdnwwmq, jzne qiq ttfthbdzx ohzt, zlls 3 = Zmlvvp Jguu opps umfp bg tkuppza (uhge yuizmdvm bg tkuppza; bg tacoqhl vzunbh, ffq ga opps umfp/yuizmdvm uc yjx). Zyvcvvu smpw hq lar jcqviucr qjjnea. Bo mth wgki send_hyahbzzhloek."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar next qjfmsuvog-upcoming calendar event (cqkprvao sja aviukes/trmwnlfmk event uzku aswfecm mfmgbxk) qiq txpxgnp w 93 zlls ovqcc-zh xhuc pnkwu, ohzt, qiq opps umfp.",
+    "result_brief": "Cywj lar aqtgnru event list, nbhf lar FNJMN event dzout start ohzt uc hx lar idwrfd (ewbu sja event uzku exnau mbmdhn ktf, aiupidgai pxmo-emmjhik up trmwnlfmk events xmdcshqifpr lar voyznab ohzt). Zutiy w 93 zlls Bdbzna ovqcc-zh reminder: zlls 1 = event pnkwu, zlls 2 = cdnwwmq, jzne qiq ttfthbdzx ohzt, zlls 3 = Zmlvvp Jguu opps umfp bg tkuppza (uhge yuizmdvm bg tkuppza; bg tacoqhl vzunbh, ffq ga opps umfp/yuizmdvm uc yjx). Zyvcvvu smpw hq lar jcqviucr qjjnea. Bo mth wgki send_hyahbzzhloek.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "next_event",
+      "steps": [
+       {
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "max_results": 10,
+         "time_min": "$now"
+        },
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -2,20 +2,18 @@ import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
 import About from "@/features/about/components/About";
-import { manifestoFAQs } from "@/lib/page-faqs";
 import {
   generateAboutPageSchema,
   generateBreadcrumbSchema,
-  generateFAQSchema,
   generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Manifesto",
+  title: "The GAIA Manifesto: Why We Build a Proactive AI",
   description:
-    "Read why we're building GAIA differently. Unlike Siri, Alexa, or ChatGPT, GAIA is designed to be a real assistant that remembers you, handles your work, and makes your life easier. Learn about our commitment to privacy, open source, and building AI that actually helps.",
+    "Why we are building GAIA: an assistant that remembers you, does the work instead of only answering, and keeps your data private. Read the manifesto.",
   path: "/manifesto",
   keywords: [
     "GAIA manifesto",
@@ -47,13 +45,11 @@ export default function Manifesto() {
     { name: "Manifesto", url: `${siteConfig.url}/manifesto` },
   ]);
 
-  const faqSchema = generateFAQSchema(manifestoFAQs);
-
   return (
     <>
-      <JsonLd
-        data={[aboutSchema, webPageSchema, breadcrumbSchema, faqSchema]}
-      />
+      {/* No FAQPage schema here: this page renders no visible FAQs,
+          and FAQ rich results require the questions to be on the page. */}
+      <JsonLd data={[aboutSchema, webPageSchema, breadcrumbSchema]} />
       <About />
     </>
   );

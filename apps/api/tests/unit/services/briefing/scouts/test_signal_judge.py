@@ -139,13 +139,13 @@ class TestJudge:
             _verdicts((True, SignalImportance.HIGH), (True, SignalImportance.HIGH)),
             SignalVerdicts(
                 verdicts=[
-                    SignalVerdict(number=n, keep=True, importance="normal", why="x")
+                    SignalVerdict(number=n, keep=True, importance=SignalImportance.NORMAL, why="x")
                     for n in (1, 1, 2)
                 ]
             ),
             SignalVerdicts(
                 verdicts=[
-                    SignalVerdict(number=n, keep=True, importance="normal", why="x")
+                    SignalVerdict(number=n, keep=True, importance=SignalImportance.NORMAL, why="x")
                     for n in (1, 2, 4)
                 ]
             ),

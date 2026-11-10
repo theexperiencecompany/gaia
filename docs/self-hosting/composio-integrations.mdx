@@ -1,0 +1,92 @@
+---
+title: "Connect integrations (Composio)"
+sidebarTitle: "Connect integrations"
+description: "Use your own Composio project so Gmail, GitHub and any other app Composio supports connect on your instance"
+icon: "plug"
+---
+
+Connect Gmail, Calendar, GitHub, Slack, Notion and 1,600+ more apps through your own [Composio](https://composio.dev) project.
+
+## 1. Create a Composio project and save its key
+
+1. Sign up at [app.composio.dev](https://app.composio.dev) and create a project.
+2. Copy the project's API key.
+3. As the admin, open **Settings → Integrations setup** and paste it under **Composio key**.
+
+You can also paste it during first-run setup, in the **Tool keys** box.
+
+## 2. Set up the built-in integrations
+
+If your Composio project has auth configs (Composio's record of how users sign in to an app), GAIA fills in a match for each integration. Check them and click **Save**.
+
+For an empty integration:
+
+1. Click **Set up automatically**.
+2. Fill in any fields it asks for. Most apps ask for nothing.
+3. Click **Set up**.
+
+No callback URL is needed in Composio.
+
+<Accordion title="Google apps with your own app name">
+  Composio's Google sign-in is fine for trying things out. To show your own app name on Google's consent screen, create an OAuth client in the [Google Cloud console](https://console.cloud.google.com/apis/credentials). Create the auth config with those credentials in the Composio dashboard, and pick it here. Use the redirect URI Composio shows in the form. Enable each Google API you use in the same project.
+</Accordion>
+
+## 3. Add any other app from the catalog
+
+Click **Browse Composio catalog** in **Settings → Integrations setup**. Admins also see it on the integrations page.
+
+<Frame caption="The Composio catalog. Each app is marked Built in, Available or No sign-in">
+  <img src="/images/self-hosting/composio-catalog.webp" width="560" alt="Composio catalog dialog with a Search 1,600+ apps box, an All categories filter, and a list of apps: Gmail, GitHub, Google Calendar, Notion, Google Sheets and Slack marked Built in, not set up, Composio marked No sign-in and Supabase marked Available, next to an empty pane reading Pick an app to see what enabling it takes" />
+</Frame>
+
+1. Search for the app and pick it.
+2. Follow what the catalog says:
+
+   | The catalog says | What you do |
+   | --- | --- |
+   | Users sign in through Composio's own app | Click **Enable** |
+   | Each user enters their own credentials | Click **Enable**. Users paste their key when they connect |
+   | Composio has no shared app | Create an OAuth app with that provider, paste its details, then click **Enable** |
+   | No sign-in needed | It can't be enabled yet |
+
+   <Frame caption="Attio picked from the catalog: its users sign in through Composio, so there is nothing to fill in">
+     <img src="/images/self-hosting/composio-catalog-detail.webp" width="560" alt="Composio catalog searched for Attio, with Attio marked Available and its detail pane: 105 tools in crm, a description, the note Users sign in through Composio's own app. Nothing to fill in, a note that catalog apps have no triggers, and an Enable button" />
+   </Frame>
+
+3. Click **Enable**.
+
+The app appears on everyone's integrations page right away. Users click **Connect**, and GAIA can use the app's tools in chat and workflows.
+
+<Accordion title="How catalog apps differ from built-in ones">
+  | | Built-in | From the catalog |
+  | --- | --- | --- |
+  | Triggers (start a workflow from the app's events) | Yes | No. Workflows can still use its tools |
+  | How GAIA learns the tools | Hand-written instructions | Each tool's own description |
+  | Approvals | For actions marked as needing one | Before any action that looks destructive |
+
+  Apps that need no sign-in, such as Hacker News, show **No sign-in** and can't be enabled yet.
+
+  To remove an app, open it in the catalog and click **Remove**. Its auth config and your users' connections stay in Composio, so delete them there.
+</Accordion>
+
+<Accordion title="Set auth configs from the environment">
+  If you manage configuration in files, set `COMPOSIO_KEY` and map built-in integration ids to auth config ids:
+
+  ```bash
+  COMPOSIO_KEY=your-composio-api-key
+  COMPOSIO_AUTH_CONFIG_OVERRIDES={"gmail": "ac_...", "googlecalendar": "ac_...", "github": "ac_..."}
+  ```
+
+  An id saved in **Settings → Integrations setup** wins. The instance refuses to start if this names an integration that doesn't use Composio, or gives an empty id. Catalog apps are configured in the app only.
+</Accordion>
+
+## Troubleshooting
+
+| Message | Cause | Fix |
+| --- | --- | --- |
+| "Composio rejected the saved API key" | The key is wrong or was revoked | Copy a fresh key from the Composio dashboard |
+| "needs ... to create its auth config" | Composio has no shared sign-in app for this app | Fill in the listed fields from an OAuth app you create with the provider |
+| "Composio refused to create an auth config" | Composio's reason is in the message, usually a wrong client id or secret | Check the OAuth app's details and try again |
+| An app still shows "Not set up on this instance" | It has no auth config yet | Click **Set up automatically** next to it in **Settings → Integrations setup** |
+
+Want to connect MCP servers instead? See [MCP servers](/self-hosting/mcp-servers).

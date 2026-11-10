@@ -3,8 +3,8 @@
 
 The whole point of pinning is that "passed locally" means "passes CI". This
 check fails when the versions drift apart across the surfaces in SURFACES:
-both pre-commit configs, code-quality.yml, the local lane table
-(scripts/dev/verify-lanes.json), the root package.json quality scripts, the
+both pre-commit configs, ci.yml, the CI checks' nx targets
+(tools/ci/project.json), the root package.json quality scripts, the
 api mise tasks and taskipy scripts, the ignore-staleness guard's own ruff
 invocation, uv.lock, for biome pnpm-lock.yaml plus every biome.json schema, and
 for uv itself mise.toml, the setup-uv action and the app Dockerfiles.
@@ -12,7 +12,7 @@ for uv itself mise.toml, the setup-uv action and the app Dockerfiles.
 Node is the exception to the EXPECTED table, because it is derived rather than
 repeated: ``.node-version`` is the single declaration, mise reads it (via
 ``idiomatic_version_file_enable_tools``), actions/setup-node reads it (via
-``node-version-file``) and the Dagger image reads it at run time. The only
+``node-version-file``). The only
 permitted mirror is one ``ARG NODE_VERSION`` default per Dockerfile, since
 Docker cannot read a file in a FROM line. Any other hardcoded node version in
 the scanned surfaces is a failure.
@@ -35,6 +35,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import tomllib
 
 from _common import Violation, report_rule
 
@@ -48,36 +49,30 @@ DOC = "tools/lints/README.md#tool-pins"
 _HERE = Path(__file__).resolve().parent
 REPO_ROOT = _HERE.parents[1]
 
-PRE_COMMIT = REPO_ROOT / "apps/api/.pre-commit-config.yaml"
-ROOT_PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
-CODE_QUALITY = REPO_ROOT / ".github/workflows/code-quality.yml"
-VERIFY_LANES = REPO_ROOT / "scripts/dev/verify-lanes.json"
 ROOT_PACKAGE_JSON = REPO_ROOT / "package.json"
 ROOT_MISE = REPO_ROOT / "mise.toml"
-API_MISE = REPO_ROOT / "apps/api/mise.toml"
-API_PYPROJECT = REPO_ROOT / "apps/api/pyproject.toml"
 PNPM_LOCK = REPO_ROOT / "pnpm-lock.yaml"
-IGNORE_STALENESS = REPO_ROOT / "tools/lints/check_ignore_staleness.py"
-UV_LOCK = REPO_ROOT / "uv.lock"
 SETUP_UV = REPO_ROOT / ".github/actions/setup-uv/action.yml"
+ACTION_SURFACES = (
+    *sorted((REPO_ROOT / ".github/workflows").glob("*.yml")),
+    *sorted((REPO_ROOT / ".github/actions").glob("*/action.yml")),
+)
+# A remote action or reusable workflow pinned by a full commit SHA; a local one
+# (./…) and a digest-pinned docker:// image need no pin of their own.
+_USES = re.compile(r"^\s*(?:-\s+)?uses:\s*(\S+)")
+_PINNED_USES = re.compile(r"^(?:\./|docker://\S+@sha256:[0-9a-f]{64}$|[^@\s]+@[0-9a-f]{40}$)")
 # Node is derived, not repeated: .node-version is the single declaration and
 # every consumer reads it. These are the surfaces that must reference the file
 # rather than restate the version.
 NODE_VERSION_FILE = REPO_ROOT / ".node-version"
-NODE_FILE_REFERENCE_SURFACES = (
-    REPO_ROOT / ".github/actions/setup-node-pnpm/action.yml",
-    REPO_ROOT / ".github/workflows/publish-cli.yml",
-    REPO_ROOT / ".github/workflows/desktop-release.yml",
-)
-# Docker cannot read a file in a FROM line, and the Dagger module would need its
-# sync container builders turned async to read one. Both therefore carry a
-# single mirrored literal, and the guard ties each one back to .node-version so
-# a stale mirror fails CI instead of shipping.
+NODE_FILE_REFERENCE_SURFACES = (REPO_ROOT / ".github/actions/setup-node-pnpm/action.yml",)
+# Docker cannot read a file in a FROM line, so each Dockerfile carries a single
+# mirrored literal, and the guard ties each one back to .node-version so a stale
+# mirror fails CI instead of shipping.
 NODE_MIRRORS = (
     (REPO_ROOT / "infra/docker/ci-base.Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/web/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
-    (REPO_ROOT / ".dagger/src/gaia_ci/main.py", r'\.from_\("node:(\d+\.\d+\.\d+)-'),
 )
 # Every Dockerfile that must take its tag from the ARG rather than restating it.
 NODE_DOCKERFILES = (
@@ -94,7 +89,6 @@ NODE_LITERAL_SCAN = (
     ".github/actions/*/action.yml",
     "**/Dockerfile",
     "**/*.Dockerfile",
-    ".dagger/src/**/*.py",
 )
 _NODE_SKIP = ("node_modules", ".venv", ".git", ".nx", ".next", "dist")
 UV_DOCKERFILES = (
@@ -109,14 +103,8 @@ BIOME_CONFIGS = (
 
 #: tool -> exact version every surface must agree on.
 EXPECTED = {
-    "ruff": "0.14.13",
-    "mypy": "1.19.1",
-    "bandit": "1.9.4",
-    "pip-audit": "2.10.1",
-    "interrogate": "1.7.0",
-    "xenon": "0.9.3",
-    "biome": "2.5.7",
-    "uv": "0.10.6",
+    "biome": "2.6.2",
+    "uv": "0.12.23",
 }
 
 # Where each expectation must literally appear. Values are the module
@@ -124,25 +112,6 @@ EXPECTED = {
 # at call time (not import time) so the guard always reads the constants it
 # reports against — and so the tests can monkeypatch them onto fixture files.
 SURFACES = {
-    # `uv run ruff` surfaces (nx targets, the Claude hook, package.json) are
-    # pinned by uv.lock; the uvx ones name the version themselves.
-    # ROOT_MISE holds the whole-repo `lint:py` tasks, which run the python-ruff
-    # lane's command verbatim. Without it here the guard would pass while those
-    # tasks had silently drifted to a different ruff than the lane they mirror.
-    "ruff": (
-        "PRE_COMMIT",
-        "ROOT_PRE_COMMIT",
-        "CODE_QUALITY",
-        "IGNORE_STALENESS",
-        "UV_LOCK",
-        "ROOT_MISE",
-    ),
-    # The api mypy hook runs `uv run mypy`, so the lockfile IS the pin.
-    "mypy": ("UV_LOCK",),
-    "bandit": ("PRE_COMMIT", "CODE_QUALITY", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),
-    "pip-audit": ("PRE_COMMIT", "CODE_QUALITY", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),
-    "interrogate": ("CODE_QUALITY", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
-    "xenon": ("CODE_QUALITY", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
     # package.json keeps syncpack's caret policy; the version pnpm-lock.yaml
     # resolved is the pin, and every biome.json $schema must name that release.
     "biome": ("PNPM_LOCK", "BIOME_CONFIGS"),
@@ -164,12 +133,8 @@ def _pin_forms(tool: str, version: str) -> list[re.Pattern[str]]:
     """Every literal shape a pin of ``tool@version`` takes on some surface."""
     t, v = re.escape(tool), re.escape(version)
     forms = [
-        rf"\b{t}@{v}\b",  # uvx tool@version
-        rf"\b{t}=={v}\b",  # uvx tool==version
         rf'name = "{t}"\nversion = "{v}"',  # uv.lock [[package]] block
     ]
-    if tool == "ruff":
-        forms.append(rf"ruff-pre-commit\n\s*rev:\s*v{v}\b")  # the pre-commit rev
     if tool == "uv":
         forms.append(rf'^uv = "{v}"')  # mise.toml [tools]
         forms.append(rf'^\s*default: "{v}"')  # the setup-uv action's version input
@@ -210,7 +175,7 @@ def _missing(tool: str, version: str) -> list[Path]:
 # The node version used to be restated on nine surfaces across four commits and
 # they drifted. It is now declared once in .node-version, which mise reads
 # (via idiomatic_version_file_enable_tools), actions/setup-node reads (via
-# node-version-file) and the Dagger image reads at run time. These checks turn a
+# node-version-file). These checks turn a
 # second declaration into a build failure instead of a bad afternoon later.
 _NODE_FILE_FORM = re.compile(r"^\d+\.\d+\.\d+$")
 _NODE_FILE_REF = re.compile(r"""node-version-file:\s*['"]?\.node-version""")
@@ -246,11 +211,6 @@ _PNPM_MIRRORS = (
     ),
     (REPO_ROOT / "apps/web/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
-    (REPO_ROOT / ".dagger/src/gaia_ci/main.py", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
-    (
-        REPO_ROOT / ".github/actions/setup-node-pnpm/action.yml",
-        r'PNPM_VERSION:\s*"(\d+\.\d+\.\d+)"',
-    ),
 )
 _PNPM_ACTION_SETUP = "pnpm/action-setup"
 
@@ -497,13 +457,17 @@ def _node_violations() -> list[Violation]:
 
 # ── Python and Rust: the same single-declaration shape ───────────────────────
 # Python is declared in .python-version (uv and mise both read it) and mirrored
-# in the two images. Rust has no idiomatic file, so mise.toml declares it and
+# in the three images. Rust has no idiomatic file, so mise.toml declares it and
 # the api image mirrors it. apps/api/.python-version used to pin 3.12.11 while
 # the root said 3.12.15, which is exactly the drift the stray scan catches.
 PYTHON_VERSION_FILE = REPO_ROOT / ".python-version"
 PYTHON_MIRRORS = (
     (REPO_ROOT / "apps/api/Dockerfile", r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)"),
     (REPO_ROOT / "apps/voice-agent/Dockerfile", r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)"),
+    (
+        REPO_ROOT / "apps/api/app/services/sandbox/local_sandbox.Dockerfile",
+        r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)",
+    ),
 )
 RUST_MIRRORS = ((REPO_ROOT / "apps/api/Dockerfile", r"ARG\s+RUST_VERSION=(\d+\.\d+\.\d+)"),)
 PYTHON_FROM = re.compile(r"^FROM\s+python:\$\{PYTHON_VERSION\}", re.MULTILINE)
@@ -726,6 +690,71 @@ def _rust_violations() -> list[Violation]:
     return out + _stray_violations("rust", _RUST_LITERALS, {ROOT_MISE.resolve()})
 
 
+def _unpinned_action_violations() -> list[Violation]:
+    out = []
+    for surface in ACTION_SURFACES:
+        for n, line in enumerate(surface.read_text(encoding="utf-8").splitlines(), 1):
+            match = _USES.match(line)
+            if match and not _PINNED_USES.match(match.group(1)):
+                out.append(
+                    Violation(
+                        path=surface,
+                        line=n,
+                        detail=f"{match.group(1)} is pinned by a tag, which can move",
+                        fix="pin the full commit SHA with the tag as a trailing comment (`@<sha> # vX.Y.Z`)",
+                    )
+                )
+    return out
+
+
+ROOT_PYPROJECT = REPO_ROOT / "pyproject.toml"
+# Where a Python tool gets invoked: a `uvx tool@x` there would be a second pin.
+UVX_SURFACES = (
+    *ACTION_SURFACES,
+    REPO_ROOT / ".pre-commit-config.yaml",
+    REPO_ROOT / "apps/api/.pre-commit-config.yaml",
+    ROOT_MISE,
+    REPO_ROOT / "apps/api/mise.toml",
+    REPO_ROOT / "apps/api/pyproject.toml",
+    ROOT_PACKAGE_JSON,
+    REPO_ROOT / "tools/ci/project.json",
+    *sorted((REPO_ROOT / "scripts/ci").glob("*.sh")),
+    *sorted(_HERE.glob("check_*.py")),
+    *sorted(REPO_ROOT.glob("libs/shared/py/project.json")),
+)
+
+
+def _lint_group_tools() -> set[str]:
+    """Return the tools the root pyproject's lint group locks, by distribution and command name."""
+    group = tomllib.loads(ROOT_PYPROJECT.read_text(encoding="utf-8"))["dependency-groups"]["lint"]
+    names = {re.split(r"[=<>!~\[ ]", spec, maxsplit=1)[0] for spec in group}
+    return names | ({"lint-imports"} if "import-linter" in names else set())
+
+
+def _uvx_violations() -> list[Violation]:
+    """Flag a `uvx` run of a tool the lint group locks: it names its own version, a second pin."""
+    tools = "|".join(sorted(map(re.escape, _lint_group_tools())))
+    uvx = re.compile(rf"\buvx\s+(?:--\S+\s+)*?(?:--from\s+)?({tools})\b")
+    out = []
+    for surface in UVX_SURFACES:
+        for n, line in enumerate(
+            _executable_text(surface.read_text(encoding="utf-8")).splitlines(), 1
+        ):
+            if match := uvx.search(line):
+                out.append(
+                    Violation(
+                        path=surface,
+                        line=n,
+                        detail=f"runs {match.group(1)} through uvx, which pins its own version",
+                        fix="run it from the root pyproject's lint group: "
+                        "`uv run --frozen --no-build --isolated --only-group lint "
+                        + match.group(1)
+                        + " …`",
+                    )
+                )
+    return out
+
+
 def main(argv: list[str]) -> int:
     """Report every drift from EXPECTED or .node-version; return the exit code."""
     del argv
@@ -751,6 +780,8 @@ def main(argv: list[str]) -> int:
     violations.extend(_rust_violations())
     violations.extend(_stray_version_file_violations())
     violations.extend(_eas_cli_violations())
+    violations.extend(_unpinned_action_violations())
+    violations.extend(_uvx_violations())
 
     if violations:
         report_rule(RULE, WHY, DOC, violations)

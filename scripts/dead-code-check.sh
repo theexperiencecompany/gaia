@@ -7,6 +7,10 @@ set -euo pipefail
 #   bash scripts/dead-code-check.sh               # summary only (overview)
 #   bash scripts/dead-code-check.sh --verbose     # full details with file names
 #   bash scripts/dead-code-check.sh --strict      # exit 1 on findings (CI)
+#
+# DEAD_CODE_LANE names the lane the verdict reports under (default dead-code).
+# ci.yml runs this as one check of its lint-mixed job, which owns the verdicts
+# under lint-mixed/, so it passes lint-mixed/dead-code.
 
 STRICT=false
 VERBOSE=false
@@ -29,6 +33,7 @@ cd "$ROOT_DIR"
 # shellcheck source=scripts/ci/lib/log.sh
 source "$SCRIPT_DIR/ci/lib/log.sh"
 
+DEAD_CODE_LANE="${DEAD_CODE_LANE:-dead-code}"
 FOUND_ISSUES=false
 TOTAL_DEAD_CODE=0
 
@@ -129,7 +134,7 @@ run_vulture() {
     echo -e "  ${RED}${missing}.${RESET}" >&2
     echo -e "  Install it the way CI does: ${CYAN}uv tool install vulture${RESET}" >&2
     if $STRICT; then
-      ci_verdict --lane dead-code --status fail --summary "$missing" \
+      ci_verdict --lane "$DEAD_CODE_LANE" --status fail --summary "$missing" \
         --advice "uv tool install vulture"
     fi
     exit 1
@@ -334,7 +339,7 @@ Never widen the config to silence real dead code."
 
 echo "════════════════════════════════════════════════════════"
 if $FOUND_ISSUES && $STRICT; then
-  ci_verdict --lane dead-code --status fail \
+  ci_verdict --lane "$DEAD_CODE_LANE" --status fail \
     --summary "$TOTAL_DEAD_CODE unused item(s) across TypeScript (knip) and Python (vulture)" \
     ${VERDICT_ARGS[@]+"${VERDICT_ARGS[@]}"} \
     --advice "$DEAD_CODE_FIX"
@@ -356,7 +361,7 @@ else
   # a lane, and a verdict it wrote would be uploaded by whatever job lands on
   # this workspace next.
   if $STRICT; then
-    ci_verdict --lane dead-code --status pass \
+    ci_verdict --lane "$DEAD_CODE_LANE" --status pass \
       --summary "no unused TypeScript (knip) or Python (vulture) code"
   fi
   echo -e "${GREEN}No dead code found.${RESET}"
