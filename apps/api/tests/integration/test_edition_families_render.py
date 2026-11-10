@@ -126,9 +126,11 @@ _DAILY_PHRASES = (
     "Sequoia partner meeting",
     "Design review with Dhruv",
 )
-# The invoice once billed "1 Wednesday" and priced every overnight row at "0.00".
+# The invoice once billed "1 Wednesday", the receipt totalled "1 WEDNESDAY" and the
+# invoice priced every overnight row at "0.00".
 _INVENTED_AMOUNT = re.compile(
-    r"\b0\.00\b|\b1 (?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b"
+    r"\b0\.00\b|\b1 (?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b",
+    re.IGNORECASE,
 )
 _ZERO_FILLED = re.compile(r"(?<![\d:.,])0(?![\d:.,%h])|\bnull\b|\bundefined\b|\bNaN\b")
 
@@ -185,7 +187,7 @@ async def test_family_prints_the_brief_and_nothing_invented(
     if family == "weekly":
         assert "11:00 with sequoia" not in text.lower(), "weekly printed the daily headline"
     for fixture in _FIXTURE_STRINGS:
-        assert fixture not in text, f"{family} printed demo fixture text {fixture!r}"
+        assert fixture.lower() not in text.lower(), f"{family} printed fixture text {fixture!r}"
     if payload is _DAILY:
         flat = " ".join(text.split()).lower()
         missing = [p for p in _DAILY_PHRASES if p.lower() not in flat]
@@ -411,6 +413,17 @@ async def test_the_edition_is_addressed_to_the_user_by_name(family: str) -> None
     text = await _visible_text(_render_html(family, payload))
 
     assert "Maya" in text
+    assert "randeriya" not in text.lower(), f"{family} printed the founder's name"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(("name", "code"), [("Maya Okafor", "OKAFOR/M"), ("Maya", "MAYA")])
+async def test_the_boarding_pass_barcode_line_carries_the_users_passenger_code(
+    name: str, code: str
+) -> None:
+    text = await _visible_text(_render_html("boardingpass", {**_DAILY, "recipient_name": name}))
+
+    assert f"GA287 0602 {code}" in text
 
 
 # A brief with nothing on the calendar and nothing waiting on the reader: the

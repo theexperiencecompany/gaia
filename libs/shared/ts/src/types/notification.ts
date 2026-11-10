@@ -4,7 +4,6 @@ export type {
   BriefingFrequency,
   BriefingSchedule,
   ChannelPreferences,
-  QuietHours,
 } from "../api/generated";
 export enum NotificationStatus {
   PENDING = "pending",

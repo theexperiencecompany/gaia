@@ -120,7 +120,6 @@
 .t-receipt .vl { flex: 0 0 auto; white-space: nowrap; font-weight: 700; }
 .t-receipt .nt { color: var(--soft); padding-left: 2ch; margin: 0 0 10px; }
 .t-receipt .grp + .grp { margin-top: 4px; }
-.t-receipt .total { font-size: 20px; font-weight: 700; }
 .t-receipt .tender { text-align: center; letter-spacing: .14em; line-height: 1.7; margin-top: 12px; }
 .t-receipt .thanks { text-align: center; letter-spacing: .16em; margin: 4px 0 16px; }
 .t-receipt .bars { height: 64px; margin: 0 auto 8px; }
@@ -142,7 +141,7 @@
         parts.push(`<div class="grp"><p class="sec">STILL IN PROGRESS &mdash; GAIA</p>${c.running.map((e) => item(e.label, e.tag) + (e.note ? note(e.note) : "")).join("")}</div>`);
       const s = c.stats;
       const totals = s
-        ? `${RULE}${item("Done yesterday", s.done)}${s.you && s.gaia ? note(`You ${s.you} / GAIA ${s.gaia}`) : ""}${s.mail ? item("Emails handled", s.mail) : ""}${s.focus ? item("Focus time", s.focus) : ""}${RULE2}<div class="total">${item("Total", `1 ${ed.weekday}`)}</div>`
+        ? `${RULE}${item("Done yesterday", s.done)}${s.you && s.gaia ? note(`You ${s.you} / GAIA ${s.gaia}`) : ""}${s.mail ? item("Emails handled", s.mail) : ""}${s.focus ? item("Focus time", s.focus) : ""}${RULE2}`
         : "";
       const count = needs.length + c.today.length + c.overnight.length + c.running.length;
       const bc = barcode(ed.editionNo);
