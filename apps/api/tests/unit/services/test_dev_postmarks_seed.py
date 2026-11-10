@@ -20,7 +20,7 @@ from app.constants.briefing import (
     hue_for_day,
 )
 from app.constants.notifications import NotificationChannel
-from app.models.briefing_models import BriefingPayload
+from app.models.briefing_models import BriefingPayload, EditionRender
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
 from app.services.briefing.edition_email import HostedEditionImage
@@ -111,9 +111,7 @@ async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its
     ):
         assert upsert_call.args == (user.id, payload.date, BRIEFING_KIND_DAILY, payload)
         assert upsert_call.kwargs == {
-            "edition_image_url": f"https://cdn.test/{key}.png",
-            "edition_fold": None,
-            "edition_paper": None,
+            "edition": EditionRender(image_url=f"https://cdn.test/{key}.png"),
         }
         assert deliver_call.args == (
             user.id,

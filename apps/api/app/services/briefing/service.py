@@ -70,6 +70,7 @@ from app.models.briefing_models import (
     BriefingSection,
     BriefingStat,
     BriefingTallies,
+    EditionRender,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -894,9 +895,11 @@ async def _publish(
         clock.date_str,
         kind,
         payload,
-        edition_image_url=image.display_url,
-        edition_fold=image.fold,
-        edition_paper=list(image.paper) if image.paper else None,
+        edition=EditionRender(
+            image_url=image.display_url,
+            fold=image.fold,
+            paper=list(image.paper) if image.paper else None,
+        ),
     )
     channels = await _deliver(
         user, briefing, payload, _NOTIFICATION_KINDS[kind], image=image, push=push

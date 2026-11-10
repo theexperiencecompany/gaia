@@ -15,7 +15,13 @@ import uuid
 from app.constants.briefing import BRIEFING_KIND_DAILY
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
-from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload, BriefingUpdate
+from app.models.briefing_models import (
+    BriefingKind,
+    BriefingModel,
+    BriefingPayload,
+    BriefingUpdate,
+    EditionRender,
+)
 from app.utils.errors import AppError
 
 # A brief counts as delivered once it reached at least one channel; one stored but
@@ -85,9 +91,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         kind: BriefingKind,
         payload: BriefingPayload,
         *,
-        edition_image_url: str | None,
-        edition_fold: float | None = None,
-        edition_paper: list[float] | None = None,
+        edition: EditionRender,
     ) -> BriefingModel:
         """Store the payload (one per user/date/kind).
 
@@ -99,9 +103,9 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             {
                 "$set": {
                     "payload": payload.model_dump(),
-                    "edition_image_url": edition_image_url,
-                    "edition_fold": edition_fold,
-                    "edition_paper": edition_paper,
+                    "edition_image_url": edition.image_url,
+                    "edition_fold": edition.fold,
+                    "edition_paper": edition.paper,
                 },
                 "$setOnInsert": {
                     "_id": f"brief_{uuid.uuid4().hex[:12]}",

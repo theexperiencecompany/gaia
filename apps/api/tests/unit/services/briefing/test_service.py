@@ -270,20 +270,13 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     w = World(
         agent=AsyncMock(return_value=SimpleNamespace(message=_fenced(_VOICE))),
         upsert=AsyncMock(
-            side_effect=lambda user_id,
-            date,
-            kind,
-            payload,
-            *,
-            edition_image_url,
-            edition_fold,
-            edition_paper: BriefingModel(
+            side_effect=lambda user_id, date, kind, payload, *, edition: BriefingModel(
                 id=_BRIEF_ID,
                 user_id=user_id,
                 date=date,
                 kind=kind,
                 payload=payload,
-                edition_image_url=edition_image_url,
+                edition_image_url=edition.image_url,
             )
         ),
         mint=AsyncMock(return_value=_BRIEF_LINK),
@@ -415,7 +408,7 @@ class TestDailyBrief:
         assert [i.todo_id for s in payload.sections for i in s.items] == ["b1", "c1"]
         message = _facts_shown(_prompt(world))
         assert payload.message == message
-        assert world.upsert.await_args.kwargs["edition_image_url"] == _EDITION.display_url
+        assert world.upsert.await_args.kwargs["edition"].image_url == _EDITION.display_url
         request = world.notify.await_args.args[0]
         assert request.metadata["edition_image_url"] == _EDITION.display_url
         # One URL, minted for the persisted brief, behind the email image and the chat post.

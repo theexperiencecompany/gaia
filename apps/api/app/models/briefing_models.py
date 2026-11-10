@@ -189,6 +189,16 @@ class BriefingPayload(BaseModel):
     )
 
 
+class EditionRender(BaseModel):
+    """Where a brief's hosted edition render lives, and where its letter sits on it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    image_url: str
+    fold: float | None = None
+    paper: list[float] | None = None
+
+
 class BriefingModel(UserScopedDocument):
     """Persisted briefing document (``briefings`` collection).
 

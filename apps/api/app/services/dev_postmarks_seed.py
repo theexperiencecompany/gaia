@@ -35,6 +35,7 @@ from app.models.briefing_models import (
     BriefingTallies,
     BriefingWeek,
     BriefingWeekDay,
+    EditionRender,
 )
 from app.models.user_models import UserDocument
 from app.services.briefing.edition_email import host_edition_image
@@ -359,8 +360,10 @@ async def _store(user: UserDocument, payload: BriefingPayload, kind: BriefingKin
         payload.date,
         kind,
         payload,
-        edition_image_url=image.display_url,
-        edition_fold=image.fold,
-        edition_paper=list(image.paper) if image.paper else None,
+        edition=EditionRender(
+            image_url=image.display_url,
+            fold=image.fold,
+            paper=list(image.paper) if image.paper else None,
+        ),
     )
     await briefing_repository.set_delivered_channels(user.id, payload.date, kind, _SEEDED_CHANNELS)
