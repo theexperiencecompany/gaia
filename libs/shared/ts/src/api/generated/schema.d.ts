@@ -6857,6 +6857,11 @@ export interface components {
          */
         BriefingPayload: {
             /**
+             * Artwork Id
+             * @description Exhibition, Broadsheet and Almanac editions only: the painting (an artworks/artworks.json slug) this brief hangs, so a re-render hangs it again.
+             */
+            artwork_id: string | null;
+            /**
              * Calendar
              * @description Today's calendar events, in start order.
              */

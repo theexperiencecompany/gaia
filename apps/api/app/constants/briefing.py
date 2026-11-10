@@ -155,6 +155,16 @@ def hue_for_day(day_of_year: int) -> int:
 # Mail family, the only one that carries a city stamp.
 WEEKLY_FAMILY: Final[str] = "weekly"
 POSTAL_FAMILY: Final[str] = "postal"
+
+
+class ArtFamily(StrEnum):
+    """The edition families that hang a painting (their template reads ed.art)."""
+
+    EXHIBITION = "exhibition"
+    BROADSHEET = "broadsheet"
+    ALMANAC = "almanac"
+
+
 # The web page that shows the user's collected Air Mail stamps.
 POSTMARKS_PATH: Final[str] = "/settings/postmarks"
 
@@ -171,6 +181,7 @@ class BriefingBag(StrEnum):
 
     EDITION_FAMILY = "edition_family"
     STAMP_CITY = "stamp_city"
+    ARTWORK = "artwork"
 
 
 class BriefingRunOutcome(StrEnum):

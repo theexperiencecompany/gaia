@@ -16,6 +16,7 @@ from app.constants.briefing import (
     SECTION_NUMERALS,
     SECTION_TITLES,
     WEEKLY_FAMILY,
+    ArtFamily,
     SectionKey,
     hue_for_day,
 )
@@ -25,6 +26,7 @@ from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.editions.artworks import artworks_for
 from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmarks
 from app.utils.errors import AppError
 
@@ -200,6 +202,15 @@ async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user
     weekly = payloads[-1]
     assert weekly.week is not None and len(weekly.week.days) == 7
     assert seeded.deliver.await_count == 5
+
+
+async def test_a_framed_family_is_seeded_hanging_a_painting_that_fits_it(user, seeded) -> None:
+    await seed_dev_editions(user, len(NON_POSTAL_FAMILIES))
+
+    hung = {p.template_family: p.artwork_id for p in seeded.payloads()}
+    for family in ArtFamily:
+        assert hung[family] in artworks_for(family)
+    assert {f for f, artwork_id in hung.items() if artwork_id} == set(ArtFamily)
 
 
 async def test_no_editions_seeds_nothing_and_too_many_is_refused(user, seeded) -> None:

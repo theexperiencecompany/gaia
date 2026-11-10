@@ -13,7 +13,7 @@ from typing import Protocol
 
 from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.editions._shared import CANVAS_PX, EXPLORER_CANVAS_PX
+from app.services.briefing.editions._shared import CANVAS_PX, EXPLORER_CANVAS_PX, EXPLORER_SCALE
 from app.services.briefing.editions.explorer_render import (
     explorer_family_ids,
     render_explorer_edition,
@@ -98,7 +98,6 @@ _EXPLORER_ROOT = "#root > article"
 _CLASSIC_FRAME = EditionFrame(
     width=CANVAS_PX, device_scale_factor=2, clip_selector=".brief", trim_margin_px=None
 )
-_EXPLORER_SCALE = 3
 
 
 def edition_frame(family: str | None) -> EditionFrame:
@@ -107,7 +106,7 @@ def edition_frame(family: str | None) -> EditionFrame:
         return _CLASSIC_FRAME
     return EditionFrame(
         width=EXPLORER_CANVAS_PX,
-        device_scale_factor=_EXPLORER_SCALE,
+        device_scale_factor=EXPLORER_SCALE,
         clip_selector=_EXPLORER_ROOT,
         trim_margin_px=DESK_MARGIN_PX if family in _ON_A_DESK else None,
     )

@@ -1,9 +1,9 @@
 """Render a briefing payload through one of the vendored explorer template families.
 
 The families are the founder's approved JS design explorer (editions/explorer/js/
-tpl-*.js), executed inside the headless-Chromium raster pipeline. The document is
-fully synchronous (no fetch or timers), so Playwright's networkidle wait returns
-immediately.
+tpl-*.js), executed inside the headless-Chromium raster pipeline. The document runs
+synchronously (no fetch or timers); its hosted images (a stamp, a painting) are what
+Playwright's networkidle wait holds the capture for.
 
 Skin selection reimplements the explorer shell's mulberry32/strSeed RNG rather than
 importing it: the vendored files never expose it.
@@ -15,10 +15,10 @@ import json
 from pathlib import Path
 import re
 
-from app.constants.briefing import POSTAL_FAMILY
+from app.constants.briefing import POSTAL_FAMILY, ArtFamily
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions._shared import EXPLORER_CANVAS_PX
-from app.services.briefing.editions.artworks import artwork_for
+from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
 from app.services.briefing.editions.stamps import (
     city_axis,
@@ -39,7 +39,7 @@ _REGISTER_PATTERN = re.compile(
     r'EXPLORER\.register\(\{\s*\n\s*id:\s*"([a-z0-9-]+)",\s*\n\s*name:\s*"([^"]+)"'
 )
 
-# The band wallpaper in assets.json (WebP; the paintings there are JPEGs).
+# The band wallpaper in assets.json.
 _BAND_ASSET_KEY = "BAND"
 # The Experience Company symbol heading Air Mail's return address.
 _TEC_MARK_ASSET_KEY = "TEC_MARK"
@@ -115,14 +115,18 @@ def _asset_data_uris() -> dict[str, str]:
     }
 
 
-def _art(edition_no: int) -> ExplorerArt:
-    """Return the painting the edition hangs, its image inlined as a data URI."""
-    artwork = artwork_for(edition_no)
+def _art(payload: BriefingPayload, family: str) -> ExplorerArt | None:
+    """Return the painting a framed family hangs, loaded by its hosted URL; None for the rest."""
+    if family not in ArtFamily:
+        return None
+    if payload.artwork_id is None:
+        raise ValueError(f"a {family} edition needs the artwork_id drawn for it")
+    artwork = artwork_catalogue()[payload.artwork_id]
     return {
-        "src": f"data:image/jpeg;base64,{_raw_assets()[artwork.asset_key]}",
+        "src": artwork.url,
         "title": artwork.title,
         "artist": artwork.artist,
-        "year": artwork.year,
+        "year": artwork.date,
         "medium": artwork.medium,
     }
 
@@ -181,7 +185,7 @@ def render_explorer_edition(
         edition_no=edition_no,
         generated_local=generated_local,
         assets=assets,
-        art=_art(edition_no),
+        art=_art(payload, family),
         family=family,
     )
 

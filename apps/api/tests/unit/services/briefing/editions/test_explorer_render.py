@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.editions.artworks import ARTWORKS
+from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.editions.explorer_render import (
     _asset_data_uris,
     _font_faces_css,
@@ -224,22 +224,41 @@ class TestEmbeddedLiterals:
         assert ed["content"]["today"][0]["label"] == "Standup"
         assert ed["content"]["stats"]["done"] == 3
 
-    def test_the_painting_and_its_catalogue_line_come_from_the_artwork_pool(self) -> None:
-        artwork = ARTWORKS[12 % len(ARTWORKS)]
+    @pytest.mark.parametrize("family", ["exhibition", "broadsheet", "almanac"])
+    def test_a_framed_family_hangs_the_drawn_artwork_by_its_hosted_url(self, family: str) -> None:
+        artwork = artwork_catalogue()["oxbow"]
 
-        art = _embedded_const(_render(edition_no=12), "ed")["art"]
+        art = _embedded_const(_render(_payload(artwork_id="oxbow"), family=family), "ed")["art"]
 
-        assert (art["title"], art["artist"]) == (artwork.title, artwork.artist)
-        assert (art["year"], art["medium"]) == (artwork.year, artwork.medium)
-        assert art["src"] == f"data:image/jpeg;base64,{_raw_assets()[artwork.asset_key]}"
+        assert art == {
+            "src": artwork.url,
+            "title": "The Oxbow",
+            "artist": "Thomas Cole",
+            "year": "1836",
+            "medium": "oil on canvas",
+        }
+        assert art["src"].startswith("https://res.cloudinary.com/")
 
-    def test_consecutive_editions_hang_different_paintings(self) -> None:
-        titles = [
-            _embedded_const(_render(edition_no=n), "ed")["art"]["title"]
-            for n in range(len(ARTWORKS))
-        ]
+    def test_a_re_render_hangs_the_same_artwork_whatever_the_edition_number(self) -> None:
+        payload = _payload(artwork_id="kambara")
 
-        assert sorted(titles) == sorted(a.title for a in ARTWORKS)
+        hung = {
+            _embedded_const(_render(payload, family="exhibition", edition_no=n), "ed")["art"][
+                "title"
+            ]
+            for n in range(12)
+        }
+
+        assert hung == {"Kambara"}
+
+    def test_a_framed_family_without_a_drawn_artwork_fails_loud(self) -> None:
+        with pytest.raises(ValueError, match="exhibition edition needs the artwork_id"):
+            _render(family="exhibition")
+
+    def test_a_family_with_no_frame_hangs_nothing(self) -> None:
+        ed = _embedded_const(_render(_payload(artwork_id="oxbow"), family="memo"), "ed")
+
+        assert ed["art"] is None
 
     def test_the_asset_map_is_the_band_and_the_experience_company_mark(self) -> None:
         ed = _embedded_const(_render(), "ed")

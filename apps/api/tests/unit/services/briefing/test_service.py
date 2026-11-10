@@ -33,6 +33,7 @@ from app.constants.briefing import (
     MAX_BRIEF_HEADLINE_CHARS,
     WEEKLY_KICKER,
     WINBACK_THRESHOLD,
+    ArtFamily,
     BriefingBag,
     BriefingFrequency,
     BriefingRunOutcome,
@@ -110,6 +111,7 @@ from app.services.briefing.candidates.judge import BriefSelectionAnswer
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.editions.artworks import artwork_weights, artworks_for
 from app.services.briefing.faithfulness import (
     CheckedSpecific,
     UnsupportedClaim,
@@ -695,13 +697,51 @@ class TestDailyBrief:
         assert _stored_payload(world).new_stamp is None
         assert "New stamp" not in world.post.await_args.kwargs["text"]
 
-    async def test_a_non_postal_brief_draws_no_stamp(self, world: World) -> None:
+    async def test_a_family_with_no_stamp_or_frame_draws_neither(self, world: World) -> None:
         _family_first(world, "memo")
 
         await daily.run_daily_briefing(_USER)
 
         assert _stored_payload(world).stamp_city is None
-        assert "stamp_city" not in world.bags
+        assert _stored_payload(world).artwork_id is None
+        assert "stamp_city" not in world.bags and "artwork" not in world.bags
+
+    @pytest.mark.parametrize("family", ["exhibition", "broadsheet", "almanac"])
+    async def test_a_framed_brief_hangs_a_fitting_painting_from_the_artwork_bag(
+        self, world: World, family: str
+    ) -> None:
+        _family_first(world, family)
+
+        await daily.run_daily_briefing(_USER)
+
+        artwork_id = _stored_payload(world).artwork_id
+        assert artwork_id in artworks_for(ArtFamily(family))
+        bag = world.bags["artwork"]
+        assert bag.order[bag.index - 1] == artwork_id
+        assert sorted(bag.order) == sorted(artwork_weights())
+
+    async def test_the_next_framed_brief_hangs_the_next_painting_of_the_pass(
+        self, world: World
+    ) -> None:
+        _family_first(world, "exhibition")
+        order = sorted(artwork_weights())
+        world.bags["artwork"] = ShuffleBag(order=order, index=3)
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).artwork_id == order[3]
+        assert world.bags["artwork"] == ShuffleBag(order=order, index=4)
+
+    async def test_a_framed_brief_that_fails_to_deliver_spends_no_painting(
+        self, world: World
+    ) -> None:
+        _family_first(world, "almanac")
+        world.notify.side_effect = RuntimeError("orchestrator down")
+
+        with pytest.raises(RuntimeError, match="orchestrator down"):
+            await daily.run_daily_briefing(_USER)
+
+        assert "artwork" not in world.bags
 
     async def test_each_section_holds_at_most_its_cap_in_the_judges_order(
         self, world: World

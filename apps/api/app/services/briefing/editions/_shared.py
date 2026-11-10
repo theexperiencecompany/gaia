@@ -11,8 +11,9 @@ from pathlib import Path
 
 # The classic edition's raster viewport; its page is exactly this width.
 CANVAS_PX = 1180
-# The explorer families' portrait canvas (explorer/README.md), exported at 3x.
+# The explorer families' portrait canvas (explorer/README.md) and its export density.
 EXPLORER_CANVAS_PX = 540
+EXPLORER_SCALE = 3
 
 FONTS_DIR = Path(__file__).parent / "fonts"
 

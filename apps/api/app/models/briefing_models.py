@@ -196,6 +196,13 @@ class BriefingPayload(BaseModel):
             "this brief carried. The Postmarks page reads it."
         ),
     )
+    artwork_id: str | None = Field(
+        default=None,
+        description=(
+            "Exhibition, Broadsheet and Almanac editions only: the painting (an "
+            "artworks/artworks.json slug) this brief hangs, so a re-render hangs it again."
+        ),
+    )
     new_stamp: NewStamp | None = Field(
         default=None,
         description="Set when this brief's stamp is one the user had not collected before.",

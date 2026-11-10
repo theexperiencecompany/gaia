@@ -36,11 +36,11 @@ teal and lime; the Boarding Pass liveries are now midnight + sunflower, sky blue
 signal red and graphite + champagne; the Horizon adds meadow, ember, rosewater and
 aurora. Applied by a three-way merge, so every deviation below is kept.
 
-`assets/assets.json` (webfonts, the band wallpaper, the public-domain paintings)
-and `assets/credits.json` are carried over. `assets/brand/tec_mark_black.webp` is
-The Experience Company symbol, read by Air Mail as `TEC_MARK`. City stamps are not
-committed: Air Mail's art is loaded by URL (`assets/stamps/cities.json`,
-`editions/stamps.py`).
+`assets/assets.json` (webfonts and the band wallpaper) is carried over.
+`assets/brand/tec_mark_black.webp` is The Experience Company symbol, read by Air
+Mail as `TEC_MARK`. City stamps and paintings are not committed: both are loaded
+by URL (`assets/stamps/cities.json` with `editions/stamps.py`,
+`assets/artworks/artworks.json` with `editions/artworks.py`).
 
 `app/services/briefing/editions/explorer_render.py` is the only code that loads and
 executes these files; `explorer_adapter.py` builds the `ed` they read. Those two
@@ -120,9 +120,10 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    1080px. `tests/integration/test_edition_codes_scan.py` decodes each code from
    the rendered PNG.
 
-The painting that `broadsheet`, `exhibition` and `almanac` hang rotates through
-the public-domain paintings in `assets.json`, one step per edition
-(`editions/artworks.py`); that is data, not a template edit.
+The painting that `broadsheet`, `exhibition` and `almanac` hang is drawn from the
+user's artwork shuffle bag, over the Met Open Access works whose image fits that
+family's frame (`editions/artworks.py`), and recorded on the payload as
+`artwork_id`; that is data, not a template edit.
 
 `tests/integration/test_edition_families_render.py` renders every family in
 Chromium and fails on a script error, a dropped item, a fixture string, a `null`

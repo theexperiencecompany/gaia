@@ -1,11 +1,12 @@
-"""Draw a brief's edition family and stamp from the user's shuffle bags, and persist the draws once it went out."""
+"""Draw a brief's edition family, stamp and painting from the user's shuffle bags, and persist the draws once it went out."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Set
 from dataclasses import dataclass
 import random
 
 from app.constants.briefing import (
     POSTAL_FAMILY,
+    ArtFamily,
     BriefingBag,
 )
 from app.db.repositories.users import user_repository
@@ -13,6 +14,7 @@ from app.models.briefing_models import (
     BriefingPayload,
 )
 from app.models.user_models import ShuffleBag, UserDocument
+from app.services.briefing.editions.artworks import artwork_weights, artworks_for
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.shuffle_bag import draw
 from shared.py.wide_events import log
@@ -27,14 +29,20 @@ class BagDraw:
     next_state: ShuffleBag
 
 
-def draw_from_bag(user: UserDocument, bag: BriefingBag, weights: Mapping[str, int]) -> BagDraw:
+def draw_from_bag(
+    user: UserDocument,
+    bag: BriefingBag,
+    weights: Mapping[str, int],
+    *,
+    eligible: Set[str] | None = None,
+) -> BagDraw:
     """Draw today's member from one of the user's shuffle bags, off the loaded user.
 
     Nothing is persisted here: publish_brief saves the draw only once the brief went out,
     so a failed run does not burn a member of the pass.
     """
     state = (user.briefing_shuffle_bags or {}).get(bag)
-    member, next_state = draw(state, weights, random.SystemRandom())
+    member, next_state = draw(state, weights, random.SystemRandom(), eligible=eligible)
     return BagDraw(bag=bag, member=member, next_state=next_state)
 
 
@@ -47,13 +55,19 @@ async def persist_draws(user_id: str, draws: list[BagDraw]) -> None:
 
 
 def assign_edition(user: UserDocument, payload: BriefingPayload, family: str) -> list[BagDraw]:
-    """Record the edition family on the payload, and for Air Mail its stamp.
+    """Record the edition family on the payload, Air Mail's stamp and a framed family's painting.
 
-    Returns the stamp draw, persisted once the brief is delivered.
+    Returns the stamp or painting draw, persisted once the brief is delivered.
     """
     payload.template_family = family
-    if family != POSTAL_FAMILY:
-        return []
-    stamp = draw_from_bag(user, BriefingBag.STAMP_CITY, hosted_stamp_weights())
-    payload.stamp_city = stamp.member
-    return [stamp]
+    if family == POSTAL_FAMILY:
+        stamp = draw_from_bag(user, BriefingBag.STAMP_CITY, hosted_stamp_weights())
+        payload.stamp_city = stamp.member
+        return [stamp]
+    if family in ArtFamily:
+        artwork = draw_from_bag(
+            user, BriefingBag.ARTWORK, artwork_weights(), eligible=artworks_for(ArtFamily(family))
+        )
+        payload.artwork_id = artwork.member
+        return [artwork]
+    return []

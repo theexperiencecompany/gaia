@@ -93,6 +93,77 @@ class TestDraw:
             draw(None, {"postal": 2}, random.Random(1))
 
 
+_WORKS = {f"w{i}": 1 for i in range(12)}
+# Three frames, each fitting a different, overlapping share of the works.
+_FITS = {
+    "wide": frozenset(f"w{i}" for i in range(8)),
+    "tall": frozenset(f"w{i}" for i in range(4, 12)),
+    "any": frozenset(_WORKS),
+}
+
+
+@pytest.mark.unit
+class TestEligibleDraw:
+    def _hang(self, frames: list[str], seed: int) -> list[tuple[str, ShuffleBag]]:
+        rng = random.Random(seed)
+        state: ShuffleBag | None = None
+        hung: list[tuple[str, ShuffleBag]] = []
+        for frame in frames:
+            work, state = draw(state, _WORKS, rng, eligible=_FITS[frame])
+            hung.append((work, state))
+        return hung
+
+    def test_every_draw_fits_the_frame_it_was_drawn_for(self) -> None:
+        frames = [random.Random(s).choice(list(_FITS)) for s in range(200)]
+
+        for (work, _), frame in zip(self._hang(frames, seed=3), frames, strict=True):
+            assert work in _FITS[frame]
+
+    def test_no_work_repeats_within_a_pass_whatever_the_frames(self) -> None:
+        for seed in range(30):
+            frames = [random.Random(seed * 1000 + s).choice(list(_FITS)) for s in range(120)]
+            passes: list[list[str]] = []
+            for work, state in self._hang(frames, seed):
+                if state.index == 1:
+                    passes.append([])
+                passes[-1].append(work)
+
+            for hung in passes:
+                assert len(hung) == len(set(hung)), hung
+
+    def test_a_work_the_frame_cannot_take_keeps_its_turn_in_the_pass(self) -> None:
+        order = ["w9", "w1", "w2"]
+
+        work, state = draw(
+            ShuffleBag(order=order, index=0),
+            {"w1": 1, "w2": 1, "w9": 1},
+            random.Random(1),
+            eligible=frozenset({"w1", "w2"}),
+        )
+
+        assert work == "w1"
+        assert state == ShuffleBag(order=["w1", "w9", "w2"], index=1)
+
+    def test_a_pass_with_no_fitting_work_left_reshuffles_onto_one_that_fits(self) -> None:
+        """Only w9 is left, which the frame cannot take; w1 went out yesterday."""
+        for seed in range(30):
+            spent = ShuffleBag(order=["w2", "w1", "w9"], index=2)
+
+            work, state = draw(
+                spent,
+                {"w1": 1, "w2": 1, "w9": 1},
+                random.Random(seed),
+                eligible=frozenset({"w1", "w2"}),
+            )
+
+            assert work == "w2"
+            assert state.index == 1 and sorted(state.order) == ["w1", "w2", "w9"]
+
+    def test_a_frame_no_work_fits_fails_loud(self) -> None:
+        with pytest.raises(ValueError, match="eligible member"):
+            draw(None, {"w1": 1}, random.Random(1), eligible=frozenset({"w9"}))
+
+
 @pytest.mark.unit
 class TestDailyFamilyWeights:
     def test_postal_is_twice_as_common_and_every_daily_family_is_in(self) -> None:

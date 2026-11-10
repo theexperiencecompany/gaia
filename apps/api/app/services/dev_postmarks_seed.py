@@ -19,6 +19,7 @@ from app.constants.briefing import (
     SECTION_TITLES,
     WEEKLY_FAMILY,
     WEEKLY_KICKER,
+    ArtFamily,
     SectionKey,
     hue_for_day,
 )
@@ -37,6 +38,7 @@ from app.models.briefing_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.editions.artworks import artworks_for
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.store import store_brief
 from app.utils.errors import create_error
@@ -233,7 +235,13 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
 
 
 def _brief_payload(
-    day: date, seed: _SeedDay, user: UserDocument, family: str, city_slug: str | None = None
+    day: date,
+    seed: _SeedDay,
+    user: UserDocument,
+    family: str,
+    *,
+    city_slug: str | None = None,
+    artwork_id: str | None = None,
 ) -> BriefingPayload:
     iso_day = day.isoformat()
     keyed_items = (
@@ -261,6 +269,7 @@ def _brief_payload(
         hue=hue_for_day(day.timetuple().tm_yday),
         template_family=family,
         stamp_city=city_slug,
+        artwork_id=artwork_id,
         recipient_name=user.name,
         generated_at=_GENERATED_AT,
         calendar=[
@@ -286,7 +295,9 @@ async def seed_dev_postmarks(user: UserDocument, count: int) -> None:
         day = _LAST_SEEDED_DATE - timedelta(days=days_before)
         seed = _SEED_DAYS[days_before % len(_SEED_DAYS)]
         await _store(
-            user, _brief_payload(day, seed, user, POSTAL_FAMILY, slug), BRIEFING_KIND_DAILY
+            user,
+            _brief_payload(day, seed, user, POSTAL_FAMILY, city_slug=slug),
+            BRIEFING_KIND_DAILY,
         )
 
 
@@ -305,7 +316,14 @@ async def seed_dev_editions(user: UserDocument, count: int) -> None:
     for offset, family in enumerate(families[:count]):
         day = _FIRST_EDITION_DATE + timedelta(days=offset)
         seed = _SEED_DAYS[offset % len(_SEED_DAYS)]
-        await _store(user, _brief_payload(day, seed, user, family), BRIEFING_KIND_DAILY)
+        artwork_id = (
+            sorted(artworks_for(ArtFamily(family)))[offset] if family in ArtFamily else None
+        )
+        await _store(
+            user,
+            _brief_payload(day, seed, user, family, artwork_id=artwork_id),
+            BRIEFING_KIND_DAILY,
+        )
     await _store(user, _weekly_payload(user), BRIEFING_KIND_WEEKLY)
 
 

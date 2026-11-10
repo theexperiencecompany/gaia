@@ -118,7 +118,7 @@ class ExplorerContent(TypedDict):
 
 
 class ExplorerArt(TypedDict):
-    """The painting the edition hangs (editions/artworks.py), its image a data URI."""
+    """The painting a framed family hangs (editions/artworks.py), its image a hosted URL."""
 
     src: str
     title: str
@@ -176,7 +176,8 @@ class ExplorerEdition(TypedDict):
     content: ExplorerContent
     week: ExplorerWeek | None
     stamp: Stamp | None
-    art: ExplorerArt
+    #: None for a family that hangs no painting.
+    art: ExplorerArt | None
     assets: dict[str, str]
     #: The codes the family prints (none for most), each encoding the brief's link.
     codes: dict[Symbology, CodeGeometry]
@@ -188,7 +189,7 @@ def build_ed(
     edition_no: int,
     generated_local: str,
     assets: dict[str, str],
-    art: ExplorerArt,
+    art: ExplorerArt | None,
     family: str,
 ) -> ExplorerEdition:
     """Build the vendored templates' ed object from a briefing payload.

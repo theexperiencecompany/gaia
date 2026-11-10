@@ -21,6 +21,7 @@ from PIL import Image, ImageChops
 from playwright.async_api import async_playwright
 import pytest
 
+from app.constants.briefing import ArtFamily
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import (
@@ -144,9 +145,17 @@ def _png_height(png: bytes) -> int:
     return int(struct.unpack(">I", png[20:24])[0])
 
 
+# The painting publish_brief draws for a framed family.
+_ARTWORK = "wheat-field-cypresses"
+
+
+def _artwork(family: str) -> str | None:
+    return _ARTWORK if family in ArtFamily else None
+
+
 def _render_html(family: str, payload: dict[str, Any]) -> str:
     render = EXPLORER_RENDERER.get(family, render_edition)
-    data = BriefingPayload.model_validate(payload)
+    data = BriefingPayload.model_validate({"artwork_id": _artwork(family), **payload})
     return render(data, edition_no=287, generated_local="", tz_label="")
 
 
@@ -321,6 +330,7 @@ def _shipped(family: str, payload: dict[str, Any]) -> BriefingPayload:
             **_as_rendered(family, payload),
             "template_family": family,
             "stamp_city": "tokyo" if family == "postal" else None,
+            "artwork_id": _artwork(family),
         }
     )
 
