@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL, WaitingOn
+from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, WaitingOn
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
@@ -54,6 +54,7 @@ def canvas_reopened() -> Iterator[AsyncMock]:
         patch("app.services.todos.todo_service.delete_canvas_embedding", new_callable=AsyncMock),
         patch("app.services.todos.todo_service.schedule_user_todos_sync"),
         patch("app.services.tracked_todo_service.store_canvas_embedding", new_callable=AsyncMock),
+        patch("app.services.tracked_todo_service.update_canvas_embedding", new_callable=AsyncMock),
         patch("app.services.tracked_todo_service.set_canvas_completed", new_callable=AsyncMock),
         patch("app.services.tracked_todo_service.schedule_gaia_tasks_sync"),
         patch("app.services.todos.todo_service.schedule_gaia_tasks_sync"),
@@ -134,6 +135,35 @@ async def test_a_create_for_a_thread_whose_todo_is_completed_reopens_that_todo(
     assert "Sam has the signed lease" in todo.canvas_content
     assert todo.activity_content.index("Sam replied") < todo.activity_content.index("[reopened]")
     canvas_reopened.assert_awaited_once_with(todo.id, completed=False)
+
+
+async def test_a_reopened_todo_starts_with_its_retry_and_re_ask_budgets_back(
+    mongo_db: AsyncIOMotorDatabase, user_id: str
+) -> None:
+    first = await _create(user_id)
+    await TrackedTodoService.complete_tracked_todo(first.id, user_id, summary="Sam replied")
+    await todo_repository.update(
+        first.id,
+        user_id=user_id,
+        update=TodoUpdate(gaia_retry_count=2, reasks_used=1, hold_checks=3),
+    )
+
+    await TrackedTodoService.create_tracked_todo(
+        user_id,
+        "Ask Sam about the deposit",
+        external_ref=_THREAD,
+        schedule=TodoUpdate(
+            waiting_on=WaitingOn.USER,
+            question="Should I chase Sam about the deposit?",
+            if_no_reply=NoReplyPlan.ASK_AGAIN,
+            scheduled_at=datetime.now(UTC) + timedelta(days=1),
+        ),
+    )
+
+    (todo,) = await _stored(mongo_db, user_id)
+    assert todo.id == first.id and not todo.completed
+    assert (todo.gaia_retry_count, todo.reasks_used, todo.hold_checks) == (0, 0, 0)
+    assert todo.if_no_reply is NoReplyPlan.ASK_AGAIN
 
 
 async def test_a_create_for_a_thread_whose_todo_is_open_is_still_refused(

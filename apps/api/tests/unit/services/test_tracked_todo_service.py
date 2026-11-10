@@ -24,6 +24,7 @@ from app.constants.todos import (
     CANVAS_SECTIONS,
     GAIA_TRACKED_LABEL,
     REOPEN_CLEARED_SCHEDULE_FIELDS,
+    REOPEN_RESET_COUNTERS,
     SUB_TODO_PARENT_WAKE_DELAY,
     NoReplyPlan,
     TodoActivityEvent,
@@ -348,6 +349,7 @@ class TestACreateForACompletedRefReopensIt:
         assert schedule.scheduled_at == _NEXT_CHECK and schedule.waiting_on is WaitingOn.EVENT
         assert update.model_fields_set == {
             *REOPEN_CLEARED_SCHEDULE_FIELDS,
+            *REOPEN_RESET_COUNTERS,
             *schedule.model_fields_set,
             "title",
             "labels",
@@ -361,6 +363,8 @@ class TestACreateForACompletedRefReopensIt:
         assert update.scheduled_at == _NEXT_CHECK and update.waiting_on is WaitingOn.EVENT
         assert update.recurrence is None and update.due_date is None
         assert update.expires_at is None and update.question is None
+        # A reopen is a fresh start: no retries, re-asks or holds carried from before.
+        assert (update.gaia_retry_count, update.reasks_used, update.hold_checks) == (0, 0, 0)
 
     async def test_description_references_and_priority_apply_only_when_given(
         self, mock_repo, mock_deps, reopen

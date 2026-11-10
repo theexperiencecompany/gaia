@@ -28,6 +28,7 @@ from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
     REOPEN_CLEARED_SCHEDULE_FIELDS,
+    REOPEN_RESET_COUNTERS,
     SUB_TODO_PARENT_WAKE_DELAY,
     TodoActivityEvent,
     WaitingOn,
@@ -330,6 +331,7 @@ class TrackedTodoService:
             reopen = TodoUpdate.model_validate(
                 {
                     **dict.fromkeys(REOPEN_CLEARED_SCHEDULE_FIELDS),
+                    **dict.fromkeys(REOPEN_RESET_COUNTERS, 0),
                     **schedule.model_dump(exclude_unset=True),
                     "title": title,
                     "labels": all_labels,
