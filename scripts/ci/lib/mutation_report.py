@@ -623,6 +623,62 @@ def survivors_payload(verdicts: list[ModuleVerdict], source: Path) -> dict[str, 
     }
 
 
+def _module_head(verdict: ModuleVerdict) -> str:
+    """Return the module's one-line header: status, plus survivor counts when there are any."""
+    if verdict.status == "survivors":
+        groups = group_by_line(verdict.survivors)
+        return (
+            f"{verdict.module}  [{verdict.status}]  "
+            f"{len(verdict.survivors)} mutant(s) on {len(groups)} line(s)"
+        )
+    return f"{verdict.module}  [{verdict.status}]  {summary_line(verdict)}"
+
+
+def _survivor_block(
+    verdict: ModuleVerdict, source: Path, line_no: int | None, group: list[Survivor]
+) -> list[str]:
+    """Return one source line's survivors: where, what changed, the diff, the selector."""
+    lines = [f"  {verdict.path}:{line_no}" if line_no else f"  {verdict.path} (line unknown)"]
+    if group[0].source:
+        lines.append(f"      {group[0].source.strip()}")
+    for survivor in group:
+        if survivor.change:
+            lines.append(f"      change: {survivor.change}")
+        for diff_line in survivor.diff.splitlines():
+            lines.append(f"      {diff_line}" if diff_line else "")
+        lines.append(f"      [{survivor.name.rsplit('.', 1)[-1]}]")
+    selectors = (
+        [f"{verdict.path}:{line_no}"]
+        if line_no is not None
+        else [survivor.name for survivor in group]
+    )
+    for selector in selectors:
+        lines.append(f"      replay: python3 scripts/ci/mutation.py replay {source} {selector}")
+    return lines
+
+
+def _module_block(verdict: ModuleVerdict, source: Path, verbose: bool) -> list[str]:
+    """Return one module's full block: header, tests, gaps, survivors and re-run hint."""
+    lines = [_module_head(verdict)]
+    if verdict.testfiles:
+        lines.append(f"  tests: {' '.join(verdict.testfiles)}")
+    if verdict.gap_lines:
+        lines.append(
+            "  changed line(s) no test reaches: "
+            + ", ".join(str(number) for number in verdict.gap_lines)
+        )
+    for line_no, group in group_by_line(verdict.survivors):
+        lines.extend(_survivor_block(verdict, source, line_no, group))
+    if verdict.status in ("error", "timed_out") and verdict.reason:
+        lines.append(f"  {verdict.reason}")
+        lines.append(f"  re-run it alone: python3 scripts/ci/mutation.py module {verdict.module}")
+    if verbose and verdict.excluded:
+        lines.append(f"  {len(verdict.excluded)} survivor(s) excluded from the verdict:")
+        for entry in verdict.excluded:
+            lines.append(f"      {entry.name.rsplit('.', 1)[-1]} — {entry.reason}")
+    return lines
+
+
 def render_survivors(verdicts: list[ModuleVerdict], source: Path, verbose: bool = False) -> str:
     """Return the actionable report: where each mutant is, what it changes, and its diff."""
     actionable = [verdict for verdict in verdicts if is_actionable(verdict)]
@@ -633,53 +689,7 @@ def render_survivors(verdicts: list[ModuleVerdict], source: Path, verbose: bool 
         return "\n".join(lines)
     for verdict in actionable:
         lines.append("")
-        if verdict.status == "survivors":
-            groups = group_by_line(verdict.survivors)
-            lines.append(
-                f"{verdict.module}  [{verdict.status}]  "
-                f"{len(verdict.survivors)} mutant(s) on {len(groups)} line(s)"
-            )
-        else:
-            lines.append(f"{verdict.module}  [{verdict.status}]  {summary_line(verdict)}")
-        if verdict.testfiles:
-            lines.append(f"  tests: {' '.join(verdict.testfiles)}")
-        if verdict.gap_lines:
-            lines.append(
-                "  changed line(s) no test reaches: "
-                + ", ".join(str(number) for number in verdict.gap_lines)
-            )
-        for line_no, group in group_by_line(verdict.survivors):
-            where = f"{verdict.path}:{line_no}" if line_no else f"{verdict.path} (line unknown)"
-            lines.append(f"  {where}")
-            if group[0].source:
-                lines.append(f"      {group[0].source.strip()}")
-            for survivor in group:
-                if survivor.change:
-                    lines.append(f"      change: {survivor.change}")
-                for diff_line in survivor.diff.splitlines():
-                    lines.append(f"      {diff_line}" if diff_line else "")
-                lines.append(f"      [{survivor.name.rsplit('.', 1)[-1]}]")
-            if line_no is not None:
-                lines.append(
-                    f"      replay: python3 scripts/ci/mutation.py replay {source} "
-                    f"{verdict.path}:{line_no}"
-                )
-            else:
-                # Recovered from a log: no resolved line, so the mutant id is the selector.
-                for survivor in group:
-                    lines.append(
-                        f"      replay: python3 scripts/ci/mutation.py replay {source} "
-                        f"{survivor.name}"
-                    )
-        if verdict.status in ("error", "timed_out") and verdict.reason:
-            lines.append(f"  {verdict.reason}")
-            lines.append(
-                f"  re-run it alone: python3 scripts/ci/mutation.py module {verdict.module}"
-            )
-        if verbose and verdict.excluded:
-            lines.append(f"  {len(verdict.excluded)} survivor(s) excluded from the verdict:")
-            for entry in verdict.excluded:
-                lines.append(f"      {entry.name.rsplit('.', 1)[-1]} — {entry.reason}")
+        lines.extend(_module_block(verdict, source, verbose))
     return "\n".join(lines)
 
 

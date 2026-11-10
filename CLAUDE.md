@@ -407,7 +407,9 @@ Why the repo-wide ruff task exists rather than relying on `nx run-many -t format
 | `apps/api` routes or models | `mise api:types` (the `api-schema` lane fails on drift) |
 | new/changed dependency | `mise ci:local --only dead-code,package-hygiene` |
 
-Commit hooks catch most of this automatically (ruff, biome, custom lints, api-types, doc-comments) — **if they are installed**. `mise run pre-commit:install` must have been run in this clone; `core.hooksPath` pointing at a shared hooks dir makes `prek install` refuse, and the symptom is that nothing local ever fails while CI keeps failing. If a local gate you expected to catch something passes cleanly, confirm the hooks exist before trusting it.
+**`mise run ratchets` is the fast answer to the two ratchets that used to red PRs late** (`plr-complexity`, `mypy-tests`), at CI's exact commands. `plr-complexity` also runs as a commit hook (~4 s, repo-wide scan, but it only fails on a file this change touches), so a complexity violation stops at `git commit`. `mypy-tests` stays in pre-push: its first run in a fresh worktree builds mypy's cache (~3.5 min) and is not commit-hook material. Coverage is in neither — it is master-only and report-only on PRs, so nothing local can catch it.
+
+Commit hooks catch most of this automatically (ruff, biome, custom lints, api-types, doc-comments, plr-complexity) — **if they are installed**. `mise run pre-commit:install` must have been run in this clone; `core.hooksPath` pointing at a shared hooks dir makes `prek install` refuse, and the symptom is that nothing local ever fails while CI keeps failing. If a local gate you expected to catch something passes cleanly, confirm the hooks exist before trusting it.
 
 For a full pre-push equivalent on the lanes that are actually reproducible offline, `mise ci:local --all` (without `--with-heavy`) runs the fast set; the heavy lanes (mutation, ts-tests, semgrep) and the full pytest suite need Docker or hours and are CI's job — go read the red PR with `mise ci:remote` instead of re-running them locally.
 

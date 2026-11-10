@@ -54,6 +54,19 @@ repos:
         types_or: [python, pyi]
         priority: 0
 
+      # The touch-to-fix ratchets CI gates on, at commit time instead of 40
+      # minutes into a lane. Repo-wide scan, filename-independent: the ratchet
+      # only fails on a file the change touches, which changes.sh derives from
+      # the tree. `mypy-tests` is NOT here -- its first run in a fresh worktree
+      # builds mypy's cache (~3.5 min), which is pre-push work, not commit work.
+      - id: plr-complexity
+        name: plr-complexity ratchet (PLR0911/0912/0913/0915)
+        entry: python3 tools/lints/check_plr_complexity.py
+        language: system
+        files: '\.py$'
+        pass_filenames: false
+        priority: 0
+
   - repo: local
     hooks:
       - id: lint-imports

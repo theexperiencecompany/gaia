@@ -98,3 +98,17 @@ def test_hook_watches_what_the_check_reads(
     assert sorted(nx_files[task] - by_hook) == [], (
         f"only {task}'s inputs select these; add them to the hook"
     )
+
+
+def test_the_plr_complexity_hook_runs_ci_command_over_every_python_file() -> None:
+    """The early complexity gate must be CI's own command, on the same `**/*.py` scope."""
+    config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
+    (hook,) = [
+        h for repo in config["repos"] for h in repo.get("hooks", []) if h["id"] == "plr-complexity"
+    ]
+    target = json.loads((REPO_ROOT / "tools" / "ci" / "project.json").read_text())["targets"][
+        "plr-complexity"
+    ]
+    assert hook["entry"] == target["options"]["command"]
+    assert hook["files"] == r"\.py$"
+    assert hook["pass_filenames"] is False

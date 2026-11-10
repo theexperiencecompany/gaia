@@ -128,8 +128,10 @@ nohup python3 scripts/ci/mutation.py local app/x.py app/y.py > /tmp/mut.out 2>&1
 
 ## 6. Lint last, in small batches
 
-Only after the code stops moving. Run the exact CI lanes, a few at a time (13 lanes at once
-ran out of memory on a 16 GB machine):
+Only after the code stops moving. `plr-complexity` is a commit hook now, so a complexity
+violation stops at `git commit`; `mypy-tests` runs at pre-push. To run both without the
+rest: `mise run ratchets`. Otherwise run the exact CI lanes, a few at a time (13 lanes at
+once ran out of memory on a 16 GB machine):
 
 ```bash
 mise ci:local --only mypy,mypy-api,mypy-shared,mypy-voice-agent,ruff,custom-lints,lint-imports

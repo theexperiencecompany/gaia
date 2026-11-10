@@ -768,6 +768,10 @@ description = "Run CI quality gates locally (same lanes/versions as GitHub Actio
 run = "uv run --no-project python scripts/dev/gaia_verify.py"
 
 
+[tasks."ratchets"]
+description = "Run the touch-to-fix ratchets CI gates on (plr-complexity, mypy-tests) at CI's exact commands, without the rest of ci:local. plr also runs at commit; mypy-tests is ~7s warm, ~3.5min on the first run in a fresh worktree"
+run = "python3 tools/lints/check_plr_complexity.py && python3 tools/lints/check_mypy_tests.py"
+
 [tasks."pr:comments"]
 description = "Fetch PR review threads read-only: resolution state, IDs for resolve/reply, next-step syntax"
 run = "uv run python scripts/dev/pr_comments.py"
