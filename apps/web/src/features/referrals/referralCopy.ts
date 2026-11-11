@@ -189,6 +189,10 @@ export const REFERRAL_UI_COPY = {
   ogDomain: "heygaia.io",
   landingFallbackTitle: "Meet GAIA",
   landingFallbackCta: "Get started",
+  landingMemberTitle: "You're already on GAIA",
+  landingMemberBody:
+    "This invite is a gift for someone new. Your assistant is right where you left it.",
+  landingMemberCta: "Open GAIA",
 } as const;
 
 export const CHANNEL_LABELS = {

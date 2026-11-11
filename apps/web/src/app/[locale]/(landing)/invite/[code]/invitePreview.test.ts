@@ -23,7 +23,7 @@ vi.mock("@/app/api/og/lib", () => ({
 }));
 
 const { generateMetadata } = await import("./page");
-const { default: InviteOgImage } = await import("./opengraph-image");
+const { GET: inviteOgImage } = await import("@/app/api/og/invite/[code]/route");
 
 const params = Promise.resolve({ code: "aryan-k7f2" });
 
@@ -53,6 +53,11 @@ describe.each([
     expect(metadata.title).toBe(siteConfig.name);
     expect(metadata.description).toBe(siteConfig.description);
     expect(metadata.robots).toEqual({ index: false, follow: true });
+    expect(metadata.openGraph?.images).toEqual([
+      expect.objectContaining({
+        url: "/api/og/invite/aryan-k7f2",
+      }),
+    ]);
     expect(console.error).toHaveBeenCalled();
   });
 
@@ -60,7 +65,9 @@ describe.each([
     const fallback = new Response("fallback");
     createFallbackResponse.mockReturnValue(fallback);
 
-    expect(await InviteOgImage({ params })).toBe(fallback);
+    expect(await inviteOgImage(new Request("http://test"), { params })).toBe(
+      fallback,
+    );
     expect(createFallbackResponse).toHaveBeenCalledWith(siteConfig.name);
     expect(console.error).toHaveBeenCalled();
   });
