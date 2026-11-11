@@ -638,7 +638,11 @@ class TestTrimReadsColourNotAlpha:
         out = io.BytesIO()
         image.save(out, format="PNG")
         browser.page._image = out.getvalue()
+        browser.page.fold_tops["#fold"] = 150.0
 
-        rendered = await render_html_to_image("<p/>", ImageRenderOptions(trim_margin_px=10))
+        rendered = await render_html_to_image(
+            "<p/>", ImageRenderOptions(trim_margin_px=10, fold_selector="#fold")
+        )
 
         assert Image.open(io.BytesIO(rendered.image)).size == (400, 800)
+        assert rendered.fold == (150 - render_module.FOLD_CLEARANCE_PX) * 2 / 800
