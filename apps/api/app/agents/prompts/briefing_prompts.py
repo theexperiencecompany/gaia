@@ -380,8 +380,8 @@ actually changed in response.
 {setup_block}{winback_note}{first_note}{first_week_note}{cadence_note}{wind_down_note}
 If no goal lane exists but the goal knowledge above names something specific, the
 whole brief is one short honest message plus ONE confirming question that quotes
-it and offers to start ("You mentioned <specific thing> [on <date>], want me to
-take that on and start with <first concrete deliverable> tonight?"). EXCEPTION,
+it and offers to start on one deliverable you name ("You mentioned launching the
+mobile app by December, want me to start with a launch checklist tonight?"). EXCEPTION,
 absolute: if the user's replies above ALREADY answered this with a yes, never ask
 it again in any wording. Acknowledge their yes plainly instead ("you said go
 ahead on the investor list, that's in motion") and say nothing more about it. Weigh
