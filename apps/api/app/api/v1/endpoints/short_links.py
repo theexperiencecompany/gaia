@@ -10,11 +10,13 @@ the request path and a keyed hash of the slug as ``short_link.slug_hash``.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_optional_user
+from app.api.v1.middleware.rate_limiter import viewer_ip
 from app.models.short_link_models import (
+    LinkViewer,
     PublicShortLinkView,
     ShortLinkResponse,
     ShortLinkShareState,
@@ -28,6 +30,7 @@ from app.services.short_link_service import (
     get_public_file,
     get_public_view,
     live_share_url,
+    record_open,
     share_short_link,
     stop_sharing,
 )
@@ -38,7 +41,7 @@ from app.utils.loggable_path import (
     SHORT_LINK_SHARE_STATE_PATH,
     SHORT_LINK_UNSHARE_PATH,
 )
-from app.utils.sandboxed_file_response import sandboxed_file_response
+from app.utils.sandboxed_file_response import public_link_file_response
 from shared.py.wide_events import log
 
 router = APIRouter(prefix=SHORT_LINK_ROUTE_PREFIX, tags=["Short Links"])
@@ -107,14 +110,40 @@ async def resolve_short_link_route(response: Response, slug: str) -> PublicShort
     return view
 
 
+@router.post(
+    "/{slug}/opened",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses({404: _NOT_FOUND}),
+)
+async def record_open_route(
+    request: Request,
+    slug: str,
+    user: Annotated[AuthenticatedUser | None, Depends(get_optional_user)],
+) -> None:
+    """Count the link as opened, sent by the viewer's browser once the page shows.
+
+    Not the resolve: the page resolves during SSR, where neither the viewer's
+    session nor their browser is visible, and unfurl bots resolve it too.
+    """
+    log.set(short_link={"operation": "opened", "slug_hash": hash_short_link_slug(slug)})
+    viewer = LinkViewer(
+        user_id=user.user_id if user else None,
+        ip=viewer_ip(request),
+        user_agent=request.headers.get("user-agent", ""),
+    )
+    kind = await record_open(slug, viewer)
+    if kind is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
+    log.set(short_link={"viewer_kind": kind.value})
+
+
 @router.get(
     "/{slug}/file",
     response_class=FileResponse,
     responses=error_responses({404: _NOT_FOUND, 503: _STORAGE_OFFLINE}),
 )
 async def get_short_link_file_route(slug: str) -> FileResponse:
-    """Stream the file behind a session-artifact slug (images, PDFs, downloads).
-    No auth; sandboxed exactly like the owner's own session-file route."""
+    """Stream the file behind a slug: raster images inline, everything else a download. No auth."""
     log.set(short_link={"operation": "file", "slug_hash": hash_short_link_slug(slug)})
     try:
         host_path = await get_public_file(slug)
@@ -122,7 +151,7 @@ async def get_short_link_file_route(slug: str) -> FileResponse:
         raise HTTPException(status_code=503, detail=_STORAGE_OFFLINE) from e
     if host_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
-    return sandboxed_file_response(host_path, cache_control=_NO_STORE)
+    return public_link_file_response(host_path, cache_control=_NO_STORE)
 
 
 @router.post(SHORT_LINK_UNSHARE_PATH)

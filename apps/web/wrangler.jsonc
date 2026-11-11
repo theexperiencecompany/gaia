@@ -49,6 +49,10 @@
       ]
     }
   ],
+  // Read per request by src/middleware.ts: the host whose /<slug> paths are share links.
+  "vars": {
+    "GAIA_LINK_HOST": "heygaia.link"
+  },
   "observability": {
     "logs": {
       "enabled": true,

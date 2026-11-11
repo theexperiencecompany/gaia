@@ -2174,12 +2174,34 @@ export interface paths {
         };
         /**
          * Get Short Link File Route
-         * @description Stream the file behind a session-artifact slug (images, PDFs, downloads).
-         *     No auth; sandboxed exactly like the owner's own session-file route.
+         * @description Stream the file behind a slug: raster images inline, everything else a download. No auth.
          */
         get: operations["short_links_get_short_link_file_route"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/opened": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Open Route
+         * @description Count the link as opened, sent by the viewer's browser once the page shows.
+         *
+         *     Not the resolve: the page resolves during SSR, where neither the viewer's
+         *     session nor their browser is visible, and unfurl bots resolve it too.
+         */
+        post: operations["short_links_record_open_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -23826,6 +23848,62 @@ export interface operations {
             };
             /** @description Workspace storage offline */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_record_open_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Short link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

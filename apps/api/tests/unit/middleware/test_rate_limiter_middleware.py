@@ -5,6 +5,8 @@ FastAPI 0.139 defers router inclusion, so app.routes holds wrappers with no
 and _should_exempt then exempted it — the default limit applied to nothing.
 """
 
+from typing import Literal
+
 from fastapi import APIRouter, FastAPI
 from httpx import ASGITransport, AsyncClient
 from limits.storage import RedisStorage
@@ -19,6 +21,8 @@ from app.api.v1.middleware.rate_limiter import (
     RouterAwareSlowAPIMiddleware,
     find_route_handler,
 )
+from app.config.settings import settings
+from app.constants.http import INTERNAL_RESOLVER_HEADER, VIEWER_IP_HEADER
 from app.core.middleware import rate_limit_handler
 
 pytestmark = pytest.mark.unit
@@ -32,12 +36,12 @@ def _app(
     limit: str = "1/minute",
     *,
     enabled: bool = True,
-    key_style: str = "url",
+    key_style: Literal["endpoint", "url"] = "url",
     headers_enabled: bool = False,
 ) -> FastAPI:
     app = FastAPI()
     app.add_middleware(RouterAwareSlowAPIMiddleware)
-    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+    app.exception_handler(RateLimitExceeded)(rate_limit_handler)
     app.state.limiter = Limiter(
         key_func=get_remote_address,
         default_limits=[limit],
@@ -166,3 +170,66 @@ async def test_a_probe_is_never_counted(monkeypatch: pytest.MonkeyPatch) -> None
             assert (await client.get("/health")).status_code == 200
 
     assert counted == []
+
+
+_RESOLVER_TOKEN = "r" * 64
+
+
+def _viewer_keyed_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
+    """Build an app behind the production limiter, at one request a minute."""
+    monkeypatch.setattr(rate_limiter, "DEFAULT_LIMIT_PER_MINUTE", 1)
+    monkeypatch.setattr(settings, "INTERNAL_RESOLVER_TOKEN", _RESOLVER_TOKEN)
+    app = _app()
+    app.state.limiter = rate_limiter.build_limiter("memory://")
+    return app
+
+
+def _from_web_server(viewer_ip: str, token: str = _RESOLVER_TOKEN) -> dict[str, str]:
+    return {VIEWER_IP_HEADER: viewer_ip, INTERNAL_RESOLVER_HEADER: token}
+
+
+async def test_server_rendered_requests_count_against_each_viewer_not_the_web_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The web app resolves a link page during SSR, so every viewer arrives from its IP."""
+    async with _client(_viewer_keyed_app(monkeypatch)) as client:
+        first = await client.get("/included/thing", headers=_from_web_server("198.51.100.1"))
+        second = await client.get("/included/thing", headers=_from_web_server("198.51.100.2"))
+        again = await client.get("/included/thing", headers=_from_web_server("198.51.100.1"))
+
+    assert [first.status_code, second.status_code, again.status_code] == [200, 200, 429]
+
+
+@pytest.mark.parametrize("token", ["", "not-the-token"])
+async def test_a_viewer_ip_without_the_resolver_token_cannot_pick_its_own_key(
+    monkeypatch: pytest.MonkeyPatch, token: str
+) -> None:
+    async with _client(_viewer_keyed_app(monkeypatch)) as client:
+        first = await client.get("/included/thing", headers=_from_web_server("198.51.100.1", token))
+        rotated = await client.get(
+            "/included/thing", headers=_from_web_server("198.51.100.2", token)
+        )
+
+    assert [first.status_code, rotated.status_code] == [200, 429]
+
+
+async def test_an_unset_resolver_token_trusts_no_viewer_ip(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = _viewer_keyed_app(monkeypatch)
+    monkeypatch.setattr(settings, "INTERNAL_RESOLVER_TOKEN", None)
+
+    async with _client(app) as client:
+        await client.get("/included/thing", headers=_from_web_server("198.51.100.1", ""))
+        rotated = await client.get("/included/thing", headers=_from_web_server("198.51.100.2", ""))
+
+    assert rotated.status_code == 429
+
+
+async def test_a_viewer_ip_that_is_not_an_address_is_not_a_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A garbage header from a misconfigured proxy falls back to the peer, never a free bucket."""
+    async with _client(_viewer_keyed_app(monkeypatch)) as client:
+        await client.get("/included/thing", headers=_from_web_server("not-an-ip"))
+        refused = await client.get("/included/thing", headers=_from_web_server("also-not"))
+
+    assert refused.status_code == 429
