@@ -26,6 +26,9 @@ import {
   type NotificationView,
 } from "@/types/features/notificationTypes";
 
+// The letter's exit animation can outlast waitFor's 1s default on a loaded machine.
+const MODAL_EXIT_TIMEOUT_MS = 5000;
+
 const HEADLINE = "Three decisions are waiting on you";
 const MESSAGE = "The Acme renewal needs your sign-off today.";
 
@@ -205,7 +208,9 @@ describe("briefing notification", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: "Close" }));
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), {
+      timeout: MODAL_EXIT_TIMEOUT_MS,
+    });
   });
 
   it("keeps an action that goes somewhere other than the brief", () => {
