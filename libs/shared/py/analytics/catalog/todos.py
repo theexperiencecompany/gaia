@@ -16,6 +16,7 @@ __all__ = [
     "TodosDeleted",
     "TodosInboxDeskProvisioned",
     "TodosOpenStateRepaired",
+    "TodosRefReopened",
     "TodosRunResultDelivered",
     "TodosSubscriptionFailed",
     "TodosSubscriptionRegistered",
@@ -172,6 +173,17 @@ class TodosOpenStateRepaired(ServerEvent):
     todo_id: ObjectIdStr
     # What the todo was waiting on when the run that left it without a next step woke.
     waiting_on: Identifier | None = None
+
+
+class TodosRefReopened(ServerEvent):
+    """A create for an outside object reopened the completed tracked todo it already had."""
+
+    event: ClassVar[str] = "todos:ref_reopened"
+    budget_per_user_day: ClassVar[int] = 50
+
+    todo_id: ObjectIdStr
+    # Which kind of outside object came back: a Gmail thread, the Inbox desk.
+    ref_source: Identifier
 
 
 class ProjectsCreated(ServerEvent):

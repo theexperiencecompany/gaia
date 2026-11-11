@@ -187,13 +187,14 @@ def _no_backoff() -> AbstractContextManager[AsyncMock]:
     return patch("app.db.mongodb.retry.TRANSIENT_MONGO_RETRY.sleep", AsyncMock())
 
 
-def _request() -> TodoRunRequest:
+def _request(*, runs_once: bool = True) -> TodoRunRequest:
     return TodoRunRequest(
         user=USER,
         todo_run=TodoRun(
             todo_id=TODO_ID,
             trigger_type=TriggerType.SCHEDULED_TODO,
             message_class=ProactiveMessageClass.ROUTINE,
+            runs_once=runs_once,
         ),
         todo_title="Watch the staging deploy",
         task="Execute the following scheduled task: Watch the staging deploy",
@@ -338,6 +339,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
             todo_id=TODO_ID,
             trigger_type=TriggerType.SCHEDULED_TODO,
             message_class=ProactiveMessageClass.ROUTINE,
+            runs_once=True,
         )
         assert (run.kind, run.conversation_id, run.user_message_id) == (
             RunKind.LIVE,
@@ -627,6 +629,7 @@ def _undelivered() -> "trd.FinishedTodoRun":
         user_id=USER.user_id,
         conversation_id="run-conv-1",
         trigger_type=TriggerType.SCHEDULED_TODO,
+        runs_once=True,
         result_text=EXECUTOR_REPORT,
     )
 
@@ -752,8 +755,10 @@ def _recurring(**update: object) -> TodoDocument:
     return _todo().model_copy(update={"recurrence": "0 9 * * *", **update})
 
 
-def _woken(trigger_type: TriggerType, message_class: ProactiveMessageClass) -> TodoRunRequest:
-    request = _request()
+def _woken(
+    trigger_type: TriggerType, message_class: ProactiveMessageClass, *, runs_once: bool = False
+) -> TodoRunRequest:
+    request = _request(runs_once=runs_once)
     return replace(
         request,
         todo_run=replace(request.todo_run, trigger_type=trigger_type, message_class=message_class),
@@ -769,7 +774,7 @@ class TestWhatCanWaitGoesIntoTheMorningBrief:
 
     async def test_a_routine_recurring_update_is_held_as_one_brief_item(self) -> None:
         with _seams(todo=_recurring(), narrated=_BRIEFED, daily_brief=_LIVE_BRIEF) as seams:
-            await run_todo_on_executor(_request())
+            await run_todo_on_executor(_request(runs_once=False))
 
         assert _offered_the_brief(seams)
         seams.send.assert_not_awaited()
@@ -801,7 +806,7 @@ class TestWhatCanWaitGoesIntoTheMorningBrief:
         [
             pytest.param(
                 _todo(),
-                _woken(TriggerType.SCHEDULED_TODO, ProactiveMessageClass.ROUTINE),
+                _woken(TriggerType.SCHEDULED_TODO, ProactiveMessageClass.ROUTINE, runs_once=True),
                 id="one-time-answer",
             ),
             pytest.param(
@@ -854,7 +859,7 @@ class TestWhatCanWaitGoesIntoTheMorningBrief:
     ) -> None:
         """Holding for a brief that never runs would mean nobody sees the result."""
         with _seams(todo=_recurring(), narrated=_BRIEFED, daily_brief=daily_brief) as seams:
-            await run_todo_on_executor(_request())
+            await run_todo_on_executor(_request(runs_once=False))
 
         assert not _offered_the_brief(seams)
         seams.hold.assert_not_awaited()

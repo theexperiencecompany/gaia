@@ -163,9 +163,8 @@ class SubagentStartPayload(BaseModel):
 
     subagent_id: str
     subagent_name: str
-    #: The subagent's stable id (todos, gmail): what a playbook's handoff: names.
-    #: subagent_id is this dispatch's row (unique per call) — right for nesting,
-    #: wrong for matching a call back to the subagent that made it.
+    #: The integration id the removed handoff tool stamped; no current producer sets it.
+    #: subagent_id is this dispatch's row (unique per call), not the subagent's identity.
     subagent: str | None = None
     agent_type: str
     started_at: str

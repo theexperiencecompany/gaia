@@ -64,8 +64,8 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         """Resolve a partial id or exact name to an integration.
 
         Matches integration_id by case-insensitive prefix, or name by
-        case-insensitive exact match — the disambiguation used by handoff/agent
-        metadata lookups where the caller may hold either a short id or a name.
+        case-insensitive exact match — the disambiguation used by integration
+        activation and metadata lookups where the caller may hold either a short id or a name.
         """
         escaped = re.escape(search)
         return await self._find_one(
