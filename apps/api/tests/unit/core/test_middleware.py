@@ -7,6 +7,7 @@ asserted anywhere; the module had no unit test at all.
 
 import gzip
 import inspect
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI, WebSocket
@@ -17,6 +18,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.wrappers import Limit
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
@@ -87,11 +89,15 @@ class TestWebSocketWideEventBoundary:
         assert ws_client.get("/plain", headers={"x-trace-id": "trace-1"}).json()["task"] is None
 
 
+def _class_name(entry: Middleware) -> str:
+    return cast("type", entry.cls).__name__
+
+
 @pytest.fixture
 def middleware_names() -> list[str]:
     app = FastAPI()
     configure_middleware(app)
-    return [m.cls.__name__ for m in app.user_middleware]
+    return [_class_name(m) for m in app.user_middleware]
 
 
 def test_posthog_context_is_registered(middleware_names: list[str]) -> None:
@@ -129,7 +135,7 @@ def _gzip_client(body: bytes) -> TestClient:
     """Wrap the configured GZipMiddleware around an app that returns body as JSON."""
     configured = FastAPI()
     configure_middleware(configured)
-    (entry,) = (m for m in configured.user_middleware if m.cls.__name__ == "GZipMiddleware")
+    (entry,) = (m for m in configured.user_middleware if _class_name(m) == "GZipMiddleware")
 
     async def endpoint(request: Request) -> Response:
         return Response(body, media_type="application/json")
@@ -233,7 +239,7 @@ class TestRateLimitHandler:
     @staticmethod
     def _app_that_is_rate_limited(*, record_window: bool) -> FastAPI:
         app = FastAPI()
-        app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+        app.exception_handler(RateLimitExceeded)(rate_limit_handler)
         # The handler reads the counters off the app, as slowapi's own does.
         app.state.limiter = Limiter(
             key_func=lambda: "client", default_limits=["5/minute"], storage_uri="memory://"

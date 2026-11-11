@@ -10,7 +10,6 @@ pin semantics) is covered by the real-DB contract suite.
 """
 
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
@@ -689,14 +688,16 @@ class TestConversationSizeCap:
             seen.update(kwargs)
             return ["m1"]
 
-        monkeypatch.setattr(conversation_service.conversation_repository, "append_messages", record)
+        monkeypatch.setattr(
+            "app.services.conversation_service.conversation_repository.append_messages", record
+        )
 
         await conversation_service.update_messages(
             UpdateMessagesRequest(
                 conversation_id="c1",
-                messages=[MessageModel(type="user", message="hi", response="", message_id="m1")],
+                messages=[MessageModel(type="user", response="", message_id="m1")],
             ),
-            user=SimpleNamespace(user_id="u1"),
+            user=AuthenticatedUser(user_id="u1"),
         )
 
         assert seen["max_messages"] == CONVERSATION_MAX_MESSAGES
