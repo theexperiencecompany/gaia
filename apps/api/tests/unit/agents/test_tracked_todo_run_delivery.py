@@ -323,6 +323,21 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
         assert seams.send.await_args.kwargs["notification_text"] == NARRATED
 
+    async def test_a_result_comms_would_hold_for_the_brief_goes_now_when_it_cannot_wait(
+        self,
+    ) -> None:
+        recorder = WideEventRecorder()
+        with (
+            _seams(todo=_todo(), narrated="<BRIEF>Deploy finished</BRIEF>") as seams,
+            patch("shared.py.wide_events._loguru", recorder),
+        ):
+            await run_todo_on_executor(_request())
+
+        [held] = recorder.event("executor_run")["warnings"]
+        assert held["msg"] == f"{LogTag.AGENT} comms held a result that must go now; it is sent"
+        assert held["todo_id"] == TODO_ID
+        seams.send.assert_awaited_once()
+
     async def test_the_executor_runs_the_brief_itself_in_background_mode(self) -> None:
         with _seams(todo=_todo()) as seams:
             await run_todo_on_executor(_request())

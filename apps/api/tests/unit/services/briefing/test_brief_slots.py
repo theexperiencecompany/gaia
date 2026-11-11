@@ -9,6 +9,7 @@ from app.services.briefing.slots import (
     SeriesField,
     SlotError,
     SlotValues,
+    figures_in,
     referenced_facts,
     render_slots,
     series_figures,
@@ -333,3 +334,8 @@ class TestEchoes:
             "the message writes '11:00 AM' after [[fact:9.time]], which already renders "
             "'11:00 AM'; drop it",
         ]
+
+
+class TestFiguresIn:
+    def test_each_word_with_a_digit_is_kept_without_the_punctuation_around_it(self) -> None:
+        assert figures_in(["up by (8).", "the Q3 plan,", "no figures here"]) == {"8", "Q3"}
