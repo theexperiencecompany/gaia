@@ -304,6 +304,24 @@ def email_verdict_answers(
     return {"answers": answers}
 
 
+def reaction_answers(
+    *, upset: float = 0.0, task: float = 1.0, sign_off: float = 0.0, emoji: str = "🔎"
+) -> dict[str, object]:
+    """Return a Decisions body for the instant reaction's three questions; needs_words takes the rest."""
+    kinds = {"task": task, "sign_off": sign_off, "needs_words": round(1.0 - task - sign_off, 6)}
+    return {
+        "answers": {
+            "upset": {"type": "noul", "noul": upset},
+            "kind": {
+                "type": "choice",
+                "choice": max(kinds, key=lambda k: kinds[k]),
+                "probabilities": kinds,
+            },
+            "emoji": {"type": "choice", "choice": emoji, "probabilities": {emoji: 1.0}},
+        }
+    }
+
+
 @contextmanager
 def local_timezone(tz_name: str) -> Iterator[None]:
     """Run the body with the process local timezone set, restoring it afterwards.
