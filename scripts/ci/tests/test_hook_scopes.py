@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 
 import pytest
@@ -98,3 +99,31 @@ def test_hook_watches_what_the_check_reads(
     assert sorted(nx_files[task] - by_hook) == [], (
         f"only {task}'s inputs select these; add them to the hook"
     )
+
+
+def test_the_plr_complexity_hook_runs_ci_command_over_every_python_file() -> None:
+    """The early complexity gate runs CI's own script, on the same `**/*.py` scope."""
+    config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
+    (hook,) = [
+        h for repo in config["repos"] for h in repo.get("hooks", []) if h["id"] == "plr-complexity"
+    ]
+    target = json.loads((REPO_ROOT / "tools" / "ci" / "project.json").read_text())["targets"][
+        "plr-complexity"
+    ]
+    interpreter, *ci_args = shlex.split(target["options"]["command"])
+    assert interpreter == "python3"
+    assert shlex.split(hook["entry"]) == [
+        "uv",
+        "run",
+        "--no-project",
+        "--isolated",
+        "python",
+        *ci_args,
+    ], "the hook runs CI's script and args on the pinned interpreter, not PATH's python3"
+    selected = re.compile(hook["files"])
+    assert selected.search("apps/api/app/services/foo.py"), "a Python change must run the ratchet"
+    assert selected.search("tools/lints/plr_complexity_baseline.txt"), (
+        "the baseline is an nx input, so re-baselining must run the ratchet too"
+    )
+    assert not selected.search(".pre-commit-config.yaml")
+    assert hook["pass_filenames"] is False
