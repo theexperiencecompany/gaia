@@ -170,6 +170,8 @@ Quick map:
 
 ### Mobile App
 
+**Not under active development.** Don't change, audit, report on or mention `apps/mobile` unless the founder raises it. Leave it out of scope, findings and summaries.
+
 Similar structure to web app with React Native components. Uses React Navigation for routing.
 
 ### Shared Libraries
