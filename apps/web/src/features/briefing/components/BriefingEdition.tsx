@@ -25,10 +25,10 @@ export interface BriefingEditionProps {
   imageUrl?: string | null;
 }
 
-// Rendered 540 CSS px wide at 3x, shown at that width (max-w-[540px]). The height
-// only reserves space while loading: `h-auto` keeps the natural ratio, never cropping.
-const EDITION_WIDTH = 1620;
-const EDITION_TYPICAL_HEIGHT = 4500;
+// Rendered at 3x: a 540px page, plus a desk family's transparent shadow margin. The
+// height only reserves space while loading: `h-auto` keeps the natural ratio.
+const EDITION_WIDTH = 1716;
+const EDITION_TYPICAL_HEIGHT = 4700;
 
 /**
  * The owner's copy carries todo_id and opens the in-app todo; the public copy
@@ -201,8 +201,10 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
         alt={payload.headline}
         width={EDITION_WIDTH}
         height={EDITION_TYPICAL_HEIGHT}
-        sizes="(max-width: 572px) 100vw, 540px"
-        className="mx-auto h-auto w-full max-w-[540px]"
+        sizes="(max-width: 640px) 100vw, 572px"
+        // On a phone the image's own transparent margin stands in for StandalonePage's
+        // px-4 gutter, so the paper gets the screen's width instead of losing 32px.
+        className="-mx-4 h-auto w-[calc(100%+2rem)] max-w-none sm:mx-auto sm:w-full sm:max-w-[572px]"
       />
       {uncomposed.length > 0 && <EverythingElse items={uncomposed} />}
     </div>
