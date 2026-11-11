@@ -264,7 +264,7 @@
     "name": "Akiflow",
     "tagline": "파워 유저를 위한 통합 작업 받은함 및 캘린더 시간 차단 도구",
     "description": "Akiflow는 키보드 중심의 생산성 앱으로, 30개 이상의 도구(Asana, Todoist, Jira, Gmail, Slack)의 작업을 통합 받은함으로 모아서 동기화된 캘린더에 직접 시간 차단을 할 수 있게 해줍니다. 여러 작업 시스템을 동시에 처리하는 파워 유저를 위해 단일 계획 허브를 제공합니다. GAIA는 이메일 및 대화에서 자동으로 작업을 생성하고, 캘린더를 관리하며, 교차 도구 워크플로우를 실행하는 능동적인 AI 생산성 OS로, Akiflow가 정리하는 데 도움을 주는 관리 계층을 줄여줍니다.",
-    "metaTitle": "능동형 AI를 갖춘 Akiflow 대안",
+    "metaTitle": "Akiflow 대안: 작업과 일정을 먼저 챙기는 능동형 AI",
     "metaDescription": "Akiflow는 여러 앱의 작업을 모아 캘린더에 시간 블록으로 배치합니다. GAIA는 이메일에서 작업을 직접 만들고, 캘린더를 관리하며, 도구 간 워크플로우를 자동화합니다.",
     "keywords": [
       "GAIA vs Akiflow",
@@ -368,7 +368,7 @@
     "name": "Any.do",
     "tagline": "사용자와 팀을 위한 간단한 할 일 목록",
     "description": "Any.do는 캘린더 동기화, WhatsApp 미리 알림 및 ChatGPT 기반 비서 기능을 갖춘 세련된 작업 및 목록 관리 도구입니다. GAIA는 컨텍스트가 풍부한 AI 에이전트를 통해 전체 디지털 워크플로우를 능동적으로 오케스트레이션하는 목록 관리 기능을 훨씬 뛰어넘습니다.",
-    "metaTitle": "Any.do MCP와 AI 연동: GAIA와 비교",
+    "metaTitle": "Any.do MCP와 AI 연동: GAIA와 할 일 관리 기능 비교",
     "metaDescription": "GAIA는 MCP로 Any.do와 연결됩니다. 기존 목록은 그대로 두고 AI가 메일에서 작업을 만들어 일정에 넣습니다. AI 기능과 요금을 비교하세요.",
     "keywords": [
       "GAIA vs Any.do",
@@ -568,7 +568,7 @@
     "name": "Asana",
     "tagline": "팀 프로젝트 및 작업 관리 플랫폼",
     "description": "Asana는 팀 간의 작업을 추적하기 위해 구축된 팀 협업 및 프로젝트 관리 도구입니다. GAIA는 이메일, 캘린더, 작업 및 전체 디지털 생활 전반에 걸쳐 다양한 통합 기능을 자율적으로 관리하는 능동형 AI 비서입니다.",
-    "metaTitle": "사용자당 요금이 없는 Asana 대안",
+    "metaTitle": "Asana 대안: 사용자당 요금이 없는 능동형 AI 업무 비서",
     "metaDescription": "Asana는 사용자당 요금이 들고 작업 관리는 수동입니다. GAIA는 이메일에서 작업을 만들고 워크플로우를 자동화하는 소스 공개형 Asana 대안으로, 사용자당 요금 없이 자체 호스팅할 수 있습니다.",
     "keywords": [
       "GAIA vs Asana",
@@ -1737,7 +1737,7 @@
     "name": "ClickUp",
     "tagline": "모든 것을 위한 프로젝트 관리 플랫폼",
     "description": "ClickUp은 기능이 풍부한 프로젝트 관리 도구입니다. GAIA는 수동 프로젝트 관리가 필요 없이 능동적으로 작업을 자동화하는 AI를 추가합니다.",
-    "metaTitle": "능동형 AI를 갖춘 ClickUp 대안",
+    "metaTitle": "ClickUp 대안: 작업을 먼저 처리하는 능동형 AI 비서",
     "metaDescription": "ClickUp은 강력하지만 여전히 수동 관리가 필요합니다. GAIA는 이메일에서 작업을 만들고, 캘린더를 관리하며, 워크플로우를 자동화하는 소스 공개형 ClickUp 대안입니다.",
     "keywords": [
       "GAIA vs ClickUp",
@@ -2144,7 +2144,7 @@
     "name": "Confluence",
     "tagline": "Atlassian's team wiki and documentation platform",
     "description": "Confluence is Atlassian's enterprise team wiki and knowledge management platform, widely used alongside Jira for software teams. GAIA is a proactive AI assistant that connects documentation to email, tasks, calendar, and the rest of your tools with autonomous action.",
-    "metaTitle": "Confluence 대안 AI: GAIA와 비교",
+    "metaTitle": "Confluence 대안 AI: 지식 관리와 자동화를 GAIA와 비교",
     "metaDescription": "Confluence는 팀 위키지만 답은 직접 찾아야 합니다. GAIA는 Jira, 메일, 작업과 연동해 필요한 정보를 먼저 보여줍니다. 소규모 팀에 맞는지 확인하세요.",
     "keywords": [
       "confluence alternative",
@@ -2565,7 +2565,7 @@
     "name": "DeepSeek",
     "tagline": "Open-weight LLM with strong coding and free API access",
     "description": "DeepSeek is a powerful open-weight large language model from China with strong coding capabilities and a free API tier. GAIA is a proactive AI productivity assistant that connects AI intelligence to real workflow automation across email, calendar, tasks, and the rest of your tools.",
-    "metaTitle": "DeepSeek 대안: 생산성 자동화를 위한 GAIA",
+    "metaTitle": "DeepSeek 대안: 대화를 넘어 생산성을 자동화하는 GAIA",
     "metaDescription": "DeepSeek은 강력한 오픈 LLM이지만 받은편지함 관리나 워크플로우 자동화는 하지 않습니다. GAIA는 작업과 이메일, 워크플로우를 먼저 챙기는 소스 공개 대안입니다.",
     "keywords": [
       "deepseek alternative",
@@ -4163,7 +4163,7 @@
     "name": "Grok",
     "tagline": "xAI's real-time AI assistant integrated with X/Twitter",
     "description": "Grok is xAI's AI assistant with real-time access to X/Twitter data and the latest world events. GAIA is a proactive productivity AI that manages your email, calendar, tasks, and workflows — turning AI into a system that works for you, not just answers questions.",
-    "metaTitle": "Grok vs GAIA: 실시간 대화와 실행하는 비서",
+    "metaTitle": "Grok vs GAIA: 실시간 대화와 직접 실행하는 AI 비서",
     "metaDescription": "Grok은 X의 실시간 정보로 답합니다. GAIA는 요청 전에 메일, 일정, 작업을 처리하고 맥락을 기억합니다. 연동과 요금을 비교하세요.",
     "keywords": [
       "grok alternative",
@@ -4275,7 +4275,7 @@
     "name": "Harvest",
     "tagline": "Time tracking and invoicing for freelancers and teams",
     "description": "Harvest combines time tracking with invoicing, expense tracking, and project budgeting for freelancers and agencies. GAIA complements billing workflows by proactively managing the email, tasks, calendar, and cross-tool coordination that happens around billable work — reducing the non-billable overhead that Harvest tracks but cannot prevent.",
-    "metaTitle": "Harvest 예산 관리와 청구: GAIA와 비교",
+    "metaTitle": "Harvest 예산 관리와 청구: 시간 관리 자동화를 GAIA와 비교",
     "metaDescription": "Harvest는 시간, 프로젝트 예산, 청구서를 관리합니다. GAIA는 고객 메일, 작업, 일정을 맡습니다. 역할 차이와 함께 쓰는 방법을 확인하세요.",
     "keywords": [
       "Harvest alternative",
@@ -4927,7 +4927,7 @@
     "name": "Jira",
     "tagline": "Enterprise project and issue tracking for software teams",
     "description": "Jira is Atlassian's enterprise-grade issue tracker built for software engineering teams. GAIA is a proactive AI personal assistant that manages your entire digital workflow across email, calendar, tasks, and the rest of your tools.",
-    "metaTitle": "Jira vs GAIA: 개인 생산성을 위한 AI",
+    "metaTitle": "Jira vs GAIA: 팀 관리가 아닌 개인 생산성을 위한 AI",
     "metaDescription": "Jira는 개발 팀을 위한 도구입니다. GAIA는 이메일, 일정, 작업을 먼저 관리하는 AI 어시스턴트로 Jira와 연동해 개인 생산성을 높입니다.",
     "keywords": [
       "GAIA vs Jira",
@@ -5324,7 +5324,7 @@
     "name": "Linear",
     "tagline": "The system for product development",
     "description": "Linear is a fast, opinionated issue tracker built for engineering teams. GAIA integrates with Linear while also managing your email, calendar, and entire personal workflow as a proactive AI assistant.",
-    "metaTitle": "Linear 대안? 이메일에서 이슈를 만드는 GAIA",
+    "metaTitle": "Linear 대안: 이메일에서 이슈를 자동으로 만드는 GAIA",
     "metaDescription": "Linear는 직접 등록한 개발 이슈를 관리합니다. GAIA는 Gmail에서 Linear 이슈를 만들고 개인 작업과 일정까지 관리합니다. 차이를 비교하세요.",
     "keywords": [
       "GAIA vs Linear",
@@ -5422,7 +5422,7 @@
     "name": "Logseq",
     "tagline": "A privacy-first, source-available platform for knowledge management and collaboration",
     "description": "Logseq is a source-available outliner and personal knowledge management tool with local-first storage and a bidirectional graph view. GAIA goes further by proactively managing your email, calendar, tasks, and workflows — turning notes into actions automatically.",
-    "metaTitle": "Logseq vs GAIA: 노트를 실행으로 바꾸기",
+    "metaTitle": "Logseq vs GAIA: 노트를 일정과 작업으로 바꿔 실행하기",
     "metaDescription": "Logseq 대안으로 GAIA를 살펴보세요. 받은편지함, 일정, 작업, 자동화를 능동형 AI가 관리해 노트를 실제 행동으로 바꿔 줍니다.",
     "keywords": [
       "GAIA vs Logseq",
@@ -5633,7 +5633,7 @@
     "name": "Make",
     "tagline": "Visual no-code automation platform connecting 2,000+ apps",
     "description": "Make (formerly Integromat) is a powerful visual automation platform where you build workflows by dragging and connecting modules on a canvas — with routers, iterators, aggregators, and error handlers for complex data pipelines. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and integrations through natural language and autonomous action, requiring no scenario-building or technical configuration to get started.",
-    "metaTitle": "Make vs GAIA: 평범한 말로 자동화하기",
+    "metaTitle": "Make vs GAIA: 시나리오 없이 평범한 말로 자동화하기",
     "metaDescription": "GAIA와 Make를 비교합니다. Make는 노코드 자동화에 강하고, GAIA는 자연어로 이메일, 일정, 작업을 관리해 시나리오를 만들 필요가 없습니다.",
     "keywords": [
       "GAIA vs Make",
@@ -5806,7 +5806,7 @@
     "name": "Mem.ai",
     "tagline": "AI-powered note-taking and personal knowledge management",
     "description": "Mem.ai is an AI-powered note-taking app that automatically organizes your notes, surfaces related content, and lets you chat with your knowledge base. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and the rest of your tools into a single intelligent assistant that acts before you ask.",
-    "metaTitle": "Mem AI란? 요금과 기능을 GAIA와 비교",
+    "metaTitle": "Mem AI란? 요금과 기능, AI 기억 방식을 GAIA와 비교",
     "metaDescription": "Mem.ai는 메모를 자동 정리하고 대화로 찾아줍니다. GAIA는 이메일과 일정의 맥락을 기억하고 직접 실행합니다. 기능과 요금을 비교하세요.",
     "keywords": [
       "GAIA vs Mem",
@@ -6027,7 +6027,7 @@
     "name": "Missive",
     "tagline": "Team inbox and collaborative email client for shared communication",
     "description": "Missive is a collaborative email client that turns your inbox into a shared workspace — with shared inboxes, in-thread team chat, assignment rules, and integrations with CRMs and project tools. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and the rest of your tools autonomously, built for individuals and teams who want an AI to handle the administrative layer, not just a better place to read email together.",
-    "metaTitle": "Missive 대안: 공유 받은편지함과 GAIA 비교",
+    "metaTitle": "Missive 대안: 공유 받은편지함과 AI 이메일 관리 GAIA 비교",
     "metaDescription": "Missive는 팀 공유 받은편지함이지만 분류는 직접 합니다. GAIA는 메일을 분류하고 답장 초안과 워크플로우를 실행합니다. 소규모 팀 요금도 비교하세요.",
     "keywords": [
       "GAIA vs Missive",
@@ -6326,7 +6326,7 @@
     "name": "n8n",
     "tagline": "Source-available workflow automation platform",
     "description": "n8n provides powerful no-code workflow automation. GAIA adds AI intelligence to understand context and make decisions, not just execute rules.",
-    "metaTitle": "n8n vs GAIA: AI 네이티브 자동화",
+    "metaTitle": "n8n vs GAIA: 노드 없이 쓰는 AI 네이티브 자동화",
     "metaDescription": "n8n은 모든 규칙을 직접 정의해야 합니다. GAIA는 맥락을 읽고 이메일 초안을 쓰며 미리 정한 트리거 없이도 먼저 움직이는 AI 네이티브 자동화입니다.",
     "keywords": [
       "GAIA vs n8n",
@@ -7631,7 +7631,7 @@
     "name": "Pipedrive",
     "tagline": "Sales-focused CRM with visual pipeline management",
     "description": "Pipedrive is a sales-centric CRM built around visual deal pipelines, helping sales teams track leads, log activities, and close deals. GAIA complements sales workflows by proactively managing email, follow-up tasks, meeting preparation, and cross-tool orchestration that Pipedrive cannot automate.",
-    "metaTitle": "Pipedrive AI 대안: 영업용 GAIA 비교",
+    "metaTitle": "Pipedrive AI 대안: 영업 이메일과 작업 관리를 GAIA와 비교",
     "metaDescription": "Pipedrive는 영업 파이프라인을 관리합니다. GAIA는 미팅 준비, 메일 분류, 후속 연락을 대신합니다. 1인 영업에 맞는지와 요금을 비교하세요.",
     "keywords": [
       "Pipedrive alternative",
@@ -7790,7 +7790,7 @@
     "name": "Poke",
     "tagline": "문자 메시지 속에 사는 AI 비서",
     "description": "Poke는 메시지, WhatsApp, Telegram으로 문자를 보내 쓰는 개인 비서로, 이메일, 캘린더, 각종 앱과 연결됩니다. GAIA는 같은 채팅 앱에서 쓸 수 있고, 여기에 웹 앱과 데스크톱 앱, 여러 도구를 넘나드는 워크플로, source-available 코드를 더했습니다.",
-    "metaTitle": "Poke AI 대안: GAIA와 Poke 한눈에 비교",
+    "metaTitle": "Poke AI 대안: 기능과 연동으로 GAIA와 Poke 한눈에 비교",
     "metaDescription": "Poke는 문자 메시지 속에 있습니다. GAIA도 iMessage, WhatsApp, Telegram에서 쓸 수 있고, 웹·데스크톱 앱과 트리거 기반 워크플로, source-available 코드까지 더했습니다.",
     "keywords": [
       "poke ai 대안",
@@ -8183,7 +8183,7 @@
     "name": "Relay.app",
     "tagline": "Human-in-the-loop workflow automation combining AI and human judgment",
     "description": "Relay.app is a workflow automation platform distinguished by its human-in-the-loop architecture — workflows can pause and wait for human approval, review, or input at any step, blending AI actions with human judgment. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and the rest of your tools autonomously through natural language, built for individuals who want AI to handle the operational layer of their work rather than build and maintain approval-gated workflow chains.",
-    "metaTitle": "Relay vs GAIA: 능동형 AI 워크플로우",
+    "metaTitle": "Relay vs GAIA: 규칙 대신 능동형 AI로 움직이는 워크플로우",
     "metaDescription": "GAIA와 Relay.app을 비교합니다. Relay는 자동화에 사람의 승인 단계를 더하고, GAIA는 자연어로 이메일, 일정, 작업을 먼저 관리합니다.",
     "keywords": [
       "GAIA vs Relay",
@@ -8492,7 +8492,7 @@
     "name": "Roam Research",
     "tagline": "A note-taking tool for networked thought",
     "description": "Roam Research is a networked outliner and personal knowledge management tool built around bidirectional links, block references, and daily notes. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and workflows — acting on your behalf before you ask.",
-    "metaTitle": "Roam vs GAIA: 대신 움직이는 지식",
+    "metaTitle": "Roam Research vs GAIA: 대신 움직이는 지식 관리",
     "metaDescription": "Roam Research 대안으로 GAIA를 살펴보세요. 받은편지함, 일정, 작업, 자동화를 능동형 AI가 관리해 지식을 행동으로 바꿔 줍니다.",
     "keywords": [
       "GAIA vs Roam Research",
@@ -8588,7 +8588,7 @@
     "name": "SaneBox",
     "tagline": "Email management for any inbox",
     "description": "SaneBox is an email filtering service that moves non-urgent messages out of your inbox into smart folders so you focus on what matters. GAIA goes further by reading, triaging, drafting replies, creating tasks, and automating cross-tool workflows — replacing a passive filter with an active AI assistant.",
-    "metaTitle": "SaneBox vs GAIA: 분류, 초안, 실행까지",
+    "metaTitle": "SaneBox vs GAIA: 메일 분류, 초안 작성, 실행까지",
     "metaDescription": "SaneBox는 수동적으로 이메일을 거를 뿐 답장 초안이나 작업은 만들지 못합니다. GAIA는 이메일을 읽고 분류하고 처리하는 AI입니다.",
     "keywords": [
       "GAIA vs SaneBox",
@@ -9355,7 +9355,7 @@
     "name": "Tana",
     "tagline": "Connected notes and superpowers for thought with AI and Supertags",
     "description": "Tana is an advanced knowledge management tool that combines a powerful outliner with Supertags, AI automation, daily notes, and a connected knowledge graph — giving power users one place to capture, organize, and act on everything. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and the rest of your tools through autonomous action and natural language, building its knowledge graph automatically from your live digital activity rather than requiring manual Supertag curation.",
-    "metaTitle": "Tana vs GAIA: 그래프에 이메일과 작업까지",
+    "metaTitle": "Tana vs GAIA: 지식 그래프에 이메일과 작업까지 더하기",
     "metaDescription": "GAIA와 Tana를 비교합니다. Tana는 지식 그래프에 강하고, GAIA는 이메일, 일정, 작업, 워크플로우를 능동적이고 자율적으로 관리합니다.",
     "keywords": [
       "GAIA vs Tana",
@@ -9957,7 +9957,7 @@
     "name": "Trello",
     "tagline": "Visual project boards, lists, and cards",
     "description": "Trello is a kanban-style project management tool owned by Atlassian. GAIA goes far beyond visual boards to proactively manage your entire digital workflow with AI.",
-    "metaTitle": "Trello vs GAIA: AI 작업 자동화",
+    "metaTitle": "Trello vs GAIA: 보드 관리를 넘어선 AI 작업 자동화",
     "metaDescription": "Trello의 칸반 보드는 여전히 수작업이 필요합니다. GAIA는 이메일에서 작업을 만들고 워크플로우와 일정을 자동 관리합니다.",
     "keywords": [
       "GAIA vs Trello",
@@ -10299,7 +10299,7 @@
     "name": "Wrike",
     "tagline": "Enterprise work management and project collaboration platform",
     "description": "Wrike is a powerful enterprise project management platform with advanced workflow customization, resource management, and reporting. GAIA complements structured project management with proactive AI that manages email, automates workflows, and surfaces what matters most.",
-    "metaTitle": "Wrike 대안: 능동적으로 돕는 AI의 GAIA",
+    "metaTitle": "Wrike 대안: 프로젝트 관리를 먼저 챙기는 AI 비서 GAIA",
     "metaDescription": "Wrike는 고급 워크플로 설정과 리소스 관리를 갖춘 대기업용 도구입니다. GAIA는 받은편지함과 여러 도구에 흩어진 작업을 AI가 먼저 관리하는 소스 공개 대안으로, 일상의 수고를 줄여 줍니다.",
     "keywords": [
       "wrike alternative",
@@ -10406,7 +10406,7 @@
     "name": "Zapier",
     "tagline": "No-code automation platform connecting 6,000+ apps",
     "description": "Zapier connects thousands of apps with rule-based automations. GAIA adds AI intelligence to understand context and act proactively, not just follow predefined rules.",
-    "metaTitle": "Zapier vs GAIA: 규칙 대신 추론으로",
+    "metaTitle": "Zapier vs GAIA: 정해진 규칙 대신 AI 추론으로 자동화",
     "metaDescription": "Zapier는 맥락을 읽거나 판단하지 못합니다. GAIA는 AI 추론으로 이메일을 이해하고 우선순위를 정해 수동 규칙 없이 다단계 워크플로우를 실행합니다.",
     "keywords": [
       "GAIA vs Zapier",
@@ -10904,7 +10904,7 @@
     "name": "Dot",
     "tagline": "이어지는 동안의 동행",
     "description": "Dot은 2025년 10월에 종료된 닫힌 iOS 동행 앱이었습니다. GAIA는 기존 사용자들이 옮겨 가는 열린 어시스턴트입니다.",
-    "metaTitle": "GAIA와 Dot 비교. 열린 조수와 닫힌 앱",
+    "metaTitle": "Dot과 GAIA 비교: 열린 AI 어시스턴트와 닫힌 앱",
     "metaDescription": "종료 이후의 GAIA와 Dot을 비교합니다. Dot은 닫힌 iOS 동행 앱이었고 GAIA는 기억이 행동하는 열린 어시스턴트입니다. 기존 사용자의 옮길 곳도 비교합니다.",
     "keywords": [
       "GAIA Dot 비교",
@@ -10972,7 +10972,7 @@
     "name": "Friend",
     "tagline": "하루에 동행하는",
     "description": "Friend는 249달러(v2)짜리 동행 펜던트입니다. GAIA는 받은함을 비우고 일정을 챙기는 온전한 어시스턴트입니다.",
-    "metaTitle": "GAIA와 Friend 비교. 일하는 조수와 펜던트",
+    "metaTitle": "Friend와 GAIA 비교: 일하는 AI 조수와 기록용 펜던트",
     "metaDescription": "GAIA와 Friend 펜던트를 비교합니다. Friend는 249달러(v2)의 동행이고 GAIA는 일을 처리하는 소스 공개형 어시스턴트입니다. 어울리는 사람과 시작 방법도 비교합니다.",
     "keywords": [
       "GAIA Friend 비교",
@@ -11040,7 +11040,7 @@
     "name": "OMI",
     "tagline": "하루를 위한 열린 기록",
     "description": "OMI는 기억하기 위한 열린 펜던트입니다. GAIA는 열린 자세를 공유하고 이메일과 캘린더의 행동을 더합니다.",
-    "metaTitle": "GAIA와 OMI 비교. AI 기반과 열린 펜던트",
+    "metaTitle": "OMI와 GAIA 비교: AI 어시스턴트 기반과 열린 펜던트",
     "metaDescription": "GAIA와 OMI 펜던트를 비교합니다. OMI는 대화를 기억하는 열린 기록이고 GAIA는 모든 도구에서 움직이는 열린 행동을 더합니다. 개방성의 차이도 비교합니다.",
     "keywords": [
       "GAIA OMI 비교",
@@ -11176,7 +11176,7 @@
     "name": "Siri",
     "tagline": "음성에 의한 짧은 명령",
     "description": "Siri는 애플 기기에서 짧은 음성 명령을 처리합니다. GAIA는 하루 전체를 챙기는 선제 대응 어시스턴트입니다.",
-    "metaTitle": "GAIA와 Siri 비교. 진짜 조수와 음성 AI",
+    "metaTitle": "Siri와 GAIA 비교: 일을 맡길 수 있는 AI 조수와 음성 AI",
     "metaDescription": "업무에서 GAIA와 Siri를 비교합니다. Siri는 짧은 음성 명령을 처리하고 GAIA는 받은함, 캘린더, 할 일을 관리합니다. 어울리는 일과 시작 방법도 비교합니다.",
     "keywords": [
       "GAIA Siri 비교",

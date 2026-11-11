@@ -76,7 +76,7 @@
     "all_category_comparisons": "{category}の比較をすべて見る（{count}件）",
     "category_page_title": "{category}の比較",
     "category_page_subtitle": "{category}の{count}ツールとGAIAを項目ごとに比べ、それぞれが合う場面を示します。",
-    "category_meta_title": "{category}ツールの比較：GAIAと{count}製品を項目ごとに検証",
+    "category_meta_title": "{category}ツールの比較：GAIAと{count}製品を機能と使い方で詳しく検証",
     "category_meta_description": "{category}の{count}ツールとGAIAを、機能、料金、向いている使い方で項目ごとに比較します。あなたに合うツール選びにお役立てください。各ツールの強みと、GAIAが先回りして手伝える場面もわかります。"
   },
   "automate": {
@@ -94,7 +94,7 @@
     "gaia_supports_combos": "GAIAは数十のツール組み合わせをサポートしています。ワークフローを自動化するその他の方法を探索してください。",
     "hub_title": "任意の2つのツールを自動化する",
     "hub_subtitle": "使っている2つのツールを選んでください。GAIAがそれらを接続し、ツール間のワークフローを自動で処理します — コードなしで。",
-    "hub_meta_title": "GAIAで任意の2つのツールを自動化する",
+    "hub_meta_title": "GAIAでツール同士を自動化：GmailやSlackなど2つのアプリをつなぐ",
     "hub_meta_description": "240以上の自動化コンボを検索しましょう。Gmail + Slack、Notion + Todoist、GitHub + Linearなどを接続 — GAIAがツール間のワークフローを自動的に処理します。",
     "combos_count": "{count}件の自動化コンボ",
     "dont_see_your_combo": "コンボが見つかりませんか？",
@@ -103,7 +103,7 @@
     "all_app_automations": "{app}の自動化をすべて見る（{count}件）",
     "app_page_title": "{app}の自動化",
     "app_page_subtitle": "GAIAが{app}をほかのツールとつなぐ方法と、その間で代わりにこなす作業をすべて紹介します。",
-    "app_meta_title": "{app}の自動化：GAIAでできる{count}件のワークフロー",
+    "app_meta_title": "{app}の自動化：GAIAで{app}とつなぐ{count}件のAIワークフロー",
     "app_meta_description": "GAIAが{app}をほかのツールとつなぐ{count}件の自動化を紹介します。それぞれが代わりにこなす作業と使い方を、コード不要でわかりやすくまとめました。"
   },
   "glossary": {
@@ -119,7 +119,7 @@
     "gaia_for_role_desc": "GAIAがさまざまな役割の専門家をどのように支援するかをご覧ください",
     "hub_title": "AI & 生産性用語集",
     "hub_subtitle": "AIエージェント、自動化、現代の生産性ツールの背後にある主要なコンセプトを理解しましょう。GAIAがこれらの技術を使ってデジタルワークフローを管理する方法を学びましょう。",
-    "hub_meta_title": "AI・生産性用語集：やさしい解説",
+    "hub_meta_title": "AI・生産性用語集：エージェントや自動化の用語をやさしく解説",
     "hub_meta_description": "AI、自動化、生産性に関する重要なコンセプトを学びましょう。AIエージェント、LangGraph、MCP、ベクトル埋め込み、ワークフロー自動化がGAIAなどの現代の生産性ツールをどのように支えているかを理解しましょう。",
     "category_ai_concepts": "AI & 機械学習",
     "category_productivity": "生産性向上手法",
@@ -131,7 +131,7 @@
     "category_development": "開発 & インテグレーション",
     "all_category_terms": "{category}の用語をすべて見る（{count}件）",
     "category_page_subtitle": "{category}の用語{count}件をやさしく解説し、GAIAがそれぞれをどう活かすかを紹介します。",
-    "category_meta_title": "{category}の用語集：{count}語をやさしく解説",
+    "category_meta_title": "{category}の用語集：知っておきたい{count}語をやさしく解説",
     "category_meta_description": "{category}に関する{count}の用語を、専門知識がなくてもわかる言葉でやさしく解説します。GAIAのような先回りするAIアシスタントでの使われ方も紹介します。"
   },
   "marketplace": {

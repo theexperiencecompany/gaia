@@ -1,7 +1,7 @@
 {
   "ai-agent": {
     "term": "AIエージェント",
-    "metaTitle": "AIエージェントとは：チャットボットとの違い",
+    "metaTitle": "AIエージェントとは：チャットボットとの違いと仕組み",
     "metaDescription": "AIエージェントは、状況を把握して判断し、目標に向けて自ら行動するAIです。チャットボットとの違いと、GAIAで生産性が上がる理由を解説します。",
     "definition": "AIエージェントとは、環境を認識し、状況に応じた判断を下し、特定の目標を継続的な人間の指示なしに達成するために自律的に行動するソフトウェアシステムです。",
     "extendedDescription": "単なるチャットボットが問いかけに応答するだけなのに対し、AIエージェントは自律的に行動します。データ入力から環境を観察し、推論機能で計画を立て、利用可能なツールを使ってタスクを実行し、結果から学習します。最新のAIエージェントは、推論のための大規模言語モデルとツールを使い分ける能力を組み合わせることで、メールやカレンダー、プロジェクト管理など外部システムとも連携できます。最大の特徴は「自律性」です。AIエージェントは質問に答えるだけでなく、ユーザーの代わりに主体的に目標達成へ向けて動くのです。",
@@ -89,7 +89,7 @@
   },
   "workflow-automation": {
     "term": "ワークフロー自動化",
-    "metaTitle": "ワークフロー自動化とは：AIと従来型の違い",
+    "metaTitle": "ワークフロー自動化とは：AI型と従来型の違いと使い分け",
     "metaDescription": "ワークフロー自動化は、繰り返しの業務プロセスを手作業なしで実行します。AIとルール型の違いと、コード不要でGAIAに作らせる方法を解説します。",
     "definition": "ワークフロー自動化とは、繰り返し発生する業務プロセスやタスクをテクノロジーの力で自動的に実行し、手作業やヒューマンエラーを減少させる仕組みです。",
     "extendedDescription": "従来のワークフロー自動化は、「この条件を満たしたら、このアクションを実行する」という厳密なルールに基づいて動作します。Zapierやn8nのようなツールは、この決定論的な使い方が得意です。一方、AI搭載のワークフロー自動化では、業務の文脈をAIが理解し、最適な判断を下して未知の状況にも適応できるのが特徴です。すべてのルールを詳細に定義しなくても、AIが曖昧さに対応し、状況に応じて柔軟に処理できるため、ワークフローは時とともに賢く進化します。つまり、ルールベースの自動化とAIの判断力が組み合わさることで、信頼性と知能を備えたワークフローが実現します。",
@@ -174,7 +174,7 @@
   },
   "graph-based-memory": {
     "term": "グラフベースメモリ",
-    "metaTitle": "グラフ型メモリとは：ベクトルメモリとの違い",
+    "metaTitle": "グラフ型メモリとは：ベクトルメモリとの違いと仕組み",
     "metaDescription": "情報をノードと関係で結ぶグラフ型メモリ。人物やプロジェクトのつながりを保存する仕組み、ベクトルメモリとの違い、GAIAがセッションをまたいで文脈を覚える方法を解説します。",
     "definition": "グラフベースメモリは、情報と関係を相互接続されたノードと関係として保存し、リッチなコンテキスト理解と相互作用全体での永続的な知識を可能にするAIメモリアーキテクチャです。",
     "extendedDescription": "従来のAIメモリは、単一の会話に限定される短期メモリか、フラットなキーバリューストアとして保存されるかのいずれかです。グラフベースメモリは、エンティティと関係のネットワークとして情報を整理します。人物はプロジェクトに接続され、プロジェクトはタスクに接続され、タスクは会議やドキュメントに接続されます。この構造により、AIシステムは関係をたどってリッチなコンテキストを構築できます。プロジェクトについて言及すると、AIは関連タスク、関連メール、関係するチームメンバー、および期日を即座にアクセスできます。グラフベースメモリは、時間とともに変化する関係を理解する時間的推論も可能にします。",
@@ -225,7 +225,7 @@
   },
   "task-automation": {
     "term": "タスク自動化",
-    "metaTitle": "タスク自動化とは：AIとToDoアプリの違い",
+    "metaTitle": "タスク自動化とは：AIアシスタントとToDoアプリの違い",
     "metaDescription": "タスク自動化は、繰り返し作業の作成・優先順位付け・実行をAIが担う仕組みです。ToDoアプリとの違いと、GAIAがメールからタスクを作る方法を解説します。",
     "definition": "タスク自動化とは、手動作業を必要とする定型タスクを自動的に作成、管理、優先順位付け、実行するために、特にAIなどのテクノロジーを使用することです。",
     "extendedDescription": "タスク自動化は、単純なリマインダーやルールベースのトリガーから、コンテキストを理解するインテリジェントシステムへと進化しました。最新のAIタスク自動化は、メールやメッセージからタスクを作成する必要があるときにそれを識別し、期日と重要性に基づいて優先順位を決定し、適切なプロジェクトまたはカテゴリに割り当て、適切な期日を設定し、タスク自体を実行することさえできます。目標は、タスクリストの管理における認知的なオーバーヘッドを削減し、何も漏れないようにすることです。",
@@ -258,7 +258,7 @@
   },
   "email-automation": {
     "term": "メール自動化",
-    "metaTitle": "AIメール管理とは？自動仕分けと返信の下書き",
+    "metaTitle": "AIメール管理とは？自動仕分けと返信の下書きの仕組み",
     "metaDescription": "AIメール管理は、受信トレイの仕分け、返信の下書き、タスクの抽出を自動化します。GAIAがGmailで行う処理と、対応するメールサービスを解説します。",
     "definition": "メール自動化は、メッセージのトリアージ、分類、コンテキストに合わせた返信のドラフト作成、アクションアイテムの抽出、およびメールにかかる時間の削減をインテリジェントに行うためにAIを使用することです。",
     "extendedDescription": "平均的なプロフェッショナルは、1日あたり2時間以上をメールに費やしています。AIメール自動化は、メール管理の機械的な側面を処理することで、これに対処します。AIシステムは受信メッセージを読み取り、その内容とコンテキストを理解し、緊急度とトピックに基づいてメッセージを分類し、コミュニケーションスタイルに合わせた適切な返信をドラフトし、アクションアイテムを抽出してタスクを作成し、フォローアップをスケジュールし、メッセージをアーカイブまたはラベル付けします。従来のメールフィルターとの主な違いはインテリジェンスです。AIは送信者アドレスやキーワードだけでなく、メッセージの内容とコンテキストを理解します。",
@@ -309,7 +309,7 @@
   },
   "knowledge-graph": {
     "term": "ナレッジグラフ",
-    "metaTitle": "ナレッジグラフとは？データベースとの違い",
+    "metaTitle": "ナレッジグラフとは？データベースとの違いと活用例",
     "metaDescription": "ナレッジグラフは、エンティティと関係として情報を整理し、AIがデータ間の接続を理解できるようにします。GAIAがナレッジグラフをどのように使用するかを学びます。",
     "definition": "ナレッジグラフは、データとエンティティ、その属性、およびそれらの間の関係を整理する情報の構造化表現であり、機械が接続された情報を理解し、推論できるようにします。",
     "extendedDescription": "ナレッジグラフは、孤立した情報片を接続されたネットワークに変換します。データを個別のテーブルやドキュメントに保存するのではなく、ナレッジグラフは事実をトリプル（主語、述語、目的語）として表します。たとえば、「アリスはプロジェクトXを管理する」、「プロジェクトXの期日は3月15日」、「アリスはプロジェクトXについてボブにメールした」などです。これらのトリプルは、AIシステムが複雑な質問に答えたり、隠れたパターンを発見したり、コンテキストを理解したりするために移動できる相互接続された事実のウェブを形成します。Google、Amazon、LinkedInはすべて、サービスに電力を供給するためにナレッジグラフを使用しています。",
@@ -449,7 +449,7 @@
   },
   "open-source-ai": {
     "term": "オープンソースAI",
-    "metaTitle": "オープンソースAIとは：ソース公開型との違い",
+    "metaTitle": "オープンソースAIとは：ソース公開型との違いと選び方",
     "metaDescription": "コードを確認できるオープンソースAIとソース公開型AI。両者の違い、GAIAがPolyForm Noncommercialで公開される理由、セルフホスト方法を解説。",
     "definition": "オープンソースAIは、ソースコードが公開されており、誰でもプロジェクトを検査、変更、配布、および貢献できる人工知能ソフトウェアを指します。",
     "extendedDescription": "オープンソースAIはいくつかの理由で重要です。透明性により、ユーザーはソフトウェアがデータをどのように処理するかを確認できます。コミュニティへの貢献は、開発とバグ修正を加速します。セルフホスティング機能により、ユーザーはデータ制御を完全に把握できます。ベンダーの独立性により、ロックインを防ぎます。そして、AIの動作のオープンな検査は信頼を構築します。AIアシスタントの分野では、これらのシステムは機密性の高い個人およびビジネスデータを処理するため、オープンソースは特に価値があります。ユーザーは、メール、カレンダーイベント、および通信が安全に処理されていることを確認できる必要があります。",
@@ -474,7 +474,7 @@
   },
   "cognitive-load": {
     "term": "認知負荷",
-    "metaTitle": "認知負荷とは？生産性への影響と減らし方",
+    "metaTitle": "認知負荷とは？生産性への影響と仕事で減らす方法",
     "metaDescription": "認知負荷とは、情報処理や意思決定、タスク管理にかかる精神的な負担です。通知やツールの切り替えが生産性に与える影響と、GAIAが機械的な作業を引き受けて負担を減らす方法を解説。",
     "definition": "認知負荷とは、情報処理、意思決定、タスク管理に必要な精神的労力の総量です。",
     "extendedDescription": "すべての通知、メール、タスクの切り替え、意思決定は、認知リソースを消費します。認知負荷が容量を超えると、生産性が低下し、間違いが増加し、ストレスが増大します。知識労働者は、複数のツールを管理し、タスク間でコンテキストを切り替え、プラットフォーム全体で通信を追跡することから、特に高い認知負荷に直面します。認知負荷の軽減は、仕事量を減らすことではなく、情報管理の機械的なオーバーヘッドをオフロードして、人間だけができる創造的で戦略的な仕事に精神的エネルギーを集中できるようにすることです。",
@@ -551,7 +551,7 @@
   },
   "ai-orchestration": {
     "term": "AIオーケストレーション",
-    "metaTitle": "AIオーケストレーションとは？自動化との違い",
+    "metaTitle": "AIオーケストレーションとは？自動化との違いと仕組み",
     "metaDescription": "AIオーケストレーションは、複数のエージェントやモデル、ツールを連携させる仕組みです。自動化との違いと、GAIAが作業をエージェントに振り分ける方法を解説します。",
     "definition": "AIオーケストレーションとは、単独では処理できない複雑なマルチステップタスクを完了するために、複数のAIエージェント、モデル、およびツールを連携させることです。",
     "extendedDescription": "複雑な実世界のタスクは、単一のアクションを伴うことはほとんどありません。クライアントメールへの返信には、メッセージの読み取り、プロジェクトステータスの確認、関連ドキュメントの検索、フォローアップ会議のスケジュール設定、返信のドラフト作成が含まれる場合があります。AIオーケストレーションは、これらのマルチステップワークフローを処理するために、複数の専門エージェントとツールを調整します。オーケストレーションレイヤーは、各ステップでどのエージェントまたはツールを呼び出すかを決定し、ステップ間で情報がフローするにつれて状態とコンテキストを管理し、エラーとリトライを処理し、最終的な結果がユーザーの意図を満たすことを保証します。",
@@ -878,7 +878,7 @@
   },
   "time-blocking": {
     "term": "Time Blocking",
-    "metaTitle": "タイムブロッキングとは：やり方と自動化",
+    "metaTitle": "タイムブロッキングとは：やり方とカレンダーでの自動化",
     "metaDescription": "タイムブロッキングは、タスクごとにカレンダーの時間枠を割り当てる手法です。やり方と、予定変更時にGAIAが枠を自動調整する方法を解説します。",
     "definition": "Time blocking is a scheduling method where you divide your day into dedicated blocks of time, each assigned to a specific task or type of work, turning your calendar into a concrete plan for the day.",
     "extendedDescription": "Time blocking is used by executives, engineers, and creators to ensure important work gets scheduled rather than squeezed between meetings. Instead of a vague to-do list, each task gets a specific time slot on your calendar. This eliminates the decision of what to work on next and creates accountability for completing focused work. The challenge is that time blocking requires constant maintenance. Meetings shift, new priorities emerge, and tasks take longer than expected. Manually adjusting your time blocks throughout the day is tedious, which is why many people start time blocking but struggle to maintain it.",
@@ -1067,7 +1067,7 @@
   },
   "retrieval-augmented-generation": {
     "term": "Retrieval-Augmented Generation (RAG)",
-    "metaTitle": "RAG（検索拡張生成）とは？仕組みとメリット",
+    "metaTitle": "RAG（検索拡張生成）とは？仕組みとメリットをやさしく解説",
     "metaDescription": "RAGは、LLMが回答する前に関連データを検索する手法です。大きなコンテキストより有利な理由、ハルシネーションを防げるか、GAIAでの活用を解説します。",
     "definition": "Retrieval-Augmented Generation (RAG) is a technique that enhances LLM responses by first retrieving relevant documents or data from an external knowledge base and injecting that context into the model's prompt.",
     "extendedDescription": "LLMs have a fundamental limitation: their knowledge is frozen at training time and bounded by their context window. RAG addresses both problems by adding a retrieval step before generation. When a query arrives, a retrieval system searches an external knowledge base for relevant content, and the retrieved documents are injected into the LLM's prompt as context. The LLM then generates a response grounded in the retrieved information.\n\nThe retrieval step typically uses semantic search over a vector database. The query is embedded, and the vector database finds the most similar stored embeddings, returning the original documents. This allows the LLM to answer questions about information it was never trained on, like your specific emails, company documents, or recent data.\n\nRAG dramatically reduces hallucination for knowledge-intensive tasks because the model is provided with source documents to reference rather than relying on memorized weights. Responses can also cite sources, making them verifiable.\n\nAdvanced RAG techniques include hybrid search (combining vector similarity with keyword search), re-ranking retrieved documents by relevance, and multi-hop retrieval where the model iteratively retrieves information across multiple steps. These improvements significantly boost accuracy for complex questions.",
@@ -1199,7 +1199,7 @@
   },
   "hallucination": {
     "term": "Hallucination",
-    "metaTitle": "AIのハルシネーションとは？原因と見抜き方",
+    "metaTitle": "AIのハルシネーションとは？起きる原因と見抜き方",
     "metaDescription": "ハルシネーションは、AIが自信満々に誤った情報を答える現象です。言語モデルが事実を作り出す理由と、GAIAが実データに基づいて回答する仕組みを解説します。",
     "definition": "AI hallucination is the phenomenon where a language model generates confident-sounding but factually incorrect, fabricated, or nonsensical information that is not grounded in the input or training data.",
     "extendedDescription": "Hallucination is one of the most significant challenges with deploying large language models. LLMs do not retrieve facts from a database; they predict the next token based on statistical patterns learned during training. When asked about something outside their training data or at the edges of their knowledge, models sometimes generate plausible-sounding but false information with apparent confidence.\n\nHallucinations range from subtle factual errors (wrong dates, incorrect statistics) to complete fabrications (invented citations, non-existent people, made-up product features). The danger is that the model's confident tone gives no indication that the information is incorrect.\n\nSeveral factors increase hallucination risk: asking for very specific facts the model was not trained on, requesting information about real but obscure entities, asking leading questions that imply false premises, and giving the model insufficient context. Low-temperature sampling reduces but does not eliminate hallucinations.\n\nThe primary mitigation strategies are grounding and RAG. Grounding means providing the model with source documents and instructing it to base its answers only on that content. RAG retrieves relevant documents before generation, giving the model accurate information to reference. These techniques are particularly effective for factual query tasks.",
@@ -1303,7 +1303,7 @@
   },
   "natural-language-processing": {
     "term": "Natural Language Processing (NLP)",
-    "metaTitle": "自然言語処理（NLP）とは？LLMとの違い",
+    "metaTitle": "自然言語処理（NLP）とは？LLMとの違いと仕組み",
     "metaDescription": "自然言語処理は、コンピューターが人の言葉を読み書きする技術です。ルールベースからニューラル方式への変化、LLMとの違い、GAIAがメールで行う自然言語処理のタスクを解説します。",
     "definition": "Natural Language Processing (NLP) is a branch of artificial intelligence that focuses on enabling computers to understand, interpret, generate, and respond to human language in a meaningful way.",
     "extendedDescription": "NLP has transformed from rule-based systems that relied on handcrafted linguistic rules to neural approaches that learn language patterns from data. The field encompasses a wide range of tasks: text classification, named entity recognition, sentiment analysis, machine translation, summarization, question answering, and natural language generation.\n\nThe advent of transformer-based models like BERT, GPT, and their successors represented a breakthrough in NLP. Pre-training on massive text corpora followed by fine-tuning on specific tasks produced models that outperformed previous approaches across virtually every NLP benchmark. These foundation models can be adapted to new tasks with minimal task-specific data.\n\nModern NLP capabilities that were impossibly difficult a decade ago are now commodity features in AI systems: extracting action items from emails, summarizing long documents, answering questions about a corpus of text, translating between languages, and generating contextually appropriate replies. These capabilities form the core of AI productivity assistants.\n\nNLP also includes speech processing when combined with automatic speech recognition (ASR) and text-to-speech (TTS), enabling voice interfaces for AI systems.",
@@ -1490,7 +1490,7 @@
   },
   "function-calling": {
     "term": "Function Calling",
-    "metaTitle": "関数呼び出しとは？ツール使用との違い",
+    "metaTitle": "関数呼び出し（Function Calling）とは？ツール使用との違い",
     "metaDescription": "関数呼び出しは、AIが正確な引数で実際のツールを使う仕組みです。ツール使用との関係、テキスト方式より確実な理由、GAIAでの使い方を解説します。",
     "definition": "Function calling is a feature of AI models that allows them to generate structured, machine-readable invocations of predefined functions, enabling AI systems to reliably call external APIs and tools with the correct arguments.",
     "extendedDescription": "Function calling was introduced by OpenAI for GPT models and has since become a standard feature of frontier LLMs including Claude and Gemini. It addresses a key limitation of free-form tool use: when models describe tool calls in natural language, parsing the output reliably is difficult. Function calling constrains the model to generate tool calls in a validated JSON format that matches a predefined schema.\n\nThe process works as follows. The developer defines function schemas specifying the name, description, and parameter types. The model receives these schemas alongside the user's message. When the model determines a function should be called, instead of generating a text response, it outputs a structured function call object. The application validates and executes this call, then returns the result to the model.\n\nFunction calling enables reliable integration between AI and external systems because the output is machine-parseable rather than natural language. This reliability is essential for production agent systems where failed parsing would break workflows.\n\nModern implementations support parallel function calling, where the model generates multiple function calls simultaneously when they are independent. This significantly speeds up agent workflows that require multiple data sources or parallel actions.",
@@ -1516,7 +1516,7 @@
   },
   "autonomous-agent": {
     "term": "Autonomous Agent",
-    "metaTitle": "自律型エージェントとは：完全自律AIは安全か",
+    "metaTitle": "自律型エージェントとは：完全自律のAIは本当に安全か",
     "metaDescription": "自律型エージェントは、逐一の指示なしに目標へ向けて自ら判断し行動するAIです。チャットボットから完全自律までの段階、安全性、GAIAが自分で動く範囲の決め方を解説します。",
     "definition": "An autonomous agent is an AI system capable of independently perceiving its environment, making decisions, and taking actions to achieve specified goals without requiring human input at each step.",
     "extendedDescription": "Autonomy exists on a spectrum. At one end, a chatbot that waits for your prompt and responds has minimal autonomy. At the other end, a fully autonomous agent perceives its environment continuously, decides what goals to pursue, plans multi-step strategies, executes actions across tools, handles errors and unexpected situations, and adapts its approach based on outcomes, all without human instruction at each step.\n\nAutonomous agents differ from scripted automation in their flexibility. A script follows a fixed sequence regardless of context. An autonomous agent reasons about each situation and selects appropriate actions dynamically. This makes autonomous agents far more capable for complex, variable tasks but also introduces the need for careful alignment and human oversight mechanisms.\n\nThe architecture of a typical autonomous agent includes a perception module (reading inputs from connected tools), a planning module (breaking goals into steps), an execution module (calling tools to take actions), a memory module (storing context and outcomes), and a reflection module (evaluating results and adjusting plans). LangGraph structures these components as a directed graph.\n\nThe frontier of autonomous agent research focuses on long-horizon tasks: agents that can work on complex objectives over hours or days, handling interruptions, learning from outcomes, and maintaining progress across multiple sessions.",
@@ -1658,7 +1658,7 @@
   },
   "rpa": {
     "term": "RPA (Robotic Process Automation)",
-    "metaTitle": "RPAとは？AI自動化との違いと使い分け",
+    "metaTitle": "RPAとは？AIによる自動化との違いと使い分け方",
     "metaDescription": "RPAは画面操作をまねて定型作業を自動化しますが、画面が変わると止まります。RPAが向く場面と、GAIAのようなAPIベースのAI自動化が向く場面を解説します。",
     "definition": "Robotic Process Automation (RPA) is a technology that uses software robots to automate repetitive, rule-based digital tasks by mimicking human interactions with user interfaces, such as clicking buttons and filling forms.",
     "extendedDescription": "RPA emerged as a way to automate tasks in systems without APIs by having software robots interact with user interfaces the same way humans do: clicking, typing, reading screen content, and navigating menus. This made it possible to automate legacy systems that provided no programmatic access. RPA tools like UiPath, Automation Anywhere, and Blue Prism have been widely adopted in enterprise settings for tasks like data entry, report generation, and form processing.\n\nThe limitations of RPA are significant. Robots break when user interfaces change. They cannot handle variations or exceptions gracefully. They require extensive maintenance as software updates change the UI elements they interact with. And they lack any understanding of what they are doing: they follow scripts blindly.\n\nAI-powered automation addresses these limitations. Instead of scripting pixel-level interactions, AI agents use APIs and understand context. They can handle variations in data, recover from exceptions, and adapt to changes without breaking. The combination of RPA's broad system reach with AI's flexibility is an active area of development called intelligent automation or cognitive RPA.\n\nFor modern SaaS tools, API-based AI automation like GAIA is generally superior to RPA because APIs are stable and purpose-built for programmatic interaction, while UI automation is fragile and maintenance-heavy.",
@@ -1767,7 +1767,7 @@
   },
   "low-code": {
     "term": "Low-Code",
-    "metaTitle": "ローコードとは：ノーコードやn8nとの違い",
+    "metaTitle": "ローコードとは：ノーコードやn8nとの違いと選び方",
     "metaDescription": "ローコードはコードを減らしますが、フローは手作業で組みます。ノーコードとの違い、n8nとの比較、GAIAが自然言語でワークフローを作る仕組みを解説。",
     "definition": "Low-code is a software development and automation approach that uses visual interfaces, pre-built components, and minimal hand-coding to enable non-developers to build applications and automate processes.",
     "extendedDescription": "Low-code platforms sit between traditional programming (requiring full code) and no-code platforms (requiring zero code). They typically provide visual builders, drag-and-drop components, and configuration-based logic while allowing developers to add custom code where needed. This makes them accessible to business users while remaining flexible enough for technical customizations.\n\nIn automation, low-code platforms like Make (formerly Integromat), n8n, and Retool allow users to build workflows by configuring visual interfaces rather than writing code. This dramatically lowers the barrier to building custom automations, enabling business teams to solve their own automation needs without waiting for developer resources.\n\nThe evolution from low-code to no-code to natural language automation represents a progressive democratization of software development. Each step removes more technical barriers. Low-code requires understanding of flow logic and data types. No-code hides these concepts behind visual metaphors. Natural language automation, as implemented by GAIA, requires only the ability to describe what you want in plain English.\n\nLow-code and no-code platforms have limitations: they can become complex as workflows grow, visual builders can be harder to debug than code, and vendor lock-in can restrict portability. AI-driven automation addresses some of these by expressing logic in natural language that is both human-readable and machine-executable.",
@@ -1975,7 +1975,7 @@
   },
   "flow-state": {
     "term": "Flow State",
-    "metaTitle": "フロー状態とは？仕事で没頭しにくい理由",
+    "metaTitle": "フロー状態とは？仕事で没頭しにくい理由と入り方",
     "metaDescription": "フロー状態は難しい作業に完全に没頭する状態です。現代の仕事でフローが途切れる理由と、GAIAがメールや予定調整を引き受けて集中を守る方法を解説します。",
     "definition": "Flow state is a psychological state of complete absorption in a challenging, goal-directed activity, characterized by effortless focus, loss of self-consciousness, and intrinsic motivation.",
     "extendedDescription": "Coined by psychologist Mihaly Csikszentmihalyi, flow (also called 'being in the zone') occurs at the intersection of high challenge and high skill. Activities that are too easy cause boredom; activities that are too hard cause anxiety. Flow is the narrow corridor between them.\n\nIn knowledge work, flow is associated with the highest-quality output. Writers produce their best prose, developers write their cleanest code, and designers create their most elegant solutions while in flow. The challenge is that flow takes time to enter (typically 15-30 minutes of focused work) and is fragile — a single notification can break it.\n\nConditions that support flow include a clear goal, immediate feedback, a distraction-free environment, and sufficient challenge. The modern workplace systematically undermines these conditions through open offices, always-on communication tools, and cultures that reward responsiveness over depth.\n\nProtecting flow is increasingly a design challenge as much as a personal discipline challenge. Systems that handle reactive work autonomously — triaging email, managing scheduling, capturing tasks — create the structural conditions for flow rather than relying on willpower alone.",
@@ -2001,7 +2001,7 @@
   },
   "task-batching": {
     "term": "Task Batching",
-    "metaTitle": "タスクバッチングとは？メールを確認すべき頻度",
+    "metaTitle": "タスクバッチングとは？メールを確認すべき頻度と方法",
     "metaDescription": "タスクバッチングは、似た作業をまとめて片付ける方法です。メールを確認する頻度の目安と、GAIAが急ぎのメールだけを知らせる仕組みを解説します。",
     "definition": "Task batching is the productivity practice of grouping similar tasks together and completing them in a single focused session, rather than spreading them throughout the day in reactive mode.",
     "extendedDescription": "Task batching reduces context switching costs by keeping you in the same mental context for an extended period. Instead of checking email once every 15 minutes throughout the day, you batch email into two 30-minute blocks. Instead of handling each Slack message as it arrives, you process Slack messages in scheduled windows.\n\nThe same principle applies to any category of similar work: phone calls, code reviews, administrative tasks, writing, and meetings can all be batched. The cognitive setup cost for a type of work is paid once per batch rather than once per task.\n\nEffective batching requires good task capture — you need to know what's in the queue before you can group it meaningfully. It also requires the discipline to resist reactive processing outside of scheduled batch windows, which is culturally difficult in organizations that normalize constant availability.\n\nAI assistants make batching more effective by handling the ongoing capture and triage work that normally requires reactive attention. When GAIA manages your inbox continuously, you can defer reading it to a scheduled batch window with confidence that nothing urgent was missed.",
@@ -2079,7 +2079,7 @@
   },
   "kanban": {
     "term": "Kanban",
-    "metaTitle": "カンバンとは？WIP制限とスクラムとの違い",
+    "metaTitle": "カンバンとは？WIP制限の考え方とスクラムとの違い",
     "metaDescription": "カンバンは、作業をカードにしてボード上で進め、仕掛中の量を制限する手法です。スクラムとの違いと、GAIAがTrelloやLinearのボードを更新する方法を解説します。",
     "definition": "Kanban is a project management methodology that visualizes work as cards moving through defined stages on a board, with limits on work-in-progress to maintain flow and identify bottlenecks.",
     "extendedDescription": "Kanban originated at Toyota in the 1940s as a just-in-time manufacturing system. It was adapted for knowledge work by David J. Anderson in the 2000s and has become a widely used approach for software teams, operations, and individual task management.\n\nA kanban board has columns representing stages (typically: Backlog, To Do, In Progress, Review, Done) and cards representing tasks. The key principles are: visualize your workflow, limit work in progress (WIP), manage flow, make process policies explicit, and improve collaboratively.\n\nWork-in-progress limits are kanban's most distinctive feature. By capping how many items can be in each column simultaneously, kanban forces teams to finish work before starting new work. This reduces multitasking overhead and makes bottlenecks visible — if the Review column is hitting its limit, it signals that the review process needs attention.\n\nPopular kanban tools include Trello, Linear, Jira, and GitHub Projects. AI enhancements to kanban include automatic card creation from emails, intelligent prioritization of the backlog, and progress reporting without manual status updates.",
@@ -2105,7 +2105,7 @@
   },
   "okrs": {
     "term": "OKRs (Objectives and Key Results)",
-    "metaTitle": "OKRとは？KPIとの違いと見直しの頻度",
+    "metaTitle": "OKRとは？KPIとの違いと目標を見直す適切な頻度",
     "metaDescription": "OKRは、意欲的な目標と測定できる主要な成果を組み合わせる手法です。KPIとの違い、見直しの頻度、GAIAが進捗データを集める方法を解説します。",
     "definition": "OKRs (Objectives and Key Results) is a goal-setting framework in which organizations and individuals define ambitious qualitative objectives and measurable quantitative key results to track progress toward them.",
     "extendedDescription": "OKRs were developed at Intel by Andy Grove and popularized at Google, where they've been used since 1999. The framework is now widely used at technology companies, startups, and large enterprises. The core idea is that ambitious goals inspire better work than safe ones, and measurable key results prevent the ambiguity that lets vague aspirations go nowhere.\n\nObjectives are qualitative descriptions of where you want to go — inspiring, time-bound, and directionally clear. Key results are 2-5 quantitative metrics that define what success looks like — specific, measurable, and achievable within the OKR period (typically one quarter).\n\nOKRs work at multiple levels: company OKRs cascade to team OKRs, which cascade to individual OKRs. This creates alignment — everyone can see how their work connects to company priorities. The framework also separates aspirational OKRs (where 70% achievement is a success) from committed OKRs (where 100% is expected).\n\nAI assistants can help track OKR progress by aggregating data from connected tools and surfacing metric updates, flagging when key results are at risk, and helping prioritize tasks that contribute to OKR progress.",
@@ -2777,7 +2777,7 @@
   },
   "email-summarization": {
     "term": "Email Summarization",
-    "metaTitle": "メール要約AI：長いスレッドを要点だけに",
+    "metaTitle": "メール要約AIとは：長いスレッドを要点だけにまとめる仕組み",
     "metaDescription": "何日にもわたる長いメールスレッドを、決定事項と次の行動に要約。AI要約の精度、他言語のメールへの対応、GAIAがGmailをどう要約するかを解説します。全文を読む時間を減らせます。",
     "definition": "Email summarization is the use of AI to automatically condense email threads or individual messages into concise summaries highlighting key information, decisions, and action items.",
     "extendedDescription": "Long email threads can contain dozens of messages spanning days or weeks. Reading the full thread to understand current status, identify decisions, and find action items requires significant time. AI summarization extracts the signal from the noise.\n\nEffective email summarization goes beyond just shortening text. It identifies: the core question or situation, key information shared in the thread, decisions that have been made, action items and who owns them, and current open questions. A good summary of a 30-message thread condenses it into 5-7 bullet points that tell you everything you need to act on it.\n\nSummarization quality depends heavily on the AI model's ability to understand context and relationships between messages. Early rule-based approaches (picking the most recent or longest messages) were inadequate. LLM-powered summarization understands the semantic content and narrative arc of a thread.\n\nEmail summarization is particularly valuable for threads you've been cc'd on but aren't primary participants in — catching up on context without reading every message — and for long-running customer or partner email chains that require historical context before responding.",
@@ -2829,7 +2829,7 @@
   },
   "data-sovereignty": {
     "term": "Data Sovereignty",
-    "metaTitle": "データ主権とは？セルフホストとAI学習の扱い",
+    "metaTitle": "データ主権とは？セルフホストとAI学習データの扱い",
     "metaDescription": "データ主権とは、データの保存場所とアクセスできる人を自分で決める考え方です。GAIAがデータを学習に使うのか、セルフホストの手間はどの程度かを解説します。",
     "definition": "Data sovereignty is the principle that data is subject to the laws and governance of the jurisdiction where it is stored, and that individuals and organizations have the right to control where their data resides and who has access to it.",
     "extendedDescription": "Data sovereignty has become increasingly important as cloud computing moved personal and organizational data to servers owned and operated by large technology companies, often across national borders. A company in Germany storing data in US-based cloud servers may have its data subject to US legal jurisdiction, including government access under laws like the CLOUD Act.\n\nFor organizations, data sovereignty often requires keeping data within specific geographic boundaries (EU data staying in EU data centers) to comply with GDPR and similar regulations. For individuals, data sovereignty means not having personal productivity data processed by third-party services that might use it for advertising, training AI models, or sharing with data brokers.\n\nThe practical implications of poor data sovereignty include: your email content being used to train AI models, your work data being stored in jurisdictions with weaker privacy laws, and your personal productivity data being a breach liability for a third-party vendor you don't control.\n\nSelf-hosting is the most direct path to data sovereignty. When you run software on your own infrastructure, your data never leaves your control. No third party can access it without your explicit authorization.",
@@ -2997,7 +2997,7 @@
   },
   "no-code": {
     "term": "No-Code",
-    "metaTitle": "ノーコードとは：ローコードとの違い",
+    "metaTitle": "ノーコードとは：ローコードとの違いとできること・できないこと",
     "metaDescription": "ノーコードは、プログラミングなしでアプリや自動化を作る手法です。ローコードとの違いと、言葉で説明するだけでGAIAに作らせる方法を解説します。",
     "definition": "No-code is a software development approach that enables non-technical users to build applications, automations, and workflows using visual interfaces, drag-and-drop tools, and predefined components rather than writing code.",
     "extendedDescription": "No-code emerged to address the development bottleneck: there are far more people with problems that software could solve than there are developers to solve them. No-code platforms give domain experts — marketers, operations managers, HR professionals — the ability to build software solutions themselves.\n\nPopular no-code platforms include Webflow (websites), Bubble (web apps), Airtable (databases), Zapier and Make (automations), Typeform (forms), and Notion (knowledge bases). Each targets a specific domain with purpose-built visual tools.\n\nThe no-code movement has democratized software creation significantly, but it has limits. Complex business logic, custom integrations, performance-sensitive applications, and unique user experiences often require code. 'No-code' is a spectrum — most real implementations fall somewhere between no-code and full-code.\n\nAI is extending no-code further. Natural language interfaces let users create automations by describing them in plain English rather than using visual builders. 'When I get a new customer email, add them to my CRM and send a welcome message' is a no-code automation expressed through conversation rather than a drag-and-drop canvas.",
@@ -3023,7 +3023,7 @@
   },
   "idempotency": {
     "term": "Idempotency",
-    "metaTitle": "冪等性とは：安全な再試行と重複イベントの扱い",
+    "metaTitle": "冪等性（べき等性）とは：安全な再試行と重複イベントの扱い",
     "metaDescription": "冪等性とは、同じ操作を何度実行しても結果が1回と同じになる性質です。ネットワーク障害や再試行が起きるメール自動化で重要な理由と、GAIAの重複イベント対策を解説します。",
     "definition": "Idempotency is a property of an operation where executing it multiple times produces the same result as executing it once — making it safe to retry without causing unintended side effects.",
     "extendedDescription": "Idempotency is critical for reliable distributed systems and automation. Networks fail, servers restart, and messages get delivered multiple times. Without idempotency, a payment might be charged twice, an email sent three times, or a task created multiple times — all from a single user action that triggered retry logic.\n\nIdempotent operations can be safely retried. GET requests in REST are idempotent (reading data multiple times returns the same result). PUT requests are designed to be idempotent (setting a value to X multiple times leaves X). POST requests are typically not idempotent (creating a resource multiple times creates multiple resources).\n\nImplementing idempotency requires design choices: using idempotency keys (unique identifiers for each operation that prevent re-processing), storing operation results and returning cached results for duplicate requests, and designing side effects that check whether the action has already occurred.\n\nFor AI automation systems like GAIA that handle webhooks, retries, and background job execution, idempotency is essential. If GAIA receives the same 'new email' webhook twice (a common occurrence), it should create the task exactly once, not twice.",
@@ -3109,7 +3109,7 @@
   },
   "transfer-learning": {
     "term": "転移学習",
-    "metaTitle": "転移学習とは：ファインチューニングとの違い",
+    "metaTitle": "転移学習とは：ファインチューニングとの違いと使いどころ",
     "metaDescription": "転移学習は、あるタスクで学んだ知識を別のタスクに生かす手法です。ファインチューニングとの違いと、GAIAが学習済みモデルを使う理由を解説します。",
     "definition": "AIにおける転移学習とは、あるタスクで学習したモデルの知識を、ゼロから学習し直すのではなく、関連する別のタスクの出発点として再利用する手法です。大規模言語モデルが実用的なのはこのためです。膨大なテキストで一度だけ事前学習し、その後わずかなデータと計算量で、チャット、プログラミング、特定の専門分野に適応させます。",
     "extendedDescription": "大規模なモデルをゼロから学習させるには、膨大なデータ、計算資源、時間が必要です。転移学習は、言語や画像などをすでに理解している事前学習済みモデルから出発し、タスク固有のデータでファインチューニングすることで、はるかに少ない資源でAI開発を現実的なものにします。\n\n現在のLLMのエコシステムは、すべて転移学習の上に成り立っています。GPT-4、Claude、Llamaは膨大なインターネット上のテキストで事前学習され、一般的な言語理解を身につけます。その後、指示に従うデータでファインチューニングされて役に立つアシスタントになります。さらに医療、法律、コーディングなどの分野でファインチューニングすると、特化したモデルができます。\n\n転移学習がうまくいくのは、知識が一般化するからです。数十億の文で学習したモデルは、文法、世界についての知識、推論のパターンを身につけ、それが新しいタスクにも生きます。事前学習で得た表現は、多くの用途で役立つ基本的な構造をとらえています。\n\nAIアシスタントの利用者にとって、転移学習は、LLMが明示的に学習していないタスクでも役に立つ理由を説明します。幅広い事前学習が、新しい指示や分野にも通用する土台になっているのです。\n\n実際の進め方: 事前学習済みモデルから始め、学習済みの汎用的な表現はそのまま残し、新しいタスクに必要な部分だけを適応させます。よく使われる段階は3つです。特徴抽出は事前学習済みの層を固定し、小さな出力層だけを新しく学習させる方法で、ラベル付きデータが少ないときに有効です。フルファインチューニングは、新しいデータですべての重みの学習を続けます。LoRAやアダプターなどのパラメータ効率の良いファインチューニングは、少数の追加の重みだけを学習して元のモデルには手を加えないため、メモリを節約でき、1つのベースモデルを多くのタスクに使えます。\n\n大規模言語モデルからの転移学習は、主に3つの形をとります。ファインチューニングは、タスクの例でモデルの重みを変えます。たとえば分類器のために数千件のラベル付きサポートチケットを使います。インコンテキスト学習はモデルを一切変えません。プロンプトに指示といくつかの例を入れると、事前学習済みモデルがその場で汎用的な能力をタスクに生かします。検索拡張生成（RAG）は、モデルが見たことのない情報、たとえば自社の文書を、問い合わせのたびに渡します。多くのチームはまずプロンプトを試し、知識が足りなければ検索を加え、プロンプトでは届かない一貫した形式、文体、能力が必要なときだけファインチューニングします。\n\nLLM以外の代表例: ImageNetで事前学習した画像モデルを数千枚の画像でファインチューニングし、製造ラインの不良やX線画像の所見を見つけます。一般的なテキストで事前学習したBERTを、感情分析やスパム検出向けにファインチューニングします。AIによる自動化でも同じ考え方が働きます。アシスタントがあなたの受信トレイで学習したことがなくても、メールを読み、日付を抜き出し、返信の下書きを書けるのはこのためです。能力は事前学習から来ており、適応は指示、ツール、文脈によって行われます。\n\n転移学習がうまくいかない場合: 元の分野と対象の分野が違いすぎるとき（負の転移）、少ないファインチューニング用データでモデルが過学習したり汎用的な能力を失ったりするとき（破滅的忘却）、事前学習済みモデルの偏りや古い情報が新しいタスクに持ち込まれるときです。評価は、適応に使ったデータではなく、実際の対象データから取り分けておいた例で行ってください。",
@@ -3199,7 +3199,7 @@
   },
   "notification-fatigue": {
     "term": "Notification Fatigue",
-    "metaTitle": "通知疲れとは？燃え尽きとの関係と減らし方",
+    "metaTitle": "通知疲れとは？燃え尽きとの関係と通知を減らす方法",
     "metaDescription": "通知疲れは、通知が多すぎて大事なものまで見逃す状態です。1日に数十から数百届く通知と燃え尽きとの関係、GAIAがSlackやメールの通知を減らす方法を解説します。",
     "definition": "Notification fatigue is the state of becoming desensitized to alerts and notifications due to receiving too many, resulting in important notifications being missed or ignored along with unimportant ones.",
     "extendedDescription": "The average knowledge worker receives dozens to hundreds of notifications daily across email, Slack, mobile apps, and desktop alerts. Many of these notifications are low-value — marketing emails, group chat tangents, automated system alerts. But because they arrive in the same channels as high-value notifications, they degrade the signal-to-noise ratio until the channel itself becomes noise.\n\nNotification fatigue has real consequences. Studies show that phone notification frequency correlates with stress, reduced cognitive performance, and increased error rates. The mere presence of a phone on a desk (even face-down) reduces available cognitive capacity — people spend mental energy managing the potential for interruption.\n\nReducing notification fatigue requires prioritization: not all notifications are equally important, and systems should surface important ones while batching or suppressing unimportant ones. Do Not Disturb modes, notification categorization, and focus modes are common approaches.\n\nAI-powered filtering takes prioritization further. Instead of rule-based notification filtering (emails from these senders, messages with these keywords), AI understands context — this email is urgent because it's from your client and mentions a deadline that's today, even without urgent keywords.",
@@ -3225,7 +3225,7 @@
   },
   "information-overload": {
     "term": "Information Overload",
-    "metaTitle": "情報過多とは：AIは悪化させるのか",
+    "metaTitle": "情報過多とは：AIは情報過多を悪化させるのか、減らすのか",
     "metaDescription": "処理しきれない量の情報が届く情報過多。1970年にトフラーが広めた言葉の意味、AIが状況を悪化させるのか、GAIAが受信トレイから何を表示し何を控えるかを解説します。",
     "definition": "Information overload is the state of receiving more information than can be effectively processed or acted upon, resulting in difficulty making decisions, reduced comprehension, and increased stress.",
     "extendedDescription": "Information overload is not new — the term was coined by Alvin Toffler in 1970 — but digital communication has amplified it enormously. The average worker receives hundreds of emails, dozens of Slack messages, news feeds, social media updates, and meeting requests every day. The human brain wasn't designed to process this volume.\n\nInformation overload affects decision quality. When overwhelmed by options and information, people make worse decisions — sticking with defaults, deferring choices, or acting impulsively to reduce cognitive load. It also affects memory: information that can't be processed meaningfully isn't retained.\n\nStrategies for managing information overload include: reducing inputs (unsubscribing, using filters), batching processing (checking email at scheduled times), delegation (having assistants pre-screen information), and using summarization (condensing long content into key points).\n\nAI assistants address information overload structurally. By automatically triaging, summarizing, and prioritizing the information that arrives through your channels, AI reduces the volume you personally need to process while ensuring nothing important is missed.",
@@ -3302,7 +3302,7 @@
   },
   "energy-management": {
     "term": "Energy Management",
-    "metaTitle": "エネルギー管理とは？時間管理との違い",
+    "metaTitle": "エネルギー管理とは？時間管理との違いと実践のコツ",
     "metaDescription": "エネルギー管理は、負荷の高い仕事を頭が冴える時間に合わせる考え方です。時間管理との違いと、GAIAがピークの時間に集中枠を組む方法を解説します。",
     "definition": "Energy management is the practice of aligning cognitive tasks with natural energy cycles throughout the day, scheduling demanding work during peak energy periods and lower-value tasks during energy troughs.",
     "extendedDescription": "Time management treats all hours as equal. Energy management recognizes that a focused hour at your peak cognitive capacity produces far more than a distracted hour at your low point. Most people have predictable energy patterns: a morning peak, a post-lunch dip, and often a secondary late-afternoon rise. Mapping your most important work to your peak hours and reserving admin, email, and routine tasks for lower-energy periods significantly increases productive output without increasing total hours worked.",
@@ -3452,7 +3452,7 @@
   },
   "single-tasking": {
     "term": "Single-Tasking",
-    "metaTitle": "シングルタスクとは：マルチタスクが有効な場面",
+    "metaTitle": "シングルタスクとは：マルチタスクが有効な場面との違い",
     "metaDescription": "シングルタスクは、1つの作業に集中してから次へ移る働き方です。マルチタスクの多くが実は素早い切り替えである理由、有効な場面、GAIAで通知を抑えて集中する方法を解説。",
     "definition": "Single-tasking is the practice of dedicating focused attention to one task at a time before moving to the next, as opposed to multitasking, which involves switching between multiple tasks simultaneously.",
     "extendedDescription": "Research consistently shows that human multitasking is largely a myth. What we call multitasking is actually rapid task-switching, and each switch incurs a cognitive cost — the residual attention from the previous task lingers and reduces performance on the current one. Studies show multitasking reduces efficiency by up to 40% and increases error rates significantly. Single-tasking, by contrast, allows full cognitive resources to be directed at one problem, producing faster, higher-quality results. The challenge is that modern work environments — with constant notifications, open inboxes, and multiple communication channels — are structurally opposed to single-tasking.",
@@ -3577,7 +3577,7 @@
   },
   "intent-recognition": {
     "term": "Intent Recognition",
-    "metaTitle": "インテント認識とは？キーワード一致との違い",
+    "metaTitle": "インテント認識とは？キーワード一致との違いと仕組み",
     "metaDescription": "インテント認識は、言い回しが違っても入力の目的を見抜く技術です。「3時の予定を動かせる？」の真意を読む例、キーワード一致より優れる点、誤認する場面、GAIAでの使い方を解説。",
     "definition": "Intent recognition is the process by which an AI system identifies the underlying goal or purpose of a user's input, enabling it to select the appropriate response or action rather than responding only to surface-level phrasing.",
     "extendedDescription": "When a user says 'Can you move my 3pm?' the surface text is a question about ability. The actual intent is a request to reschedule a calendar event. Intent recognition identifies this true goal so the AI can take the right action rather than responding literally. Modern intent recognition uses LLMs for open-domain understanding, moving beyond the rigid intent taxonomies that older natural language understanding systems required. This flexibility allows AI assistants to handle the natural variation in how people express the same underlying need.",
@@ -3652,7 +3652,7 @@
   },
   "sentiment-analysis": {
     "term": "Sentiment Analysis",
-    "metaTitle": "感情分析とは：メールの緊急度を見抜けるか",
+    "metaTitle": "感情分析とは：AIはメールの緊急度を見抜けるのか",
     "metaDescription": "感情分析は、テキストの感情を肯定・否定・中立に分類する技術です。製品レビュー分析から始まった経緯、仕事のメールでの精度と緊急度の判定、GAIAでの活用を解説します。",
     "definition": "感情分析（センチメント分析）とは、自然言語処理（NLP）とAIを使ってテキストに込められた感情のトーンを読み取り、ポジティブ・ネガティブ・ニュートラルに分類する技術です。感情の強さをスコアで示したり、「不満」「興奮」「緊急」のような細かいラベルを付けたりすることもあります。",
     "extendedDescription": "感情分析は、もともと製品レビューの分析やソーシャルメディアの監視から始まりましたが、感情のトーンを理解することが重要なあらゆる分野で使われています。ビジネスのやり取りでは、感情が緊急度のシグナルになります。顧客からの苛立ちや切迫感のあるメールは、定例の報告とは別の対応が必要です。高度な感情分析モデルはポジティブ・ネガティブ・ニュートラルを超えて、不満、興奮、緊急、混乱といった具体的な感情を識別し、同じ文章の中で対象ごとに異なる感情を区別することもできます。\n\n「感情（センチメント）」とは、言葉の背後にある態度や気持ちのことです。ポジティブなテキストは賛同や満足を表します（「ありがとうございます、解決しました」）。ネガティブなテキストは苦情、失望、怒りを表します（「お願いするのはこれで3回目です」）。ニュートラルなテキストは評価を交えずに事実を述べます（「請求書を添付します」）。仕事のメールの多くはニュートラルなので、ニュートラルという結果は失敗ではなく普通のことです。一つのことを褒めて別のことを批判する文章には「混在」ラベルを付けるシステムもあります。\n\nテキストの感情分析には主に3つの方法があります。VADERのような辞書ベースのツールは、ポジティブ・ネガティブな語の辞書で単語ごとに点数を付けて合計します。高速で中身を確認しやすい反面、皮肉や文脈にだまされやすい方法です。BERT系のTransformerモデルをファインチューニングした機械学習の分類器は、ラベル付きの例から学習し、学習した分野の中では高い精度を出します。大規模言語モデルは学習データなしで簡単な指示だけで感情を分類し、理由を説明でき、遠回しな表現にも強い一方、1件あたりのコストは高くなります。アスペクトベースの感情分析は、言及された対象ごとに感情を割り当てます。「料理は最高だったがサービスが遅かった」は、料理についてはポジティブ、サービスについてはネガティブです。\n\n感情分析は、SNS上のブランド言及の監視、製品レビューやアンケート回答の要約、不満を抱えた顧客のサポートチケットの検出、顧客の気持ちの推移の追跡、メールの優先順位付けなどに使われます。苦手なのは、皮肉（「最高だね、また障害か」）、スラングや業界特有の言葉、ごく短いメッセージ、複数の感情が混ざった文章です。トーン分析は近い技術で、気持ちがポジティブかネガティブかだけでなく、どのように言われているか（丁寧、そっけない、謝罪的、自信がある）を表します。",
@@ -3776,7 +3776,7 @@
   },
   "memory-augmented-ai": {
     "term": "Memory-Augmented AI",
-    "metaTitle": "記憶拡張AIとは？チャット履歴との違い",
+    "metaTitle": "記憶拡張AIとは？チャット履歴との違いと仕組み",
     "metaDescription": "記憶拡張AIは、言語モデルにコンテキストの外で長く残る記憶を持たせます。チャット履歴との違いと、GAIAがあなたについて覚えることを解説します。",
     "definition": "Memory-augmented AI is an AI architecture that extends a language model's capabilities by connecting it to external persistent memory systems, allowing the agent to remember and retrieve information beyond the limits of a single context window.",
     "extendedDescription": "Language models are inherently stateless: each inference call starts fresh with only what is in the context window. Memory augmentation solves this limitation by providing persistent external storage that the model can read from and write to. When the agent needs context from past interactions, it retrieves relevant memories from the external store and injects them into the current context. This creates the effect of persistent memory while working within the practical constraints of fixed context windows. Memory augmentation architectures use various storage backends: vector databases for semantic retrieval, graph databases for relational memory, and structured databases for episodic records.",
@@ -4002,7 +4002,7 @@
   },
   "offline-first": {
     "term": "Offline-First",
-    "metaTitle": "オフラインファーストとは？変更の同期の仕組み",
+    "metaTitle": "オフラインファーストとは？変更を同期する仕組みと注意点",
     "metaDescription": "オフラインファーストは、接続がなくても動き、復帰時に同期する設計です。常時接続を前提とする従来のWebアプリとの違い、オフライン中の変更の保存、競合の解決方法を解説します。",
     "definition": "Offline-first is a software design approach where applications are built to function fully without an internet connection, using local storage for data and syncing changes with remote servers when connectivity is available.",
     "extendedDescription": "Traditional web applications assume reliable internet connectivity. Offline-first applications invert this assumption: the local device is the primary data store, and the server is the sync target rather than the source of truth. Service workers, IndexedDB, and local SQLite databases enable web and mobile apps to cache data locally and queue changes made offline. When connectivity returns, the application syncs changes bidirectionally, resolving any conflicts that occurred during offline periods. For productivity tools, offline capability is critical: you need access to your tasks, calendar, and notes regardless of connectivity.",
@@ -4081,7 +4081,7 @@
   },
   "cold-email": {
     "term": "Cold Email",
-    "metaTitle": "コールドメールとは？返信をもらえる書き方",
+    "metaTitle": "コールドメールとは？返信をもらえる書き方と送り方",
     "metaDescription": "コールドメールは、面識のない相手へ送る営業メールです。GAIAが個別最適化した文面の作成とアウトリーチ管理を支える方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "A cold email is an unsolicited email sent to a prospect or potential contact with whom you have no prior relationship, used for sales outreach, networking, recruiting, and partnership development.",
     "extendedDescription": "Cold emailing is a fundamental tool for business development, recruiting, and professional networking. The challenge is standing out: recipients receive many cold emails and respond to only a small fraction. Effective cold emails are highly personalized, concise, immediately clear about their value proposition, and have a single low-friction call to action. Personalization at scale — researching each recipient and tailoring the message — is the most time-consuming aspect of effective cold email campaigns. AI can significantly accelerate this by generating personalized email variations based on prospect data.",
@@ -4131,7 +4131,7 @@
   },
   "transactional-email": {
     "term": "Transactional Email",
-    "metaTitle": "トランザクションメールとは？到達率の違い",
+    "metaTitle": "トランザクションメールとは？到達率が違う理由と仕組み",
     "metaDescription": "トランザクションメールは、パスワード再設定などの操作をきっかけに自動送信されるメールです。一斉配信のマーケティングメールとの違いと、到達率が異なる理由を解説します。",
     "definition": "Transactional email is an automated email triggered by a specific user action or system event — such as a password reset, account confirmation, purchase receipt, or workflow notification — sent to a single recipient in response to their interaction.",
     "extendedDescription": "Transactional emails are fundamentally different from marketing emails. Marketing emails are bulk messages sent to lists with commercial intent. Transactional emails are one-to-one, triggered by specific actions, and expected by the recipient — they are part of the product experience rather than an interruption. Because they are anticipated and relevant, transactional emails have much higher open rates than marketing emails. Common platforms for transactional email include SendGrid, Amazon SES, Postmark, and Resend.",
@@ -4181,7 +4181,7 @@
   },
   "two-factor-authentication": {
     "term": "Two-Factor Authentication (2FA)",
-    "metaTitle": "二要素認証（2FA）とは？最も安全な方法",
+    "metaTitle": "二要素認証（2FA）とは？仕組みと最も安全な方法",
     "metaDescription": "二要素認証は、ログイン時に2つ目の確認を加える仕組みです。最も安全な方式と、GAIAで使うGoogleアカウントで有効にすべき理由を解説します。",
     "definition": "Two-factor authentication (2FA) is a security mechanism that requires users to provide two separate forms of verification before accessing an account: something they know (password) and something they have (a code from an authenticator app or hardware key) or something they are (biometrics).",
     "extendedDescription": "Passwords alone are increasingly insufficient for account security. Data breaches expose passwords, phishing attacks steal them, and credential stuffing attacks try stolen passwords across many services. Two-factor authentication adds a second layer that an attacker would need to compromise separately. Even if your password is stolen, an attacker cannot access your account without also having your second factor. Common second factors include TOTP authenticator apps, SMS codes, hardware security keys, and biometrics. Authenticator apps and hardware keys are significantly more secure than SMS codes, which are vulnerable to SIM-swapping attacks.",
@@ -4232,7 +4232,7 @@
   },
   "password-manager": {
     "term": "Password Manager",
-    "metaTitle": "パスワードマネージャーとは：仕組みと選び方",
+    "metaTitle": "パスワードマネージャーとは：仕組みと安全な選び方",
     "metaDescription": "アカウントごとに固有のパスワードを保存・生成・自動入力するツール。仕組みと選び方、GAIAがパスワードでなくOAuthで連携する理由を解説。",
     "definition": "A password manager is an application that securely stores, generates, and autofills passwords and other credentials, enabling users to maintain unique, complex passwords for every account without memorizing them.",
     "extendedDescription": "The average person has dozens to hundreds of online accounts. Reusing passwords across accounts is a serious security risk: when one service is breached, credential stuffing attacks try the same username and password combination across thousands of other services. Password managers solve this by generating and storing unique, complex passwords for every account. The user remembers only the master password for the password manager itself. Modern password managers include 1Password, Bitwarden, Dashlane, and the built-in password managers in browsers and operating systems.",
@@ -4257,7 +4257,7 @@
   },
   "phishing": {
     "term": "Phishing",
-    "metaTitle": "フィッシングとは：詐欺メールの見分け方",
+    "metaTitle": "フィッシングとは：詐欺メールの見分け方と対処法",
     "metaDescription": "偽のメールやサイトでパスワードやお金を盗むフィッシング。信頼できる組織や同僚を装う手口と危険なサイン、GAIAが管理する受信トレイに届いたときの対処法を解説します。",
     "definition": "Phishing is a cyber attack that uses deceptive emails, messages, or websites to trick recipients into revealing sensitive information such as passwords or financial data, or into taking harmful actions.",
     "extendedDescription": "Phishing attacks impersonate trusted organizations, colleagues, or services to create urgency and lower the recipient's guard. Common tactics include fake login pages that steal credentials, malicious attachments that install malware, and urgent requests for wire transfers or gift cards impersonating executives. Modern phishing has become increasingly sophisticated: AI-generated phishing emails are personalized, grammatically correct, and highly convincing. Security awareness training and technical controls like email authentication and spam filtering are the primary defenses.",
@@ -4357,7 +4357,7 @@
   },
   "recurring-event": {
     "term": "Recurring Event",
-    "metaTitle": "繰り返しの予定とは？1回分と全体の変更方法",
+    "metaTitle": "繰り返しの予定とは？1回分だけと全体を変更する方法",
     "metaDescription": "繰り返しの予定は、決まった間隔で自動的に入る予定です。1回分だけ変える方法とシリーズ全体を変える方法、GAIAが自然な言葉で予定を作る仕組みを解説します。",
     "definition": "定期的な予定（繰り返しイベント）とは、毎日・毎週・毎月・毎年、または「隔週火曜日」のような独自のパターンといったルールに従って繰り返されるカレンダーの予定です。個別のコピーではなく1つのシリーズとして保存されるため、スケジューラーはすべての回を表示でき、1回分だけでもシリーズ全体でも変更できます。",
     "extendedDescription": "定期的な予定は、多くの仕事のスケジュールに安定したリズムを作ります。毎週のチーム定例、毎月の役員会、四半期レビュー、毎日の朝会などです。カレンダーアプリは、平日毎日、隔週の火曜日、毎月最終金曜日など、さまざまな繰り返しパターンに対応しています。定期的な予定をうまく管理するには、1つの変更が1回分だけに及ぶのか、シリーズ全体に及ぶのかを理解しておくことが大切です。定期的な予定は、AIのスケジューリングツールが空き時間を探す際に守るべき会議のリズムも決めています。\n\nカレンダーでの保存方法：GoogleカレンダーはiCalendar規格（RFC 5545）の繰り返しルールを使っており、カレンダー同士も同じ形式で定期的な予定をやり取りします。定期的な予定は、1つの元の予定と、RRULEと呼ばれるルールでできています。FREQは単位（DAILY、WEEKLY、MONTHLY、YEARLY）、INTERVALは間隔（INTERVAL=2なら隔週）、BYDAYは曜日や第n曜日（BYDAY=1MOは第1月曜日）を指定し、COUNTかUNTILでシリーズを終わらせます。FREQ=WEEKLY;INTERVAL=2;BYDAY=TU;COUNT=10は「隔週火曜日、10回」という意味です。\n\n例外：1回分だけを移動・キャンセルすると、カレンダーはシリーズを残したまま、その日付に例外を記録します。そのためカレンダーアプリは、変更を「この予定」「これ以降のすべての予定」「すべての予定」のどれに適用するかを尋ねます（Googleカレンダーの表現）。「これ以降のすべての予定」を選ぶと、元のシリーズはその日で終わり、新しいシリーズが始まります。\n\n定期的な予定をうまく設定するコツ：タイムゾーンに固定して、9時の会議が夏時間の切り替え後も現地時間の9時のままになるようにする。シリーズには終了日か見直し日を設けて、不要になった会議が残り続けないようにする。毎月の予定では29日〜31日を避ける（その日がない月は飛ばされることがある）か、「毎月最終金曜日」のようなルールを使う。予約ページやスケジューラーはすべての回を予定ありとして扱うため、忘れられたシリーズが実際の空き時間をふさぐことも覚えておきましょう。\n\n定期的な予定か、繰り返しタスクか：朝会や授業のように時間を確保する必要があるものには定期的な予定を使います。毎週金曜日の勤務表提出のように、期限はあっても決まった時間枠がない作業には、繰り返しのタスクやリマインダーを使います。",
@@ -4435,7 +4435,7 @@
   },
   "travel-time": {
     "term": "Travel Time",
-    "metaTitle": "移動時間とは？バッファ時間との違い",
+    "metaTitle": "移動時間とは？バッファ時間との違いと予定への入れ方",
     "metaDescription": "移動時間は、場所の違う会議の間に確保する時間です。連続した対面の予定で遅れを防ぐ理由、バッファ時間との違い、GAIAが予定の場所から移動時間を加える方法を解説します。",
     "definition": "Travel time in calendar scheduling is the time allocated between meetings to account for physical travel between locations, ensuring that commitments requiring in-person attendance are scheduled with realistic transition time.",
     "extendedDescription": "Calendar applications often schedule meetings without considering that consecutive in-person commitments in different locations are physically impossible. A 2 PM meeting across town and a 3 PM meeting in the office require at least the travel time between them as a buffer. Smart calendar management accounts for meeting locations, estimates travel time based on distance and transportation mode, and prevents scheduling conflicts that exist on paper but not in reality. As hybrid work has expanded in-person meeting requirements, location-aware scheduling has become increasingly important.",
@@ -4460,7 +4460,7 @@
   },
   "meeting-fatigue": {
     "term": "Meeting Fatigue",
-    "metaTitle": "会議疲れとは？1日に何件からが多すぎるか",
+    "metaTitle": "会議疲れとは？1日に何件からが多すぎるのか、減らし方",
     "metaDescription": "会議疲れは、ビデオ会議や対面会議が多すぎて心身が消耗する状態です。GAIAが会議疲れを見つけて減らす方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Meeting fatigue is the cognitive, emotional, and physical exhaustion that results from excessive meeting density, back-to-back scheduling, or the particular demands of video conferencing, which requires sustained attention and removes natural conversational cues.",
     "extendedDescription": "Stanford research identified four primary contributors to video call fatigue: the cognitive effort of processing non-verbal cues on video, the self-awareness of seeing yourself on screen, the reduced mobility of sitting in front of a camera, and the close proximity of faces at conversational distance. Beyond video-specific factors, general meeting fatigue results from too many meetings, back-to-back scheduling without recovery time, meetings that could have been emails, and the cognitive cost of frequent context switching between meeting topics.",
@@ -4510,7 +4510,7 @@
   },
   "video-conferencing": {
     "term": "Video Conferencing",
-    "metaTitle": "ビデオ会議とは：仕組みとAIによる会議準備",
+    "metaTitle": "ビデオ会議とは：仕組みとAIによる会議準備の自動化",
     "metaDescription": "ビデオ会議は、離れた場所の人を音声と映像でリアルタイムにつなぎます。リモートやハイブリッドの仕事で主流になった仕組み、Zoomとの連携、GAIAによる会議前の準備を解説します。",
     "definition": "Video conferencing is the technology that enables real-time audiovisual communication between participants in different physical locations, replicating the face-to-face meeting experience for remote and distributed teams.",
     "extendedDescription": "Video conferencing has become the dominant medium for professional meetings in remote and hybrid work environments. Platforms like Google Meet, Zoom, Microsoft Teams, and Webex provide the infrastructure for real-time visual collaboration. Video adds non-verbal communication cues — facial expressions, gestures, eye contact — that phone calls lack, making it better suited for complex discussions, relationship-building, and situations where visual context matters. The widespread adoption of video conferencing normalized remote work and distributed teams at a scale previously unimaginable.",
@@ -4535,7 +4535,7 @@
   },
   "screen-sharing": {
     "term": "Screen Sharing",
-    "metaTitle": "画面共有とは：ビデオ会議との違いと使い分け",
+    "metaTitle": "画面共有とは：ビデオ会議との違いと安全な使い分け",
     "metaDescription": "通話中に自分の画面をリアルタイムで見せる画面共有。ビデオ会議を共同作業に変える役割、ビデオ会議との違い、資料送付の方が良い場面、GAIAの会議準備を解説します。",
     "definition": "Screen sharing is the technology that allows one participant in a video call to broadcast their computer screen or a specific application window to other participants in real time, enabling visual collaboration and remote demonstration.",
     "extendedDescription": "Screen sharing is the feature that makes video conferencing genuinely collaborative rather than just conversational. Instead of describing what you are looking at, you show it: a document being edited, a code review in progress, a design being evaluated, a bug being demonstrated. Modern screen sharing supports sharing your entire desktop, a single application window, or a browser tab. Some platforms support annotating shared screens, and many support remote control, allowing participants to interact with the shared screen directly. Screen sharing is essential for technical collaboration, presentations, and any situation where seeing the same thing simultaneously aids communication.",
@@ -4560,7 +4560,7 @@
   },
   "rlhf": {
     "term": "Reinforcement Learning from Human Feedback (RLHF)",
-    "metaTitle": "RLHFとは：重要な理由と解決できないこと",
+    "metaTitle": "RLHFとは：人間のフィードバックで学ぶ仕組みと限界",
     "metaDescription": "人の評価でAIモデルを学習させるRLHF。大規模言語モデルを役に立つアシスタントに変えた役割、振る舞いを左右する理由、AIを完全に安全にはしない理由、GAIAとの関係を解説。",
     "definition": "Reinforcement Learning from Human Feedback (RLHF) is a machine learning technique that trains AI models to produce outputs preferred by humans by learning from human-provided rankings or ratings rather than purely from raw data.",
     "extendedDescription": "RLHF was instrumental in turning raw large language models into the helpful, harmless, and honest assistants seen in products like ChatGPT and Claude. The process typically involves three stages: supervised fine-tuning on high-quality demonstrations, training a reward model from human preference data (humans rank multiple model outputs from best to worst), and then using reinforcement learning — specifically Proximal Policy Optimization (PPO) — to fine-tune the original model to maximize the learned reward signal.\n\nThe key insight behind RLHF is that it is easier for humans to compare outputs (\"A is better than B\") than to specify exactly what a good output looks like. This comparative preference signal can be aggregated into a reward model that generalizes beyond the rated examples.\n\nRLHF significantly improves the helpfulness and safety of deployed models but is not without limitations. Models can learn to 'reward hack' — producing outputs that score highly on the reward model without genuinely being better. The quality of RLHF is bounded by the quality of human raters, who may have inconsistent or biased preferences. Alternatives and extensions include Direct Preference Optimization (DPO), which achieves similar alignment without a separate reward model, and Constitutional AI (CAI), which uses AI feedback rather than human feedback.",
@@ -4664,7 +4664,7 @@
   },
   "token": {
     "term": "Token",
-    "metaTitle": "AIのトークンとは？会話の消費量とAPI料金",
+    "metaTitle": "AIのトークンとは？会話での消費量とAPI料金の目安",
     "metaDescription": "トークンはAIモデルが読み取り、課金の単位にもなるテキストの断片です。会話で使う量、API料金の仕組み、GAIAがトークンを節約する方法を解説します。",
     "definition": "In AI, a token is the basic unit of text that language models process — roughly equivalent to 4 characters or ¾ of an average English word. Tokens are used to measure context window capacity and determine API usage costs.",
     "extendedDescription": "Language models do not process text character-by-character or word-by-word. Instead, they operate on tokens — sub-word units produced by a tokenizer that breaks text into chunks based on frequency patterns in the training corpus. Common short words like 'the' or 'is' are typically single tokens, while longer or rare words may be split into two or more tokens.\n\nUnderstanding tokens is essential for two reasons. First, every model has a context window measured in tokens — the maximum amount of text it can consider at once. GPT-4o has a 128,000-token context window; Claude 3.5 Sonnet supports 200,000. Second, most LLM APIs charge per token consumed (input + output), so token awareness directly impacts cost.\n\nAs a rough rule: 1,000 tokens ≈ 750 words, or about 1,500 characters. A typical business email is 200–400 tokens. A long research paper may exceed 8,000 tokens. When building AI applications, prompt design often involves carefully managing token usage to maximize context efficiency while controlling costs.",
@@ -4732,7 +4732,7 @@
   },
   "rate-limiting": {
     "term": "Rate Limiting",
-    "metaTitle": "レート制限とは？429エラーと指数バックオフ",
+    "metaTitle": "レート制限とは？429エラーの原因と指数バックオフ",
     "metaDescription": "レート制限は、一定時間内のAPIリクエスト数を制限する仕組みです。429エラーの意味、バックオフの仕組み、GAIAが上限内に収める方法を解説します。",
     "definition": "Rate limiting is a technique used by APIs and servers to control the number of requests a client can make within a specified time window, protecting infrastructure from overload and preventing abuse.",
     "extendedDescription": "Every major API — Gmail, Slack, GitHub, OpenAI, and hundreds of others — enforces rate limits to ensure fair usage and system stability. These limits are expressed in various ways: requests per second, requests per minute, requests per day, or tokens per minute for LLM APIs. When a client exceeds its limit, the server returns an HTTP 429 'Too Many Requests' response, often with a Retry-After header indicating when requests can resume.\n\nFor applications like AI assistants that integrate with many services simultaneously, rate limits present a significant engineering challenge. A single workflow might touch Gmail, Google Calendar, Slack, and Notion in sequence. If any step hits a rate limit, the entire workflow must pause and retry gracefully.\n\nEffective rate limit handling requires exponential backoff (waiting progressively longer between retries), request queuing and throttling, caching responses to avoid redundant calls, and intelligent prioritization when competing requests need the same API. For LLM APIs specifically, token-per-minute limits often matter more than request counts, requiring careful batching of prompts.\n\nRate limits also directly affect system design choices like webhook-vs-polling: webhooks are more rate-limit-efficient because they only consume quota when events occur, whereas polling consumes quota on every request regardless of whether data has changed.",
@@ -4901,7 +4901,7 @@
   },
   "dot-app": {
     "term": "Dot",
-    "metaTitle": "Dotアプリとは？サービス終了の経緯と移行先",
+    "metaTitle": "Dotアプリとは？サービス終了の経緯とおすすめの移行先",
     "metaDescription": "DotはiPhone向けのAIコンパニオンアプリで、会話を覚えていましたが終了しました。終了の経緯と、元ユーザーがGAIAなどへ移る理由を解説します。",
     "definition": "DotはiPhoneのAI話し相手の道具で、話しかけると向き合い、話の文脈を覚えました。2025年10月に終わりました。",
     "extendedDescription": "DotはiPhoneの中に住む、毎日話す相手でした。話したことを覚え、前の話に積み上げるので、探す箱より身近に感じられました。\n\nこの道具は2025年10月に終わり、習慣の置き所を使い手が探すことになりました。元利用者が惜しむのは二つです。続く付き合いと、前の話の記憶です。\n\n話し相手の道具と仕事の助手は別の困りを解きます。話し相手はそばにいます。助手は受信箱を空け、一日を整え、仕事を終わらせます。",
@@ -4926,7 +4926,7 @@
   },
   "friend-pendant": {
     "term": "Friend Pendant",
-    "metaTitle": "Friendペンダントとは？価格とできること",
+    "metaTitle": "Friendペンダントとは？価格とできること・できないこと",
     "metaDescription": "Friendは首から下げるAIペンダントで、一日の会話を聞き、友人のようにメッセージを送ります。価格とできること、GAIAとの違いを解説します。",
     "definition": "Friendは首にかける249ドル(v2)のAI首かけです。一日を聞いて話し相手のように文を送りますが、メールも予定も整えません。",
     "extendedDescription": "Friendはいつもそばにあり、それが売りの全部です。首かけは聞くことを聞き、気づきと念押しと話を文で返します。付き合いであり、道具ではありません。\n\n引き換えは届く広さです。Friendは聞いたので一日を知ります。受信箱は読まず、予定は見ず、道具の中の仕事は終わらせません。やることがあれば、あなたがやります。\n\n身につける話し相手と全体の助手は別の要りに答えます。一つは一日を通してそばにいます。もう一つは仕事を片づけ、楽しめるようにします。",
@@ -4951,7 +4951,7 @@
   },
   "omi": {
     "term": "OMI",
-    "metaTitle": "OMIとは？AIペンダントの価格と公開性",
+    "metaTitle": "OMIとは？AIペンダントの価格とソースの公開範囲",
     "metaDescription": "OMIは一日の会話を記録し、後から検索できるようにする身につけるAIペンダントです。仕組みと価格、手頃なハードウェアの特徴、文脈をもとにGAIAが行動へつなげる違いを解説します。",
     "definition": "OMIは話を聞いて後から探せるようにする開けたAI首かけです。機械は手頃なオープン品です。",
     "extendedDescription": "OMIは身につける物の開けた道を取ります。機械は一日を通して聞き、開けた作りの仕組みがその話を探せる記録に変え、あなたが握ります。\n\n開かれているので、音をどう扱うか確かめられ、一部は自分で回せます。その透け方は、いつも働く耳でできた仲間では珍しいことです。\n\n拾うのは仕事の半分です。OMIは言われたことを覚えます。後のメールの下書きも仕事作りも予定の直しもしません。思い出すだけで動かなければ、やることは残ります。",
@@ -4976,7 +4976,7 @@
   },
   "gemini-assistant": {
     "term": "Gemini Assistant",
-    "metaTitle": "Gemini Assistantとは？GAIAとの違い",
+    "metaTitle": "Gemini Assistantとは？できることとGAIAとの違い",
     "metaDescription": "Gemini AssistantはAndroidスマホに入っている音声操作のAIです。できることと、GAIAのような本格的なアシスタントが引き継ぐ場面を解説します。",
     "definition": "Gemini AssistantはAndroid電話に入るAIです。問いかけに答え、タイマーをかけ、声で道具を動かします。",
     "extendedDescription": "今どきのAndroid電話で電源の長押しに出るのがGemini Assistantです。電話の昔からの仕事を受け持ちます。かけること、目覚まし、音楽、速い問いかけへの答え、道具の切り替えです。\n\n道具の助手であり、仕事の助手ではありません。受信箱の仕分けも打ち合わせの事前資料も、道具をまたぐ仕事回しもしません。電話がポケットに戻れば、手助けは止まります。\n\nこのページは電話の助手の話です。GoogleのGeminiチャットボットと昔のGoogleアシスタントは別のページで扱います。",
@@ -5001,7 +5001,7 @@
   },
   "siri": {
     "term": "Siri",
-    "metaTitle": "Siriとは？得意なことと苦手なこと",
+    "metaTitle": "Siriとは？Appleの音声アシスタントが得意なことと苦手なこと",
     "metaDescription": "SiriはiPhone、iPad、Macに入っているAppleの音声アシスタントです。得意なことと、GAIAのように先回りして動くアシスタントが補える部分を解説します。",
     "definition": "SiriはiPhoneとiPadとMacのどれにも入る声の助手です。タイマーや電話や易しい問いかけのような速い頼みごとを受けます。",
     "extendedDescription": "Siriは初めて広がった声の助手で、今もAppleの道具の速い頼みごとの層を持ちます。タイマー、電話、道案内、天気を頼めば一秒で答えます。\n\n天井は知られています。手順の多い頼みは崩れ、話をまたぐ記憶はなく、メールや仕事の道具の中では働けません。使い込む人ほど速くその天井に着きます。\n\nSiriは道具を回します。仕事の日を回すためには作られず、その開きを先回りの助手が埋めます。",
@@ -5085,7 +5085,7 @@
   },
   "meeting-scheduling": {
     "term": "会議の予定組み",
-    "metaTitle": "会議の日程調整とは？会議の適切な長さ",
+    "metaTitle": "会議の日程調整とは？効率的な決め方と会議の適切な長さ",
     "metaDescription": "会議の日程調整は、参加者全員に合う時間、長さ、場所を決めることです。適切な長さ、定例会議の枠、GAIAが代わりに日程を組む方法を解説します。",
     "definition": "会議の予定組みは要る者が皆出られる会議の時刻と長さと場所を選び、招きを送って変わり目をこなすことです。",
     "extendedDescription": "会議は整えの難題から始まります。忙しい者が何人も予定表が何枚も一つの時間を分け合います。手の予定組みは文面と投票と予定表の掘り起こしで解きます。回りますが広がりが弱く、来る者が一人増える度に往復が増え、決まった会議は予定が変わるとずれます。\n\n道具は層で重さを減らします。分け合う予定表は空きを見せます。予約受けは開いた枠から客に選ばせます。投票は組の好みを集めます。自ら選ぶ予定組みは一歩先へ進み、労働時間と時差と余白と会議の重さを量って枠を自ら選びます。\n\n良い予定組みは端まで覆います。来る者がなぜ要るか分かるはっきりした議題、一時間決め打ちではなく当たる長さ、予定が動けば皆に知らせる組み直し。予定組みを雑用ではなく仕組みと見る組は整えの時間を減らし、要る会議の時間を増やします。",
