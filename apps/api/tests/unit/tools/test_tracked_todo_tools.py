@@ -63,6 +63,7 @@ from app.models.todo_models import (
     TodoDocument,
     TodoResponse,
     TodoUpdate,
+    TrackedTodoCreation,
 )
 from app.models.user_models import UserDocument
 from app.services.todos import errors as todo_errors
@@ -746,8 +747,11 @@ class TestCreateTrackedTodoValidation:
                 new_callable=AsyncMock,
             ) as create,
         ):
-            create.return_value = TodoResponse(
-                id="t1", user_id="u1", title="t", created_at=_FUTURE, updated_at=_FUTURE
+            create.return_value = TrackedTodoCreation(
+                todo=TodoResponse(
+                    id="t1", user_id="u1", title="t", created_at=_FUTURE, updated_at=_FUTURE
+                ),
+                reopened=False,
             )
             await create_tracked_todo.coroutine(
                 config=_config(), title="Watch for replies", needs_integrations=["gmail"]
@@ -761,12 +765,15 @@ class TestCreateTrackedTodoValidation:
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
             new_callable=AsyncMock,
         ) as create:
-            create.return_value = TodoResponse(
-                id="t1",
-                user_id="u1",
-                title="t",
-                created_at=_FUTURE,
-                updated_at=_FUTURE,
+            create.return_value = TrackedTodoCreation(
+                todo=TodoResponse(
+                    id="t1",
+                    user_id="u1",
+                    title="t",
+                    created_at=_FUTURE,
+                    updated_at=_FUTURE,
+                ),
+                reopened=False,
             )
             await create_tracked_todo.coroutine(config=_config(), title="t")
 
@@ -809,8 +816,11 @@ class TestCreateTrackedTodoValidation:
                 return_value=None,
             ) as armed,
         ):
-            create.return_value = TodoResponse(
-                id="t1", user_id="u1", title="t", created_at=_FUTURE, updated_at=_FUTURE
+            create.return_value = TrackedTodoCreation(
+                todo=TodoResponse(
+                    id="t1", user_id="u1", title="t", created_at=_FUTURE, updated_at=_FUTURE
+                ),
+                reopened=False,
             )
             await create_tracked_todo.coroutine(
                 config=_config(),
@@ -837,12 +847,15 @@ class TestCreateTrackedTodoValidation:
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
             new_callable=AsyncMock,
         ) as create:
-            create.return_value = TodoResponse(
-                id="t1",
-                user_id="u1",
-                title="t",
-                created_at=_FUTURE,
-                updated_at=_FUTURE,
+            create.return_value = TrackedTodoCreation(
+                todo=TodoResponse(
+                    id="t1",
+                    user_id="u1",
+                    title="t",
+                    created_at=_FUTURE,
+                    updated_at=_FUTURE,
+                ),
+                reopened=False,
             )
             await create_tracked_todo.coroutine(config=_config(), title="t", notify_on_run=False)
 
@@ -877,8 +890,9 @@ class TestCreateTrackedTodoValidation:
 
     async def test_cron_recurrence_looks_up_the_owners_timezone(self):
         now = datetime.now(UTC)
-        response = TodoResponse(
-            id="t1", user_id="user-1", title="t", created_at=now, updated_at=now
+        response = TrackedTodoCreation(
+            todo=TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now),
+            reopened=False,
         )
         with (
             patch(
@@ -906,8 +920,9 @@ class TestCreateTrackedTodoValidation:
     @time_machine.travel(datetime(2026, 10, 1, tzinfo=UTC), tick=False)
     async def test_a_cron_first_fires_at_the_owners_local_time(self):
         now = datetime.now(UTC)
-        response = TodoResponse(
-            id="t1", user_id="user-1", title="t", created_at=now, updated_at=now
+        response = TrackedTodoCreation(
+            todo=TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now),
+            reopened=False,
         )
         with (
             patch(
@@ -1271,15 +1286,41 @@ class TestScheduleExecutionAfterCreate:
 
 
 class TestFormatCreateOutput:
+    def test_a_reopened_todo_is_named_as_one_with_history_to_bring_up_to_date(self) -> None:
+        now = datetime.now(UTC)
+        reopened = TrackedTodoCreation(
+            todo=TodoResponse(
+                id="66f838cc8829054e5f10e407",
+                user_id="user-1",
+                title="Reply to Sam",
+                created_at=now,
+                updated_at=now,
+            ),
+            reopened=True,
+        )
+
+        out = format_create_output(reopened, None, None, [])
+
+        assert out.startswith(
+            "Tracked todo reopened: 66f838cc8829054e5f10e407\n"
+            "What it tracks already had this todo, completed; it is open again with your title, "
+            "labels and schedule. Its canvas.md and activity.md keep their history and "
+            "initial_canvas was not written: bring its Current State up to date.\n"
+            "Title: Reply to Sam\n"
+        )
+
     def test_the_summary_routes_canvas_edits_away_from_filesystem_tools(self) -> None:
         """The create result names the exact folder (slug + short id) and both files, so the model finds its notes by path."""
         now = datetime.now(UTC)
-        result = TodoResponse(
-            id="66f838cc8829054e5f10e407",
-            user_id="user-1",
-            title="Fix the thing",
-            created_at=now,
-            updated_at=now,
+        result = TrackedTodoCreation(
+            todo=TodoResponse(
+                id="66f838cc8829054e5f10e407",
+                user_id="user-1",
+                title="Fix the thing",
+                created_at=now,
+                updated_at=now,
+            ),
+            reopened=False,
         )
 
         out = format_create_output(result, None, None, [])
@@ -1293,12 +1334,15 @@ class TestFormatCreateOutput:
 
     def test_scheduled_create_appends_the_fire_note_and_details_verbatim(self) -> None:
         now = datetime.now(UTC)
-        result = TodoResponse(
-            id="66f838cc8829054e5f10e407",
-            user_id="user-1",
-            title="Fix the thing",
-            created_at=now,
-            updated_at=now,
+        result = TrackedTodoCreation(
+            todo=TodoResponse(
+                id="66f838cc8829054e5f10e407",
+                user_id="user-1",
+                title="Fix the thing",
+                created_at=now,
+                updated_at=now,
+            ),
+            reopened=False,
         )
         out = format_create_output(result, _FUTURE, "America/New_York", ["kept watcher"])
 
@@ -1318,12 +1362,15 @@ class TestFormatCreateOutput:
 
     def test_each_detail_gets_its_own_bullet(self) -> None:
         now = datetime.now(UTC)
-        result = TodoResponse(
-            id="66f838cc8829054e5f10e407",
-            user_id="user-1",
-            title="Fix the thing",
-            created_at=now,
-            updated_at=now,
+        result = TrackedTodoCreation(
+            todo=TodoResponse(
+                id="66f838cc8829054e5f10e407",
+                user_id="user-1",
+                title="Fix the thing",
+                created_at=now,
+                updated_at=now,
+            ),
+            reopened=False,
         )
 
         out = format_create_output(result, None, None, ["kept watcher", "due moved"])
@@ -1980,7 +2027,7 @@ class TestUpdateTrackedTodoSuccess:
 
 
 class TestCreateTrackedTodoSuccess:
-    def _response(self, **overrides: object) -> TodoResponse:
+    def _response(self, **overrides: object) -> TrackedTodoCreation:
         now = datetime.now(UTC)
         base = {
             "id": "t1",
@@ -1990,7 +2037,7 @@ class TestCreateTrackedTodoSuccess:
             "updated_at": now,
         }
         base.update(overrides)
-        return TodoResponse.model_validate(base)
+        return TrackedTodoCreation(todo=TodoResponse.model_validate(base), reopened=False)
 
     async def test_create_without_scheduling_returns_confirmation(self):
         with patch(
@@ -2172,9 +2219,12 @@ class TestCreateThreadTrackedTodo:
             yield connected
 
     @staticmethod
-    def _response() -> TodoResponse:
+    def _response() -> TrackedTodoCreation:
         now = datetime.now(UTC)
-        return TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now)
+        return TrackedTodoCreation(
+            todo=TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now),
+            reopened=False,
+        )
 
     _REFUSAL = (
         "Not created: this thread already has an open tracked todo. Update it with "
@@ -2386,9 +2436,12 @@ class TestTrackedTodoReferences:
         ]
 
     @staticmethod
-    def _response() -> TodoResponse:
+    def _response() -> TrackedTodoCreation:
         now = datetime.now(UTC)
-        return TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now)
+        return TrackedTodoCreation(
+            todo=TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now),
+            reopened=False,
+        )
 
     async def test_a_todo_created_with_references_is_saved_with_them(self):
         find = AsyncMock(return_value=self._owned(self.DESK))
@@ -2506,9 +2559,12 @@ class TestSubTodoTools:
     DESK = "66f838cc8829054e5f10e401"
 
     @staticmethod
-    def _response() -> TodoResponse:
+    def _response() -> TrackedTodoCreation:
         now = datetime.now(UTC)
-        return TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now)
+        return TrackedTodoCreation(
+            todo=TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now),
+            reopened=False,
+        )
 
     async def test_the_parent_reaches_the_service(self):
         with patch(self._CREATE, AsyncMock(return_value=self._response())) as create:

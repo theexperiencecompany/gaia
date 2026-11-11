@@ -88,6 +88,7 @@ async def _delivered_request() -> HumanMessage:
                 todo_id=DESK.id,
                 trigger_type=TriggerType.SCHEDULED_TODO,
                 message_class=ProactiveMessageClass.ROUTINE,
+                runs_once=False,
             ),
             BRIEFING,
             "final",

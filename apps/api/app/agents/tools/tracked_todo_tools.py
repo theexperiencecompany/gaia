@@ -385,7 +385,8 @@ async def create_tracked_todo(
                 On by default, off by default for a sub-todo.
     gmail_thread_id: The Gmail thread id when the todo is about an email thread; it is
                 watched both ways and allowed one open todo. If the thread already has
-                one, nothing is created and that todo comes back: update it instead.
+                one, nothing is created and that todo comes back: update it instead. If
+                its todo was completed, that todo is reopened with its history instead.
     gmail_account: The Gmail account the thread is in; every run reads and drafts there.
     references: IDs of the user's tracked todos this one builds on; its runs read their
                 Learnings. An id that is not one of the user's todos creates nothing.
@@ -427,7 +428,7 @@ async def create_tracked_todo(
     if isinstance(external_ref, str):
         return external_ref
     try:
-        result = await tracked_todo_service.create_tracked_todo(
+        created = await tracked_todo_service.create_tracked_todo(
             user_id=user_id,
             title=title,
             description=description,
@@ -454,11 +455,11 @@ async def create_tracked_todo(
         return _refused_create_text(refused, user_tz_name)
 
     if planned.first_fire:
-        schedule_error = await _schedule_execution_after_create(result.id, planned.first_fire)
+        schedule_error = await _schedule_execution_after_create(created.todo.id, planned.first_fire)
         if schedule_error:
             return schedule_error
 
-    return format_create_output(result, planned.first_fire, user_tz_name, planned.notes)
+    return format_create_output(created, planned.first_fire, user_tz_name, planned.notes)
 
 
 @tool
