@@ -9,8 +9,11 @@ from unittest.mock import AsyncMock, call, patch
 import pytest
 
 from app.config.feature_flags import REFERRAL_COPY_FLAG, REFERRAL_LAYOUT_FLAG
-from app.constants.error_codes import REFERRAL_SUBSCRIPTION_REQUIRED
+from app.constants.error_codes import REFERRAL_SUBSCRIPTION_REQUIRED, REFERRALS_DISABLED
 from app.constants.referrals import (
+    REFERRALS_DISABLED_FIX,
+    REFERRALS_DISABLED_MESSAGE,
+    REFERRALS_DISABLED_WHY,
     SUBSCRIPTION_REQUIRED_FIX,
     SUBSCRIPTION_REQUIRED_MESSAGE,
     SUBSCRIPTION_REQUIRED_WHY,
@@ -27,15 +30,19 @@ from app.models.user_models import UserDocument
 from app.schemas.referrals import ReferralMeResponse, ReferralResolveResponse, ReferredFriend
 from app.services.referrals.codes import share_link
 from app.services.referrals.offer import build_offer
-from app.services.referrals.overview import get_referral_overview, resolve_referral_code
+from app.services.referrals.overview import get_referral_overview, land_on_invite
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.referrals import ReferralLandingResolved
 from tests.factories import make_pro_plans
 
 OVERVIEW = "app.services.referrals.overview"
 JOINED = datetime(2026, 9, 1, tzinfo=UTC)
 PAID = datetime(2026, 9, 3, tzinfo=UTC)
 PLANS = make_pro_plans()
-REFERRER = UserDocument(id="referrer-1", first_name="Aryan", email="aryan@example.com")
+REFERRER = UserDocument(
+    id="65f0c0ffee00000000000a01", first_name="Aryan", email="aryan@example.com"
+)
 
 
 def _referral(friend_id: str, state: ReferralRewardState | None) -> ReferralDocument:
@@ -169,6 +176,26 @@ class TestOverview:
         }
         seams.ensure_code.assert_not_awaited()
 
+    @pytest.mark.usefixtures("referrals_off")
+    async def test_with_referrals_off_the_page_is_a_coded_403_and_mints_no_code(
+        self, seams: Seams
+    ) -> None:
+        with pytest.raises(AppError) as refused:
+            await get_referral_overview(REFERRER.id)
+
+        assert refused.value.status_code == 403
+        assert refused.value.to_dict() == {
+            "message": REFERRALS_DISABLED_MESSAGE,
+            "why": REFERRALS_DISABLED_WHY,
+            "fix": REFERRALS_DISABLED_FIX,
+            "code": REFERRALS_DISABLED,
+        }
+        seams.ensure_code.assert_not_awaited()
+
+
+OWNER = UserDocument(id=REFERRER.id, name="Aryan Randeriya", picture="https://p/a.png")
+OWNER_CODE = ReferralCodeDocument(user_id=OWNER.id, code="aryan-k7f2", created_at=JOINED)
+
 
 class TestResolve:
     @pytest.fixture
@@ -176,9 +203,50 @@ class TestResolve:
         with patch(f"{OVERVIEW}.payment_service.get_pro_plans", AsyncMock(return_value=PLANS)):
             yield
 
+    @pytest.fixture
+    def owned_code(self, plans: None) -> Iterator[AsyncMock]:
+        with (
+            patch(
+                f"{OVERVIEW}.referral_code_repository.get_by_code",
+                AsyncMock(return_value=OWNER_CODE),
+            ),
+            patch(f"{OVERVIEW}.user_repository.get", AsyncMock(return_value=OWNER)),
+            patch(f"{OVERVIEW}.capture") as capture,
+        ):
+            yield capture
+
+    async def test_a_landing_on_a_live_link_sets_the_cookie_and_is_recorded_on_its_owner(
+        self, owned_code: AsyncMock
+    ) -> None:
+        landing = await land_on_invite("aryan-k7f2", ReferralCopyVariant.EARN, None)
+
+        assert landing.resolved.valid is True
+        assert landing.cookie is not None
+        owned_code.assert_called_once_with(
+            UserId(OWNER.id),
+            ReferralLandingResolved(outcome="valid", landing_variant="earn", cookie_set=True),
+        )
+
+    @pytest.mark.usefixtures("referrals_off")
+    async def test_with_referrals_off_a_live_link_is_invalid_sets_no_cookie_and_records_disabled(
+        self, owned_code: AsyncMock
+    ) -> None:
+        landing = await land_on_invite("aryan-k7f2", None, None)
+
+        assert landing.resolved == ReferralResolveResponse(valid=False, offer=build_offer(PLANS))
+        assert landing.cookie is None
+        owned_code.assert_called_once_with(
+            UserId(OWNER.id),
+            ReferralLandingResolved(outcome="disabled", landing_variant=None, cookie_set=False),
+        )
+
     async def test_a_known_code_names_its_owner_and_carries_the_gift(self, plans: None) -> None:
-        owner = UserDocument(id="referrer-1", name="Aryan Randeriya", picture="https://p/a.png")
-        code_doc = ReferralCodeDocument(user_id="referrer-1", code="aryan-k7f2", created_at=JOINED)
+        owner = UserDocument(
+            id="65f0c0ffee00000000000a01", name="Aryan Randeriya", picture="https://p/a.png"
+        )
+        code_doc = ReferralCodeDocument(
+            user_id="65f0c0ffee00000000000a01", code="aryan-k7f2", created_at=JOINED
+        )
         with (
             patch(
                 f"{OVERVIEW}.referral_code_repository.get_by_code",
@@ -186,19 +254,21 @@ class TestResolve:
             ) as get_by_code,
             patch(f"{OVERVIEW}.user_repository.get", AsyncMock(return_value=owner)) as get_user,
         ):
-            resolved = await resolve_referral_code("aryan-k7f2")
+            landing = await land_on_invite("aryan-k7f2", None, None)
 
-        assert resolved == ReferralResolveResponse(
+        assert landing.resolved == ReferralResolveResponse(
             valid=True,
             referrer_first_name="Aryan",
             referrer_picture="https://p/a.png",
             offer=build_offer(PLANS),
         )
         get_by_code.assert_awaited_once_with("aryan-k7f2")
-        get_user.assert_awaited_once_with("referrer-1")
+        get_user.assert_awaited_once_with("65f0c0ffee00000000000a01")
 
     async def test_an_owner_without_a_picture_shows_none(self, plans: None) -> None:
-        code_doc = ReferralCodeDocument(user_id="referrer-1", code="aryan-k7f2", created_at=JOINED)
+        code_doc = ReferralCodeDocument(
+            user_id="65f0c0ffee00000000000a01", code="aryan-k7f2", created_at=JOINED
+        )
         with (
             patch(
                 f"{OVERVIEW}.referral_code_repository.get_by_code",
@@ -207,11 +277,14 @@ class TestResolve:
             patch(
                 f"{OVERVIEW}.user_repository.get",
                 AsyncMock(
-                    return_value=UserDocument(id="referrer-1", first_name="Aryan", picture="")
+                    return_value=UserDocument(
+                        id="65f0c0ffee00000000000a01", first_name="Aryan", picture=""
+                    )
                 ),
             ),
         ):
-            assert (await resolve_referral_code("aryan-k7f2")).referrer_picture is None
+            landing = await land_on_invite("aryan-k7f2", None, None)
+            assert landing.resolved.referrer_picture is None
 
     @pytest.mark.parametrize("owner_exists", [False, True], ids=["unknown-code", "owner-deleted"])
     async def test_a_code_nobody_owns_is_invalid_but_still_shows_the_gift(
@@ -229,7 +302,8 @@ class TestResolve:
             ),
             patch(f"{OVERVIEW}.user_repository.get", AsyncMock(return_value=None)) as get_user,
         ):
-            resolved = await resolve_referral_code("gone-zzzz")
+            landing = await land_on_invite("gone-zzzz", None, None)
 
-        assert resolved == ReferralResolveResponse(valid=False, offer=build_offer(PLANS))
+        assert landing.resolved == ReferralResolveResponse(valid=False, offer=build_offer(PLANS))
+        assert landing.cookie is None
         assert get_user.await_count == int(owner_exists)

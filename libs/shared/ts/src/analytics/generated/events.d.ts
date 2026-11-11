@@ -98,8 +98,12 @@ export type ServerEventName =
   | "projects:deleted"
   | "projects:updated"
   | "rate_limit:hit"
+  | "referral:banked_month_applied"
   | "referral:converted"
+  | "referral:gift_checkout_opened"
+  | "referral:gift_mint_failed"
   | "referral:invite_sent"
+  | "referral:landing_resolved"
   | "referral:nudge_dismissed"
   | "referral:nudge_sent"
   | "referral:reward_granted"
@@ -1165,9 +1169,16 @@ export interface EventProperties {
     "has_selftext": boolean;
     "has_external_link": boolean;
   };
+  "referral:banked_month_applied": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "friend_id": string;
+    "months": number;
+  };
   "referral:card_dismissed": {
     "surface": "sidebar" | "post_payment";
-    "copy_variant": "gift" | "earn" | "time_back" | "insider";
+    "copy_variant": "gift" | "earn" | "time_back";
   };
   "referral:converted": {
     "actor": "user" | "agent";
@@ -1176,6 +1187,19 @@ export interface EventProperties {
     "referrer_id": string;
     "landing_variant"?: string;
     "self_referral": boolean;
+  };
+  "referral:gift_checkout_opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "referrer_id": string;
+    "duration": string;
+  };
+  "referral:gift_mint_failed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "reason": "provider_unreachable" | "provider_rejected" | "provider_invalid_response";
   };
   "referral:invite_sent": {
     "actor": "user" | "agent";
@@ -1186,6 +1210,14 @@ export interface EventProperties {
   };
   "referral:invite_undone": {
     "surface": "hover_card" | "page" | "suggestion";
+  };
+  "referral:landing_resolved": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "outcome": "valid" | "disabled";
+    "landing_variant"?: string;
+    "cookie_set": boolean;
   };
   "referral:nudge_dismissed": {
     "actor": "user" | "agent";
@@ -1211,7 +1243,7 @@ export interface EventProperties {
   "referral:share_clicked": {
     "surface": "page" | "sidebar" | "post_payment" | "chat_card";
     "channel": "native" | "whatsapp" | "sms" | "x" | "linkedin" | "email" | "copy" | "qr";
-    "copy_variant": "gift" | "earn" | "time_back" | "insider";
+    "copy_variant": "gift" | "earn" | "time_back";
   };
   "referral:signup_attributed": {
     "actor": "user" | "agent";

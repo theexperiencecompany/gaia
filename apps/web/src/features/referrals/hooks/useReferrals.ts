@@ -4,40 +4,38 @@ import { ApiError } from "@shared/api";
 import type { ReferralMeResponse } from "@shared/api/generated";
 import { useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { referralsApi } from "../api/referralsApi";
 import type { InviteSender } from "../stores/inviteStore";
 
 /** The API's code for a caller with no active subscription. */
 const SUBSCRIPTION_REQUIRED = "REFERRAL_SUBSCRIPTION_REQUIRED";
+/** The API's code while the referral program is off, or on an instance that sells no plans. */
+const REFERRALS_DISABLED = "REFERRALS_DISABLED";
 const ME_STALE_MS = 60 * 1000;
 
 export type ReferralMeState =
   | { status: "loading" }
   | { status: "ready"; me: ReferralMeResponse }
   | { status: "subscribe_first" }
+  | { status: "disabled" }
   | { status: "error"; retry: () => void };
 
-/** The caller's referral overview; only Pro users have one, so it waits until the plan is known. */
+/** The caller's referral overview; the server decides whether the program is on and whether they may refer. */
 export function useReferralMe(): ReferralMeState {
-  const { isPaid, isUnknown } = useIsPaid();
   const query = useQuery({
     queryKey: ["referrals", "me"],
     queryFn: referralsApi.getMe,
-    enabled: !isUnknown && isPaid,
     staleTime: ME_STALE_MS,
     retry: (failures, error) =>
       !(error instanceof ApiError && error.status < 500) && failures < 2,
   });
 
-  if (isUnknown) return { status: "loading" };
-  if (!isPaid) return { status: "subscribe_first" };
   if (query.data) return { status: "ready", me: query.data };
-  if (
-    query.error instanceof ApiError &&
-    query.error.code === SUBSCRIPTION_REQUIRED
-  ) {
-    return { status: "subscribe_first" };
+  if (query.error instanceof ApiError) {
+    if (query.error.code === REFERRALS_DISABLED) return { status: "disabled" };
+    if (query.error.code === SUBSCRIPTION_REQUIRED) {
+      return { status: "subscribe_first" };
+    }
   }
   if (query.isError)
     return { status: "error", retry: () => void query.refetch() };
@@ -55,13 +53,13 @@ export function useReferralSuggestions(enabled: boolean) {
   });
 }
 
-/** The hover card's invite sender: only Pro users can invite, and never to their own address. */
+/** The hover card's invite sender: only users with a live invite link can invite, never to their own address. */
 export function useHoverCardInvite(email: string): InviteSender | undefined {
-  const { isPaid } = useIsPaid();
+  const canRefer = useReferralMe().status === "ready";
   const user = useCurrentUser();
   const isOwnAddress =
     !!user.email && user.email.toLowerCase() === email.toLowerCase();
-  return isPaid && !isOwnAddress ? sendReferralInvite : undefined;
+  return canRefer && !isOwnAddress ? sendReferralInvite : undefined;
 }
 
 /** One address through POST /invites; the server's per-address verdict is the button's final label. */

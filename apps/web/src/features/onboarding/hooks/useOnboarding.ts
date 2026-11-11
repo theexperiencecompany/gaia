@@ -20,6 +20,7 @@ import {
   useCurrentUserIsFresh,
 } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { useReferralMe } from "@/features/referrals/hooks/useReferrals";
 import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
@@ -65,7 +66,9 @@ export function useOnboarding(): UseOnboardingReturn {
   const userIsFresh = useCurrentUserIsFresh();
   const [state, dispatch] = useReducer(reducer, initialState);
   const { isPaid, isUnknown: planStatusUnknown } = useIsPaid();
-  const stage = getStage(state, isPaid);
+  // The invite step drops out only once the server says referrals are off.
+  const offersInvite = useReferralMe().status !== "disabled";
+  const stage = getStage(state, isPaid, offersInvite);
 
   // Stable per user record: the hydrate effect takes it as a dependency.
   const serverDraft = useMemo(

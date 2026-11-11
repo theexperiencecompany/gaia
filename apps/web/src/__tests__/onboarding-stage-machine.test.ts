@@ -33,48 +33,53 @@ const answeredQuestions = apply(
 describe("onboarding stage machine", () => {
   it("walks the paid-first queue in order", () => {
     const paid = true;
-    expect(getStage(initialState, paid)).toBe("questions");
+    expect(getStage(initialState, paid, true)).toBe("questions");
 
     let state = apply(initialState, {
       type: "answer",
       field: FIELD_NAMES.PROFESSION,
       value: "founder",
     });
-    expect(getStage(state, paid)).toBe("questions");
+    expect(getStage(state, paid, true)).toBe("questions");
 
     state = apply(state, { type: "toggleNeed", value: "inbox" });
     state = apply(state, { type: "submitNeeds" });
-    expect(getStage(state, paid)).toBe("questions");
+    expect(getStage(state, paid, true)).toBe("questions");
 
     state = apply(state, { type: "preferencesPersisted" });
-    expect(getStage(state, paid)).toBe("paidReveal");
+    expect(getStage(state, paid, true)).toBe("paidReveal");
 
     state = apply(state, { type: "ackPaidReveal" });
-    expect(getStage(state, paid)).toBe("invite");
+    expect(getStage(state, paid, true)).toBe("invite");
 
     state = apply(state, { type: "ackInvite" });
-    expect(getStage(state, paid)).toBe("platformPick");
+    expect(getStage(state, paid, true)).toBe("platformPick");
 
     state = apply(state, { type: "skipPlatforms" });
-    expect(getStage(state, paid)).toBe("chat");
+    expect(getStage(state, paid, true)).toBe("chat");
+  });
+
+  it("skips the invite step while referrals are off", () => {
+    const revealed = apply(answeredQuestions, { type: "ackPaidReveal" });
+    expect(getStage(revealed, true, false)).toBe("platformPick");
   });
 
   it("holds answered questions until the answers are stored", () => {
     // Past this point the link opener and the first chat read the stored
     // answers; a failed save must not let the user on with them lost.
     const unsaved = { ...answeredQuestions, preferencesPersisted: false };
-    expect(getStage(unsaved, false)).toBe("questions");
-    expect(getStage(unsaved, true)).toBe("questions");
+    expect(getStage(unsaved, false, true)).toBe("questions");
+    expect(getStage(unsaved, true, true)).toBe("questions");
   });
 
   it("parks an unpaid user on the payment stage", () => {
-    expect(getStage(answeredQuestions, false)).toBe("payment");
+    expect(getStage(answeredQuestions, false, true)).toBe("payment");
   });
 
   it("skips the payment stage entirely for an already-subscribed user", () => {
     // No payment-specific state is ever set: the stage is done the moment
     // the backend reports a subscription.
-    expect(getStage(answeredQuestions, true)).toBe("paidReveal");
+    expect(getStage(answeredQuestions, true, true)).toBe("paidReveal");
   });
 
   it("never advances past payment on an unknown plan status", () => {
@@ -84,7 +89,7 @@ describe("onboarding stage machine", () => {
       { type: "ackPaidReveal" },
       { type: "skipPlatforms" },
     );
-    expect(getStage(acked, false)).toBe("payment");
+    expect(getStage(acked, false, true)).toBe("payment");
   });
 
   it("advances the platform stage when a platform is connected", () => {
@@ -95,7 +100,7 @@ describe("onboarding stage machine", () => {
       { type: "platformConnected", platform: "telegram" },
     );
     expect(state.connectedPlatform).toBe("telegram");
-    expect(getStage(state, true)).toBe("chat");
+    expect(getStage(state, true, true)).toBe("chat");
   });
 });
 
@@ -110,7 +115,7 @@ describe("Q2 multi-select", () => {
 
     const attempted = apply(afterQ1, { type: "submitNeeds" });
     expect(attempted.questionIndex).toBeLessThan(questions.length);
-    expect(getStage(attempted, true)).toBe("questions");
+    expect(getStage(attempted, true, true)).toBe("questions");
   });
 
   it("toggles a need off again", () => {

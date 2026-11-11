@@ -130,40 +130,12 @@ export const REFERRAL_COPY: Record<ReferralCopyVariant, ReferralCopy> = {
       subtitle: (p) => `GAIA for ${giftPrice(p, "your")}`,
     },
   },
-  insider: {
-    page: {
-      title: "Bring your people in",
-      body: (p) =>
-        `Friends of GAIA members get it for ${giftPrice(p, "their")}. You get a free month for each one who subscribes.`,
-    },
-    share: {
-      text: (p) =>
-        `I'm letting a few friends into GAIA. You get it for ${giftPrice(p, "your")}:`,
-      emailSubject: "You're in: GAIA",
-    },
-    postPayment: {
-      title: "Bring a friend in",
-      cta: "Share your link",
-    },
-    chatCard: {
-      title: "GAIA's better with your people on it",
-      cta: "Bring them in",
-    },
-    landing: {
-      title: (referrer) => `${referrer} saved you a spot`,
-    },
-    og: {
-      title: (referrer) => `${referrer} saved you a spot on GAIA`,
-      subtitle: (p) => giftPrice(p, "your"),
-    },
-  },
 };
 
-/** Landing angles the browser picks between (2 to 3 live at once); the pick rides on /resolve. */
+/** Landing angles the browser picks between; the pick rides on /resolve. */
 export const LIVE_LANDING_VARIANTS: readonly ReferralCopyVariant[] = [
   "gift",
   "earn",
-  "time_back",
 ];
 
 /** A link preview renders before any browser picks a landing angle, so it always speaks gift. */
@@ -173,7 +145,7 @@ export const INVITE_OG_VARIANT: ReferralCopyVariant = "gift";
 export const REFERRAL_SIDEBAR_COPY = {
   title: "Your next month, free",
   body: (p: OfferPrices) =>
-    `Friends get GAIA for ${p.intro}/month. You get a free month.`,
+    `Friends get GAIA for ${giftPrice(p, "their")}. You get a free month.`,
   cta: "Share your link",
 } as const;
 

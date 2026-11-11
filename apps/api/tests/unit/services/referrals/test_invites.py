@@ -12,6 +12,7 @@ from fakeredis.aioredis import FakeRedis
 import pytest
 import time_machine
 
+from app.constants.error_codes import REFERRALS_DISABLED
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.referrals import (
     INVITE_BATCH_MAX,
@@ -213,6 +214,19 @@ class TestEachAddressIsJudgedOnItsOwn:
             "user_id": SENDER.id,
         }
         seams.claim.assert_not_awaited()
+
+    @pytest.mark.usefixtures("referrals_off")
+    async def test_with_referrals_off_nothing_is_sent_and_no_code_is_minted(
+        self, seams: Seams
+    ) -> None:
+        with pytest.raises(AppError) as refused:
+            await send_invites(SENDER.id, _request("priya@example.com"))
+
+        assert (refused.value.status_code, refused.value.code) == (403, REFERRALS_DISABLED)
+        seams.ensure_code.assert_not_awaited()
+        seams.send_gaia.assert_not_awaited()
+        seams.send_gmail.assert_not_awaited()
+        seams.capture.assert_not_called()
 
 
 class TestTheDailyCeiling:

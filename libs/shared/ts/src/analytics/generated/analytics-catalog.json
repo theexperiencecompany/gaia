@@ -5682,6 +5682,35 @@
       }
     },
     {
+      "event": "referral:banked_month_applied",
+      "class": "ReferralBankedMonthApplied",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A free month the referrer banked while unsubscribed moved their billing date; one per friend.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A free month the referrer banked while unsubscribed moved their billing date; one per friend.",
+        "properties": {
+          "friend_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Friend Id",
+            "type": "string"
+          },
+          "months": {
+            "title": "Months",
+            "type": "integer"
+          }
+        },
+        "required": ["friend_id", "months"],
+        "title": "ReferralBankedMonthApplied",
+        "type": "object"
+      }
+    },
+    {
       "event": "referral:card_dismissed",
       "class": "ReferralCardDismissed",
       "owner": "web",
@@ -5701,7 +5730,7 @@
             "type": "string"
           },
           "copy_variant": {
-            "enum": ["gift", "earn", "time_back", "insider"],
+            "enum": ["gift", "earn", "time_back"],
             "title": "Copy Variant",
             "type": "string"
           }
@@ -5750,6 +5779,65 @@
         },
         "required": ["referrer_id", "self_referral"],
         "title": "ReferralConverted",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:gift_checkout_opened",
+      "class": "ReferralGiftCheckoutOpened",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A referred friend's checkout opened with their gift code applied; captured on the friend.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A referred friend's checkout opened with their gift code applied; captured on the friend.",
+        "properties": {
+          "referrer_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Referrer Id",
+            "type": "string"
+          },
+          "duration": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Duration",
+            "type": "string"
+          }
+        },
+        "required": ["referrer_id", "duration"],
+        "title": "ReferralGiftCheckoutOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:gift_mint_failed",
+      "class": "ReferralGiftMintFailed",
+      "owner": "server",
+      "domain": "referral",
+      "description": "Dodo could not mint a referred friend's gift, so their checkout opened without it.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Dodo could not mint a referred friend's gift, so their checkout opened without it.",
+        "properties": {
+          "reason": {
+            "enum": [
+              "provider_unreachable",
+              "provider_rejected",
+              "provider_invalid_response"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["reason"],
+        "title": "ReferralGiftMintFailed",
         "type": "object"
       }
     },
@@ -5805,6 +5893,48 @@
         },
         "required": ["surface"],
         "title": "ReferralInviteUndone",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:landing_resolved",
+      "class": "ReferralLandingResolved",
+      "owner": "server",
+      "domain": "referral",
+      "description": "Someone opened a referrer's invite link; captured on the referrer, since the visitor has no account.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone opened a referrer's invite link; captured on the referrer, since the visitor has no account.",
+        "properties": {
+          "outcome": {
+            "enum": ["valid", "disabled"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "landing_variant": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Landing Variant"
+          },
+          "cookie_set": {
+            "title": "Cookie Set",
+            "type": "boolean"
+          }
+        },
+        "required": ["outcome", "cookie_set"],
+        "title": "ReferralLandingResolved",
         "type": "object"
       }
     },
@@ -5930,7 +6060,7 @@
             "type": "string"
           },
           "copy_variant": {
-            "enum": ["gift", "earn", "time_back", "insider"],
+            "enum": ["gift", "earn", "time_back"],
             "title": "Copy Variant",
             "type": "string"
           }

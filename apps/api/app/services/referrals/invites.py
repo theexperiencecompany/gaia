@@ -45,6 +45,7 @@ from app.services.email import ReferralInviteEmail, send_referral_invite_email
 from app.services.mail.mail_service import EmailContent, send_email
 from app.services.oauth.oauth_service import check_integration_status
 from app.services.payments.payment_service import payment_service
+from app.services.referrals.availability import require_referrals
 from app.services.referrals.codes import ensure_code, first_name_of, load_user, share_link
 from app.services.referrals.invite_quota import release_invites, reserve_invites
 from app.services.referrals.offer import build_offer
@@ -201,6 +202,7 @@ async def _invite_one(batch: _Batch, address: str | None) -> ReferralInviteStatu
 
 async def send_invites(user_id: str, request: ReferralInviteRequest) -> ReferralInviteResponse:
     """Judge and send each requested address, returning one result per address in request order."""
+    await require_referrals(user_id)
     sender = await load_user(user_id)
     if not sender.email:
         raise AppError(

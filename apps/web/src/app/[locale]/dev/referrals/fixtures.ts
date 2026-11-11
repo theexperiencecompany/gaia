@@ -25,7 +25,6 @@ export const COPY_VARIANTS: readonly ReferralCopyVariant[] = [
   "gift",
   "earn",
   "time_back",
-  "insider",
 ];
 export const LAYOUT_VARIANTS: readonly ReferralLayoutVariant[] = [
   "ticket",

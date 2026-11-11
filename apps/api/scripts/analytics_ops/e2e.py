@@ -51,8 +51,12 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingStarted,
 )
 from shared.py.analytics.catalog.referrals import (
+    ReferralBankedMonthApplied,
     ReferralConverted,
+    ReferralGiftCheckoutOpened,
+    ReferralGiftMintFailed,
     ReferralInviteSent,
+    ReferralLandingResolved,
     ReferralNudgeDismissed,
     ReferralNudgeSent,
     ReferralRewardGranted,
@@ -121,9 +125,11 @@ NOT_DRIVABLE = (
     f"{UserLoggedOut.event}: POST /user/logout needs a sealed WorkOS session cookie",
     f"{ReferralSignupAttributed.event}: attribution rides the WorkOS callback's cookie, and "
     "it lands on a second user (the friend), whom this one-user run cannot assert",
-    f"{ReferralConverted.event}, {ReferralRewardGranted.event}: need a second, referred user "
-    "paying and a real Dodo subscription to move; tests/integration/real/"
-    "test_referral_rewards_real.py drives them against real Mongo",
+    f"{ReferralConverted.event}, {ReferralRewardGranted.event}, {ReferralBankedMonthApplied.event}: "
+    "need a second, referred user paying and a real Dodo subscription to move; "
+    "tests/integration/real/test_referral_rewards_real.py drives them against real Mongo",
+    f"{ReferralGiftCheckoutOpened.event}, {ReferralGiftMintFailed.event}: need a referred friend "
+    "and a real Dodo checkout session; the payment journey delivers signed webhooks only",
     "ai:llm_call_completed: the sim stub reports zero tokens, and one-shot calls skip zero usage; "
     "the ledger row is asserted in Mongo instead",
     f"{WorkflowResultDelivered.event} (destination, destination_basis): the workflow journey's "
@@ -271,6 +277,11 @@ def build_journeys(transcript: Path) -> list[Journey]:
                     (("nudge", "chat_card"), ("paused", False)),
                 ),
             ),
+        ),
+        Journey(
+            "referral landing",
+            journeys.referral_landing,
+            (Expect(ReferralLandingResolved.event, BROWSER, True, (("outcome", "valid"),)),),
         ),
         Journey(
             "web chat turn",

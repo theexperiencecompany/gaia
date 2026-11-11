@@ -15330,8 +15330,7 @@
         "enum": [
           "gift",
           "earn",
-          "time_back",
-          "insider"
+          "time_back"
         ],
         "title": "ReferralCopyVariant",
         "type": "string"

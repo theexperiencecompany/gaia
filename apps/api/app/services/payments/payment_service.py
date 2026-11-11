@@ -51,6 +51,7 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
 )
 from app.models.webhook_models import DodoSubscriptionData
+from app.services.analytics_service import capture
 from app.services.payments.plan_cache import invalidate_plan_cache
 from app.services.payments.subscription_events import (
     SubscriptionEvent,
@@ -59,8 +60,15 @@ from app.services.payments.subscription_events import (
     apply_subscription_event,
     resolve_subscription_owner,
 )
-from app.services.referrals.gift import gift_code_for_checkout, pending_gift_referral
+from app.services.referrals.gift import (
+    CheckoutGift,
+    gift_code_for_checkout,
+    gift_mint_failure_reason,
+    pending_gift_referral,
+)
 from app.services.referrals.offer import ProPlans
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.catalog.referrals import ReferralGiftCheckoutOpened, ReferralGiftMintFailed
 from shared.py.wide_events import log
 
 
@@ -209,17 +217,8 @@ class DodoPaymentService:
         if existing:
             raise HTTPException(409, "Active subscription exists")
 
-        # The gift is a referral perk: Dodo failing to mint it must not stop the friend paying.
-        try:
-            gift_code = await self._referral_gift_code(user_id, product_id)
-        except APIError as e:
-            log.error(
-                f"{LogTag.PAYMENT} Referral gift could not be minted; checkout opens without it",
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-            )
-            gift_code = None
+        gift = await self._referral_gift(user_id, product_id)
+        gift_code = gift.code if gift else None
 
         # Create hosted checkout session (preferred over deprecated subscriptions.create)
         try:
@@ -300,13 +299,22 @@ class DodoPaymentService:
         # Lets the result page resolve the purchase against Dodo even when the
         # subscription.active webhook hasn't landed yet (the webhook-vs-redirect
         # race); losing this record only disables that fallback.
+        opened_at = datetime.now(UTC)
+        if gift is not None:
+            capture(
+                UserId(user_id),
+                ReferralGiftCheckoutOpened(
+                    referrer_id=gift.referrer_id, duration=gift.duration.value
+                ),
+                dedupe=Dedupe(key=checkout_session.session_id, occurred_at=opened_at),
+            )
         try:
             await checkout_session_repository.create(
                 CheckoutSessionDocument(
                     session_id=checkout_session.session_id,
                     user_id=user_id,
                     product_id=product_id,
-                    created_at=datetime.now(UTC),
+                    created_at=opened_at,
                 )
             )
         except Exception as e:
@@ -327,14 +335,27 @@ class DodoPaymentService:
             status="payment_link_created",
         )
 
-    async def _referral_gift_code(self, user_id: str, product_id: str) -> str | None:
-        """Return the referred friend's gift code for this product, or None when they are owed none."""
+    async def _referral_gift(self, user_id: str, product_id: str) -> CheckoutGift | None:
+        """Return the referred friend's gift for this product, or None when they are owed none.
+
+        The gift is a referral perk: Dodo failing to mint it must not stop the friend paying.
+        """
         referral = await pending_gift_referral(user_id)
         if referral is None:
             return None
-        gift = await gift_code_for_checkout(
-            self.client, referral, product_id, await self.get_pro_plans()
-        )
+        gift: CheckoutGift | None = None
+        try:
+            gift = await gift_code_for_checkout(
+                self.client, referral, product_id, await self.get_pro_plans()
+            )
+        except APIError as e:
+            log.error(
+                f"{LogTag.PAYMENT} Referral gift could not be minted; checkout opens without it",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
+            capture(UserId(user_id), ReferralGiftMintFailed(reason=gift_mint_failure_reason(e)))
         log.set_ns("payment", referral_gift_applied=gift is not None)
         return gift
 
