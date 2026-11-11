@@ -59,9 +59,6 @@ apps/api/tests/integration/agents/test_llm_call_analytics.py	attr-defined
 apps/api/tests/integration/agents/test_spawn_sibling_replay.py	arg-type
 apps/api/tests/integration/agents/test_spawn_sibling_replay.py	attr-defined
 apps/api/tests/integration/agents/test_spawn_sibling_replay.py	call-overload
-apps/api/tests/integration/agents/test_summarization_real_graph.py	arg-type
-apps/api/tests/integration/agents/test_summarization_real_graph.py	attr-defined
-apps/api/tests/integration/agents/test_summarization_state_update.py	attr-defined
 apps/api/tests/integration/agents/test_thread_writes_carry_ids.py	call-overload
 apps/api/tests/integration/agents/test_ticket_redeem.py	call-overload
 apps/api/tests/integration/agents/test_tool_execution.py	attr-defined
