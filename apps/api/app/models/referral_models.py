@@ -23,7 +23,9 @@ class ReferralRewardState(StrEnum):
     PENDING is claimed but not yet delivered; APPLIED moved the referrer's Dodo
     billing date; BANKED waits for a referrer with no active subscription to
     come back; SELF_REFERRAL earned nothing because both sides are one person;
-    REVOKED was taken back because the friend's first payment was refunded or disputed.
+    REVOKED was taken back because the friend's first payment was refunded or disputed;
+    METERED counted a workflow visitor toward their creator's meter, the month
+    itself riding on every WORKFLOW_CREDITS_PER_MONTH-th one.
     """
 
     PENDING = "pending"
@@ -31,6 +33,7 @@ class ReferralRewardState(StrEnum):
     BANKED = "banked"
     SELF_REFERRAL = "self_referral"
     REVOKED = "revoked"
+    METERED = "metered"
 
 
 class ReferralRevokeReason(StrEnum):
@@ -89,6 +92,7 @@ class ReferralDocument(MongoDocument):
     code: str
     landing_variant: ReferralCopyVariant | None = None
     source: ReferralSource = ReferralSource.INVITE_LINK
+    workflow_id: str | None = None
     status: ReferredFriendStatus = ReferredFriendStatus.JOINED
     joined_at: datetime
     paid_at: datetime | None = None

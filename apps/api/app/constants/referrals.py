@@ -50,6 +50,8 @@ YEARLY_CHARGES_PER_YEAR = 1
 
 # What one paying friend earns the referrer.
 REWARD_MONTHS_PER_FRIEND = 1
+# A workflow's creator earns a month for every this many paying visitors, across all their workflows.
+WORKFLOW_CREDITS_PER_MONTH = 3
 
 # ---- Codes and links ---------------------------------------------------------
 
@@ -70,8 +72,10 @@ INVITE_PATH = "/invite/"
 
 REFERRAL_COOKIE_NAME = "gaia_ref"
 ATTRIBUTION_WINDOW = timedelta(days=30)
-# The cookie carries "<code>.<landing variant>.<source>"; a code never contains a dot.
+# The cookie carries "<code>.<landing variant>.<source>.<workflow id>"; no part contains a dot.
 REFERRAL_COOKIE_VARIANT_SEPARATOR = "."
+# A workflow id the cookie may carry: what the workflows collection mints, nothing longer.
+WORKFLOW_ID_PATTERN = r"[A-Za-z0-9_-]{1,64}"
 
 # ---- Sent with GAIA ----------------------------------------------------------
 
@@ -227,6 +231,15 @@ SETTLE_SWEEP_MAX_REFERRALS_PER_RUN = 500
 # ---- Notification copy -------------------------------------------------------
 
 REWARD_APPLIED_TITLE = "Yay, {friend} joined! 🎉"
+WORKFLOW_REWARD_TITLE = 'Your "{workflow}" workflow earned you a free month! 🎉'
+WORKFLOW_REWARD_TITLE_UNNAMED = "Your workflows earned you a free month! 🎉"
+REWARD_EMAIL_CLOSING_FRIEND = (
+    "Thanks for sharing GAIA. Every friend who joins gets you another free month."
+)
+REWARD_EMAIL_CLOSING_WORKFLOW = (
+    f"Thanks for sharing your workflows. Every {WORKFLOW_CREDITS_PER_MONTH} people who "
+    "subscribe after starting with one earn you another free month."
+)
 REWARD_APPLIED_BODY = "Your next bill moves to {date}. Enjoy the free month."
 REWARD_BANKED_BODY = "Your free month is saved for whenever you're back."
 REWARD_DATE_FORMAT = "%b %-d"

@@ -17,6 +17,7 @@ from app.constants.referrals import (
     GIFT_DISCOUNT_USAGE_LIMIT,
     MONTHLY_CHARGES_PER_YEAR,
     YEARLY_CHARGES_PER_YEAR,
+    ReferralSource,
 )
 from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
@@ -58,9 +59,14 @@ def is_refusal(error: APIStatusError) -> bool:
 
 
 async def pending_gift_referral(user_id: str) -> ReferralDocument | None:
-    """Return the user's referral when they are owed a checkout gift: referred, never subscribed, referrals on."""
+    """Return the user's referral when they are owed a checkout gift: invited, never subscribed, referrals on.
+
+    A workflow's visitor is credited to its creator but carries no gift.
+    """
     referral = await referral_repository.get(user_id)
     if referral is None or referral.status is not ReferredFriendStatus.JOINED:
+        return None
+    if referral.source is ReferralSource.WORKFLOW:
         return None
     if await subscription_repository.has_any_for_user(user_id):
         return None

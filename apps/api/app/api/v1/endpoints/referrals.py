@@ -101,7 +101,7 @@ async def credit_workflow_creator(
     cookie = (
         first_touch_cookie(
             request.cookies.get(REFERRAL_COOKIE_NAME),
-            ReferralAttribution(code=code, source=ReferralSource.WORKFLOW),
+            ReferralAttribution(code=code, source=ReferralSource.WORKFLOW, workflow_id=workflow_id),
             valid=True,
         )
         if code is not None

@@ -10,6 +10,7 @@ import {
 import { ChatReferralCard } from "@/features/referrals/components/ChatReferralCard";
 import { FriendsList } from "@/features/referrals/components/FriendsList";
 import { PostPaymentReferral } from "@/features/referrals/components/PostPaymentShareCard";
+import { WorkflowMeterSection } from "@/features/referrals/components/page/WorkflowMeterSection";
 import { ReferralsSettings } from "@/features/referrals/components/ReferralsSettings";
 import { SentWithGaiaToggle } from "@/features/referrals/components/SentWithGaiaToggle";
 import { SidebarReferralSlot } from "@/features/referrals/components/SidebarReferralPromo";
@@ -27,6 +28,7 @@ import {
   FIXTURE_ME,
   FIXTURE_SUGGESTION_PHASES,
   FIXTURE_WEEKLY,
+  FIXTURE_WORKFLOW_METERS,
   fixtureSender,
 } from "./fixtures";
 import type { PreviewProps } from "./GalleryPreview";
@@ -108,6 +110,13 @@ export function SettingsStatesPreview({ copyVariant }: PreviewProps) {
         <Frame label="Friends: pending, earned, and one with no first name">
           <FriendsList friends={Object.values(FIXTURE_FRIEND_STATES)} />
         </Frame>
+        {Object.entries(FIXTURE_WORKFLOW_METERS).map(
+          ([state, workflowMeter]) => (
+            <Frame key={state} label={`From your workflows: ${state}`}>
+              <WorkflowMeterSection meter={workflowMeter} />
+            </Frame>
+          ),
+        )}
         <Frame label="Suggestions: undo window, sent, cannot invite, opted out">
           <SuggestionsList
             suggestions={FIXTURE_SUGGESTION_PHASES.map((s) => s.suggestion)}

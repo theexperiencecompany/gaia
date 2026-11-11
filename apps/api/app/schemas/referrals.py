@@ -41,6 +41,15 @@ class ReferredFriend(ResponseModel):
     )
 
 
+class ReferralWorkflowMeter(ResponseModel):
+    """A creator's progress toward the next free month from people who start with their workflows."""
+
+    subscribed: int = Field(description="Paying visitors counted toward the next free month")
+    per_month: int = Field(description="Paying visitors one free month takes")
+    months_earned: int = Field(description="Free months the creator's workflows have earned")
+    published: int = Field(description="Community workflows the creator has published")
+
+
 class ReferralMeResponse(ResponseModel):
     """The caller's referral link, gift, progress and friends, plus the experiment's variants."""
 
@@ -56,6 +65,7 @@ class ReferralMeResponse(ResponseModel):
     friends: list[ReferredFriend] = Field(
         description="Everyone who joined through the link, newest first"
     )
+    workflow_meter: ReferralWorkflowMeter
     copy_variant: ReferralCopyVariant
     layout_variant: ReferralLayoutVariant
 

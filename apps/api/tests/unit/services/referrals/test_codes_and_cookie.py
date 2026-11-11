@@ -88,6 +88,24 @@ def test_an_invite_link_cookie_keeps_its_original_shape() -> None:
     )
 
 
+def test_a_workflow_cookie_carries_the_workflow_it_came_from() -> None:
+    clicked = ReferralAttribution(
+        code="aryan-k7f2", source=ReferralSource.WORKFLOW, workflow_id="wf_digest"
+    )
+
+    assert clicked.cookie_value() == "aryan-k7f2..workflow.wf_digest"
+    assert ReferralAttribution.from_cookie(clicked.cookie_value()) == clicked
+
+
+@pytest.mark.parametrize(
+    "raw", ["aryan-k7f2..workflow.wf;digest", "aryan-k7f2..invite_link.wf_digest"]
+)
+def test_a_malformed_or_misplaced_workflow_id_is_dropped(raw: str) -> None:
+    parsed = ReferralAttribution.from_cookie(raw)
+
+    assert parsed is not None and parsed.workflow_id is None
+
+
 def test_an_unknown_source_falls_back_to_the_invite_link() -> None:
     assert ReferralAttribution.from_cookie("aryan-k7f2..bogus") == ReferralAttribution(
         code="aryan-k7f2"
@@ -113,6 +131,23 @@ class TestFirstTouch:
     def test_a_later_click_never_replaces_the_first(self) -> None:
         later = ReferralAttribution(code="priya-ab23")
         assert first_touch_cookie("aryan-k7f2", later, valid=True) is None
+
+    def test_an_invite_link_replaces_credit_a_workflow_was_holding(self) -> None:
+        workflow = ReferralAttribution(
+            code="maya-q8rt", source=ReferralSource.WORKFLOW, workflow_id="wf_digest"
+        )
+        invite = ReferralAttribution(code="aryan-k7f2", landing_variant=ReferralCopyVariant.GIFT)
+
+        assert first_touch_cookie(workflow.cookie_value(), invite, valid=True) == "aryan-k7f2.gift"
+
+    def test_a_workflow_never_replaces_an_invite_or_an_earlier_workflow(self) -> None:
+        workflow = ReferralAttribution(
+            code="maya-q8rt", source=ReferralSource.WORKFLOW, workflow_id="wf_digest"
+        )
+        earlier = ReferralAttribution(code="lee-n3vx", source=ReferralSource.WORKFLOW)
+
+        assert first_touch_cookie("aryan-k7f2.gift", workflow, valid=True) is None
+        assert first_touch_cookie(earlier.cookie_value(), workflow, valid=True) is None
 
     def test_an_invalid_code_sets_nothing(self) -> None:
         assert (

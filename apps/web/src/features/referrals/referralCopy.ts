@@ -169,6 +169,15 @@ export const REFERRAL_UI_COPY = {
     n === 1 ? "1 friend on the way" : `${n} friends on the way`,
   nextBill: (date: string) => `Next bill moves to ${date}`,
   friendsTitle: "Friends",
+  workflowsTitle: "From your workflows",
+  workflowMeter: (subscribed: number, perMonth: number) => {
+    const left = perMonth - subscribed;
+    return `${subscribed} of ${perMonth} subscribed. ${left} more for a free month.`;
+  },
+  workflowMeterEmpty: (perMonth: number) =>
+    `Every ${perMonth} people who start with your workflows and subscribe earn you a free month.`,
+  workflowPublishLine: (perMonth: number) =>
+    `People who start with your workflow and subscribe fill your meter. Every ${perMonth} earn you a free month.`,
   unnamedFriend: "A friend",
   friendsEmpty:
     "Your first friend who subscribes gets you a free month. Who's it going to be?",

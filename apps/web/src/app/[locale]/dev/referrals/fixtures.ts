@@ -6,6 +6,7 @@ import type {
   ReferralResolveResponse,
   ReferralSuggestion,
   ReferralWeeklyCardResponse,
+  ReferralWorkflowMeter,
   ReferredFriend,
   URLResponse,
 } from "@shared/api/generated";
@@ -87,6 +88,27 @@ const friend = (index: number, paid: boolean): ReferredFriend => {
   };
 };
 
+/** Paying visitors one free month takes; the server's WORKFLOW_CREDITS_PER_MONTH. */
+const WORKFLOW_CREDITS_PER_MONTH = 3;
+
+const meter = (
+  published: number,
+  subscribed: number,
+  monthsEarned: number,
+): ReferralWorkflowMeter => ({
+  published,
+  subscribed,
+  per_month: WORKFLOW_CREDITS_PER_MONTH,
+  months_earned: monthsEarned,
+});
+
+/** The "From your workflows" row at each point a creator can be at. */
+export const FIXTURE_WORKFLOW_METERS = {
+  "just published": meter(1, 0, 0),
+  "2 of 3 subscribed": meter(2, 2, 0),
+  "a month earned, 1 toward the next": meter(3, 1, 1),
+} as const satisfies Record<string, ReferralWorkflowMeter>;
+
 const base = {
   code: "aryan-k7f2",
   share_link: "https://heygaia.io/invite/aryan-k7f2",
@@ -103,6 +125,7 @@ export const FIXTURE_ME: Record<GalleryState, ReferralMeResponse> = {
     months_banked: 0,
     next_billing_date: "2026-11-02T00:00:00Z",
     friends: [],
+    workflow_meter: meter(0, 0, 0),
   },
   mid: {
     ...base,
@@ -111,14 +134,16 @@ export const FIXTURE_ME: Record<GalleryState, ReferralMeResponse> = {
     months_banked: 0,
     next_billing_date: "2027-02-02T00:00:00Z",
     friends: [0, 1, 2, 3, 4].map((i) => friend(i, i < 3)),
+    workflow_meter: FIXTURE_WORKFLOW_METERS["2 of 3 subscribed"],
   },
   many: {
     ...base,
-    months_earned: 14,
-    months_applied: 14,
+    months_earned: 16,
+    months_applied: 16,
     months_banked: 0,
     next_billing_date: "2028-01-02T00:00:00Z",
     friends: FIRST_NAMES.map((_, i) => friend(i, i % 3 !== 2)),
+    workflow_meter: meter(4, 1, 2),
   },
 };
 

@@ -24,7 +24,12 @@ from app.models.referral_models import (
     ReferredFriendStatus,
 )
 from app.models.user_models import UserDocument
-from app.schemas.referrals import ReferralMeResponse, ReferralWeeklyCardResponse, ReferredFriend
+from app.schemas.referrals import (
+    ReferralMeResponse,
+    ReferralWeeklyCardResponse,
+    ReferralWorkflowMeter,
+    ReferredFriend,
+)
 from app.schemas.usage import TimeSavedSummary
 from app.services.referrals.offer import build_offer
 from app.utils.notification.unsubscribe import UNSUBSCRIBE_INVALID_HTML
@@ -143,7 +148,7 @@ class TestWorkflowCredit:
         assert response.status_code == 200
         assert response.json() == {"credited": True}
         (cookie,) = _ref_cookie(response)
-        assert cookie.startswith(f"{REFERRAL_COOKIE_NAME}=aryan-k7f2..workflow;")
+        assert cookie.startswith(f"{REFERRAL_COOKIE_NAME}=aryan-k7f2..workflow.wf_abc;")
 
     async def test_a_creator_who_cannot_refer_credits_nobody(
         self, unauthed_client: AsyncClient, route_log: MagicMock
@@ -185,6 +190,9 @@ class TestMe:
             friends=[friend, friend],
             copy_variant=ReferralCopyVariant.GIFT,
             layout_variant=ReferralLayoutVariant.TICKET,
+            workflow_meter=ReferralWorkflowMeter(
+                subscribed=0, per_month=3, months_earned=0, published=0
+            ),
         )
         with patch(
             f"{ENDPOINT}.get_referral_overview", AsyncMock(return_value=overview)

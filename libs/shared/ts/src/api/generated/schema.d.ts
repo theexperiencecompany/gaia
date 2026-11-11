@@ -13348,6 +13348,7 @@ export interface components {
             offer: components["schemas"]["ReferralOffer"];
             /** Share Link */
             share_link: string;
+            workflow_meter: components["schemas"]["ReferralWorkflowMeter"];
         };
         /** ReferralNudgeDismissResponse */
         ReferralNudgeDismissResponse: {
@@ -13463,6 +13464,32 @@ export interface components {
              * @description False when the creator can't refer anyone or an earlier link already won
              */
             credited: boolean;
+        };
+        /**
+         * ReferralWorkflowMeter
+         * @description A creator's progress toward the next free month from people who start with their workflows.
+         */
+        ReferralWorkflowMeter: {
+            /**
+             * Months Earned
+             * @description Free months the creator's workflows have earned
+             */
+            months_earned: number;
+            /**
+             * Per Month
+             * @description Paying visitors one free month takes
+             */
+            per_month: number;
+            /**
+             * Published
+             * @description Community workflows the creator has published
+             */
+            published: number;
+            /**
+             * Subscribed
+             * @description Paying visitors counted toward the next free month
+             */
+            subscribed: number;
         };
         /** ReferredFriend */
         ReferredFriend: {
@@ -17373,6 +17400,7 @@ export type ReferralSuggestionReason = components['schemas']['ReferralSuggestion
 export type ReferralSuggestionsResponse = components['schemas']['ReferralSuggestionsResponse'];
 export type ReferralWeeklyCardResponse = components['schemas']['ReferralWeeklyCardResponse'];
 export type ReferralWorkflowCreditResponse = components['schemas']['ReferralWorkflowCreditResponse'];
+export type ReferralWorkflowMeter = components['schemas']['ReferralWorkflowMeter'];
 export type ReferredFriend = components['schemas']['ReferredFriend'];
 export type ReferredFriendStatus = components['schemas']['ReferredFriendStatus'];
 export type RegenerateStepsRequest = components['schemas']['RegenerateStepsRequest'];

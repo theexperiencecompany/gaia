@@ -15553,6 +15553,9 @@
           "share_link": {
             "title": "Share Link",
             "type": "string"
+          },
+          "workflow_meter": {
+            "$ref": "#/components/schemas/ReferralWorkflowMeter"
           }
         },
         "required": [
@@ -15564,6 +15567,7 @@
           "months_banked",
           "next_billing_date",
           "friends",
+          "workflow_meter",
           "copy_variant",
           "layout_variant"
         ],
@@ -15779,6 +15783,39 @@
           "credited"
         ],
         "title": "ReferralWorkflowCreditResponse",
+        "type": "object"
+      },
+      "ReferralWorkflowMeter": {
+        "description": "A creator's progress toward the next free month from people who start with their workflows.",
+        "properties": {
+          "months_earned": {
+            "description": "Free months the creator's workflows have earned",
+            "title": "Months Earned",
+            "type": "integer"
+          },
+          "per_month": {
+            "description": "Paying visitors one free month takes",
+            "title": "Per Month",
+            "type": "integer"
+          },
+          "published": {
+            "description": "Community workflows the creator has published",
+            "title": "Published",
+            "type": "integer"
+          },
+          "subscribed": {
+            "description": "Paying visitors counted toward the next free month",
+            "title": "Subscribed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subscribed",
+          "per_month",
+          "months_earned",
+          "published"
+        ],
+        "title": "ReferralWorkflowMeter",
         "type": "object"
       },
       "ReferredFriend": {

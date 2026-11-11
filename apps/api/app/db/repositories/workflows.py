@@ -331,6 +331,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             PublicWorkflowRow,
         )
 
+    async def count_community_by_creator(self, user_id: str) -> int:
+        """Return how many community-marketplace workflows this user created."""
+        return await self._count({**_COMMUNITY_MATCH, "created_by": user_id})
+
     async def count_community(self) -> int:
         """Total community-marketplace workflows (matches find_community)."""
         return await self._count(_COMMUNITY_MATCH)

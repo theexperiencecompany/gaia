@@ -10,6 +10,7 @@ from contextlib import ExitStack, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import re
+from types import SimpleNamespace
 from typing import TypedDict, TypeVar, Unpack
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -23,15 +24,20 @@ from app.constants.referrals import (
     REWARD_APPLIED_BODY,
     REWARD_APPLIED_TITLE,
     REWARD_BANKED_BODY,
+    REWARD_EMAIL_CLOSING_FRIEND,
+    REWARD_EMAIL_CLOSING_WORKFLOW,
     REWARD_LOCK_KEY_TEMPLATE,
     REWARD_LOCK_LEASE_S,
     REWARD_LOCK_MAX_HOLD_S,
     REWARD_LOCK_RENEW_S,
     REWARD_LOCK_UNAVAILABLE,
     REWARD_LOCK_WAIT_S,
+    WORKFLOW_REWARD_TITLE,
     ReferralCopyVariant,
     ReferralNudge,
+    ReferralSource,
 )
+from app.db.repositories.referrals import WorkflowCredits
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationContent,
@@ -762,8 +768,9 @@ class TestTheNewsReachesEveryChannel:
                 to=REFERRER.email,
                 user_id=REFERRER.id,
                 first_name="Aryan",
-                friend_name="Priya",
+                headline=REWARD_APPLIED_TITLE.format(friend="Priya"),
                 reward_line=REWARD_APPLIED_BODY.format(date="Dec 14"),
+                closing=REWARD_EMAIL_CLOSING_FRIEND,
             )
         )
         seams.announced.assert_awaited_once_with(REFERRER.id, ReferralNudge.REWARD_EMAIL)
@@ -936,3 +943,48 @@ class TestSettleOrder:
 
         assert seams.pinned_friends() == [FRIEND.id]
         seams.update.assert_not_awaited()
+
+
+class TestAWorkflowsMonth:
+    VISITOR = _referral(source=ReferralSource.WORKFLOW, workflow_id="wf_digest")
+
+    async def test_the_visitor_filling_the_meter_announces_the_workflow_not_themselves(
+        self, seams: Seams
+    ) -> None:
+        seams.list_owed.return_value = [self.VISITOR]
+        with (
+            patch(
+                f"{REWARDS}.referral_repository.count_workflow_credits",
+                AsyncMock(return_value=WorkflowCredits(counted=2, carrying=0)),
+            ),
+            patch(
+                f"{REWARDS}.workflow_repository.find_by_ids",
+                AsyncMock(return_value=[SimpleNamespace(title="Morning digest")]),
+            ) as workflows,
+        ):
+            await settle_rewards(REFERRER.id)
+
+        headline = WORKFLOW_REWARD_TITLE.format(workflow="Morning digest")
+        workflows.assert_awaited_once_with(["wf_digest"])
+        assert seams.notified().content.title == headline
+        (email,) = [c.args[0] for c in seams.email.await_args_list]
+        assert (email.headline, email.closing) == (headline, REWARD_EMAIL_CLOSING_WORKFLOW)
+        assert seams.pinned_friends() == [FRIEND.id]
+
+    async def test_a_visitor_short_of_the_meter_is_counted_and_earns_nothing(
+        self, seams: Seams
+    ) -> None:
+        seams.list_owed.return_value = [self.VISITOR]
+        with patch(
+            f"{REWARDS}.referral_repository.count_workflow_credits",
+            AsyncMock(return_value=WorkflowCredits(counted=4, carrying=1)),
+        ):
+            assert await settle_rewards(REFERRER.id) == [
+                RewardDelivery(ReferralRewardState.METERED)
+            ]
+
+        seams.update.assert_awaited_once_with(
+            FRIEND.id, ReferralUpdate(reward_state=ReferralRewardState.METERED)
+        )
+        seams.pin_target.assert_not_awaited()
+        seams.notify.assert_not_awaited()
