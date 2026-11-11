@@ -19,7 +19,7 @@
     "Zoho vs GAIA",
     "self-hosted business suite alternative"
   ],
-  "intro": "Zoho One's pitch is compelling: replace your fragmented tool stack with a single suite of integrated applications for a fixed per-user price. CRM, project management, email hosting, HR, finance, help desk — Zoho has an app for every business function, and they all share the same data model and authentication layer. For businesses willing to commit to the Zoho ecosystem, the integration story is genuinely tight. Data flows between Zoho CRM, Zoho Projects, and Zoho Mail without the glue code you typically need when connecting third-party tools.\n\nThe challenge is that switching to Zoho One means replacing tools your team already knows and has customised over years. Gmail, Slack, Notion, GitHub, and Linear are not just tools — they represent muscle memory, integrations, and institutional knowledge built over time. Many teams that evaluate Zoho One discover the switching cost is higher than anticipated. Even after migration, the individual Zoho apps often lag behind best-in-class standalone products in their category: Zoho Mail is solid but not Gmail, Zoho Projects is functional but not Linear or Asana, Zoho CRM is capable but not HubSpot.\n\nGAIA takes the opposite approach: it meets your tools where they are. Rather than asking you to migrate to a new suite, GAIA connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and more via deep integrations and MCP, then adds a proactive AI layer on top of all of them. It reads your email and creates tasks automatically, schedules work blocks around your calendar events, monitors tool activity to surface what needs attention, and runs multi-step automations across your stack — all within the tools your team already uses and trusts. No migration required, no new app to learn.\n\nThe economics also differ substantially. Zoho One is a paid per-seat suite billed annually — a meaningful expense for teams of any size. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month per person, and self-hosting GAIA on your own infrastructure is free for non-commercial use (plus your own model API costs). For startups and growing teams evaluating their tool costs, GAIA's model provides significantly more AI-powered productivity per dollar — without the lock-in risk of committing your entire business to a single vendor's ecosystem.",
+  "intro": "Zoho One's pitch is compelling: replace your fragmented tool stack with a single suite of integrated applications for a fixed per-user price. CRM, project management, email hosting, HR, finance, help desk — there is an app for every business function, and they all share the same data model and authentication layer. For businesses willing to commit to the Zoho ecosystem, the integration story is genuinely tight. Data flows between Zoho CRM, Zoho Projects, and Zoho Mail without the glue code you typically need when connecting third-party tools.\n\nThe challenge is that switching to Zoho One means replacing tools your team already knows and has customised over years. Gmail, Slack, Notion, GitHub, and Linear are not just tools — they represent muscle memory, integrations, and institutional knowledge built over time. Many teams that evaluate Zoho One discover the switching cost is higher than anticipated. Even after migration, the individual apps often lag behind best-in-class standalone products in their category: Zoho Mail is solid but not Gmail, Zoho Projects is functional but not Linear or Asana, Zoho CRM is capable but not HubSpot.\n\nGAIA takes the opposite approach: it meets your tools where they are. Rather than asking you to migrate to a new suite, GAIA connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and more via deep integrations and MCP, then adds a proactive AI layer on top of all of them. It reads your email and creates tasks automatically, schedules work blocks around your calendar events, monitors tool activity to surface what needs attention, and runs multi-step automations across your stack — all within the tools your team already uses and trusts. No migration required, no new app to learn.\n\nThe economics also differ substantially. Zoho One is a paid per-seat suite billed annually — a meaningful expense for teams of any size. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month per person, and self-hosting GAIA on your own infrastructure is free for non-commercial use (plus your own model API costs). For startups and growing teams evaluating their tool costs, GAIA's model provides significantly more AI-powered productivity per dollar — without the lock-in risk of committing your entire business to a single vendor's ecosystem.",
   "rows": [
     {
       "feature": "Core approach",
@@ -34,7 +34,7 @@
     {
       "feature": "AI capabilities",
       "gaia": "Ambient AI agent that monitors email, calendar, and the rest of your tools to surface insights and take action before you ask",
-      "competitor": "Zia AI assistant embedded across Zoho apps for suggestions, predictions, and anomaly detection within the Zoho ecosystem"
+      "competitor": "Zia AI assistant embedded across Zoho apps for suggestions, predictions, and anomaly detection"
     },
     {
       "feature": "CRM",
@@ -44,17 +44,17 @@
     {
       "feature": "Project management",
       "gaia": "AI-powered task management connecting GitHub, Linear, Jira, Asana, and Todoist with proactive task creation from email",
-      "competitor": "Zoho Projects: structured project management within the Zoho ecosystem with Gantt charts and resource management"
+      "competitor": "Zoho Projects: structured project management with Gantt charts and resource management"
     },
     {
       "feature": "Workflow automation",
       "gaia": "Multi-step AI-driven workflows across your best-in-class tools triggered by any event or message",
-      "competitor": "Zoho Flow for cross-app automation within the Zoho suite; powerful within Zoho but limited for connecting external tools"
+      "competitor": "Zoho Flow for cross-app automation; powerful inside the suite but limited for connecting external tools"
     },
     {
       "feature": "Proactive behavior",
       "gaia": "Continuously monitors tools and initiates actions: surfaces blockers, creates tasks, prepares meeting briefs without being asked",
-      "competitor": "Rule-based automations and Zia AI alerts within Zoho applications; primarily reactive to user-initiated actions"
+      "competitor": "Rule-based automations and Zia AI alerts within the suite; primarily reactive to user-initiated actions"
     },
     {
       "feature": "Migration requirement",
@@ -64,7 +64,7 @@
     {
       "feature": "Memory and context",
       "gaia": "Graph-based persistent memory linking tasks, projects, meetings, emails, and contacts for contextual understanding that spans tools",
-      "competitor": "Unified customer and project data within Zoho's shared data model across Zoho apps only"
+      "competitor": "Unified customer and project data in a shared data model, limited to Zoho apps"
     },
     {
       "feature": "Source-available",
@@ -92,7 +92,7 @@
   ],
   "competitorAdvantages": [
     "Comprehensive all-in-one suite covering CRM, HR, finance, and help desk in a single billing relationship",
-    "Tight internal data consistency across all Zoho applications with a unified identity and permissions layer",
+    "Tight internal data consistency across every app in the suite with a unified identity and permissions layer",
     "Single vendor relationship reduces integration complexity for businesses willing to commit to the Zoho ecosystem"
   ],
   "verdict": "Choose Zoho One if you are building a new business from scratch, want a single-vendor suite with minimal integration complexity, and are prepared to commit fully to the Zoho ecosystem. Choose GAIA if you want proactive AI assistance layered on top of the best-in-class tools your team already uses — without the cost, disruption, and lock-in risk of migrating your entire stack to a new platform.",
@@ -119,7 +119,7 @@
     },
     {
       "question": "Does either GAIA or Zoho One have a free plan?",
-      "answer": "Neither does. Hosted GAIA is a paid plan at ${{PRO_MONTHLY_PRICE}}/month that includes AI task management, Gmail integration, Google Calendar sync, and workflow automation, and self-hosting it is free for non-commercial use (plus your own model API costs). Zoho One does not have a free tier — plans are paid per-seat billed annually. Individual Zoho apps (Zoho CRM, Zoho Projects) have free tiers with limitations, but the unified Zoho One suite does not."
+      "answer": "Neither does. Hosted GAIA is a paid plan at ${{PRO_MONTHLY_PRICE}}/month that includes AI task management, Gmail integration, Google Calendar sync, and workflow automation, and self-hosting it is free for non-commercial use (plus your own model API costs). Zoho One does not have a free tier — plans are paid per-seat billed annually. Individual apps such as Zoho CRM and Zoho Projects have free tiers with limitations, but the unified suite does not."
     },
     {
       "question": "Can GAIA work alongside Zoho CRM?",
@@ -139,11 +139,11 @@
     },
     {
       "question": "Can GAIA automate workflows like Zoho Flow?",
-      "answer": "Yes, and with broader scope. Zoho Flow automates workflows between Zoho applications and a selection of third-party tools within Zoho's ecosystem. GAIA's workflow automation spans your entire tool stack — Gmail, Slack, GitHub, Notion, Linear, Jira, Google Calendar, and more — using natural language descriptions rather than a drag-and-drop flow builder. GAIA's automation is also proactive: it monitors your tools and triggers workflows based on real events rather than waiting for user-initiated configurations."
+      "answer": "Yes, and with broader scope. Zoho Flow automates workflows between Zoho applications and a selection of third-party tools. GAIA's workflow automation spans your entire tool stack — Gmail, Slack, GitHub, Notion, Linear, Jira, Google Calendar, and more — using natural language descriptions rather than a drag-and-drop flow builder. GAIA's automation is also proactive: it monitors your tools and triggers workflows based on real events rather than waiting for user-initiated configurations."
     },
     {
       "question": "What platforms does GAIA support?",
-      "answer": "GAIA is available as a web application and a native Electron desktop app for macOS, Windows, and Linux. Zoho One applications are accessible on web and mobile with dedicated iOS and Android apps for each Zoho product. GAIA's cross-platform desktop app provides a unified AI productivity layer that works consistently across all your devices."
+      "answer": "GAIA is available as a web application and a native Electron desktop app for macOS, Windows, and Linux. Zoho One applications are accessible on web and mobile with dedicated iOS and Android apps for each product. GAIA's cross-platform desktop app provides a unified AI productivity layer that works consistently across all your devices."
     },
     {
       "question": "Does GAIA work with Google Workspace like Zoho One does with Zoho apps?",
@@ -155,7 +155,7 @@
     },
     {
       "question": "How does GAIA's memory compare to Zoho One's unified data model?",
-      "answer": "Zoho One's unified data model means all Zoho apps share the same contact, company, and deal records — a genuine integration advantage within the Zoho ecosystem. GAIA's graph-based persistent memory builds contextual connections across all connected tools: linking tasks to email threads, meetings to projects, and contacts to their related communications across Gmail, Slack, and other tools. GAIA's memory spans tools you already use rather than requiring centralisation within a single vendor's ecosystem."
+      "answer": "Zoho One's unified data model means all Zoho apps share the same contact, company, and deal records — a genuine integration advantage within the suite. GAIA's graph-based persistent memory builds contextual connections across all connected tools: linking tasks to email threads, meetings to projects, and contacts to their related communications across Gmail, Slack, and other tools. GAIA's memory spans tools you already use rather than requiring centralisation within a single vendor's ecosystem."
     }
   ],
   "relatedPersonas": [

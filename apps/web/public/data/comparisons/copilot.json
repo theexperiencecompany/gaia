@@ -18,7 +18,7 @@
     {
       "feature": "Core approach",
       "gaia": "Proactive, cross-platform AI assistant that manages email, calendar, tasks, and workflows across your tools from any stack",
-      "competitor": "AI layer embedded inside Microsoft 365 apps (Outlook, Word, Excel, PowerPoint, Teams), optimized for the Microsoft ecosystem"
+      "competitor": "AI layer embedded inside Microsoft 365 apps (Outlook, Word, Excel, PowerPoint, Teams)"
     },
     {
       "feature": "Ecosystem",
@@ -58,7 +58,7 @@
     {
       "feature": "Privacy",
       "gaia": "Self-host on your own infrastructure; GAIA never trains on your data when self-hosted and your data never leaves your own servers when self-hosted",
-      "competitor": "Microsoft states prompts and responses are not used to train foundation LLMs; data is processed on Microsoft's cloud and subject to Microsoft's data residency policies"
+      "competitor": "Microsoft states prompts and responses are not used to train foundation LLMs; data is processed on Microsoft's cloud and subject to its data residency policies"
     },
     {
       "feature": "Pricing",
@@ -82,7 +82,7 @@
   "faqs": [
     {
       "question": "Does Microsoft Copilot work with Gmail or Google Calendar?",
-      "answer": "No. Microsoft Copilot for Microsoft 365 works exclusively with accounts hosted on the Microsoft 365 cloud. Gmail, Google Calendar, Yahoo, iCloud, and on-premises Exchange accounts are not supported. GAIA is built around Gmail and Google Calendar as first-class integrations, making it the better choice for anyone outside the Microsoft ecosystem."
+      "answer": "No. Copilot for Microsoft 365 works only with accounts hosted on the Microsoft 365 cloud. Gmail, Google Calendar, Yahoo, iCloud, and on-premises Exchange accounts are not supported. GAIA is built around Gmail and Google Calendar as first-class integrations, making it the better choice for anyone outside the Microsoft ecosystem."
     },
     {
       "question": "How much does Microsoft Copilot actually cost?",
@@ -90,11 +90,11 @@
     },
     {
       "question": "Can I self-host Microsoft Copilot to keep my data private?",
-      "answer": "No. Microsoft Copilot is a proprietary, cloud-only service with no self-hosting option. All data is processed on Microsoft's infrastructure. While Microsoft states that prompts and responses are not used to train their foundation models, your data remains on their cloud servers. GAIA is source-available (PolyForm Noncommercial) and can be self-hosted with Docker, meaning your data never leaves your own servers."
+      "answer": "No. Microsoft Copilot is a proprietary, cloud-only service with no self-hosting option. All data is processed on Microsoft's infrastructure. While the company states that prompts and responses are not used to train their foundation models, your data remains on their cloud servers. GAIA is source-available (PolyForm Noncommercial) and can be self-hosted with Docker, meaning your data never leaves your own servers."
     },
     {
       "question": "What is the main difference between GAIA and Microsoft Copilot?",
-      "answer": "The core difference is ecosystem philosophy. Microsoft Copilot is a deeply integrated AI layer within the Microsoft 365 suite — it excels inside Outlook, Word, Excel, and Teams, but cannot work with tools outside that ecosystem. GAIA is a cross-platform, source-available AI assistant that works across Gmail, Google Calendar, Slack, Notion, GitHub, and other tools. GAIA also takes a proactive stance — monitoring your digital life and acting before you ask — whereas Copilot is primarily reactive, responding to prompts within individual Microsoft apps."
+      "answer": "The core difference is ecosystem philosophy. Microsoft Copilot is a deeply integrated AI layer within the Microsoft 365 suite — it excels inside Outlook, Word, Excel, and Teams, but cannot work with tools outside that ecosystem. GAIA is a cross-platform, source-available AI assistant that works across Gmail, Google Calendar, Slack, Notion, GitHub, and other tools. GAIA also takes a proactive stance — monitoring your digital life and acting before you ask — whereas Copilot is primarily reactive, responding to prompts within individual apps."
     }
   ],
   "relatedPersonas": [

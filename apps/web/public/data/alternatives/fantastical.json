@@ -26,7 +26,7 @@
     "AI calendar management",
     "smart scheduling AI"
   ],
-  "whyPeopleLook": "Fantastical is widely regarded as the best calendar app for Apple users, with beautiful design and natural language event creation. But it is a calendar viewer, not an AI assistant. It cannot read your email, create tasks from conversations, or proactively manage your day. Users who move to Windows or Android, or who want more than a polished calendar UI, typically look for a more comprehensive alternative.",
+  "whyPeopleLook": "Fantastical is widely regarded as the best calendar app for Apple users, with beautiful design and natural language event creation. But it is a calendar viewer, not an AI assistant. It cannot read your email, create tasks from conversations, or proactively manage your day. Users who move to Windows or Android, or who want more than a polished UI, typically look for a more comprehensive alternative.",
   "gaiaFitScore": 3,
   "gaiaReplaces": [
     "Natural language calendar event creation via conversation",
@@ -50,7 +50,7 @@
   "faqs": [
     {
       "question": "Does GAIA have as polished a calendar UI as Fantastical?",
-      "answer": "Fantastical's calendar UI is best-in-class for Apple platforms. GAIA's calendar interface is conversational and action-oriented rather than a visual calendar view. If a beautiful calendar is your primary need, Fantastical may still win on aesthetics."
+      "answer": "Fantastical's calendar UI is best-in-class for Apple platforms. GAIA's interface is conversational and action-oriented rather than a visual grid. If a beautiful calendar view is your primary need, Fantastical may still win on aesthetics."
     },
     {
       "question": "Does GAIA work on Windows and Linux unlike Fantastical?",

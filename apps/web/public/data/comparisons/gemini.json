@@ -12,7 +12,7 @@
     "AI assistant comparison",
     "Gemini vs GAIA"
   ],
-  "intro": "Google Gemini brings AI capabilities to the Google ecosystem with integration into Gmail, Docs, Sheets, and more. It makes Google Workspace smarter with AI-powered suggestions, summaries, and content generation. But Gemini fundamentally enhances existing Google tools rather than orchestrating your entire workflow. GAIA connects all your tools, not just Google products, and acts proactively on your behalf.",
+  "intro": "Google Gemini brings AI capabilities into Gmail, Docs, Sheets, and more. It makes Google Workspace smarter with AI-powered suggestions, summaries, and content generation. But Gemini fundamentally enhances existing Workspace apps rather than orchestrating your entire workflow. GAIA connects all your tools, not just Google's, and acts proactively on your behalf.",
   "rows": [
     {
       "feature": "Core approach",
@@ -73,7 +73,7 @@
   "faqs": [
     {
       "question": "Does GAIA work with Google services like Gemini does?",
-      "answer": "Yes. GAIA integrates with Gmail, Google Calendar, Google Docs, Google Sheets, Google Tasks, and Google Meet. Additionally, GAIA connects with non-Google tools like Slack, Notion, GitHub, and Linear that Gemini cannot access."
+      "answer": "Yes. GAIA integrates with Gmail and Google Calendar, Docs, Sheets, Tasks, and Meet. Additionally, GAIA connects with non-Google tools like Slack, Notion, GitHub, and Linear that Gemini cannot access."
     },
     {
       "question": "How does GAIA's pricing compare to Gemini's free tier?",
