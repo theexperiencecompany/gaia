@@ -279,7 +279,7 @@ def slot_problems(
         "[the phrase](fact:N) exactly"
         for match in _SLOT_RESIDUE_RE.finditer(bare)
     ]
-    bare = _SLOT_RESIDUE_RE.sub(" ", bare)
+    bare = _SLOT_RESIDUE_RE.sub(" ", bare)  # pragma: no mutate — digit-free either way
     typed = [] if may_quote_figures else _typed_figures(bare, values)
     problems += [_typed_figure_problem(field, word, values) for word in dict.fromkeys(typed)]
     problems += [
