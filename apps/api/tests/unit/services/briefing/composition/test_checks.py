@@ -40,7 +40,7 @@ _DAYS = [f"2026-11-{d:02d}" for d in range(5, 12)]
 
 
 def _series(
-    series_id: str, ys: list[float], *, unit: str = "hours", days: list[str] | None = None
+    series_id: str, ys: list[float], *, unit: str | None = "hours", days: list[str] | None = None
 ) -> DataSeries:
     xs = days or _DAYS[-len(ys) :]
     return DataSeries(
@@ -106,6 +106,7 @@ POOL = FactPool(
         _series("threads_closed", [1, 0, 2, 3, 1, 0, 4], unit="threads"),
         _series("threads_taken", [2, 1, 2, 4, 1, 1, 3], unit="threads"),
         _series("emails", [9, 8, 7, 9, 8, 9, 30], unit="emails"),
+        _series("untallied", [3, 1, 2, 0, 2, 1, 4], unit=None),
         _categories("invoices", MAX_BAR_CATEGORIES),
         _categories("all_invoices", MAX_BAR_CATEGORIES + 1),
     ],
@@ -259,6 +260,9 @@ class TestChartsFitTheirSeries:
         ]
         assert _problems(_chart("meetings", "emails", chart="stacked_bar")) == [
             "block 1 (chart): a stacked_bar stacks one unit, not emails, hours"
+        ]
+        assert _problems(_chart("meetings", "untallied", chart="stacked_bar")) == [
+            "block 1 (chart): a stacked_bar stacks one unit, not hours, no unit"
         ]
         assert _problems(_chart("meetings", "invoices", chart="stacked_bar")) == [
             "block 1 (chart): a stacked_bar needs two or more series sharing their days or categories"
