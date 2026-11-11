@@ -22,7 +22,7 @@ class TestManifest:
         assert set(EDITION_FAMILIES) == set(explorer_family_ids())
 
     def test_every_named_family_is_built(self) -> None:
-        built = {face["family"] for face in font_faces()}
+        built = {face.family for face in font_faces()}
 
         for edition, families in EDITION_FAMILIES.items():
             assert set(families) <= built, f"{edition} names a family with no font file"
@@ -30,15 +30,15 @@ class TestManifest:
     def test_every_built_family_is_used_by_an_edition(self) -> None:
         used = {name for families in EDITION_FAMILIES.values() for name in families}
 
-        assert {face["family"] for face in font_faces()} == used
+        assert {face.family for face in font_faces()} == used
 
     def test_the_manifest_lists_exactly_the_woff2_files_on_disk(self) -> None:
-        assert {face["file"] for face in font_faces()} == {
+        assert {face.file for face in font_faces()} == {
             path.name for path in _FONTS_DIR.glob("*.woff2")
         }
 
     def test_no_family_declares_the_same_cut_twice(self) -> None:
-        cuts = [(f["family"], f["weight"], f["style"]) for f in font_faces()]
+        cuts = [(f.family, f.weight, f.style) for f in font_faces()]
 
         assert len(cuts) == len(set(cuts))
 

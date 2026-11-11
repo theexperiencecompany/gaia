@@ -173,13 +173,16 @@ class TestRenderHtmlToImage:
 
         assert result == IMAGE_BYTES
 
-    async def test_chromium_launches_headless_with_the_container_safe_flags(
+    async def test_chromium_launches_headless_container_safe_and_unhinted(
         self, browser: Harness
     ) -> None:
         await render_html_to_image("<html>hi</html>")
 
         assert browser.chromium.launch_calls == [
-            {"headless": True, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
+            {
+                "headless": True,
+                "args": ["--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none"],
+            }
         ]
 
     async def test_viewport_and_scale_come_from_the_options(self, browser: Harness) -> None:
