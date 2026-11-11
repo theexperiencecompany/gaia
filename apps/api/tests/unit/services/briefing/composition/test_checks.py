@@ -1,5 +1,6 @@
 """The composition contract: ids only and each once, charts that fit their series, the page budget, slots."""
 
+from collections.abc import Mapping
 from datetime import date
 
 import pytest
@@ -141,7 +142,7 @@ def _chart(
     }
 
 
-def _problems(*blocks: dict[str, object]) -> list[str]:
+def _problems(*blocks: Mapping[str, object]) -> list[str]:
     composition = BriefComposition.model_validate({"blocks": list(blocks)})
     return composition_problems(composition, POOL, pool_values(POOL))
 
@@ -302,7 +303,11 @@ class TestEachBlockHasItsShape:
         ]
 
     def test_an_item_the_composition_left_untitled_is_named(self) -> None:
-        untitled = {"kind": "items", "heading": "Waiting", "items": [{"id": 1, "action": "reply"}]}
+        untitled: dict[str, object] = {
+            "kind": "items",
+            "heading": "Waiting",
+            "items": [{"id": 1, "action": "reply"}],
+        }
 
         assert _problems(untitled) == ["block 1 (items), item 1: no title"]
 
@@ -335,7 +340,7 @@ class TestEachBlockHasItsShape:
 
     def test_a_field_another_kind_of_block_owns_is_never_read(self) -> None:
         """Gemini flash-lite set goal_id on a chart and heading on a lead; neither is shown."""
-        stray = {
+        stray: dict[str, object] = {
             "kind": "note",
             "text": "Quiet day.",
             "series_ids": ["meetings"],

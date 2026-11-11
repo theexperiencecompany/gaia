@@ -146,19 +146,22 @@ def _chart_problems(
     return problems
 
 
+def _lead_problems(where: str, index: int, block: ComposedBlock, values: SlotValues) -> list[str]:
+    problems = [] if index == 0 else [f"{where}: a lead opens the brief, so it is block 1"]
+    if len(block.items) != 1:
+        problems.append(f"{where}: a lead holds exactly one item, not {len(block.items)}")
+    if any(item.action is None for item in block.items):
+        problems.append(f"{where}: a lead is something to act on, so its item has an action")
+    return problems + _text_problems(where, "offer", block.offer, BRIEF_OFFER_MAX_CHARS, values)
+
+
 def _block_problems(
     index: int, block: ComposedBlock, pool: FactPool, values: SlotValues
 ) -> list[str]:
     where = _where(index, block)
     problems: list[str] = []
     if block.kind == "lead":
-        if index != 0:
-            problems.append(f"{where}: a lead opens the brief, so it is block 1")
-        if len(block.items) != 1:
-            problems.append(f"{where}: a lead holds exactly one item, not {len(block.items)}")
-        if any(item.action is None for item in block.items):
-            problems.append(f"{where}: a lead is something to act on, so its item has an action")
-        problems += _text_problems(where, "offer", block.offer, BRIEF_OFFER_MAX_CHARS, values)
+        problems += _lead_problems(where, index, block, values)
     elif block.kind == "items":
         problems += _text_problems(where, "heading", block.heading, BRIEF_HEADING_MAX_CHARS, values)
         if not 1 <= len(block.items) <= MAX_ITEMS_PER_BLOCK:
