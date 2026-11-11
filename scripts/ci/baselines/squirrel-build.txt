@@ -14,7 +14,7 @@ score:Content=90
 score:Core SEO=99
 score:Images=92
 score:Links=90
-score:Performance=72
+score:Performance=74
 score:Security=96
 score:Social Media=87
 score:Structured Data=93
@@ -53,7 +53,6 @@ score:URL Structure=93
 /ai-assistant-whatsapp-telegram-imessage	perf/cache-headers/cache-control
 /ai-assistant-with-memory	perf/cache-headers/cache-control
 /ai-chief-of-staff	perf/cache-headers/cache-control
-/alternative-to	perf/dom-size/dom-max-children
 /alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
 /alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
 /alternative-to/fantastical	content/keyword-stuffing/keyword-stuffing	calendar
@@ -142,13 +141,11 @@ score:URL Structure=93
 /best-ai-executive-assistant	perf/cache-headers/cache-control
 /blog	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /blog/tool-calling-under-the-hood	content/keyword-stuffing/keyword-stuffing	tool
-/blog/tool-calling-under-the-hood	perf/unminified-js/unminified-js	inline script
 /bots	perf/cache-headers/cache-control
 /brand	perf/cache-headers/cache-control
 /cli	links/orphan-pages/orphan-pages
 /cli	links/weak-internal-links/weak-internal-links
 /cli	perf/cache-headers/cache-control
-/compare	perf/dom-size/dom-max-children
 /compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /compare/category/automation	a11y/heading-order/heading-order	H3 after H1
@@ -163,7 +160,6 @@ score:URL Structure=93
 /compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /compare/category/other	links/orphan-pages/orphan-pages
-/compare/category/other	perf/dom-size/dom-max-children
 /compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /compare/category/project-management	links/orphan-pages/orphan-pages
 /compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
@@ -181,7 +177,6 @@ score:URL Structure=93
 /compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
 /compare/zoho	content/keyword-stuffing/keyword-stuffing	zoho
 /contact	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
-/de/alternative-to	perf/dom-size/dom-max-children
 /de/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
 /de/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
 /de/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	google
@@ -245,7 +240,6 @@ score:URL Structure=93
 /de/automate/with/trello	content/word-count/word-count
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate/with/zoom	content/word-count/word-count
-/de/compare	perf/dom-size/dom-max-children
 /de/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /de/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /de/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
@@ -259,7 +253,6 @@ score:URL Structure=93
 /de/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /de/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /de/compare/category/other	links/orphan-pages/orphan-pages
-/de/compare/category/other	perf/dom-size/dom-max-children
 /de/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /de/compare/category/project-management	links/orphan-pages/orphan-pages
 /de/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
@@ -309,7 +302,6 @@ score:URL Structure=93
 /de/learn/trigger	content/keyword-stuffing/keyword-stuffing	ausl
 /de/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
 /download	perf/cache-headers/cache-control
-/es/alternative-to	perf/dom-size/dom-max-children
 /es/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	que
 /es/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
 /es/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
@@ -458,7 +450,6 @@ score:URL Structure=93
 /es/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	reuniones
 /es/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
 /es/automate/with/zoom	content/word-count/word-count
-/es/compare	perf/dom-size/dom-max-children
 /es/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /es/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
@@ -472,7 +463,6 @@ score:URL Structure=93
 /es/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /es/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/other	links/orphan-pages/orphan-pages
-/es/compare/category/other	perf/dom-size/dom-max-children
 /es/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/project-management	links/orphan-pages/orphan-pages
 /es/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
@@ -612,7 +602,6 @@ score:URL Structure=93
 /for/project-managers	content/keyword-stuffing/keyword-stuffing	project
 /for/team-leads	content/keyword-stuffing/keyword-stuffing	team
 /for/virtual-assistants	content/keyword-stuffing/keyword-stuffing	client
-/fr/alternative-to	perf/dom-size/dom-max-children
 /fr/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
 /fr/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
 /fr/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	google
@@ -669,7 +658,6 @@ score:URL Structure=93
 /fr/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	unions
 /fr/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
 /fr/automate/with/zoom	content/word-count/word-count
-/fr/compare	perf/dom-size/dom-max-children
 /fr/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /fr/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /fr/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
@@ -683,7 +671,6 @@ score:URL Structure=93
 /fr/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /fr/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /fr/compare/category/other	links/orphan-pages/orphan-pages
-/fr/compare/category/other	perf/dom-size/dom-max-children
 /fr/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /fr/compare/category/project-management	links/orphan-pages/orphan-pages
 /fr/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
@@ -744,7 +731,6 @@ score:URL Structure=93
 /fr/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
 /how-to-use-ai-as-a-personal-assistant	perf/cache-headers/cache-control
 /inbox-zero-ai	perf/cache-headers/cache-control
-/ja/alternative-to	perf/dom-size/dom-max-children
 /ja/alternative-to/anydo	core/meta-title/meta-title
 /ja/alternative-to/asana	core/meta-title/meta-title
 /ja/alternative-to/bardeen	core/meta-title/meta-title
@@ -782,7 +768,6 @@ score:URL Structure=93
 /ja/automate/with/stripe	core/meta-title/meta-title
 /ja/automate/with/trello	core/meta-title/meta-title
 /ja/automate/with/zoom	core/meta-title/meta-title
-/ja/compare	perf/dom-size/dom-max-children
 /ja/compare/activepieces	core/meta-title/meta-title
 /ja/compare/akiflow	core/meta-title/meta-title
 /ja/compare/anydo	core/meta-title/meta-title
@@ -803,7 +788,6 @@ score:URL Structure=93
 /ja/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /ja/compare/category/other	core/meta-title/meta-title
 /ja/compare/category/other	links/orphan-pages/orphan-pages
-/ja/compare/category/other	perf/dom-size/dom-max-children
 /ja/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /ja/compare/category/project-management	links/orphan-pages/orphan-pages
 /ja/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
@@ -930,7 +914,6 @@ score:URL Structure=93
 /ja/learn/two-factor-authentication	core/meta-title/meta-title
 /ja/learn/video-conferencing	core/meta-title/meta-title
 /ja/learn/workflow-automation	core/meta-title/meta-title
-/ko/alternative-to	perf/dom-size/dom-max-children
 /ko/alternative-to/airtable	core/meta-title/meta-title
 /ko/alternative-to/anydo	core/meta-title/meta-title
 /ko/alternative-to/asana	core/meta-title/meta-title
@@ -958,7 +941,6 @@ score:URL Structure=93
 /ko/automate/with/slack	core/meta-title/meta-title
 /ko/automate/with/stripe	core/meta-title/meta-title
 /ko/automate/with/zoom	core/meta-title/meta-title
-/ko/compare	perf/dom-size/dom-max-children
 /ko/compare/akiflow	core/meta-title/meta-title
 /ko/compare/anydo	core/meta-title/meta-title
 /ko/compare/asana	core/meta-title/meta-title
@@ -974,7 +956,6 @@ score:URL Structure=93
 /ko/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /ko/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /ko/compare/category/other	links/orphan-pages/orphan-pages
-/ko/compare/category/other	perf/dom-size/dom-max-children
 /ko/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /ko/compare/category/project-management	links/orphan-pages/orphan-pages
 /ko/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
@@ -1383,7 +1364,6 @@ score:URL Structure=93
 /open-source-ai-assistant	perf/cache-headers/cache-control
 /pricing	perf/cache-headers/cache-control
 /privacy	perf/cache-headers/cache-control
-/pt-br/alternative-to	perf/dom-size/dom-max-children
 /pt-br/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
 /pt-br/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
@@ -1456,7 +1436,6 @@ score:URL Structure=93
 /pt-br/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
 /pt-br/automate/with/zoom	content/word-count/word-count
-/pt-br/compare	perf/dom-size/dom-max-children
 /pt-br/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /pt-br/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
@@ -1470,7 +1449,6 @@ score:URL Structure=93
 /pt-br/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /pt-br/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/other	links/orphan-pages/orphan-pages
-/pt-br/compare/category/other	perf/dom-size/dom-max-children
 /pt-br/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/project-management	links/orphan-pages/orphan-pages
 /pt-br/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1

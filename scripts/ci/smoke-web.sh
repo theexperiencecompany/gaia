@@ -51,7 +51,9 @@
 # run it as `nx run ci:seo`, with the NEXT_PUBLIC_* values the build bakes in set.
 # audit-build env: GAIA_PR_BASE (the base the diff starts from, as changes.sh
 # base-rev reads it), SMOKE_SQUIRREL_ALL_PAGES=1 to audit every page (how
-# squirrel-build.txt is regenerated, with SMOKE_SQUIRREL_UPDATE=1).
+# squirrel-build.txt is regenerated, with SMOKE_SQUIRREL_UPDATE=1). Regenerate it
+# on Linux, as CI builds: a macOS build streams ~60 more inline RSC <script> tags
+# into a page, which moved perf/dom-size on 21 hub pages.
 # tighten env: GH_TOKEN (contents and pull-requests write), SMOKE_SQUIRREL_BASELINE.
 # indexnow env: SMOKE_BASE_URL; GITHUB_SHA (default HEAD); GITHUB_REPOSITORY,
 # GITHUB_RUN_ID, GH_TOKEN (actions:read), INDEXNOW_DEPLOY_WORKFLOW (the workflow file
