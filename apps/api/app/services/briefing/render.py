@@ -40,7 +40,7 @@ class ImageRenderOptions:
         image_format: "png" or "jpeg" (smaller, to dodge Gmail's ~102KB clip).
         quality: JPEG quality 0-100 (ignored for PNG).
         timeout_ms: Per-navigation timeout for set_content.
-        clip_selector: Capture exactly this element's box.
+        clip_selector: Capture exactly this element's box, grown by clip_bleed_px a side.
         trim_margin_px: Cut the background around the visible content (shadows and
             tilted pieces included) down to this even margin, in CSS pixels.
     """
@@ -52,6 +52,7 @@ class ImageRenderOptions:
     quality: int | None = None
     timeout_ms: int = 15000
     clip_selector: str | None = None
+    clip_bleed_px: int = 0
     trim_margin_px: int | None = None
     #: Leave the page's own white out, so a PNG keeps alpha wherever the document paints nothing.
     omit_background: bool = False
@@ -83,7 +84,11 @@ async def render_html_to_image(
             if page_errors:
                 raise RuntimeError(f"Page script failed while rendering: {page_errors[0]}")
             await page.wait_for_timeout(_FONT_SETTLE_MS)
-            clip = await _clip_for(page, options.clip_selector) if options.clip_selector else None
+            clip = (
+                await _clip_for(page, options.clip_selector, options.clip_bleed_px)
+                if options.clip_selector
+                else None
+            )
             if options.image_format == "jpeg":
                 image = await page.screenshot(
                     full_page=options.full_page, type="jpeg", quality=options.quality, clip=clip
@@ -110,8 +115,8 @@ async def render_html_to_image(
             await browser.close()
 
 
-async def _clip_for(page: Page, selector: str) -> FloatRect:
-    """Return the page-coordinate box of the selector's first element.
+async def _clip_for(page: Page, selector: str, bleed_px: int) -> FloatRect:
+    """Return the page-coordinate box of the selector's first element, grown by bleed_px a side.
 
     A selector that matches nothing raises rather than ship an uncropped page.
     """
@@ -120,10 +125,10 @@ async def _clip_for(page: Page, selector: str) -> FloatRect:
         raise RuntimeError(f"Clip element not rendered: {selector!r}")
     scroll = await page.evaluate("() => [window.scrollX, window.scrollY]")
     return {
-        "x": box["x"] + scroll[0],
-        "y": box["y"] + scroll[1],
-        "width": box["width"],
-        "height": box["height"],
+        "x": box["x"] + scroll[0] - bleed_px,
+        "y": box["y"] + scroll[1] - bleed_px,
+        "width": box["width"] + 2 * bleed_px,
+        "height": box["height"] + 2 * bleed_px,
     }
 
 

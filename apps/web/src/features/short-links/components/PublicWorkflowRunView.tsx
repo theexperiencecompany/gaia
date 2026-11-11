@@ -11,20 +11,22 @@ const subscribeNever = () => () => undefined;
 
 export function PublicWorkflowRunView({ view }: { view: PublicWorkflowRun }) {
   const locale = useLocale();
-  const dateFormat = useMemo(
-    () =>
+  const [localFormat, serverFormat] = useMemo(
+    () => [
       new Intl.DateTimeFormat(locale, {
         dateStyle: "medium",
         timeStyle: "short",
       }),
+      new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "UTC" }),
+    ],
     [locale],
   );
-  // The reader's own time zone exists only in the browser: the server renders
-  // no label and the client fills it in on hydration, so the two never disagree.
+  // The reader's time zone exists only in the browser: the server sends the date
+  // alone, and hydration adds the reader-local time.
   const startedLabel = useSyncExternalStore(
     subscribeNever,
-    () => dateFormat.format(new Date(view.started_at)),
-    () => null,
+    () => localFormat.format(new Date(view.started_at)),
+    () => serverFormat.format(new Date(view.started_at)),
   );
 
   return (

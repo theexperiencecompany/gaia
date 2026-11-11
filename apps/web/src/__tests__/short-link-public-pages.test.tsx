@@ -66,11 +66,13 @@ describe("a shared workflow run", () => {
     expect(time?.textContent).not.toContain("UTC");
   });
 
-  it("renders no time on the server, so hydration never disagrees", () => {
+  it("server-renders the run's date, with no clock time to disagree with the reader's", () => {
     const html = renderToString(
       withLocale(<PublicWorkflowRunView view={RUN} />),
     );
 
-    expect(html).toMatch(/<time dateTime="2026-11-10T06:27:00Z"[^>]*><\/time>/);
+    expect(html).toMatch(
+      /<time dateTime="2026-11-10T06:27:00Z"[^>]*>Nov 10, 2026<\/time>/,
+    );
   });
 });

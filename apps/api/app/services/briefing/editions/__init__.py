@@ -10,7 +10,12 @@ the renderer forever so the archive re-renders identically.
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.constants.briefing import DESK_FAMILIES, POSTAL_FAMILY, WEEKLY_FAMILY
+from app.constants.briefing import (
+    DESK_FAMILIES,
+    DESK_SHADOW_BLEED_PX,
+    POSTAL_FAMILY,
+    WEEKLY_FAMILY,
+)
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.explorer_render import (
     EXPLORER_CANVAS_PX,
@@ -81,6 +86,8 @@ class EditionFrame:
     #: background, in CSS px, kept around the paper and its shadow. None for a
     #: full-bleed page, whose root element is the paper.
     trim_margin_px: int | None
+    #: Room captured around the root so a desk family's shadow is never cut at its box.
+    clip_bleed_px: int
 
     @property
     def transparent_desk(self) -> bool:
@@ -95,11 +102,14 @@ _EXPLORER_SCALE = 3
 
 def edition_frame(family: str) -> EditionFrame:
     """Return how the family's page is rasterized and cropped."""
+    on_a_desk = family in DESK_FAMILIES
+    bleed = DESK_SHADOW_BLEED_PX if on_a_desk else 0
     return EditionFrame(
-        width=EXPLORER_CANVAS_PX,
+        width=EXPLORER_CANVAS_PX + 2 * bleed,
         device_scale_factor=_EXPLORER_SCALE,
         clip_selector=_EXPLORER_ROOT,
-        trim_margin_px=DESK_MARGIN_PX if family in DESK_FAMILIES else None,
+        trim_margin_px=DESK_MARGIN_PX if on_a_desk else None,
+        clip_bleed_px=bleed,
     )
 
 

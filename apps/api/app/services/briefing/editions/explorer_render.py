@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 import re
 
-from app.constants.briefing import DESK_FAMILIES, POSTAL_FAMILY
+from app.constants.briefing import DESK_FAMILIES, DESK_SHADOW_BLEED_PX, POSTAL_FAMILY
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.artworks import artwork_for
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
@@ -40,8 +40,12 @@ _TEC_MARK_WEBP = _ASSETS_DIR / "brand" / "tec_mark_black.webp"
 _REGISTER_ID_PATTERN = re.compile(r'EXPLORER\.register\(\{\s*\n\s*id:\s*"([a-z0-9-]+)"')
 
 # Leaves the root's backdrop (a desk family's desk) unpainted, so only the paper and
-# its shadows reach the raster; the id outranks every template's own class rule.
-_TRANSPARENT_DESK_CSS = "#root > article { background: none; }"
+# its shadows reach the raster; the id outranks every template's own class rule. The
+# body pad gives the shadows room past the root's box.
+_TRANSPARENT_DESK_CSS = (
+    "#root > article { background: none; }\n"
+    f"body {{ width: auto; padding: {DESK_SHADOW_BLEED_PX}px; }}"
+)
 
 # The band wallpaper in assets.json (WebP; the paintings there are JPEGs).
 _BAND_ASSET_KEY = "BAND"
