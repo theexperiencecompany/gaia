@@ -260,7 +260,12 @@ class TestAOneTimeTodoAlwaysAnswers:
                 source=todo_models.ExternalRefSource.GMAIL_THREAD, id="t1"
             ),
         )
-        watching = TodoRun(todo_id="todo-1", trigger_type=TriggerType.TODO_TRIGGER, runs_once=False)
+        watching = TodoRun(
+            todo_id="todo-1",
+            trigger_type=TriggerType.TODO_TRIGGER,
+            message_class=ProactiveMessageClass.ROUTINE,
+            runs_once=False,
+        )
         with _seams(todo=completed_thread) as seams:
             await deliver_todo_run_result(RUN, watching, "report", "final")
 
