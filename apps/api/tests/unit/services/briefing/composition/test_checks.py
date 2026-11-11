@@ -639,3 +639,9 @@ class TestEveryProblemOfABlockIsReported:
         group = {"kind": "items", "state": "needs_you", "heading": "Waiting", "items": [item]}
 
         assert _problems(group) == []
+
+
+def test_every_id_placed_twice_is_listed_in_order() -> None:
+    assert _problems(_items(1, 2), _items(2, 1, heading="Also")) == [
+        "placed more than once: item 1, item 2"
+    ]
