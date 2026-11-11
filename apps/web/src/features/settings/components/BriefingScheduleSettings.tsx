@@ -3,6 +3,7 @@
 import type { BriefingFrequency } from "@gaia/shared/types";
 import { Select, SelectItem } from "@heroui/select";
 import { formatHour12 } from "@shared/utils";
+import { BriefsOffBlockedModal } from "@/features/settings/components/BriefsOffBlockedModal";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
@@ -32,8 +33,15 @@ const WITH_DAILY_BRIEF: ReadonlySet<BriefingFrequency> = new Set([
  * on the user's clock (quiet hours still push it later).
  */
 export function BriefingScheduleSettings() {
-  const { schedule, loadFailed, saving, update } =
-    useBriefingScheduleSettings();
+  const {
+    schedule,
+    loadFailed,
+    saving,
+    update,
+    briefsOffBlock,
+    turnOff,
+    keepBriefs,
+  } = useBriefingScheduleSettings();
   const { hours: quietHours } = useQuietHours();
   const hasDailyBrief =
     schedule?.frequency !== undefined &&
@@ -97,6 +105,12 @@ export function BriefingScheduleSettings() {
           ))}
         </Select>
       </SettingsRow>
+      <BriefsOffBlockedModal
+        block={briefsOffBlock}
+        saving={saving}
+        onTurnOff={(deliveries) => void turnOff(deliveries)}
+        onCancel={keepBriefs}
+      />
     </SettingsSection>
   );
 }

@@ -6,13 +6,12 @@ import {
   WORKFLOW_DELIVERIES,
   WORKFLOW_DELIVERY_COPY,
 } from "@gaia/shared";
-import { Button } from "@heroui/button";
 import type { WorkflowDelivery } from "@shared/api/generated";
 import Link from "next/link";
 import { type Control, Controller } from "react-hook-form";
 import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
-import { cn } from "@/lib/utils";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { DeliverySegments } from "../DeliverySegments";
 import WorkflowSection from "./WorkflowSection";
 
 const FIELD_LABEL = "When a run finishes";
@@ -54,39 +53,17 @@ export default function WorkflowDeliveryField({
         const helper = helperFor(field.value);
         return (
           <WorkflowSection label={FIELD_LABEL}>
-            <fieldset
-              aria-label={FIELD_LABEL}
-              className={cn(
-                "flex flex-col gap-1 rounded-xl bg-zinc-800/60 p-1 sm:flex-row",
-                errorMessage && "ring-1 ring-danger",
-              )}
-            >
-              {WORKFLOW_DELIVERIES.map((delivery, index) => {
-                const isSelected = field.value === delivery;
-                return (
-                  <Button
-                    key={delivery}
-                    ref={index === 0 ? field.ref : undefined}
-                    fullWidth
-                    radius="lg"
-                    variant="light"
-                    aria-pressed={isSelected}
-                    isDisabled={
-                      isDisabled || (delivery === "brief" && briefsOff)
-                    }
-                    onPress={() => field.onChange(delivery)}
-                    className={cn(
-                      "h-9 font-medium",
-                      isSelected
-                        ? "bg-zinc-700 text-zinc-100 shadow-sm data-[hover=true]:bg-zinc-700"
-                        : "text-zinc-400",
-                    )}
-                  >
-                    {WORKFLOW_DELIVERY_COPY[delivery].label}
-                  </Button>
-                );
-              })}
-            </fieldset>
+            <DeliverySegments
+              label={FIELD_LABEL}
+              deliveries={WORKFLOW_DELIVERIES}
+              value={field.value}
+              onChange={field.onChange}
+              isDisabled={(delivery) =>
+                isDisabled || (delivery === "brief" && briefsOff)
+              }
+              firstRef={field.ref}
+              isInvalid={!!errorMessage}
+            />
             {errorMessage ? (
               <p className="px-1 pt-1 text-sm text-danger">{errorMessage}</p>
             ) : (
