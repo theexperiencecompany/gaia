@@ -6,10 +6,14 @@ import { stripLocalePrefix } from "./i18n/config";
 import { routing } from "./i18n/routing";
 import { isTranslatedPath } from "./i18n/translatedRoutes";
 
-// heygaia.link is an alias domain of this app (configured at deploy). Its paths are bare
-// slugs and the page lives at /l/<slug> under the locale routes, so heygaia.link/<slug>
-// is 307'd to heygaia.io/l/<slug>.
-const SHORTLINK_HOST = process.env.NEXT_PUBLIC_SHORTLINK_HOST ?? "heygaia.link";
+/**
+ * The deployment's link host (GAIA_LINK_HOST, read at runtime): its /<slug> paths are
+ * 307'd to /l/<slug>. Unset on self-host, whose links already live on its own /l route.
+ */
+function linkHost(): string | undefined {
+  return process.env.GAIA_LINK_HOST || undefined;
+}
+
 const SHORTLINK_RESOLVE_ORIGIN =
   process.env.NEXT_PUBLIC_APP_ORIGIN ?? "https://heygaia.io";
 
@@ -75,9 +79,10 @@ function localeResponse(request: NextRequest): NextResponse {
 }
 
 export default async function middleware(request: NextRequest) {
-  // Short-link alias host: bounce heygaia.link/<slug> → heygaia.io/l/<slug>
-  // before any locale handling.
-  if (request.headers.get("host") === SHORTLINK_HOST) {
+  // Short-link alias host: bounce <link host>/<slug> to /l/<slug> before any
+  // locale handling.
+  const host = linkHost();
+  if (host && request.headers.get("host") === host) {
     const target = new URL(
       `/l${request.nextUrl.pathname}${request.nextUrl.search}`,
       SHORTLINK_RESOLVE_ORIGIN,

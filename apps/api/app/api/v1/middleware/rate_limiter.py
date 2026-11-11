@@ -1,6 +1,8 @@
 """The application-wide rate limiter and the middleware that applies it."""
 
 from collections.abc import Callable
+import ipaddress
+import secrets
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, iter_route_contexts
@@ -13,9 +15,34 @@ from starlette.responses import Response
 from starlette.routing import Match
 from starlette.types import Scope
 
+from app.config.settings import settings
+from app.constants.http import INTERNAL_RESOLVER_HEADER, VIEWER_IP_HEADER
 from app.db.redis import redis_cache
 
 DEFAULT_LIMIT_PER_MINUTE = 120
+
+
+def viewer_ip(request: Request) -> str:
+    """Return the address a request counts against: the viewer's, even through GAIA's SSR.
+
+    The web app's server renders link pages for every viewer from one address,
+    so it names the viewer in VIEWER_IP_HEADER. That header is believed only
+    with the shared INTERNAL_RESOLVER_TOKEN; anyone else counts as their peer.
+    """
+    peer: str = get_remote_address(request)
+    token = settings.INTERNAL_RESOLVER_TOKEN
+    presented = request.headers.get(INTERNAL_RESOLVER_HEADER)
+    if (
+        not token
+        or presented is None
+        or not secrets.compare_digest(presented.encode(), token.encode())
+    ):
+        return peer
+    claimed = request.headers.get(VIEWER_IP_HEADER, "")
+    try:
+        return str(ipaddress.ip_address(claimed.strip()))
+    except ValueError:
+        return peer
 
 
 def build_limiter(storage_uri: str) -> Limiter:
@@ -24,7 +51,7 @@ def build_limiter(storage_uri: str) -> Limiter:
     # handler, which crashes on exc.detail; with it, each replica counts in
     # memory until the storage answers a ping again.
     return Limiter(
-        key_func=get_remote_address,
+        key_func=viewer_ip,
         default_limits=[f"{DEFAULT_LIMIT_PER_MINUTE}/minute"],
         storage_uri=storage_uri,
         in_memory_fallback_enabled=True,
