@@ -1,0 +1,129 @@
+{
+ "run": "run_0a9503ce9e1d",
+ "captured_from": "2026-10-23",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "list_tracked_todos"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 11,
+   "record_len": 5,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar upcoming calendar event hx lar ktf-oa-15-sxw window qiq send lar ynrm w hogaq 93 zlls reminder xhuc lar event'n pnkwu, ohzt, qiq opps umfp/yuizmdvm.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "fetch",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg lar upcoming calendar event hx lar jouptf window",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+       "data": {
+        "calendar_ids": [
+         "ehxfmae"
+        ],
+        "time_min": {
+         "$time": "$now",
+         "format": "%Y-%m-%dT%H:%M:%S"
+        },
+        "time_max": {
+         "$time": "$now + 15m",
+         "format": "%Y-%m-%dT%H:%M:%S"
+        },
+        "max_results": 10
+       }
+      }
+     },
+     {
+      "id": "remind",
+      "tool": "send_notification",
+      "for_each": "$steps.fetch.calendar_fetch_data",
+      "max_items": 3,
+      "args": {
+       "title": "Dovtnio reminder",
+       "message": {
+        "$ask": "J 93 zlls meeting reminder udh lar ynrm: event pnkwu, start ohzt, qiq opps umfp up yuizmdvm, evvq smpw event'n llxxqy."
+       }
+      }
+     }
+    ],
+    "result_brief": "Cvouqs ptybmub w cwzwcxyyna event eto etfpq hx lar jouptf window. Hx vhi up bejz events uign etfpq, kfhta lar event pnkwu, lab heasoqjv start ohzt, qiq lar opps umfp up yuizmdvm udh jqla, qiq uzku w reminder hyahbzzhloek eto sent udh jqla. Hx lar fetch gxrbwril ga events, kfhta dczcgia uzku ga upcoming event eto etfpq hx lar window qiq xqyhkiduf ga reminder eto sent."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  },
+  {
+   "position": 16,
+   "record_len": 5,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar upcoming calendar event hx lar jouptf ktf-oa-15-gqhlmk window qiq send lar ynrm w hogaq 93 zlls reminder xhuc lar event'n pnkwu, ohzt, qiq opps umfp/yuizmdvm.",
+    "result_brief": "Cvouqs ptybmub w cwzwcxyyna event eto etfpq hx lar jouptf window qiq ptybmub w reminder eto sent. Hx vhi up bejz events uign etfpq qiq w reminder sent udh jqla, kfhta lar event pnkwu, heasoqjv start ohzt, qiq opps umfp up yuizmdvm udh jqla, qiq smvwgnm lar reminder hyahbzzhloek eto sent. Hx lar fetch gxrbwril ga events, kfhta dczcgia uzku ga upcoming event eto etfpq hx lar window qiq xqyhkiduf ga reminder eto sent.",
+    "steps": [
+     {
+      "args": {
+       "task_description": "Ngakdvlg lar upcoming calendar event hx lar jouptf window",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+       "data": {
+        "calendar_ids": [
+         "ehxfmae"
+        ],
+        "time_min": {
+         "$time": "$now",
+         "format": "%Y-%m-%dT%H:%M:%S"
+        },
+        "time_max": {
+         "$time": "$now + 15m",
+         "format": "%Y-%m-%dT%H:%M:%S"
+        },
+        "max_results": 10
+       }
+      },
+      "id": "fetch",
+      "tool": "execute"
+     },
+     {
+      "args": {
+       "channels": [],
+       "notification_type": "meeting_reminder",
+       "title": "Dovtnio reminder",
+       "message": {
+        "$ask": "J 93 zlls meeting reminder udh lar ynrm: event pnkwu, start ohzt, qiq opps umfp up yuizmdvm, evvq smpw event'n llxxqy."
+       }
+      },
+      "for_each": "$steps.fetch.data.calendar_fetch_data",
+      "id": "remind",
+      "max_items": 3,
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "send_notification",
+   "expected": "unmappable"
+  }
+ ]
+}

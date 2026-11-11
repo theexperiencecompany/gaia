@@ -8,6 +8,7 @@ import type {
 import type {
   DesktopPermissionPane,
   DesktopPermissionStatus,
+  DesktopServerConnectResult,
   DesktopSettingsSnapshot,
   DesktopShortcutUpdateResult,
   DesktopToolRequest,
@@ -45,6 +46,10 @@ declare global {
         accelerator: string,
       ) => Promise<DesktopShortcutUpdateResult>;
       setAppIcon: (id: string) => Promise<boolean>;
+      connectSelfHostServer: (
+        address: string,
+      ) => Promise<DesktopServerConnectResult>;
+      switchToGaiaCloud: () => void;
       bridge: {
         pair: () => Promise<BridgeInvokeResult<BridgeStatus>>;
         status: () => Promise<BridgeInvokeResult<BridgeStatus>>;

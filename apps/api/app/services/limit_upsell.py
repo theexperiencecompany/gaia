@@ -1,9 +1,9 @@
-"""Fire-and-forget upsell side effects when a FREE user hits a usage wall.
+"""What happens when a usage wall refuses a request: one analytics event, and an upsell for FREE.
 
-Called from the two exceed seams — the tiered rate limiter (covers every
-decorated endpoint and agent tool) and the daily cost-budget gate — so every
-wall a free user can hit produces one analytics event and, at most once a
-week (deduped in the senders), one email. origin picks the email: an
+capture_limit_hit is called once per refusal by every wall (the tiered rate
+limiter, the cost-budget gate, the mid-run budget stop, the bot burst limit).
+schedule_limit_upsell sends a FREE user at most one email a week (deduped in
+the senders). origin picks the email: an
 interactive hit (the user did something and was blocked) gets the upsell
 pitch; a background hit (a workflow run the user never initiated) gets an
 informative "your workflows are taking a break" email instead — telling a
@@ -21,9 +21,9 @@ from app.services.email.senders import (
     send_workflows_paused_email,
 )
 from app.utils.background_tasks import spawn_background_task
-from shared.py.analytics import UserId
+from shared.py.analytics import AnalyticsId
 from shared.py.analytics.catalog.attribution import Trigger
-from shared.py.analytics.catalog.billing import RateLimitHit
+from shared.py.analytics.catalog.billing import LimitWindow, RateLimitHit
 from shared.py.analytics.context import current_analytics_context
 from shared.py.wide_events import log
 
@@ -42,20 +42,36 @@ def current_limit_origin() -> LimitHitOrigin:
     return LimitHitOrigin.BACKGROUND
 
 
+def capture_limit_hit(
+    analytics_id: AnalyticsId,
+    feature_key: str,
+    plan: PlanType | None,
+    *,
+    origin: LimitHitOrigin | None = None,
+    window: LimitWindow | None = None,
+) -> None:
+    """Record one refusal by a usage wall, after the wall has decided to refuse."""
+    capture(
+        analytics_id,
+        RateLimitHit(
+            feature=feature_key,
+            plan=plan.value if plan else None,
+            origin=origin.value if origin else None,
+            window=window,
+        ),
+    )
+
+
 def schedule_limit_upsell(
     user_id: str, feature_key: str, user_plan: PlanType, origin: LimitHitOrigin
 ) -> None:
-    """Queue the limit-hit side effects for a free user (no-op for paid plans)."""
+    """Queue the upsell email for a free user (no-op for paid plans)."""
     if user_plan != PlanType.FREE:
         return
-    spawn_background_task(_run(user_id, feature_key, origin, user_plan))
+    spawn_background_task(_run(user_id, feature_key, origin))
 
 
-async def _run(user_id: str, feature_key: str, origin: LimitHitOrigin, user_plan: PlanType) -> None:
-    capture(
-        UserId(user_id),
-        RateLimitHit(feature=feature_key, origin=origin.value, plan=user_plan.value),
-    )
+async def _run(user_id: str, feature_key: str, origin: LimitHitOrigin) -> None:
     try:
         if origin == LimitHitOrigin.BACKGROUND:
             await send_workflows_paused_email(user_id)

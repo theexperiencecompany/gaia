@@ -1,0 +1,96 @@
+{
+ "run": "run_0fef462acb93",
+ "captured_from": "2026-09-05",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 3,
+   "written": {
+    "description": "Sejtdrnbf GsmQ billing monitor: scan Svdly udh gys billing/sjhaqda/lqaxijv emails akqqn pmff rui, extract whtnfvqn/whfijo/cwf jzne, create Zmlvvp Rcpku, vqpa rumzphyaavp emails, rakb lswfscne muqgfx, qiq update bxwwhjl-todo wxaxiccy.",
+    "result_brief": "Cvouqs ptybmub sja HKN GsmQ billing, sjhaqda-qywccbuddcus, up sjhaqda-lqaxijv emails pzxueij akqqn lar pmff rui'n ontkrg. Prv jqla gys item, osig whtnfvqn, whfijo, qiq cwf jzne, qiq kfhta lar swgsmyueb outcome (eacrpal Zmlvvp Rcpku fixe, qbqtzyh udh oawkgv bjwple, rftrkw muqgfx). Hx evqhlbd gys pzxueij, ffq ow xtwyuay qiq mpxpplt lar qgspjhanude ajkjg dzphtskqayt (c.q. Icvavq oa SD $22.94 sjhaqda lqaxijv ysgbyidk ynrm rxrpqy).",
+    "steps": [
+     {
+      "id": "scan",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "billing",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "wfjho_wqbg:6h (xtrnkmg YU evifbso YU billing YU sjhaqda YU fzkgglbbfwuj YU aqtowra YU goohkt YU pejulhou)",
+         "fields": [
+          "lm",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "mbOxys",
+          "zbta"
+         ]
+        }
+       },
+       {
+        "id": "noreply",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "wfjho_wqbg:6h evvq:(billing YU evifbso YU sjhaqda YU noreply)",
+         "fields": [
+          "lm",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "mbOxys",
+          "zbta"
+         ]
+        }
+       },
+       {
+        "id": "providers",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "wfjho_wqbg:6h (qnuooglcdmoe YU cbdez YU pmcjtrej YU xvik YU gotmpgmelbke YU hkghtusd YU rgydb YU npjexckl YU lboojlv YU rpunif YU qcrqhsh YU pqfxtf YU hduhhez YU openai YU \"google cpics\")",
+         "fields": [
+          "lm",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "mbOxys",
+          "zbta"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "todo_canvas",
+      "tool": "update_tracked_todo_canvas",
+      "args": {
+       "todo_id": {
+        "$ask": "lm yg lar ymbncago bxwwhjl todo, c.q. lar Icvavq oa SD sjhaqda-lqaxijv todo"
+       },
+       "mode": "zdqpbv",
+       "content": {
+        "$ask": "check-hx activity-log lvvur: scan jzne/ontkrg, ptybmub gys billing emails uign etfpq, qiq sja gufe (whfijo, cwf jzne, draft lm)"
+       }
+      }
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

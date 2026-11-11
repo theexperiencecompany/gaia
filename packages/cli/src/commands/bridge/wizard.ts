@@ -14,11 +14,11 @@ import {
   deregisterConfiguredServer,
   registerConfiguredServers,
 } from "@gaia/shared/bridge-core/register";
+import { ask, askSecret, choose, confirm } from "../../lib/prompt.js";
 import { loadConfig, upsertServer } from "./config.js";
 import type { ServerConfig } from "./config.types.js";
 import { FILESYSTEM_SERVER_KEY } from "./constants.js";
 import { isPaired, runLogin } from "./login.js";
-import { ask, askSecret, choose, confirm } from "./prompt.js";
 import { assertLoopbackUrl, testServer } from "./servers.js";
 import { runUp } from "./up.js";
 

@@ -12,13 +12,14 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 import pytest
 
+from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.workflow_prompts import WORKFLOW_PROMPT_GENERATION_SYSTEM
 from app.constants.integrations import MANAGED_BY_INTERNAL
+from app.constants.llm import ReasoningLevel
 from app.constants.log_tags import LogTag
 from app.models.workflow_models import (
     GeneratedPromptOutput,
@@ -30,7 +31,6 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.services.workflow.generation_service import (
-    _MAX_GENERATION_ATTEMPTS,
     _MAX_REASON_CHARS,
     WorkflowGenerationService,
     WorkflowPromptRequest,
@@ -41,9 +41,8 @@ from app.services.workflow.generation_service import (
     _collect_custom_integration_categories,
     _collect_registry_categories,
     _collect_subagent_categories,
+    _draft_steps,
     _failure_reason,
-    _run_generation_attempt,
-    _validated_steps,
 )
 
 MODULE = "app.services.workflow.generation_service"
@@ -245,7 +244,7 @@ class _FakeIntegration:
 
 
 def _catalog(*integrations: _FakeIntegration):
-    return patch(f"{MODULE}.OAUTH_INTEGRATIONS", list(integrations))
+    return patch("app.config.oauth_config.OAUTH_INTEGRATIONS", list(integrations))
 
 
 class TestCollectSubagentCategories:
@@ -260,7 +259,7 @@ class TestCollectSubagentCategories:
         ):
             assert _collect_subagent_categories(set()) == (
                 ["todos"],
-                ["todos (subagent): creating todos"],
+                ["todos (integration): creating todos"],
             )
 
     def test_a_provider_subagent_is_offered_only_once_its_integration_is_active(self):
@@ -269,7 +268,7 @@ class TestCollectSubagentCategories:
         with _catalog(gmail):
             assert _collect_subagent_categories({"gmail"}) == (
                 ["gmail"],
-                ["gmail (subagent): sending mail"],
+                ["gmail (integration): sending mail"],
             )
             assert _collect_subagent_categories(set()) == ([], [])
             assert _collect_subagent_categories({"notion"}) == ([], [])
@@ -281,7 +280,7 @@ class TestCollectSubagentCategories:
         ):
             assert _collect_subagent_categories({"github"}) == (
                 ["GitHub"],
-                ["GitHub (subagent): opening PRs"],
+                ["GitHub (integration): opening PRs"],
             )
 
     def test_an_integration_with_no_subagent_is_skipped_without_reading_its_config(self):
@@ -293,7 +292,7 @@ class TestCollectSubagentCategories:
         ):
             assert _collect_subagent_categories({"dropbox", "figma", "gmail"}) == (
                 ["gmail"],
-                ["gmail (subagent): sending mail"],
+                ["gmail (integration): sending mail"],
             )
 
     def test_one_unconnected_provider_does_not_hide_the_subagents_after_it(self):
@@ -304,7 +303,7 @@ class TestCollectSubagentCategories:
         ):
             assert _collect_subagent_categories(set()) == (
                 ["todos"],
-                ["todos (subagent): todos"],
+                ["todos (integration): todos"],
             )
 
     def test_the_catalog_order_is_preserved(self):
@@ -317,9 +316,9 @@ class TestCollectSubagentCategories:
 
         assert names == ["todos", "gmail", "skills"]
         assert lines == [
-            "todos (subagent): a",
-            "gmail (subagent): b",
-            "skills (subagent): c",
+            "todos (integration): a",
+            "gmail (integration): b",
+            "skills (integration): c",
         ]
 
 
@@ -341,38 +340,20 @@ class TestWorkflowStepGenerationError:
 
 
 # ---------------------------------------------------------------------------
-# _validated_steps
+# GeneratedWorkflow
 # ---------------------------------------------------------------------------
 
 
-class TestValidatedSteps:
-    """Whether a candidate draft is usable, or worth one more attempt."""
+class TestGeneratedWorkflowSchema:
+    """The structured-output schema the model fills."""
 
-    def test_a_draft_with_steps_is_enriched_with_positional_ids(self):
-        result = GeneratedWorkflow(
-            steps=[
-                GeneratedStep(title="Fetch mail", category="gmail", description="read inbox"),
-                GeneratedStep(title="Summarize", category="gaia", description="write a brief"),
-            ]
-        )
+    def test_a_draft_with_no_steps_does_not_fit_the_schema(self):
+        """The structured parser turns a schema miss into a retried MalformedStructuredOutputError; an empty list must be one."""
+        with pytest.raises(ValidationError):
+            GeneratedWorkflow(steps=[])
 
-        steps = _validated_steps(result)
-
-        assert steps == [
-            WorkflowStep(
-                id="step_0", title="Fetch mail", category="gmail", description="read inbox"
-            ),
-            WorkflowStep(
-                id="step_1", title="Summarize", category="gaia", description="write a brief"
-            ),
-        ]
-
-    def test_a_missing_draft_is_absence_not_an_exception(self):
-        """An empty generation is regenerable; raising here would spend the user's second attempt on a traceback."""
-        assert _validated_steps(None) is None
-
-    def test_a_draft_with_no_steps_is_absence_too(self):
-        assert _validated_steps(GeneratedWorkflow(steps=[])) is None
+    def test_the_schema_offered_to_the_model_demands_at_least_one_step(self):
+        assert GeneratedWorkflow.model_json_schema()["properties"]["steps"]["minItems"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -669,7 +650,7 @@ class TestCollectCustomIntegrationCategories:
 
 
 # ---------------------------------------------------------------------------
-# _run_generation_attempt
+# _draft_steps
 # ---------------------------------------------------------------------------
 
 
@@ -691,164 +672,96 @@ def _draft(*steps: tuple[str, str, str]) -> GeneratedWorkflow:
     )
 
 
-def _invalid_output_error() -> ValidationError:
-    try:
-        GeneratedStep.model_validate({})
-    except ValidationError as e:
-        return e
-    raise AssertionError("GeneratedStep({}) was expected to be invalid")
+class TestDraftSteps:
+    """The one structured call that drafts the steps, and how it fails."""
 
-
-class TestRunGenerationAttempt:
-    """One attempt at a draft, and how its outcome is classified."""
-
-    async def test_a_usable_draft_comes_back_as_enriched_steps_and_no_error(self):
-        metered = _llm_plumbing()
+    async def test_a_usable_draft_comes_back_as_enriched_steps(self):
         with (
-            metered,
-            _llm(return_value=_draft(("Fetch mail", "gmail", "read the inbox"))),
+            _llm_plumbing(),
+            _llm(
+                return_value=_draft(
+                    ("Fetch mail", "gmail", "read the inbox"), ("Brief", "gaia", "b")
+                )
+            ),
         ):
-            steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
+            steps = await _draft_steps("the prompt", user_id="user-1")
 
-        assert error is None
         assert steps == [
             WorkflowStep(
                 id="step_0", title="Fetch mail", category="gmail", description="read the inbox"
-            )
+            ),
+            WorkflowStep(id="step_1", title="Brief", category="gaia", description="b"),
         ]
 
     async def test_the_draft_is_asked_for_with_the_workflow_schema_and_prompt(self):
         """The schema makes the output structured; the label is how this generation is billed and found."""
-        metered = _llm_plumbing()
         with (
-            metered,
+            _llm_plumbing(),
             _llm(return_value=_draft(("Step", "gaia", "do it"))) as mock_llm,
         ):
-            await _run_generation_attempt("the prompt", user_id="user-42", attempt=0)
+            await _draft_steps("the prompt", user_id="user-42")
 
-        assert mock_llm.await_args.args[0] is GeneratedWorkflow
+        assert mock_llm.await_args.args == (GeneratedWorkflow, "the prompt")
         assert mock_llm.await_args.kwargs["config"] == {"cfg": 1}
-        assert mock_llm.await_args.args[1] == "the prompt"
         assert mock_llm.await_args.kwargs["label"] == "workflow_generation"
 
-    async def test_the_attempt_is_metered_to_the_user_who_asked_for_it(self):
+    async def test_the_draft_is_asked_for_without_reasoning(self):
+        """Reasoning was 94% of prod output and ran into the 8k cap (finish_reason=length), each cut re-asked: 100-160s."""
         with (
-            patch(f"{MODULE}.metered_config", return_value={"cfg": 1}) as mock_metered,
-            _llm(return_value=_draft(("Step", "gaia", "do it"))),
+            _llm_plumbing(),
+            _llm(return_value=_draft(("Step", "gaia", "do it"))) as mock_llm,
         ):
-            await _run_generation_attempt("the prompt", user_id="user-42", attempt=0)
+            await _draft_steps("the prompt", user_id="user-42")
 
-        mock_metered.assert_called_once_with("user-42")
+        assert mock_llm.await_args.kwargs["options"].reasoning is ReasoningLevel.OFF
 
     async def test_a_success_logs_how_many_steps_came_back(self):
-        metered = _llm_plumbing()
         with (
-            metered,
+            _llm_plumbing(),
             _llm(return_value=_draft(("A", "gaia", "a"), ("B", "gaia", "b"))),
             patch(f"{MODULE}.log") as mock_log,
         ):
-            await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
+            await _draft_steps("the prompt", user_id="user-1")
 
         assert mock_log.info.call_args.kwargs == {"steps_data_count": 2}
-        mock_log.warning.assert_not_called()
 
-    async def test_an_empty_draft_is_regenerable_and_says_why(self):
-        """Empty output means the model misunderstood, not the provider failing — the caller gets a reason to retry, not an exception."""
-        metered = _llm_plumbing()
-        with metered, _llm(return_value=_draft()):
-            steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
-
-        assert steps is None
-        assert isinstance(error, ValueError)
-        assert str(error) == (
-            "LLM returned a workflow with no steps. The model may not have understood the request"
+    async def test_a_malformed_draft_is_not_asked_for_again(self):
+        """ainvoke_llm already re-asked it LLM_RETRY_MAX_ATTEMPTS times; a second loop here doubled a 100s cap-hit to 160s."""
+        malformed = MalformedStructuredOutputError(
+            "GeneratedWorkflow: reply stopped at the output cap"
         )
+        with _llm_plumbing(), _llm(side_effect=malformed) as mock_llm:
+            with pytest.raises(WorkflowStepGenerationError) as caught:
+                await _draft_steps("the prompt", user_id="user-1")
 
-    async def test_a_missing_draft_is_treated_the_same_as_an_empty_one(self):
-        metered = _llm_plumbing()
-        with metered, _llm(return_value=None):
-            steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
-
-        assert steps is None
-        assert isinstance(error, ValueError)
-
-    async def test_an_empty_draft_logs_the_attempt_number_one_based(self):
-        """Attempt is a zero-based loop index; logging it raw would make the first attempt read as attempt 0."""
-        metered = _llm_plumbing()
-        with metered, _llm(return_value=_draft()), patch(f"{MODULE}.log") as mock_log:
-            await _run_generation_attempt("the prompt", user_id="user-1", attempt=1)
-
-        assert mock_log.warning.call_args.args == (f"{LogTag.WORKFLOW} No steps; regenerating",)
-        assert mock_log.warning.call_args.kwargs == {
-            "attempt": 2,
-            "max_attempts": _MAX_GENERATION_ATTEMPTS,
-        }
-
-    async def test_schema_invalid_output_is_returned_for_a_retry_not_raised(self):
-        """The provider's own retry already ran inside ainvoke_llm; a malformed structured payload is worth asking the model again."""
-        invalid = _invalid_output_error()
-        metered = _llm_plumbing()
-        with metered, _llm(side_effect=invalid):
-            steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
-
-        assert steps is None
-        assert error is invalid
-
-    async def test_an_unparseable_response_is_regenerable_too(self):
-        parser_error = OutputParserException("could not parse")
-        metered = _llm_plumbing()
-        with metered, _llm(side_effect=parser_error):
-            steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
-
-        assert steps is None
-        assert error is parser_error
-
-    async def test_schema_invalid_output_logs_the_attempt_and_the_error_type(self):
-        metered = _llm_plumbing()
-        with (
-            metered,
-            _llm(side_effect=OutputParserException("nope")),
-            patch(f"{MODULE}.log") as mock_log,
-        ):
-            await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
-
-        assert mock_log.warning.call_args.args == (
-            f"{LogTag.WORKFLOW} Structured output invalid; regenerating",
+        assert mock_llm.await_count == 1
+        assert caught.value.__cause__ is malformed
+        assert caught.value.reason.startswith(
+            "MalformedStructuredOutputError: GeneratedWorkflow: reply stopped at the output cap"
         )
-        assert mock_log.warning.call_args.kwargs == {
-            "attempt": 1,
-            "max_attempts": _MAX_GENERATION_ATTEMPTS,
-            "error_type": "OutputParserException",
-        }
-        mock_log.error.assert_not_called()
 
     async def test_a_provider_failure_becomes_the_typed_error_with_a_showable_reason(self):
-        """Not regenerable — retrying a 402 burns the second attempt on the same refusal; the reason turns a blank 500 into a message."""
+        """The reason turns a blank 500 into a message the workflow modal renders."""
         provider_error = RuntimeError("This request requires more credits")
-        metered = _llm_plumbing()
-        with metered, _llm(side_effect=provider_error):
+        with _llm_plumbing(), _llm(side_effect=provider_error):
             with pytest.raises(WorkflowStepGenerationError) as caught:
-                await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
+                await _draft_steps("the prompt", user_id="user-1")
 
         assert caught.value.reason == "RuntimeError: This request requires more credits"
         assert caught.value.__cause__ is provider_error
 
-    async def test_a_provider_failure_is_logged_as_an_error_with_the_user_and_attempt(self):
+    async def test_a_failure_is_logged_as_an_error_with_the_user(self):
         """Ends the generation, so it must be findable in the wide event by user — a warning would be filtered from the error list."""
-        metered = _llm_plumbing()
         with (
-            metered,
+            _llm_plumbing(),
             _llm(side_effect=RuntimeError("402")),
             patch(f"{MODULE}.log") as mock_log,
         ):
             with pytest.raises(WorkflowStepGenerationError):
-                await _run_generation_attempt("the prompt", user_id="user-7", attempt=1)
+                await _draft_steps("the prompt", user_id="user-7")
 
-        assert mock_log.error.call_args.args == (
-            f"{LogTag.WORKFLOW} ========== FAILED: provider error",
-        )
+        assert mock_log.error.call_args.args == (f"{LogTag.WORKFLOW} ========== FAILED",)
         assert mock_log.error.call_args.kwargs == {
-            "attempt": 2,
             "error_type": "RuntimeError",
             "error": "402",
             "user_id": "user-7",
@@ -943,10 +856,10 @@ class TestGenerateStepsWithLlm:
 
         prompt = mock_llm.await_args.args[1]
         assert "productivity, todos, gmail, gaia" in prompt
-        assert "gmail (subagent): mail" in prompt
+        assert "gmail (integration): mail" in prompt
         assert "notion (subagent)" not in prompt
         assert "productivity: create_todo" in prompt
-        assert "todos (subagent): todos" in prompt
+        assert "todos (integration): todos" in prompt
         assert "Always Available: web_search" in prompt
 
     async def test_a_core_tool_without_a_name_is_still_offered_by_its_string_form(self):
@@ -1123,22 +1036,7 @@ class TestGenerateStepsWithLlm:
         mock_custom.assert_not_awaited()
         assert "Gmail (category: gmail)" in mock_llm.await_args.args[1]
 
-    async def test_an_empty_first_draft_is_regenerated_and_the_second_one_is_returned(self):
-        """Two attempts is the whole point of the loop — giving up on the first empty draft would fail a request that succeeds on retry."""
-        metered = _llm_plumbing()
-        with (
-            _tool_registry(),
-            _catalog(),
-            _no_custom_integrations(),
-            metered,
-            _llm(side_effect=[_draft(), _draft(("Step", "gaia", "do"))]) as mock_llm,
-        ):
-            steps = await _generate_steps(prompt="p", title="t", user_id="user-1")
-
-        assert steps == [WorkflowStep(id="step_0", title="Step", category="gaia", description="do")]
-        assert mock_llm.await_count == 2
-
-    async def test_a_first_attempt_that_works_is_not_retried(self):
+    async def test_a_working_draft_is_asked_for_once(self):
         metered = _llm_plumbing()
         with (
             _tool_registry(),
@@ -1164,49 +1062,30 @@ class TestGenerateStepsWithLlm:
 
         mock_metered.assert_called_once_with("user-42")
 
-    async def test_every_attempt_empty_raises_the_typed_error_naming_the_attempt_count(self):
-        """The modal renders this string; "generation failed" with no count reads as a bug, not as the model not cooperating."""
-        metered = _llm_plumbing()
-        with (
-            _tool_registry(),
-            _catalog(),
-            _no_custom_integrations(),
-            metered,
-            _llm(return_value=_draft()) as mock_llm,
-        ):
-            with pytest.raises(WorkflowStepGenerationError) as caught:
-                await _generate_steps(prompt="p", title="t", user_id="user-1")
-
-        assert mock_llm.await_count == _MAX_GENERATION_ATTEMPTS
-        assert caught.value.reason == (
-            f"the model returned no usable steps after {_MAX_GENERATION_ATTEMPTS} attempts "
-            "(ValueError: LLM returned a workflow with no steps. The model may not have "
-            "understood the request)"
+    async def test_a_malformed_draft_fails_the_generation_after_one_call(self):
+        """The only re-asking is ainvoke_llm's; a service loop on top re-ran its whole retry budget."""
+        malformed = MalformedStructuredOutputError(
+            "GeneratedWorkflow: reply stopped at the output cap"
         )
-
-    async def test_the_last_error_is_the_cause_of_the_raised_failure(self):
-        invalid = _invalid_output_error()
-        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
-            metered,
-            _llm(side_effect=invalid),
+            _llm_plumbing(),
+            _llm(side_effect=malformed) as mock_llm,
         ):
             with pytest.raises(WorkflowStepGenerationError) as caught:
                 await _generate_steps(prompt="p", title="t", user_id="user-1")
 
-        assert caught.value.__cause__ is invalid
-        assert "ValidationError" in caught.value.reason
+        assert mock_llm.await_count == 1
+        assert caught.value.__cause__ is malformed
 
-    async def test_a_provider_failure_stops_the_loop_instead_of_burning_the_retry(self):
-        metered = _llm_plumbing()
+    async def test_a_provider_failure_fails_the_generation_with_its_reason(self):
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
-            metered,
+            _llm_plumbing(),
             _llm(side_effect=RuntimeError("402 credits")) as mock_llm,
         ):
             with pytest.raises(WorkflowStepGenerationError) as caught:

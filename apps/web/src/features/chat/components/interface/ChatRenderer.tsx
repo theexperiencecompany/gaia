@@ -25,7 +25,7 @@ import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImage
 import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
-import { useConversationList } from "@/features/chat/hooks/useConversationList";
+import { useConversationRow } from "@/features/chat/hooks/useConversationList";
 import { useMessageHighlight } from "@/features/chat/hooks/useMessageHighlight";
 import { useRetryMessage } from "@/features/chat/hooks/useRetryMessage";
 import {
@@ -265,7 +265,6 @@ export default function ChatRenderer({
 }: ChatRendererProps) {
   const { convoMessages: storeConvoMessages } = useConversation();
   const convoMessages = propConvoMessages ?? storeConvoMessages;
-  const { conversations } = useConversationList();
   const [openGeneratedImage, setOpenGeneratedImage] = useState<boolean>(false);
   const [openMemoryModal, setOpenMemoryModal] = useState<boolean>(false);
   // Loading state for the ACTIVE conversation only — a stream running in
@@ -299,11 +298,7 @@ export default function ChatRenderer({
     improvedPrompt: "",
   });
 
-  const conversation = useMemo(() => {
-    return conversations.find(
-      (convo) => convo.conversation_id === convoIdParam,
-    );
-  }, [conversations, convoIdParam]);
+  const conversation = useConversationRow(convoIdParam);
 
   // `retryMessage` gets a new identity on most renders (unstable
   // `sendMessage` deps), so read it via ref to keep `handleRetry` (and the
@@ -429,7 +424,7 @@ export default function ChatRenderer({
 
   return (
     <>
-      <title id="chat_title">{`${conversations.find((convo) => convo.conversation_id === convoIdParam)?.description || "New chat"} | GAIA`}</title>
+      <title id="chat_title">{`${conversation?.description || "New chat"} | GAIA`}</title>
       <GeneratedImageSheet
         imageData={imageData}
         openImage={openGeneratedImage}

@@ -1529,33 +1529,6 @@ CONTENT PREFERENCES:
 """,
 )
 
-INSTACART_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
-    provider_name="Instacart",
-    entity_instructions="""
-## INSTACART-SPECIFIC EXTRACTION:
-
-1. STORE PREFERENCES:
-   - Preferred stores
-   - Location patterns
-
-2. PRODUCT PATTERNS:
-   - Common items
-   - Brand preferences
-""",
-    provider_specific_instructions="""
-## INSTACART-SPECIFIC MEMORIES:
-
-SHOPPING PATTERNS:
-- Regular items
-- Substitution preferences
-- Delivery time preferences
-
-DIETARY CONTEXT:
-- Restrictions/preferences
-- Organic/natural preferences
-""",
-)
-
 YELP_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
     provider_name="Yelp",
     entity_instructions="""

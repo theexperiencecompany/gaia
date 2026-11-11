@@ -81,6 +81,7 @@ What the hook does NOT fix, you handle manually: lint warnings ruff can't auto-r
 ## Gotchas
 
 - The worker depends on `gaia-shared` (`libs/shared/py`) — run `nx run voice-agent:sync` (which first syncs `shared-python`) if shared code changes
+- `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` are optional: the worker warns at boot when either is unset (`src/config.py`). Self-host ships no voice (`deployment.voice` is off; the API reports `VOICE_SELF_HOST_GAP`)
 - `DEEPGRAM_API_KEY` is consumed directly by the `livekit-plugins-deepgram` plugin via environment variable — it does not need to be passed explicitly in code
 - Noise cancellation uses LiveKit's BVC (`noise_cancellation.BVC()`) — requires the `livekit-plugins-noise-cancellation` package
 - Turn detection uses `MultilingualModel` from `livekit.plugins.turn_detector.multilingual` — model files must be downloaded before first run (`download-files` command)

@@ -8,5 +8,9 @@ import type { IMessage } from "@/lib/db/chatDb";
  * mobile converge on one fold. See `foldReactionAcks` there for the contract.
  */
 export function foldReactionAcks(messages: IMessage[]): IMessage[] {
-  return foldSharedReactionAcks(messages, (message) => message.content);
+  return foldSharedReactionAcks(
+    messages,
+    (message) => message.content,
+    (ack) => (ack.tool_data?.length ? { ...ack, content: "" } : null),
+  );
 }

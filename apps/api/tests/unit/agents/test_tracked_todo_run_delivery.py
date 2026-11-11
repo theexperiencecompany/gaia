@@ -19,10 +19,15 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from arq import Retry
+from langchain_core.messages import SystemMessage
 from pymongo.errors import PyMongoError
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
+from app.agents.context import presence_note
+from app.agents.context.assemble import AssembledContext
+from app.agents.context.slots import PRESENCE_NOTE_MARKER, has_marker
+from app.agents.context.tiers import AgentTier
 from app.agents.core.background import (
     executor_runner as er,
     result_delivery as rd,
@@ -39,17 +44,21 @@ from app.agents.core.background.todo_run import (
     TodoRunRequest,
     run_todo_on_executor,
 )
+from app.agents.core.subagents import subagent_runner
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.constants.todos import TodoActivityEvent
+from app.constants.todos import TodoActivityEvent, TodoWakeKind
 from app.models.chat_models import ConversationSource
+from app.models.message_models import TodoRunWake
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
+from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.services.delivery.presence import record_turn_presence
 from app.utils import auth_utils
 from app.utils.background_tasks import spawn_background_task
 from app.workers.tasks import tracked_todo_tasks
@@ -59,6 +68,10 @@ from tests.helpers import WideEventRecorder, captured_wide_event
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
+
+TELEGRAM = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+)
 
 USER = AuthenticatedUser(user_id="507f1f77bcf86cd799439011", email="d@gaia.local")
 TODO_ID = "6ab51f1ba7a1fcf0f00ab49a"
@@ -93,6 +106,7 @@ class _Seams:
     enqueue: AsyncMock
     pool: MagicMock
     load_user: AsyncMock
+    target: AsyncMock
 
 
 @contextmanager
@@ -115,6 +129,7 @@ def _seams(
         enqueue=AsyncMock(),
         pool=MagicMock(),
         load_user=AsyncMock(return_value=JOB_USER),
+        target=AsyncMock(return_value=TELEGRAM),
     )
     stream_manager = MagicMock()
     stream_manager.is_cancelled = AsyncMock(return_value=False)
@@ -131,6 +146,7 @@ def _seams(
         patch.object(rd, "update_messages", seams.save_to_conversation),
         patch.object(trd, "narrate_executor_result", seams.narrate),
         patch.object(trd, "deliver_result_to_platforms", seams.send),
+        patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", seams.repo),
         patch.object(todo_activity, "append_activity", seams.activity),
         patch.object(trd, "capture", seams.capture),
@@ -153,10 +169,16 @@ def _no_backoff() -> AbstractContextManager[AsyncMock]:
 def _request() -> TodoRunRequest:
     return TodoRunRequest(
         user=USER,
-        todo_run=TodoRun(todo_id=TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO),
+        todo_run=TodoRun(todo_id=TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
         todo_title="Watch the staging deploy",
         task="Execute the following scheduled task: Watch the staging deploy",
         conversation_id="run-conv-1",
+        fresh_thread=False,
+        wake=TodoRunWake(
+            kind=TodoWakeKind.SCHEDULE,
+            trigger_names=[],
+            approval_summary=None,
+        ),
     )
 
 
@@ -178,6 +200,8 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert sent["user_id"] == USER.user_id
         assert (sent["user"].user_id, sent["user"].email) == (USER.user_id, USER.email)
         assert sent["origin"] == f'tracked todo "Watch the staging deploy" (id {TODO_ID})'
+        assert sent["target"] is TELEGRAM
+        seams.target.assert_awaited_once_with(USER.user_id)
         # Comms narrated the EXECUTOR's report, in the run's conversation, under
         # the todo's delivery rules.
         narrated_from, msg_type, conversation_id, user = seams.narrate.await_args.args
@@ -189,7 +213,11 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert user.user_id == USER.user_id
         assert seams.narrate.await_args.kwargs == {
             "preamble": tracked_todo_delivery_note(
-                "Watch the staging deploy", "- Tell me when a deploy fails.", None
+                "Watch the staging deploy",
+                "- Tell me when a deploy fails.",
+                None,
+                runs_once=True,
+                run_history=(),
             )
         }
         assert f"<{AgentTag.DELIVERY_INSTRUCTIONS}>" in seams.narrate.await_args.kwargs["preamble"]
@@ -205,12 +233,68 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
         assert seams.send.await_args.kwargs["notification_text"] == message
 
-    async def test_the_run_conversation_is_never_written(self) -> None:
-        """It has no transport and does not exist: a save there 404s and drops the result."""
-        with _seams(todo=_todo()) as seams:
+    @pytest.mark.regression
+    async def test_a_silence_tag_inside_the_message_never_reaches_the_chat_app(self) -> None:
+        """Live: a daily check-in wrote its recap and its silence in one bubble, and both were sent."""
+        message = "Alex still needs a reply; the inbox fix remains unpushed."
+        narrated = (
+            f"{message} <SILENCE>Pending actions already noted.</SILENCE>{NEW_MESSAGE_BREAKER}"
+        )
+        with _seams(todo=_todo(), narrated=narrated) as seams:
             await run_todo_on_executor(_request())
 
-        seams.save_to_conversation.assert_not_awaited()
+        assert seams.send.await_args.kwargs["notification_text"].strip() == message
+
+    async def test_the_executors_own_report_is_kept_in_the_todos_chat(self) -> None:
+        """Regression: the run's conversation was a throwaway, so nothing the run did was left to open."""
+        broadcast = AsyncMock()
+        with (
+            _seams(todo=_todo()) as seams,
+            patch.object(rd, "websocket_manager", MagicMock(broadcast_to_user=broadcast)),
+        ):
+            await run_todo_on_executor(_request())
+
+        (saved,) = seams.save_to_conversation.await_args.args
+        run = seams.execute.await_args.args[2]
+        assert saved.conversation_id == "run-conv-1"
+        (message,) = saved.messages
+        # The report itself, not comms' retelling: the chat is the record of the run.
+        assert (message.type, message.response, message.error) == ("bot", EXECUTOR_REPORT, None)
+        # Under the placeholder id the live stream rendered into, so it replaces it.
+        assert message.message_id == run.task_id
+        # Every run adds one, so the chat is capped at its newest messages.
+        assert seams.save_to_conversation.await_args.kwargs["max_messages"] == (
+            todo_constants.TODO_CONVERSATION_MAX_MESSAGES
+        )
+        user_id, event = broadcast.await_args.args
+        assert user_id == USER.user_id
+        assert event["type"] == "conversation.new_message"
+        assert event["conversation_id"] == "run-conv-1"
+        assert event["message"]["message_id"] == run.task_id
+        assert event["message"]["task_id"] == run.task_id
+        assert event["message"]["response"] == EXECUTOR_REPORT
+
+    async def test_a_failed_run_is_kept_in_the_todos_chat_as_its_error(self) -> None:
+        with (
+            _seams(
+                todo=_todo(), executor=_ExecutorResult("The calendar API was down.", "error")
+            ) as seams,
+            patch.object(rd, "websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
+            pytest.raises(TodoRunFailedError),
+        ):
+            await run_todo_on_executor(_request())
+
+        (message,) = seams.save_to_conversation.await_args.args[0].messages
+        assert (message.response, message.error) == ("", "The calendar API was down.")
+        seams.send.assert_not_awaited()
+
+    async def test_a_report_the_chat_cannot_keep_still_reaches_the_user(self) -> None:
+        """The record and the message are independent: losing one must not lose the other."""
+        with _seams(todo=_todo()) as seams:
+            seams.save_to_conversation.side_effect = RuntimeError("mongo is down")
+            await run_todo_on_executor(_request())
+
+        assert seams.send.await_args.kwargs["notification_text"] == NARRATED
 
     async def test_the_executor_runs_the_brief_itself_in_background_mode(self) -> None:
         with _seams(todo=_todo()) as seams:
@@ -224,13 +308,54 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert configurable["stream_id"] == run.stream_id
         # The todo's title stands in for the user's words for the approval judge.
         assert "Tracked todo: Watch the staging deploy" in configurable["user_messages"]
-        assert run.todo_run == TodoRun(todo_id=TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO)
+        assert run.todo_run == TodoRun(
+            todo_id=TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+        )
         assert (run.kind, run.conversation_id, run.user_message_id) == (
             RunKind.LIVE,
             "run-conv-1",
             None,
         )
         assert run.stream_id and run.task_id and run.t_dispatch_perf is not None
+
+    async def test_the_executor_opens_with_the_background_presence_note(self) -> None:
+        """The run's own configurable (background, no chat source) seeds the executor thread with it."""
+        await record_turn_presence(USER.user_id, ConversationSource.TELEGRAM)
+        with _seams(todo=_todo()) as seams:
+            await run_todo_on_executor(_request())
+        task, configurable, _run, _resume = seams.execute.await_args.args
+
+        with (
+            patch.object(
+                subagent_runner,
+                "assemble_context",
+                AsyncMock(
+                    return_value=AssembledContext(
+                        stable=SystemMessage(content="ctx"), volatile=None
+                    )
+                ),
+            ),
+            patch.object(
+                presence_note,
+                "resolve_proactive_target",
+                AsyncMock(return_value=InApp(reason="no_chat_app")),
+            ),
+        ):
+            messages = await subagent_runner.build_initial_messages(
+                system_message=SystemMessage(content="sys"),
+                agent_name="executor_agent",
+                task=task,
+                seed=subagent_runner.ThreadSeed(
+                    tier=AgentTier.EXECUTOR, configurable=configurable, user_id=USER.user_id
+                ),
+            )
+
+        (note,) = [m for m in messages if has_marker(m, PRESENCE_NOTE_MARKER)]
+        assert str(note.content).startswith(
+            "[User presence: this is a background run, so the user sees only what it sends them. "
+            "Last seen: Telegram at "
+        )
+        assert messages[messages.index(note) + 1].content == task
 
     async def test_the_run_holds_the_conversations_executor_lock_under_its_own_ids(self) -> None:
         live: list[bool] = []
@@ -274,7 +399,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
         entry = _activity(seams)
         assert entry.startswith("result sent on telegram (summary='Checked staging.")
-        assert seams.capture.call_args.args == (
+        seams.capture.assert_called_once_with(
             UserId(USER.user_id),
             TodosRunResultDelivered(
                 outcome="delivered",
@@ -282,6 +407,8 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
                 platform="telegram",
                 trigger_type=TriggerType.SCHEDULED_TODO.value,
                 recurring=False,
+                destination="chat_app",
+                destination_basis="recent_activity",
             ),
         )
 
@@ -472,6 +599,7 @@ def _undelivered() -> "trd.FinishedTodoRun":
         user_id=USER.user_id,
         conversation_id="run-conv-1",
         trigger_type=TriggerType.SCHEDULED_TODO,
+        runs_once=True,
         result_text=EXECUTOR_REPORT,
     )
 

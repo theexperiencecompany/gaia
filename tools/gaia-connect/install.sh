@@ -73,15 +73,19 @@ download() {
   fi
 }
 
-# Newest cli-v* tag. `releases/latest` is unusable here: the repo's releases mix
-# cli-v*, desktop-v* and other tags, so the newest release is often not a CLI
-# one. The API returns releases newest-first, so the first cli-v match wins.
+# Newest stable cli-v* tag. `releases/latest` is unusable here: the repo's
+# releases mix cli-v*, desktop-v* and other tags, so the newest release is often
+# not a CLI one. The API lists releases newest-first, each one's tag_name before
+# its prerelease flag, so the first cli-v tag not marked prerelease wins; a beta
+# installs only when GAIA_CONNECT_VERSION names it.
 latest_cli_tag() {
   tmp_json="$1"
   download "$RELEASES_API" "$tmp_json"
-  tag=$(grep -o '"tag_name"[[:space:]]*:[[:space:]]*"cli-v[^"]*"' "$tmp_json" \
-    | sed -e 's/.*"cli-v/cli-v/' -e 's/"$//' \
-    | head -n 1)
+  tag=$(grep -oE '"(tag_name"[[:space:]]*:[[:space:]]*"[^"]*"|prerelease"[[:space:]]*:[[:space:]]*[a-z]+)' "$tmp_json" \
+    | awk -F'"' '
+        $2 == "tag_name" { tag = $4; next }
+        $2 == "prerelease" && $3 ~ /false/ && tag ~ /^cli-v/ { print tag; exit }
+      ')
   [ -n "$tag" ] || error "No cli-v* release found on ${REPO}. Set GAIA_CONNECT_VERSION to pin one."
   echo "$tag"
 }

@@ -1,0 +1,41 @@
+# gaia-playbook-replay-failed — fires on the first playbook replay that stopped
+# partway in the last hour.
+#
+# gaia_playbook_replay_total{status} comes from app/services/workflow/playbook/metrics.py
+# on the worker's REGISTRY; success, suspect and failed each exist at 0 from import.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-playbook-replay-failed fires on the first failed replay
+    interval: 1m
+    input_series:
+      - series: 'gaia_playbook_replay_total{status="failed"}'
+        values: '0x20 1x10'
+      - series: 'gaia_playbook_replay_total{status="success"}'
+        values: '0+2x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: gaia-playbook-replay-failed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: arq_worker
+            exp_annotations:
+              description: >-
+                A stored playbook stopped at a step during replay (a tool error, a missing $steps field, a disconnected integration). The agent took over and delivered that fire, so the user got a result, but the workflow is now healing and costs a full agent run per fire. Find the workflow in the worker's wide events (playbook.reason=replay_stopped) and read the failure it logged.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-playbook-replay-failed
+
+  - name: gaia-playbook-replay-failed stays quiet on successful and suspect replays
+    interval: 1m
+    input_series:
+      - series: 'gaia_playbook_replay_total{status="failed"}'
+        values: '0x30'
+      - series: 'gaia_playbook_replay_total{status="success"}'
+        values: '0+2x30'
+      - series: 'gaia_playbook_replay_total{status="suspect"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-playbook-replay-failed
+        exp_alerts: []

@@ -16,6 +16,7 @@ not ours, so they are pinned here against the installed SDK too.
 
 import inspect
 
+from composio.core.models.auth_configs import AuthConfigs as AuthConfigsResource
 from composio.core.models.connected_accounts import (
     _TERMINAL_CONNECTION_STATES,
     ConnectedAccounts,
@@ -26,6 +27,14 @@ from composio.core.models.webhook_events import (
     WebhookEventType,
     is_connection_expired_event,
 )
+from composio_client.types import AuthConfigListParams
+from composio_client.types.auth_config_list_response import (
+    AuthConfigListResponse,
+    Item as AuthConfigItem,
+    ItemToolkit,
+)
+
+from app.constants.integrations import COMPOSIO_AUTH_CONFIG_PAGE_SIZE
 
 
 class TestConnectAccountSdkContract:
@@ -102,3 +111,23 @@ class TestConnectionExpiredEventContract:
 
     def test_the_event_name_literal_is_unchanged(self) -> None:
         assert WebhookEventType.CONNECTION_EXPIRED.value == "composio.connected_account.expired"
+
+
+class TestAuthConfigListingSdkContract:
+    """Auto-detection reads a project's auth configs; bind the call and fields against the SDK."""
+
+    def test_list_accepts_the_page_size_and_cursor_the_listing_passes(self) -> None:
+        bound = inspect.signature(AuthConfigsResource.list).bind(
+            None, limit=COMPOSIO_AUTH_CONFIG_PAGE_SIZE, cursor="page-2"
+        )
+
+        assert bound.arguments["query"] == {
+            "limit": COMPOSIO_AUTH_CONFIG_PAGE_SIZE,
+            "cursor": "page-2",
+        }
+        assert set(AuthConfigListParams.__annotations__) >= {"limit", "cursor"}
+
+    def test_an_item_carries_the_fields_detection_reads(self) -> None:
+        assert {"id", "name", "status", "toolkit"} <= set(AuthConfigItem.model_fields)
+        assert {"items", "next_cursor"} <= set(AuthConfigListResponse.model_fields)
+        assert "slug" in ItemToolkit.model_fields

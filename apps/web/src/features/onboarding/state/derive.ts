@@ -1,6 +1,6 @@
 import type { OnboardingData } from "@/features/auth/api/authApi";
 /**
- * Linear stage cursor over the fixed queue (Q1/Q2, payment, receipt, gift
+ * Linear stage cursor over the fixed queue (Q1/Q2 saved, payment, receipt, gift
  * invite, platform pick, chat handoff) — forward only, never sideways. `getStage` returns the
  * first stage not yet past; payment's "done" lives outside this state (true
  * when the backend reports the user subscribed). `isPaid` must be definitive —
@@ -64,7 +64,9 @@ export function draftFromServerPreferences(
 }
 
 export function getStage(s: OnboardingState, isPaid: boolean): Stage {
-  if (!isQuestionsComplete(s)) return "questions";
+  // The answers must be stored before the paywall: the link opener and the
+  // first conversation are composed from them server-side.
+  if (!isQuestionsComplete(s) || !s.preferencesPersisted) return "questions";
   if (!isPaid) return "payment";
   if (!s.paidRevealAcked) return "paidReveal";
   if (!s.inviteAcked) return "invite";

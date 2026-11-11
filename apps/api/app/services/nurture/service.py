@@ -23,6 +23,7 @@ from app.constants.nurture import (
     NURTURE_UTM_SOURCE,
     NurtureStep,
 )
+from app.constants.providers import CredentialProviderName
 from app.db.repositories.users import user_repository
 from app.models.nurture_models import NurtureHistoryEntry, NurtureState, NurtureStepStatus
 from app.models.user_models import UserDocument
@@ -30,6 +31,10 @@ from app.services.analytics_service import capture
 from app.services.email import EmailMessage, render_email_template, send_email
 from app.services.nurture.context_builders import CONTEXT_BUILDERS
 from app.services.nurture.predicates import SKIP_PREDICATES
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    resolve as resolve_resend_config,
+)
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
 from app.utils.timezone import as_utc, is_within_local_daytime
@@ -158,7 +163,11 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
 
 async def run_nurture_sequence() -> str:
     """Send due nurture emails to users whose local time is the send hour."""
-    if not settings.RESEND_API_KEY or not settings.EMAIL_UNSUBSCRIBE_SECRET:
+    # The delivery key resolves store-first (Settings → Resend) with an env
+    # fallback, mirroring the provider's own send-time resolution.
+    config: ProviderConfig | None = await resolve_resend_config(CredentialProviderName.RESEND)
+    resend_configured = bool(config and config.api_key)
+    if not resend_configured or not settings.EMAIL_UNSUBSCRIBE_SECRET:
         log.info(f"{LogTag.MAIL} Nurture run skipped: email delivery not configured")
         return "skipped: email not configured"
 

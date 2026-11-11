@@ -5,14 +5,15 @@ and how to fetch its text. Tier differences are rows in :data:SECTIONS
 rather than branches in five separate builders.
 
 The slot each section declares is correctness-critical: text depending on
-the current query/turn is volatile (MEMORY_RECALL, tail of system block);
-text that only changes on preference/integration edits is stable
-(DYNAMIC_STABLE, inside the cacheable prefix). Getting that backwards
+the current query/turn is volatile (MEMORY_RECALL, written into the thread
+with its turn); text that only changes on preference/integration edits is
+stable (DYNAMIC_STABLE, leading every request). Getting that backwards
 silently destroys the prompt cache.
 """
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import StrEnum
 
 from app.agents.context.fetchers import (
     build_active_todo_banner,
@@ -25,10 +26,10 @@ from app.agents.context.fetchers import (
     build_memory_recall_block,
     build_new_user_guidance_block,
     build_open_pendings_block,
-    build_provider_metadata_block,
     build_tracked_todos_block,
     build_workspace_session_banner,
 )
+from app.agents.context.live_work import build_browser_task_block, build_executor_status_block
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import (
@@ -40,25 +41,51 @@ from app.agents.context.text import (
     MULTI_ACCOUNT_INSTRUCTION,
 )
 from app.agents.context.tiers import ALL_TIERS, WORKER_TIERS, AgentTier
+from app.agents.prompts.user_instructions_prompts import render_user_instructions
 from app.agents.skills.discovery import get_available_skills_text
 from app.agents.workspace.skill_loader import target_to_subagent
 from app.agents.workspace.system_docs import integration_skills_block
-from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
-from app.services.integration_instructions_service import get_instructions
+from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
+from app.services.user_instructions_service import get_instructions
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
 from shared.py.wide_events import log
 
 SectionFetch = Callable[[SectionContext], Awaitable[str]]
 
 
+class SectionId(StrEnum):
+    """Every section, named once: the table declares by it and readers look a section up by it."""
+
+    PLATFORM_BANNER = "platform_banner"
+    EXECUTOR_PLATFORM = "executor_platform"
+    USER_IDENTITY = "user_identity"
+    USER_PREFS = "user_prefs"
+    GLOBAL_INSTRUCTIONS = "global_instructions"
+    NEW_USER_GUIDANCE = "new_user_guidance"
+    WORKSPACE_SESSION = "workspace_session"
+    INTEGRATIONS_MANIFEST = "integrations_manifest"
+    CONNECTED_DEVICES = "connected_devices"
+    SKILLS = "skills"
+    OPEN_PENDINGS = "open_pendings"
+    CORE_MEMORY = "core_memory"
+    AGENDA_ACTIVITY = "agenda_activity"
+    MEMORY_RECALL = "memory_recall"
+    GAIA_KNOWLEDGE = "gaia_knowledge"
+    TRACKED_TODOS = "tracked_todos"
+    EXECUTOR_STATUS = "executor_status"
+    BROWSER_TASK = "browser_task"
+    BG_BANNER = "bg_banner"
+    ACTIVE_TODO_BANNER = "active_todo_banner"
+
+
 @dataclass(frozen=True)
 class Section:
     """One declared piece of context."""
 
-    id: str
+    id: SectionId
     slot: PromptSlot
     applies_to: frozenset[AgentTier]
     #: Position within the slot. Sparse so a section can be inserted between two
@@ -162,35 +189,21 @@ async def _connected_devices(ctx: SectionContext) -> str:
     return await build_connected_devices_manifest(ctx.user_id, header=header)
 
 
-async def _provider_metadata(ctx: SectionContext) -> str:
-    return await build_provider_metadata_block(ctx.integration_id, ctx.user_id)
-
-
-async def _custom_instructions(ctx: SectionContext) -> str:
-    """Injected in full rather than as a read-on-demand pointer.
-
-    The point is that the subagent honours "focus on #eng" without an extra
-    file read.
-    """
-    target = ctx.integration_id or ctx.subagent_id
-    if not (target and ctx.user_id):
+async def _global_instructions(ctx: SectionContext) -> str:
+    if not ctx.user_id:
         return ""
     try:
-        content = await get_instructions(ctx.user_id, target)
+        content = await get_instructions(ctx.user_id, GLOBAL_INSTRUCTIONS_SCOPE)
     except Exception as e:
         log.warning(
-            f"{LogTag.AGENT} Failed to fetch custom instructions",
-            integration_id=target,
+            f"{LogTag.AGENT} Failed to fetch user instructions",
+            scope=GLOBAL_INSTRUCTIONS_SCOPE,
             user_id=ctx.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
         return ""
-    if not content:
-        return ""
-    integration = get_integration_by_id(target)
-    label = (integration.name if integration else target).upper()
-    return f"CUSTOM INSTRUCTIONS FOR {label} (set by the user, honor these):\n{content.strip()}"
+    return render_user_instructions(GLOBAL_INSTRUCTIONS_SCOPE, content) if content else ""
 
 
 async def _skills(ctx: SectionContext) -> str:
@@ -226,88 +239,118 @@ async def _skills(ctx: SectionContext) -> str:
 #: immediately before the conversation begins.
 SECTIONS: tuple[Section, ...] = (
     Section(
-        "platform_banner",
+        SectionId.PLATFORM_BANNER,
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.COMMS}),
         5,
         _platform_banner,
     ),
     Section(
-        "executor_platform",
+        SectionId.EXECUTOR_PLATFORM,
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.EXECUTOR}),
         5,
         _executor_platform,
     ),
-    Section("user_identity", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 10, _user_identity),
-    Section("user_prefs", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 20, _user_prefs),
+    Section(SectionId.USER_IDENTITY, PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 10, _user_identity),
+    Section(SectionId.USER_PREFS, PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 20, _user_prefs),
+    Section(
+        SectionId.GLOBAL_INSTRUCTIONS,
+        PromptSlot.DYNAMIC_STABLE,
+        ALL_TIERS,
+        22,
+        _global_instructions,
+    ),
     # Comms only: the executor never opens a conversation. Stable rather than
     # volatile since it's a pure function of signup answers plus a slow
     # counter, byte-identical until the user outgrows it.
     Section(
-        "new_user_guidance",
+        SectionId.NEW_USER_GUIDANCE,
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.COMMS}),
         25,
         build_new_user_guidance_block,
     ),
     Section(
-        "workspace_session",
+        SectionId.WORKSPACE_SESSION,
         PromptSlot.DYNAMIC_STABLE,
         WORKER_TIERS,
         30,
         build_workspace_session_banner,
     ),
     Section(
-        "integrations_manifest",
+        SectionId.INTEGRATIONS_MANIFEST,
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.COMMS, AgentTier.EXECUTOR}),
         40,
         _integrations_manifest,
     ),
     Section(
-        "connected_devices",
+        SectionId.CONNECTED_DEVICES,
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.COMMS, AgentTier.EXECUTOR}),
         45,
         _connected_devices,
     ),
-    Section(
-        "provider_metadata",
-        PromptSlot.DYNAMIC_STABLE,
-        frozenset({AgentTier.PROVIDER_SUBAGENT}),
-        50,
-        _provider_metadata,
-    ),
-    Section(
-        "custom_instructions",
-        PromptSlot.DYNAMIC_STABLE,
-        frozenset({AgentTier.PROVIDER_SUBAGENT}),
-        60,
-        _custom_instructions,
-    ),
     # Capability info, not retrieval: pure function of user + agent, Redis-
     # cached 12h (was re-read every worker call in the volatile slot). Same
     # once-per-change prefix-invalidation trade integrations_manifest makes.
-    Section("skills", PromptSlot.DYNAMIC_STABLE, WORKER_TIERS, 70, _skills),
+    Section(SectionId.SKILLS, PromptSlot.DYNAMIC_STABLE, WORKER_TIERS, 70, _skills),
     # Open approval pendings: ledger state that changes on user/agent decisions,
     # not per turn — same stability trade as integrations_manifest above.
     Section(
-        "open_pendings", PromptSlot.DYNAMIC_STABLE, WORKER_TIERS, 75, build_open_pendings_block
+        SectionId.OPEN_PENDINGS,
+        PromptSlot.DYNAMIC_STABLE,
+        WORKER_TIERS,
+        75,
+        build_open_pendings_block,
     ),
     # The memory core's documents, not the whole core: the agenda and the
     # activity journal are split off into their own volatile section, because
     # they are rewritten every turn and would otherwise churn the cached prefix.
-    Section("core_memory", PromptSlot.MEMORY_RECALL, ALL_TIERS, 5, build_core_memory_block),
+    Section(SectionId.CORE_MEMORY, PromptSlot.MEMORY_RECALL, ALL_TIERS, 5, build_core_memory_block),
     Section(
-        "agenda_activity", PromptSlot.MEMORY_RECALL, ALL_TIERS, 10, build_agenda_and_activity_block
+        SectionId.AGENDA_ACTIVITY,
+        PromptSlot.MEMORY_RECALL,
+        ALL_TIERS,
+        10,
+        build_agenda_and_activity_block,
     ),
-    Section("memory_recall", PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, build_memory_recall_block),
-    Section("gaia_knowledge", PromptSlot.MEMORY_RECALL, ALL_TIERS, 30, build_gaia_knowledge_block),
-    Section("tracked_todos", PromptSlot.MEMORY_RECALL, ALL_TIERS, 50, build_tracked_todos_block),
-    Section("bg_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 60, build_background_banner),
     Section(
-        "active_todo_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 70, build_active_todo_banner
+        SectionId.MEMORY_RECALL, PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, build_memory_recall_block
+    ),
+    Section(
+        SectionId.GAIA_KNOWLEDGE,
+        PromptSlot.MEMORY_RECALL,
+        ALL_TIERS,
+        30,
+        build_gaia_knowledge_block,
+    ),
+    Section(
+        SectionId.TRACKED_TODOS, PromptSlot.MEMORY_RECALL, ALL_TIERS, 50, build_tracked_todos_block
+    ),
+    # Live state of work running beside the chat, read once as the turn starts.
+    Section(
+        SectionId.EXECUTOR_STATUS,
+        PromptSlot.MEMORY_RECALL,
+        frozenset({AgentTier.COMMS}),
+        54,
+        build_executor_status_block,
+    ),
+    Section(
+        SectionId.BROWSER_TASK,
+        PromptSlot.MEMORY_RECALL,
+        frozenset({AgentTier.COMMS}),
+        56,
+        build_browser_task_block,
+    ),
+    Section(SectionId.BG_BANNER, PromptSlot.MEMORY_RECALL, ALL_TIERS, 60, build_background_banner),
+    Section(
+        SectionId.ACTIVE_TODO_BANNER,
+        PromptSlot.MEMORY_RECALL,
+        ALL_TIERS,
+        70,
+        build_active_todo_banner,
     ),
 )
 

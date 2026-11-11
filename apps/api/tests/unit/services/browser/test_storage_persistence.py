@@ -65,8 +65,9 @@ def _storage_state() -> dict:
 async def test_save_then_load_round_trips_encrypted(profiles: _Profiles) -> None:
     await save_storage_state("u1", "example.com", _storage_state())
     blob = profiles.blobs[("u1", "example.com")]
-    # At rest it's the encrypted blob, not the raw cookies.
-    assert "sid" not in blob
+    # At rest it's the encrypted blob, not the raw cookies. Quoted, because the
+    # bare letters turn up in random base64 ciphertext; a quote never does.
+    assert '"sid"' not in blob
 
     loaded = await load_storage_state("u1", "example.com")
     assert loaded["cookies"][0]["name"] == "sid"

@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 import pytest
 
-from app.agents.context.slots import TIME_CONTEXT_MARKER, mark as mark_message
+from app.agents.context.slots import (
+    PRESENCE_NOTE_MARKER,
+    TIME_CONTEXT_MARKER,
+    mark as mark_message,
+)
 from app.agents.core.nodes.memory_node import (
     MAX_TOOL_OUTPUT_SIZE,
     _check_worth_learning,
@@ -124,6 +128,14 @@ class TestFormatMessagesForUserMemory:
         raw_content = output[: -len("... [truncated]")]
         assert len(raw_content) == MAX_TOOL_OUTPUT_SIZE
 
+    def test_an_output_exactly_at_the_cap_is_kept_whole(self):
+        # The cap is a maximum, not a threshold: truncating at exactly the cap
+        # would append a marker to content that lost nothing.
+        exactly = "x" * MAX_TOOL_OUTPUT_SIZE
+        msgs = [ToolMessage(content=exactly, tool_call_id="tc1")]
+        formatted = _format_messages_for_user_memory(msgs)
+        assert formatted[0]["content"] == exactly
+
     def test_skips_system_messages(self):
         msgs = [SystemMessage(content="you are helpful")]
         formatted = _format_messages_for_user_memory(msgs)
@@ -145,6 +157,37 @@ class TestFormatMessagesForUserMemory:
         ]
         formatted = _format_messages_for_user_memory(msgs)
         assert formatted == [{"role": "user", "content": "my anniversary is October 19"}]
+
+
+def _surface_change_note() -> HumanMessage:
+    return mark_message(
+        HumanMessage(
+            content=(
+                "[Surface change: the user is now writing from Telegram. Their previous message "
+                "was on Web at 2026-10-24 16:55 UTC.]"
+            )
+        ),
+        PRESENCE_NOTE_MARKER,
+    )
+
+
+class TestThePresenceNoteIsNotTheUserSpeaking:
+    """GAIA's surface-change note rides the thread as a HumanMessage; memory must never learn from it."""
+
+    def test_the_note_never_reaches_the_extractor(self) -> None:
+        msgs = [_surface_change_note(), HumanMessage(content="my anniversary is October 19")]
+
+        formatted = _format_messages_for_user_memory(msgs)
+
+        assert formatted == [{"role": "user", "content": "my anniversary is October 19"}]
+
+    def test_a_trivial_turn_with_a_note_is_not_worth_learning(self) -> None:
+        worth, reason = _check_worth_learning(
+            [_surface_change_note(), HumanMessage(content="hi"), AIMessage(content="hello")]
+        )
+
+        assert worth is False
+        assert reason == "No substantive user message"
 
 
 class TestExtractTextContent:
@@ -973,3 +1016,27 @@ class TestWhatTheNodeSpawns:
             await memory_node(state, config, store)
 
         assert background.call_args.kwargs["user_name"] == "Sam"
+
+
+class TestConversationSummaryIsNotUserSpeech:
+    """Regression: the summary rides the thread as a HumanMessage and was read as the user's words.
+
+    It is GAIA-authored, so it must never count as user content nor be shown to
+    the extractor under the user role.
+    """
+
+    _summary = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\n- User lives in Berlin.",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+
+    def test_a_summary_alone_is_not_worth_learning(self) -> None:
+        worth, _ = _check_worth_learning([self._summary])
+        assert worth is False
+
+    def test_a_summary_is_never_labelled_as_the_user(self) -> None:
+        formatted = _format_messages_for_user_memory(
+            [self._summary, HumanMessage("hi there", id="h")]
+        )
+        assert [entry["role"] for entry in formatted] == ["gaia", "user"]

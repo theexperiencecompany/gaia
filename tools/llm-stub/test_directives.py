@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from directives import (
     CALL_EXECUTOR_TOOL,
     DEFAULT_REPLY,
-    SCRIPTED_CRITERIA,
+    SCRIPTED_HAND_OFF_ARGS,
     VERBATIM_REQUEST_HEADER,
     DirectiveError,
     FailDirective,
@@ -205,7 +205,7 @@ def test_nested_handoff_script_resolves_through_all_three_tiers():
     # comms: handoff is unbound, call_executor is -> forward the script verbatim.
     assert resolve_response([_user(script)], COMMS_TOOLS) == ToolCallResponse(
         name=CALL_EXECUTOR_TOOL,
-        args={"task": script, "acceptance_criteria": SCRIPTED_CRITERIA},
+        args={"task": script, **SCRIPTED_HAND_OFF_ARGS},
     )
     # executor: handoff is bound -> emit it, carrying the subagent's script intact.
     assert resolve_response([_user(script)], frozenset({"handoff"})) == ToolCallResponse(
@@ -327,7 +327,7 @@ def test_comms_forwards_executor_tool_via_call_executor():
     got = resolve_response([_user(script)], COMMS_TOOLS)
     assert got == ToolCallResponse(
         name=CALL_EXECUTOR_TOOL,
-        args={"task": script, "acceptance_criteria": SCRIPTED_CRITERIA},
+        args={"task": script, **SCRIPTED_HAND_OFF_ARGS},
     )
 
 

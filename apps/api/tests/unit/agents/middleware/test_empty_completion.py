@@ -22,6 +22,7 @@ from app.agents.middleware.empty_completion import (
     EmptyCompletionRetryMiddleware,
     is_empty_completion,
 )
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 
 EMPTY = AIMessage(content="")
@@ -70,6 +71,15 @@ class TestAnEmptyCompletionIsRetriedOnce:
     async def test_a_whitespace_only_reply_counts_as_empty(self):
         """Every renderer drops a whitespace body exactly like an empty one."""
         handler = _ScriptedHandler(WHITESPACE, ANSWER)
+
+        response = await EmptyCompletionRetryMiddleware().awrap_model_call(_request(), handler)
+
+        assert len(handler.requests) == 2
+        assert response.result == [ANSWER]
+
+    async def test_a_break_only_reply_counts_as_empty(self):
+        """Regression: 3,998 breaks and no words reached the user as the fallback apology, never retried."""
+        handler = _ScriptedHandler(AIMessage(content=NEW_MESSAGE_BREAKER * 3998), ANSWER)
 
         response = await EmptyCompletionRetryMiddleware().awrap_model_call(_request(), handler)
 

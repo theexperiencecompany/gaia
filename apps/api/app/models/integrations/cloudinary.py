@@ -9,3 +9,11 @@ class CloudinaryUploadResult(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     secure_url: str | None = None
+
+
+class CloudinaryDestroyResult(BaseModel):
+    """A Cloudinary destroy response; result is "ok" once the asset is gone."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    result: str | None = None

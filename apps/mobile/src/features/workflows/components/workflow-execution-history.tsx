@@ -40,6 +40,8 @@ function StatusIcon({ status }: { status: WorkflowExecution["status"] }) {
       <AppIcon icon={Loading03Icon} size={11} color={WORKFLOW_COLORS.primary} />
     );
   }
+  // A skipped run did nothing wrong: its chip and summary say why, as on web.
+  if (status === "skipped") return null;
   return (
     <AppIcon
       icon={AlertCircleIcon}

@@ -9,6 +9,10 @@ import stackprinter
 # custom tools 500 with "Missing user_id in auth_credentials" because the
 # CustomTool user_id-injection patch never loads here.
 from app.config.sentry import init_sentry
+from app.constants.delivery_alerts import (
+    RECORD_DELIVERY_FAILURE_TASK,
+    REFRESH_DELIVERY_INCIDENT_TASK,
+)
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
@@ -40,12 +44,17 @@ from app.workers.tasks import (
     promote_usage_badges,
     prune_checkpoint_versions,
     prune_inactive_sessions,
+    refresh_lab_sandboxes,
     regenerate_workflow_steps,
     run_nurture_sequence_task,
     sweep_abandoned_imessage_registrations,
     sweep_expired_memories,
     sweep_idle_sandboxes,
     sweep_undelivered_signup_emails,
+)
+from app.workers.tasks.delivery_alert_tasks import (
+    record_delivery_failure,
+    refresh_delivery_incident_task,
 )
 from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
@@ -99,6 +108,7 @@ _cleanup_stuck_personalization = arq_task(cleanup_stuck_personalization)
 _backfill_active_users = arq_task(backfill_active_users)
 _backfill_user_memories = arq_task(backfill_user_memories)
 _sweep_idle_sandboxes = arq_task(sweep_idle_sandboxes)
+_refresh_lab_sandboxes = arq_task(refresh_lab_sandboxes)
 _prune_inactive_sessions = arq_task(prune_inactive_sessions)
 _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
 # Named from the constant its per-occurrence job ids are built from.
@@ -145,6 +155,13 @@ _apply_banked_referral_months = func(
     name=APPLY_BANKED_MONTHS_TASK,
     keep_result=0,
 )
+# Named from the constants their producers enqueue by.
+_record_delivery_failure = func(
+    arq_task(record_delivery_failure), name=RECORD_DELIVERY_FAILURE_TASK
+)
+_refresh_delivery_incident = func(
+    arq_task(refresh_delivery_incident_task), name=REFRESH_DELIVERY_INCIDENT_TASK
+)
 
 # Every job on the default queue. Browser jobs have their own worker
 # (app.workers.browser_worker), started from the worker lifecycle.
@@ -162,6 +179,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _process_onboarding_intelligence_task,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
+    _refresh_lab_sandboxes,
     _prune_inactive_sessions,
     _prune_checkpoint_versions,
     _execute_tracked_todo,
@@ -181,6 +199,8 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _sync_paid_person_properties,
     _apply_banked_referral_months,
     _provision_inbox_desk,
+    _record_delivery_failure,
+    _refresh_delivery_incident,
 ]
 WorkerSettings.functions = TASK_FUNCTIONS
 
@@ -222,6 +242,13 @@ WorkerSettings.cron_jobs = [
     cron(
         cast(WorkerCoroutine, _sweep_idle_sandboxes),
         minute=0,  # Hourly
+        second=0,
+    ),
+    # Keep-warm for AGENT_LAB users: saves the agents' home and renews the
+    # sandbox before E2B's lifetime cap ends it (see SANDBOX_LAB_RENEW_WHEN_SECONDS_LEFT).
+    cron(
+        cast(WorkerCoroutine, _refresh_lab_sandboxes),
+        minute={0, 10, 20, 30, 40, 50},
         second=0,
     ),
     # Hourly, off the top of the hour so it does not pile onto the other sweeps.

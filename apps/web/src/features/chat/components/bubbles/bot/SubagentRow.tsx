@@ -77,8 +77,6 @@ function ThinkingStepRow({
 }
 
 interface StepCallbacks {
-  getIconUrl: (c: ToolCallEntry) => string | undefined;
-  getIntegrationName: (c: ToolCallEntry) => string | undefined;
   /** tool_call_ids blocked on a pending HIL approval. */
   pendingApprovalToolCallIds: Set<string>;
   /** Settled HIL outcomes (status + receipt/feedback) keyed by tool_call_id. */

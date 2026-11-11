@@ -97,10 +97,12 @@ def release(tmp_path: Path) -> Path:
     (tmp_path / "release" / "releases.json").write_text(
         json.dumps(
             [
-                {"tag_name": "desktop-v9.9.9"},
-                {"tag_name": CLI_TAG},
-                {"tag_name": "cli-v0.5.0"},
-            ]
+                {"tag_name": "desktop-v9.9.9", "prerelease": False},
+                {"tag_name": "cli-v0.7.0-beta.1", "prerelease": True},
+                {"tag_name": CLI_TAG, "prerelease": False},
+                {"tag_name": "cli-v0.5.0", "prerelease": False},
+            ],
+            indent=2,
         )
     )
     return tmp_path / "release"
@@ -153,14 +155,14 @@ def _installed(home: Path) -> list[Path]:
     return sorted((home / ".gaia" / "bin").glob("*"))
 
 
-def test_darwin_arm64_installs_and_runs_with_args(run) -> None:
+def test_darwin_arm64_installs_and_runs_with_args(run: _Installer) -> None:
     result = run("--token", "CODE", "--api", "http://localhost:8510")
     assert result.returncode == 0, result.stderr
     assert "gaia-connect-ran: --token CODE --api http://localhost:8510" in result.stdout
     assert _installed(run.home) == [run.home / ".gaia" / "bin" / "gaia-connect-0.6.0"]
 
 
-def test_linux_amd64_picks_the_amd64_asset(run, release: Path) -> None:
+def test_linux_amd64_picks_the_amd64_asset(run: _Installer, release: Path) -> None:
     # Distinguish the asset actually used by giving this one a unique payload.
     asset = release / CLI_TAG / "gaia-connect-linux-amd64"
     _write_exec(asset, '#!/usr/bin/env bash\necho "linux-amd64 binary"\n')
@@ -181,7 +183,7 @@ def test_linux_amd64_picks_the_amd64_asset(run, release: Path) -> None:
     assert "linux-amd64 binary" in result.stdout
 
 
-def test_newest_cli_tag_wins_over_a_newer_desktop_tag(run) -> None:
+def test_newest_cli_tag_wins_over_a_newer_desktop_tag(run: _Installer) -> None:
     result = run()
     assert result.returncode == 0, result.stderr
     # 9.9.9 is newer but is a desktop release; 0.5.0 is an older cli release.
@@ -189,14 +191,30 @@ def test_newest_cli_tag_wins_over_a_newer_desktop_tag(run) -> None:
     assert not (run.home / ".gaia" / "bin" / "gaia-connect-9.9.9").exists()
 
 
-def test_version_env_pins_the_tag(run, release: Path) -> None:
+def test_a_newer_beta_cli_release_is_skipped(run: _Installer, release: Path) -> None:
+    shutil.copytree(release / CLI_TAG, release / "cli-v0.7.0-beta.1")
+    result = run()
+    assert result.returncode == 0, result.stderr
+    assert _installed(run.home) == [run.home / ".gaia" / "bin" / "gaia-connect-0.6.0"]
+
+
+def test_version_env_pins_a_beta(run: _Installer, release: Path) -> None:
+    shutil.copytree(release / CLI_TAG, release / "cli-v0.7.0-beta.1")
+    result = run(env={"GAIA_CONNECT_VERSION": "0.7.0-beta.1"})
+    assert result.returncode == 0, result.stderr
+    assert _installed(run.home) == [run.home / ".gaia" / "bin" / "gaia-connect-0.7.0-beta.1"]
+
+
+def test_version_env_pins_the_tag(run: _Installer, release: Path) -> None:
     shutil.copytree(release / CLI_TAG, release / "cli-v0.5.0")
     result = run(env={"GAIA_CONNECT_VERSION": "0.5.0"})
     assert result.returncode == 0, result.stderr
     assert (run.home / ".gaia" / "bin" / "gaia-connect-0.5.0").exists()
 
 
-def test_tampered_binary_is_rejected_and_nothing_is_installed(run, release: Path) -> None:
+def test_tampered_binary_is_rejected_and_nothing_is_installed(
+    run: _Installer, release: Path
+) -> None:
     _write_exec(
         release / CLI_TAG / "gaia-connect-darwin-arm64",
         '#!/usr/bin/env bash\necho "PWNED"\n',
@@ -208,13 +226,13 @@ def test_tampered_binary_is_rejected_and_nothing_is_installed(run, release: Path
     assert not (run.home / ".gaia" / "bin").exists()
 
 
-def test_windows_points_at_the_npx_path(run) -> None:
+def test_windows_points_at_the_npx_path(run: _Installer) -> None:
     result = run(uname_s="MINGW64_NT-10.0", uname_m="x86_64")
     assert result.returncode != 0
     assert "npx @heygaia/cli connect" in result.stderr
 
 
-def test_unsupported_arch_names_the_supported_targets(run) -> None:
+def test_unsupported_arch_names_the_supported_targets(run: _Installer) -> None:
     result = run(uname_s="Linux", uname_m="riscv64")
     assert result.returncode != 0
     assert "not available for linux/unknown" in result.stderr

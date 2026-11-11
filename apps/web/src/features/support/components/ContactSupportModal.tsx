@@ -13,6 +13,7 @@ import { Select, SelectItem } from "@heroui/select";
 import { Cancel01Icon, Upload01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { toast } from "@/lib/toast";
 
 import {
@@ -22,6 +23,7 @@ import {
   SUPPORT_REQUEST_TYPES,
 } from "../constants/supportConstants";
 import { useContactSupport } from "../hooks/useContactSupport";
+import { SelfHostedSupportNotice } from "./SelfHostedSupportNotice";
 
 const validateFile = (file: File): boolean => {
   // Check file type - only images allowed
@@ -93,7 +95,39 @@ interface ContactSupportModalProps {
   };
 }
 
-export default function ContactSupportModal({
+export default function ContactSupportModal(props: ContactSupportModalProps) {
+  return useDeployment().gaia_support ? (
+    <SupportRequestModal {...props} />
+  ) : (
+    <SelfHostedSupportModal
+      isOpen={props.isOpen}
+      onOpenChange={props.onOpenChange}
+    />
+  );
+}
+
+function SelfHostedSupportModal({
+  isOpen,
+  onOpenChange,
+}: Pick<ContactSupportModalProps, "isOpen" | "onOpenChange">) {
+  return (
+    <Modal isOpen={isOpen} onOpenChange={onOpenChange} backdrop="blur">
+      <ModalContent>
+        <ModalHeader>Get in Touch</ModalHeader>
+        <ModalBody>
+          <SelfHostedSupportNotice />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="light" onPress={onOpenChange}>
+            Close
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function SupportRequestModal({
   isOpen,
   onOpenChange,
   initialValues,

@@ -10,23 +10,12 @@ name: Desktop PR Build
 # Linux and is shared as an artifact; each OS then only installs deps and
 # packages (electron-builder --dir, no installer). macOS additionally ad-hoc
 # signs and verifies the bundle seal.
+#
+# Tiered: a PR push packages Linux only; the merge queue (and a dispatch)
+# packages every OS. ci.yml calls it whenever nx says desktop:build (which
+# depends on web and shared-typescript) or this workflow is affected.
 on:
-  pull_request:
-    paths:
-      # Desktop app, the shared TS lib it bundles, and this workflow. Web is
-      # intentionally excluded (high churn, its own gates) — desktop-specific
-      # regressions live in these paths.
-      - "apps/desktop/**"
-      - "libs/shared/ts/**"
-      # Generated API types are `export type` only: erased at compile time, so
-      # they cannot change a packaged binary, and every API model edit touches them.
-      - "!libs/shared/ts/src/api/generated/**"
-      - ".github/workflows/desktop-pr-build.yml"
-  workflow_dispatch:
-
-concurrency:
-  group: desktop-pr-build-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 env:
   NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
@@ -86,7 +75,8 @@ jobs:
           overwrite: true
 
   # ---------------------------------------------------------------------------
-  # Package the app on each OS (no installer) to prove it builds + links.
+  # Package the app (no installer) to prove it builds + links: Linux on a PR,
+  # every OS in the merge queue.
   # ---------------------------------------------------------------------------
   package:
     name: Package desktop (${{ matrix.target }})
@@ -94,21 +84,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            target: mac
-          - os: windows-latest
-            target: win
-          - os: ubuntu-latest
-            target: linux
-    runs-on: ${{ matrix.os }}
+        # mac is out while GitHub's hosted macOS arm64 pool cannot acquire runners (2026-11-04); desktop-release.yml still packages mac
+        target: ${{ fromJSON(github.event_name == 'pull_request' && '["linux"]' || '["win", "linux"]') }}
+    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'win' && 'windows-latest' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Download packaging payload
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: desktop-payload
       - name: Unpack payload (restores apps/desktop/out + .next-server-prepared)
@@ -163,7 +148,25 @@ jobs:
       - name: Verify macOS code-signing seal
         if: matrix.target == 'mac'
         run: |
-          APP=$(find apps/desktop/release -name 'GAIA.app' -type d | head -1)
+          APP=$(find apps/desktop/release -name 'GAIA.app' -type d -print -quit)
           echo "Verifying $APP"
           codesign --verify --deep --strict --verbose=1 "$APP"
           echo "macOS bundle seal is valid"
+
+  # One verdict for ci.yml's gate, from Linux: the composite runs python3,
+  # which the Windows leg does not promise.
+  verdict:
+    name: Desktop build verdict
+    needs: [prepare, package]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Upload the verdict
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ (needs.prepare.result == 'success' && needs.package.result == 'success') && 'success' || (contains(needs.*.result, 'cancelled') && 'cancelled' || 'failure') }}
+          name: desktop-build

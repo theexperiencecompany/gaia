@@ -4,7 +4,7 @@
 # being broken. Output: per-module verdict + survivor list.
 #
 # Usage:  bash scripts/test/mutation-sweep.sh [parallelism] [max-modules]
-#   parallelism  - concurrent mutation.sh invocations (default 4)
+#   parallelism  - concurrent mutation.py invocations (default 4)
 #   max-modules  - optional cap for a bounded first run
 #
 # A CPU/memory sampler runs alongside and writes scripts/test/.sweep-stats.log
@@ -139,7 +139,7 @@ COUNT=0
 while read -r module testfiles; do
   COUNT=$((COUNT + 1))
   SLUG="$(echo "$module" | tr '/' '_')"
-  bash "$REPO_ROOT/scripts/ci/mutation.sh" module "$module" "$testfiles" > "$OUT_DIR/$SLUG.log" 2>&1 &
+  python3 "$REPO_ROOT/scripts/ci/mutation.py" module "$module" "$testfiles" > "$OUT_DIR/$SLUG.log" 2>&1 &
   if [ "$(jobs -r -p | wc -l)" -ge "$PARALLEL" ]; then
     wait -n || true
   fi

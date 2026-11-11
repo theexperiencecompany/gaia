@@ -10,6 +10,7 @@ import {
   type NotificationPlatform,
 } from "@/features/notification/constants";
 import { ChatChannelSettings } from "@/features/settings/components/ChatChannelSettings";
+import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -74,6 +75,7 @@ export default function NotificationSettings() {
 
   return (
     <SettingsPage>
+      <QuietHoursSettings />
       {!loading && <ChatChannelSettings linkedPlatforms={linkedPlatforms} />}
       <SettingsSection description="Choose where to receive GAIA notifications.">
         {NOTIFICATION_PLATFORMS.map((platform) => {

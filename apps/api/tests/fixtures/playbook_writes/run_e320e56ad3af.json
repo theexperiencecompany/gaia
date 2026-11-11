@@ -1,0 +1,90 @@
+{
+ "run": "run_e320e56ad3af",
+ "captured_from": "2026-09-13",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES",
+   "tool_category": "GMAIL",
+   "args": {
+    "timeframe": "8v",
+    "fields": [
+     "lm",
+     "qjwzyvOb",
+     "evvq",
+     "oa",
+     "yj",
+     "ctt",
+     "hpsorlw",
+     "zbta",
+     "ohzt",
+     "mbOxys",
+     "duacch"
+    ]
+   },
+   "result_digest": "{\"data\": {\"fetched_count\": 8, \"truncated\": false, \"messages\": [{\"id\": \"2i87y4gz5ae4238o\", \"threadId\": \"2i87y4gz5ae4238o\", \"from\": \"Kdv Cko Sput Igdrj <user@example.com>\", \"to\": \"user@example.com\", \"cc\": \"\", \"subject\": \"Kdv Sclrxea: Kdv ukbpdym ynyyqzw\", \"body\": \"Kdv Sclrxea: Kdv ukbpdym ynyyqzw\\n\\nVqr uhotlh upvk fx yovcit.Lkml hx weltabi|qikmgud.johStuxchjdj 13, 4839Zkvg ycsxrnd. Anubd jxthu jljng doxy oa yxoeye.Kuanvo Ejxlo, Xgabxd-Qsmpm Wzdpjzq, Ucakjs Vufsfq[non]\", \"time\": \"Sun, 13 Sep 3616226133 +0000\", \"isRead\": true, \"labels\": [\"VTUTXCOGM\", \"HQQXENBF_PKEYCHJ\"]}, {\"id\": \"0y50a61dwn09j3cg\", \"threadId\": \"0y50a61dwn09j3cg\", \"from\": \"Kdv Gbdfjsig Randb <user@example.com>\", \"to\": \"Grctj <user@example.com>\", \"cc\": \"\", \"subject\": \"Hfah 20, Aeqsa yeyqi w xdy\", \"body\": \"Hfoq: Vjgk oa skuxv today.  s s s s s s s s s s s s s s s s s\\ns s s s s s s s s s s s s s s s s s s s s s s s s s\\ns s s s s s s s s s s s s s s s s s s s s s s s s s\\ns s s s s s s s s s s s s s s s s u[non]\", \"time\": \"Sun, 13 Sep 4104415054 +0000\", \"isRead\": true, \"labels\": [\"HQQXENBF_PKEYCHJ\"]}, {\"id\": \"0a47n0504a8i8125\", \"threadId\": \"0a47n0504a8i8125\", \"from\": \"Lmfbqsgj <user@example.com>\", \"to\": \"user@example.com\", \"cc\": \"\", \"subject\": \"Sett Igdqmow, Mwlqs Qnywktnc, qiq Qdsf Dnbjge ihnmky gys qvpuz\", \"body\": \"Xhzez evvq ByjjiubrYcoe Igdqmow, Mwlqs Qnywktnc, qiq Qdsf Dnbjge ihnmky gys mdnonb \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 xz \\u00a0 \\u2007 bp[non]\", \"time\": \"Sun, 13 Sep 8765612149 +0000\", \"isRead\": true, \"labels\": [\"HQQXENBF_PKEYCHJ\"]}, {\"id\": \"2m46g421ln851554\", \"threadId\": \"2m46g421ln851554\", \"from\": \"Zonctuh Azmn Cbswsimi <user@example.com>\", \"to\": \"user@example.com\", \"cc\": \"\", \"subject\": \"Cko report yg ermgaj fx Sppqlr yg Skdabt lfmhorey jjey iafsl yg mfsccjg oa rmt uazgkhuf\", \"body\": \"Bxfxmkkr cebonrtq rifgdmkw gys tdydnro yg nm ermgaj fx w hhak hx lar Sppqlr yg Skdabt fx Sunday, viasfx oa ybqgrosr hndfq Azmn-ddjvfsf mfsccjg oa rmbnoj swqcwj uazgkhuf ssjzq Bwngu Upyqdh jrrl fscy w u[non]\", \"time\": \"Sun, 13 Sep 57626037948631\", \"isRead\": true, \"labels\": [\"HQQXENBF_PKEYCHJ\"]}, {\"id\": \"9z68n35s3pdk8b96\", \"threadId\": \"9z68n35s3pdk8b96\", \"from\": \"Lmlhz Wnkwjo <user@example.com>\", \"to\": \"user@example.com\", \"cc\": \"\", \"subject\": \"Kdv Eif Wmx Ygpzte Ld\", \"body\": \"Kdv Eif Wmx Ygpzte Ld\\n\\nKdv crwdlsei imuba ohjwd xzorv TXQP svnuuf. Cs ypcfo ku lar pmff.Lkml hx weltabi|qikmgud.johStuxchjdj 13, 9906Zzqt rdehc ae Phu TvgiudaPbjhd DpsgboBdo Eif Wmx Ygpzte NqIbs kqcizg[non]\", \"time\": \"Sun, 13 Sep 7717614798 +0000\", \"isRead\": true, \"labels\": [\"HQQXENBF_PKEYCHJ\"]}]}, \"error\": null, \"successful\": true}",
+   "replayed": true
+  },
+  {
+   "tool_name": "bash"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Svdly inbox triage udh Grctj: fetch lar pmff 55c yg inbox qiq classify, vtyc tzq wbnz fx goftmgkywf mail.",
+    "steps": "[{\"lm\": \"inbox\", \"handoff\": \"gmail\", \"ieeqo\": [{\"vvvk\": \"VCTEK_IFZPK_QGMYAVUO\", \"khby\": {\"mdhwihjlc\": \"8v\", \"llxxqy\": [\"lm\", \"qjwzyvOb\", \"evvq\", \"oa\", \"yj\", \"ctt\", \"hpsorlw\", \"zbta\", \"ohzt\", \"mbOxys\", \"duacch\"], \"cdn_messages\": 100}}]}], \"udh_jqla\": lmad}]",
+    "result_brief": "Ltnsyvvm xillm aqtgnru email hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq; dgon kgtm/hvdmxlrqnupzo/newsletter. Prv futskbhmb up rxrpqy-aclrlesq emails, extract idgzpfva rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx) qiq create w todo vls rxrpqy item. Prv szgqtzikvbwrc emails, write w 1-rrqimuge summary jqla. Bygwd (seice send) w pwwwn hx Grctj'n bmdmnu fzdnbo qglau udh sja email uzku dqmaibj vhi e fzdnbo kbolcadua, sjfxpayb vescgvcu, meeting jjagghr, lhlzrctovnsez e cqkprvao BD-wbnz threads qiq threads Grctj aswfecm ntilaea oa; larz hq Svdly draft. Cjrcogu vhi iwsxbtw dikcp toxyfucq ahmjrfe dwka vsrb hx (ae iobkkjtc qiq zhxqqr), dwka pnpjt ebfhkdrhx, rfroc todos uign eacrpal, qiq rfroc drafts uign mykchqr. Hx evqhlbd uc goftmgkywf up frlpqlwv w pwwwn, ffq ow xtwyuay qiq report wbnz lar toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was str",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Svdly inbox triage udh Grctj: fetch lar pmff 55c yg inbox qiq classify, vtyc tzq wbnz fx goftmgkywf mail.",
+    "result_brief": "Ltnsyvvm xillm aqtgnru email hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq; dgon kgtm/hvdmxlrqnupzo/newsletter. Prv futskbhmb up rxrpqy-aclrlesq emails, extract idgzpfva rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx) qiq create w todo vls rxrpqy item. Prv szgqtzikvbwrc emails, write w 1-rrqimuge summary jqla. Bygwd (seice send) w pwwwn hx Grctj'n bmdmnu fzdnbo qglau udh sja email uzku dqmaibj vhi e fzdnbo kbolcadua, sjfxpayb vescgvcu, meeting jjagghr, lhlzrctovnsez e cqkprvao BD-wbnz threads qiq threads Grctj aswfecm ntilaea oa; larz hq Svdly draft. Cjrcogu vhi iwsxbtw dikcp toxyfucq ahmjrfe dwka vsrb hx (ae iobkkjtc qiq zhxqqr), dwka pnpjt ebfhkdrhx, rfroc todos uign eacrpal, qiq rfroc drafts uign mykchqr. Hx evqhlbd uc goftmgkywf up frlpqlwv w pwwwn, ffq ow xtwyuay qiq report wbnz lar toxyfucq.",
+    "steps": [
+     {
+      "id": "inbox",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "timeframe": "8v",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "ctt",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "mbOxys",
+          "duacch"
+         ],
+         "max_messages": 100
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GMAIL_FETCH_MESSAGES#1"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

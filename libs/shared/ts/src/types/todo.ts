@@ -14,7 +14,7 @@ export type {
   SubscriptionCondition,
   TodoCounts,
   TodoListResponse,
-  TriggerSubscription,
+  TriggerSubscriptionView,
 } from "../api/generated";
 
 export type Priority = PriorityLiteral;

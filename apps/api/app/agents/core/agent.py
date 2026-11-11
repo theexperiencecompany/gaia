@@ -8,7 +8,7 @@ Both share _core_agent_logic() for common setup (messages, graph, config).
 
 import asyncio
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from typing import Any, Literal, cast
 from uuid import uuid4
@@ -32,11 +32,7 @@ from app.agents.core.messages import (
 from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
-from app.constants.agents import (
-    PLAYBOOK_FALLBACK_CONTEXT_KEY,
-    PLAYBOOK_REPLAYED_CALLS_KEY,
-    WORKFLOW_LOCK_CONTEXT_KEY,
-)
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
@@ -49,6 +45,7 @@ from app.helpers.agent_helpers import (
     build_initial_state,
     execute_graph_silent,
     execute_graph_streaming,
+    opens_thread,
     recent_user_messages,
 )
 from app.models.agent_models import (
@@ -61,9 +58,11 @@ from app.models.agent_models import (
     read_agent_configurable,
 )
 from app.models.message_models import MessageRequestWithHistory
+from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.chat.state import aggregate_usage_metadata
+from app.services.delivery.presence import read_presence
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.wide_events import log
@@ -91,9 +90,6 @@ class _AgentTriggerContext(BaseModel):
     playbook_fallback: str | None = Field(
         default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
     )
-    playbook_replayed_calls: list[dict[str, object]] | None = Field(
-        default=None, validation_alias=PLAYBOOK_REPLAYED_CALLS_KEY
-    )
     executor_lock_reservation: str | None = Field(
         default=None, validation_alias=WORKFLOW_LOCK_CONTEXT_KEY
     )
@@ -105,14 +101,19 @@ class AgentRunOptions:
 
     trigger_context is the workflow/todo/trigger data of a background run;
     usage_metadata_callback collects token usage; source names the
-    surface the turn came from; the two langfuse_* fields seed the trace.
+    surface the turn came from; presence is where the user was before this
+    turn; the two langfuse_* fields seed the trace.
     """
 
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None
     trigger_context: dict[str, Any] | None = None
     source: str | None = None
+    presence: PresenceSnapshot | None = None
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
+    #: The tracked todo whose own chat an interactive turn is in, so the turn knows
+    #: which todo "this" is; a background run names its todo in trigger_context.
+    active_todo_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -150,14 +151,19 @@ async def _core_agent_logic(
     user_id = user.user_id
 
     # Extract active todo binding + execution mode from trigger_context (scheduled
-    # runs set these; interactive turns leave them unset / "interactive").
+    # runs set these; an interactive turn binds a todo only inside that todo's chat).
     trigger = _AgentTriggerContext.model_validate(trigger_context or {})
-    active_todo_id: str | None = None
+    active_todo_id: str | None = options.active_todo_id
     execution_mode: ExecutionMode = "interactive"
     if trigger_context:
         active_todo_id = trigger.active_todo_id or trigger.todo_id
         if trigger.execution_mode == "background":
             execution_mode = "background"
+
+    # Read once here, not left to build_agent_config: the comms context below
+    # renders it too, and a workflow fire arrives without one. A voice call
+    # captures none either; note_is_due keeps its turns noteless by entry surface.
+    presence = options.presence or (await read_presence(user_id) if user_id else None)
 
     # Build langchain messages and get graph concurrently
     history, graph = await asyncio.gather(
@@ -171,6 +177,8 @@ async def _core_agent_logic(
                 source=source,
                 active_todo_id=active_todo_id,
                 execution_mode=execution_mode,
+                presence=presence,
+                opens_thread=opens_thread(request.messages, request.message),
             ),
             attachments=MessageAttachments(
                 selected_tool=request.selectedTool,
@@ -178,8 +186,7 @@ async def _core_agent_logic(
                 selected_workflow=request.selectedWorkflow,
                 selected_calendar_event=request.selectedCalendarEvent,
                 reply_to_message=request.replyToMessage,
-                files_data=request.fileData,
-                currently_uploaded_file_ids=request.fileIds,
+                currently_uploaded_file_ids=request.uploaded_file_ids,
                 trigger_context=trigger_context,
             ),
         ),
@@ -194,7 +201,7 @@ async def _core_agent_logic(
     # plan routing inside resolve_lane. Never reached in production.
     dev_option = (
         dev_option_for(request.comms_model, request.use_default_models)
-        if settings.ENV == "development"
+        if settings.deployment.dev_tools
         else None
     )
 
@@ -229,6 +236,7 @@ async def _core_agent_logic(
             user_preferences=user_preferences,
             writing_style=writing_style,
             workflow_id=trigger.workflow_id,
+            presence=presence,
         ),
         tracing=AgentTracing(
             usage_metadata_callback=usage_metadata_callback,
@@ -245,7 +253,7 @@ async def _core_agent_logic(
     # DEV-ONLY: the executor builds its own configurable and would otherwise
     # inherit comms's lane, so the executor's own dev choice rides down here and
     # prepare_executor_execution resolves it into that run's lane.
-    if settings.ENV == "development" and (
+    if settings.deployment.dev_tools and (
         executor_dev := dev_model_id(request.executor_model, request.use_default_models)
     ):
         configurable["dev_executor_model"] = executor_dev
@@ -258,7 +266,6 @@ async def _core_agent_logic(
         configurable["workflow_title"] = trigger.workflow_title
         configurable["workflow_notify_on_completion"] = trigger.workflow_notify_on_completion
         configurable["playbook_fallback"] = trigger.playbook_fallback
-        configurable["playbook_replayed_calls"] = trigger.playbook_replayed_calls
         configurable["executor_lock_reservation"] = trigger.executor_lock_reservation
 
     log.set(
@@ -312,9 +319,10 @@ async def call_agent(
                 request,
                 conversation_id,
                 user,
-                AgentRunOptions(
-                    usage_metadata_callback=options.usage_metadata_callback,
-                    source=options.source,
+                # The caller's options whole, only the trace stamped here: a field
+                # copied over by hand is a field a new option silently loses.
+                replace(
+                    options,
                     langfuse_trace_id=(
                         trace_id_for_message(ids.bot_message_id) if ids.bot_message_id else None
                     ),
@@ -358,17 +366,19 @@ async def call_agent_silent(
     conversation_id: str,
     user: AuthenticatedUser,
     options: AgentRunOptions | None = None,
+    stream_id: str | None = None,
 ) -> SilentRunResult:
     """Execute agent in silent mode for background processing.
 
     Comms may delegate to a detached background executor; this waits for it
     and merges its tool_data so background/workflow runs render like live
     chat, or carries the queued task_id if delegation was queued instead.
+    stream_id keys the run record; a caller that seeded one passes its id.
     """
     options = options or AgentRunOptions()
     usage_metadata_callback = options.usage_metadata_callback
 
-    stream_id = str(uuid4())
+    stream_id = stream_id or str(uuid4())
     try:
         with agent_run_lifecycle(
             user.user_id, _run_started(conversation_id, "background", options)
@@ -381,6 +391,7 @@ async def call_agent_silent(
                     usage_metadata_callback=usage_metadata_callback,
                     trigger_context=options.trigger_context,
                     source=options.source,
+                    presence=options.presence,
                 ),
             )
 
@@ -412,6 +423,7 @@ async def call_agent_silent(
             return SilentRunResult(
                 message=complete_message,
                 tool_data=tool_data,
+                stream_id=stream_id,
             )
 
     except Exception as exc:

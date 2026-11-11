@@ -5,18 +5,16 @@ The proxy attaches the user's OAuth token server-side; tools only need
 user_id from auth_credentials.
 """
 
+from collections import Counter
 from collections.abc import Sequence
 import datetime
-import json
-import math
+from http import HTTPStatus
 import re
 import time
-from typing import NotRequired, TypedDict
-import uuid
+from typing import NamedTuple
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
-from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from app.agents.templates.mail_templates import (
@@ -24,16 +22,12 @@ from app.agents.templates.mail_templates import (
     message_view_needs_body,
     project_message_view,
 )
-from app.agents.workspace.offload import OffloadInfo
 from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
-from app.constants.offload import OFFLOAD_RESULT_KEY
-from app.models.agent_models import (
-    current_run_config,
-    current_stream_writer,
-    read_agent_configurable,
-)
+from app.constants.offload import OFFLOAD_MIN_MESSAGES
+from app.models.agent_config import read_agent_configurable
+from app.models.agent_models import current_run_config, current_stream_writer
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
@@ -44,46 +38,40 @@ from app.models.composio_schemas.gmail import (
     GmailContextSnapshot,
     GmailFetchInlineResult,
     GmailFetchPartialResult,
+    GmailFetchThreadInlineResult,
     GmailFetchThreadResult,
     GmailLabelCounts,
     GmailLabelDetail,
     GmailMessagesListResponse,
     GmailMessageView,
     GmailProfile,
-    GmailReadChunk,
-    GmailReadPlan,
     GmailStarResult,
     GmailThreadResult,
     GmailUnreadLabelCounts,
     GmailUnreadQueryCounts,
-    TimeframeLiteral,
+    Timeframe,
 )
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.integrations.gmail import GmailThreadData
 from app.models.integrations.gmail_messages import GmailApiMessage, RelayedGmailMessage
+from app.services.composio.custom_tools.fetched_mail_buckets import installed_fetched_mail_bucketer
 from app.services.composio.custom_tools.gmail_constants import (
     _DAYS_PER_UNIT,
-    CHUNK_TARGET_BYTES,
-    CHUNK_TARGET_MESSAGES,
     FETCH_CONCURRENCY,
     GMAIL_API_BASE,
     GMAIL_BATCH_MODIFY_CAP,
     GMAIL_FORMAT_FULL,
     GMAIL_FORMAT_METADATA,
     GMAIL_TOOLKIT,
-    INLINE_LIMIT_CHARS,
     MAX_ABSOLUTE_MESSAGES,
-    MAX_READ_SUBAGENTS,
-    OFFLOAD_DIR,
-    OFFLOAD_FILE_PREFIX,
-    OFFLOAD_MIN_MESSAGES,
-    OFFLOAD_PREVIEW_SIZE,
-    TIMEFRAME_DEFAULT_MAX,
+    NAMED_TIMEFRAME_DEFAULT_MAX,
+    NO_TIMEFRAME_DEFAULT_MAX,
+    RELATIVE_TIMEFRAME_DEFAULT_MAX,
+    RELATIVE_TIMEFRAME_LONG_MAX,
 )
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request_sync
 from app.services.contact_service import build_contact_index
-from app.services.storage.juicefs import write_session_file_sync
-from app.utils.concurrency import ContextThreadPoolExecutor
+from app.utils.concurrency import ContextThreadPoolExecutor, run_on_captured_loop
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
@@ -95,26 +83,6 @@ from shared.py.wide_events import log
 
 #: Gmail REST query parameters: scalars, or a list for a repeated parameter (labelIds, metadataHeaders).
 _GmailQuery = dict[str, str | int | list[str]]
-
-
-class GmailOffloadResult(TypedDict):
-    """A fetch too large to inline: written to a session JSONL file, returned as a digest and read-plan.
-
-    Lives here rather than in composio_schemas.gmail because OffloadInfo comes
-    from the agent workspace, which that leaf models module must not import.
-    """
-
-    total_messages: int
-    truncated: bool
-    offloaded_to: str
-    file_size_bytes: int
-    file_size_human: str
-    field_count: int
-    inline_preview: list[dict[str, object]]
-    read_plan: GmailReadPlan
-    hint: str
-    __offload__: OffloadInfo
-    total_threads: NotRequired[int]
 
 
 def _gmail_proxy(
@@ -144,28 +112,21 @@ def _gmail_proxy(
     )
 
 
-def _conversation_id(config: RunnableConfig) -> str | None:
-    """Pull the session id (vfs_session_id / thread_id) from the run config.
-
-    The session id lives in the LangGraph configurable, not in the Composio
-    auth_credentials dict (which only carries OAuth state plus the injected
-    user_id). Mirrors the conversation-id resolution in the compaction /
-    summarization middleware.
-    """
-    configurable = read_agent_configurable(config)
-    return configurable.vfs_session_id or configurable.thread_id
-
-
 # =============================================================================
 # FETCH_MESSAGES — timeframe resolution
 # =============================================================================
 
 
-def _timeframe_clause(timeframe: TimeframeLiteral, tz: Timezone) -> str:
-    """Translate a timeframe enum to a Gmail after:/before: clause.
+def _relative_days(timeframe: str) -> int:
+    """Count the calendar days a relative timeframe (14d, 2w, 3m) spans."""
+    match = re.fullmatch(r"(\d+)([dwmy])", timeframe)
+    if match is None:
+        raise ValueError(f"not a relative timeframe: {timeframe!r}")
+    return int(match.group(1)) * _DAYS_PER_UNIT[match.group(2)]
 
-    Returns "" for unrecognized values (caller falls back to default cap).
-    """
+
+def _timeframe_clause(timeframe: Timeframe, tz: Timezone) -> str:
+    """Translate a timeframe to a Gmail after:/before: clause."""
     today = tz.now().date()
 
     if timeframe in ("today", "yesterday", "tomorrow"):
@@ -180,17 +141,10 @@ def _timeframe_clause(timeframe: TimeframeLiteral, tz: Timezone) -> str:
         )
         return _date_window_clause(monday, days=7)
 
-    match = re.fullmatch(r"(\d+)([dwmy])", timeframe)
-    if match:
-        n = int(match.group(1))
-        days = n * _DAYS_PER_UNIT[match.group(2)]
-        # "last N days" is inclusive of today, so the window spans N calendar
-        # days: [today - (N-1), today]. _date_window_clause makes the end
-        # exclusive (today + 1).
-        start = today - datetime.timedelta(days=days - 1)
-        return _date_window_clause(start, end_date=today)
-
-    return ""
+    # "last N days" is inclusive of today, so the window spans N calendar days:
+    # [today - (N-1), today]. _date_window_clause makes the end exclusive (today + 1).
+    start = today - datetime.timedelta(days=_relative_days(timeframe) - 1)
+    return _date_window_clause(start, end_date=today)
 
 
 def _date_window_clause(
@@ -214,16 +168,29 @@ def _gmail_date(d: datetime.date) -> str:
     return d.isoformat().replace("-", "/")
 
 
+def _default_max(timeframe: Timeframe | None) -> int:
+    """Return the message cap a timeframe implies when the call sets no max_messages."""
+    if timeframe is None:
+        return NO_TIMEFRAME_DEFAULT_MAX
+    if timeframe in NAMED_TIMEFRAME_DEFAULT_MAX:
+        return NAMED_TIMEFRAME_DEFAULT_MAX[timeframe]
+    days = _relative_days(timeframe)
+    return next(
+        (cap for max_days, cap in RELATIVE_TIMEFRAME_DEFAULT_MAX if days <= max_days),
+        RELATIVE_TIMEFRAME_LONG_MAX,
+    )
+
+
 def _resolve_timeframe(
-    timeframe: TimeframeLiteral | None,
+    timeframe: Timeframe | None,
     query: str | None,
     tz: Timezone,
 ) -> tuple[str, int]:
-    """Resolve a timeframe enum + raw query to (combined_query, default_max).
+    """Resolve a timeframe + raw query to (combined_query, default_max).
 
     Honors an explicit after:/before: in query over timeframe.
     """
-    default_max = TIMEFRAME_DEFAULT_MAX.get(timeframe or "", 100)
+    default_max = _default_max(timeframe)
 
     explicit_after_or_before = query and ("after:" in query or "before:" in query)
     if explicit_after_or_before:
@@ -369,7 +336,7 @@ def _aggregate_pages(
                     estimate = data.result_size_estimate
                     # An absent estimate says nothing about the size, so it cannot be
                     # read as "small": only a number over the threshold offloads.
-                    headed_for_file = request.offload or (
+                    headed_for_file = (
                         estimate is not None and min(estimate, effective_max) > OFFLOAD_MIN_MESSAGES
                     )
                     force_body = headed_for_file and request.body_processing != "none"
@@ -411,123 +378,6 @@ def _aggregate_pages(
         raise _PartialResultError(reason=str(exc), partial_messages=all_messages) from exc
 
     return all_messages, truncated
-
-
-def _offload_path() -> str:
-    """Build a timestamped, unique offload path (relative to the session root)."""
-    ts = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
-    return f"{OFFLOAD_DIR}/{OFFLOAD_FILE_PREFIX}{ts}_{uuid.uuid4().hex[:8]}.jsonl"
-
-
-def _human_size(num_bytes: int) -> str:
-    """Format a byte count as a short human-readable string (KB/MB)."""
-    if num_bytes < 1024:
-        return f"{num_bytes} B"
-    if num_bytes < 1024 * 1024:
-        return f"{num_bytes / 1024:.0f} KB"
-    return f"{num_bytes / (1024 * 1024):.1f} MB"
-
-
-def _build_read_plan(total_messages: int, file_size_bytes: int) -> GmailReadPlan:
-    """Split the offloaded JSONL into contiguous line-range chunks for parallel reads.
-
-    One message per line, so a chunk maps directly to read(offset, limit).
-    Chunk count is the larger of the by-message/by-byte estimates, capped at
-    MAX_READ_SUBAGENTS.
-    """
-    if total_messages <= 0:
-        return {"total_lines": 0, "recommended_subagents": 0, "chunks": []}
-
-    by_messages = math.ceil(total_messages / CHUNK_TARGET_MESSAGES)
-    by_bytes = math.ceil(file_size_bytes / CHUNK_TARGET_BYTES) if file_size_bytes else 1
-    num_chunks = min(MAX_READ_SUBAGENTS, max(1, by_messages, by_bytes))
-
-    base, remainder = divmod(total_messages, num_chunks)
-    chunks: list[GmailReadChunk] = []
-    start = 1
-    for index in range(num_chunks):
-        count = base + (1 if index < remainder else 0)
-        if count == 0:
-            break
-        chunks.append(
-            {
-                "part": len(chunks) + 1,
-                "start_line": start,
-                "line_count": count,
-                "read": {"offset": start, "limit": count},
-            }
-        )
-        start += count
-
-    return {
-        "total_lines": total_messages,
-        "recommended_subagents": len(chunks),
-        "chunks": chunks,
-    }
-
-
-def _format_offload_result(
-    views: list[GmailMessageView],
-    *,
-    truncated: bool,
-    user_id: str,
-    conversation_id: str,
-    fields: Sequence[MessageFieldLiteral] | None,
-    producer: str = "GMAIL_FETCH_MESSAGES",
-) -> GmailOffloadResult:
-    """Write full message views to a session JSONL file and return a digest plus a read-plan.
-
-    The file carries every field regardless of the caller's fields
-    projection, since a body query against a body-less file would silently
-    find nothing; the inline preview stays projected to keep the in-context
-    peek small.
-    """
-    rel_path = _offload_path()
-    full = [project_message_view(view, None) for view in views]
-    body = "\n".join(json.dumps(v) for v in full)
-    file_size_bytes = len(body.encode("utf-8"))
-    _, sandbox_path = write_session_file_sync(
-        user_id=user_id,
-        conversation_id=conversation_id,
-        relative_path=rel_path,
-        content=body,
-    )
-    read_plan: GmailReadPlan = _build_read_plan(len(views), file_size_bytes)
-    preview = [project_message_view(v, fields) for v in views[:OFFLOAD_PREVIEW_SIZE]]
-    field_count = len(full[0]) if full else 0
-    offload: OffloadInfo = {
-        "path": sandbox_path,
-        "bytes": file_size_bytes,
-        "fmt": "jsonl",
-        "producer": producer,
-        "records": len(views),
-    }
-    return {
-        "total_messages": len(views),
-        "truncated": truncated,
-        "offloaded_to": sandbox_path,
-        "file_size_bytes": file_size_bytes,
-        "file_size_human": _human_size(file_size_bytes),
-        "field_count": field_count,
-        "inline_preview": preview,
-        "read_plan": read_plan,
-        "hint": (
-            f"{len(views)} messages ({_human_size(file_size_bytes)}) written to "
-            f"{sandbox_path} (JSONL, one message per line, every field incl. the "
-            f"normalized body). Too large to read inline. Spawn "
-            f"{read_plan['recommended_subagents']} subagent(s) to read the line "
-            f"ranges in read_plan.chunks in parallel (read offset/limit), each "
-            f"triaging its slice, then merge. Or mine the file directly with the "
-            f"`query_json` tool, e.g. query_json(path='{sandbox_path}', "
-            f'where=[{{"field":"from","op":"contains","value":"github"}}], '
-            f"fields=['subject','from']); the body is searchable too, e.g. "
-            f'where=[{{"field":"body","op":"contains","value":"invoice"}}].'
-        ),
-        # Lifted into the structured offload marker by the tool node (this tool
-        # returns a dict and cannot set additional_kwargs itself); stripped from
-        # the model-facing content. Drives the query_json/grep auto-bind on offload.
-        OFFLOAD_RESULT_KEY: offload,
-    }
 
 
 def _emit_email_card(views: list[GmailMessageView]) -> None:
@@ -590,18 +440,6 @@ def _format_partial_result(
     }
 
 
-def _count_inline_fit(messages: list[dict[str, object]]) -> int:
-    """How many whole leading messages fit under INLINE_LIMIT_CHARS."""
-    budget = INLINE_LIMIT_CHARS
-    count = 0
-    for message in messages:
-        budget -= len(json.dumps(message)) + 2  # +2 for separators
-        if budget < 0:
-            break
-        count += 1
-    return count
-
-
 def _summarize(
     user_id: str,
     request: FetchMessagesInput,
@@ -613,10 +451,9 @@ def _summarize(
 
 def _fetch_and_shape(
     user_id: str, request: FetchMessagesInput
-) -> GmailFetchInlineResult | GmailFetchPartialResult | GmailOffloadResult:
-    """Resolve, paginate, then return the result inline or offloaded."""
-    config = current_run_config()
-    tz = home_timezone_from_config(config)
+) -> GmailFetchInlineResult | GmailFetchPartialResult:
+    """Resolve and paginate, then return every message, whole when compaction will file them."""
+    tz = home_timezone_from_config(current_run_config())
     combined_query, default_max = _resolve_timeframe(request.timeframe, request.query, tz)
     cap = _effective_max(request, default_max)
 
@@ -630,62 +467,48 @@ def _fetch_and_shape(
             reason=exc.reason,
         )
 
-    messages = [project_message_view(view, request.fields) for view in full_views]
-    serialized = json.dumps({"messages": messages})  # pragma: no mutate — only its length is read
-    over_char_limit = len(serialized) > INLINE_LIMIT_CHARS
-    over_message_limit = len(messages) > OFFLOAD_MIN_MESSAGES
-    if not request.offload and not over_char_limit and not over_message_limit:
-        _emit_email_card(full_views)
-        return _format_inline_result(messages, truncated=truncated)
-
-    conversation_id = _conversation_id(config)
-    if conversation_id is None and request.offload:
-        raise AppError(
-            message="GMAIL_FETCH_MESSAGES has no session to write the requested file into",
-            why="offload was requested outside a conversation, so there is no workspace for it.",
-            fix="Call it without offload, or from a run that has a conversation.",
-            status_code=400,
-        )
-    if conversation_id is None:
-        return _no_session_inline_fallback(full_views, messages, truncated=truncated)
-
-    return _format_offload_result(
-        full_views,
-        truncated=truncated,
-        user_id=user_id,
-        conversation_id=conversation_id,
-        fields=request.fields,
+    full_views = _bucketed_for_todo(user_id, request, full_views)
+    if len(full_views) > OFFLOAD_MIN_MESSAGES:
+        return _format_inline_result(_file_bound_views(full_views), truncated=truncated)
+    _emit_email_card(full_views)
+    return _format_inline_result(
+        [project_message_view(view, request.fields) for view in full_views], truncated=truncated
     )
 
 
-def _no_session_inline_fallback(
-    full_views: list[GmailMessageView],
-    projected: list[dict[str, object]],
-    *,
-    truncated: bool,
-) -> GmailFetchInlineResult:
-    """Oversized result but no session to offload into: cap to whole messages that fit inline.
+def _bucketed_for_todo(
+    user_id: str, request: FetchMessagesInput, views: list[GmailMessageView]
+) -> list[GmailMessageView]:
+    """Return the views a tracked todo run fetched, bucketed where its todo buckets mail; as-is otherwise.
 
-    The self-offloading Gmail read tools are excluded from the compaction
-    middleware (SELF_OFFLOADING_TOOL_NAMES in factory.py), so nothing
-    downstream shrinks an oversized inline result — the cap has to happen here.
+    body_processing "none" is the desk's count sweep, so only mail it triages is bucketed.
     """
-    shown = _count_inline_fit(projected)
-    log.warning(
-        "GMAIL read: no conversation_id for offload; returning / inline",
-        shown=shown,
-        projected_count=len(projected),
-    )
-    _emit_email_card(full_views[:shown])
-    result = _format_inline_result(projected[:shown], truncated=truncated or shown < len(projected))
-    if shown < len(projected):
-        result["total_matched"] = len(projected)
-        result["hint"] = (
-            f"Showing {shown} of {len(projected)} matched messages; the result was too "
-            f"large to return inline and no session was available to offload it. Narrow "
-            f"the request (or reduce fields) to see the rest."
+    todo_id = read_agent_configurable(current_run_config()).active_todo_id
+    if not todo_id or not views or request.body_processing == "none":
+        return views
+    bucketer = installed_fetched_mail_bucketer()
+    if bucketer is None:
+        log.error(
+            f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: no mail bucketer installed", todo_id=todo_id
         )
-    return result
+        return views
+    bucketed = run_on_captured_loop(bucketer(user_id, todo_id, views))
+    log.info(
+        f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: mail bucketed for its todo",
+        todo_id=todo_id,
+        fetched=len(views),
+        buckets=dict(Counter(view.bucket or "unbucketed" for view in bucketed)),
+    )
+    return bucketed
+
+
+def _file_bound_views(views: list[GmailMessageView]) -> list[dict[str, object]]:
+    """Every field of each message, for a result compaction spills to a file.
+
+    Unprojected because a body query against a body-less file silently finds
+    nothing; the in-context digest is compaction's, so no card renders either.
+    """
+    return [project_message_view(view, None) for view in views]
 
 
 # =============================================================================
@@ -706,20 +529,26 @@ def _thread_needs_full(request: FetchThreadInput) -> bool:
 
 def _fetch_one_thread(
     user_id: str, thread_id: str, *, needs_full: bool, body_processing: BodyProcessingLiteral
-) -> list[GmailMessageView]:
-    """Fetch one thread and return its messages as full views, in thread order.
+) -> list[GmailMessageView] | None:
+    """Fetch one thread and return its messages as full views, in thread order; None when Gmail has no such thread.
 
     Reuses build_message_view so a thread message is shaped identically to a
     GMAIL_FETCH_MESSAGES result (normalized body, attachment metadata, same
-    field contract) — one read path, not a divergent raw thread view. Lets proxy
-    exceptions propagate so the aggregator attaches partial state.
+    field contract) — one read path, not a divergent raw thread view. Lets every
+    other proxy error propagate so the aggregator attaches partial state.
     """
-    data = _gmail_proxy(
-        user_id,
-        endpoint=f"{GMAIL_API_BASE}/users/me/threads/{thread_id}",
-        method="GET",
-        query={"format": GMAIL_FORMAT_FULL if needs_full else GMAIL_FORMAT_METADATA},
-    )
+    try:
+        data = _gmail_proxy(
+            user_id,
+            endpoint=f"{GMAIL_API_BASE}/users/me/threads/{thread_id}",
+            method="GET",
+            query={"format": GMAIL_FORMAT_FULL if needs_full else GMAIL_FORMAT_METADATA},
+        )
+    except AppError as exc:
+        # A thread deleted or moved since it was listed: the batch's other threads still stand.
+        if exc.status_code == HTTPStatus.NOT_FOUND:
+            return None
+        raise
     if not isinstance(data, dict):
         return []
     return [
@@ -728,22 +557,29 @@ def _fetch_one_thread(
     ]
 
 
-def _aggregate_threads(
-    user_id: str, request: FetchThreadInput
-) -> tuple[list[tuple[str, list[GmailMessageView]]], list[GmailMessageView], bool]:
+class _ThreadBatch(NamedTuple):
+    """What one FETCH_THREAD batch read: each found thread's views, every view, and what it left out."""
+
+    threads: list[tuple[str, list[GmailMessageView]]]
+    flat_views: list[GmailMessageView]
+    truncated: bool
+    missing_thread_ids: list[str]
+
+
+def _aggregate_threads(user_id: str, request: FetchThreadInput) -> _ThreadBatch:
     """Fetch every requested thread over the bounded pool, honoring the total message cap.
 
-    Returns (threads, flat_views, truncated) where threads keeps the
-    per-thread grouping as (thread_id, views) and flat_views is every message
-    view. Raises _PartialResultError on a mid-fetch error once anything succeeded.
+    A thread Gmail no longer has is listed as missing and the rest still come back.
+    Raises _PartialResultError on any other mid-fetch error once anything succeeded.
     """
     needs_full = _thread_needs_full(request)
     cap = min(request.max_messages or MAX_ABSOLUTE_MESSAGES, MAX_ABSOLUTE_MESSAGES)
     threads: list[tuple[str, list[GmailMessageView]]] = []
     flat_views: list[GmailMessageView] = []
+    missing_thread_ids: list[str] = []
     truncated = False
 
-    def fetch(thread_id: str) -> tuple[str, list[GmailMessageView]]:
+    def fetch(thread_id: str) -> tuple[str, list[GmailMessageView] | None]:
         return thread_id, _fetch_one_thread(
             user_id, thread_id, needs_full=needs_full, body_processing=request.body_processing
         )
@@ -751,6 +587,9 @@ def _aggregate_threads(
     try:
         with ContextThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
             for thread_id, views in executor.map(fetch, request.thread_ids):
+                if views is None:
+                    missing_thread_ids.append(thread_id)
+                    continue
                 remaining = cap - len(flat_views)
                 if remaining <= 0:
                     truncated = True
@@ -771,24 +610,30 @@ def _aggregate_threads(
         )
         raise _PartialResultError(reason=str(exc), partial_messages=flat_views) from exc
 
-    return threads, flat_views, truncated
+    return _ThreadBatch(threads, flat_views, truncated, missing_thread_ids)
 
 
 def _summarize_threads(
     user_id: str, request: FetchThreadInput
-) -> GmailFetchThreadResult | GmailFetchPartialResult | GmailFetchInlineResult | GmailOffloadResult:
-    """Top-level FETCH_THREAD orchestrator: fetch, then offload or inline.
+) -> GmailFetchThreadResult | GmailFetchPartialResult | GmailFetchThreadInlineResult:
+    """Top-level FETCH_THREAD orchestrator: fetch, then group by thread or return flat.
 
-    Mirrors _summarize (same thresholds, card, offload file, no-session fallback).
+    Mirrors _fetch_and_shape: past OFFLOAD_MIN_MESSAGES the messages come back
+    flat and whole (each carries its threadId), for compaction to file as records.
     """
-    config = current_run_config()
     try:
-        threads, flat_views, truncated = _aggregate_threads(user_id, request)
+        threads, flat_views, truncated, missing_thread_ids = _aggregate_threads(user_id, request)
     except _PartialResultError as exc:
         return _format_partial_result(
             [project_message_view(view, request.fields) for view in exc.partial_messages],
             reason=exc.reason,
         )
+
+    if len(flat_views) > OFFLOAD_MIN_MESSAGES:
+        return {
+            **_format_inline_result(_file_bound_views(flat_views), truncated=truncated),
+            "missing_thread_ids": missing_thread_ids,
+        }
 
     grouped: list[GmailThreadResult] = [
         {
@@ -798,33 +643,14 @@ def _summarize_threads(
         }
         for thread_id, views in threads
     ]
-    projected_flat = [project_message_view(view, request.fields) for view in flat_views]
-    serialized = json.dumps({"threads": grouped})  # pragma: no mutate — only its length is read
-    over_char_limit = len(serialized) > INLINE_LIMIT_CHARS
-    over_message_limit = len(flat_views) > OFFLOAD_MIN_MESSAGES
-    if not over_char_limit and not over_message_limit:
-        _emit_email_card(flat_views)
-        return {
-            "fetched_threads": len(threads),
-            "total_messages": len(flat_views),
-            "truncated": truncated,
-            "threads": grouped,
-        }
-
-    conversation_id = _conversation_id(config)
-    if conversation_id is None:
-        return _no_session_inline_fallback(flat_views, projected_flat, truncated=truncated)
-
-    result = _format_offload_result(
-        flat_views,
-        truncated=truncated,
-        user_id=user_id,
-        conversation_id=conversation_id,
-        fields=request.fields,
-        producer="GMAIL_FETCH_THREAD",
-    )
-    result["total_threads"] = len(threads)
-    return result
+    _emit_email_card(flat_views)
+    return {
+        "fetched_threads": len(threads),
+        "total_messages": len(flat_views),
+        "truncated": truncated,
+        "threads": grouped,
+        "missing_thread_ids": missing_thread_ids,
+    }
 
 
 # =============================================================================
@@ -1238,11 +1064,9 @@ def register_gmail_custom_tools(composio: Composio) -> list[str]:
         in the user's home timezone (read from the run's LangGraph
         ``configurable``).
 
-        Small results render the inbox email-list card in chat and are
-        returned inline. When the aggregate is too large to inline, the
-        tool writes a JSONL file to the session workspace and returns a
-        digest + read_plan; the agent fans out parallel reads over the
-        chunks or mines it with ``query_json``/``grep``.
+        Small results render the inbox email-list card in chat. Past
+        OFFLOAD_MIN_MESSAGES every message comes back whole, and compaction
+        files them as JSONL records the agent mines with ``query_json``/``grep``.
 
         Every result carries ``fetched_at``, the Unix second the query ran:
         query ``after:<fetched_at>`` next time to fetch only newer mail.
@@ -1254,12 +1078,7 @@ def register_gmail_custom_tools(composio: Composio) -> list[str]:
         request: FetchThreadInput,
         execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, object],
-    ) -> (
-        GmailFetchThreadResult
-        | GmailFetchPartialResult
-        | GmailFetchInlineResult
-        | GmailOffloadResult
-    ):
+    ) -> GmailFetchThreadResult | GmailFetchPartialResult | GmailFetchThreadInlineResult:
         """Reconstruct one or more Gmail conversation threads by id.
 
         The canonical thread-read tool. Fetches each ``thread_id`` (batched,
@@ -1269,9 +1088,10 @@ def register_gmail_custom_tools(composio: Composio) -> list[str]:
         there is one read path, not a divergent raw thread view.
 
         Get thread ids from the ``threadId`` on ``GMAIL_FETCH_MESSAGES``
-        results. Small results render the email-list card inline; large ones
-        offload to a JSONL file (each line a message, carrying ``threadId`` to
-        regroup) with a read_plan the agent mines with ``query_json``/``grep``.
+        results. Small results render the email-list card, grouped by thread;
+        large ones come back flat (each message carrying ``threadId`` to
+        regroup) for compaction to file as JSONL records. A thread Gmail no
+        longer has is named in ``missing_thread_ids``; the rest still come back.
         """
         return _summarize_threads(
             CustomToolAuthCredentials.parse(auth_credentials).user_id, request

@@ -23,11 +23,13 @@ from langgraph.types import Command
 from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import record_executor_cancellation
+from app.agents.core.background.confirmation_gate import record_confirmation_asked
 from app.agents.core.background.executor_capture import (
     build_returned_to_frontend_note,
     drain_executor_tool_data,
 )
 from app.agents.core.background.executor_channel import ExecutorInbox, decide_drain
+from app.agents.core.background.executor_progress import ProgressRecorder
 from app.agents.core.background.executor_queue import (
     LockClaim,
     PreparedQueuedTask,
@@ -50,6 +52,7 @@ from app.agents.core.background.session import (
     get_session,
     signal_executor_done,
 )
+from app.agents.core.outcome_review import review_run
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
@@ -57,13 +60,15 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
     thread_messages,
 )
-from app.constants.agents import NON_WAKING_TAGS, AgentTag
+from app.agents.prompts.comms_prompts import outcome_delivery_note
+from app.constants.agents import NON_WAKING_TAGS, AgentTag, OutcomeState
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
     EXECUTOR_CRASH_MESSAGE,
     EXECUTOR_ERROR_APPROVAL_LOST,
     EXECUTOR_ERROR_MALFORMED_APPROVAL,
+    EXECUTOR_ERROR_NO_ANSWER,
     EXECUTOR_ERROR_PREP_FAILED,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
@@ -159,6 +164,9 @@ async def _run_executor(
     ):
         result_text = ""
         result_type = "final"
+        # Equivalent under mutation: read only if execute raised, when result_text is
+        # still empty and finalize has nothing to deliver either way.
+        stopped = False  # pragma: no mutate
         # Equivalent under mutation: read only if execute raised, when result_type is still
         # "final" and finalize's `if ctx` treats any falsy placeholder alike.
         run_ctx: SubagentExecutionContext | None = None  # pragma: no mutate
@@ -179,6 +187,7 @@ async def _run_executor(
                     result = await _execute_executor(task, configurable, run, resume)
                 active_ms = round(elapsed_active() * 1000.0, 2)
                 result_text, result_type, run_ctx = result.text, result.type, result.ctx
+                stopped = result.stopped
                 error_type = result.error_type
                 ttft_ms = _executor_ttft_ms(run, run_start)
                 if ttft_ms is not None:
@@ -217,7 +226,9 @@ async def _run_executor(
                     lifecycle.failure_reason = error_type
             finally:
                 alive.cancel()
-                await _finalize_executor_run(run, task, result_text, result_type, run_ctx)
+                await _finalize_executor_run(
+                    run, task, result_text, result_type, run_ctx, stopped=stopped
+                )
                 if resume is not None:
                     # This run held the conversation's resume slot (claimed at dispatch).
                     # Freeing it AFTER finalize means the next decision can dispatch only
@@ -335,7 +346,8 @@ class _ExecutorResult(NamedTuple):
     instead of finishing. ctx is the prepared execution context, kept so finalize
     can read the thread this run wrote; None when preparation itself failed, in
     which case no model call happened and nothing was committed. error_type is
-    the cause of an error result, reported as the run's failure reason.
+    the cause of an error result, reported as the run's failure reason. stopped
+    is True when the user's Stop cut the graph off before it finished.
     """
 
     text: str
@@ -343,6 +355,7 @@ class _ExecutorResult(NamedTuple):
     paused_on: tuple[str, ...] = ()
     ctx: SubagentExecutionContext | None = None
     error_type: str | None = None
+    stopped: bool = False
 
 
 async def _cancel_orphaned_browser_job(conversation_id: str, stream_id: str) -> None:
@@ -402,16 +415,23 @@ async def _execute_executor(
         # Equivalent under mutation: build_agent_config always sets "configurable".
         run_configurable = ctx.config.setdefault("configurable", {})  # pragma: no mutate
         if resume is not None:
-            # Tells the handoff tool to probe its subagent thread for a parked
+            # Tells spawn_subagent to probe its spawn's thread for a parked
             # interrupt — only a resume replay can encounter one, so fresh runs
-            # skip that per-handoff checkpoint read.
+            # skip that per-spawn checkpoint read.
             ctx.configurable[HIL_RESUME_CONFIG_KEY] = True
             run_configurable[HIL_RESUME_CONFIG_KEY] = True
         if message_id := run.render_message_id:
             ctx.configurable["bot_message_id"] = message_id
             run_configurable["bot_message_id"] = message_id
-        writer = make_redis_stream_writer(stream_id)
-        outcome = await execute_subagent_stream(ctx=ctx, stream_writer=writer, resume=resume)
+        progress = ProgressRecorder(
+            run.conversation_id, build_lock_value(stream_id, run.task_id or "")
+        )
+        writer = progress.wrap(make_redis_stream_writer(stream_id))
+        try:
+            outcome = await execute_subagent_stream(ctx=ctx, stream_writer=writer, resume=resume)
+        finally:
+            # Before finalize renews (a pause) or deletes (an ending) the record.
+            await progress.settle()
         if outcome.paused:
             approval_ids = paused_approval_ids(outcome.interrupt or {})
             if not approval_ids:
@@ -425,7 +445,14 @@ async def _execute_executor(
                     error_type=EXECUTOR_ERROR_MALFORMED_APPROVAL,
                 )
             return _ExecutorResult("", EXECUTOR_PAUSED, approval_ids, ctx=ctx)
-        return _ExecutorResult(outcome.text, "final", ctx=ctx)
+        if not outcome.answered and not outcome.stopped:
+            # Nothing reported means nothing confirmed: the worst case, never "done".
+            log.error(f"{LogTag.AGENT} Executor ended without an answer", stream_id=stream_id)
+            await _cancel_orphaned_browser_job(run.conversation_id, stream_id)
+            return _ExecutorResult(
+                EXECUTOR_CRASH_MESSAGE, "error", ctx=ctx, error_type=EXECUTOR_ERROR_NO_ANSWER
+            )
+        return _ExecutorResult(outcome.text, "final", ctx=ctx, stopped=outcome.stopped)
     except GraphRecursionError as e:
         # The executor exhausted its recursion budget. Log the real cause loudly,
         # but hand comms a friendly message instead of the raw traceback string so
@@ -456,13 +483,22 @@ async def _finalize_executor_run(
     result_text: str,
     result_type: str,
     ctx: SubagentExecutionContext | None = None,
+    *,
+    stopped: bool = False,
 ) -> None:
-    """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on."""
+    """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on.
+
+    A Stop discards only what it cut short: a run that finished its answer before
+    the cancel landed (stopped False, a final result) is delivered whatever the flag says.
+    """
     if result_type == EXECUTOR_PAUSED:
         await _finalize_paused_run(run)
         return
 
-    was_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(run.stream_id)
+    finished = result_type == "final" and not stopped
+    was_cancelled = (
+        bool(run.stream_id) and not finished and await StreamManager.is_cancelled(run.stream_id)
+    )
 
     # Snapshot returned-cards BEFORE signalling done: live streams tear down the
     # session in parallel once done_event fires, so reading after would race it.
@@ -516,6 +552,11 @@ async def _finalize_executor_run(
     # its TTL. The lock lifecycle is the load-bearing step — always run it.
     try:
         if not abandoned:
+            outcome_note = (
+                await _review_outcome_note(run.conversation_id, ctx)
+                if ctx is not None and result_type == "final"
+                else ""
+            )
             await _deliver_terminal_outcome(
                 run,
                 task,
@@ -525,6 +566,7 @@ async def _finalize_executor_run(
                     was_cancelled=was_cancelled,
                     returned_note=returned_note,
                     tool_data=tool_data,
+                    outcome_note=outcome_note,
                 ),
             )
     except Exception as e:  # never let delivery failure strand the queue
@@ -536,7 +578,7 @@ async def _finalize_executor_run(
         )
 
     # Release the busy lock now, not at end of finalize: held longer, comms'
-    # executor_status hook keeps reading "still running," and a mid-finalize
+    # turn-start executor status keeps reading "still running," and a mid-finalize
     # exception would strand it for the full 30-min TTL. Ownership-checked.
     try:
         await release_lock_if_owned(run.conversation_id, run.stream_id, run.task_id)
@@ -572,6 +614,29 @@ async def _finalize_executor_run(
         )
         return
     await _carry_pending_into_new_run(run, ctx)
+
+
+async def _review_outcome_note(conversation_id: str, ctx: SubagentExecutionContext) -> str:
+    """Check the run's declared outcome against its own tool calls; the note comms delivers under.
+
+    The note is an addition to the result, so a review that cannot run drops the note, never the result.
+    """
+    try:
+        review = review_run(await thread_messages(ctx))
+    except Exception:  # the thread read is a checkpointer call; the result still delivers
+        log.error(f"{LogTag.AGENT} Executor outcome review failed")
+        return ""
+    if review.verified and review.declared is OutcomeState.ASK:
+        await record_confirmation_asked(conversation_id)
+    log.set(
+        executor={
+            "outcome": review.declared.value if review.declared else None,
+            "outcome_verified": review.verified,
+        }
+    )
+    if review.problem:
+        log.warning(f"{LogTag.AGENT} Executor outcome not verified", problem=review.problem)
+    return outcome_delivery_note(review.declared, review.problem)
 
 
 async def _finalize_paused_run(run: ExecutorRun) -> None:
@@ -624,6 +689,7 @@ class TerminalOutcome:
     was_cancelled: bool
     returned_note: str
     tool_data: list[ToolDataEntry] | None
+    outcome_note: str = ""
 
 
 async def _deliver_terminal_outcome(
@@ -639,7 +705,7 @@ async def _deliver_terminal_outcome(
     """
     if outcome.was_cancelled:
         # Regardless of who owns the tool_data, comms' context must record the
-        # cancellation — otherwise its last knowledge stays 'Task accepted...
+        # cancellation — otherwise its last knowledge stays 'Handed to the executor...
         # I'm on it' and later turns claim the task is still running or done.
         await record_executor_cancellation(run.conversation_id, run.task_id, task)
         if outcome.tool_data is None:
@@ -657,6 +723,7 @@ async def _deliver_terminal_outcome(
             outcome.result_type,
             outcome.returned_note,
             tool_data=outcome.tool_data,
+            outcome_note=outcome.outcome_note,
         )
         await _publish_voice_tts(run.stream_id, notification_text, message_id)
 

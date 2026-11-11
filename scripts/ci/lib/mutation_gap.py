@@ -26,7 +26,7 @@ import json
 from pathlib import Path
 import sys
 
-# scripts/test holds the lane's own mutmut patches; loaded the way mutation.sh
+# scripts/test holds the lane's own mutmut patches; loaded the way mutation.py
 # loads them so this answers exactly what the lane would generate.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "test"))
 
@@ -38,7 +38,8 @@ import mutmut_decorated_patch  # noqa: F401  # side-effect import: patches mutmu
 def _mutants_on(path: str, source: str, lines: set[int]) -> int:
     try:
         _, mutations, _, _ = create_mutations(path, source, covered_lines=lines)
-    except Exception:  # libcst raises its own parse errors; any of them means "nothing to mutate here", not a lane failure
+    # Source libcst cannot parse has nothing to mutate; any other error is a broken lane.
+    except cst.ParserSyntaxError:
         return 0
     # Only mutants inside a def count. mutmut records a kill through the
     # trampoline it installs on the enclosing function; a module-level mutant

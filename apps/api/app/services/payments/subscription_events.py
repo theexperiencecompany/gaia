@@ -378,6 +378,8 @@ def _capture_transition(
                 SubscriptionActivated(
                     subscription_id=data.subscription_id,
                     plan_name="Pro",
+                    product_id=data.product_id,
+                    billing_interval=data.payment_frequency_interval,
                     amount=float(to_major_units(data.recurring_pre_tax_amount, data.currency)),
                     currency=data.currency,
                     amount_charged_pre_tax=revenue.amount_charged_pre_tax,
@@ -390,6 +392,8 @@ def _capture_transition(
                 UserId(user_id),
                 SubscriptionRenewed(
                     subscription_id=data.subscription_id,
+                    product_id=data.product_id,
+                    billing_interval=data.payment_frequency_interval,
                     currency=data.currency,
                     amount_charged_pre_tax=revenue.amount_charged_pre_tax,
                     currency_charged=revenue.currency_charged,
@@ -409,7 +413,12 @@ def _capture_transition(
             )
         case SubscriptionEventKind.EXPIRED if "status" in changes.model_fields_set:
             track_subscription_event(
-                UserId(user_id), SubscriptionExpired(subscription_id=data.subscription_id)
+                UserId(user_id),
+                SubscriptionExpired(
+                    subscription_id=data.subscription_id,
+                    product_id=data.product_id,
+                    billing_interval=data.payment_frequency_interval,
+                ),
             )
         case SubscriptionEventKind.FAILED | SubscriptionEventKind.ON_HOLD if (
             "status" in changes.model_fields_set
@@ -419,6 +428,8 @@ def _capture_transition(
                 SubscriptionLapsed(
                     subscription_id=data.subscription_id,
                     status="failed" if event.kind is SubscriptionEventKind.FAILED else "on_hold",
+                    product_id=data.product_id,
+                    billing_interval=data.payment_frequency_interval,
                 ),
             )
 

@@ -52,6 +52,14 @@ INTEGRATION_ACCOUNT_ID_PREFIX: Final = "acct_"
 EVENT_ACCOUNT_ID_KEY: Final = "gaia_account_id"
 # One page of a user's Composio accounts; covers every provider's accounts at the cap.
 COMPOSIO_ACCOUNT_LIST_LIMIT: Final = 100
+# Composio's maximum page size for listing a project's auth configs.
+COMPOSIO_AUTH_CONFIG_PAGE_SIZE: Final = 1000
+# Composio's maximum page size for listing its toolkit catalog (~1.6k toolkits).
+COMPOSIO_TOOLKIT_PAGE_SIZE: Final = 1000
+# Largest page the admin's catalog browser may ask GAIA for.
+COMPOSIO_CATALOG_MAX_PAGE_SIZE: Final = 200
+# Page the admin's catalog browser gets when it names no limit.
+COMPOSIO_CATALOG_DEFAULT_PAGE_SIZE: Final = 50
 # Label for an account whose provider exposes no identity (no metadata_config).
 FALLBACK_ACCOUNT_LABEL: Final = "{integration} account {number}"
 # What the agent is told when the account a call ran as has lost its connection.
@@ -113,6 +121,9 @@ USE_CASES_COUNT = 5
 HOW_IT_WORKS_COUNT = 3
 FAQ_COUNT = 4
 
+# Category for an integration that fits no other bucket, or whose inference failed.
+DEFAULT_INTEGRATION_CATEGORY = "other"
+
 # Fixed set of marketplace categories an integration can be classified into.
 INTEGRATION_CATEGORIES = [
     "productivity",  # Notion, Todoist, project management
@@ -124,7 +135,7 @@ INTEGRATION_CATEGORIES = [
     "education",  # Learning platforms, courses, academic tools
     "personal",  # Health, fitness, lifestyle (Strava, etc.)
     "capabilities",  # Agent reasoning & cognitive enhancements only
-    "other",  # Fallback
+    DEFAULT_INTEGRATION_CATEGORY,
 ]
 
 CATEGORY_INFERENCE_PROMPT = """
@@ -192,3 +203,16 @@ covering connect -> instruct in plain English -> GAIA automates it],
 COMPOSIO_SERVICE_PROVIDER = "composio_service"
 # Bound on the Mongo read that resolves a user's primary account for an unscoped call.
 PRIMARY_ACCOUNT_LOOKUP_TIMEOUT_SECONDS = 10.0
+
+# Follows an integration's name when its Composio auth config is not resolvable here.
+NOT_SET_UP_ON_INSTANCE = (
+    "is not set up on this instance. An admin can add it in Settings > Integrations setup."
+)
+
+
+class ComposioAuthConfigSource(StrEnum):
+    """Where the auth config an integration connects through comes from."""
+
+    STORED = "stored"
+    ENV = "env"
+    CATALOG = "catalog"
