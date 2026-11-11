@@ -103,7 +103,7 @@ async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Com
     facts = pool_block(pool)
     prompt = composition_prompt(pool, kind, facts)
 
-    async def attempt(note: str) -> tuple[BriefComposition | None, list[str]]:
+    async def attempt(note: str | None = None) -> tuple[BriefComposition | None, list[str]]:
         try:
             answer = await ainvoke_structured(
                 BriefComposition,
@@ -117,7 +117,7 @@ async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Com
             return None, [f"the answer was not a whole BriefComposition tool call ({exc.reason})"]
         return answer, await _problems(user_id, answer, pool, values)
 
-    answer, problems = await attempt("")
+    answer, problems = await attempt()
     for _ in range(MAX_COMPOSITION_ATTEMPTS - 1):
         if not problems:
             break
