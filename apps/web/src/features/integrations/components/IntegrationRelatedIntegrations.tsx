@@ -1,56 +1,15 @@
-"use client";
-
-import { useQuery } from "@tanstack/react-query";
-
-import { integrationsApi } from "../api/integrationsApi";
 import type { CommunityIntegration } from "../types";
 import { PublicIntegrationCard } from "./PublicIntegrationCard";
 
 interface IntegrationRelatedIntegrationsProps {
-  /** Slug of the integration currently being viewed (excluded from results). */
-  readonly currentSlug: string;
-  /** Category used to find similar integrations. */
-  readonly category: string;
-  /** Max number of related integrations to show. */
-  readonly limit?: number;
-  /** Server-fetched siblings; when present no client fetch runs. */
-  readonly initialIntegrations?: CommunityIntegration[];
+  /** Server-picked by relatedIntegrations, so the links are in the SSR HTML. */
+  readonly integrations: readonly CommunityIntegration[];
 }
 
-function getCategoryLabel(category: string): string {
-  return category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
-}
-
-/**
- * "Related integrations" section for a marketplace detail page — same-category
- * integrations rendered as PublicIntegrationCard (real <Link> anchors). Mirrors
- * IntegrationRelatedWorkflows; gives every detail page contextual internal
- * links to its siblings so they aren't orphaned.
- */
+/** "Related integrations" on a marketplace detail page, as real card links. */
 export function IntegrationRelatedIntegrations({
-  currentSlug,
-  category,
-  limit = 6,
-  initialIntegrations,
+  integrations,
 }: IntegrationRelatedIntegrationsProps) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["related-integrations", category, currentSlug, limit],
-    queryFn: () =>
-      integrationsApi.getCommunityIntegrations({
-        category,
-        sort: "popular",
-        limit: limit + 1,
-      }),
-    staleTime: 5 * 60 * 1000,
-    enabled: !initialIntegrations && !!category,
-  });
-
-  if (!initialIntegrations && isLoading) return null;
-
-  const integrations = (initialIntegrations ?? data?.integrations ?? [])
-    .filter((integration) => integration.slug !== currentSlug)
-    .slice(0, limit);
-
   if (integrations.length === 0) return null;
 
   return (
@@ -60,8 +19,7 @@ export function IntegrationRelatedIntegrations({
           Related integrations
         </h2>
         <p className="text-sm leading-relaxed text-zinc-400">
-          More {getCategoryLabel(category)} integrations you can connect to
-          GAIA.
+          More integrations you can connect to GAIA.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">

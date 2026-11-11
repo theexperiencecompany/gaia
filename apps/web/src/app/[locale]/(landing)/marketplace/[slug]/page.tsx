@@ -4,9 +4,9 @@ import JsonLd from "@/components/seo/JsonLd";
 import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
 import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import { relatedIntegrations } from "@/features/integrations/lib/relatedIntegrations";
 import {
   getAllCommunityIntegrations,
-  getCommunityIntegrations,
   getIntegrationWorkflows,
   getNativeIntegrations,
   getPublicIntegration,
@@ -174,12 +174,12 @@ export default async function IntegrationPage({ params }: Props) {
   const comparisonSlug =
     comparison && !isRedirectedPath(`/compare/${slug}`) ? slug : undefined;
 
-  // Same-category siblings and related workflows, fetched server-side so
-  // crawlers see real links in the SSR HTML instead of client-only orphans.
-  // Combos and the alternative guide come from local JSON (no backend).
-  const [relatedIntegrations, relatedWorkflows, automateCombos, alternative] =
+  // Related integrations and workflows are fetched server-side so crawlers
+  // see real links in the SSR HTML. Combos and the alternative guide come from
+  // local JSON (no backend).
+  const [related, relatedWorkflows, automateCombos, alternative] =
     await Promise.all([
-      getRelatedIntegrations(integration.category, slug),
+      getRelatedIntegrations(integration),
       getIntegrationWorkflows(integration.integrationId, 4),
       getAutomateCombos(slug),
       getTranslatedAlternative(slug),
@@ -203,7 +203,7 @@ export default async function IntegrationPage({ params }: Props) {
             ? slug
             : undefined
         }
-        initialRelatedIntegrations={relatedIntegrations}
+        relatedIntegrations={related}
         initialRelatedWorkflows={relatedWorkflows}
         automateCombos={automateCombos}
         docsGuides={
@@ -233,17 +233,12 @@ async function getAutomateCombos(
     }));
 }
 
-/** Same-category siblings for SSR related-links (excludes the current page). */
 async function getRelatedIntegrations(
-  category: string,
-  slug: string,
+  integration: Pick<CommunityIntegration, "slug" | "category">,
 ): Promise<CommunityIntegration[]> {
-  const page = await getCommunityIntegrations({
-    category,
-    sort: "popular",
-    limit: 7,
-  });
-  return (page?.integrations ?? [])
-    .filter((integration) => integration.slug !== slug)
-    .slice(0, 6);
+  const [native, community] = await Promise.all([
+    getNativeIntegrations(),
+    getAllCommunityIntegrations(),
+  ]);
+  return relatedIntegrations(integration, native, community);
 }
