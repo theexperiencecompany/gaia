@@ -9,6 +9,7 @@ from app.constants.referrals import (
     ReferralCopyVariant,
     ReferralLayoutVariant,
 )
+from app.models.payment_models import PlanDuration
 from app.models.referral_models import (
     ReferralInviteStatus,
     ReferralInviteSurface,
@@ -76,13 +77,16 @@ class ReferralFriendGift(ResponseModel):
     )
     referrer_picture: str | None = Field(description="The referrer's photo, when they have one")
     offer: ReferralOffer
+    billing_cycles: list[PlanDuration] = Field(
+        description="The Pro billing cycles checkout applies this gift on; the paywall's code saves more on the rest"
+    )
 
 
 class ReferralGiftResponse(ResponseModel):
     """The caller's gift from the friend who referred them; null when they are owed none."""
 
     gift: ReferralFriendGift | None = Field(
-        description="Null for anyone never referred, already subscribed, or while referrals are off"
+        description="Null for anyone never referred, already subscribed, owed no saving over the paywall's code, or while referrals are off"
     )
 
 
