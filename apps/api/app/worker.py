@@ -78,6 +78,9 @@ from app.workers.tasks.tracked_todo_tasks import (
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
 from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
+# ARQ launches this process as app.worker.WorkerSettings.
+__all__ = ["WorkerSettings"]
+
 # Rich tracebacks for anything that escapes to the top of this process, the same
 # way main.py sets them for the API process. Process policy, so it lives in the
 # entrypoint and not in app/__init__.py.

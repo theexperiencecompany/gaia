@@ -5,7 +5,9 @@ frequency caps and step-selection logic are pure and fully pinned here; the
 send path is verified with the email/analytics boundaries mocked.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from typing import TypedDict, Unpack
 from unittest.mock import AsyncMock, patch
 
 from app.constants.nurture import (
@@ -32,17 +34,30 @@ USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 
-def _step(**overrides) -> NurtureStep:
-    fields = dict(
-        key="first_win",
-        day_offset=1,
-        template="nurture_first_win.html",
-        subject="Subject",
-        enabled=True,
-        requires_onboarding=False,
-    )
-    fields.update(overrides)
-    return NurtureStep(**fields)
+class _StepOverrides(TypedDict, total=False):
+    key: str
+    day_offset: int
+    skip_predicate: str | None
+    context_builder: str | None
+    cta_path: str | None
+    cta_label: str | None
+    requires_onboarding: bool
+    enabled: bool
+    nudge: ReferralNudge | None
+
+
+_BASE_STEP = NurtureStep(
+    key="first_win",
+    day_offset=1,
+    template="nurture_first_win.html",
+    subject="Subject",
+    enabled=True,
+    requires_onboarding=False,
+)
+
+
+def _step(**overrides: Unpack[_StepOverrides]) -> NurtureStep:
+    return replace(_BASE_STEP, **overrides)
 
 
 def _entry(status: NurtureStepStatus, at: datetime) -> NurtureHistoryEntry:
@@ -240,15 +255,16 @@ class TestSendStep:
 
 
 class TestProcessUser:
-    def _user(self, **overrides) -> UserDocument:
-        fields = dict(
-            id=USER_ID,
-            email="u@example.com",
-            created_at="2026-05-30T12:00:00Z",
-            notification_channel_prefs={},
+    def _user(self, **overrides: object) -> UserDocument:
+        return UserDocument.model_validate(
+            {
+                "id": USER_ID,
+                "email": "u@example.com",
+                "created_at": "2026-05-30T12:00:00Z",
+                "notification_channel_prefs": {},
+                **overrides,
+            }
         )
-        fields.update(overrides)
-        return UserDocument(**fields)
 
     async def test_returns_false_outside_send_hour(self) -> None:
         with patch("app.services.nurture.service.is_within_local_daytime", return_value=False):

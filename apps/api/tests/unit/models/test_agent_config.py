@@ -41,7 +41,7 @@ class TestAgentConfigurable:
 
     def test_langgraphs_own_runtime_keys_ride_along_untouched(self) -> None:
         bag = {"user_id": "u1", "checkpoint_ns": "ns"}
-        assert agent_configurable({CONFIGURABLE_KEY: bag})["checkpoint_ns"] == "ns"
+        assert agent_configurable({CONFIGURABLE_KEY: bag}) == bag
 
 
 class TestReadAgentConfigurable:

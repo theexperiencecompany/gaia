@@ -36,6 +36,7 @@ from app.schemas.referrals import (
 )
 from app.utils.errors import AppError
 from shared.py.wide_events import log
+from tests.tool_helpers import tool_coroutine
 
 MODULE = "app.agents.tools.referral_tools"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -110,7 +111,7 @@ class TestGetReferralLink:
     ) -> None:
         overview = _overview_returning(_overview())
         with patch(f"{MODULE}.get_referral_overview", overview):
-            result = await get_referral_link.coroutine(config=_cfg())
+            result = await tool_coroutine(get_referral_link)(config=_cfg())
 
         overview.assert_awaited_once_with(USER_ID)
         tool_log.set.assert_called_once_with(
@@ -128,7 +129,7 @@ class TestGetReferralLink:
 
     async def test_a_user_without_a_subscription_has_no_link(self, tool_log: MagicMock) -> None:
         with patch(f"{MODULE}.get_referral_overview", NOT_SUBSCRIBED):
-            assert await get_referral_link.coroutine(config=_cfg()) == NO_LINK_TEXT
+            assert await tool_coroutine(get_referral_link)(config=_cfg()) == NO_LINK_TEXT
 
         tool_log.set_ns.assert_called_once_with("referral", has_link=False)
 
@@ -138,7 +139,7 @@ class TestGetReferralLink:
             patch(f"{MODULE}.get_referral_overview", broken),
             pytest.raises(AppError, match="User not found"),
         ):
-            await get_referral_link.coroutine(config=_cfg())
+            await tool_coroutine(get_referral_link)(config=_cfg())
 
 
 class TestGetReferralStatus:
@@ -157,7 +158,7 @@ class TestGetReferralStatus:
         )
         reader = _overview_returning(overview)
         with patch(f"{MODULE}.get_referral_overview", reader):
-            result = await get_referral_status.coroutine(config=_cfg())
+            result = await tool_coroutine(get_referral_status)(config=_cfg())
 
         reader.assert_awaited_once_with(USER_ID)
         tool_log.set.assert_called_once_with(
@@ -175,7 +176,7 @@ class TestGetReferralStatus:
 
     async def test_nobody_yet(self) -> None:
         with patch(f"{MODULE}.get_referral_overview", _overview_returning(_overview())):
-            result = await get_referral_status.coroutine(config=_cfg())
+            result = await tool_coroutine(get_referral_status)(config=_cfg())
 
         assert result == (
             "Free months earned: 0 (0 already added to the billing date, "
@@ -186,7 +187,7 @@ class TestGetReferralStatus:
 
     async def test_a_user_without_a_subscription_is_told_so(self) -> None:
         with patch(f"{MODULE}.get_referral_overview", NOT_SUBSCRIBED):
-            assert await get_referral_status.coroutine(config=_cfg()) == NO_LINK_TEXT
+            assert await tool_coroutine(get_referral_status)(config=_cfg()) == NO_LINK_TEXT
 
 
 class TestSuggestInvitees:
@@ -206,7 +207,7 @@ class TestSuggestInvitees:
         )
         compute = AsyncMock(return_value=response)
         with patch(f"{MODULE}.compute_suggestions", compute):
-            result = await suggest_invitees.coroutine(config=_cfg())
+            result = await tool_coroutine(suggest_invitees)(config=_cfg())
 
         compute.assert_awaited_once_with(USER_ID)
         tool_log.set.assert_called_once_with(
@@ -221,7 +222,7 @@ class TestSuggestInvitees:
     async def test_none_found(self) -> None:
         empty = ReferralSuggestionsResponse(suggestions=[])
         with patch(f"{MODULE}.compute_suggestions", AsyncMock(return_value=empty)):
-            result = await suggest_invitees.coroutine(config=_cfg())
+            result = await tool_coroutine(suggest_invitees)(config=_cfg())
 
         assert result == (
             "No one to suggest right now. Suggestions come from the people the user "
@@ -260,7 +261,7 @@ class TestSendReferralInvite:
             "me@example.com",
         ]
         with patch(f"{MODULE}.send_invites", sent):
-            result = await send_referral_invite.coroutine(config=_cfg(), emails=emails)
+            result = await tool_coroutine(send_referral_invite)(config=_cfg(), emails=emails)
 
         sent.assert_awaited_once_with(
             USER_ID, ReferralInviteRequest(emails=emails, surface=ReferralInviteSurface.AGENT)
@@ -286,7 +287,7 @@ class TestSendReferralInvite:
             )
         )
         with patch(f"{MODULE}.send_invites", ceiling):
-            result = await send_referral_invite.coroutine(
+            result = await tool_coroutine(send_referral_invite)(
                 config=_cfg(), emails=["priya@example.com"]
             )
 
@@ -302,7 +303,7 @@ class TestSendReferralInvite:
             patch(f"{MODULE}.send_invites", send),
             patch(f"{MODULE}.get_referral_overview", reader),
         ):
-            result = await send_referral_invite.coroutine(
+            result = await tool_coroutine(send_referral_invite)(
                 config=_cfg(source), emails=["priya@example.com"], friend_name="Priya"
             )
 
