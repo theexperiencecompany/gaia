@@ -2383,7 +2383,9 @@ class TestStructuredReplyParsing:
             messages=iter([AIMessage(content='{"text": "done", "achieved": true}')])
         )
 
-        runnable = client_module._gemini_schema_runnable(fake, _Closing)
+        runnable = client_module._gemini_schema_runnable(
+            cast("ChatGoogleGenerativeAI", fake), _Closing
+        )
 
         assert isinstance(runnable, RunnableSequence)
         assert runnable.last.name == "_Closing"
@@ -2393,7 +2395,9 @@ class TestStructuredReplyParsing:
         fake = GenericFakeChatModel(messages=iter([AIMessage(content='{"text": "done"}')]))
 
         with pytest.raises(MalformedStructuredOutputError, match="does not fit the schema"):
-            client_module._gemini_schema_runnable(fake, _Closing).invoke("prompt")
+            client_module._gemini_schema_runnable(
+                cast("ChatGoogleGenerativeAI", fake), _Closing
+            ).invoke("prompt")
 
     def test_a_json_reply_that_is_no_ai_message_is_malformed_naming_its_type(self) -> None:
         with pytest.raises(MalformedStructuredOutputError) as raised:

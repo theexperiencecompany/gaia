@@ -97,14 +97,24 @@ async def _gathered(work: TrackedWork, scouts: ScoutSignals) -> GatheredCandidat
     return await gather_candidates(USER_ID, CLOCK, NOW, NOW, CandidateSources(work, [], scouts, []))
 
 
-def _found(title: str, **fields: object) -> BriefCandidate:
+def _found(
+    title: str,
+    *,
+    detail: str | None = None,
+    due_at: datetime | None = None,
+    todo_id: str | None = None,
+    held_id: str | None = None,
+) -> BriefCandidate:
     return BriefCandidate(
         source="gmail",
         app="Gmail",
         state="you",
         title=title,
         ref="gmail:t1",
-        **fields,
+        detail=detail,
+        due_at=due_at,
+        todo_id=todo_id,
+        held_id=held_id,
     )
 
 

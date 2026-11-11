@@ -345,9 +345,13 @@ class TestAnItemLine:
         assert item_line(1, item) == "1. [Stripe] note: Payout"
         assert item_line(1, grouped).endswith("| 2 requests, one item")
 
-    @pytest.mark.parametrize("link", [{"url": "https://x.test"}, {"todo_id": "t1"}])
-    def test_an_item_with_either_a_url_or_a_todo_is_linkable(self, link: dict[str, str]) -> None:
-        item = BriefCandidate(source="gmail", app="Gmail", state="you", title="Reply", **link)
+    @pytest.mark.parametrize(("url", "todo_id"), [("https://x.test", None), (None, "t1")])
+    def test_an_item_with_either_a_url_or_a_todo_is_linkable(
+        self, url: str | None, todo_id: str | None
+    ) -> None:
+        item = BriefCandidate(
+            source="gmail", app="Gmail", state="you", title="Reply", url=url, todo_id=todo_id
+        )
 
         assert item_line(1, item) == "1. [Gmail] waiting on you: Reply | linkable"
 
