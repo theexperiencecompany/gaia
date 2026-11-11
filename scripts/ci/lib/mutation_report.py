@@ -848,22 +848,43 @@ def write_record_set(path: Path, verdicts: list[ModuleVerdict]) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
 
 
+def _verdicts_from_json(path: Path) -> list[ModuleVerdict]:
+    """Read one record file, naming the path instead of a KeyError when it is not one."""
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"mutation: {path} is not a mutation record ({exc})") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"mutation: {path} is not a mutation record")
+    if "modules" in data:
+        items = _as_list(data["modules"])
+        return [_record_from_dict(item, path) for item in items]
+    if "module" not in data:
+        raise SystemExit(
+            f"mutation: {path} is not a mutation record (no 'module'/'modules' key).\n"
+            "  Pass shard.verdict.json, a directory of module records, or shard.log."
+        )
+    return [from_dict(data)]
+
+
+def _record_from_dict(data: dict[str, object], path: Path) -> ModuleVerdict:
+    """Turn one record object into a verdict, failing with its path on a malformed one."""
+    try:
+        return from_dict(data)
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise SystemExit(f"mutation: {path} is not a mutation record (bad {exc})") from exc
+
+
 def load_verdicts(source: Path, api_prefix: str) -> list[ModuleVerdict]:
     """Read records from shard.verdict.json, a directory of them, or a shard log."""
     if source.is_dir():
-        return [from_dict(json.loads(path.read_text())) for path in sorted(source.glob("*.json"))]
+        return [
+            verdict
+            for path in sorted(source.glob("*.json"))
+            for verdict in _verdicts_from_json(path)
+        ]
     if source.suffix == ".json":
-        data = json.loads(source.read_text())
-        if not isinstance(data, dict):
-            raise SystemExit(f"mutation: {source} is not a mutation record")
-        if "modules" in data:
-            return [from_dict(item) for item in _as_list(data["modules"])]
-        if "module" not in data:
-            raise SystemExit(
-                f"mutation: {source} is not a mutation record (no 'module'/'modules' key).\n"
-                "  Pass shard.verdict.json, a directory of module records, or shard.log."
-            )
-        return [from_dict(data)]
+        return _verdicts_from_json(source)
     return [
         verdict_from_section(module, section, api_prefix)
         for module, section in split_shard_log(source.read_text())

@@ -61,9 +61,13 @@ repos:
       # builds mypy's cache (~3.5 min), which is pre-push work, not commit work.
       - id: plr-complexity
         name: plr-complexity ratchet (PLR0911/0912/0913/0915)
-        entry: python3 tools/lints/check_plr_complexity.py
+        # A hook's PATH has no mise shims, so bare python3 can be the OS 3.9;
+        # uv runs CI's script on the .python-version interpreter.
+        entry: uv run --no-project --isolated python tools/lints/check_plr_complexity.py
         language: system
-        files: '\.py$'
+        # The baseline is an nx input too: a commit that only re-baselines still
+        # has to prove the ratchet accepts it.
+        files: '\.py$|^tools/lints/plr_complexity_baseline\.txt$'
         pass_filenames: false
         priority: 0
 

@@ -54,7 +54,7 @@ missing record means the module was killed or crashed, and says so.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -789,7 +789,7 @@ def cmd_one(args: list[str]) -> int:
     previous = os.environ.get("MUTATION_VERDICT_DIR")
     os.environ["MUTATION_VERDICT_DIR"] = str(record_dir)
     try:
-        rc = cmd_module([module, testfiles])
+        rc = cmd_module([module, testfiles], announce_survivors=False)
     finally:
         if previous is None:
             os.environ.pop("MUTATION_VERDICT_DIR", None)
@@ -797,6 +797,8 @@ def cmd_one(args: list[str]) -> int:
             os.environ["MUTATION_VERDICT_DIR"] = previous
     if rc != 0 and any(record_dir.glob("*.json")):
         # The record is the replay artifact; print it in the form a reader acts on.
+        # `_record` stayed quiet above so this full view (diffs, replay selectors)
+        # is the only survivor output a one-module run prints.
         subprocess.run(
             [sys.executable, str(LIB / "mutation_report.py"), "survivors", str(record_dir)],
             check=False,
@@ -1350,7 +1352,9 @@ def mutate(request: ModuleRequest, venv: Path, workdir: Path) -> Outcome:
     return graded_outcome(request, venv, workdir, phase)
 
 
-def _record(request: ModuleRequest, outcome: Outcome, directory: Path) -> None:
+def _record(
+    request: ModuleRequest, outcome: Outcome, directory: Path, announce: bool = True
+) -> None:
     verdict = report.add_classified(
         report.ModuleVerdict(
             module=request.module,
@@ -1365,7 +1369,7 @@ def _record(request: ModuleRequest, outcome: Outcome, directory: Path) -> None:
         outcome.diffs,
     )
     report.write_record(directory / f"{report.module_slug(request.module)}.json", verdict)
-    if verdict.survivors:
+    if announce and verdict.survivors:
         print(report.render_report(verdict), flush=True)
 
 
@@ -1373,7 +1377,7 @@ def _terminate(signum: int, _frame: FrameType | None) -> None:
     raise SystemExit(128 + signum)
 
 
-def cmd_module(args: list[str]) -> int:
+def cmd_module(args: list[str], *, announce_survivors: bool = True) -> int:
     record_dir = os.environ.get("MUTATION_VERDICT_DIR")
     try:
         request = ModuleRequest.from_args(args)
@@ -1382,7 +1386,12 @@ def cmd_module(args: list[str]) -> int:
         module = args[0].removeprefix("apps/api/") if args else ""
         if record_dir and module.startswith("app/"):
             unrunnable = ModuleRequest(module=module, testfiles=(), ranges="")
-            _record(unrunnable, Outcome(Status.ERROR, str(exc).splitlines()[0]), Path(record_dir))
+            _record(
+                unrunnable,
+                Outcome(Status.ERROR, str(exc).splitlines()[0]),
+                Path(record_dir),
+                announce_survivors,
+            )
         return 2
     venv = venv_python()
     os.environ.setdefault("MUTMUT_MAX_CHILDREN", str(mutant_workers()))
@@ -1391,7 +1400,12 @@ def cmd_module(args: list[str]) -> int:
     signal.signal(signal.SIGINT, _terminate)
     try:
         outcome = mutate(request, venv, workdir)
-        _record(request, outcome, Path(record_dir) if record_dir else workdir)
+        _record(
+            request,
+            outcome,
+            Path(record_dir) if record_dir else workdir,
+            announce_survivors,
+        )
     finally:
         if not os.environ.get("MUTMUT_KEEP_WORKDIR"):
             shutil.rmtree(workdir, ignore_errors=True)
@@ -1451,7 +1465,7 @@ def cmd_replay(args: list[str]) -> int:
     ).returncode
 
 
-COMMANDS = {
+COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "matrix": cmd_matrix,
     "plan": cmd_plan,
     "shard": cmd_shard,

@@ -265,6 +265,32 @@ def test_survivors_rejects_a_foreign_json_instead_of_crashing(tmp_path: Path) ->
     assert "shard.verdict.json" in result.stderr
 
 
+def test_survivors_names_the_foreign_file_in_a_record_directory(tmp_path: Path) -> None:
+    """A record dir holds only records; one other json names itself instead of a traceback."""
+    records = _record_dir(tmp_path, [(f"{BOT_PREFIX}3", f"CHANGED:{BOT_ARGS_LINE}")])
+    (records / "runner-health.json").write_text(json.dumps({"shard": 3, "host": "gaia-home-1"}))
+
+    result = _run(["survivors", str(records)])
+
+    assert result.returncode != 0
+    assert "runner-health.json" in result.stderr
+    assert "not a mutation record" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_survivors_names_unreadable_json_in_a_record_directory(tmp_path: Path) -> None:
+    """A truncated download is a one-line error, not a JSONDecodeError traceback."""
+    records = _record_dir(tmp_path, [(f"{BOT_PREFIX}3", f"CHANGED:{BOT_ARGS_LINE}")])
+    (records / "truncated.verdict.json").write_text('{"module": "app/x.py"')
+
+    result = _run(["survivors", str(records)])
+
+    assert result.returncode != 0
+    assert "truncated.verdict.json" in result.stderr
+    assert "not a mutation record" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 # --- report_shard ------------------------------------------------------------
 
 
