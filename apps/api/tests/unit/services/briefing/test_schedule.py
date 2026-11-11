@@ -77,6 +77,15 @@ class TestDailyBriefingCron:
         assert schedule.daily_briefing_cron(briefing, DEFAULT_QUIET_HOURS) == cron
 
 
+class TestDailyBriefingHour:
+    def test_quiet_hours_are_asked_about_the_users_hour_on_an_aware_clock(self) -> None:
+        quiet_hours = MagicMock(spec=QuietHours)
+        quiet_hours.end_after.return_value = datetime(1, 1, 1, 11, tzinfo=UTC)
+
+        assert schedule.daily_briefing_hour(BriefingSchedule(hour=9), quiet_hours) == 11
+        quiet_hours.end_after.assert_called_once_with(datetime(1, 1, 1, 9, tzinfo=UTC))
+
+
 def _workflow(key: str, cron: str, timezone: str = _TZ, *, activated: bool = True) -> MagicMock:
     workflow = MagicMock(id=f"wf-{key}", system_workflow_key=key, activated=activated)
     workflow.trigger_config = TriggerConfig(

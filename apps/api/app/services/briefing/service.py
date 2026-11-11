@@ -794,7 +794,8 @@ async def _voice_checked_against_items(
     named; a second failure fails the run before anything is stored or sent.
     """
     note = ""
-    failure = BriefingGenerationError("the brief was never voiced")
+    # Only reached if MAX_VOICE_ATTEMPTS were 0; the loop always replaces it.
+    failure = BriefingGenerationError("the brief was never voiced")  # pragma: no mutate
     for _ in range(MAX_VOICE_ATTEMPTS):
         attempt_prompt = f"{prompt}\n\n{note}" if note else prompt
         raw = await _run_silent(user, clock, attempt_prompt, conversation_key=BRIEFING_KIND_DAILY)

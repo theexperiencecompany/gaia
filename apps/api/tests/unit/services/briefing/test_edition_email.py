@@ -16,6 +16,7 @@ import pytest
 
 from app.config.settings import settings
 from app.constants.briefing import EditionDeliveryFormat
+from app.constants.files import BlobKind
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
@@ -124,7 +125,9 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
         return RenderedImage(image=h.image, fold=h.fold)
 
     async def fake_upload(owner_id: str, public_id: str, content: bytes, **kwargs: Any) -> str:
-        h.upload_calls.append({"public_id": public_id, "file_data": content})
+        h.upload_calls.append(
+            {"owner_id": owner_id, "public_id": public_id, "file_data": content, **kwargs}
+        )
         if h.upload_error is not None:
             raise h.upload_error
         return h.image_url
@@ -229,7 +232,14 @@ class TestImageAndUpload:
         await host(make_payload(date="2026-02-03"))
 
         assert harness.upload_calls == [
-            {"public_id": f"briefing/editions/{RENDER_KEY}", "file_data": b"edition-png-bytes"},
+            {
+                "owner_id": "user-1",
+                "public_id": f"briefing/editions/{RENDER_KEY}",
+                "file_data": b"edition-png-bytes",
+                "resource_type": "image",
+                "kind": BlobKind.GENERATED_IMAGE,
+                "content_type": "image/png",
+            },
         ]
 
     async def test_hosting_returns_capped_delivery_urls_for_the_uploaded_original(

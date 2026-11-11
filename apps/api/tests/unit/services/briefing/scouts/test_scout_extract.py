@@ -69,6 +69,30 @@ class TestReadingItems:
 
         assert signal.state == "checked: false"
 
+    def test_a_true_flag_reads_as_its_innermost_field_and_true(self) -> None:
+        source = SOURCE.model_copy(
+            update={"fields": SOURCE.fields.model_copy(update={"state": "a.flags.checked"})}
+        )
+        values = {"reviews": {"items": [_pr(1, a={"flags": {"checked": True}})]}}
+
+        [signal] = extract_signals(GITHUB, [source], values)
+
+        assert signal.state == "checked: true"
+
+    def test_a_person_object_skips_an_empty_or_non_text_name_for_the_next_key(self) -> None:
+        values = {
+            "reviews": {
+                "items": [
+                    _pr(1, author={"name": "", "displayName": "Bo"}),
+                    _pr(2, author={"name": 5, "displayName": "Cy"}),
+                ]
+            }
+        }
+
+        first, second = extract_signals(GITHUB, [SOURCE], values)
+
+        assert (first.people, second.people) == (["Bo"], ["Cy"])
+
     def test_people_given_as_person_objects_read_as_their_names(self) -> None:
         """Google Docs owners [{displayName}] were refused as "people is a list"."""
         values = {

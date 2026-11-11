@@ -22,6 +22,7 @@ from app.models.scout_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.briefing.scouts import judge, service
+from app.services.briefing.scouts.facts import memory_note
 from app.services.briefing.scouts.judge import SignalVerdict, SignalVerdicts, judge_replayed
 from app.utils.errors import AppError
 
@@ -127,6 +128,63 @@ class TestJudge:
         assert "Review the barge-in PR" not in prompt
         assert "2026-10-22 (Asia/Kolkata)" in prompt
 
+    async def test_each_item_is_one_numbered_line_with_its_state_due_date_and_people(
+        self, model: AsyncMock
+    ) -> None:
+        detailed = GST.model_copy(
+            update={
+                "state": "open",
+                "due_at": datetime(2026, 10, 23, 18, 30, tzinfo=UTC),
+                "people": ["ana", "bo"],
+            }
+        )
+        remembered = [_remembered(GYM), _remembered(detailed), *REMEMBERED[2:]]
+
+        await judge_replayed(USER_ID, RESULTS, remembered, NOW, "Asia/Kolkata")
+
+        prompt = model.await_args.args[1]
+        lines = prompt.splitlines()
+        assert [line for line in lines if line.startswith("2. ")] == [
+            "2. [Todoist] item: File GST return | state: open | due 2026-10-23 | with ana, bo | "
+            + memory_note(remembered[1], NOW)
+        ]
+        assert lines[lines.index(next(x for x in lines if x.startswith("1. "))) + 1].startswith(
+            "2. "
+        )
+
+    async def test_only_replayed_scouts_with_criteria_decide_which_items_are_judged(
+        self, model: AsyncMock
+    ) -> None:
+        model.return_value = _verdicts((True, SignalImportance.HIGH))
+        results = [
+            ScoutResult(
+                integration_id="todoist",
+                outcome=ScoutOutcome.REPLAYED,
+                signals=[GYM],
+                criteria="",
+            ),
+            ScoutResult(
+                integration_id="pump",
+                outcome=ScoutOutcome.LEARNED,
+                signals=[NEHA],
+                criteria=PUMP_CRITERIA,
+            ),
+            ScoutResult(
+                integration_id="github",
+                outcome=ScoutOutcome.REPLAYED,
+                signals=[LEARNED],
+                criteria="pull requests waiting on the user",
+            ),
+        ]
+        remembered = [_remembered(GYM), _remembered(NEHA), _remembered(LEARNED)]
+
+        kept = await judge_replayed(USER_ID, results, remembered, NOW, "UTC")
+
+        prompt = model.await_args.args[1]
+        assert "- GitHub: pull requests waiting on the user" in prompt
+        assert "Gym" not in prompt and "Neha" not in prompt
+        assert [r.signal.external_id for r in kept] == ["t1", "r1", "g1"]
+
     async def test_with_nothing_replayed_there_is_no_call(self, model: AsyncMock) -> None:
         kept = await judge_replayed(USER_ID, RESULTS[2:], REMEMBERED[3:], NOW, "UTC")
 
@@ -160,7 +218,22 @@ class TestJudge:
         with pytest.raises(AppError) as raised:
             await judge_replayed(USER_ID, RESULTS, REMEMBERED, NOW, "UTC")
 
-        assert raised.value.message == "the signal judge did not answer every item once"
+        error = raised.value
+        assert error.message == "the signal judge did not answer every item once"
+        assert error.fix == (
+            "the brief goes without today's replayed app items; the next brief judges again"
+        )
+
+    async def test_the_failure_names_how_many_items_were_asked_and_who_got_a_verdict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        short = _verdicts((True, SignalImportance.HIGH), (True, SignalImportance.HIGH))
+        monkeypatch.setattr(judge, "ainvoke_structured", AsyncMock(return_value=short))
+
+        with pytest.raises(AppError) as raised:
+            await judge_replayed(USER_ID, RESULTS, REMEMBERED, NOW, "UTC")
+
+        assert raised.value.why == "3 item(s) asked, verdicts for [1, 2]"
 
 
 USER = UserDocument(id=USER_ID, email="ada@example.com", name="Ada", timezone="Asia/Kolkata")
@@ -185,7 +258,9 @@ def brief_seams(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 class TestScoutSignals:
     async def test_the_brief_gets_the_judged_signals(self, brief_seams: AsyncMock) -> None:
-        assert await service.scout_signals(USER, NOW) == REMEMBERED[1:]
+        async with captured_wide_event() as event:
+            assert await service.scout_signals(USER, NOW) == REMEMBERED[1:]
+        assert event["scouts"] == {"judged_out": 1}
         brief_seams.assert_awaited_once_with(USER_ID, RESULTS, REMEMBERED, NOW, "Asia/Kolkata")
 
     async def test_a_failed_judge_costs_only_the_replayed_signals(

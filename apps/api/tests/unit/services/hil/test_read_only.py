@@ -2,12 +2,14 @@
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
-from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
+from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions
+from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY, HIL_LLM_TIMEOUT_SECONDS
 from app.models.hil_models import ToolReadOnlyVerdict
 from app.services.hil.read_only import (
     _ReadOnlyJudgement,
@@ -66,6 +68,11 @@ class TestReadOnlyDeclaration:
         assert read_only_declaration(make_tool(metadata=metadata)) is None
 
 
+class TestReadOnlyDeclarationOfNothing:
+    def test_no_tool_declares_nothing(self) -> None:
+        assert read_only_declaration(None) is None
+
+
 class TestVoicesWriteIntent:
     @pytest.mark.parametrize(
         ("name", "description"),
@@ -79,6 +86,47 @@ class TestVoicesWriteIntent:
     )
     def test_no_write_token_leaves_it_to_the_model(self, name: str, description: str) -> None:
         assert voices_write_intent(name, description) is False
+
+    @pytest.mark.parametrize(
+        ("name", "description"),
+        [
+            ("listDelete", "Items."),
+            ("pushes", "Items."),
+            ("adds", "Items."),
+            ("banning", "Items."),
+            ("creating", "Items."),
+            ("created", "Items."),
+            ("added", "Items."),
+            ("banned", "Items."),
+            ("stopped", "Items."),
+            ("post", "Items."),
+        ],
+        ids=[
+            "camel",
+            "es plural",
+            "s plural",
+            "doubled ing",
+            "e ing",
+            "ed",
+            "doubled ed",
+            "nn ed",
+            "pp ed",
+            "bare",
+        ],
+    )
+    def test_every_inflection_of_a_write_token_in_a_name_is_a_no(
+        self, name: str, description: str
+    ) -> None:
+        assert voices_write_intent(name, description) is True
+
+    @pytest.mark.parametrize(
+        "description",
+        ["Issues created this week.", "Items added today.", "Users banned last month."],
+    )
+    def test_a_description_that_says_a_thing_was_done_is_data_not_intent(
+        self, description: str
+    ) -> None:
+        assert voices_write_intent("list_items", description) is False
 
     @pytest.mark.parametrize(
         ("name", "description"),
@@ -130,6 +178,55 @@ def verdicts() -> Iterator[_Verdicts]:
 
 def _reading_tool(description: str = "List open tickets.") -> BaseTool:
     return make_tool(name="list_open_tickets", description=description)
+
+
+class TestToolShapeHash:
+    def test_the_hash_is_the_stable_key_cached_verdicts_are_stored_under(self) -> None:
+        tool = StructuredTool.from_function(
+            func=lambda: None,
+            name="list_open_tickets",
+            description="List open tickets.",
+            args_schema={"type": "object", "properties": {"queue": {"type": "string"}}},
+        )
+
+        assert tool_shape_hash(tool) == (
+            "60ca99531799f651523e39d065e9eab670093280e0ea7aa06d1a548dc275e38b"
+        )
+
+    def test_the_name_and_the_description_each_change_it(self) -> None:
+        base = make_tool(name="a_tool", description="One.")
+
+        hashes = {
+            tool_shape_hash(base),
+            tool_shape_hash(make_tool(name="b_tool", description="One.")),
+            tool_shape_hash(make_tool(name="a_tool", description="Two.")),
+        }
+
+        assert len(hashes) == 3
+
+    def test_schema_key_order_does_not_change_it(self) -> None:
+        def with_schema(properties: dict[str, object]) -> BaseTool:
+            return StructuredTool.from_function(
+                func=lambda: None,
+                name="t",
+                description="d",
+                args_schema={"type": "object", "properties": properties},
+            )
+
+        forward = with_schema({"a": {"type": "string"}, "b": {"type": "string"}})
+        backward = with_schema({"b": {"type": "string"}, "a": {"type": "string"}})
+
+        assert tool_shape_hash(forward) == tool_shape_hash(backward)
+
+    def test_a_schema_holding_a_value_json_cannot_carry_still_hashes(self) -> None:
+        tool = StructuredTool.from_function(
+            func=lambda: None,
+            name="t",
+            description="d",
+            args_schema={"type": "object", "properties": {"when": {"default": Path("/x")}}},
+        )
+
+        assert len(tool_shape_hash(tool)) == 64
 
 
 class TestIsReadOnly:
@@ -197,6 +294,48 @@ class TestIsReadOnly:
         verdicts.judge.return_value = judgement
 
         assert await is_read_only(_reading_tool()) is False
+
+    async def test_the_model_is_asked_about_the_tool_inside_a_fresh_fence_with_stable_options(
+        self, verdicts: _Verdicts
+    ) -> None:
+        tool = StructuredTool.from_function(
+            func=lambda: None,
+            name="lookup_contact",
+            description="",
+            args_schema={
+                "type": "object",
+                "properties": {"zeta": {"type": "string"}, "alpha": {"default": Path("/x")}},
+            },
+        )
+
+        with patch(f"{MODULE}.untrusted_fence", return_value="<<fence>>"):
+            await is_read_only(tool)
+
+        schema, prompt = verdicts.judge.await_args.args
+        assert schema is _ReadOnlyJudgement
+        assert prompt.count("<<fence>>") == 3
+        assert "Tool name: lookup_contact\nDescription: (none provided)\n" in prompt
+        assert 'Input schema: {"alpha": {"default": "/x"}, "zeta": {"type": "string"}}' in prompt
+        assert verdicts.judge.await_args.kwargs == {
+            "label": "hil_tool_read_only_classification",
+            "config": SILENT_LLM_CONFIG,
+            "options": StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
+        }
+
+    async def test_the_verdict_keeps_the_models_rationale(self, verdicts: _Verdicts) -> None:
+        verdicts.judge.return_value = _ReadOnlyJudgement(
+            has_side_effects=False, certain=True, rationale="only lists"
+        )
+        tool = _reading_tool()
+
+        await is_read_only(tool)
+
+        stored = verdicts.cache[tool_shape_hash(tool)]
+        assert (stored.tool_name, stored.read_only, stored.rationale) == (
+            "list_open_tickets",
+            True,
+            "only lists",
+        )
 
     async def test_a_tool_is_classified_once_per_shape(self, verdicts: _Verdicts) -> None:
         tool = _reading_tool()
