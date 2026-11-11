@@ -12,3 +12,8 @@ export function circularNeighbours<T>(
       : [neighbour];
   });
 }
+
+/** Every other item, starting after the one at `index` and wrapping round; all of them when `index` is -1. */
+export function itemsAfter<T>(items: readonly T[], index: number): T[] {
+  return [...items.slice(index + 1), ...items.slice(0, Math.max(index, 0))];
+}
