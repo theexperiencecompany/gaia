@@ -1,11 +1,13 @@
 """The referral page's overview and the invite landing's resolve, over mocked repositories and Dodo."""
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from dodopayments.types import Discount
 import pytest
 
 from app.config.feature_flags import REFERRAL_COPY_FLAG, REFERRAL_LAYOUT_FLAG
@@ -20,6 +22,7 @@ from app.constants.referrals import (
     ReferralCopyVariant,
     ReferralLayoutVariant,
 )
+from app.models.payment_models import PlanDuration
 from app.models.referral_models import (
     ReferralCodeDocument,
     ReferralDocument,
@@ -34,6 +37,7 @@ from app.schemas.referrals import (
     ReferralResolveResponse,
     ReferredFriend,
 )
+from app.services.payments.payment_service import payment_service
 from app.services.referrals.codes import share_link
 from app.services.referrals.offer import build_offer
 from app.services.referrals.overview import friend_gift, get_referral_overview, land_on_invite
@@ -46,6 +50,7 @@ from shared.py.analytics.context import AnalyticsContext, analytics_context
 from tests.factories import make_pro_plans
 
 OVERVIEW = "app.services.referrals.overview"
+PAYMENTS = "app.services.payments.payment_service"
 JOINED = datetime(2026, 9, 1, tzinfo=UTC)
 PAID = datetime(2026, 9, 3, tzinfo=UTC)
 PLANS = make_pro_plans()
@@ -345,8 +350,34 @@ class TestResolve:
         assert get_user.await_count == int(owner_exists)
 
 
+def _percent_off(*, basis_points: int, cycles: int | None) -> Discount:
+    return Discount(
+        amount=basis_points,
+        business_id="biz_1",
+        code="SAVE20",
+        created_at=JOINED,
+        discount_id="dsc_paywall",
+        restricted_to=[],
+        times_used=0,
+        type="percentage",
+        subscription_cycles=cycles,
+    )
+
+
+@contextmanager
+def _paywall_code(discount: Discount | None) -> Iterator[None]:
+    """Configure the code every Pro checkout applies, as Dodo reports it."""
+    with (
+        patch(f"{PAYMENTS}.settings.PAYWALL_DISCOUNT_CODE", "SAVE20"),
+        patch.object(payment_service, "client", MagicMock(), create=True),
+        patch(f"{PAYMENTS}.find_discount", AsyncMock(return_value=discount)),
+    ):
+        yield
+
+
 class TestFriendGift:
-    async def test_a_friend_owed_a_gift_sees_who_sent_it_and_its_price(self) -> None:
+    @pytest.fixture
+    def owed(self) -> Iterator[AsyncMock]:
         referral = ReferralDocument(
             friend_user_id="64a0000000000000000000f1",
             referrer_user_id=OWNER.id,
@@ -360,6 +391,12 @@ class TestFriendGift:
             patch(f"{OVERVIEW}.user_repository.get", AsyncMock(return_value=OWNER)),
             patch(f"{OVERVIEW}.payment_service.get_pro_plans", AsyncMock(return_value=PLANS)),
         ):
+            yield owed
+
+    async def test_a_friend_owed_a_gift_sees_who_sent_it_and_its_price(
+        self, owed: AsyncMock
+    ) -> None:
+        with patch(f"{PAYMENTS}.settings.PAYWALL_DISCOUNT_CODE", None):
             result = await friend_gift("64a0000000000000000000f1")
 
         owed.assert_awaited_once_with("64a0000000000000000000f1")
@@ -368,8 +405,33 @@ class TestFriendGift:
                 referrer_first_name="Aryan",
                 referrer_picture="https://p/a.png",
                 offer=build_offer(PLANS),
+                billing_cycles=[PlanDuration.MONTHLY, PlanDuration.YEARLY],
             )
         )
+
+    @pytest.mark.usefixtures("owed")
+    async def test_the_gift_is_priced_only_on_the_cycles_checkout_applies_it(self) -> None:
+        # 20% off one charge: less than half off two months, more than a month off a year.
+        with _paywall_code(_percent_off(basis_points=2000, cycles=1)):
+            result = await friend_gift("64a0000000000000000000f1")
+
+        assert result.gift is not None
+        assert result.gift.billing_cycles == [PlanDuration.MONTHLY]
+
+    @pytest.mark.usefixtures("owed")
+    async def test_a_paywall_code_worth_more_on_every_cycle_leaves_no_gift_to_show(
+        self,
+    ) -> None:
+        with _paywall_code(_percent_off(basis_points=2000, cycles=None)):
+            assert await friend_gift("64a0000000000000000000f1") == ReferralGiftResponse(gift=None)
+
+    @pytest.mark.usefixtures("owed")
+    async def test_a_paywall_code_dodo_does_not_know_never_hides_the_gift(self) -> None:
+        with _paywall_code(None):
+            result = await friend_gift("64a0000000000000000000f1")
+
+        assert result.gift is not None
+        assert result.gift.billing_cycles == [PlanDuration.MONTHLY, PlanDuration.YEARLY]
 
     async def test_anyone_owed_no_gift_gets_none_and_no_price_lookup(self) -> None:
         with (
