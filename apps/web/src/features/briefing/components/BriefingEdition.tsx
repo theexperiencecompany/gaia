@@ -67,21 +67,22 @@ function ItemGroup({
   );
 }
 
-/** One brief: the day's rendered edition, the message GAIA wrote, then its real items as a tappable list. */
-export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
+/** A calendar event's wall-clock "HH:MM" as the reader's own clock writes it. */
+function clockTime(start: string): string {
+  const [hours, minutes] = start.split(":").map(Number);
+  const at = new Date();
+  at.setHours(hours, minutes, 0, 0);
+  return at.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** A brief with no rendered edition, read as text: the headline, GAIA's message, then its items. */
+function BriefingText({ payload }: { payload: BriefingEditionPayload }) {
   const calendar = payload.calendar ?? [];
   return (
     <article className="w-full rounded-2xl bg-zinc-800 p-4">
-      {imageUrl && (
-        <Image
-          src={imageUrl}
-          alt={payload.headline}
-          width={EDITION_WIDTH}
-          height={EDITION_TYPICAL_HEIGHT}
-          sizes="(max-width: 572px) 100vw, 540px"
-          className="mx-auto mb-4 h-auto w-full max-w-[540px] rounded-xl"
-        />
-      )}
       <p className="mb-3 text-sm font-semibold text-zinc-100">
         {payload.headline}
       </p>
@@ -100,8 +101,8 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
                 key={`${event.start ?? "all-day"}-${event.title}`}
                 className="text-sm font-medium text-zinc-200"
               >
-                <span className="mr-2 text-xs text-zinc-500">
-                  {event.start ?? "All day"}
+                <span className="mr-2 text-xs text-zinc-500 tabular-nums">
+                  {event.start ? clockTime(event.start) : "All day"}
                 </span>
                 {event.title}
               </p>
@@ -117,5 +118,23 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
         ))}
       </div>
     </article>
+  );
+}
+
+/**
+ * One brief. The rendered edition already carries every item, so it stands on
+ * the page alone; a brief stored before editions were rendered reads as text.
+ */
+export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
+  if (!imageUrl) return <BriefingText payload={payload} />;
+  return (
+    <Image
+      src={imageUrl}
+      alt={payload.headline}
+      width={EDITION_WIDTH}
+      height={EDITION_TYPICAL_HEIGHT}
+      sizes="(max-width: 572px) 100vw, 540px"
+      className="mx-auto h-auto w-full max-w-[540px]"
+    />
   );
 }
