@@ -116,3 +116,7 @@ DEV_PRO_TERM_DAYS = 365
 # The state a delivery's idempotency record carries between "claimed" and an
 # outcome. A record left in it means the handler died mid-flight.
 CLAIMED_STATUS = "processing"
+
+# Dodo lists discounts at most 100 a page; past this many pages a code is treated as unknown.
+DISCOUNT_LIST_PAGE_SIZE = 100
+DISCOUNT_LOOKUP_MAX_PAGES = 20

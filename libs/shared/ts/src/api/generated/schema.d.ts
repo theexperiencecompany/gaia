@@ -3660,6 +3660,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/referrals/gift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Gift
+         * @description The caller's gift from the friend who referred them, for the paywall's price; null when none is owed.
+         */
+        get: operations["referrals_get_my_gift"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/referrals/invites": {
         parameters: {
             query?: never;
@@ -13110,6 +13130,31 @@ export interface components {
          */
         ReferralCopyVariant: "gift" | "earn" | "time_back";
         /**
+         * ReferralFriendGift
+         * @description The gift a referred friend's checkout applies, and who sent it.
+         */
+        ReferralFriendGift: {
+            offer: components["schemas"]["ReferralOffer"];
+            /**
+             * Referrer First Name
+             * @description The referrer's first name, when their account has one
+             */
+            referrer_first_name: string | null;
+            /**
+             * Referrer Picture
+             * @description The referrer's photo, when they have one
+             */
+            referrer_picture: string | null;
+        };
+        /**
+         * ReferralGiftResponse
+         * @description The caller's gift from the friend who referred them; null when they are owed none.
+         */
+        ReferralGiftResponse: {
+            /** @description Null for anyone never referred, already subscribed, or while referrals are off */
+            gift: components["schemas"]["ReferralFriendGift"] | null;
+        };
+        /**
          * ReferralInviteRequest
          * @description A batch of addresses to invite; each is judged on its own, so one invalid address fails nothing.
          */
@@ -17128,6 +17173,8 @@ export type RedeemLinkCodeRequest = components['schemas']['RedeemLinkCodeRequest
 export type RedeemLinkCodeResponse = components['schemas']['RedeemLinkCodeResponse'];
 export type RedirectConfig = components['schemas']['RedirectConfig'];
 export type ReferralCopyVariant = components['schemas']['ReferralCopyVariant'];
+export type ReferralFriendGift = components['schemas']['ReferralFriendGift'];
+export type ReferralGiftResponse = components['schemas']['ReferralGiftResponse'];
 export type ReferralInviteRequest = components['schemas']['ReferralInviteRequest'];
 export type ReferralInviteResponse = components['schemas']['ReferralInviteResponse'];
 export type ReferralInviteResult = components['schemas']['ReferralInviteResult'];
@@ -27210,6 +27257,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_get_my_gift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralGiftResponse"];
+                };
             };
             /** @description Unprocessable Entity */
             422: {

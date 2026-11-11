@@ -5973,6 +5973,45 @@
       }
     },
     {
+      "event": "referral:reward_revoked",
+      "class": "ReferralRewardRevoked",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A paying friend's first payment was refunded or disputed, so their referrer's month was taken back.\n\n    reclaimed is false when the month was already under way and could not be moved back.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A paying friend's first payment was refunded or disputed, so their referrer's month was taken back.\n\nreclaimed is false when the month was already under way and could not be moved back.",
+        "properties": {
+          "friend_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Friend Id",
+            "type": "string"
+          },
+          "reason": {
+            "enum": ["refund", "dispute"],
+            "title": "Reason",
+            "type": "string"
+          },
+          "prior_state": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Prior State",
+            "type": "string"
+          },
+          "reclaimed": {
+            "title": "Reclaimed",
+            "type": "boolean"
+          }
+        },
+        "required": ["friend_id", "reason", "prior_state", "reclaimed"],
+        "title": "ReferralRewardRevoked",
+        "type": "object"
+      }
+    },
+    {
       "event": "referral:share_clicked",
       "class": "ReferralShareClicked",
       "owner": "web",

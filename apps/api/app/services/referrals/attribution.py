@@ -18,6 +18,7 @@ from app.db.repositories.referrals import referral_repository
 from app.db.repositories.users import user_repository
 from app.models.referral_models import ReferralDocument
 from app.services.analytics_service import capture
+from app.services.referrals.availability import referrals_enabled
 from app.utils.email_utils import email_identity
 from app.utils.timezone import as_utc
 from shared.py.analytics import Dedupe, UserId
@@ -66,7 +67,7 @@ def first_touch_cookie(
 
 
 async def attribute_signup(friend_user_id: str, attribution: ReferralAttribution) -> None:
-    """Record who referred a user who just signed up; a self-referral or unknown code records nothing."""
+    """Record who referred a user who just signed up; a self-referral, unknown code or switched-off program records nothing."""
     owner = await referral_code_repository.get_by_code(attribution.code)
     if owner is None:
         log.set_ns("referral", attribution="unknown_code")
@@ -75,6 +76,10 @@ async def attribute_signup(friend_user_id: str, attribution: ReferralAttribution
     referrer = await user_repository.get(owner.user_id)
     if friend is None or referrer is None:
         log.set_ns("referral", attribution="user_missing")
+        return
+    # An old link's cookie outlives a switch-off; the program starts no new friendships while off.
+    if not await referrals_enabled(referrer.id):
+        log.set_ns("referral", attribution="referrals_off")
         return
     if friend.id == referrer.id or (
         friend.email

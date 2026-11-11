@@ -41,6 +41,7 @@ from app.models.notification.notification_models import (
 from app.models.payment_models import SubscriptionDocument
 from app.models.referral_models import (
     ReferralDocument,
+    ReferralRevokeReason,
     ReferralRewardState,
     ReferralUpdate,
     ReferredFriendStatus,
@@ -51,9 +52,8 @@ from app.services.payments.payment_service import payment_service
 from app.services.payments.subscription_events import SubscriptionEvent, SubscriptionEventKind
 from app.services.referrals.rewards import (
     RewardDelivery,
-    apply_banked_months,
-    deliver_rewards,
     record_friend_payment,
+    settle_rewards,
 )
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.referrals import (
@@ -65,6 +65,7 @@ from tests.factories import make_dodo_payment, make_dodo_subscription
 from tests.helpers import local_timezone
 
 REWARDS = "app.services.referrals.rewards"
+BILLING_DATE = "app.services.referrals.billing_date"
 EventT = TypeVar("EventT")
 NOW = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
 PAID_AT = datetime(2026, 10, 14, 11, 0, tzinfo=UTC)
@@ -134,7 +135,7 @@ class Seams:
     mark_paid: AsyncMock
     get_referral: AsyncMock
     update: AsyncMock
-    list_banked: AsyncMock
+    list_owed: AsyncMock
     pin_target: AsyncMock
     dodo: MagicMock
     lock: MagicMock
@@ -142,6 +143,12 @@ class Seams:
     notify: AsyncMock
     apply_event: AsyncMock
     log: MagicMock
+    audit_log: MagicMock
+    queue: AsyncMock
+    reclaim: AsyncMock
+
+    def pinned_friends(self) -> list[str]:
+        return [c.args[0] for c in self.pin_target.await_args_list]
 
     def captured(self, kind: type[EventT]) -> list[tuple[UserId, EventT, Dedupe]]:
         return [
@@ -161,6 +168,11 @@ class Seams:
 @asynccontextmanager
 async def _lease(*, held: bool) -> AsyncIterator[bool]:
     yield held
+
+
+async def _run_settle_job(referrer_user_id: str, *, friend_user_id: str | None = None) -> None:
+    """Run the queued settle job at once, as the worker would."""
+    await settle_rewards(referrer_user_id)
 
 
 @pytest.fixture
@@ -193,10 +205,18 @@ def seams() -> Iterator[Seams]:
         ) as mark_paid,
         patch(f"{REWARDS}.referral_repository.get", AsyncMock(return_value=None)) as get_referral,
         patch(f"{REWARDS}.referral_repository.update", AsyncMock()) as update,
-        patch(f"{REWARDS}.referral_repository.list_banked", AsyncMock(return_value=[])) as banked,
         patch(
-            f"{REWARDS}.referral_repository.set_reward_target_if_unset",
-            AsyncMock(side_effect=lambda _, target: _referral(reward_target_billing_date=target)),
+            f"{REWARDS}.referral_repository.list_owed", AsyncMock(return_value=[_referral()])
+        ) as owed,
+        patch(
+            f"{REWARDS}.referral_repository.pin_reward_target",
+            AsyncMock(
+                side_effect=lambda friend_id, *, subscription_id, target: _referral(
+                    friend_user_id=friend_id,
+                    reward_subscription_id=subscription_id,
+                    reward_target_billing_date=target,
+                )
+            ),
         ) as pin_target,
         patch.object(payment_service, "client", dodo, create=True),
         patch(f"{REWARDS}.DistributedLock", lock),
@@ -205,8 +225,11 @@ def seams() -> Iterator[Seams]:
             f"{REWARDS}.notification_service.create_notification",
             AsyncMock(return_value=MagicMock()),
         ) as notify,
-        patch(f"{REWARDS}.apply_subscription_event", AsyncMock()) as apply_event,
+        patch(f"{BILLING_DATE}.apply_subscription_event", AsyncMock()) as apply_event,
+        patch(f"{BILLING_DATE}.log") as audit_log,
         patch(f"{REWARDS}.log") as log,
+        patch(f"{REWARDS}.queue_settlement", AsyncMock(side_effect=_run_settle_job)) as queue,
+        patch(f"{REWARDS}.reclaim_reward", AsyncMock()) as reclaim,
     ):
         yield Seams(
             by_email,
@@ -215,7 +238,7 @@ def seams() -> Iterator[Seams]:
             mark_paid,
             get_referral,
             update,
-            banked,
+            owed,
             pin_target,
             dodo,
             lock,
@@ -223,6 +246,9 @@ def seams() -> Iterator[Seams]:
             notify,
             apply_event,
             log,
+            audit_log,
+            queue,
+            reclaim,
         )
 
 
@@ -333,9 +359,13 @@ class TestTheMonthMovesTheBill:
             renew_seconds=REWARD_LOCK_RENEW_S,
             max_hold_seconds=REWARD_LOCK_MAX_HOLD_S,
         )
+        seams.queue.assert_awaited_once_with(REFERRER.id, friend_user_id=FRIEND.id)
+        seams.list_owed.assert_awaited_once_with(REFERRER.id)
         seams.get_active.assert_awaited_once_with(REFERRER.id)
         seams.dodo.subscriptions.retrieve.assert_called_once_with(SUB_ID)
-        seams.pin_target.assert_awaited_once_with(FRIEND.id, ONE_MONTH_LATER)
+        seams.pin_target.assert_awaited_once_with(
+            FRIEND.id, subscription_id=SUB_ID, target=ONE_MONTH_LATER
+        )
         seams.dodo.subscriptions.update.assert_called_once_with(
             SUB_ID, next_billing_date=ONE_MONTH_LATER
         )
@@ -351,7 +381,7 @@ class TestTheMonthMovesTheBill:
             FRIEND.id,
             ReferralUpdate(reward_state=ReferralRewardState.APPLIED, reward_applied_at=NOW),
         )
-        seams.log.audit.assert_called_once_with(
+        seams.audit_log.audit.assert_called_once_with(
             "referral free month applied",
             actor=REFERRER.id,
             resource=SUB_ID,
@@ -384,6 +414,7 @@ class TestTheMonthMovesTheBill:
         seams.mark_paid.return_value = _referral(
             landing_variant=ReferralCopyVariant.TIME_BACK, paid_at=None
         )
+        seams.list_owed.return_value = [seams.mark_paid.return_value]
 
         await record_friend_payment(_payment())
 
@@ -517,6 +548,7 @@ class TestSelfReferral:
         seams.log.set_ns.assert_called_once_with("referral", converted=True, self_referral=True)
         assert seams.captured(ReferralRewardGranted) == []
         seams.dodo.subscriptions.update.assert_not_called()
+        seams.queue.assert_not_awaited()
         seams.lock.assert_not_called()
 
 
@@ -536,6 +568,7 @@ class TestBankedMonths:
         # The pinned date is cleared, not left unset: a banked month re-pins when it applies.
         assert banked.model_dump(exclude_unset=True) == {
             "reward_state": ReferralRewardState.BANKED,
+            "reward_subscription_id": None,
             "reward_target_billing_date": None,
         }
         seams.dodo.subscriptions.update.assert_not_called()
@@ -544,18 +577,24 @@ class TestBankedMonths:
         ]
         assert seams.notification() == _expected_notification("Priya", REWARD_BANKED_BODY, "banked")
 
-    async def test_nothing_banked_applies_nothing_and_takes_no_lock(self, seams: Seams) -> None:
-        assert await apply_banked_months(REFERRER.id) == 0
+    async def test_nothing_owed_settles_nothing_and_reads_no_subscription(
+        self, seams: Seams
+    ) -> None:
+        seams.list_owed.return_value = []
 
-        seams.list_banked.assert_awaited_once_with(REFERRER.id)
-        seams.lock.assert_not_called()
+        assert await settle_rewards(REFERRER.id) == []
+
+        seams.list_owed.assert_awaited_once_with(REFERRER.id)
+        seams.get_active.assert_not_awaited()
 
     async def test_a_resubscribed_referrer_gets_each_banked_month_without_a_second_grant(
         self, seams: Seams
     ) -> None:
-        seams.list_banked.return_value = [_referral(reward_state=ReferralRewardState.BANKED)]
+        seams.list_owed.return_value = [_referral(reward_state=ReferralRewardState.BANKED)]
 
-        assert await apply_banked_months(REFERRER.id) == 1
+        assert await settle_rewards(REFERRER.id) == [
+            RewardDelivery(ReferralRewardState.APPLIED, ONE_MONTH_LATER)
+        ]
 
         assert seams.lock.call_args.args == (REWARD_LOCK_KEY_TEMPLATE.format(user_id=REFERRER.id),)
         seams.dodo.subscriptions.update.assert_called_once_with(
@@ -596,24 +635,24 @@ class TestReferralsOff:
         ]
 
     async def test_a_banked_month_still_applies(self, seams: Seams) -> None:
-        seams.list_banked.return_value = [_referral(reward_state=ReferralRewardState.BANKED)]
+        seams.list_owed.return_value = [_referral(reward_state=ReferralRewardState.BANKED)]
 
-        assert await apply_banked_months(REFERRER.id) == 1
+        assert await settle_rewards(REFERRER.id) == [
+            RewardDelivery(ReferralRewardState.APPLIED, ONE_MONTH_LATER)
+        ]
 
     async def test_each_delivery_reports_where_its_month_landed(self, seams: Seams) -> None:
         seams.get_active.return_value = None
 
-        assert await deliver_rewards(REFERRER.id, [_referral()]) == [
-            RewardDelivery(ReferralRewardState.BANKED)
-        ]
+        assert await settle_rewards(REFERRER.id) == [RewardDelivery(ReferralRewardState.BANKED)]
 
     async def test_a_month_still_without_a_subscription_stays_banked_untouched(
         self, seams: Seams
     ) -> None:
-        seams.list_banked.return_value = [_referral(reward_state=ReferralRewardState.BANKED)]
+        seams.list_owed.return_value = [_referral(reward_state=ReferralRewardState.BANKED)]
         seams.get_active.return_value = None
 
-        assert await apply_banked_months(REFERRER.id) == 0
+        assert await settle_rewards(REFERRER.id) == [RewardDelivery(ReferralRewardState.BANKED)]
 
         seams.update.assert_not_awaited()
         seams.notify.assert_not_awaited()
@@ -666,3 +705,69 @@ class TestDatesAreUtc:
             await record_friend_payment(_payment())
 
         assert seams.notified().content.body == REWARD_APPLIED_BODY.format(date="Nov 14")
+
+
+class TestSettleOrder:
+    SAM = "64a0000000000000000000f2"
+
+    async def test_a_move_left_in_flight_settles_before_an_older_month_is_pinned(
+        self, seams: Seams
+    ) -> None:
+        older = _referral(friend_user_id=self.SAM)
+        in_flight = _referral(
+            reward_subscription_id=SUB_ID, reward_target_billing_date=ONE_MONTH_LATER
+        )
+        seams.list_owed.return_value = [older, in_flight]
+
+        await settle_rewards(REFERRER.id)
+
+        assert seams.pinned_friends() == [FRIEND.id, self.SAM]
+
+    async def test_a_revocation_left_in_flight_settles_before_a_month_is_granted(
+        self, seams: Seams
+    ) -> None:
+        revoking = _referral(
+            friend_user_id=self.SAM,
+            reward_state=ReferralRewardState.APPLIED,
+            revoke_reason=ReferralRevokeReason.REFUND,
+            revoked_at=NOW,
+            revoke_target_billing_date=NEXT_BILL,
+        )
+        seams.list_owed.return_value = [_referral(), revoking]
+        order: list[str] = []
+
+        def reclaim(referral: ReferralDocument, _sub: str | None) -> None:
+            order.append(referral.friend_user_id)
+
+        def pin(friend_id: str, **_: object) -> ReferralDocument:
+            order.append(friend_id)
+            return _referral(reward_target_billing_date=ONE_MONTH_LATER)
+
+        seams.reclaim.side_effect = reclaim
+        seams.pin_target.side_effect = pin
+
+        await settle_rewards(REFERRER.id)
+
+        assert order == [self.SAM, FRIEND.id]
+
+    async def test_a_refunded_month_is_taken_back_not_granted(self, seams: Seams) -> None:
+        revoking = _referral(revoke_reason=ReferralRevokeReason.DISPUTE, revoked_at=NOW)
+        seams.list_owed.return_value = [revoking]
+
+        assert await settle_rewards(REFERRER.id) == [RewardDelivery(ReferralRewardState.REVOKED)]
+
+        seams.reclaim.assert_awaited_once_with(revoking, SUB_ID)
+        seams.pin_target.assert_not_awaited()
+        assert seams.captured(ReferralRewardGranted) == []
+
+    async def test_a_failed_move_stops_the_pass_before_the_next_month_is_pinned(
+        self, seams: Seams
+    ) -> None:
+        seams.list_owed.return_value = [_referral(), _referral(friend_user_id=self.SAM)]
+        seams.dodo.subscriptions.update.side_effect = ConnectionError("dodo down")
+
+        with pytest.raises(ConnectionError):
+            await settle_rewards(REFERRER.id)
+
+        assert seams.pinned_friends() == [FRIEND.id]
+        seams.update.assert_not_awaited()
