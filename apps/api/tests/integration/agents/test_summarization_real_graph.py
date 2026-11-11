@@ -15,6 +15,7 @@ import json
 from typing import Any
 from unittest.mock import patch
 
+from langchain.agents.middleware.summarization import ContextSize
 from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import (
@@ -45,11 +46,8 @@ from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.config.settings import settings
-from app.override.langgraph_bigtool.create_agent import (
-    AgentConfig,
-    ToolRetrievalConfig,
-    create_agent,
-)
+from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
+from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import BindableToolsFakeModel
 
 STATIC_PROMPT = "You are GAIA, the user's personal assistant."
@@ -95,16 +93,16 @@ def _build(
     model: BindableToolsFakeModel,
     summarizer: BaseChatModel,
     *,
-    trigger: int | tuple[str, int],
-    keep: int | tuple[str, int],
+    trigger: int | ContextSize,
+    keep: int | ContextSize,
     archive: ArchiveReader | None = None,
     tool_registry: Mapping[str, BaseTool] | None = None,
 ) -> CompiledStateGraph:
     middleware = [
         WorkspaceArchivingSummarizationMiddleware(
             model=summarizer,
-            trigger=trigger if isinstance(trigger, tuple) else ("messages", trigger),
-            keep=keep if isinstance(keep, tuple) else ("messages", keep),
+            trigger=("messages", trigger) if isinstance(trigger, int) else trigger,
+            keep=("messages", keep) if isinstance(keep, int) else keep,
             archive=archive,
         )
     ]
@@ -198,6 +196,9 @@ def _running_turn_history() -> list[BaseMessage]:
         messages.append(HumanMessage(content=f"user turn {i}", id=f"h{i}"))
         messages.append(AIMessage(content=f"assistant turn {i}", id=f"a{i}"))
     messages.append(HumanMessage(content="current question", id="hcur"))
+    messages.append(
+        mark(HumanMessage(content="[Current UTC Time]", id="timecur"), TIME_CONTEXT_MARKER)
+    )
     messages.extend(_tool_step(1))
     messages.extend(_tool_step(2))
     return messages
@@ -220,13 +221,14 @@ class TestRunningTurnAndItsToolSteps:
 
         sent = model.seen[0]
         # The summary takes the first folded id, so the slots stay ahead of it and
-        # the preserved tail keeps its exact order and tool pairs.
+        # the preserved tail keeps its exact order and tool pairs. The folded turn's
+        # clock goes with it; the running turn's own clock stays beside its request.
         assert _ids(sent) == [
             "static0",
             "dyn0",
             "h0",
-            "time0",
             "hcur",
+            "timecur",
             "call1",
             "res1",
             "call2",
@@ -234,7 +236,7 @@ class TestRunningTurnAndItsToolSteps:
         ]
         assert sent[0].content == STATIC_PROMPT
         assert sent[1].content == "dynamic context"
-        assert sent[3].content == "[Current UTC Time]"
+        assert sent[4].content == "[Current UTC Time]"
         assert is_conversation_summary(sent[2])
         assert not any(isinstance(m, RemoveMessage) for m in sent)
 

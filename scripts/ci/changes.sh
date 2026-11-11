@@ -236,9 +236,13 @@ cmd_files() {
   # branch instead of its own diff. It fails loudly nowhere: the mutation gate
   # just plans ~100 modules for a 12-file PR and its shards hit the 20-minute
   # cap. Stacked PRs feel it worst, their base being another feature branch.
-  timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
-    fetch --no-tags origin \
-    "+refs/heads/${BASE}:refs/remotes/origin/${BASE}" 2>/dev/null || true
+  # Off CI the local base ref is used as is: a commit hook calls this on every
+  # commit, and a network fetch there stalls the commit on a slow link.
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
+      fetch --no-tags origin \
+      "+refs/heads/${BASE}:refs/remotes/origin/${BASE}" 2>/dev/null || true
+  fi
 
   # `...HEAD` diffs against the merge-base of the base ref and HEAD — the same set
   # of files GitHub shows as "Files changed" in the PR. --diff-filter=ACMR drops

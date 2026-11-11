@@ -64,6 +64,12 @@ jobs:
           # The version pnpm-lock.yaml locks (root package.json devDependency):
           # unpinned, a react-doctor release could red every PR overnight.
           version: "0.9.12"
+          # The sticky summary comment posts on every push even when it says
+          # "found no new issues" -- a notification per commit that carries
+          # nothing to act on. The score and counts are already in the commit
+          # status, and findings already arrive as inline review comments, so
+          # the gate loses no signal without it.
+          comment: false
         #   scope: full              # On PRs, scan the whole project instead of just changed files
         #   comment: false           # Disable the sticky PR summary comment
         #   review-comments: false   # Disable inline review comments on changed lines
