@@ -272,7 +272,7 @@ def _slot_problems(composition: BriefComposition, values: SlotValues) -> list[st
             for name, text in (("title", item.title), ("detail", item.detail)):
                 if text:
                     problems += slot_problems(
-                        f"{where} item {item.id} {name}", text, values, figures_are_slots=False
+                        f"{where} item {item.id} {name}", text, values, may_quote_figures=True
                     )
     return problems
 

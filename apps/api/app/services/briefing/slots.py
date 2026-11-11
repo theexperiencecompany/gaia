@@ -255,11 +255,11 @@ def _echo_problems(field: str, text: str, values: SlotValues) -> tuple[list[str]
 
 
 def slot_problems(
-    field: str, text: str, values: SlotValues, *, figures_are_slots: bool = True
+    field: str, text: str, values: SlotValues, *, may_quote_figures: bool = False
 ) -> list[str]:
     """Name every slot in one prose field that is malformed or unknown, and every figure it typed.
 
-    figures_are_slots False lets the field type figures: an item's wording quotes its own line's.
+    may_quote_figures lets the field type figures: an item's wording quotes its own line's.
     """
     problems: list[str] = []
     for match in [*_VALUE_SLOT_RE.finditer(text), *LINK_SLOT_RE.finditer(text)]:
@@ -280,7 +280,7 @@ def slot_problems(
         for match in _SLOT_RESIDUE_RE.finditer(bare)
     ]
     bare = _SLOT_RESIDUE_RE.sub(" ", bare)
-    typed = _typed_figures(bare, values) if figures_are_slots else []
+    typed = [] if may_quote_figures else _typed_figures(bare, values)
     problems += [_typed_figure_problem(field, word, values) for word in dict.fromkeys(typed)]
     problems += [
         f"the {field} writes the address {match.group(0)!r}; link a phrase with (fact:N)"
