@@ -60,7 +60,11 @@ from app.services.referrals.rewards import (
     record_friend_payment,
 )
 from shared.py.analytics import Dedupe, UserId
-from shared.py.analytics.catalog.referrals import ReferralConverted, ReferralRewardGranted
+from shared.py.analytics.catalog.referrals import (
+    ReferralBankedMonthApplied,
+    ReferralConverted,
+    ReferralRewardGranted,
+)
 from tests.factories import make_dodo_payment, make_dodo_subscription
 from tests.helpers import local_timezone
 
@@ -570,9 +574,43 @@ class TestBankedMonths:
             SUB_ID, next_billing_date=ONE_MONTH_LATER
         )
         assert seams.captured(ReferralRewardGranted) == []
+        assert seams.captured(ReferralBankedMonthApplied) == [
+            (
+                UserId(REFERRER.id),
+                ReferralBankedMonthApplied(friend_id=FRIEND.id, months=1),
+                Dedupe(key=FRIEND.id, occurred_at=NOW),
+            )
+        ]
         assert seams.notification() == _expected_notification(
             "Priya", REWARD_APPLIED_BODY.format(date="Dec 14"), "applied"
         )
+
+    async def test_a_month_earned_and_applied_at_once_is_not_counted_as_banked(
+        self, seams: Seams
+    ) -> None:
+        await record_friend_payment(_payment())
+
+        assert seams.captured(ReferralBankedMonthApplied) == []
+
+
+@pytest.mark.usefixtures("referrals_off")
+class TestReferralsOff:
+    async def test_a_friend_already_referred_still_earns_the_referrer_a_month(
+        self, seams: Seams
+    ) -> None:
+        await record_friend_payment(_payment())
+
+        seams.dodo.subscriptions.update.assert_called_once_with(
+            SUB_ID, next_billing_date=ONE_MONTH_LATER
+        )
+        assert [granted for _, granted, _ in seams.captured(ReferralRewardGranted)] == [
+            ReferralRewardGranted(friend_id=FRIEND.id, delivery="applied", months=1)
+        ]
+
+    async def test_a_banked_month_still_applies(self, seams: Seams) -> None:
+        seams.list_banked.return_value = [_referral(reward_state=ReferralRewardState.BANKED)]
+
+        assert await apply_banked_months(REFERRER.id) == 1
 
     async def test_each_delivery_reports_where_its_month_landed(self, seams: Seams) -> None:
         seams.get_active.return_value = None

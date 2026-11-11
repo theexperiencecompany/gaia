@@ -64,7 +64,7 @@ class Seams:
 def seams() -> Iterator[Seams]:
     with (
         patch(f"{MODULE}.load_user", AsyncMock(return_value=USER)) as load_user,
-        patch(f"{MODULE}.require_referrer_subscription", AsyncMock()) as subscribed,
+        patch(f"{MODULE}.require_referrer", AsyncMock()) as subscribed,
         patch(f"{MODULE}.ensure_code", AsyncMock(return_value="aryan-k7f2")) as ensure_code,
         patch(f"{MODULE}.get_time_saved", AsyncMock(return_value=_stats(30))) as time_saved,
         patch(

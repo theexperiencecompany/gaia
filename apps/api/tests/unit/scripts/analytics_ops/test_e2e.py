@@ -89,6 +89,10 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     ("referral:nudge_sent", {**WEB, "nudge": "chat_card"}),
     ("referral:nudge_dismissed", {**WEB, "nudge": "chat_card", "paused": False}),
     (
+        "referral:landing_resolved",
+        {**WEB, "outcome": "valid", "landing_variant": None, "cookie_set": True},
+    ),
+    (
         "chat:message_submitted",
         {
             **WEB,

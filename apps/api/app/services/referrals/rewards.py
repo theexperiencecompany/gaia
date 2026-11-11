@@ -63,7 +63,11 @@ from app.utils.notification.channel_preferences import normalize_channel_prefere
 from app.utils.redis_lock import DistributedLock
 from app.utils.timezone import as_utc
 from shared.py.analytics import Dedupe, UserId
-from shared.py.analytics.catalog.referrals import ReferralConverted, ReferralRewardGranted
+from shared.py.analytics.catalog.referrals import (
+    ReferralBankedMonthApplied,
+    ReferralConverted,
+    ReferralRewardGranted,
+)
 from shared.py.wide_events import log
 
 
@@ -207,16 +211,22 @@ async def _deliver(referral: ReferralDocument) -> RewardDelivery:
         return RewardDelivery(ReferralRewardState.BANKED)
 
     moved_to = await _move_billing_date(referral, subscription.dodo_subscription_id)
+    applied_at = datetime.now(UTC)
     await referral_repository.update(
         referral.friend_user_id,
-        ReferralUpdate(
-            reward_state=ReferralRewardState.APPLIED, reward_applied_at=datetime.now(UTC)
-        ),
+        ReferralUpdate(reward_state=ReferralRewardState.APPLIED, reward_applied_at=applied_at),
     )
     delivery = RewardDelivery(ReferralRewardState.APPLIED, moved_to)
     if newly_earned:
         await _announce(referral, delivery)
     else:
+        capture(
+            UserId(referral.referrer_user_id),
+            ReferralBankedMonthApplied(
+                friend_id=referral.friend_user_id, months=REWARD_MONTHS_PER_FRIEND
+            ),
+            dedupe=Dedupe(key=referral.friend_user_id, occurred_at=applied_at),
+        )
         await _notify(referral, delivery)
     return delivery
 

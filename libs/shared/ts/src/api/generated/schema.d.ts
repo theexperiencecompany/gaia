@@ -13221,7 +13221,7 @@ export interface components {
          * @description The copy angle a referral surface speaks in; the PostHog experiment picks one.
          * @enum {string}
          */
-        ReferralCopyVariant: "gift" | "earn" | "time_back" | "insider";
+        ReferralCopyVariant: "gift" | "earn" | "time_back";
         /**
          * ReferralInviteRequest
          * @description A batch of addresses to invite; each is judged on its own, so one invalid address fails nothing.

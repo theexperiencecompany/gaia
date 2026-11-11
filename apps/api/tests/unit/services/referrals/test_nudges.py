@@ -11,6 +11,7 @@ from app.constants.referrals import (
     NUDGE_CAP_WINDOW,
     NUDGE_DISMISSALS_TO_PAUSE,
     NUDGE_PAUSE,
+    PITCH_NUDGES,
     ReferralNudge,
 )
 from app.models.referral_models import ReferralNudgeStateDocument
@@ -88,6 +89,19 @@ class TestSendPitch:
         seams.capture.assert_not_called()
         seams.log.set_ns.assert_called_once_with(
             "referral", nudge="chat_card", nudge_skipped="capped"
+        )
+
+    @pytest.mark.usefixtures("referrals_off")
+    @pytest.mark.parametrize("nudge", sorted(PITCH_NUDGES), ids=lambda nudge: nudge.value)
+    async def test_with_referrals_off_no_pitch_goes_out(
+        self, seams: Seams, nudge: ReferralNudge
+    ) -> None:
+        assert await send_pitch(USER_ID, nudge, seams.deliver) is False
+        seams.repo.claim.assert_not_awaited()
+        seams.deliver.assert_not_awaited()
+        seams.capture.assert_not_called()
+        seams.log.set_ns.assert_called_once_with(
+            "referral", nudge=nudge.value, nudge_skipped="referrals_off"
         )
 
     async def test_a_user_without_a_subscription_is_never_pitched(self, seams: Seams) -> None:

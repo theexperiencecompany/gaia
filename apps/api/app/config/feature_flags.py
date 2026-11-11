@@ -37,6 +37,7 @@ class FeatureFlag(StrEnum):
     AGENT_LAB = "AGENT_LAB"
     BROWSER_OBSCURA = "BROWSER_OBSCURA"
     BROWSER_JEV = "BROWSER_JEV"
+    REFERRALS = "REFERRALS"
 
 
 # A separate boolean flag, not a value of the rollout flag: stored choices beat the
@@ -153,6 +154,15 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
             ),
             stage=FeatureStage.EXPERIMENTAL,
         ),
+    ),
+    FeatureFlag.REFERRALS: FlagSpec(
+        description=(
+            "The referral program: off mints no codes, resolves every invite link as invalid, "
+            "applies no checkout gift, sends no invites or nudges, and hides every referral "
+            "surface; friends already referred still earn their referrer's month. On by "
+            "default (see ENABLE_REFERRALS)."
+        ),
+        default=lambda: settings.ENABLE_REFERRALS,
     ),
 }
 

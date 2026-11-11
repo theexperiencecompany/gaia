@@ -63,13 +63,17 @@ export function draftFromServerPreferences(
   };
 }
 
-export function getStage(s: OnboardingState, isPaid: boolean): Stage {
+export function getStage(
+  s: OnboardingState,
+  isPaid: boolean,
+  offersInvite: boolean,
+): Stage {
   // The answers must be stored before the paywall: the link opener and the
   // first conversation are composed from them server-side.
   if (!isQuestionsComplete(s) || !s.preferencesPersisted) return "questions";
   if (!isPaid) return "payment";
   if (!s.paidRevealAcked) return "paidReveal";
-  if (!s.inviteAcked) return "invite";
+  if (offersInvite && !s.inviteAcked) return "invite";
   if (!s.platformsConfirmed) return "platformPick";
   return "chat";
 }

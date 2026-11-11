@@ -43,7 +43,7 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
-from app.schemas.referrals import ReferralInviteRequest
+from app.schemas.referrals import ReferralInviteRequest, ReferralMeResponse, ReferralResolveResponse
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import OnboardingStep
 
@@ -275,6 +275,18 @@ def referral_chat_card(stack: Stack) -> None:
             api.post("/referrals/nudges/chat-card/dismissal", headers=stack.browser()),
             HTTPStatus.OK,
         )
+
+
+def referral_landing(stack: Stack) -> None:
+    """Open this user's own invite link the way the landing page does; the landing is recorded on them."""
+    with stack.client() as api:
+        me = _expect(api.get("/referrals/me", headers=stack.browser()), HTTPStatus.OK)
+        code = ReferralMeResponse.model_validate(me.json()).code
+        landed = _expect(
+            api.get(f"/referrals/resolve/{code}", headers=stack.browser()), HTTPStatus.OK
+        )
+    if not ReferralResolveResponse.model_validate(landed.json()).valid:
+        raise JourneyError(f"/referrals/resolve/{code} called the user's own link invalid")
 
 
 def chat(stack: Stack) -> None:

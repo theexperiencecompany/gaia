@@ -19,6 +19,7 @@ from dodopayments.types import Subscription
 from fastapi import HTTPException
 import httpx
 import pytest
+import time_machine
 
 from app.config.deployment import DeploymentKind, baseline_profile
 from app.config.settings import settings
@@ -48,8 +49,10 @@ from app.services.payments.subscription_events import (
     SubscriptionEventOutcome,
     SubscriptionEventResult,
 )
-from shared.py.analytics import UserId
+from app.services.referrals.gift import CheckoutGift
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.billing import SubscriptionActivated
+from shared.py.analytics.catalog.referrals import ReferralGiftCheckoutOpened, ReferralGiftMintFailed
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 from tests.unit.services.conftest import (
@@ -64,6 +67,7 @@ from tests.unit.services.conftest import (
 
 ACTIVATION_MODULE = "app.services.payments.subscription_events"
 SERVICE_MODULE = "app.services.payments.payment_service"
+REFERRER_ID = "65f0c0ffee00000000000b01"
 
 # Activation queues the Inbox desk; keep that off the real Redis.
 pytestmark = pytest.mark.usefixtures("mock_queue_inbox_desk", "mock_no_referral")
@@ -484,14 +488,21 @@ class TestCreateSubscription:
         mock_dodo_client.checkout_sessions.create = MagicMock(
             return_value=SimpleNamespace(session_id="ches_gift", checkout_url="https://pay/x")
         )
-        referral, plans = object(), object()
+        referral, plans = SimpleNamespace(referrer_user_id=REFERRER_ID), object()
         mock_no_referral.gift.return_value = referral
 
         with (
             patch.object(payment_service, "get_pro_plans", AsyncMock(return_value=plans)),
             patch(
-                f"{SERVICE_MODULE}.gift_code_for_checkout", AsyncMock(return_value="GIFT1")
+                f"{SERVICE_MODULE}.gift_code_for_checkout",
+                AsyncMock(
+                    return_value=CheckoutGift(
+                        code="GIFT1", duration=PlanDuration.MONTHLY, referrer_id=REFERRER_ID
+                    )
+                ),
             ) as gift,
+            patch(f"{SERVICE_MODULE}.capture") as capture,
+            time_machine.travel(NOW, tick=False),
         ):
             async with captured_wide_event() as event:
                 await payment_service.create_subscription(
@@ -504,6 +515,11 @@ class TestCreateSubscription:
         mock_no_referral.gift.assert_awaited_once_with(FAKE_USER_ID)
         gift.assert_awaited_once_with(mock_dodo_client, referral, "prod_abc123", plans)
         assert event["payment"]["referral_gift_applied"] is True
+        capture.assert_called_once_with(
+            UserId(FAKE_USER_ID),
+            ReferralGiftCheckoutOpened(referrer_id=REFERRER_ID, duration="monthly"),
+            dedupe=Dedupe(key="ches_gift", occurred_at=NOW),
+        )
 
     @pytest.mark.usefixtures("mock_redis_cache", "mock_checkout_session_repository")
     async def test_dodo_failing_to_mint_the_gift_still_opens_checkout_with_the_callers_code(
@@ -521,12 +537,13 @@ class TestCreateSubscription:
         mock_dodo_client.checkout_sessions.create = MagicMock(
             return_value=SimpleNamespace(session_id="ches_nogift", checkout_url="https://pay/x")
         )
-        mock_no_referral.gift.return_value = object()
+        mock_no_referral.gift.return_value = SimpleNamespace(referrer_user_id=REFERRER_ID)
         outage = APIConnectionError(request=httpx.Request("POST", "https://dodo.test/discounts"))
 
         with (
             patch.object(payment_service, "get_pro_plans", AsyncMock(return_value=object())),
             patch(f"{SERVICE_MODULE}.gift_code_for_checkout", AsyncMock(side_effect=outage)),
+            patch(f"{SERVICE_MODULE}.capture") as capture,
         ):
             async with captured_wide_event() as event:
                 await payment_service.create_subscription(
@@ -544,6 +561,9 @@ class TestCreateSubscription:
                 "user_id": FAKE_USER_ID,
             }
         ]
+        capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), ReferralGiftMintFailed(reason="provider_unreachable")
+        )
 
     @pytest.mark.usefixtures("mock_redis_cache", "mock_checkout_session_repository")
     async def test_a_referred_friend_buying_off_the_pro_plans_keeps_the_callers_code(
@@ -561,11 +581,12 @@ class TestCreateSubscription:
         mock_dodo_client.checkout_sessions.create = MagicMock(
             return_value=SimpleNamespace(session_id="ches_max", checkout_url="https://pay/x")
         )
-        mock_no_referral.gift.return_value = object()
+        mock_no_referral.gift.return_value = SimpleNamespace(referrer_user_id=REFERRER_ID)
 
         with (
             patch.object(payment_service, "get_pro_plans", AsyncMock(return_value=object())),
             patch(f"{SERVICE_MODULE}.gift_code_for_checkout", AsyncMock(return_value=None)),
+            patch(f"{SERVICE_MODULE}.capture") as capture,
         ):
             async with captured_wide_event() as event:
                 await payment_service.create_subscription(
@@ -576,6 +597,7 @@ class TestCreateSubscription:
         assert params["discount_code"] == "FOUNDER"
         assert params["feature_flags"]["allow_discount_code"] is True
         assert event["payment"]["referral_gift_applied"] is False
+        capture.assert_not_called()
 
     @pytest.mark.usefixtures("mock_redis_cache", "mock_checkout_session_repository")
     async def test_without_a_referral_the_callers_code_applies_and_stays_editable(

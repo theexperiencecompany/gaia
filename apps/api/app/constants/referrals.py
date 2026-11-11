@@ -11,7 +11,6 @@ class ReferralCopyVariant(StrEnum):
     GIFT = "gift"
     EARN = "earn"
     TIME_BACK = "time_back"
-    INSIDER = "insider"
 
 
 class ReferralSource(StrEnum):
@@ -294,6 +293,10 @@ FORWARD_RECIPIENT_FALLBACK = "your friends"
 SUBSCRIPTION_REQUIRED_MESSAGE = "Subscribe to GAIA to get your invite link"
 SUBSCRIPTION_REQUIRED_WHY = "only users with an active subscription get a referral link"
 SUBSCRIPTION_REQUIRED_FIX = "Start a subscription, then come back to share GAIA"
+
+REFERRALS_DISABLED_MESSAGE = "Referrals are paused right now"
+REFERRALS_DISABLED_WHY = "the referral program is switched off"
+REFERRALS_DISABLED_FIX = "Check back later; any free months you already earned still apply"
 
 INVITE_CEILING_MESSAGE = "You've sent a lot of invites today"
 INVITE_CEILING_WHY = "the daily invite limit protects GAIA's email reputation"

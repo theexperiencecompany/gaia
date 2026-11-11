@@ -37,7 +37,7 @@ from app.services.referrals.invites import (
     unsubscribe_invite_recipient,
 )
 from app.services.referrals.nudges import dismiss_nudge, rendered_by_client, send_pitch
-from app.services.referrals.overview import get_referral_overview, resolve_referral_code
+from app.services.referrals.overview import get_referral_overview, land_on_invite
 from app.services.referrals.suggestions import suggest_invitees
 from app.services.referrals.weekly_card import claim_weekly_card
 from app.services.referrals.workflow_credit import workflow_creator_code
@@ -72,15 +72,10 @@ async def resolve_code(
 ) -> ReferralResolveResponse:
     """Public: who sent this invite link and the gift it carries; sets the 30-day first-touch cookie."""
     log.set(referral={"operation": "resolve", "landing_variant": landing_variant})
-    result = await resolve_referral_code(code)
-    cookie_set = _set_first_touch_cookie(
-        request,
-        response,
-        ReferralAttribution(code=code, landing_variant=landing_variant),
-        valid=result.valid,
-    )
-    log.set_ns("referral", valid=result.valid, cookie_set=cookie_set)
-    return result
+    landing = await land_on_invite(code, landing_variant, request.cookies.get(REFERRAL_COOKIE_NAME))
+    cookie_set = _write_attribution_cookie(request, response, landing.cookie)
+    log.set_ns("referral", valid=landing.resolved.valid, cookie_set=cookie_set)
+    return landing.resolved
 
 
 @router.post("/workflow-credit/{workflow_id}")
@@ -93,12 +88,16 @@ async def credit_workflow_creator(
     """Public: a logged-out visitor chose to use a community workflow; credit its creator if they sign up."""
     log.set(referral={"operation": "workflow_credit", "workflow_id": workflow_id})
     code = await workflow_creator_code(workflow_id)
-    credited = code is not None and _set_first_touch_cookie(
-        request,
-        response,
-        ReferralAttribution(code=code, source=ReferralSource.WORKFLOW),
-        valid=True,
+    cookie = (
+        first_touch_cookie(
+            request.cookies.get(REFERRAL_COOKIE_NAME),
+            ReferralAttribution(code=code, source=ReferralSource.WORKFLOW),
+            valid=True,
+        )
+        if code is not None
+        else None
     )
+    credited = _write_attribution_cookie(request, response, cookie)
     log.set_ns("referral", cookie_set=credited)
     return ReferralWorkflowCreditResponse(credited=credited)
 
@@ -129,11 +128,8 @@ async def dismiss_weekly_card(
     return ReferralNudgeDismissResponse(paused=paused)
 
 
-def _set_first_touch_cookie(
-    request: Request, response: Response, clicked: ReferralAttribution, *, valid: bool
-) -> bool:
-    """Write the 30-day attribution cookie unless an earlier valid click already holds it."""
-    cookie = first_touch_cookie(request.cookies.get(REFERRAL_COOKIE_NAME), clicked, valid=valid)
+def _write_attribution_cookie(request: Request, response: Response, cookie: str | None) -> bool:
+    """Set the 30-day attribution cookie when the click earned one; False when it did not."""
     if cookie is None:
         return False
     response.set_cookie(

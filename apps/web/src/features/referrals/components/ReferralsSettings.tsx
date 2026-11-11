@@ -37,6 +37,8 @@ function ReferralsOverview() {
       return <ReferralsSkeleton />;
     case "subscribe_first":
       return <SubscribeFirst />;
+    case "disabled":
+      return null;
     case "error":
       return <ReferralsError onRetry={state.retry} />;
     case "ready":

@@ -46,6 +46,7 @@ from app.services.mail.mail_service import (
     search_messages,
 )
 from app.services.oauth.oauth_service import check_multiple_integrations_status
+from app.services.referrals.availability import require_referrals
 from app.services.referrals.codes import load_user
 from app.utils.email_utils import email_identity, normalize_email
 from app.utils.errors import AppError
@@ -205,6 +206,7 @@ def _rank(tally: _Tally, excluded: set[str]) -> list[ReferralSuggestion]:
 
 async def suggest_invitees(user_id: str) -> ReferralSuggestionsResponse:
     """Rank the people this user meets and emails most; empty when neither Google source is connected."""
+    await require_referrals(user_id)
     user = await load_user(user_id)
     connected = await check_multiple_integrations_status(
         [GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID], user.id
