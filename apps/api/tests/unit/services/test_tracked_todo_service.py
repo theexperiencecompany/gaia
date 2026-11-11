@@ -4,22 +4,28 @@ Covers the VFS label + canvas/log persistence + ChromaDB indexing pipeline,
 completion/archival, and the context-summary renderers the agent sees.
 """
 
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from pymongo.errors import DuplicateKeyError
 import pytest
 import time_machine
 
 from app.constants import todos as todo_constants
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
+    CANVAS_CURRENT_STATE_SECTION,
     CANVAS_DONE_WHEN_SECTION,
     CANVAS_EVIDENCE_SECTION,
     CANVAS_SECTIONS,
     GAIA_TRACKED_LABEL,
+    REOPEN_CLEARED_SCHEDULE_FIELDS,
+    REOPEN_RESET_COUNTERS,
     SUB_TODO_PARENT_WAKE_DELAY,
     NoReplyPlan,
     TodoActivityEvent,
@@ -45,7 +51,11 @@ from app.models.trigger_subscription_models import (
 )
 from app.services.canvas_markdown import normalize_canvas, section_body
 from app.services.todos import errors as todo_errors
-from app.services.todos.errors import SubTodoParentError
+from app.services.todos.errors import (
+    CanvasShapeError,
+    ExternalRefTakenError,
+    SubTodoParentError,
+)
 from app.services.todos.open_state import require_open_state
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
@@ -57,6 +67,7 @@ from app.services.tracked_todo_service import (
 )
 from app.services.triggers.subscription_service import SubscriptionError
 from app.utils.occurrence import occurrence_stamp
+from shared.py.analytics import UserId
 from tests.helpers import captured_wide_event
 
 _MOD = "app.services.tracked_todo_service"
@@ -102,6 +113,7 @@ def mock_repo():
         m.get = AsyncMock(return_value=None)
         m.update = AsyncMock(return_value=None)
         m.list_active_tracked = AsyncMock(return_value=[])
+        m.find_latest_by_external_ref = AsyncMock(return_value=None)
         m.find_sub_todos = AsyncMock(return_value=[])
         m.count_open_sub_todos = AsyncMock(return_value={})
         m.is_valid_id = MagicMock(side_effect=lambda todo_id: len(todo_id) == 24)
@@ -113,7 +125,7 @@ def mock_deps():
     with (
         patch(f"{_MOD}.TodoService.create_todo", new_callable=AsyncMock) as m_create,
         patch(f"{_MOD}.store_canvas_embedding", new_callable=AsyncMock) as m_store,
-        patch(f"{_MOD}.mark_canvas_completed", new_callable=AsyncMock) as m_mark,
+        patch(f"{_MOD}.set_canvas_completed", new_callable=AsyncMock) as m_mark,
         patch(f"{_MOD}.schedule_gaia_tasks_sync", new_callable=MagicMock) as m_sync,
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as m_pool,
         # create=True: append_activity is imported into the service only on
@@ -280,6 +292,394 @@ class TestCreateThreadTodo:
             error="mongo down",
             error_type="RuntimeError",
         )
+
+
+_NEXT_CHECK = datetime(2026, 11, 12, 9, 0, tzinfo=UTC)
+_REOPENED_ID = "66f838cc8829054e5f10e40b"
+
+
+def _closed_thread_todo(**overrides: object) -> TodoDocument:
+    fields: dict[str, object] = {
+        "id": _REOPENED_ID,
+        "completed": True,
+        "completed_at": datetime(2026, 11, 1, tzinfo=UTC),
+        "external_ref": _THREAD,
+        "canvas_content": starting_canvas("Reply to Sam", ["Draft, never send."]),
+    }
+    fields.update(overrides)
+    return _todo_doc(**fields)
+
+
+class TestACreateForACompletedRefReopensIt:
+    """A create whose ref's newest todo is completed reopens that todo instead of inserting."""
+
+    @pytest.fixture
+    def reopen(self, mock_repo, mock_deps):
+        mock_repo.find_latest_by_external_ref = AsyncMock(return_value=_closed_thread_todo())
+        with patch.object(
+            TrackedTodoService, "_reopen_for_its_ref", new_callable=AsyncMock
+        ) as reopen:
+            reopen.return_value = _todo_response(title="Sam wrote back")
+            yield reopen
+
+    async def test_it_reopens_the_refs_completed_todo_as_the_create(
+        self, mock_repo, mock_deps, reopen
+    ):
+        result = await TrackedTodoService.create_tracked_todo(
+            USER_ID,
+            "Sam wrote back",
+            labels=["needs-reply"],
+            notify_on_run=False,
+            source_conversation_id="abcdef1234567890",
+            external_ref=_THREAD,
+            schedule=TodoUpdate(waiting_on=WaitingOn.EVENT, scheduled_at=_NEXT_CHECK),
+            done_when=["Sam has the lease"],
+            evidence="his reply on the thread",
+        )
+
+        assert result.todo is reopen.return_value and result.reopened is True
+        mock_repo.find_latest_by_external_ref.assert_awaited_once_with(USER_ID, _THREAD)
+        mock_deps.create.assert_not_awaited()
+        (previous, update, schedule), kwargs = reopen.await_args
+        assert previous is mock_repo.find_latest_by_external_ref.return_value
+        assert kwargs == {
+            "done_when": ["Sam has the lease"],
+            "evidence": "his reply on the thread",
+            "actor": "GAIA in conversation abcdef12",
+        }
+        assert schedule.scheduled_at == _NEXT_CHECK and schedule.waiting_on is WaitingOn.EVENT
+        assert update.model_fields_set == {
+            *REOPEN_CLEARED_SCHEDULE_FIELDS,
+            *REOPEN_RESET_COUNTERS,
+            *schedule.model_fields_set,
+            "title",
+            "labels",
+            "notify_on_run",
+            "parent_todo_id",
+        }
+        assert update.title == "Sam wrote back"
+        assert update.labels == ["needs-reply", GAIA_TRACKED_LABEL]
+        assert update.notify_on_run is False
+        assert update.parent_todo_id is None
+        assert update.scheduled_at == _NEXT_CHECK and update.waiting_on is WaitingOn.EVENT
+        assert update.recurrence is None and update.due_date is None
+        assert update.expires_at is None and update.question is None
+        # A reopen is a fresh start: no retries, re-asks or holds carried from before.
+        assert (update.gaia_retry_count, update.reasks_used, update.hold_checks) == (0, 0, 0)
+
+    async def test_project_description_references_and_priority_apply_only_when_given(
+        self, mock_repo, mock_deps, reopen
+    ):
+        schedule = TodoUpdate(waiting_on=WaitingOn.EVENT, scheduled_at=_NEXT_CHECK)
+        with patch(f"{_MOD}.require_project", new_callable=AsyncMock) as require_project:
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Reply", external_ref=_THREAD, schedule=schedule
+            )
+            bare = reopen.await_args.args[1]
+            require_project.assert_not_awaited()
+
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID,
+                "Reply",
+                project_id="66f838cc8829054e5f10e40a",
+                description="the lease thread",
+                references=["66f838cc8829054e5f10e409"],
+                priority=Priority.HIGH,
+                external_ref=_THREAD,
+                schedule=schedule,
+            )
+        given = reopen.await_args.args[1]
+
+        assert {"project_id", "description", "references", "priority"}.isdisjoint(
+            bare.model_fields_set
+        )
+        require_project.assert_awaited_once_with(USER_ID, "66f838cc8829054e5f10e40a")
+        assert given.project_id == "66f838cc8829054e5f10e40a"
+        assert given.description == "the lease thread"
+        assert given.references == ["66f838cc8829054e5f10e409"]
+        assert given.priority is Priority.HIGH
+
+    async def test_a_project_the_user_does_not_have_reopens_nothing(
+        self, mock_repo, mock_deps, reopen
+    ):
+        with (
+            patch(
+                f"{_MOD}.require_project",
+                new_callable=AsyncMock,
+                side_effect=ValueError("Project 66f838cc8829054e5f10e40a not found"),
+            ),
+            pytest.raises(ValueError, match="not found"),
+        ):
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID,
+                "Reply",
+                project_id="66f838cc8829054e5f10e40a",
+                external_ref=_THREAD,
+                schedule=TodoUpdate(waiting_on=WaitingOn.EVENT, scheduled_at=_NEXT_CHECK),
+            )
+
+        reopen.assert_not_awaited()
+
+    async def test_a_sub_todo_create_reopens_under_its_parent_by_gaia(
+        self, mock_repo, mock_deps, reopen
+    ):
+        mock_repo.get.return_value = _parent()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID,
+            "Reply",
+            parent_todo_id=_PARENT_ID,
+            external_ref=_THREAD,
+            schedule=TodoUpdate(waiting_on=WaitingOn.EVENT, scheduled_at=_NEXT_CHECK),
+        )
+
+        assert reopen.await_args.args[1].parent_todo_id == _PARENT_ID
+        assert reopen.await_args.kwargs["actor"] == "GAIA"
+
+    async def test_an_open_newest_todo_leaves_the_insert_to_refuse_the_create(
+        self, mock_repo, mock_deps, reopen
+    ):
+        mock_repo.find_latest_by_external_ref.return_value = _closed_thread_todo(completed=False)
+        mock_deps.create.return_value = _todo_response()
+
+        with patch(f"{_MOD}.watch_external_ref", new_callable=AsyncMock):
+            result = await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Reply", external_ref=_THREAD
+            )
+
+        reopen.assert_not_awaited()
+        mock_deps.create.assert_awaited_once()
+        assert result.reopened is False
+
+    async def test_a_create_without_a_ref_never_looks_for_one(self, mock_repo, mock_deps, reopen):
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Reply")
+
+        mock_repo.find_latest_by_external_ref.assert_not_awaited()
+        reopen.assert_not_awaited()
+
+
+@asynccontextmanager
+async def _reopening(*_args: object, **_kwargs: object) -> AsyncIterator[None]:
+    yield
+
+
+class TestReopenForItsRef:
+    """The reopen keeps the todo's history and applies the create on top of it."""
+
+    @pytest.fixture
+    def seams(self, mock_repo):
+        reopened = _closed_thread_todo(completed=False, completed_at=None)
+        mock_repo.get = AsyncMock(return_value=reopened)
+        mock_repo.update_if_completed = AsyncMock(return_value=reopened)
+        with (
+            patch(f"{_MOD}.reopening_todos", side_effect=_reopening) as m_reopening,
+            patch(f"{_MOD}.record_field_changes", new_callable=AsyncMock) as m_fields,
+            patch(f"{_MOD}.record_waiting_change", new_callable=AsyncMock) as m_waiting,
+            patch(f"{_MOD}.update_canvas_embedding", new_callable=AsyncMock) as m_index,
+            patch(f"{_MOD}.capture") as m_capture,
+            patch(f"{_MOD}._reconcile_parent_completion", new_callable=AsyncMock) as m_reconcile,
+            patch(
+                f"{_MOD}.todo_responses",
+                new_callable=AsyncMock,
+                return_value=[_todo_response()],
+            ) as m_responses,
+        ):
+            yield SimpleNamespace(
+                doc=reopened,
+                reopening=m_reopening,
+                fields=m_fields,
+                waiting=m_waiting,
+                index=m_index,
+                capture=m_capture,
+                reconcile=m_reconcile,
+                responses=m_responses,
+            )
+
+    @staticmethod
+    async def _reopen(
+        done_when: Sequence[str] = ("Sam has the lease",), evidence: str = "his reply"
+    ) -> TodoResponse:
+        return await TrackedTodoService._reopen_for_its_ref(
+            _closed_thread_todo(),
+            TodoUpdate(title="Sam wrote back"),
+            TodoUpdate(scheduled_at=_NEXT_CHECK),
+            done_when=done_when,
+            evidence=evidence,
+            actor="GAIA",
+        )
+
+    async def test_it_writes_the_create_on_top_of_the_kept_canvas_and_opens_it(
+        self, mock_repo, seams
+    ):
+        response = await self._reopen()
+
+        assert response == seams.responses.return_value[0]
+        args, kwargs = mock_repo.update_if_completed.await_args
+        assert args == (_REOPENED_ID, USER_ID)
+        update: TodoUpdate = kwargs["update"]
+        # Only what the create set is written: an unset field keeps the todo's own value.
+        assert update.model_fields_set == {"title", "canvas_content", "completed", "completed_at"}
+        assert update.title == "Sam wrote back"
+        assert update.completed is False and update.completed_at is None
+        mock_repo.get.assert_awaited_once_with(_REOPENED_ID, user_id=USER_ID)
+        seams.responses.assert_awaited_once_with(USER_ID, [seams.doc])
+        assert update.canvas_content is not None
+        assert update.canvas_content.startswith("# Reply to Sam\n")
+        assert "- Draft, never send." in update.canvas_content
+        assert section_body(update.canvas_content, CANVAS_DONE_WHEN_SECTION) == (
+            "- Sam has the lease"
+        )
+        assert section_body(update.canvas_content, CANVAS_EVIDENCE_SECTION) == "his reply"
+        seams.reopening.assert_called_once_with(
+            USER_ID, [_REOPENED_ID], reopening=True, detail="by GAIA"
+        )
+
+    async def test_it_logs_the_schedule_reindexes_and_reports_the_reopen(self, seams):
+        await self._reopen()
+
+        seams.fields.assert_awaited_once_with(
+            _REOPENED_ID, USER_ID, TodoUpdate(scheduled_at=_NEXT_CHECK), by="GAIA"
+        )
+        seams.waiting.assert_awaited_once_with(
+            _REOPENED_ID, USER_ID, TodoUpdate(scheduled_at=_NEXT_CHECK), by="GAIA"
+        )
+        index = seams.index.await_args.kwargs
+        assert index["todo_id"] == _REOPENED_ID and index["user_id"] == USER_ID
+        assert index["title"] == seams.doc.title and index["labels"] == seams.doc.labels
+        assert index["canvas_content"].startswith(seams.doc.canvas_content or "")
+        (user, event), _ = seams.capture.call_args
+        assert user == UserId(USER_ID)
+        assert event.todo_id == _REOPENED_ID and event.ref_source == ExternalRefSource.GMAIL_THREAD
+        seams.reconcile.assert_not_awaited()
+
+    async def test_a_todo_without_a_canvas_reopens_onto_the_template_under_its_own_title(
+        self, mock_repo, seams
+    ):
+        await TrackedTodoService._reopen_for_its_ref(
+            _closed_thread_todo(canvas_content=None),
+            TodoUpdate(title="Sam wrote back"),
+            TodoUpdate(scheduled_at=_NEXT_CHECK),
+            done_when=(),
+            evidence=None,
+            actor="GAIA",
+        )
+
+        update: TodoUpdate = mock_repo.update_if_completed.await_args.kwargs["update"]
+        assert update.canvas_content == CANVAS_TEMPLATE.format(title=_todo_doc().title)
+
+    async def test_a_reopened_sub_todo_is_reconciled_against_its_parent(self, mock_repo, seams):
+        mock_repo.get.return_value = seams.doc.model_copy(update={"parent_todo_id": _PARENT_ID})
+
+        await self._reopen()
+
+        seams.reconcile.assert_awaited_once_with(USER_ID, _PARENT_ID, _REOPENED_ID)
+
+    async def test_a_ref_another_create_took_meanwhile_is_a_named_conflict(self, mock_repo, seams):
+        holder = _todo_doc(id="66f838cc8829054e5f10e40a", title="Reply to Sam")
+        mock_repo.update_if_completed.side_effect = DuplicateKeyError("E11000")
+        mock_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
+
+        with (
+            patch(
+                "app.services.todos.todo_service.todo_repository.find_open_by_external_ref",
+                new=mock_repo.find_open_by_external_ref,
+            ),
+            pytest.raises(ExternalRefTakenError) as taken,
+        ):
+            await self._reopen()
+
+        assert taken.value.existing is holder
+        assert isinstance(taken.value.__cause__, DuplicateKeyError)
+        mock_repo.find_open_by_external_ref.assert_awaited_once_with(USER_ID, _THREAD)
+        seams.fields.assert_not_awaited()
+
+    async def test_a_canvas_that_breaks_the_shape_is_refused_before_any_write(
+        self, mock_repo, seams
+    ):
+        with pytest.raises(CanvasShapeError):
+            await self._reopen(done_when=[], evidence="## Activity Log\n- smuggled in")
+
+        mock_repo.update_if_completed.assert_not_awaited()
+
+    async def test_a_todo_vanished_after_the_write_fails_loud(self, mock_repo, seams):
+        mock_repo.get.return_value = None
+
+        with pytest.raises(LookupError, match=f"Todo {_REOPENED_ID} vanished"):
+            await self._reopen()
+
+    async def test_a_todo_without_a_ref_has_nothing_to_reopen_for(self, mock_repo, seams):
+        with pytest.raises(ValueError, match=f"Todo {TODO_ID} has no outside object"):
+            await TrackedTodoService._reopen_for_its_ref(
+                _todo_doc(completed=True),
+                TodoUpdate(),
+                TodoUpdate(),
+                done_when=(),
+                evidence=None,
+                actor="GAIA",
+            )
+
+        mock_repo.update_if_completed.assert_not_awaited()
+
+    async def test_a_todo_another_create_reopened_first_is_a_named_conflict(self, mock_repo, seams):
+        holder = _closed_thread_todo(completed=False, completed_at=None)
+        mock_repo.update_if_completed.return_value = None
+        mock_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
+
+        with pytest.raises(ExternalRefTakenError) as taken:
+            await self._reopen()
+
+        assert taken.value.existing is holder
+        mock_repo.find_open_by_external_ref.assert_awaited_once_with(USER_ID, _THREAD)
+        seams.fields.assert_not_awaited()
+        seams.waiting.assert_not_awaited()
+        seams.index.assert_not_awaited()
+        seams.capture.assert_not_called()
+
+    async def test_a_todo_neither_completed_nor_open_fails_loud(self, mock_repo, seams):
+        mock_repo.update_if_completed.return_value = None
+        mock_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+
+        with pytest.raises(
+            LookupError, match=f"Todo {_REOPENED_ID} was neither completed nor open to reopen"
+        ):
+            await self._reopen()
+
+        seams.fields.assert_not_awaited()
+
+    async def test_a_legacy_activity_section_moves_into_activity_md_ahead_of_its_log(
+        self, mock_repo, seams
+    ):
+        legacy = (
+            "# Reply to Sam\n\n## Current State\nWaiting.\n\n"
+            "## Activity Log\n- 2026-09-12: drafted a reply\n\n## Learnings\n"
+        )
+
+        await TrackedTodoService._reopen_for_its_ref(
+            _closed_thread_todo(
+                canvas_content=legacy, activity_content="- 2026-11-01 [completed] Sam replied"
+            ),
+            TodoUpdate(title="Sam wrote back"),
+            TodoUpdate(scheduled_at=_NEXT_CHECK),
+            done_when=(),
+            evidence=None,
+            actor="GAIA",
+        )
+
+        update: TodoUpdate = mock_repo.update_if_completed.await_args.kwargs["update"]
+        assert update.canvas_content is not None
+        assert "## Activity Log" not in update.canvas_content
+        assert section_body(update.canvas_content, CANVAS_CURRENT_STATE_SECTION) == "Waiting."
+        assert update.activity_content == (
+            "- 2026-09-12: drafted a reply\n\n- 2026-11-01 [completed] Sam replied"
+        )
+
+    async def test_a_canvas_with_nothing_to_move_leaves_activity_md_alone(self, mock_repo, seams):
+        await self._reopen()
+
+        update: TodoUpdate = mock_repo.update_if_completed.await_args.kwargs["update"]
+        assert "activity_content" not in update.model_fields_set
 
 
 class TestCreateTrackedTodo:
@@ -455,8 +855,8 @@ class TestCreateTrackedTodo:
 
         result = await TrackedTodoService.create_tracked_todo(USER_ID, "Prepare Q3 report")
 
-        assert result.id == TODO_ID
-        assert result.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
+        assert result.todo.id == TODO_ID and result.reopened is False
+        assert result.todo.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
 
         todo_model: TodoModel = mock_deps.create.call_args.args[0]
         assert GAIA_TRACKED_LABEL in todo_model.labels
@@ -479,6 +879,24 @@ class TestCreateTrackedTodo:
         assert store_kwargs["title"] == "Prepare Q3 report"
         assert GAIA_TRACKED_LABEL in store_kwargs["labels"]
         mock_deps.sync.assert_called_once_with(USER_ID)
+
+    async def test_a_new_todo_is_inserted_with_the_description_project_and_priority_given(
+        self, mock_repo, mock_deps
+    ):
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID,
+            "Prepare Q3 report",
+            description="numbers for the board",
+            project_id="66f838cc8829054e5f10e40c",
+            priority=Priority.HIGH,
+        )
+
+        todo_model: TodoModel = mock_deps.create.call_args.args[0]
+        assert todo_model.description == "numbers for the board"
+        assert todo_model.project_id == "66f838cc8829054e5f10e40c"
+        assert todo_model.priority is Priority.HIGH
 
     async def test_uses_provided_initial_canvas(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
@@ -1039,12 +1457,15 @@ class TestCompleteTrackedTodo:
         mock_deps.record.assert_not_awaited()
         mock_repo.update.assert_not_awaited()
 
-    async def test_appends_log_marks_completed_and_archives_path(self, mock_repo, mock_deps):
+    async def test_appends_log_marks_completed_and_keeps_its_folder_label(
+        self, mock_repo, mock_deps
+    ):
         mock_repo.get.return_value = _todo_doc()
 
         ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "Wrapped it up")
 
         assert ok is True
+        assert mock_repo.get.await_args_list[0] == call(TODO_ID, user_id=USER_ID)
         mock_deps.record.assert_awaited_once_with(
             TODO_ID, USER_ID, TodoActivityEvent.COMPLETED, "Wrapped it up"
         )
@@ -1052,8 +1473,8 @@ class TestCompleteTrackedTodo:
         update = mock_repo.update.await_args.kwargs["update"]
         assert update.completed is True
         assert update.completed_at is not None
-        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
-        mock_deps.mark.assert_awaited_once_with(TODO_ID)
+        assert update.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
+        mock_deps.mark.assert_awaited_once_with(TODO_ID, completed=True)
         mock_deps.sync.assert_called_once_with(USER_ID)
 
     async def test_completion_stops_the_todo_watching(self, mock_repo, mock_deps):
@@ -1082,7 +1503,7 @@ class TestCompleteTrackedTodo:
 
         assert ok is True
         update = mock_repo.update.await_args.kwargs["update"]
-        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
+        assert update.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
 
     async def test_legacy_user_scoped_label_is_healed_on_completion(
         self, mock_repo: MagicMock, mock_deps: SimpleNamespace
@@ -1094,7 +1515,7 @@ class TestCompleteTrackedTodo:
 
         assert ok is True
         update = mock_repo.update.await_args.kwargs["update"]
-        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
+        assert update.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
 
 
 class TestGetActiveTrackedSummary:

@@ -118,6 +118,7 @@ class TestActivationThroughRealExecutorGraph:
         registry = _stub_registry(extra_tools=("helper_tool",))
 
         gmail = MagicMock()
+        gmail.id = "gmail"
         gmail.managed_by = "composio"
         gmail.mcp_config = None
 
@@ -181,6 +182,7 @@ class TestActivationThroughRealExecutorGraph:
         registry = _stub_registry(extra_tools=("gmail_send",))
 
         gmail = MagicMock()
+        gmail.id = "gmail"
         gmail.managed_by = "composio"
         gmail.mcp_config = None
 

@@ -7318,6 +7318,36 @@
       }
     },
     {
+      "event": "todos:ref_reopened",
+      "class": "TodosRefReopened",
+      "owner": "server",
+      "domain": "todos",
+      "description": "A create for an outside object reopened the completed tracked todo it already had.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A create for an outside object reopened the completed tracked todo it already had.",
+        "properties": {
+          "todo_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Todo Id",
+            "type": "string"
+          },
+          "ref_source": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Ref Source",
+            "type": "string"
+          }
+        },
+        "required": ["todo_id", "ref_source"],
+        "title": "TodosRefReopened",
+        "type": "object"
+      }
+    },
+    {
       "event": "todos:run_result_delivered",
       "class": "TodosRunResultDelivered",
       "owner": "server",
