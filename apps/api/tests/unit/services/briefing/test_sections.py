@@ -25,24 +25,25 @@ def _candidate(title: str) -> BriefCandidate:
     )
 
 
-def _selection(**fields: object) -> BriefSelection:
-    defaults: dict[str, object] = {
-        "sections": {
+def _selection(
+    *, dropped: list[int] | None = None, more: dict[SectionKey, int] | None = None
+) -> BriefSelection:
+    return BriefSelection(
+        sections={
             SectionKey.NEEDS_YOU: [1, 2],
             SectionKey.UPDATES: [3],
             SectionKey.GAIA_DID: [4],
         },
-        "items": {
+        items={
             1: BriefingItem(text="Approve the reply", action=BriefAction.APPROVE),
             2: BriefingItem(text="Review the deck", action=BriefAction.REVIEW),
             3: BriefingItem(text="Payout landed", outcome=BriefOutcome.FINISHED),
             4: BriefingItem(text="Investor update", outcome=BriefOutcome.FINISHED),
         },
-        "offer": None,
-        "dropped": [5, 6],
-        "more": {SectionKey.NEEDS_YOU: 3},
-    }
-    return BriefSelection(**{**defaults, **fields})
+        offer=None,
+        dropped=[5, 6] if dropped is None else dropped,
+        more={SectionKey.NEEDS_YOU: 3} if more is None else more,
+    )
 
 
 class TestChosenSections:

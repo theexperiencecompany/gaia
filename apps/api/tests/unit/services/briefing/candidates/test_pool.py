@@ -10,9 +10,10 @@ from zoneinfo import ZoneInfo
 import pytest
 from tests.factories import make_user_id
 
-from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE
+from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefItemSource
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
+from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent, UnreadSource
 from app.models.scout_models import ScoutOutcome, ScoutResult, ScoutSkipReason
 from app.models.todo_models import TodoDocument
@@ -76,7 +77,17 @@ class TestGatherCandidates:
             failed=[_todo("fail")],
         )
         scouts = ScoutSignals(remembered=[], criteria={}, results=[])
-        held = [MagicMock()]
+        held = [
+            PendingBriefItemDocument(
+                id="h1",
+                user_id=USER_ID,
+                source=BriefItemSource.WORKFLOW,
+                source_id="wf-1",
+                source_title="Digest",
+                conversation_id="conv-1",
+                text="3 new papers",
+            )
+        ]
         events = [BriefingEvent(date="2026-11-10", title="Sequoia")]
 
         await gather_candidates(

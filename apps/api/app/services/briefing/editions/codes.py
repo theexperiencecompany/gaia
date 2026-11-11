@@ -14,9 +14,6 @@ import segno
 
 # M recovers ~15% of the symbol: room for the paper grain printed over the Invoice's QR.
 _QR_ERROR_LEVEL = "m"
-# Six data columns spread a link across the Boarding Pass's stacked strip in ~6 rows.
-_PDF417_COLUMNS = 6
-_PDF417_SECURITY_LEVEL = 2
 _DARK = "1"
 
 
@@ -65,10 +62,9 @@ def _qr_rows(link: str) -> list[str]:
 
 
 def _pdf417_rows(link: str) -> list[str]:
-    # pdf417gen is untyped: each row is a list of codeword bit patterns.
-    codes: list[list[int]] = pdf417gen.encode(
-        link, columns=_PDF417_COLUMNS, security_level=_PDF417_SECURITY_LEVEL
-    )
+    # pdf417gen is untyped: each row is a list of codeword bit patterns. Its defaults, six
+    # data columns and security level 2, suit the Boarding Pass's stacked strip.
+    codes: list[list[int]] = pdf417gen.encode(link)
     return ["".join(format(word, "b") for word in row) for row in codes]
 
 

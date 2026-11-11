@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 import json
 import re
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, sentinel
 
 import pytest
@@ -1575,6 +1575,48 @@ def _brief_work() -> context.TrackedWork:
 class TestTheDailyRunWiring:
     """Every read is scoped to the user and the last local day, and every write records it."""
 
+    async def test_the_producers_read_this_user_since_the_last_local_day(
+        self, world: World
+    ) -> None:
+        world.held = [_held("h1", "Paper digest", _DIGEST_REPORT)]
+
+        await daily.run_daily_briefing(_USER)
+
+        cast(
+            "AsyncMock", approval_ledger_repository.list_pending_for_user
+        ).assert_awaited_once_with(_USER)
+        cast("AsyncMock", hil_approval_repository.list_pending_for_user).assert_awaited_once_with(
+            _USER, _NOW
+        )
+        assert world.reads["list_since"].await_args.args == (_USER, _DAY_START)
+        assert world.reads["find_latest_by_external_ref"].await_args.args[0] == _USER
+
+    async def test_the_selection_is_asked_for_this_user_on_their_clock(self, world: World) -> None:
+        world.work = _brief_work()
+
+        await daily.run_daily_briefing(_USER)
+
+        assert world.judge.await_args.kwargs["config"] == {"configurable": {"user_id": _USER}}
+        assert f"Today is {_DATE} ({_TZ})." in world.judge.await_args.args[1]
+
+    async def test_a_user_without_a_timezone_is_judged_on_utc(self, world: World) -> None:
+        world.user.timezone = None
+        world.work = _brief_work()
+
+        await daily.run_daily_briefing(_USER)
+
+        assert "(UTC)." in world.judge.await_args.args[1]
+
+    async def test_the_wide_event_counts_the_candidates_the_selection_chose_from(
+        self, world: World
+    ) -> None:
+        world.work = _brief_work()
+
+        async with captured_wide_event() as event:
+            await daily.run_daily_briefing(_USER)
+
+        assert event["brief_selection"]["candidates"] == 3
+
     async def test_every_read_is_for_this_user_and_the_last_local_day(self, world: World) -> None:
         await daily.run_daily_briefing(_USER)
 
@@ -2693,3 +2735,66 @@ class TestEverySourceReachesItsSection:
         assert (event.needs_you_count, event.updates_count, event.source_count) == (3, 1, 3)
         world.consume.assert_awaited_once_with(_USER, ["h1"])
         world.shown.assert_awaited_once_with(_USER, [_LOGIN], _NOW)
+
+
+class TestTheWeeklyRunHandsItsInputs:
+    """Every producer, the judge and the prompt are given this user, their clock and the week."""
+
+    async def test_the_producers_and_the_judge_are_asked_for_this_user_this_week(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        world.agent.return_value = _weekly_voiced()
+        spy = AsyncMock(wraps=judge.select_candidates)
+        monkeypatch.setattr(weekly, "select_candidates", spy)
+
+        await weekly.run_weekly_digest(_USER)
+
+        assert world.reads["list_since"].await_args.args == (_USER, _WEEK_START)
+        assert spy.await_args.args[0] == _USER
+        assert spy.await_args.args[3] == _NOW
+        assert world.judge.await_args.kwargs["config"] == {"configurable": {"user_id": _USER}}
+        assert f"Today is {_DATE} ({_TZ})." in world.judge.await_args.args[1]
+
+    async def test_a_user_without_a_timezone_is_judged_on_utc(self, world: World) -> None:
+        world.user.timezone = None
+        world.agent.return_value = _weekly_voiced()
+
+        await weekly.run_weekly_digest(_USER)
+
+        assert "(UTC)." in world.judge.await_args.args[1]
+
+    async def test_the_voice_is_given_the_reader_and_goal_and_no_lookback_replies_or_todos(
+        self, world: World
+    ) -> None:
+        world.agent.return_value = _weekly_voiced()
+
+        await weekly.run_weekly_digest(_USER)
+
+        world.reads["format_goal_block"].assert_awaited_once_with(_USER, world.user)
+        call = world.weekly_prompt.call_args.kwargs
+        blocks = call["blocks"]
+        assert call["date_local"] == _DATE
+        assert "You're writing to Ada" in blocks.reader
+        assert blocks.goal == "Ship v2"
+        assert (blocks.lookback, blocks.replies) == ("", "")
+        assert "open_todos" not in blocks.facts
+
+    async def test_the_sources_read_and_the_links_are_the_users(self, world: World) -> None:
+        deck = _todo("g0", "Deck")
+        deck.canvas_content = "Ten slides"
+        world.reads["gather_completed_since"].return_value = context.CompletedWork(gaia=[deck])
+        world.reads["gather_week"].return_value = BriefingWeek(
+            days=[BriefingWeekDay(you=1, gaia=2)] * 7, ahead=[_FRIDAY_PITCH]
+        )
+        world.mint.side_effect = lambda user_id, target_type, target_id: (
+            _todo_link(target_id) if user_id == _USER else None
+        )
+        world.agent.return_value = _weekly_voiced(
+            message="[the deck](fact:1) is done\n[[fact:2]] on Friday at [[fact:2.time]]."
+        )
+
+        await weekly.run_weekly_digest(_USER)
+
+        payload = _stored_payload(world)
+        assert payload.sources_read == ["Google Calendar"]
+        assert f"[the deck]({_todo_link('g0')})" in (payload.message or "")
