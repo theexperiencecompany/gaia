@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 import { FileViewerBody } from "@/features/chat/components/artifacts/FileViewerBody";
 
 const GLOBALS_CSS = join(__dirname, "../app/styles/globals.css");
+// The highlighter loads its grammar lazily; a cold run takes well over waitFor's 1s default.
+const HIGHLIGHT_TIMEOUT_MS = 10_000;
 
 /** Global rules that pad a `code` element: on a block's inline <code> that shifts line 1 alone. */
 function codePaddingSelectors(): string[] {
@@ -37,12 +39,15 @@ describe("the file viewer's source view", () => {
         viewMode="source"
       />,
     );
-    const code = await waitFor(() => {
-      const element = container.querySelector("pre > code");
-      if (!element?.querySelector(".linenumber"))
-        throw new Error("not highlighted yet");
-      return element;
-    });
+    const code = await waitFor(
+      () => {
+        const element = container.querySelector("pre > code");
+        if (!element?.querySelector(".linenumber"))
+          throw new Error("not highlighted yet");
+        return element;
+      },
+      { timeout: HIGHLIGHT_TIMEOUT_MS },
+    );
 
     const selectors = codePaddingSelectors();
     expect(selectors.length).toBeGreaterThan(0);
