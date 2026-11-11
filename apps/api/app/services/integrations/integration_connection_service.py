@@ -95,7 +95,7 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                 requires_auth=(
                     integration.mcp_config.requires_auth if integration.mcp_config else False
                 ),
-                slug=integration.id,  # Platform integrations use ID as slug
+                slug=integration.slug,
                 origin=integration.origin,
                 icon_url=integration.icon_url,
             )
