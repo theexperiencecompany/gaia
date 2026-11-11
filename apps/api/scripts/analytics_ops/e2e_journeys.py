@@ -22,7 +22,7 @@ from standardwebhooks.webhooks import Webhook
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.briefing import BriefingFrequency
 from app.constants.workflows import WorkflowDelivery
-from app.models.briefing_models import BriefingSchedule
+from app.models.briefing_models import BriefingSchedule, BriefingScheduleUpdate
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import (
     OnboardingAnswers,
@@ -68,6 +68,7 @@ EXECUTION_RUNNING = "running"
 EXECUTION_SUCCEEDED = "success"
 # A schedule other than the default, so the PUT is a real change.
 BRIEFING_SCHEDULE = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
+BRIEFING_SCHEDULE_PATH = "/notifications/preferences/briefing-schedule"
 
 
 class JourneyError(RuntimeError):
@@ -267,9 +268,41 @@ def briefing_schedule(stack: Stack) -> None:
     with stack.client() as api:
         _expect(
             api.put(
-                "/notifications/preferences/briefing-schedule",
+                BRIEFING_SCHEDULE_PATH,
                 json=BRIEFING_SCHEDULE.model_dump(mode="json"),
                 headers=stack.browser(),
+            ),
+            HTTPStatus.OK,
+        )
+
+
+def briefs_off_guard(stack: Stack) -> None:
+    """Turn briefs off with a workflow on the brief: refused, then done once it moves to now."""
+    request = CreateWorkflowRequest(
+        title="analytics e2e brief",
+        prompt=SIM_REPLY,
+        trigger_config=TriggerConfig(type=TriggerType.MANUAL),
+        steps=[WorkflowStep(title="reply", description=SIM_REPLY)],
+        generate_immediately=False,
+        delivery=WorkflowDelivery.BRIEF,
+    )
+    off = BriefingScheduleUpdate(frequency=BriefingFrequency.OFF)
+    with stack.client() as api:
+        created = _expect(
+            api.post("/workflows", json=request.model_dump(mode="json"), headers=stack.browser()),
+            HTTPStatus.OK,
+        )
+        workflow_id = created.json()["workflow"]["id"]
+        _expect(
+            api.put(
+                BRIEFING_SCHEDULE_PATH, json=off.model_dump(mode="json"), headers=stack.browser()
+            ),
+            HTTPStatus.CONFLICT,
+        )
+        moved = off.model_copy(update={"workflow_deliveries": {workflow_id: WorkflowDelivery.NOW}})
+        _expect(
+            api.put(
+                BRIEFING_SCHEDULE_PATH, json=moved.model_dump(mode="json"), headers=stack.browser()
             ),
             HTTPStatus.OK,
         )

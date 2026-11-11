@@ -251,6 +251,17 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             query["trigger_config.trigger_name"] = trigger_name
         return await self._find(query)
 
+    async def find_brief_delivery_for_user(self, user_id: str) -> list[WorkflowDocument]:
+        """Return the user's workflows whose results wait for their brief, newest first."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "delivery": WorkflowDelivery.BRIEF.value,
+                "system_workflow_key": {"$nin": list(BRIEFING_RHYTHM_WORKFLOW_KEYS)},
+            },
+            sort=[("created_at", -1)],
+        )
+
     async def find_activated_for_user(self, user_id: str) -> list[WorkflowDocument]:
         """Every activated workflow a user owns — the dormancy sweep's pause set."""
         return await self._find({"user_id": user_id, "activated": True})

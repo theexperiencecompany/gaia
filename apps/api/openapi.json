@@ -1881,6 +1881,122 @@
         "title": "BriefAction",
         "type": "string"
       },
+      "BriefDeliveryWorkflow": {
+        "description": "A workflow whose results wait for the brief.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "BriefDeliveryWorkflow",
+        "type": "object"
+      },
+      "BriefDeliveryWorkflowsConflict": {
+        "additionalProperties": true,
+        "description": "The 409 body when briefs cannot turn off: the workflows still delivering to the brief.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Machine-readable error code.",
+            "title": "Code"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ValidationIssue"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Field-level failures; present only on 422.",
+            "title": "Errors"
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix"
+          },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Integration an INTEGRATION_NOT_CONNECTED error asks to connect.",
+            "title": "Integration Id"
+          },
+          "message": {
+            "description": "Human-readable description of the failure.",
+            "title": "Message",
+            "type": "string"
+          },
+          "toolkit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.",
+            "title": "Toolkit"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why"
+          },
+          "workflows": {
+            "items": {
+              "$ref": "#/components/schemas/BriefDeliveryWorkflow"
+            },
+            "title": "Workflows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "message",
+          "workflows"
+        ],
+        "title": "BriefDeliveryWorkflowsConflict",
+        "type": "object"
+      },
       "BriefOutcome": {
         "description": "The state a reported brief item reached; set only on items that need nothing from the reader.",
         "enum": [
@@ -2497,6 +2613,36 @@
           }
         },
         "title": "BriefingSchedule",
+        "type": "object"
+      },
+      "BriefingScheduleUpdate": {
+        "description": "A new briefing schedule; turning briefs off also says where brief-delivery workflows go.",
+        "properties": {
+          "frequency": {
+            "$ref": "#/components/schemas/BriefingFrequency",
+            "default": "daily"
+          },
+          "hour": {
+            "default": 8,
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Hour",
+            "type": "integer"
+          },
+          "workflow_deliveries": {
+            "additionalProperties": {
+              "enum": [
+                "now",
+                "silent"
+              ],
+              "type": "string"
+            },
+            "description": "New delivery per workflow id, for workflows that deliver to the brief",
+            "title": "Workflow Deliveries",
+            "type": "object"
+          }
+        },
+        "title": "BriefingScheduleUpdate",
         "type": "object"
       },
       "BriefingSection": {
@@ -34414,7 +34560,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BriefingSchedule"
+                "$ref": "#/components/schemas/BriefingScheduleUpdate"
               }
             }
           },
@@ -34430,6 +34576,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefDeliveryWorkflowsConflict"
+                }
+              }
+            },
+            "description": "Briefs cannot turn off while workflows deliver to the brief"
           },
           "422": {
             "content": {
