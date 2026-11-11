@@ -7,6 +7,8 @@
  * 2026-10-08) and the snapshots are the text a user reads. A refactor that
  * moves where a number comes from must leave every one of them identical.
  */
+
+import type { ReferralOffer } from "@shared/api/generated";
 import { act, cleanup, render } from "@testing-library/react";
 import {
   afterEach,
@@ -17,11 +19,11 @@ import {
   it,
   vi,
 } from "vitest";
-
 import type {
   Plan,
   UserSubscriptionStatus,
 } from "@/features/pricing/api/pricingApi";
+import { giftCardPrice } from "@/features/referrals/utils/offerPrices";
 
 vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
   useDeployment: () => ({ bills: true }),
@@ -170,6 +172,14 @@ const PRO_YEARLY = row({
 
 const LIVE_CATALOGUE = [ENTERPRISE, PRO_MONTHLY, PRO_YEARLY];
 
+const FRIEND_OFFER: ReferralOffer = {
+  currency: "USD",
+  monthly_regular_minor: 3000,
+  monthly_intro_minor: 1500,
+  intro_cycles: 2,
+  yearly_regular_minor: 30000,
+  yearly_discount_minor: 3000,
+};
 const FOUNDER_OFFER = { discountCode: "THANKYOU40", discountPercent: 40 };
 
 /** A subscription row as Dodo localised it: ZAR, while the catalogue is USD. */
@@ -293,6 +303,19 @@ describe("pricing cards", () => {
     const { container } = render(<PricingCards />);
     expect(visibleText(container)).toMatchInlineSnapshot(
       `"GAIAEverything GAIA does, in one plan.$25$15/ monthBilled yearly$300$18026 months freeSubscribeIncludes:Chat on Inbox triage and drafted replies every morningMeeting briefs and reminders from your calendarTodos GAIA works on, not just tracksWorkflows that run without youLong jobs it keeps working on while you are awayRemembers what you tell it, oncePriority supportEnterpriseFor teams ready to roll GAIA out to every employee.CustomPriced around your teamTalk to the teamIncludes:Everything in ProSSO, SCIM & audit logsCustom integrationsSelf-host or private cloudPrivate Slack supportDedicated engineer & SLA"`,
+    );
+  });
+
+  it("monthly and yearly with a referred friend's gift on the Pro card", () => {
+    const gift = giftCardPrice(FRIEND_OFFER);
+    const monthly = render(<PricingCards durationIsMonth gift={gift} />);
+    expect(visibleText(monthly.container)).toContain(
+      "$30$15/ monthFirst 2 months, then $30Subscribe",
+    );
+    cleanup();
+    const yearly = render(<PricingCards gift={gift} />);
+    expect(visibleText(yearly.container)).toContain(
+      "$25$23/ monthFirst year, then $300$300$270",
     );
   });
 

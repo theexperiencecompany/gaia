@@ -8,11 +8,22 @@ import {
   type PriceDisplay,
 } from "../utils/priceDisplay";
 
+/** A price only this viewer pays, such as a referred friend's gift, and the line saying for how long. */
+export interface GiftPrice {
+  /** Minor units charged per month while the gift lasts. */
+  monthly: number;
+  /** Minor units of the first yearly charge. */
+  yearly: number;
+  monthlyNote: string;
+  yearlyNote: string;
+}
+
 interface PricingCardPriceInput {
   price: number;
   originalPrice: number | undefined;
   durationIsMonth: boolean;
   currency: string;
+  gift: GiftPrice | null;
 }
 
 interface PricingCardPrice {
@@ -23,6 +34,8 @@ interface PricingCardPrice {
    * strike the list price.
    */
   offer: PriceDisplay | null;
+  /** Replaces the billing sub-line while a gift price is shown. */
+  note: string | null;
 }
 
 /**
@@ -38,14 +51,28 @@ export function usePricingCardPrice({
   originalPrice,
   durationIsMonth,
   currency,
+  gift,
 }: PricingCardPriceInput): PricingCardPrice {
   // Only an offer that names a percentage can restate the prices; the
   // enforcement path's offer (a checkout link, a code) leaves them as-is.
   const discountPercent = useUpgradeModalStore(
     (s) => s.offer?.discountPercent ?? null,
   );
+  const list = getPriceDisplay(price, originalPrice, durationIsMonth, currency);
+  if (gift && price > 0)
+    return {
+      list,
+      offer: getPriceDisplay(
+        durationIsMonth ? gift.monthly : gift.yearly,
+        originalPrice,
+        durationIsMonth,
+        currency,
+      ),
+      note: durationIsMonth ? gift.monthlyNote : gift.yearlyNote,
+    };
   return {
-    list: getPriceDisplay(price, originalPrice, durationIsMonth, currency),
+    list,
+    note: null,
     offer:
       discountPercent && price > 0
         ? getPriceDisplay(

@@ -179,6 +179,13 @@ export const REFERRAL_UI_COPY = {
   landingPrice: (p: OfferPrices) => giftPrice(p, "your"),
   thenRegular: (p: OfferPrices) => `then ${p.regular}/month`,
   landingFrom: (referrer: string) => `From ${referrer}`,
+  /** On a referred friend's paywall: whose gift the struck price comes from. */
+  paywallGiftFrom: (referrer: string) => `${referrer}'s gift is applied`,
+  paywallGiftFromSomeone: "A friend's gift is applied",
+  paywallMonthlyNote: (p: OfferPrices) =>
+    `First ${p.cycles} months, then ${p.regular}`,
+  paywallYearlyNote: (yearlyRegular: string) =>
+    `First year, then ${yearlyRegular}`,
   subscribeFirstTitle: "Gifts come with GAIA Pro",
   subscribeFirstBody:
     "Subscribe and you'll get a link that gives friends GAIA for less, plus a free month for you every time one joins.",

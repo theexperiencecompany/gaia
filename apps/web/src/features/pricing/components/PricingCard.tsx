@@ -5,7 +5,10 @@ import { ShineBorder } from "@/components/ui/shine-border";
 import { track } from "@/lib/analytics";
 
 import type { CheckoutSource } from "../api/pricingApi";
-import { usePricingCardPrice } from "../hooks/usePricingCardPrice";
+import {
+  type GiftPrice,
+  usePricingCardPrice,
+} from "../hooks/usePricingCardPrice";
 import type { PlanViewerState } from "../types";
 import { PricingCardCta } from "./PricingCardCta";
 import { PricingCardFeatures } from "./PricingCardFeatures";
@@ -36,6 +39,8 @@ interface PricingCardProps {
   /** The onboarding wizard introduces the plan in GAIA's own bubbles, so the
    * card there carries no name or tagline of its own. */
   hideHeader?: boolean;
+  /** A price only this viewer pays (a referred friend's gift); the list price is struck. */
+  gift?: GiftPrice | null;
 }
 
 export function PricingCard({
@@ -53,12 +58,14 @@ export function PricingCard({
   planViewerState = "available",
   checkoutSource,
   hideHeader = false,
+  gift = null,
 }: PricingCardProps) {
-  const { list, offer } = usePricingCardPrice({
+  const { list, offer, note } = usePricingCardPrice({
     price,
     originalPrice,
     durationIsMonth,
     currency,
+    gift,
   });
 
   useEffect(() => {
@@ -94,7 +101,12 @@ export function PricingCard({
           isCurrentPlan={planViewerState === "current"}
         />
       )}
-      <PricingCardPrice list={list} offer={offer} currency={currency} />
+      <PricingCardPrice
+        list={list}
+        offer={offer}
+        note={note}
+        currency={currency}
+      />
       <PricingCardCta
         price={price}
         durationIsMonth={durationIsMonth}
