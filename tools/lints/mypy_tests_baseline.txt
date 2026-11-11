@@ -431,7 +431,6 @@ apps/api/tests/unit/tools/test_discovery_tools.py	syntax
 apps/api/tests/unit/tools/test_download_tool.py	attr-defined
 apps/api/tests/unit/tools/test_file_tools.py	attr-defined
 apps/api/tests/unit/tools/test_file_tools.py	union-attr
-apps/api/tests/unit/tools/test_finish_task_tool.py	attr-defined
 apps/api/tests/unit/tools/test_flowchart_tool.py	attr-defined
 apps/api/tests/unit/tools/test_google_docs_tool.py	call-arg
 apps/api/tests/unit/tools/test_google_meet_tool.py	misc

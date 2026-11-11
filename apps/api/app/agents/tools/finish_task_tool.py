@@ -34,8 +34,15 @@ async def finish_task(
         "cannot proceed (put the reason and what would unblock it in result). The "
         "executor always sets it.",
     ] = None,
+    nothing_for_user: Annotated[
+        bool,
+        "Leave false unless this run's own instructions say when to set it. true: the run "
+        "found nothing to tell the user, so result is kept as the run's record and no "
+        "message is sent.",
+    ] = False,
 ) -> str:
-    del outcome  # read off the tool call by the run's outcome review, not returned
+    # Both are read off the tool call by the run's outcome review, not returned.
+    del outcome, nothing_for_user
     return result
 
 

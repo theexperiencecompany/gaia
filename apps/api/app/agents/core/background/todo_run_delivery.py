@@ -1,8 +1,9 @@
 """Terminal delivery for a tracked todo's own background run.
 
 The run executes in its todo's chat, which result_delivery has already given the
-executor's report. What reaches the user's chat app is decided here: comms decides
-whether it is worth a message at all, and the chat app gets it only if so.
+executor's report. What reaches the user's chat app is decided here: a run that
+declared it found nothing for the user sends nothing, comms decides whether any other
+is worth a message at all, and the chat app gets it only if so.
 activity.md records what happened either way. A step the todo store fails is
 finished by a durable job, keyed by the run, never by running the todo again.
 """
@@ -71,6 +72,7 @@ from shared.py.wide_events import log
 _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
     TodoRunDeliveryOutcome.UNDELIVERED: "result not sent: no linked chat app accepted it",
     TodoRunDeliveryOutcome.NOTIFY_OFF: "result not sent: delivery is off for this todo",
+    TodoRunDeliveryOutcome.NOTHING_TO_REPORT: "result not sent: the run found nothing for the user",
     TodoRunDeliveryOutcome.NARRATION_FAILED: "result not sent: it could not be written up",
     TodoRunDeliveryOutcome.INVALID_DIRECTIVE: "result not sent: the write-up was a reaction",
 }
@@ -105,12 +107,19 @@ class FinishedTodoRun(BaseModel):
     trigger_type: TriggerType
     runs_once: bool
     result_text: str
+    #: The run's own finish_task declaration: result_text is its record, not a message.
+    nothing_for_user: bool = False
     #: Set once the message step is done; only the finish entry is left then.
     finish_entry: str | None = None
 
 
 async def deliver_todo_run_result(
-    run: ExecutorRun, todo_run: TodoRun, result_text: str, result_type: str
+    run: ExecutorRun,
+    todo_run: TodoRun,
+    result_text: str,
+    result_type: str,
+    *,
+    nothing_for_user: bool = False,
 ) -> None:
     """Decide, deliver and record what a finished tracked-todo run tells the user.
 
@@ -131,6 +140,7 @@ async def deliver_todo_run_result(
         trigger_type=todo_run.trigger_type,
         runs_once=todo_run.runs_once,
         result_text=result_text,
+        nothing_for_user=nothing_for_user,
     )
     if (undone := await finish_todo_run(finished, run.user)) is not None:
         await hand_unfinished_run_to_job(undone)
@@ -217,12 +227,11 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
     if todo.activity_content and run_finished_marker(finished.run_id) in todo.activity_content:
         return None
 
-    # Read now, not when the run started: the run itself may have turned it off.
-    if todo.notify_on_run:
+    if (held_back := _held_back(finished, todo)) is None:
         resolution = await _narrate_and_send(finished, user, todo)
     else:
         await record_executor_report(finished.conversation_id, finished.result_text, "result")
-        resolution = _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
+        resolution = _not_sent(held_back)
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.
@@ -239,6 +248,17 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
     )
     summary = finished.result_text.strip().replace("\n", " ")[:RUN_SUMMARY_ACTIVITY_CHARS]
     return f"{resolution.note} (summary={summary!r})", todo.user_id
+
+
+def _held_back(finished: FinishedTodoRun, todo: TodoDocument) -> TodoRunDeliveryOutcome | None:
+    """Name why a run's report goes to neither comms nor the user, or None when comms decides."""
+    # Read now, not when the run started: the run itself may have turned it off.
+    if not todo.notify_on_run:
+        return TodoRunDeliveryOutcome.NOTIFY_OFF
+    # Only a kind whose run guidance defines the declaration may silence itself with it.
+    if finished.nothing_for_user and todo.owns_report_form:
+        return TodoRunDeliveryOutcome.NOTHING_TO_REPORT
+    return None
 
 
 def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | None:
@@ -327,8 +347,7 @@ async def _narrate_and_send(
         return _not_sent(TodoRunDeliveryOutcome.INVALID_DIRECTIVE)
 
     # comms' retelling dropped the headings a report-form owner's guidance requires.
-    owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
-    message = finished.result_text if owns_form else directive.payload
+    message = finished.result_text if todo.owns_report_form else directive.payload
     platform = (
         await deliver_result_to_platforms(
             user=user,
