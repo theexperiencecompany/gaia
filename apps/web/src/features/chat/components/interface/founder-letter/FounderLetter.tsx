@@ -1,6 +1,5 @@
 "use client";
 
-import { CancelIcon } from "@icons";
 import type { CSSProperties } from "react";
 
 import { LetterModal } from "@/components/shared/LetterModal";
@@ -10,7 +9,6 @@ import { track } from "@/lib/analytics";
 import {
   BODY_FONT,
   INK,
-  INK_SOFT,
   LETTER_PARAGRAPHS,
   MEETING_CTA,
   MEETING_SENTENCE,
@@ -235,16 +233,6 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
       >
         <div className="relative flex flex-col" style={LETTER_TYPOGRAPHY}>
           <PaperBackdrop />
-
-          {/* Close */}
-          <button
-            type="button"
-            onClick={closeLetter}
-            aria-label="Close the letter"
-            className="absolute top-3 right-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60"
-          >
-            <CancelIcon className="h-4 w-4" style={{ color: INK_SOFT }} />
-          </button>
 
           {/* Letter content */}
           <div
