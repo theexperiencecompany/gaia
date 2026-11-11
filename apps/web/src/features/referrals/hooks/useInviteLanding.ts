@@ -3,6 +3,8 @@
 import type { ReferralCopyVariant } from "@shared/api/generated";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/features/auth/hooks/useAuth";
+import { currentUserQueryOptions } from "@/features/auth/hooks/useCurrentUser";
 import { randomUnit } from "@/lib/random";
 import { referralsApi } from "../api/referralsApi";
 import { LIVE_LANDING_VARIANTS } from "../referralCopy";
@@ -22,18 +24,26 @@ function pickLandingVariant(): ReferralCopyVariant {
   return picked;
 }
 
-/** Resolve the code from the browser, so the API's first-touch cookie lands on this visitor. */
+/** Resolve the code from the browser, so the API's first-touch cookie lands on this visitor; never for a member. */
 export function useInviteLanding(code: string) {
   const [variant, setVariant] = useState<ReferralCopyVariant | null>(null);
   // localStorage exists only after mount; the server pass renders the loading state.
   useEffect(() => setVariant(pickLandingVariant()), []);
+  const { isAuthenticated } = useAuth();
+  // Resolving sets the attribution cookie, so it waits for /user/me to refuse first.
+  const { isError: isSignedOut } = useQuery(currentUserQueryOptions);
   const query = useQuery({
     queryKey: ["referrals", "resolve", code, variant],
     queryFn: () =>
       referralsApi.resolve(code, variant ?? LIVE_LANDING_VARIANTS[0]),
-    enabled: variant !== null,
+    enabled: variant !== null && isSignedOut && !isAuthenticated,
     staleTime: Number.POSITIVE_INFINITY,
     retry: 1,
   });
-  return { variant, invite: query.data, isError: query.isError };
+  return {
+    variant,
+    isSignedIn: isAuthenticated,
+    invite: query.data,
+    isError: query.isError,
+  };
 }

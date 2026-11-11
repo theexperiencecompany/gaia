@@ -42,6 +42,16 @@ export function useReferralMe(): ReferralMeState {
   return { status: "loading" };
 }
 
+/** The gift the caller's checkout applies, from the friend who referred them; null when none is owed. */
+export function useFriendGift() {
+  return useQuery({
+    queryKey: ["referrals", "gift"],
+    queryFn: referralsApi.getGift,
+    staleTime: Number.POSITIVE_INFINITY,
+    select: (data) => data.gift,
+  });
+}
+
 /** Ranked people to invite; empty when neither Gmail nor Calendar is connected. */
 export function useReferralSuggestions(enabled: boolean) {
   return useQuery({

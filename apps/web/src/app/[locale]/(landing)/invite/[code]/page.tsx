@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { OG_HEIGHT, OG_WIDTH } from "@/app/api/og/lib";
 import { InviteLandingPage } from "@/features/referrals/components/InviteLandingPage";
 import { resolveInviteServer } from "@/features/referrals/lib/serverReferralsApi";
 import {
@@ -7,6 +8,8 @@ import {
 } from "@/features/referrals/referralCopy";
 import { offerPrices } from "@/features/referrals/utils/offerPrices";
 import { siteConfig } from "@/lib/seo";
+
+const INVITE_OG_ALT = "An invite to GAIA";
 
 interface InvitePageProps {
   params: Promise<{ code: string }>;
@@ -25,14 +28,31 @@ export async function generateMetadata({
   const description = invite
     ? og.subtitle(offerPrices(invite.offer))
     : siteConfig.description;
+  const image = {
+    url: `/api/og/invite/${code}`,
+    width: OG_WIDTH,
+    height: OG_HEIGHT,
+    alt: INVITE_OG_ALT,
+    type: "image/png",
+  };
   // One page per referrer: shareable previews, never search results.
   return {
     title,
     description,
     robots: { index: false, follow: true },
     alternates: { canonical: `${siteConfig.url}/invite/${code}` },
-    openGraph: { title, description, url: `${siteConfig.url}/invite/${code}` },
-    twitter: { card: "summary_large_image", title, description },
+    openGraph: {
+      title,
+      description,
+      url: `${siteConfig.url}/invite/${code}`,
+      images: [image],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [image],
+    },
   };
 }
 

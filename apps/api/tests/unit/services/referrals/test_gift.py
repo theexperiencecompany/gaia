@@ -4,11 +4,20 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from dodopayments.types import Discount
 import pytest
+import time_machine
 
 from app.models.payment_models import PlanDuration
 from app.models.referral_models import ReferralDocument, ReferredFriendStatus
-from app.services.referrals.gift import CheckoutGift, gift_code_for_checkout, pending_gift_referral
+from app.services.referrals.gift import (
+    CheckoutGift,
+    code_value,
+    gift_code_for_checkout,
+    gift_value,
+    pending_gift_referral,
+    renew_gift_code,
+)
 from tests.factories import make_pro_plans
 from tests.helpers import captured_wide_event
 
@@ -169,3 +178,77 @@ class TestGiftCodeForCheckout:
             )
 
         client.discounts.delete.assert_called_once_with("dsc_new")
+
+
+class TestRenewGiftCode:
+    REFUSED = CheckoutGift(code="GIFT-OLD", duration=PlanDuration.MONTHLY, referrer_id="referrer-1")
+
+    async def test_a_refused_code_is_swapped_for_a_fresh_single_use_one(self) -> None:
+        client = _dodo("GIFT-FRESH")
+        stored = _referral(gift_codes={PlanDuration.MONTHLY: "GIFT-FRESH"})
+        with patch(
+            f"{GIFT}.referral_repository.replace_gift_code", AsyncMock(return_value=stored)
+        ) as replace:
+            renewed = await renew_gift_code(client, _referral(), self.REFUSED, make_pro_plans())
+
+        assert renewed == CheckoutGift(
+            code="GIFT-FRESH", duration=PlanDuration.MONTHLY, referrer_id="referrer-1"
+        )
+        replace.assert_awaited_once_with(
+            FRIEND_ID, PlanDuration.MONTHLY, refused="GIFT-OLD", fresh="GIFT-FRESH"
+        )
+        assert client.discounts.create.call_args.kwargs["restricted_to"] == ["pdt_monthly"]
+        client.discounts.delete.assert_not_called()
+
+    async def test_a_checkout_that_renewed_first_keeps_its_code_and_ours_is_deleted(self) -> None:
+        client = _dodo("GIFT-LOSER")
+        winner = _referral(gift_codes={PlanDuration.MONTHLY: "GIFT-WINNER"})
+        with patch(f"{GIFT}.referral_repository.replace_gift_code", AsyncMock(return_value=winner)):
+            renewed = await renew_gift_code(client, _referral(), self.REFUSED, make_pro_plans())
+
+        assert renewed.code == "GIFT-WINNER"
+        client.discounts.delete.assert_called_once_with("dsc_new")
+
+
+def _discount(**overrides: object) -> Discount:
+    fields: dict[str, object] = {
+        "amount": 2000,
+        "business_id": "biz_1",
+        "code": "PROMO",
+        "created_at": NOW,
+        "discount_id": "dsc_promo",
+        "restricted_to": [],
+        "times_used": 0,
+        "type": "percentage",
+        "subscription_cycles": None,
+    }
+    return Discount.model_validate({**fields, **overrides})
+
+
+class TestWhichDiscountIsWorthMore:
+    PLANS = make_pro_plans(monthly=3000, yearly=27000)
+
+    def test_the_gift_is_worth_one_monthly_price_on_either_cycle(self) -> None:
+        assert gift_value(self.PLANS, self.PLANS.monthly) == 3000
+        assert gift_value(self.PLANS, self.PLANS.yearly) == 2999
+
+    @pytest.mark.parametrize(
+        ("overrides", "value"),
+        [
+            ({"amount": 2000, "subscription_cycles": None}, 7200),
+            ({"amount": 2000, "subscription_cycles": 3}, 1800),
+            ({"amount": 5000, "subscription_cycles": 24}, 18000),
+            ({"restricted_to": ["pdt_yearly"]}, 0),
+            ({"expires_at": datetime(2026, 1, 1, tzinfo=UTC)}, 0),
+            ({"usage_limit": 5, "times_used": 5}, 0),
+        ],
+        ids=["forever", "three-months", "capped-at-a-year", "other-product", "expired", "used-up"],
+    )
+    def test_a_code_is_valued_over_the_monthly_plans_first_year(
+        self, overrides: dict[str, object], value: int
+    ) -> None:
+        with time_machine.travel(NOW, tick=False):
+            assert code_value(_discount(**overrides), self.PLANS.monthly) == value
+
+    def test_a_forever_code_on_the_yearly_plan_counts_one_charge(self) -> None:
+        assert code_value(_discount(amount=1000), self.PLANS.yearly) == 2700

@@ -20,6 +20,9 @@ import { CheckoutConfirming } from "@/features/pricing/components/CheckoutConfir
 import { CheckoutFailed } from "@/features/pricing/components/CheckoutFailed";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { FriendGiftBadge } from "@/features/referrals/components/FriendGiftBadge";
+import { useFriendGift } from "@/features/referrals/hooks/useReferrals";
+import { giftCardPrice } from "@/features/referrals/utils/offerPrices";
 import { paymentIntroLines } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import { useCheckoutReturn } from "../../hooks/useCheckoutReturn";
@@ -34,6 +37,8 @@ export function Payment() {
   const { returned, isLate, failed, timedOut, retry } = useCheckoutReturn();
   const gaiaDone = usePaceDone(PAYMENT_REVEAL_KEY);
   const { name, email } = useCurrentUser();
+  // A referred friend's checkout applies their gift, so the card shows that price, not the list one.
+  const { data: gift } = useFriendGift();
   const introLines = useMemo(
     () => paymentIntroLines(firstNameOf(name, email)),
     [name, email],
@@ -71,12 +76,14 @@ export function Payment() {
           className="flex w-full flex-col items-center gap-4 lg:[zoom:0.85]"
           {...MOTION_FADE_UP}
         >
+          {gift && <FriendGiftBadge gift={gift} />}
           <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
           <PricingCards
             durationIsMonth={!isYearly}
             hideEnterprise
             checkoutSource="onboarding"
             hideHeader
+            gift={gift ? giftCardPrice(gift.offer) : null}
           />
         </m.div>
       ) : null}

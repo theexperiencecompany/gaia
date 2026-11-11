@@ -136,6 +136,18 @@ class TestAttribution:
         assert await referral_repository.get(alt.id) is None
         analytics.assert_not_called()
 
+    async def test_an_old_link_attributes_nothing_while_referrals_are_off(
+        self, analytics: MagicMock
+    ) -> None:
+        referrer, friend = await _user("Aryan"), await _user("Priya")
+        code = await ensure_code(referrer)
+
+        with patch.object(settings, "ENABLE_REFERRALS", False):
+            await attribute_signup(friend.id, ReferralAttribution(code=code))
+
+        assert await referral_repository.get(friend.id) is None
+        analytics.assert_not_called()
+
     async def test_an_unknown_code_attributes_nothing(self, analytics: MagicMock) -> None:
         friend = await _user("Priya")
         await attribute_signup(friend.id, ReferralAttribution(code="nobody-zzzz"))
@@ -165,7 +177,8 @@ class TestCheckoutGift:
         )
         yearly = await gift_code_for_checkout(client, referral, "pdt_pro_yearly", PLANS)
 
-        assert monthly == again == "GIFT1" and yearly == "GIFT2"
+        assert monthly is not None and again is not None and yearly is not None
+        assert (monthly.code, again.code, yearly.code) == ("GIFT1", "GIFT1", "GIFT2")
         assert [
             (c["amount"], c["subscription_cycles"], c["usage_limit"]) for c in dodo.created
         ] == [

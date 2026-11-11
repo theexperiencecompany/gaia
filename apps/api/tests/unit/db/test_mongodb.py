@@ -504,6 +504,8 @@ class TestCreateReferralIndexes:
                 (("friend_user_id",), {"unique": True}),
                 (([("referrer_user_id", 1), ("joined_at", -1)],), {}),
                 (([("referrer_user_id", 1), ("reward_state", 1), ("paid_at", 1)],), {}),
+                (("payment_id",), {"sparse": True}),
+                (([("reward_state", 1), ("paid_at", 1)],), {}),
             ],
             "referral_invites": [
                 (([("sender_user_id", 1), ("recipient_email", 1)],), {"unique": True}),

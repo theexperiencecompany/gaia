@@ -107,6 +107,7 @@ export type ServerEventName =
   | "referral:nudge_dismissed"
   | "referral:nudge_sent"
   | "referral:reward_granted"
+  | "referral:reward_revoked"
   | "referral:signup_attributed"
   | "reminder:completed"
   | "reminder:created"
@@ -1239,6 +1240,15 @@ export interface EventProperties {
     "friend_id": string;
     "delivery": string;
     "months": number;
+  };
+  "referral:reward_revoked": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "friend_id": string;
+    "reason": "refund" | "dispute";
+    "prior_state": string;
+    "reclaimed": boolean;
   };
   "referral:share_clicked": {
     "surface": "page" | "sidebar" | "post_payment" | "chat_card";

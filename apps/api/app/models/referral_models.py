@@ -22,13 +22,22 @@ class ReferralRewardState(StrEnum):
 
     PENDING is claimed but not yet delivered; APPLIED moved the referrer's Dodo
     billing date; BANKED waits for a referrer with no active subscription to
-    come back; SELF_REFERRAL earned nothing because both sides are one person.
+    come back; SELF_REFERRAL earned nothing because both sides are one person;
+    REVOKED was taken back because the friend's first payment was refunded or disputed.
     """
 
     PENDING = "pending"
     APPLIED = "applied"
     BANKED = "banked"
     SELF_REFERRAL = "self_referral"
+    REVOKED = "revoked"
+
+
+class ReferralRevokeReason(StrEnum):
+    """Why a friend's first payment stopped counting: Dodo refunded it, or the payer disputed it."""
+
+    REFUND = "refund"
+    DISPUTE = "dispute"
 
 
 class ReferralInviteSurface(StrEnum):
@@ -85,10 +94,21 @@ class ReferralDocument(MongoDocument):
     payment_id: str | None = None
     gift_codes: dict[PlanDuration, str] = Field(default_factory=dict)
     reward_state: ReferralRewardState | None = None
+    reward_subscription_id: str | None = None
     reward_target_billing_date: datetime | None = None
     reward_applied_at: datetime | None = None
+    revoke_reason: ReferralRevokeReason | None = None
+    revoked_at: datetime | None = None
+    revoke_target_billing_date: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def revocation_owed(self) -> bool:
+        """Whether a refund or dispute asked for this reward back and it is not yet taken."""
+        return (
+            self.revoke_reason is not None and self.reward_state is not ReferralRewardState.REVOKED
+        )
 
 
 class ReferralUpdate(BaseModel):
@@ -97,8 +117,10 @@ class ReferralUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reward_state: ReferralRewardState | None = None
+    reward_subscription_id: str | None = None
     reward_target_billing_date: datetime | None = None
     reward_applied_at: datetime | None = None
+    revoke_target_billing_date: datetime | None = None
 
 
 class ReferralInviteDocument(MongoDocument):

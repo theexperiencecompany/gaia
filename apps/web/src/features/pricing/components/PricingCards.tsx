@@ -9,6 +9,7 @@ import {
   useIsSubscriptionStatusUnknown,
   usePricing,
 } from "../hooks/usePricing";
+import type { GiftPrice } from "../hooks/usePricingCardPrice";
 import { getPlanViewerState } from "../types";
 import { isMonthlyTwin } from "../utils/annualSavings";
 import {
@@ -56,6 +57,8 @@ interface PricingCardsProps {
   checkoutSource?: CheckoutSource;
   /** Forwarded to every priced card; see PricingCard. */
   hideHeader?: boolean;
+  /** A referred friend's gift, shown on the Pro card the gift discounts. */
+  gift?: GiftPrice | null;
 }
 
 export function PricingCards({
@@ -64,6 +67,7 @@ export function PricingCards({
   hideEnterprise = false,
   checkoutSource,
   hideHeader = false,
+  gift = null,
 }: PricingCardsProps) {
   const { plans, isLoading, error, subscriptionStatus } =
     usePricing(initialPlans);
@@ -183,6 +187,7 @@ export function PricingCards({
               planViewerState={planViewerState}
               checkoutSource={checkoutSource}
               hideHeader={hideHeader}
+              gift={isPro ? gift : null}
             />
           );
         })}
