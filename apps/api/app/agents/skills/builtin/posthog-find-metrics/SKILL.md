@@ -130,19 +130,21 @@ WHERE cohort_day <= 30 GROUP BY cohort_day ORDER BY cohort_day
 ### Two simple metrics → two `exec` calls in one turn
 Once both tools' schemas are known, issue the calls together. No subagents needed.
 
-### Multi-step tasks → spawn subagents in parallel
+### Several multi-step investigations → one spawn each, in one turn
 
-Each thread needs its own discover-then-call sequence, so give each subagent a
-self-contained objective:
+When each investigation needs its own discover-then-call sequence and you can spawn
+subagents, give each a self-contained objective, all in the same turn. When and how
+to brief one is in spawn_subagent's description.
 ```
 spawn_subagent(
   task="In PostHog, search for the errors tool with exec search error, inspect it with info, then call it for this week's top errors. Fetch full details for the top 2.",
-  context="Return: error name, occurrence count, affected user count, one-line summary"
+  context="Return: error name, occurrence count, affected user count, one-line summary, and anything you could not fetch",
+  integration_ids=["posthog"],
 )
-
 spawn_subagent(
   task="In PostHog, search for the experiments tools with exec search experiment, list experiments, find the one matching 'checkout', then call the results tool for it.",
-  context="Return: variant names, conversion rates, statistical significance, winner if declared"
+  context="Return: variant names, conversion rates, statistical significance, winner if declared, and anything you could not fetch",
+  integration_ids=["posthog"],
 )
 ```
 

@@ -12,14 +12,18 @@ Covers:
 """
 
 import asyncio
+from collections.abc import AsyncIterator
 from dataclasses import replace
-from typing import Any, cast
+import json
+import time
+from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from bson import ObjectId
 import httpx
 from langchain_core.callbacks import AsyncCallbackHandler, UsageMetadataCallbackHandler
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, Generation, LLMResult
 from langchain_core.runnables import (
     Runnable,
@@ -35,14 +39,12 @@ from langchain_openrouter import ChatOpenRouter
 from openai import APIConnectionError, AuthenticationError, RateLimitError
 from pydantic import BaseModel, SecretStr
 import pytest
+import tenacity
 
 from app.agents.llm import client as client_module
 from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
     _MODEL_FIELD,
-    LLM_RETRYABLE_EXCEPTIONS,
-    PROVIDER_MODELS,
-    PROVIDER_PRIORITY,
     LLMInvokeOptions,
     ResponseFacts,
     StructuredCallOptions,
@@ -66,13 +68,16 @@ from app.agents.llm.client import (
     invoke_llm,
     register_llm_providers,
     resolve_model,
+    without_sdk_retry,
 )
 from app.agents.llm.exceptions import (
     LLM_FALLBACK_EXCEPTIONS,
+    LLM_RETRYABLE_EXCEPTIONS,
     LLMNotConfiguredError,
     MalformedStructuredOutputError,
 )
-from app.agents.llm.types import LLMProvider
+from app.agents.llm.types import LLMProvider, ProviderLLM
+from app.config.deployment import DeploymentKind, baseline_profile
 from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
@@ -92,15 +97,19 @@ from app.constants.llm import (
     OPENROUTER_DEV_APP_TITLE,
     OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
+    OPENROUTER_PROVIDER_ROUTING,
     PROVIDER_NAME_METADATA_KEY,
     UNKNOWN_MODEL_NAME,
     VISION_MODEL_NAME,
     LLMProviderName,
     ModelUse,
+    OpenRouterModelKwargs,
     ReasoningLevel,
 )
+from app.constants.providers import LLM_MODEL_PROFILES, LLM_PROVIDER_PRIORITY
 from app.core.lazy_loader import ProviderRegistry
 from app.services.llm_metering import LLMCallContext
+from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
 from tests.helpers import create_fake_llm
@@ -120,12 +129,29 @@ _AUX_CONTEXT = LLMCallContext(
 )
 
 
+def _custom_config(model: str | None) -> ProviderConfig:
+    """Return a stored custom-endpoint credential, as the resolver returns it."""
+    return ProviderConfig(
+        api_key="sk-custom", base_url="https://llm.example.com/v1", model=model, preset=None
+    )
+
+
 def _make_fake_provider(name: str = "fake") -> MagicMock:
     """Return a MagicMock that quacks enough like a BaseChatModel."""
     mock = MagicMock()
     mock.configurable_alternatives.return_value = mock
     mock.ainvoke = AsyncMock(return_value=AIMessage(content=f"response-from-{name}"))
     return mock
+
+
+def _usage_handler(**usage_by_model: dict[str, object]) -> UsageMetadataCallbackHandler:
+    """Return a handler holding the usage a provider reported, per model."""
+    handler = UsageMetadataCallbackHandler()
+    # providers omit counts UsageMetadata marks required; the booking must survive that
+    handler.usage_metadata = {
+        model: cast(UsageMetadata, usage) for model, usage in usage_by_model.items()
+    }
+    return handler
 
 
 def _make_llm_provider(name: str) -> LLMProvider:
@@ -137,7 +163,16 @@ def _make_llm_provider(name: str) -> LLMProvider:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("stored_credentials")
 class TestGetAvailableProviders:
+    # Availability follows the resolved config; these tests pin the REGISTRY
+    # half of the lookup, so they seed stored configs for every provider whose
+    # availability isn't under test.
+    _CONFIGURED: ClassVar[dict[str, ProviderConfig]] = {
+        "gemini": ProviderConfig(api_key="g-key"),
+        "openrouter": ProviderConfig(api_key="sk-or"),
+    }
+
     @patch("app.agents.llm.client.providers")
     def test_all_providers_available(self, mock_providers: MagicMock) -> None:
         gemini_inst = _make_fake_provider("gemini")
@@ -151,11 +186,12 @@ class TestGetAvailableProviders:
 
         mock_providers.get.side_effect = _get
 
-        result = _get_available_providers()
+        with patch.dict(resolved_configs, self._CONFIGURED):
+            result = _get_available_providers()
 
         assert "gemini" in result
         assert "openrouter" in result
-        assert result["gemini"] is gemini_inst
+        assert result[LLMProviderName.GEMINI] is gemini_inst
 
     @patch("app.agents.llm.client.providers")
     def test_no_providers_available(self, mock_providers: MagicMock) -> None:
@@ -176,30 +212,41 @@ class TestGetAvailableProviders:
 
         mock_providers.get.side_effect = _get
 
-        result = _get_available_providers()
+        # Both providers are configured; only gemini has a registry entry.
+        with patch.dict(resolved_configs, self._CONFIGURED):
+            result = _get_available_providers()
 
         assert list(result.keys()) == ["gemini"]
 
     def test_unregistered_provider_is_skipped_not_fatal(self) -> None:
-        """Runs against the real registry, which raises KeyError on an unregistered name and once killed init_llm."""
         registry = ProviderRegistry()
         gemini_inst = _make_fake_provider("gemini")
         openrouter_inst = _make_fake_provider("openrouter")
         registry.register("gemini_llm", lambda: gemini_inst)
         registry.register("openrouter_llm", lambda: openrouter_inst)
 
-        with patch("app.agents.llm.client.providers", registry):
+        custom_configured = {
+            **self._CONFIGURED,
+            "custom": ProviderConfig(
+                api_key="sk-custom", base_url="http://localhost:1", model="test/model"
+            ),
+        }
+        with (
+            patch("app.agents.llm.client.providers", registry),
+            patch.dict(resolved_configs, custom_configured),
+        ):
             result = _get_available_providers()
 
         assert result == {"gemini": gemini_inst, "openrouter": openrouter_inst}
 
 
 # ---------------------------------------------------------------------------
-# next_fallback_provider
+# chat_route
 # ---------------------------------------------------------------------------
 
 
-class TestNextFallbackProvider:
+@pytest.mark.usefixtures("stored_credentials")
+class TestChatRoute:
     """What a caller retries onto after a provider failure; the graph selects its lane via configurable["provider"] and never fails over itself."""
 
     def _available(self, *names: LLMProviderName) -> Any:
@@ -210,7 +257,7 @@ class TestNextFallbackProvider:
 
     def test_the_failed_provider_is_never_returned_to(self) -> None:
         with self._available(LLMProviderName.OPENROUTER, LLMProviderName.GEMINI):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) == (
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) == (
                 LLMProviderName.GEMINI,
                 DEFAULT_GEMINI_MODEL_NAME,
             )
@@ -219,37 +266,50 @@ class TestNextFallbackProvider:
         with self._available(
             LLMProviderName.OPENROUTER, LLMProviderName.GEMINI, LLMProviderName.CUSTOM
         ):
-            assert client_module.next_fallback_provider(LLMProviderName.GEMINI) == (
+            assert client_module.chat_route(LLMProviderName.GEMINI) == (
                 LLMProviderName.OPENROUTER,
                 DEFAULT_MODEL_NAME,
             )
 
     def test_a_run_with_no_lane_yet_gets_the_highest_priority_provider(self) -> None:
         with self._available(LLMProviderName.OPENROUTER, LLMProviderName.GEMINI):
-            assert client_module.next_fallback_provider(None) == (
+            assert client_module.chat_route(None) == (
                 LLMProviderName.OPENROUTER,
                 DEFAULT_MODEL_NAME,
             )
 
     def test_nothing_else_configured_yields_no_fallback(self) -> None:
         with self._available(LLMProviderName.OPENROUTER):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) is None
 
     def test_an_unconfigured_provider_is_skipped_not_returned_modelless(self) -> None:
-        """The custom endpoint's PROVIDER_MODELS entry is DEV_LLM_MODEL or ""; pinning "" trades a dead provider for a guaranteed bad request."""
+        """A custom endpoint saved without a model has no chat model; pinning "" trades a dead provider for a guaranteed bad request."""
         with (
             self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
-            patch.dict(PROVIDER_MODELS, {LLMProviderName.CUSTOM: ""}),
+            patch.dict(resolved_configs, {"custom": _custom_config(model=None)}),
         ):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) is None
 
-    def test_the_comms_model_is_never_another_lanes_fallback(self) -> None:
-        with self._available(LLMProviderName.OPENROUTER, LLMProviderName.OPENAI):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
+    def test_openai_is_a_chat_provider_ranked_after_gemini(self) -> None:
+        with (
+            self._available(LLMProviderName.OPENROUTER, LLMProviderName.OPENAI),
+            patch.dict(resolved_configs, {"openai": None}),
+        ):
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) == (
+                LLMProviderName.OPENAI,
+                COMMS_MODEL_NAME,
+            )
+        with self._available(
+            LLMProviderName.OPENROUTER, LLMProviderName.GEMINI, LLMProviderName.OPENAI
+        ):
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) == (
+                LLMProviderName.GEMINI,
+                DEFAULT_GEMINI_MODEL_NAME,
+            )
 
     def test_a_failed_comms_call_falls_back_to_the_default(self) -> None:
         with self._available(LLMProviderName.OPENAI, LLMProviderName.GEMINI):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENAI) == (
+            assert client_module.chat_route(LLMProviderName.OPENAI) == (
                 LLMProviderName.GEMINI,
                 DEFAULT_GEMINI_MODEL_NAME,
             )
@@ -257,9 +317,9 @@ class TestNextFallbackProvider:
     def test_a_configured_custom_endpoint_is_a_real_fallback_target(self) -> None:
         with (
             self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
-            patch.dict(PROVIDER_MODELS, {LLMProviderName.CUSTOM: "local/dev-model"}),
+            patch.dict(resolved_configs, {"custom": _custom_config(model="local/dev-model")}),
         ):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) == (
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) == (
                 LLMProviderName.CUSTOM,
                 "local/dev-model",
             )
@@ -272,24 +332,24 @@ class TestNextFallbackProvider:
 
 class TestGetOrderedProviders:
     def test_default_priority_order(self) -> None:
-        available: dict[str, Any] = {
-            "gemini": _make_fake_provider("gemini"),
-            "openrouter": _make_fake_provider("openrouter"),
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.GEMINI: _make_fake_provider("gemini"),
+            LLMProviderName.OPENROUTER: _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
-        # Should follow PROVIDER_PRIORITY: 1=gemini, 2=openrouter
+        # Follows LLM_PROVIDER_PRIORITY: openrouter before gemini
         names = [p.name for p in ordered]
         assert names == ["openrouter", "gemini"]
 
     def test_preferred_provider_is_first(self) -> None:
-        available: dict[str, Any] = {
-            "openai": _make_fake_provider("openai"),
-            "gemini": _make_fake_provider("gemini"),
-            "openrouter": _make_fake_provider("openrouter"),
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.OPENAI: _make_fake_provider("openai"),
+            LLMProviderName.GEMINI: _make_fake_provider("gemini"),
+            LLMProviderName.OPENROUTER: _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(
-            available, preferred_provider="openai", fallback_enabled=True
+            available, preferred_provider=LLMProviderName.OPENAI, fallback_enabled=True
         )
 
         names = [p.name for p in ordered]
@@ -298,11 +358,11 @@ class TestGetOrderedProviders:
         assert names[1:] == ["openrouter", "gemini"]
 
     def test_preferred_provider_not_available_fallback_enabled(self) -> None:
-        available: dict[str, Any] = {
-            "gemini": _make_fake_provider("gemini"),
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.GEMINI: _make_fake_provider("gemini"),
         }
         ordered = _get_ordered_providers(
-            available, preferred_provider="openai", fallback_enabled=True
+            available, preferred_provider=LLMProviderName.OPENAI, fallback_enabled=True
         )
 
         # openai not available, fallback picks gemini
@@ -310,11 +370,11 @@ class TestGetOrderedProviders:
         assert names == ["gemini"]
 
     def test_preferred_provider_not_available_fallback_disabled(self) -> None:
-        available: dict[str, Any] = {
-            "gemini": _make_fake_provider("gemini"),
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.GEMINI: _make_fake_provider("gemini"),
         }
         ordered = _get_ordered_providers(
-            available, preferred_provider="openai", fallback_enabled=False
+            available, preferred_provider=LLMProviderName.OPENAI, fallback_enabled=False
         )
 
         # openai not in available, fallback disabled but ordered is empty so
@@ -324,12 +384,12 @@ class TestGetOrderedProviders:
         assert names == ["gemini"]
 
     def test_no_fallback_only_preferred(self) -> None:
-        available: dict[str, Any] = {
-            "openai": _make_fake_provider("openai"),
-            "gemini": _make_fake_provider("gemini"),
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.OPENAI: _make_fake_provider("openai"),
+            LLMProviderName.GEMINI: _make_fake_provider("gemini"),
         }
         ordered = _get_ordered_providers(
-            available, preferred_provider="openai", fallback_enabled=False
+            available, preferred_provider=LLMProviderName.OPENAI, fallback_enabled=False
         )
 
         # Preferred is available and fallback disabled -> only preferred provider
@@ -337,9 +397,9 @@ class TestGetOrderedProviders:
         assert names == ["openai"]
 
     def test_no_preferred_no_fallback(self) -> None:
-        available: dict[str, Any] = {
-            "gemini": _make_fake_provider("gemini"),
-            "openrouter": _make_fake_provider("openrouter"),
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.GEMINI: _make_fake_provider("gemini"),
+            LLMProviderName.OPENROUTER: _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=False)
 
@@ -347,22 +407,24 @@ class TestGetOrderedProviders:
         names = [p.name for p in ordered]
         assert names == ["openrouter", "gemini"]
 
-    def test_the_comms_model_is_never_an_unpreferred_primary(self) -> None:
-        available: dict[str, Any] = {"openai": _make_fake_provider("openai")}
+    def test_openai_alone_is_the_primary(self) -> None:
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.OPENAI: _make_fake_provider("openai")
+        }
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
-        assert ordered == []
+        assert [p.name for p in ordered] == ["openai"]
 
     def test_the_comms_model_stays_selectable_by_name(self) -> None:
-        available: dict[str, Any] = {
-            "openai": _make_fake_provider("openai"),
-            "openrouter": _make_fake_provider("openrouter"),
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.OPENAI: _make_fake_provider("openai"),
+            LLMProviderName.OPENROUTER: _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
         assert [(p.name, p.instance) for p in ordered] == [
-            ("openrouter", available["openrouter"]),
-            ("openai", available["openai"]),
+            ("openrouter", available[LLMProviderName.OPENROUTER]),
+            ("openai", available[LLMProviderName.OPENAI]),
         ]
 
     def test_empty_available(self) -> None:
@@ -371,12 +433,12 @@ class TestGetOrderedProviders:
         assert ordered == []
 
     def test_no_duplicate_when_preferred_is_also_in_priority(self) -> None:
-        available: dict[str, Any] = {
-            "gemini": _make_fake_provider("gemini"),
-            "openrouter": _make_fake_provider("openrouter"),
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.GEMINI: _make_fake_provider("gemini"),
+            LLMProviderName.OPENROUTER: _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(
-            available, preferred_provider="gemini", fallback_enabled=True
+            available, preferred_provider=LLMProviderName.GEMINI, fallback_enabled=True
         )
 
         names = [p.name for p in ordered]
@@ -397,14 +459,15 @@ class TestCreateConfigurableLlm:
         assert result is primary.instance
 
     def test_with_alternatives_calls_configurable_alternatives(self) -> None:
-        primary = _make_llm_provider("gemini")
+        primary_instance = _make_fake_provider("gemini")
+        primary = LLMProvider(name=LLMProviderName.GEMINI, instance=primary_instance)
         alt1 = _make_llm_provider("openai")
         alt2 = _make_llm_provider("openrouter")
 
         _create_configurable_llm(primary, [alt1, alt2])
 
-        primary.instance.configurable_alternatives.assert_called_once()
-        call_args = primary.instance.configurable_alternatives.call_args
+        primary_instance.configurable_alternatives.assert_called_once()
+        call_args = primary_instance.configurable_alternatives.call_args
         # Check that both alternatives are passed as keyword arguments
         kwargs = call_args.kwargs
         assert "openai" in kwargs
@@ -447,32 +510,33 @@ class TestInitLlm:
         # latency breakdown groups on exactly these two, so a renamed key or a
         # dropped value silently empties the chart rather than failing.
         assert mock_log.set.call_args.kwargs["llm"] == {
-            "model": PROVIDER_MODELS["gemini"],
+            "model": DEFAULT_GEMINI_MODEL_NAME,
             "provider": "gemini",
             "is_free": False,
         }
 
+    @pytest.mark.usefixtures("stored_credentials")
     @patch("app.agents.llm.client.log")
     @patch("app.agents.llm.client._create_configurable_llm")
     @patch("app.agents.llm.client._get_ordered_providers")
     @patch("app.agents.llm.client._get_available_providers")
-    def test_a_provider_with_no_model_entry_logs_its_own_name(
+    def test_a_provider_with_no_model_logs_its_own_name(
         self,
         mock_available: MagicMock,
         mock_ordered: MagicMock,
         mock_create: MagicMock,
         mock_log: MagicMock,
     ) -> None:
-        """A missing entry logs the provider name, not an empty model."""
-        primary = _make_llm_provider("cerebras")
-        mock_available.return_value = {"cerebras": primary.instance}
+        """A custom endpoint saved without a model logs the provider name, not an empty model."""
+        primary = _make_llm_provider("custom")
+        mock_available.return_value = {"custom": primary.instance}
         mock_ordered.return_value = [primary]
         mock_create.return_value = MagicMock()
 
-        init_llm()
+        with patch.dict(resolved_configs, {"custom": _custom_config(model=None)}):
+            init_llm()
 
-        assert "cerebras" not in PROVIDER_MODELS
-        assert mock_log.set.call_args.kwargs["llm"]["model"] == "cerebras"
+        assert mock_log.set.call_args.kwargs["llm"]["model"] == "custom"
 
     def test_invalid_provider_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Invalid preferred_provider 'cerebras'"):
@@ -598,11 +662,11 @@ class TestOpenRouterAppAttribution:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.ENV = "production"
+        mock_settings.deployment = baseline_profile(DeploymentKind.PRODUCTION)
         mock_settings.FRONTEND_URL = "https://heygaia.io"
         mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
-        mock_settings.OPENROUTER_PROVIDER_ORDER = ""
 
-        _build_default_llm(0.7)
+        _build_default_llm(0.7, api_key="or-key")
 
         assert self._attribution_of(mock_chat_openrouter) == {
             "app_url": "https://heygaia.io",
@@ -618,11 +682,11 @@ class TestOpenRouterAppAttribution:
     ) -> None:
         """A localhost referer is unattributable; dev must send the fixed dev identity so its spend is legible on the dashboard."""
         mock_settings.ENV = "development"
+        mock_settings.deployment = baseline_profile(DeploymentKind.DEVELOPMENT)
         mock_settings.FRONTEND_URL = "http://localhost:3000"
         mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
-        mock_settings.OPENROUTER_PROVIDER_ORDER = ""
 
-        _build_default_llm(0.7)
+        _build_default_llm(0.7, api_key="or-key")
 
         assert self._attribution_of(mock_chat_openrouter) == {
             "app_url": OPENROUTER_DEV_APP_URL,
@@ -635,12 +699,20 @@ class TestOpenRouterAppAttribution:
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
     def test_the_graph_lane_attributes_itself(
-        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+        self,
+        mock_settings: MagicMock,
+        mock_chat_openrouter: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        mock_settings.GAIA_SIM_MODE = False
+        # ENV drives which app identity is attributed; GAIA_SIM_MODE would
+        # short-circuit the loader to the scripted stub before attribution.
         mock_settings.ENV = "production"
+        mock_settings.deployment = baseline_profile(DeploymentKind.PRODUCTION)
         mock_settings.FRONTEND_URL = "https://heygaia.io"
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        mock_settings.GAIA_SIM_MODE = False
+        # Production resolves provider keys from env alone, through the
+        # credential service's settings rather than the client's mock.
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")  # pragma: allowlist secret
 
         # lazy_provider swaps the imported symbol for a registration hook; the
         # real factory lives on the LazyLoader it returns. Running it is the
@@ -686,7 +758,8 @@ class TestResolveModelOnOpenRouter:
         resolve_model()
 
         assert (
-            _build_default_llm(DEFAULT_LLM_TEMPERATURE).max_tokens == OPENROUTER_MAX_OUTPUT_TOKENS
+            _build_default_llm(DEFAULT_LLM_TEMPERATURE, api_key="or-key").max_tokens
+            == OPENROUTER_MAX_OUTPUT_TOKENS
         )
 
     @pytest.mark.usefixtures("openrouter")
@@ -717,15 +790,31 @@ class TestResolveModelOnOpenRouter:
         assert llm.temperature == 0.2
         assert llm.reasoning == {"effort": "none"}
 
-    def test_the_judge_keeps_the_configured_provider_order(
-        self, monkeypatch: pytest.MonkeyPatch, openrouter: None
-    ) -> None:
-        monkeypatch.setattr(settings, "OPENROUTER_PROVIDER_ORDER", "google")
+    @pytest.mark.usefixtures("openrouter")
+    def test_a_model_with_no_routing_entry_is_sent_no_provider_block(self) -> None:
+        """A routing pin on a model its providers do not serve fails every call."""
+        assert HIL_JUDGE_MODEL_NAME not in OPENROUTER_PROVIDER_ROUTING
 
         llm = resolve_model(ModelUse.JUDGE)
 
         assert isinstance(llm, ChatOpenRouter)
-        assert llm.model_kwargs["provider"] == {"order": ["google"], "allow_fallbacks": False}
+        assert "provider" not in llm.model_kwargs
+
+    @pytest.mark.usefixtures("openrouter")
+    def test_a_model_with_a_routing_entry_is_sent_its_own_provider_block(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        routing: OpenRouterModelKwargs = {"provider": {"only": ["google-ai-studio"]}}
+        monkeypatch.setitem(OPENROUTER_PROVIDER_ROUTING, HIL_JUDGE_MODEL_NAME, routing)
+
+        llm = resolve_model(ModelUse.JUDGE)
+
+        assert isinstance(llm, ChatOpenRouter)
+        assert llm.model_kwargs["provider"] == {"only": ["google-ai-studio"]}
+        assert llm.model_kwargs["models"] == [HIL_JUDGE_MODEL_NAME, *HIL_JUDGE_FALLBACK_MODEL_NAMES]
+        default = resolve_model()
+        assert isinstance(default, ChatOpenRouter)
+        assert "provider" not in default.model_kwargs
 
     @pytest.mark.parametrize(
         ("level", "sent"),
@@ -755,25 +844,26 @@ class TestResolveModelOnOpenRouter:
         assert llm.model == model
 
     @pytest.mark.parametrize(
-        ("use", "message"),
+        ("use", "provider"),
         [
-            (ModelUse.HELPER, "Default LLM not configured. Set OPENROUTER_API_KEY."),
-            (ModelUse.JUDGE, "Default LLM not configured. Set OPENROUTER_API_KEY."),
-            (ModelUse.MEMORY, "Memory model not configured. Set GOOGLE_API_KEY."),
-            (ModelUse.VISION, "Vision model not configured. Set GOOGLE_API_KEY."),
+            (ModelUse.HELPER, "openrouter"),
+            (ModelUse.JUDGE, "openrouter"),
+            (ModelUse.MEMORY, "gemini"),
+            (ModelUse.VISION, "gemini"),
         ],
     )
-    def test_a_missing_key_raises_naming_the_lane_and_the_key_that_fixes_it(
-        self, monkeypatch: pytest.MonkeyPatch, openrouter: None, use: ModelUse, message: str
+    def test_a_missing_key_raises_naming_the_lane_and_the_provider_that_fixes_it(
+        self, monkeypatch: pytest.MonkeyPatch, openrouter: None, use: ModelUse, provider: str
     ) -> None:
-        """Callers only log this: the line itself has to tell the operator which lane is down and which key to set."""
+        """Callers only log this: the line itself has to tell the operator which lane is down and what to configure."""
+        monkeypatch.setattr(settings, "ENV", "production")
         monkeypatch.setattr(settings, "OPENROUTER_API_KEY", None)
         monkeypatch.setattr(settings, "GOOGLE_API_KEY", None)
 
         with pytest.raises(LLMNotConfiguredError) as raised:
             resolve_model(use)
 
-        assert str(raised.value) == message
+        assert f"serve {use.value} calls. Configure {provider} " in str(raised.value)
 
     @pytest.mark.parametrize("use", list(ModelUse))
     def test_sim_mode_serves_every_use_from_the_stub(
@@ -817,6 +907,25 @@ class TestAinvokeLlm:
         assert result.content == "fallback-ok"
         # The fallback path is retry-wrapped too.
         fallback.with_retry.assert_called_once()
+
+    @pytest.mark.regression
+    @patch("app.agents.llm.client.log")
+    async def test_a_malformed_structured_reply_reaches_the_fallback_lane(
+        self, mock_log: MagicMock
+    ) -> None:
+        """A prose reply crosses lanes: the fallback's JSON mode cannot answer in prose."""
+        primary = self._runnable(
+            side_effect=MalformedStructuredOutputError(
+                "EpisodeSummary: reply made no EpisodeSummary tool call",
+                llm_output="Routine inbox sweeps, nothing worth summarizing.",
+            )
+        )
+        fallback = self._runnable(result={"summary": "a real summary"})
+
+        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+
+        assert result == {"summary": "a real summary"}
+        fallback.ainvoke.assert_awaited_once()
 
     @patch("app.agents.llm.client.log")
     async def test_fallback_factory_called_lazily(self, mock_log: MagicMock) -> None:
@@ -925,7 +1034,7 @@ class TestAinvokeLlm:
 
         with (
             patch(f"{_CLIENT}._record_auxiliary_usage", new_callable=AsyncMock) as record,
-            patch.object(client_module.time, "monotonic", _monotonic),
+            patch.object(time, "monotonic", _monotonic),
         ):
             await ainvoke_llm(primary, [HumanMessage(content="hi")], config=RunnableConfig())
 
@@ -1006,7 +1115,7 @@ class TestFallbackHandover:
         bare mock has no wrapper chain to walk.
         """
         runnable = NonCallableMagicMock(spec=RunnableBinding)
-        runnable.bound = ChatOpenRouter(model="m", api_key="k")
+        runnable.bound = ChatOpenRouter(model="m", api_key=SecretStr("k"))
         runnable.with_retry = MagicMock(return_value=runnable)
         runnable.bind = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(return_value=result)
@@ -1075,56 +1184,20 @@ class TestMemoryLaneProviderSelection:
     """
 
     @patch("app.agents.llm.client.settings")
-    def test_provider_order_setting_becomes_the_routing_preference(
-        self, mock_settings: MagicMock
-    ) -> None:
-        """Must translate to slugs in order with allow_fallbacks: False (an unlisted upstream must never take the turn), and no-op when unset."""
-        from app.agents.llm.client import _provider_order_kwargs
-
-        mock_settings.OPENROUTER_PROVIDER_ORDER = "coreweave/fp8, deepseek"
-        assert _provider_order_kwargs() == {
-            "model_kwargs": {
-                "provider": {
-                    "order": ["coreweave/fp8", "deepseek"],
-                    "allow_fallbacks": False,
-                }
-            }
-        }
-
-        mock_settings.OPENROUTER_PROVIDER_ORDER = None
-        assert _provider_order_kwargs() == {}
-
-        # Whitespace-only must not send an empty order list to the provider.
-        mock_settings.OPENROUTER_PROVIDER_ORDER = " , "
-        assert _provider_order_kwargs() == {}
-
-    def test_the_default_model_is_built_with_the_routing_preference(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "test-key")
-        monkeypatch.setattr(settings, "OPENROUTER_PROVIDER_ORDER", "deepseek")
-        client_module._build_default_llm.cache_clear()
-
-        try:
-            llm = client_module._build_default_llm(0.0)
-        finally:
-            client_module._build_default_llm.cache_clear()
-
-        assert llm.model_kwargs["provider"] == {"order": ["deepseek"], "allow_fallbacks": False}
-
-    @patch("app.agents.llm.client.settings")
     def test_the_aux_lane_predicate_reads_the_openrouter_key(
-        self, mock_settings: MagicMock
+        self, mock_settings: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The real predicate body, not a patch of it — the lane choice hangs off this one boolean, so its truth table is contract."""
         from app.agents.llm.client import aux_lane_available
 
         mock_settings.GAIA_SIM_MODE = False
-        mock_settings.OPENROUTER_API_KEY = "or-key"
+        mock_settings.deployment = baseline_profile(DeploymentKind.PRODUCTION)
+        # Production resolves the key from env alone: a served key, then none.
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")  # pragma: allowlist secret
         with patch(f"{_CLIENT}.custom_lane_forced", return_value=False):
             assert aux_lane_available() is True
 
-            mock_settings.OPENROUTER_API_KEY = None
+            monkeypatch.setattr(settings, "OPENROUTER_API_KEY", None)
             assert aux_lane_available() is False
 
         with patch(f"{_CLIENT}.custom_lane_forced", return_value=True):
@@ -1322,6 +1395,7 @@ class TestRegisterLlmProviders:
     ) -> None:
         with patch("app.agents.llm.client.settings") as mock_settings:
             mock_settings.ENV = "production"
+            mock_settings.deployment = baseline_profile(DeploymentKind.PRODUCTION)
             register_llm_providers()
 
         mock_gemini.assert_called_once()
@@ -1335,16 +1409,11 @@ class TestRegisterLlmProviders:
 
 
 class TestConstants:
-    def test_provider_models_keys(self) -> None:
-        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter", "custom", "openai"}
-
-    def test_provider_priority_values(self) -> None:
-        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter", "custom"}
+    def test_every_chat_provider_has_a_model_profile(self) -> None:
+        assert set(LLM_MODEL_PROFILES) == set(LLM_PROVIDER_PRIORITY) == set(LLMProviderName)
 
     def test_provider_priority_is_ordered(self) -> None:
-        sorted_keys = sorted(PROVIDER_PRIORITY.keys())
-        providers_in_order = [PROVIDER_PRIORITY[k] for k in sorted_keys]
-        assert providers_in_order == ["openrouter", "gemini", "custom"]
+        assert LLM_PROVIDER_PRIORITY == ("openrouter", "gemini", "openai", "ollama", "custom")
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
         from google.genai.errors import ServerError
@@ -1378,17 +1447,18 @@ class TestConstants:
     def test_the_openai_lane_needs_a_key_or_sim_mode(
         self, monkeypatch: pytest.MonkeyPatch, sim_mode: bool, api_key: str | None, available: bool
     ) -> None:
-        monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", sim_mode)
-        monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", api_key)
+        monkeypatch.setattr(settings, "GAIA_SIM_MODE", sim_mode)
+        monkeypatch.setattr(settings, "OPENAI_API_KEY", api_key)
 
-        assert client_module.openai_lane_available() is available
+        with patch.dict(resolved_configs, clear=True):
+            assert client_module.provider_configured(LLMProviderName.OPENAI) is available
 
     def test_the_openai_lane_builds_a_tool_capable_luna_client(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Chat completions rejects function tools at any reasoning effort but none."""
-        monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", False)
-        monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", "sk-test")
+        monkeypatch.setattr(settings, "GAIA_SIM_MODE", False)
+        monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test")
         # langchain drops its own stream_usage default under a base-URL override
         monkeypatch.setenv("OPENAI_BASE_URL", "https://proxy.example/v1")
 
@@ -1405,7 +1475,7 @@ class TestConstants:
         assert chat.stream_usage is True
         assert chat.max_retries == 0
         assert chat.temperature == DEFAULT_LLM_TEMPERATURE
-        assert chat.openai_api_key is not None
+        assert isinstance(chat.openai_api_key, SecretStr)
         assert chat.openai_api_key.get_secret_value() == "sk-test"  # pragma: allowlist secret
         assert chat.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
 
@@ -1446,7 +1516,7 @@ class TestChatbot:
         mock_get_helper.return_value = mock_model
         mock_ainvoke.return_value = AIMessage(content="default response")
 
-        messages = [HumanMessage(content="hello")]
+        messages: list[AnyMessage] = [HumanMessage(content="hello")]
         result = await chatbot(messages)
 
         mock_get_helper.assert_called_once()
@@ -1508,18 +1578,12 @@ class TestRecordAuxiliaryUsage:
     thing mocked; the real UsageMetadataCallbackHandler carries the usage.
     """
 
-    @staticmethod
-    def _handler(**usage_by_model: dict[str, Any]) -> UsageMetadataCallbackHandler:
-        handler = UsageMetadataCallbackHandler()
-        handler.usage_metadata = dict(usage_by_model)
-        return handler
-
     @pytest.mark.regression
     async def test_a_one_shot_call_emits_exactly_one_completed_event_mirroring_its_ledger_row(
         self,
     ) -> None:
         """The one-shot emitter used to build its own event beside the ledger, without the row's cost_source or generation_id."""
-        handler = self._handler(
+        handler = _usage_handler(
             gemini={
                 "input_tokens": 100,
                 "output_tokens": 20,
@@ -1561,7 +1625,7 @@ class TestRecordAuxiliaryUsage:
 
     async def test_the_llm_call_event_carries_the_generation_id(self) -> None:
         """Structured calls used to lose the generation id (every follow-up/memory event read MISSING); the aux metering path must put it on the wide event."""
-        handler = self._handler(m={"input_tokens": 10, "output_tokens": 2})
+        handler = _usage_handler(m={"input_tokens": 10, "output_tokens": 2})
 
         with (
             patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)),
@@ -1647,7 +1711,7 @@ class TestRecordAuxiliaryUsage:
 
     async def test_books_reasoning_tokens_from_the_output_details(self) -> None:
         """Reasoning tokens are billed and priced separately; losing them under-reports the cost of every reasoning-model helper call."""
-        handler = self._handler(
+        handler = _usage_handler(
             gemini={
                 "input_tokens": 100,
                 "output_tokens": 20,
@@ -1668,7 +1732,7 @@ class TestRecordAuxiliaryUsage:
 
     async def test_a_missing_count_books_zero_beside_a_present_one(self) -> None:
         """One absent token key must book 0, not a placeholder — a stand-in charges tokens that never existed."""
-        handler = self._handler(gemini={"output_tokens": 20})
+        handler = _usage_handler(gemini={"output_tokens": 20})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
             await _record_auxiliary_usage(
@@ -1682,7 +1746,7 @@ class TestRecordAuxiliaryUsage:
         assert rec.call_args.kwargs["usage"]["input_tokens"] == 0
         assert rec.call_args.kwargs["usage"]["output_tokens"] == 20
 
-        handler = self._handler(gemini={"input_tokens": 100})
+        handler = _usage_handler(gemini={"input_tokens": 100})
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
             await _record_auxiliary_usage(
                 handler,
@@ -1697,7 +1761,7 @@ class TestRecordAuxiliaryUsage:
 
     async def test_reasoning_defaults_to_zero_without_output_details(self) -> None:
         """A non-reasoning model sends no output_token_details at all; that must book zero rather than a placeholder."""
-        handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
+        handler = _usage_handler(gemini={"input_tokens": 100, "output_tokens": 20})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
             await _record_auxiliary_usage(
@@ -1711,7 +1775,7 @@ class TestRecordAuxiliaryUsage:
         assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 0
 
     async def test_an_explicit_zero_reasoning_count_stays_zero(self) -> None:
-        handler = self._handler(
+        handler = _usage_handler(
             gemini={
                 "input_tokens": 100,
                 "output_tokens": 20,
@@ -1732,7 +1796,7 @@ class TestRecordAuxiliaryUsage:
 
     async def test_books_the_whole_token_breakdown_and_never_the_budget(self) -> None:
         """charge_to_budget=False is load-bearing: background work GAIA does on the user's behalf must not eat their chat allowance."""
-        handler = self._handler(
+        handler = _usage_handler(
             gemini={
                 "input_tokens": 100,
                 "output_tokens": 20,
@@ -1768,7 +1832,7 @@ class TestRecordAuxiliaryUsage:
         }
 
     async def test_a_call_that_burned_no_tokens_is_not_booked(self) -> None:
-        handler = self._handler(gemini={"input_tokens": 0, "output_tokens": 0})
+        handler = _usage_handler(gemini={"input_tokens": 0, "output_tokens": 0})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock()) as rec:
             await _record_auxiliary_usage(
@@ -1783,7 +1847,7 @@ class TestRecordAuxiliaryUsage:
 
     async def test_every_model_in_one_run_is_booked(self) -> None:
         """A retry that fell back to another provider leaves two models on the handler; booking only the first under-reports the run."""
-        handler = self._handler(
+        handler = _usage_handler(
             gemini={"input_tokens": 10, "output_tokens": 1},
             openrouter={
                 "input_tokens": 20,
@@ -1809,7 +1873,7 @@ class TestRecordAuxiliaryUsage:
 
     async def test_spend_without_a_user_id_is_still_booked(self) -> None:
         """A threading gap must not silently drop the COGS — it is warned about and recorded against no user, never skipped."""
-        handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
+        handler = _usage_handler(gemini={"input_tokens": 100, "output_tokens": 20})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
             await _record_auxiliary_usage(
@@ -1823,11 +1887,13 @@ class TestAuxiliaryMeteringWiring:
     """The plumbing between ainvoke_llm and the metering call: which config the provider is handed, and what reaches _record_auxiliary_usage."""
 
     @staticmethod
-    def _reporting_runnable(usage: dict[str, Any]) -> NonCallableMagicMock:
+    def _reporting_runnable(usage: UsageMetadata) -> NonCallableMagicMock:
         """Build a runnable that reports token usage via the UsageMetadataCallbackHandler attached to its config, like a real provider."""
 
         async def _ainvoke(_messages: Any, config: RunnableConfig | None = None) -> AIMessage:
-            for handler in (config or {}).get("callbacks") or []:
+            callbacks = (config or {}).get("callbacks") or []
+            assert isinstance(callbacks, list)
+            for handler in callbacks:
                 if isinstance(handler, UsageMetadataCallbackHandler):
                     handler.usage_metadata = {"gemini": usage}
             return AIMessage(content="ok")
@@ -1839,7 +1905,9 @@ class TestAuxiliaryMeteringWiring:
 
     async def test_the_config_user_id_is_who_the_spend_is_booked_against(self) -> None:
         """configurable.user_id is the only thread to the COGS row; dropping it books every helper call against nobody."""
-        primary = self._reporting_runnable({"input_tokens": 10, "output_tokens": 2})
+        primary = self._reporting_runnable(
+            {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}
+        )
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.1)) as rec:
             await ainvoke_llm(
@@ -1854,7 +1922,9 @@ class TestAuxiliaryMeteringWiring:
     async def test_unattributed_spend_is_warned_about_with_its_label(self) -> None:
         """The warning is the only trail to which helper leaked its user_id, so the label must be on the recorded event, not just the message."""
         log.reset()
-        primary = self._reporting_runnable({"input_tokens": 10, "output_tokens": 2})
+        primary = self._reporting_runnable(
+            {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}
+        )
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.1)):
             await ainvoke_llm(
@@ -1869,7 +1939,9 @@ class TestAuxiliaryMeteringWiring:
 
     async def test_skipping_metering_still_forwards_the_caller_config(self) -> None:
         """meter_auxiliary=False means "attach no handler" only; replacing the config with a fresh one would strip the thread id, user id and run metadata."""
-        primary = self._reporting_runnable({"input_tokens": 10, "output_tokens": 2})
+        primary = self._reporting_runnable(
+            {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}
+        )
 
         await ainvoke_llm(
             primary,
@@ -1930,7 +2002,10 @@ class TestAinvokeStructured:
         sent: list[object] = []
 
         async def capture(runnable: RunnableSequence, *_: object, **__: object) -> BaseModel:
-            sent.append(runnable.first.bound._default_params.get("reasoning"))
+            binding = runnable.first
+            assert isinstance(binding, RunnableBinding)
+            assert isinstance(binding.bound, ChatOpenRouter)
+            sent.append(binding.bound._default_params.get("reasoning"))
             return self._Schema(answer="ok")
 
         with patch(f"{_CLIENT}.ainvoke_llm", new=capture):
@@ -2245,6 +2320,23 @@ class TestStructuredReplyParsing:
         assert isinstance(binding.bound, ChatOpenRouter)
         assert binding.bound.model_name == AUX_MODEL_NAME
         assert binding.bound.max_tokens == HELPER_MAX_OUTPUT_TOKENS
+
+    @pytest.mark.parametrize(
+        ("base_url", "tool_choice"),
+        [(None, "required"), ("https://nous.example/v1", "auto")],
+    )
+    def test_openais_own_chat_completions_api_is_forced_to_call_the_tool(
+        self, base_url: str | None, tool_choice: str
+    ) -> None:
+        """Offered, gpt-5.6-luna on an OpenAI-only self-host answered follow-ups in prose."""
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"), base_url=base_url)
+
+        runnable = client_module._structured_tool_runnable(llm, _Closing)
+
+        assert isinstance(runnable, RunnableSequence)
+        binding = runnable.first
+        assert isinstance(binding, RunnableBinding)
+        assert binding.kwargs["tool_choice"] == tool_choice
 
 
 class TestStampFallback:
@@ -2587,11 +2679,115 @@ class TestTheInvokeTimeoutIsEnforced:
             )
 
 
+class _ReadTimeoutMidStream(httpx.AsyncByteStream):
+    """A streamed reply whose socket read times out after the first SSE frame."""
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield _stream_frame("Hel")
+        raise httpx.ReadTimeout("The read operation timed out")
+
+
+def _stream_frame(content: str, finish: str | None = None) -> bytes:
+    frame = {
+        "id": "gen-1",
+        "object": "chat.completion.chunk",
+        "created": 1,
+        "model": DEFAULT_MODEL_NAME,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"role": "assistant", "content": content},
+                "finish_reason": finish,
+            }
+        ],
+    }
+    return f"data: {json.dumps(frame)}\n\n".encode()
+
+
+class TestAReadTimeoutMidStreamIsRetriedThenFallsBack:
+    """The OpenRouter SDK lets a raw httpx.ReadTimeout escape a streamed reply; it is no TimeoutError.
+
+    Drives the real streaming ChatOpenRouter and its SDK over an httpx mock
+    transport, so the error surfaces exactly where the SDK raises it.
+    """
+
+    @staticmethod
+    def _openrouter(replies: list[httpx.AsyncByteStream]) -> tuple[ChatOpenRouter, list[int]]:
+        requests_served = [0]
+
+        async def _reply(_request: httpx.Request) -> httpx.Response:
+            requests_served[0] += 1
+            return httpx.Response(
+                200, headers={"content-type": "text/event-stream"}, stream=replies.pop(0)
+            )
+
+        llm = without_sdk_retry(
+            ChatOpenRouter(model=DEFAULT_MODEL_NAME, api_key=SecretStr("k"), streaming=True)
+        )
+        llm.client.sdk_configuration.async_client = httpx.AsyncClient(
+            transport=httpx.MockTransport(_reply)
+        )
+        return llm, requests_served
+
+    @pytest.mark.regression
+    async def test_the_next_attempt_answers_after_a_mid_stream_read_timeout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
+        whole_reply = httpx.ByteStream(_stream_frame("Hello", finish="stop") + b"data: [DONE]\n\n")
+        llm, requests_served = self._openrouter([_ReadTimeoutMidStream(), whole_reply])
+
+        result = await ainvoke_llm(
+            llm, [HumanMessage(content="hi")], options=LLMInvokeOptions(meter_auxiliary=False)
+        )
+
+        assert result.content == "Hello"
+        assert requests_served[0] == 2
+
+    @pytest.mark.regression
+    async def test_the_fallback_answers_when_the_primary_read_times_out_mid_stream(self) -> None:
+        llm, requests_served = self._openrouter([_ReadTimeoutMidStream()])
+
+        result = await ainvoke_llm(
+            llm,
+            [HumanMessage(content="hi")],
+            fallback=RunnableLambda(lambda _: AIMessage(content="fallback-ok")),
+            options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+        )
+
+        assert result.content == "fallback-ok"
+        assert requests_served[0] == 1
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            httpx.ConnectTimeout("connect"),
+            httpx.ReadError("reset by peer"),
+            httpx.RemoteProtocolError("peer closed connection mid-body"),
+        ],
+    )
+    def test_a_dropped_connection_is_retried_and_then_falls_back(
+        self, error: httpx.TransportError
+    ) -> None:
+        assert isinstance(error, LLM_RETRYABLE_EXCEPTIONS)
+        assert isinstance(error, LLM_FALLBACK_EXCEPTIONS)
+
+    @pytest.mark.parametrize(
+        "error",
+        [httpx.UnsupportedProtocol("ftp://"), httpx.LocalProtocolError("bad header")],
+    )
+    def test_a_misconfigured_request_is_neither_retried_nor_downgraded(
+        self, error: httpx.TransportError
+    ) -> None:
+        assert not isinstance(error, LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(error, LLM_FALLBACK_EXCEPTIONS)
+
+
 class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
     """Binding OpenRouter's sticky session_id onto a Google client raises ValidationError before the request even leaves the process.
 
     Reachable two ways: the graph lane falls OpenRouter -> Gemini by
-    PROVIDER_PRIORITY, and the memory lane's fallback is Gemini by design.
+    LLM_PROVIDER_PRIORITY, and the memory lane's fallback is Gemini by design.
     Verified live against the real API: the memory fallback failed with
     "session_id: Extra inputs are not permitted".
     """
@@ -2616,7 +2812,7 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         """The predicate must see through with_structured_output/bind_tools — a fallback is never a bare client."""
         from app.agents.llm.client import _is_openrouter_wire
 
-        client = ChatOpenRouter(model="m", api_key="k")
+        client = ChatOpenRouter(model="m", api_key=SecretStr("k"))
 
         assert _is_openrouter_wire(client) is True
         assert _is_openrouter_wire(client.bind_tools([])) is True
@@ -2628,7 +2824,7 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         from app.agents.llm.client import _is_openrouter_wire
 
         custom_openai = ChatOpenRouter(
-            model="gpt-4.1-mini", api_key="k", base_url="https://api.openai.com/v1"
+            model="gpt-4.1-mini", api_key=SecretStr("k"), base_url="https://api.openai.com/v1"
         )
 
         assert _is_openrouter_wire(custom_openai) is False
@@ -2641,9 +2837,9 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         from app.override.langgraph_bigtool.create_agent import _bind_session_id
 
         custom = ChatOpenRouter(
-            model="gpt-4.1-mini", api_key="k", base_url="https://api.openai.com/v1"
+            model="gpt-4.1-mini", api_key=SecretStr("k"), base_url="https://api.openai.com/v1"
         ).bind_tools([])
-        real = ChatOpenRouter(model="m", api_key="k").bind_tools([])
+        real = ChatOpenRouter(model="m", api_key=SecretStr("k")).bind_tools([])
 
         skipped = _bind_session_id(
             custom, {"provider": LLMProviderName.CUSTOM, "session_id": "conv-1"}, "comms"
@@ -2820,14 +3016,8 @@ class TestTheGenerationCallbackAccumulatesCostAcrossAttempts:
 class TestAuxiliaryCostSource:
     """The auxiliary lane books a provider price only where it can honestly attribute one, and the llm_call event says which price it booked."""
 
-    @staticmethod
-    def _handler(**usage_by_model: dict[str, Any]) -> UsageMetadataCallbackHandler:
-        handler = UsageMetadataCallbackHandler()
-        handler.usage_metadata = dict(usage_by_model)
-        return handler
-
     async def test_a_single_model_call_books_the_reported_price(self) -> None:
-        handler = self._handler(gemini={"input_tokens": 10, "output_tokens": 2})
+        handler = _usage_handler(gemini={"input_tokens": 10, "output_tokens": 2})
 
         with (
             patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
@@ -2846,7 +3036,7 @@ class TestAuxiliaryCostSource:
 
     async def test_a_fan_out_across_models_falls_back_to_the_table(self) -> None:
         """One reported figure cannot attribute to one of several models, so every row prices from the table and the event must say so."""
-        handler = self._handler(
+        handler = _usage_handler(
             gemini={"input_tokens": 10, "output_tokens": 2},
             openrouter={"input_tokens": 20, "output_tokens": 4},
         )
@@ -2867,7 +3057,7 @@ class TestAuxiliaryCostSource:
         assert {c.kwargs["cost_source"] for c in mock_log.info.call_args_list} == {"table"}
 
     async def test_no_reported_price_is_logged_as_the_table(self) -> None:
-        handler = self._handler(gemini={"input_tokens": 10, "output_tokens": 2})
+        handler = _usage_handler(gemini={"input_tokens": 10, "output_tokens": 2})
 
         with (
             patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
@@ -2904,15 +3094,9 @@ class TestAuxiliaryGenerationIdAttribution:
     its own call's generation or none.
     """
 
-    @staticmethod
-    def _handler(**usage_by_model: dict[str, Any]) -> UsageMetadataCallbackHandler:
-        handler = UsageMetadataCallbackHandler()
-        handler.usage_metadata = dict(usage_by_model)
-        return handler
-
     async def test_the_ledger_row_carries_the_generation_id_its_log_line_reports(self) -> None:
         """Observed live: every auxiliary doc had no generation_id while its matching llm_call log line carried one — dropped on the way to the ledger."""
-        handler = self._handler(gemini={"input_tokens": 10, "output_tokens": 2})
+        handler = _usage_handler(gemini={"input_tokens": 10, "output_tokens": 2})
 
         with patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
             await _record_auxiliary_usage(
@@ -2929,7 +3113,7 @@ class TestAuxiliaryGenerationIdAttribution:
         self,
     ) -> None:
         """One id cannot name two provider calls; stamping the single captured id onto every row would misattribute a generation it never served."""
-        handler = self._handler(
+        handler = _usage_handler(
             gemini={"input_tokens": 10, "output_tokens": 2},
             deepseek={"input_tokens": 5, "output_tokens": 1},
         )
@@ -2959,14 +3143,14 @@ class TestAuxiliaryGenerationIdAttribution:
         with patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(side_effect=_record)):
             await asyncio.gather(
                 _record_auxiliary_usage(
-                    self._handler(gemini={"input_tokens": 10, "output_tokens": 2}),
+                    _usage_handler(gemini={"input_tokens": 10, "output_tokens": 2}),
                     "memory:extraction",
                     USER_ID,
                     context=replace(_AUX_CONTEXT, agent_name="memory:extraction"),
                     facts=ResponseFacts(generation_id="gen-extraction"),
                 ),
                 _record_auxiliary_usage(
-                    self._handler(gemini={"input_tokens": 7, "output_tokens": 3}),
+                    _usage_handler(gemini={"input_tokens": 7, "output_tokens": 3}),
                     "follow_up_actions",
                     USER_ID,
                     context=replace(_AUX_CONTEXT, agent_name="follow_up_actions"),
@@ -3034,7 +3218,7 @@ class TestFailedCallsReachTheLedger:
 
         with (
             patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed,
-            patch.object(client_module.time, "monotonic", lambda: next(clock, 100.0501234)),
+            patch.object(time, "monotonic", lambda: next(clock, 100.0501234)),
         ):
             with pytest.raises(TimeoutError):
                 await ainvoke_llm(primary, [HumanMessage(content="hi")], config=config)
@@ -3191,7 +3375,9 @@ class TestAuxiliaryResponseFacts:
     async def test_the_auxiliary_ledger_row_records_the_upstream(self) -> None:
         """End to end through the aux route: the seam that already extracts cost and generation id now hands the provider through too."""
         handler = UsageMetadataCallbackHandler()
-        handler.usage_metadata = {"gemini": {"input_tokens": 10, "output_tokens": 2}}
+        handler.usage_metadata = {
+            "gemini": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}
+        }
 
         with patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
             await _record_auxiliary_usage(
@@ -3285,7 +3471,10 @@ class TestIsOpenAIWire:
         assert client_module._is_openai_wire(node) is False
 
     def test_a_non_openai_client_is_not_openai(self) -> None:
-        assert client_module._is_openai_wire(ChatOpenRouter(model="m", api_key="k")) is False
+        assert (
+            client_module._is_openai_wire(ChatOpenRouter(model="m", api_key=SecretStr("k")))
+            is False
+        )
 
 
 @pytest.mark.unit
@@ -3299,14 +3488,14 @@ class TestIsOpenrouterWire:
 
     def test_default_base_is_openrouter(self) -> None:
         # No base set = OpenRouter's own default endpoint.
-        node = ChatOpenRouter(model="m", api_key="k")
+        node = ChatOpenRouter(model="m", api_key=SecretStr("k"))
         assert client_module._is_openrouter_wire(node) is True
 
     def test_explicit_openrouter_base_is_openrouter(self) -> None:
         # base set but pointing at openrouter.ai — exercises the substring match,
         # which the default-None case never reaches.
         node = ChatOpenRouter(
-            model="m", api_key="k", openrouter_api_base="https://openrouter.ai/api/v1"
+            model="m", api_key=SecretStr("k"), base_url="https://openrouter.ai/api/v1"
         )
         assert client_module._is_openrouter_wire(node) is True
 
@@ -3314,19 +3503,19 @@ class TestIsOpenrouterWire:
         # A ChatOpenRouter aimed at another OpenAI-compatible endpoint is NOT
         # OpenRouter — kills the getattr-name and base-is-None-only mutants.
         node = ChatOpenRouter(
-            model="m", api_key="k", openrouter_api_base="https://api.openai.com/v1"
+            model="m", api_key=SecretStr("k"), base_url="https://api.openai.com/v1"
         )
         assert client_module._is_openrouter_wire(node) is False
 
     def test_a_proxy_path_naming_openrouter_is_not_openrouter(self) -> None:
         node = ChatOpenRouter(
-            model="m", api_key="k", openrouter_api_base="https://proxy.example/openrouter.ai/v1"
+            model="m", api_key=SecretStr("k"), base_url="https://proxy.example/openrouter.ai/v1"
         )
         assert client_module._is_openrouter_wire(node) is False
 
     def test_walks_through_a_binding_to_a_non_openrouter_client(self) -> None:
         inner = ChatOpenRouter(
-            model="m", api_key="k", openrouter_api_base="https://api.openai.com/v1"
+            model="m", api_key=SecretStr("k"), base_url="https://api.openai.com/v1"
         )
         binding = NonCallableMagicMock(spec=RunnableBinding)
         binding.bound = inner

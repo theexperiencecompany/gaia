@@ -1,5 +1,8 @@
-import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import type { ReactNode } from "react";
+import {
+  PageBreadcrumbs,
+  type PageCrumb,
+} from "@/components/seo/PageBreadcrumbs";
 
 import { RaisedButton } from "@/components/ui/raised-button";
 import { track } from "@/lib/analytics";
@@ -9,7 +12,7 @@ import ShareButton from "./ShareButton";
 import YouMightAlsoLike from "./YouMightAlsoLike";
 
 interface UseCaseDetailLayoutProps {
-  breadcrumbs: Array<{ label: string; href?: string }>;
+  breadcrumbs: readonly PageCrumb[];
   title: string;
   /** Optional workflow icon rendered beside the title */
   icon?: ReactNode;
@@ -43,15 +46,7 @@ export default function UseCaseDetailLayout({
       {/* max-w-7xl + px matches FinalSection's container so the page content
           and the CTA below it share one edge. */}
       <div className="mx-auto w-full max-w-7xl space-y-5 px-4 sm:px-6">
-        <div className="mb-3 text-sm text-zinc-500">
-          <Breadcrumbs>
-            {breadcrumbs.map((crumb) => (
-              <BreadcrumbItem key={crumb.label} href={crumb.href}>
-                {crumb.label}
-              </BreadcrumbItem>
-            ))}
-          </Breadcrumbs>
-        </div>
+        <PageBreadcrumbs className="mb-3" items={breadcrumbs} />
 
         <div className="flex w-full items-start justify-between gap-2">
           <div className="flex-1 space-y-2">
@@ -70,7 +65,7 @@ export default function UseCaseDetailLayout({
             <ShareButton id={id} />
             <RaisedButton
               color="#00bbff"
-              className="shrink-0 text-black!"
+              className="shrink-0"
               onClick={() => {
                 track("use_cases:clicked", {
                   use_case_id: id,

@@ -25,6 +25,7 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
 )
 from app.models.trigger_configs import TriggerConfigData
+from app.models.trigger_gate_models import GateCondition, GateEdit, TriggerGate, TriggerGateView
 from app.schemas.common import ResponseModel
 from app.utils.cron_utils import get_next_run_time
 from app.utils.schedule import validate_recurring_schedule
@@ -83,7 +84,7 @@ class GeneratedStep(BaseModel):
 class GeneratedWorkflow(BaseModel):
     """Schema for LLM workflow generation output."""
 
-    steps: list[GeneratedStep] = Field(description="List of workflow steps")
+    steps: list[GeneratedStep] = Field(min_length=1, description="List of workflow steps")
 
 
 class TriggerConfig(BaseModel):
@@ -217,6 +218,11 @@ class Workflow(BaseScheduledTask, ResponseModel):
 
     # Configuration
     trigger_config: TriggerConfig = Field(description="Trigger configuration")
+    # A sibling of trigger_config, so a client that rebuilds the trigger cannot drop it.
+    gate: TriggerGate | None = Field(
+        default=None,
+        description="The check a fired integration event must pass before this workflow runs",
+    )
 
     # Workflow-specific fields
     activated: bool = Field(
@@ -314,6 +320,13 @@ class Workflow(BaseScheduledTask, ResponseModel):
     )
 
     @model_validator(mode="after")
+    def gate_only_on_an_integration_trigger(self) -> "Workflow":
+        """Refuse a gate on a trigger that carries no event for it to read."""
+        if self.gate is not None and self.trigger_config.type is not TriggerType.INTEGRATION:
+            raise ValueError("a gate needs an integration trigger")
+        return self
+
+    @model_validator(mode="after")
     def schedule_from_trigger(self) -> "Workflow":
         """Take scheduled_at and repeat from the trigger when the caller did not give them.
 
@@ -361,6 +374,10 @@ class WorkflowWithIntegrations(Workflow):
         default=None,
         description="Required integrations the user has not connected yet.",
     )
+    gate: TriggerGateView | None = Field(
+        default=None,
+        description="The check a fired integration event must pass before this workflow runs",
+    )
 
 
 class CreateWorkflowRequest(BaseModel):
@@ -381,6 +398,10 @@ class CreateWorkflowRequest(BaseModel):
         description="Hex color for the user-chosen icon",
     )
     trigger_config: NewTriggerConfig = Field(description="Trigger configuration")
+    runs_only_when: GateCondition | None = Field(
+        default=None,
+        description="GAIA's drafted condition for an integration trigger, stored as GAIA's gate",
+    )
     steps: list[WorkflowStep] | None = Field(
         default=None,
         description="Optional pre-existing steps (e.g., from explore/community workflows). If provided, step generation will be skipped.",
@@ -431,6 +452,15 @@ class CreateWorkflowRequest(BaseModel):
             return ""
         return v.strip() if v else None
 
+    @model_validator(mode="after")
+    def runs_only_when_needs_an_event(self) -> "CreateWorkflowRequest":
+        """Refuse a drafted condition on a trigger that carries no event for it to read."""
+        if self.runs_only_when is not None and self.trigger_config.type is not (
+            TriggerType.INTEGRATION
+        ):
+            raise ValueError("runs_only_when needs an integration trigger")
+        return self
+
 
 class CreateWorkflowFromTodoRequest(BaseModel):
     """Request model for the todo → workflow migration helper.
@@ -456,6 +486,10 @@ class UpdateWorkflowRequest(BaseModel):
     icon_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     steps: list[WorkflowStep] | None = Field(default=None)
     trigger_config: NewTriggerConfig | None = Field(default=None)
+    gate: GateEdit | None = Field(
+        default=None,
+        description="Absent keeps the gate, null removes it, a value replaces it",
+    )
     activated: bool | None = Field(default=None)
     notify_on_completion: bool | None = Field(default=None)
     integration_ids: list[str] | None = Field(default=None)
@@ -769,15 +803,6 @@ class WorkflowDocument(Workflow, MongoDocument):
     # diamond: a persisted workflow always has its wf_ id, so this stays
     # non-optional with no alias — the repository keys on _id directly.
     id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
-    #: Runs declined to write a playbook at this workflow hash. Past
-    #: PLAYBOOK_DECLINE_LIMIT on the same hash the check brief stops asking;
-    #: an edit to the workflow changes the hash and asks again.
-    playbook_declines: int = 0
-    playbook_declined_hash: str | None = None
-    #: The run (its stream id) that last counted a decline. A run is one
-    #: decision however many times it is voiced, and a model voices it several
-    #: times in one turn: the tally grows once per run, matched on this.
-    playbook_declined_run: str | None = None
     #: What a blocked run named as missing when it paused this workflow —
     #: not always what compute_required_integrations reads off the declared
     #: steps, so the resume side can't re-derive it. Empty otherwise.
@@ -832,6 +857,7 @@ class WorkflowUpdate(BaseModel):
     icon_color: str | None = None
     steps: list[WorkflowStep] | None = None
     trigger_config: TriggerConfig | None = None
+    gate: TriggerGate | None = None
     activated: bool | None = None
     notify_on_completion: bool | None = None
     integration_ids: list[str] | None = None
@@ -843,9 +869,6 @@ class WorkflowUpdate(BaseModel):
     is_public: bool | None = None
     slug: str | None = None
     created_by: str | None = None
-    playbook_declines: int | None = None
-    playbook_declined_hash: str | None = None
-    playbook_declined_run: str | None = None
     blocked_on_integrations: list[str] | None = None
     last_playbook_discard: PlaybookDiscard | None = None
 

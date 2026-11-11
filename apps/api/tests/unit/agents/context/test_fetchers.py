@@ -9,6 +9,7 @@ so no caller can forget it.
 
 import asyncio
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
@@ -16,10 +17,12 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 from app.agents.context import fetchers
 from app.agents.context.fetchers import (
     NEW_USER_CONVERSATION_LIMIT,
+    _ConnectedIntegration,
     _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
@@ -32,6 +35,7 @@ from app.agents.context.fetchers import (
     build_memory_recall_block,
     build_new_user_guidance_block,
     build_open_pendings_block,
+    build_provider_metadata_block,
     build_tracked_todos_block,
     build_workspace_session_banner,
     format_active_todo_banner,
@@ -42,6 +46,7 @@ from app.agents.context.text import (
     GAIA_KNOWLEDGE_HEADER,
     MEMORY_IS_PAST_NOTE,
     MEMORY_RECALL_HEADER,
+    MULTI_ACCOUNT_INSTRUCTION,
 )
 from app.agents.context.tiers import AgentTier
 from app.agents.prompts.new_user_prompts import (
@@ -49,17 +54,24 @@ from app.agents.prompts.new_user_prompts import (
     NEW_USER_GUIDANCE_TEMPLATE,
     SEEDED_CHIPS_RULE,
     TARGET_REPLY_EXAMPLE,
+    NewUserFacts,
     build_new_user_guidance,
 )
 from app.agents.workspace.paths import session_dir
+from app.constants.log_tags import LogTag
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
-from app.models.user_models import NEEDS_MAX_SELECTION, OnboardingNeed, OnboardingPreferences
-from app.services.onboarding.first_question import FirstQuestion, first_question_cache_key
+from app.models.user_models import (
+    NEEDS_MAX_SELECTION,
+    BioStatus,
+    OnboardingNeed,
+    OnboardingPreferences,
+    OnboardingSubdocument,
+)
 from app.utils.artifact_utils import artifact_url_base
 
 
@@ -578,7 +590,7 @@ class TestDedupeByProvider:
         self,
     ) -> None:
         """A later id-only entry for the same provider must not clobber an earlier resolved display name."""
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "slack", "name": "Slack Workspace"},
             {"id": "sl_ack", "name": "sl_ack"},
         ]
@@ -586,7 +598,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "slack", "name": "Slack Workspace"}]
 
     def test_an_id_named_entry_held_first_is_replaced_once_a_real_name_arrives(self) -> None:
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "slack", "name": "slack"},
             {"id": "sl_ack", "name": "Slack Workspace"},
         ]
@@ -595,7 +607,7 @@ class TestDedupeByProvider:
 
     def test_the_first_real_name_wins_over_a_second_equally_real_name(self) -> None:
         """Once a provider has resolved to ANY display name, a second row for it must not overwrite it, even with another real name."""
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "calendar", "name": "Calendar One"},
             {"id": "cal_endar", "name": "Calendar Two"},
         ]
@@ -603,13 +615,96 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "calendar", "name": "Calendar One"}]
 
     def test_distinct_providers_are_all_kept_in_first_seen_order(self) -> None:
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "gmail", "name": "Gmail"},
             {"id": "slack", "name": "Slack"},
             {"id": "notion", "name": "Notion"},
         ]
 
         assert _dedupe_by_provider(items) == items
+
+
+@pytest.mark.unit
+class TestProviderMetadataBlock:
+    INTEGRATION_ID = "gmail"
+
+    @staticmethod
+    def _record(*accounts: IntegrationAccount, primary: str = "ca_1") -> UserIntegrationDocument:
+        return make_integration_record(*accounts, user_id="user1", primary=primary)
+
+    async def test_it_names_who_the_user_is_on_that_provider(self) -> None:
+        """Two fields, not one: with a single entry the \\n joining them would be unobservable."""
+        record = self._record(
+            make_integration_account("ca_1", identity={"email": "ada@example.com", "login": "ada"})
+        )
+        with patch(
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
+        ):
+            rendered = await build_provider_metadata_block(self.INTEGRATION_ID, "user1")
+
+        assert rendered == "USER CONTEXT FOR GMAIL:\n- email: ada@example.com\n- login: ada"
+
+    async def test_several_accounts_are_listed_with_the_primary_and_the_rule_for_choosing(
+        self,
+    ) -> None:
+        record = self._record(
+            make_integration_account("ca_1", label="work@acme.com"),
+            make_integration_account("ca_2", label="me@gmail.com", nickname="Personal"),
+            make_integration_account("ca_3", label="old@acme.com", status="expired"),
+            primary="ca_2",
+        )
+        with patch(
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
+        ):
+            rendered = await build_provider_metadata_block(self.INTEGRATION_ID, "user1")
+
+        assert rendered == (
+            "USER'S GMAIL ACCOUNTS:\n"
+            '- "work@acme.com" (id ca_1)\n'
+            '- "Personal" or "me@gmail.com" (id ca_2, default)\n'
+            '- "old@acme.com" (id ca_3, expired)\n' + MULTI_ACCOUNT_INSTRUCTION
+        )
+
+    async def test_it_asks_about_this_user_on_this_integration(self) -> None:
+        lookup = AsyncMock(return_value=None)
+        with patch("app.agents.context.fetchers.get_account_record", lookup):
+            await build_provider_metadata_block(self.INTEGRATION_ID, "user1")
+
+        lookup.assert_awaited_once_with("user1", self.INTEGRATION_ID)
+
+    async def test_an_unregistered_integration_is_never_looked_up(self) -> None:
+        """An id that resolves to no integration has no accounts to ask about."""
+        lookup = AsyncMock(
+            return_value=self._record(make_integration_account("ca_1", identity={"email": "a@b.c"}))
+        )
+        with patch("app.agents.context.fetchers.get_account_record", lookup):
+            rendered = await build_provider_metadata_block("not-a-real-integration", "user1")
+
+        assert rendered == ""
+        lookup.assert_not_awaited()
+
+    async def test_one_account_without_an_identity_yields_no_block(self) -> None:
+        record = self._record(make_integration_account("ca_1"))
+        with patch(
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
+        ):
+            assert await build_provider_metadata_block(self.INTEGRATION_ID, "user1") == ""
+
+    async def test_a_failed_lookup_is_visible_in_the_wide_event(self) -> None:
+        async with captured_wide_event() as event:
+            with patch(
+                "app.agents.context.fetchers.get_account_record",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
+            ):
+                rendered = await build_provider_metadata_block(self.INTEGRATION_ID, "user1")
+
+        assert rendered == ""
+        (warning,) = event["warnings"]
+        assert warning["msg"] == f"{LogTag.AGENT} Failed to read the integration's accounts"
+        assert warning["integration_id"] == self.INTEGRATION_ID
+        assert warning["user_id"] == "user1"
+        assert warning["error"] == "mongo down"
+        assert warning["error_type"] == "RuntimeError"
 
 
 @pytest.mark.unit
@@ -654,7 +749,7 @@ def _tracked_doc(todo_id: str, title: str) -> TodoDocument:
 
 
 @pytest.fixture
-def repo_reads() -> AsyncMock:
+def repo_reads() -> Iterator[AsyncMock]:
     """Fake the repository's Mongo read with the cached_query cache seams faked.
 
     The active-tracked finder is generation-cached; these fakes stand in for the
@@ -908,14 +1003,14 @@ class TestNewUserGuidanceBlock:
             block = await build_new_user_guidance_block(
                 ctx(user_preferences={"profession": "Founder", "other_need": "chasing invoices"})
             )
-        assert block == build_new_user_guidance("Founder", [], "chasing invoices")
+        assert block == build_new_user_guidance(NewUserFacts("Founder", [], "chasing invoices"))
 
     async def test_a_non_string_typed_need_is_ignored(self) -> None:
         with self._patch_count(self._count(1)):
             block = await build_new_user_guidance_block(
                 ctx(user_preferences={"profession": "Founder", "needs": ["inbox"], "other_need": 7})
             )
-        assert block == build_new_user_guidance("Founder", [OnboardingNeed.INBOX])
+        assert block == build_new_user_guidance(NewUserFacts("Founder", [OnboardingNeed.INBOX]))
 
     async def test_a_non_string_typed_need_is_passed_as_none_not_empty(self) -> None:
         """The playbook builder gets None, so it never renders an empty quote."""
@@ -928,7 +1023,7 @@ class TestNewUserGuidanceBlock:
             await build_new_user_guidance_block(
                 ctx(user_preferences={"profession": "Founder", "needs": ["inbox"], "other_need": 7})
             )
-        build.assert_called_once_with("Founder", [OnboardingNeed.INBOX], None, [])
+        build.assert_called_once_with(NewUserFacts("Founder", [OnboardingNeed.INBOX], None))
 
     async def test_the_block_stops_once_the_user_is_no_longer_new(self) -> None:
         with self._patch_count(self._count(NEW_USER_CONVERSATION_LIMIT + 1)):
@@ -992,7 +1087,7 @@ class TestNewUserGuidanceBlock:
         """The profession is optional; its absence must not leak a placeholder into the prompt."""
         with self._patch_count(self._count(1)):
             block = await build_new_user_guidance_block(ctx(user_preferences={"needs": ["inbox"]}))
-        assert block == build_new_user_guidance("", [OnboardingNeed.INBOX])
+        assert block == build_new_user_guidance(NewUserFacts("", [OnboardingNeed.INBOX]))
 
     async def test_a_failed_count_yields_no_block(self) -> None:
         with self._patch_count(AsyncMock(side_effect=RuntimeError("mongo down"))):
@@ -1048,124 +1143,166 @@ class TestNewUserGuidanceBlock:
         )
 
     async def test_a_user_who_skipped_the_profession_is_addressed_as_a_person(self) -> None:
-        """The template interpolates the profession three times; an unset Q1 must render a plain noun, not an empty hole."""
+        """The template interpolates the profession twice; an unset Q1 must render a plain noun, not an empty hole."""
         with self._patch_count(self._count(1)):
             block = await build_new_user_guidance_block(ctx(user_preferences={"needs": ["inbox"]}))
         assert block.startswith("FIRST CONVERSATIONS (you just met this person)")
-        assert "do for a person" in block
         assert "the way a person talks" in block
 
     async def test_no_needs_renders_nothing_rather_than_a_headerless_block(self) -> None:
         """A block with an empty playbook list is the generic coaching this section exists to replace, so it must be empty string."""
-        assert build_new_user_guidance("Founder", []) == ""
+        assert build_new_user_guidance(NewUserFacts("Founder", [])) == ""
 
-    async def test_the_chips_rule_names_the_chips_that_were_offered(self) -> None:
-        """The model has to see the exact words it offered, or a one-word first message reads as a fragment."""
-        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, ["My mornings"])
-        assert '"My mornings"' in block
+    CHIPS = ("Find investors", "Hire someone")
 
-    async def test_no_chips_renders_no_chips_rule(self) -> None:
-        """An expired cache must not tell the model a choice was offered."""
-        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, [])
-        assert "You already asked them a question" not in block
+    def _patch_seeded(self, chips: tuple[str, ...] | None = None) -> Any:
+        return patch(
+            "app.agents.context.fetchers.seeded_chips",
+            AsyncMock(return_value=list(chips or ())),
+        )
 
-    async def test_the_chips_are_looked_up_under_this_user_and_these_exact_answers(
-        self,
-    ) -> None:
-        """The chips live under a key built from the user id and the three answers; any going astray silently loses the chips rule."""
-        with (
-            self._patch_count(self._count(1)),
-            patch("app.agents.context.fetchers.seeded_chips", AsyncMock(return_value=[])) as chips,
-        ):
-            await build_new_user_guidance_block(
-                ctx(
-                    user_id="user-9",
-                    user_preferences={
-                        "profession": "Founder",
-                        "needs": ["inbox"],
-                        "other_need": "chasing invoices",
-                    },
-                )
-            )
-
-        chips.assert_awaited_once_with(
-            "user-9",
-            OnboardingPreferences(
-                profession="Founder",
-                needs=[OnboardingNeed.INBOX],
-                other_need="chasing invoices",
+    @staticmethod
+    def _in_thread(**overrides: Any) -> SectionContext:
+        """Build a comms turn inside the user's welcome thread, conv-1."""
+        prefs = {"profession": "Founder", "needs": ["inbox"]}
+        onboarding = overrides.pop(
+            "onboarding",
+            OnboardingSubdocument(
+                getting_started_conversation_id="conv-1",
+                preferences=OnboardingPreferences(
+                    profession="Founder", needs=[OnboardingNeed.INBOX]
+                ),
             ),
         )
+        base = ctx(user_id="user-9", user_preferences=prefs)
+        return replace(base, **{"conversation_id": "conv-1", "onboarding": onboarding, **overrides})
 
-    async def test_the_chips_the_seeded_turn_offered_reach_the_model(self) -> None:
-        """End to end through the real cache-key derivation: what the seeded conversation wrote is what the block quotes back."""
-        cached = FirstQuestion(question="What should we start with?", chips=["My mornings"])
-        preferences = OnboardingPreferences(
-            profession="Founder",
-            needs=[OnboardingNeed.INBOX],
-            other_need="chasing invoices",
+    async def test_the_welcome_thread_quotes_back_the_jobs_it_offered(self) -> None:
+        """Read through the one reader the paywall uses too, with the stored answers."""
+        with self._patch_count(self._count(1)), self._patch_seeded(self.CHIPS) as read:
+            turn = self._in_thread()
+            block = await build_new_user_guidance_block(turn)
+
+        assert turn.onboarding is not None
+        read.assert_awaited_once_with("user-9", turn.onboarding.preferences)
+        assert 'offering these jobs as chips: "Find investors", "Hire someone"' in block
+
+    async def test_any_other_thread_carries_no_chips_rule_and_reads_nothing(self) -> None:
+        with self._patch_count(self._count(2)), self._patch_seeded(self.CHIPS) as read:
+            block = await build_new_user_guidance_block(self._in_thread(conversation_id="conv-2"))
+
+        assert block
+        assert "offering these jobs as chips" not in block
+        read.assert_not_awaited()
+
+    async def test_a_failed_chips_read_keeps_the_block_and_names_the_cause(self) -> None:
+        async with captured_wide_event() as event:
+            with (
+                self._patch_count(self._count(1)),
+                patch(
+                    "app.agents.context.fetchers.seeded_chips",
+                    AsyncMock(side_effect=RuntimeError("mongo down")),
+                ),
+            ):
+                block = await build_new_user_guidance_block(self._in_thread())
+
+        assert NEED_PLAYBOOKS[OnboardingNeed.INBOX] in block
+        assert event["warnings"] == [
+            {
+                "msg": "Error reading the welcome chips for new-user guidance",
+                "error": "mongo down",
+                "error_type": "RuntimeError",
+                "user_id": "user-9",
+            }
+        ]
+
+    async def test_what_their_mail_said_reaches_the_prompt_once_the_pipeline_finished(
+        self,
+    ) -> None:
+        onboarding = OnboardingSubdocument(
+            bio_status=BioStatus.COMPLETED,
+            user_bio="  Runs his inbox like a control tower.  ",
+            triage_summary={"summary": "Mostly vendor alerts and two investor threads."},
         )
-        with (
-            self._patch_count(self._count(1)),
-            patch(
-                "app.services.onboarding.first_question.redis_cache.get",
-                AsyncMock(return_value=cached),
-            ) as cache_get,
-        ):
-            block = await build_new_user_guidance_block(
-                ctx(
-                    user_id="user-9",
-                    user_preferences={
-                        "profession": "Founder",
-                        "needs": ["inbox"],
-                        "other_need": "chasing invoices",
-                    },
-                )
-            )
+        with self._patch_count(self._count(1)), self._patch_seeded():
+            block = await build_new_user_guidance_block(self._in_thread(onboarding=onboarding))
 
-        assert cache_get.await_args.args[0] == first_question_cache_key("user-9", preferences)
-        assert '"My mornings"' in block
+        assert block.endswith(
+            "never recite it:\n"
+            "- Their inbox: Mostly vendor alerts and two investor threads.\n"
+            "- How they work, from their sent mail: Runs his inbox like a control tower."
+        )
+
+    async def test_a_portrait_alone_still_renders_under_the_header(self) -> None:
+        """An inbox the pipeline could not summarise must not take the portrait down with it."""
+        block = build_new_user_guidance(
+            NewUserFacts(
+                "Founder", [OnboardingNeed.INBOX], mail_portrait="Answers in numbered steps."
+            )
+        )
+
+        assert block.endswith(
+            "What their mail already told you (read when they connected Gmail). Use it to make "
+            "offers specific to them; never recite it:\n"
+            "- How they work, from their sent mail: Answers in numbered steps."
+        )
+
+    @pytest.mark.parametrize("status", [BioStatus.PENDING, BioStatus.NO_GMAIL, None])
+    async def test_mail_facts_wait_for_the_pipeline_to_finish(
+        self, status: BioStatus | None
+    ) -> None:
+        """A pending or placeholder bio is not something their mail said."""
+        onboarding = OnboardingSubdocument(
+            bio_status=status, user_bio="placeholder", triage_summary={"summary": "partial"}
+        )
+        with self._patch_count(self._count(1)), self._patch_seeded():
+            block = await build_new_user_guidance_block(self._in_thread(onboarding=onboarding))
+
+        assert "What their mail already told you" not in block
 
     async def test_the_block_is_the_template_filled_with_every_one_of_its_slots(self) -> None:
         """Asserted whole rather than by substring: a slot filled with the wrong value still renders a plausible-looking block."""
         block = build_new_user_guidance(
-            "Founder", [OnboardingNeed.INBOX], None, ["My mornings", "Growth"]
+            NewUserFacts("Founder", [OnboardingNeed.INBOX], seeded_chips=self.CHIPS)
         )
 
         assert block == NEW_USER_GUIDANCE_TEMPLATE.format(
             profession="Founder",
             playbooks=f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}",
             target=TARGET_REPLY_EXAMPLE,
-            chips_rule=SEEDED_CHIPS_RULE.format(chips='"My mornings", "Growth"'),
+            mail="",
+            seeded=SEEDED_CHIPS_RULE.format(chips='"Find investors", "Hire someone"'),
         )
 
-    async def test_two_chips_are_quoted_and_comma_separated(self) -> None:
-        """The model has to read them as two distinct offers, not one nonsense phrase run together."""
-        block = build_new_user_guidance(
-            "Founder", [OnboardingNeed.INBOX], None, ["My mornings", "Late payers"]
-        )
-
-        assert '"My mornings", "Late payers"' in block
-
-    async def test_a_user_offered_no_chips_gets_the_slot_closed_up_entirely(self) -> None:
-        """The empty case is a slot filled with nothing, not a placeholder — any residue reads to the model as an instruction."""
-        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, [])
+    async def test_no_chips_closes_the_slot_up_entirely(self) -> None:
+        """Any residue of the rule reads to the model as a choice it offered."""
+        block = build_new_user_guidance(NewUserFacts("Founder", [OnboardingNeed.INBOX]))
 
         assert block == NEW_USER_GUIDANCE_TEMPLATE.format(
             profession="Founder",
             playbooks=f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}",
             target=TARGET_REPLY_EXAMPLE,
-            chips_rule="",
+            mail="",
+            seeded="",
         )
 
     async def test_the_worst_case_block_stays_within_budget(self) -> None:
-        """The two longest playbooks (the API caps picks at two), plus four seeded chips and a typed need, is the largest case."""
+        """The longest playbooks at the pick cap, a typed need, four chips and both mail facts."""
         longest = sorted(OnboardingNeed, key=lambda n: len(NEED_PLAYBOOKS[n]), reverse=True)
         block = build_new_user_guidance(
-            "Founder",
-            longest[:NEEDS_MAX_SELECTION],
-            "chasing invoices",
-            ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"],
+            NewUserFacts(
+                "Founder",
+                longest[:NEEDS_MAX_SELECTION],
+                "chasing invoices",
+                seeded_chips=(
+                    "Find investors",
+                    "Fix my marketing",
+                    "Hire someone",
+                    "Write my pitch",
+                ),
+                inbox_summary="x" * 300,
+                mail_portrait="y" * 300,
+            )
         )
         assert len(block) <= self.MAX_BLOCK_CHARS, f"guidance block grew to {len(block)} chars"
 
@@ -1319,9 +1456,12 @@ class TestASectionDeclinesWhenItsContextIsAbsent:
     @pytest.mark.parametrize("missing", ["user_id", "active_todo_id"])
     async def test_the_active_todo_banner_needs_both_ids(self, missing: str) -> None:
         todo = TodoDocument(id="todo-7", user_id="user1", title="Ship the refactor")
-        present: dict[str, str | None] = {"user_id": "user1", "active_todo_id": "todo-7"}
+        ids: dict[str, str | None] = {"user_id": "user1", "active_todo_id": "todo-7", missing: None}
         with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=todo)):
-            assert await build_active_todo_banner(ctx(**{**present, missing: None})) == ""
+            banner = await build_active_todo_banner(
+                ctx(user_id=ids["user_id"], active_todo_id=ids["active_todo_id"])
+            )
+            assert banner == ""
 
 
 @pytest.mark.unit

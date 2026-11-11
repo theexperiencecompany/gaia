@@ -10,8 +10,9 @@ import uuid
 
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, REOPENED_IN_THE_APP_DETAIL, TodoActivityEvent
 from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -43,10 +44,14 @@ from app.models.todo_models import (
 )
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
+from app.services.conversation_service import delete_todo_conversations
+from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
+from app.services.todo_activity import record_activity
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
     SubTodoParentError,
+    TodoNotFoundError,
     TrackedLabelChangeError,
     TrackedTodoScheduleError,
     TrackedTodoWorkflowError,
@@ -55,7 +60,7 @@ from app.services.todos.external_ref_watch import release_watches, watch_externa
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.auth_utils import require_owner
-from app.utils.canvas_vector_utils import delete_canvas_embedding
+from app.utils.canvas_vector_utils import delete_canvas_embedding, set_canvas_completed
 from app.utils.errors import AppError
 from app.utils.schedule import InvalidScheduleError
 from app.utils.todo_vector_utils import (
@@ -73,7 +78,7 @@ from shared.py.analytics.catalog.todos import (
     TodosToggled,
     TodosUpdated,
 )
-from shared.py.wide_events import log, spawn_logged_task
+from shared.py.wide_events import log
 
 
 async def _get_workflow_categories_for_todos(
@@ -178,7 +183,7 @@ async def _refuse_what_a_tracked_todo_cannot_take(
         return
     existing = await todo_repository.get(todo_id, user_id=user_id)
     if existing is None:
-        raise ValueError(f"Todo {todo_id} not found")
+        raise TodoNotFoundError(todo_id)
     tracked = GAIA_TRACKED_LABEL in existing.labels
     if updates.labels is not None and (GAIA_TRACKED_LABEL in updates.labels) != tracked:
         raise TrackedLabelChangeError()
@@ -194,6 +199,14 @@ def _refuse_a_bad_run_schedule(recurrence: str) -> None:
         validate_todo_recurrence(recurrence)
     except InvalidScheduleError as e:
         raise TrackedTodoScheduleError(e) from e
+
+
+async def require_project(user_id: str, project_id: str) -> ProjectDocument:
+    """Return the user's project, or raise ValueError when they have none with that id."""
+    project = await project_repository.get(project_id, user_id=user_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+    return project
 
 
 async def _refuse_a_bulk_tracked_label_change(
@@ -215,7 +228,7 @@ async def _refuse_a_bulk_bad_run_schedule(
         _refuse_a_bad_run_schedule(recurrence)
 
 
-async def _raise_ref_taken(
+async def raise_ref_taken(
     user_id: str, ref: ExternalRef | None, error: DuplicateKeyError
 ) -> NoReturn:
     """Re-raise the open-ref index's rejection as a conflict naming the open todo holding ref."""
@@ -226,15 +239,15 @@ async def _raise_ref_taken(
 
 
 async def _refuse_a_reopen_of_a_taken_ref(
-    user_id: str, todo_ids: list[str]
+    user_id: str, todos: list[TodoDocument]
 ) -> list[tuple[TodoDocument, ExternalRef]]:
     """Refuse a reopen that would give an outside object a second open todo.
 
-    Returns each completed todo among todo_ids that holds a ref, with that ref.
+    Returns each completed todo among todos that holds a ref, with that ref.
     """
     reopened = [
         (todo, todo.external_ref)
-        for todo in await todo_repository.find_by_ids(user_id, todo_ids)
+        for todo in todos
         if todo.completed and todo.external_ref is not None
     ]
     ref_counts = Counter(ref for _, ref in reopened)
@@ -270,22 +283,26 @@ async def _refuse_a_reopen_under_a_closed_parent(user_id: str, todo_ids: list[st
 
 
 @asynccontextmanager
-async def _watching_refs_to_reopen(
-    user_id: str, todo_ids: list[str], *, reopening: bool
+async def reopening_todos(
+    user_id: str, todo_ids: list[str], *, reopening: bool, detail: str
 ) -> AsyncIterator[None]:
-    """Watch each reopened todo's ref again for the reopen; a completed todo's watch never fires.
+    """Wrap the write that reopens the completed todos among todo_ids.
 
-    When the reopen does not land, the watches added here leave every todo still completed.
+    Before it, a ref another open todo holds is refused and each reopened todo's ref is
+    watched again, as a completed todo's watch never fires; when the write does not land,
+    those watches go and every todo stays completed. Once it lands, each reopened tracked
+    todo logs the reopen (detail) and shows as open in canvas search again.
     """
-    if reopening:
-        await _refuse_a_reopen_under_a_closed_parent(user_id, todo_ids)
+    if not reopening:
+        yield
+        return
+    todos = await todo_repository.find_by_ids(user_id, todo_ids)
     added: dict[str, list[TriggerSubscription]] = {}
     try:
-        if reopening:
-            for todo, ref in await _refuse_a_reopen_of_a_taken_ref(user_id, todo_ids):
-                added[todo.id] = await watch_external_ref(
-                    todo.id, user_id, ref, todo.trigger_subscriptions
-                )
+        for todo, ref in await _refuse_a_reopen_of_a_taken_ref(user_id, todos):
+            added[todo.id] = await watch_external_ref(
+                todo.id, user_id, ref, todo.trigger_subscriptions
+            )
         yield
     except Exception:
         if added:
@@ -295,6 +312,12 @@ async def _watching_refs_to_reopen(
                 if todo_id in still_completed:
                     await release_watches(todo_id, user_id, watches)
         raise
+    reopened_tracked = [todo.id for todo in todos if todo.completed and todo.vfs_path]
+    for todo_id in reopened_tracked:
+        await record_activity(todo_id, user_id, TodoActivityEvent.REOPENED, detail)
+        await set_canvas_completed(todo_id, completed=False)
+    if reopened_tracked:
+        schedule_gaia_tasks_sync(user_id)
 
 
 async def _persist_update(
@@ -314,7 +337,7 @@ async def _persist_update(
     except DuplicateKeyError as e:
         # Reopening a todo whose outside object another open todo now holds.
         reopened = await todo_repository.get(todo_id, user_id=user_id)
-        await _raise_ref_taken(user_id, reopened.external_ref if reopened else None, e)
+        await raise_ref_taken(user_id, reopened.external_ref if reopened else None, e)
 
 
 async def with_sub_todos(user_id: str, todo_ids: list[str]) -> list[str]:
@@ -335,9 +358,8 @@ async def _refuse_a_bulk_update(request: BulkUpdateRequest, user_id: str) -> Non
         await _refuse_a_bulk_tracked_label_change(user_id, request.todo_ids, request.updates.labels)
     if request.updates.recurrence:
         await _refuse_a_bulk_bad_run_schedule(user_id, request.todo_ids, request.updates.recurrence)
-    project_id = request.updates.project_id
-    if project_id is not None and not await project_repository.get(project_id, user_id=user_id):
-        raise ValueError(f"Project {project_id} not found")
+    if request.updates.project_id is not None:
+        await require_project(user_id, request.updates.project_id)
 
 
 class _TrackedCompletion(NamedTuple):
@@ -393,6 +415,28 @@ def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     fields.pop("completed", None)
     fields.pop("completed_at", None)
     return TodoUpdate(**fields)
+
+
+async def _complete_if_tracked(todo_id: str, user_id: str, update: TodoUpdate) -> TodoUpdate:
+    """Complete a tracked todo through tracked_todo_service, then return update without its completion fields.
+
+    That service archives the canvas and sets the completion fields itself, so they are
+    stripped here and the update neither re-trips the guard nor clobbers vfs_path.
+    """
+    existing = await todo_repository.get(todo_id, user_id=user_id)
+    if not (existing and existing.vfs_path):
+        return update
+    try:
+        from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
+            tracked_todo_service,
+        )
+
+        await tracked_todo_service.complete_tracked_todo(
+            todo_id, user_id, summary="Completed via UI"
+        )
+    except Exception as e:
+        log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
+    return _drop_completion_fields(update)
 
 
 class TodoService:
@@ -459,9 +503,7 @@ class TodoService:
         if not todo.project_id:
             todo.project_id = await cls._get_inbox_id(user_id)
         else:
-            project = await project_repository.get(todo.project_id, user_id=user_id)
-            if not project:
-                raise ValueError(f"Project {todo.project_id} not found")
+            await require_project(user_id, todo.project_id)
 
         document = TodoDocument(
             user_id=user_id,
@@ -490,7 +532,7 @@ class TodoService:
             created = await todo_repository.create(document)
         except DuplicateKeyError as e:
             # The open-ref unique index turned this insert away: the loser reads the winner.
-            await _raise_ref_taken(user_id, external_ref, e)
+            await raise_ref_taken(user_id, external_ref, e)
 
         # Index for search
         try:
@@ -514,42 +556,12 @@ class TodoService:
         return TodoResponse.from_document(created)
 
     @classmethod
-    async def create_todo_with_workflow(cls, todo: TodoModel, user_id: str) -> TodoResponse:
-        """Create a classic todo and queue its workflow generation; tracked todos never take this path."""
-        if GAIA_TRACKED_LABEL in todo.labels:
-            raise TrackedTodoWorkflowError()
-        created = await cls.create_todo(todo, user_id)
-
-        # Fire-and-forget: generation must not block or fail the create.
-        try:
-            # Deferred import: workflow/ARQ enqueue stack loads only when generation is actually queued
-            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
-                WorkflowQueueService,
-            )
-
-            spawn_logged_task(
-                "todo_workflow_generation",
-                WorkflowQueueService.queue_todo_workflow_generation(
-                    todo_id=created.id,
-                    user_id=user_id,
-                    title=todo.title,
-                    description=todo.description or "",
-                ),
-                user={"id": user_id},
-                todo={"id": created.id},
-            )
-            log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
-        except Exception as e:
-            log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
-        return created
-
-    @classmethod
     async def get_todo(cls, todo_id: str, user_id: str) -> TodoResponse:
         """Get a single todo by ID."""
         log.set(component="todo_service", operation="get_todo", user_id=user_id, todo_id=todo_id)
         todo = await todo_repository.get(todo_id, user_id=user_id)
         if not todo:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         (response,) = await todo_responses(user_id, [todo])
         return response
@@ -605,39 +617,30 @@ class TodoService:
         await _refuse_what_a_tracked_todo_cannot_take(todo_id, user_id, updates)
 
         if update.project_id is not None:
-            project = await project_repository.get(update.project_id, user_id=user_id)
-            if not project:
-                raise ValueError(f"Project {update.project_id} not found")
+            await require_project(user_id, update.project_id)
 
         # Track completion timestamp (explicit None clears it when un-completing).
         if update.completed is not None:
             update.completed_at = datetime.now(UTC) if update.completed else None
 
-        # A tracked todo (has a VFS canvas) must complete via tracked_todo_service first —
-        # it archives the canvas and sets the completion fields itself — then those fields
-        # are stripped here so this update doesn't re-trip the guard or clobber vfs_path.
         if update.completed is True:
-            existing = await todo_repository.get(todo_id, user_id=user_id)
-            if existing and existing.vfs_path:
-                try:
-                    from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
-                        tracked_todo_service,
-                    )
+            update = await _complete_if_tracked(todo_id, user_id, update)
 
-                    await tracked_todo_service.complete_tracked_todo(
-                        todo_id, user_id, summary="Completed via UI"
-                    )
-                except Exception as e:
-                    log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
-                update = _drop_completion_fields(update)
+        if update.title is not None:
+            # A tracked todo's chat carries its title, as its tab and header name it. First,
+            # so a failure here saves nothing rather than half a rename.
+            await conversation_repository.retitle_todo_chats(user_id, [todo_id], update.title)
 
-        async with _watching_refs_to_reopen(
-            user_id, [todo_id], reopening=update.completed is False
+        reopening = update.completed is False
+        if reopening:
+            await _refuse_a_reopen_under_a_closed_parent(user_id, [todo_id])
+        async with reopening_todos(
+            user_id, [todo_id], reopening=reopening, detail=REOPENED_IN_THE_APP_DETAIL
         ):
             updated = await _persist_update(todo_id, user_id, updates.workflow_id, update)
 
         if not updated:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         try:
             await update_todo_embedding(todo_id, updated, user_id)
@@ -677,7 +680,7 @@ class TodoService:
         log.set(component="todo_service", operation="delete_todo", user_id=user_id, todo_id=todo_id)
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         # A sub-todo does not outlive its parent; each goes through this same path.
         for child in await todo_repository.find_sub_todos(user_id, [todo_id]):
@@ -696,8 +699,10 @@ class TodoService:
             except Exception as e:
                 log.warning("todo.canvas_embedding_delete_failed", todo_id=todo_id, error=str(e))
 
+        # Before the todo: a failed chat delete keeps the todo, so a retry deletes both.
+        await delete_todo_conversations(user_id, [todo_id])
         if not await todo_repository.delete(todo_id, user_id=user_id):
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         try:
             await delete_todo_embedding(todo_id)
@@ -721,6 +726,12 @@ class TodoService:
                 success=[], failed=[], total=len(request.todo_ids), message="No updates provided"
             )
 
+        if update.title is not None:
+            # As in the single update: the chats first, so a failure renames nothing.
+            await conversation_repository.retitle_todo_chats(
+                user_id, request.todo_ids, update.title
+            )
+
         completion = _TrackedCompletion(completed=[], failed=[], plain=request.todo_ids)
         if update.completed is True:
             completion = await _complete_tracked_among(user_id, request.todo_ids)
@@ -731,13 +742,19 @@ class TodoService:
 
         succeeded = list(completed_tracked)
         if plain_ids:
-            async with _watching_refs_to_reopen(user_id, plain_ids, reopening=reopening):
+            if reopening:
+                await _refuse_a_reopen_under_a_closed_parent(user_id, plain_ids)
+            async with reopening_todos(
+                user_id, plain_ids, reopening=reopening, detail=REOPENED_IN_THE_APP_DETAIL
+            ):
                 try:
                     modified = await todo_repository.bulk_update(user_id, plain_ids, update)
                 except BulkWriteError:
                     # A create or reopen took a ref after the check above; the writes before it landed.
                     if reopening:
-                        await _refuse_a_reopen_of_a_taken_ref(user_id, request.todo_ids)
+                        await _refuse_a_reopen_of_a_taken_ref(
+                            user_id, await todo_repository.find_by_ids(user_id, request.todo_ids)
+                        )
                     raise
             succeeded.extend(plain_ids[:modified])
 
@@ -762,6 +779,7 @@ class TodoService:
     @classmethod
     async def bulk_delete_todos(cls, todo_ids: list[str], user_id: str) -> BulkOperationResponse:
         """Bulk delete multiple todos, and the sub-todos of any parent among them."""
+        requested = list(todo_ids)
         todo_ids = await with_sub_todos(user_id, todo_ids)
         todos_to_delete = await todo_repository.find_by_ids(user_id, todo_ids)
 
@@ -775,6 +793,8 @@ class TodoService:
                 except Exception as e:
                     log.warning("todo.canvas_embedding_delete_failed", todo_id=doc.id, error=str(e))
 
+        # As in the single delete: chats first, so a failure keeps their todos.
+        await delete_todo_conversations(user_id, [todo.id for todo in todos_to_delete])
         deleted = await todo_repository.bulk_delete(user_id, todo_ids)
 
         if deleted > 0:
@@ -786,19 +806,21 @@ class TodoService:
             schedule_user_todos_sync(user_id)
             capture(UserId(user_id), TodosDeleted(count=deleted))
 
+        # What was found is what was deleted: the delete is scoped to the same
+        # user's ids. A requested id that matched nothing is a failure to report,
+        # never folded into success (it once was, so a miscopied id read as deleted).
+        found = {doc.id for doc in todos_to_delete}
         return BulkOperationResponse(
-            success=todo_ids[:deleted],
-            failed=[],
-            total=len(todo_ids),
+            success=[todo_id for todo_id in todo_ids if todo_id in found],
+            failed=[todo_id for todo_id in requested if todo_id not in found],
+            total=len(requested),
             message=f"Deleted {deleted} todos",
         )
 
     @classmethod
     async def bulk_move_todos(cls, request: BulkMoveRequest, user_id: str) -> BulkOperationResponse:
         """Bulk move todos to another project."""
-        project = await project_repository.get(request.project_id, user_id=user_id)
-        if not project:
-            raise ValueError(f"Project {request.project_id} not found")
+        await require_project(user_id, request.project_id)
 
         modified = await todo_repository.bulk_update(
             user_id, request.todo_ids, TodoUpdate(project_id=request.project_id)
@@ -913,9 +935,7 @@ class ProjectService:
             user_id=user_id,
             project_id=project_id,
         )
-        existing = await project_repository.get(project_id, user_id=user_id)
-        if not existing:
-            raise ValueError(f"Project {project_id} not found")
+        existing = await require_project(user_id, project_id)
         if existing.is_default:
             raise ValueError("Cannot update default Inbox project")
 
@@ -938,9 +958,7 @@ class ProjectService:
             user_id=user_id,
             project_id=project_id,
         )
-        project = await project_repository.get(project_id, user_id=user_id)
-        if not project:
-            raise ValueError(f"Project {project_id} not found")
+        project = await require_project(user_id, project_id)
         if project.is_default:
             raise ValueError("Cannot delete default Inbox project")
 

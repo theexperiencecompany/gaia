@@ -33,9 +33,8 @@ from shared.py.wide_events import log
 class SubagentInbox(RedisInbox):
     """Steering messages the executor addressed to one running subagent.
 
-    Keyed by the subagent's own thread_id (<integration>_executor_<conv> for a
-    handoff, spawn_<conv>_<tool_call_id> for a spawn), so only the subagent
-    running on that thread drains it.
+    Keyed by the spawn's own thread_id (spawn_<conv>_<tool_call_id>), so only
+    the subagent running on that thread drains it.
     """
 
     ttl = SUBAGENT_INBOX_TTL

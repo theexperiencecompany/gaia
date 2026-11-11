@@ -8,11 +8,13 @@ from shared.py.analytics.catalog.properties import CurrencyCode, Identifier, Url
 
 __all__ = [
     "CheckoutFailureReason",
+    "PaymentCheckoutAbandoned",
     "PaymentCheckoutStarted",
     "PaymentFailed",
     "PaymentSucceeded",
     "PaywallBlocked",
     "PaywallModalViewed",
+    "LimitWindow",
     "PaywallSource",
     "RateLimitHit",
     "SubscriptionActivated",
@@ -26,6 +28,10 @@ __all__ = [
     "SubscriptionRenewed",
     "UsageQueried",
 ]
+
+#: Which limit refused the request: a cost budget's day or month, one request's token
+#: ceiling, or the bots' per-sender burst limit. None is a count limit on a feature.
+LimitWindow = Literal["day", "month", "request", "burst"]
 
 #: Which surface put the paid-only wall on screen; every member is a call site this repo owns.
 PaywallSource = Literal[
@@ -65,6 +71,22 @@ class PaymentCheckoutStarted(ServerEvent):
     billing_cycle: Identifier | None = None
     # The Dodo product id of the plan being bought; replaces the client's pricing:plan_selected.
     plan_id: Identifier | None = None
+
+
+class PaymentCheckoutAbandoned(WebEvent):
+    """The embedded checkout closed without a charge; only the browser sees the sheet go away."""
+
+    event: ClassVar[str] = "payment:checkout_abandoned"
+    budget_per_user_day: ClassVar[int] = 20
+
+    source: Literal[
+        "paywall_modal", "pricing_card", "payment_retry", "checkout_resume", "onboarding"
+    ]
+    billing_cycle: Literal["monthly", "yearly"]
+    # The last overlay step reached; "not_loaded" means the sheet never rendered and was closed for the user.
+    furthest_step: Literal[
+        "not_loaded", "opened", "details_submitted", "payment_page", "pay_pressed"
+    ]
 
 
 class PaymentSucceeded(ServerEvent):
@@ -115,6 +137,9 @@ class SubscriptionActivated(ServerEvent):
     subscription_id: Identifier
     plan_name: Literal["Pro"]
     currency: CurrencyCode
+    # Dodo's product and interval ("Month", "Year"); absent on a backfill, whose row knows only the current plan.
+    product_id: Identifier | None = None
+    billing_interval: Identifier | None = None
     amount: float | None = None
     # Pre-tax revenue in the charge's own currency (#1332); a 0 is a real discount-code charge.
     amount_charged_pre_tax: float | None = None
@@ -130,6 +155,8 @@ class SubscriptionRenewed(ServerEvent):
     budget_per_user_day: ClassVar[int] = 10
 
     subscription_id: Identifier
+    product_id: Identifier
+    billing_interval: Identifier
     currency: CurrencyCode
     # Pre-tax revenue in the charge's own currency (#1332); a 0 is a real discount-code charge.
     amount_charged_pre_tax: float | None = None
@@ -154,6 +181,8 @@ class SubscriptionExpired(ServerEvent):
     budget_per_user_day: ClassVar[int] = 50
 
     subscription_id: Identifier
+    product_id: Identifier
+    billing_interval: Identifier
 
 
 class SubscriptionLapsed(ServerEvent):
@@ -164,6 +193,8 @@ class SubscriptionLapsed(ServerEvent):
 
     subscription_id: Identifier
     status: Literal["failed", "on_hold"]
+    product_id: Identifier
+    billing_interval: Identifier
 
 
 class SubscriptionPageViewed(WebEvent):
@@ -223,15 +254,17 @@ class PaywallModalViewed(WebEvent):
 
 
 class RateLimitHit(ServerEvent):
-    """A user ran into a tiered rate limit."""
+    """A request was refused by a usage limit: a feature count, a cost budget or a burst limit."""
 
     event: ClassVar[str] = "rate_limit:hit"
     budget_per_user_day: ClassVar[int] = 500
     previous_names: ClassVar[tuple[str, ...]] = ("rate_limit_hit",)
 
     feature: Identifier
-    plan: Identifier
+    #: None only where the refusal comes before the sender is resolved to a user (bot burst limit).
+    plan: Identifier | None
     origin: Identifier | None = None
+    window: LimitWindow | None = None
 
 
 class UsageQueried(ServerEvent):

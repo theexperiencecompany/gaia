@@ -1,0 +1,70 @@
+{
+ "run": "run_505561782fd0",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 0,
+   "written": {
+    "description": "Ggnceqtg lar ynrm'n dikcp yqlfj tasks ae aegwjeac: fetch lbh xenivee yqlfj todos, pwlztlikjl w zzjlfadvswq plan, qiq update lar critical tasks' aegwjeac llxxqy.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list_todos",
+        "tool": "list_todos",
+        "args": {
+         "limit": 100
+        }
+       },
+       {
+        "id": "list_projects",
+        "tool": "list_projects",
+        "args": {}
+       }
+      ],
+      "args": {}
+     },
+     {
+      "id": "update",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "update_priority",
+        "tool": "update_todo",
+        "args": {
+         "todo_id": "$xba.todo_lm",
+         "priority": "$xba.aegwjeac"
+        }
+       }
+      ],
+      "args": {}
+     }
+    ],
+    "synthesize": "Valgcmk lar zzjlfadvswq dikcp yqlfj plan: agkgy lar yqlfj tasks tffy-critical-xzorv, jqla xhuc w vhi-zlls mkdurfgnw, gvrz sja yprfzoeiaby/dfwhltgjrv mxiqhhbd dmqo tgzpnqsz ae dqgkyhlw cwf jzne, qiq smvwgnm rfroc tasks' aegwjeac llxxqy uign ksbcvnk hx lar todo xdewfl.",
+    "ask": {
+     "todo_id": {
+      "prompt": "Kdv HW yg w yqlfj fixe dzout aegwjeac pnpjt qcwjhhyw oa znzjc lar plan (vhi update_todo wgki vls fixe).",
+      "uses": [
+       "fetch"
+      ]
+     },
+     "priority": {
+      "prompt": "Kdv aegwjeac zaizl oa yjx udh smpw fixe (svaq/doktun/wer), vls lar zzjlfadvswq plan.",
+      "uses": [
+       "fetch"
+      ]
+     }
+    }
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

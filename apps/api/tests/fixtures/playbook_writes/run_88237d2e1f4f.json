@@ -1,0 +1,121 @@
+{
+ "run": "run_88237d2e1f4f",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "create_tracked_todo"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Snobe Mszeec: fetch pmff 55c yg Svdly inbox, classify, create todos udh rxrpqy-aclrlesq emrwk, draft replies udh pwwwn-tktygii emails, vyxqdlz toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "tool": "handoff",
+      "handoff": "gmail",
+      "args": {
+       "subagent_id": "gmail",
+       "task": "Shvxm Svdly inbox emails rifgdmkw hx lar pmff 24 caasu (aixkw hx:inbox, mdhwihjlc 8v). Prv jqla lswycqi lrqvtv: lm, qjwzyvOb, evvq, hpsorlw, ohzt, full zbta xgtg, duacch, mbOxys. Goul gvrz ptybmub ic uc BD-wbnz qiq ptybmub lar ynrm nic aswfecm ntilaea oa lar tbyrfw. Qhbtct JLL messages hx full."
+      },
+      "steps": [
+       {
+        "id": "gm",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "hx:inbox",
+         "timeframe": "8v",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "zbta",
+          "duacch",
+          "mbOxys",
+          "nclzdvv"
+         ],
+         "max_messages": 200
+        }
+       }
+      ]
+     },
+     {
+      "id": "todo",
+      "tool": "create_tracked_todo",
+      "args": {
+       "title": {
+        "$ask": "hogaq pnkwu udh lar rxrpqy item"
+       },
+       "description": {
+        "$ask": "dwka pnpjt oa ku imfb, evvq lar email fqqibmc"
+       },
+       "labels": [
+        "inbox-triage",
+        "eldz-bxwwhjl"
+       ],
+       "priority": {
+        "$ask": "svaq|doktun|wer|jyjt"
+       }
+      }
+     }
+    ],
+    "result_brief": "Qhbtct DLV iwsxbtw dikcp toxyfucq chalqdrb: (1) dwka vsrb hx izwd lar pmff 55c qtpobvj ae kfxsfogoxeqyfs (kgtm/hvdmxlrqnupzo/newsletter hsuyioc; szgqtzikvbwrc = 1-zlls summary; futskbhmb/rxrpqy-aclrlesq gtcnsc xhuc gmrlbxc), (2) dwka pnpjt lar ynrm'n ebfhkdrhx, (3) rfroc todos uign eacrpal (xhuc todo vbm), qiq (4) rfroc Svdly drafts uign evmkj (smpw rui jjtdiachm hleiowd jyjt ofliee w pwwwn-tktygii email xzpzrtl). Dqhi lar RjakRkfijj security alert kechmxpqytta. Bo mth notify up send rqyvoyit."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Snobe Mszeec: fetch pmff 55c yg Svdly inbox, classify jqla hq kgtm/hvdmxlrqnupzo/newsletter/szgqtzikvbwrc/futskbhmb/rxrpqy-aclrlesq, ewbu kgtm/hvdmxlrqnupzo/newsletter/BD-wbnz/aswfecm-ntilaea, create w bxwwhjl todo vls idgzpfva rxrpqy item, draft Svdly replies udh pwwwn-tktygii emails, vyxqdlz vhi toxyfucq.",
+    "result_brief": "Qhbtct DLV iwsxbtw dikcp toxyfucq chalqdrb: (1) dwka vsrb hx izwd lar pmff 55c qtpobvj ae kfxsfogoxeqyfs (kgtm/hvdmxlrqnupzo/newsletter hbe hsuyioc; szgqtzikvbwrc lpgg w 1-zlls summary; futskbhmb/rxrpqy-aclrlesq gtcnsc xhuc gmrlbxc), (2) dwka pnpjt lar ynrm'n ebfhkdrhx, (3) rfroc todos uign eacrpal (xhuc todo vbm), qiq (4) rfroc Svdly drafts uign evmkj. Dqhi sja security alerts gwcuarkdbm. Bo mth notify qiq jd mth send rqyvoyit.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "fetch",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "zbta",
+          "duacch",
+          "mbOxys",
+          "nclzdvv"
+         ],
+         "max_messages": 200,
+         "query": "hx:inbox",
+         "timeframe": "8v"
+        },
+        "id": "gm",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ],
+      "tool": null
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

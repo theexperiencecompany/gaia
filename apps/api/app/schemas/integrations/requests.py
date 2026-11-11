@@ -9,7 +9,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.utils.url_safety import assert_safe_url_shape
+from app.helpers.mcp_helpers import dialable_mcp_server_url
 
 
 class AddUserIntegrationRequest(BaseModel):
@@ -33,13 +33,12 @@ class CreateCustomIntegrationRequest(BaseModel):
     @field_validator("server_url")
     @classmethod
     def validate_server_url(cls, v: str) -> str:
-        """Block SSRF: reject non-HTTP(S) or literal-private ``server_url`` values.
+        """Store the URL as it will be dialed, refusing ones the deployment may not reach.
 
         Cheap shape check only — the DNS-resolving guard runs on the async
         probe/connect path so request parsing never blocks on a DNS lookup.
         """
-        assert_safe_url_shape(v)
-        return v
+        return dialable_mcp_server_url(v)
 
     @model_validator(mode="after")
     def validate_auth_type(self) -> Self:
@@ -62,15 +61,14 @@ class UpdateCustomIntegrationRequest(BaseModel):
     @field_validator("server_url")
     @classmethod
     def validate_server_url(cls, v: str | None) -> str | None:
-        """Block SSRF: reject non-HTTP(S) or literal-private ``server_url`` values.
+        """Store the URL as it will be dialed, refusing ones the deployment may not reach.
 
         Cheap shape check only — the DNS-resolving guard runs on the async
         probe/connect path so request parsing never blocks on a DNS lookup.
         """
         if v is None:
             return v
-        assert_safe_url_shape(v)
-        return v
+        return dialable_mcp_server_url(v)
 
 
 class ConnectIntegrationRequest(BaseModel):
@@ -84,14 +82,4 @@ class ConnectIntegrationRequest(BaseModel):
     account_id: str | None = Field(
         None,
         description="An expired account to sign back in, in place, instead of adding one",
-    )
-
-
-class UpdateIntegrationInstructionsRequest(BaseModel):
-    """Request to set a user's custom instructions for one integration."""
-
-    content: str = Field(
-        default="",
-        max_length=8000,
-        description="Markdown instructions the agent should honor for this integration",
     )

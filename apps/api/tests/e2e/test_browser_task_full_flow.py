@@ -54,7 +54,7 @@ STEPS = [
         url="https://example.test/confirm",
         outputs=["opened the sign-in wall"],
     ),
-    ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+    ScriptedStep(actions=[], takeover=("Sign in and come back", "sign_in")),
     ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
 ]
 

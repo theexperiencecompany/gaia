@@ -4,9 +4,11 @@ from typing import Final, Literal
 
 from typing_extensions import TypedDict
 
+from app.constants.general import FINISH_TASK_NAME
+
 
 class LLMProviderName(StrEnum):
-    """Logical provider names, keying PROVIDER_MODELS and PROVIDER_PRIORITY.
+    """Logical provider names, keying the catalog in app/constants/providers.py.
 
     Also the value of the provider configurable that picks a lane per request.
     """
@@ -15,6 +17,10 @@ class LLMProviderName(StrEnum):
     OPENROUTER = "openrouter"
     CUSTOM = "custom"
     OPENAI = "openai"
+    # Keyless local lane. The store credential or an explicitly-set
+    # OLLAMA_BASE_URL picks the endpoint at load time; nothing keys off the name
+    # beyond registration.
+    OLLAMA = "ollama"
 
 
 class LLMProviderKey(StrEnum):
@@ -28,6 +34,7 @@ class LLMProviderKey(StrEnum):
     OPENROUTER = "openrouter_llm"
     CUSTOM = "custom_llm"
     OPENAI = "openai_llm"
+    OLLAMA = "ollama_llm"
 
 
 class ModelUse(StrEnum):
@@ -73,17 +80,10 @@ class OpenRouterReasoning(TypedDict):
     effort: OpenRouterEffort
 
 
-class OpenRouterProviderRouting(TypedDict, total=False):
-    """OpenRouter's provider-routing block: a soft order, or a hard only-these pin.
+class OpenRouterProviderRouting(TypedDict):
+    """OpenRouter's provider-routing block, as GAIA sends it: a hard only-these pin."""
 
-    total=False because the two uses set different keys: the client's
-    OPENROUTER_PROVIDER_ORDER writes order + allow_fallbacks, a dev-menu pin
-    writes only.
-    """
-
-    order: list[str]
     only: list[str]
-    allow_fallbacks: bool
 
 
 class OpenRouterModelKwargs(TypedDict):
@@ -100,13 +100,11 @@ class DevModelOption:
     crosses no validation boundary.
     """
 
-    #: Keyed like PROVIDER_MODELS and PROVIDER_PRIORITY; the enum stops the menu
+    #: Keyed like LLM_MODEL_PROFILES; the enum stops the menu
     #: naming a lane the client cannot resolve.
     provider: LLMProviderName
     #: None = pin no model; the client's own default serves the request.
     model: str | None
-    #: The OpenRouter provider-routing pin the lane carries as model_kwargs.
-    provider_pin: OpenRouterModelKwargs | None
     reasoning: bool
 
 
@@ -165,7 +163,10 @@ AGENT_RECURSION_LIMIT = 40  # Comms + workers (routing / focused work)
 # truncates real work with GraphRecursionError. Both the graph runtime limit and
 # the accounting middleware's denominator read this, so they stay in sync.
 EXECUTOR_RECURSION_LIMIT = 100
-SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
+# Spawned subagents run sweep slices (fetch, mine, read, report). The Inbox desk mail
+# pass measures 18 supersteps with the wrap-up window; at 15 a slice was stopped after
+# four tool calls, so 30 leaves room for a second fetch and retries.
+SUBAGENT_RECURSION_LIMIT = 30
 # The workflow authoring subagent only discovers integrations/triggers then emits
 # JSON, never executes, so a handful of discovery calls is plenty. On hitting the
 # limit the runner forces a final answer instead of crashing ("stop wandering").
@@ -187,15 +188,20 @@ RECURSION_WRAPUP_MIN_STEPS = 6
 # instead let each delegation inherit the previous one's nudges.
 MAX_COMPLETION_NUDGES = 1
 # Tool results that prove no work happened: discovery-only or failed calls.
-COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools"})
+# finish_task is how a run ends, not work it did: counting it would let a run
+# that only declared itself finished pass for one that did something.
+COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools", FINISH_TASK_NAME})
 COMPLETION_NUDGE_MESSAGE = (
     "[System: before you finish, every part of the task must actually be done "
     "and confirmed with tools, not assumed. If anything is still pending, not yet "
     "verified, or an action you described but did not take, do it now. Nothing "
     "runs after your reply ends, so never tell the user you are still working or "
     "that more results are coming ('hang tight', 'still digging'): either do the "
-    "work now with tools, or state plainly what you got and what failed. If you "
-    "are genuinely finished, reply with your complete final result.]"
+    "work now with tools, or state plainly what you got and what failed. Then "
+    "finish with finish_task: your complete final result and its outcome, backed "
+    "by this run's tool calls (done: the work ran; schedule: a tracked todo "
+    "with a schedule or recurrence was set; subscribe: the trigger watch was set). "
+    "Anything else is ask or blocked.]"
 )
 # A plain-text stop that PROMISES future work is never valid: the run is over the
 # moment the reply ends, so "hang tight" is a lie. Lowercase substrings matched
@@ -235,7 +241,6 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
         "call_executor",
         "cancel_executor",
         "spawn_subagent",
-        "handoff",
         "deep_research",
         "browser_task",
         # bash carries its own deadline down (the e2b server-side command timeout,
@@ -278,7 +283,7 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # Changing the default model is high blast radius: update DEFAULT_MAX_TOKENS
 # (else fractional-token middleware fails to build) and add a MODEL_PRICING entry.
 # Text-only default for every tier: image tool results are captioned, not shown.
-DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+DEFAULT_MODEL_NAME = "openai/gpt-6-luna"
 # The HIL intent judge runs here, not AUX_MODEL_NAME: accuracy and tail latency
 # beat sharing the graph lane's cache. The eval (50 scenarios, real LLMs) put
 # this at 42/50 in 1.9s p95 vs the default's 40/50 in 20s p95. Changing re-runs it.
@@ -286,7 +291,7 @@ HIL_JUDGE_MODEL_NAME = "google/gemini-3.5-flash-lite"
 # OpenRouter `models`-array fallback for the judge only: tried in order on
 # rate limits, downtime, and moderation refusals — never on verdicts. The
 # fallback's bias is fail-safe (it over-asks rather than over-approves).
-HIL_JUDGE_FALLBACK_MODEL_NAMES: tuple[str, ...] = ("deepseek/deepseek-v4-flash-0731",)
+HIL_JUDGE_FALLBACK_MODEL_NAMES: tuple[str, ...] = (DEFAULT_MODEL_NAME,)
 # Stand-in when a call reports no model id. Priced at DEFAULT_PRICING rather
 # than its real rate, so its appearance is an alertable bug, not a benign
 # default — both metering routes log it loudly.
@@ -302,6 +307,12 @@ AUX_MODEL_NAME = DEFAULT_MODEL_NAME
 OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT: dict[str, bool] = {
     DEFAULT_MODEL_NAME: False,
 }
+# Provider routing belongs to the model it was chosen for: a pin naming providers that
+# do not serve a model fails every call to it. A model absent here gets no provider block.
+OPENROUTER_PROVIDER_ROUTING: dict[str, OpenRouterModelKwargs] = {
+    "minimax/minimax-m3": {"provider": {"only": ["minimax"]}},
+    "z-ai/glm-5.2": {"provider": {"only": ["z-ai"]}},
+}
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
@@ -310,13 +321,25 @@ DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 # concurrent same-provider requests wipe each other's cached chains mid-read
 # (measured: comms chain collapses to ~0 vs. ~99.5% held with Gemini).
 MEMORY_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
-DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
 # The model behind every image -> text call. Deliberately NOT tied to
 # DEFAULT_MODEL_NAME (may be text-only): a blind describer fails SILENTLY
 # (describe_image degrades to None with nothing in the logs).
-VISION_MODEL_PROVIDER = GEMINI_PROVIDER
 VISION_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
+# The same model through OpenRouter, for an instance with no direct Gemini key.
+OPENROUTER_VISION_MODEL_NAME = "google/gemini-3.1-flash-lite"
+
+# The keyless local lane's model when the operator configured none. Its key is a
+# placeholder the OpenAI client requires and Ollama ignores.
+OLLAMA_DEFAULT_MODEL_NAME = "llama3.2"
+OLLAMA_PLACEHOLDER_API_KEY = "ollama"  # pragma: allowlist secret
+
+# Image generation outside production, on the operator's OpenAI key. Production
+# runs GAIA's own hosted generator instead (HOSTED_IMAGE_GENERATION_URL).
+OPENAI_IMAGE_MODEL_NAME = "gpt-image-1"
+OPENAI_IMAGE_SIZE: Final = "1024x1024"
+HOSTED_IMAGE_GENERATION_URL = "https://generateimage.aryanranderiya1478.workers.dev/"
+IMAGE_GENERATION_TIMEOUT_SECONDS = 1000
 
 # GAIA_SIM_MODE (see app/agents/llm/client.py): every model factory resolves to
 # the local scripted stub (tools/llm-stub) at this address. The model name is a
@@ -338,10 +361,12 @@ OPENAI_MAX_OUTPUT_TOKENS = 16_000
 PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
 PAID_MODEL_NAME = DEFAULT_MODEL_NAME
 
+OPENAI_API_URL = "https://api.openai.com/v1"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
 # Which OpenRouter models accept image input, straight from the live catalog's
 # architecture.input_modalities — vision support needs no per-model curation
 # here (see app/agents/llm/model_catalog.py for the cache).
-OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_MODELS_URL = f"{OPENROUTER_API_URL}/models"
 OPENROUTER_MODEL_CATALOG_TTL_SECONDS = 3600
 OPENROUTER_MODEL_CATALOG_TIMEOUT_SECONDS = 10
 # How long a failed catalog refresh is remembered: the catalog is consulted on
@@ -422,25 +447,21 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "minimax-m3": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="minimax/minimax-m3",
-        provider_pin={"provider": {"only": ["minimax"]}},
         reasoning=True,
     ),
     "glm-5.2": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="z-ai/glm-5.2",
-        provider_pin={"provider": {"only": ["z-ai"]}},
         reasoning=True,
     ),
     "gemini-3.5-flash": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="google/gemini-3.5-flash",
-        provider_pin=None,
         reasoning=False,
     ),
     "deepseek-v4": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="deepseek/deepseek-v4-pro",
-        provider_pin=None,
         reasoning=False,
     ),
     "deepseek-v4-flash": DevModelOption(
@@ -449,9 +470,6 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # identical model for A/B-ing routes.
         provider=LLMProviderName.OPENROUTER,
         model="deepseek/deepseek-v4-flash-0731",
-        # Deliberately unpinned — the pin measured worse on the real graph
-        # (see the paid-lane rationale above).
-        provider_pin=None,
         reasoning=False,
     ),
     DEV_CUSTOM_MODEL_OPTION: DevModelOption(
@@ -459,13 +477,11 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # one here; the client's own default (DEV_LLM_MODEL) serves the request.
         provider=LLMProviderName.CUSTOM,
         model=None,
-        provider_pin=None,
         reasoning=False,
     ),
     "gemini-3.1-flash-lite": DevModelOption(
         provider=LLMProviderName.GEMINI,
         model="gemini-3.1-flash-lite",
-        provider_pin=None,
         reasoning=False,
     ),
 }
@@ -488,9 +504,12 @@ PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
 BUDGET_WRAPUP_REMAINING_FRACTION = 0.2
 
 # Rolling monthly USD cost budget for pro: the ECONOMIC guard, ~1x the
-# subscription price. On exhaustion pro is NOT blocked — routing degrades to
-# the free-tier model for the rest of the month.
+# subscription price. Reaching it pauses chat, bots, workflow runs and tracked
+# todos until the month resets, the same wall as the daily budget.
 PRO_MONTHLY_COST_BUDGET_USD = 25.00  # TUNE
+# The one-time heads-up fires here; mirrors USAGE_WARN_THRESHOLD (libs/shared/ts/src/constants/usage.ts),
+# where the usage page turns amber.
+PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION = 0.75
 
 # TTLs for the budget Redis keys: sized just past their window so keys expire
 # on their own (26h > 24h day, 32d > 31d month) even with clock skew.

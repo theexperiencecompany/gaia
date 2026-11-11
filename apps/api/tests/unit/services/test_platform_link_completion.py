@@ -20,6 +20,8 @@ from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
 
+pytestmark = pytest.mark.usefixtures("onboarding_finish_on_link")
+
 MODULE = "app.services.platform_link_completion"
 USER_ID = "507f1f77bcf86cd799439011"
 BUBBLES = ["Hey Aryan, I'm with you on WhatsApp now.", "Tell me one thing off your plate."]
@@ -216,3 +218,29 @@ class TestLinkConflicts:
             error_type="AccountHasDifferentPlatformError",
             error="Your account already has a different whatsapp account linked",
         )
+
+
+class TestOnboardingFinishesWithTheLink:
+    """A user who taps Start in Telegram and never returns to the web tab still finishes onboarding."""
+
+    async def test_a_new_link_finishes_onboarding_for_its_user(
+        self, side_effects, onboarding_finish_on_link: AsyncMock
+    ) -> None:
+        await complete_platform_link(USER_ID, "whatsapp", "wa-1")
+        onboarding_finish_on_link.assert_awaited_once_with(USER_ID)
+
+    async def test_a_repeat_link_does_not(
+        self, side_effects, onboarding_finish_on_link: AsyncMock
+    ) -> None:
+        _, _, link = side_effects
+        link.return_value = _linked(is_new_link=False)
+        await complete_platform_link(USER_ID, "whatsapp", "wa-1")
+        onboarding_finish_on_link.assert_not_awaited()
+
+    async def test_a_failed_finish_is_a_follow_through_failure(
+        self, side_effects, onboarding_finish_on_link: AsyncMock
+    ) -> None:
+        """The link is already written, so the caller must spend its single-use credential."""
+        onboarding_finish_on_link.side_effect = RuntimeError("mongo down")
+        with pytest.raises(PostLinkSideEffectError):
+            await complete_platform_link(USER_ID, "whatsapp", "wa-1")

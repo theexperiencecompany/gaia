@@ -29,10 +29,14 @@ import type {
   OutboundReaction,
 } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
 import { OutboundConsumer } from "../../../../../libs/shared/ts/src/bots/consumer/outbound-consumer";
+import type { OutboundNotifications } from "../../../../../libs/shared/ts/src/bots/types";
 import { hashLogIdentifier } from "../../../../../libs/shared/ts/src/bots/utils/logger";
 import { captureBotEvents } from "../helpers/capture-bot-event";
 
 type Handler = (msg: unknown) => unknown;
+
+/** Every alert the consumer raises for a message it dead-letters. */
+const reportFailure = vi.fn();
 
 /** A fake amqplib message carrying ``payload`` (string sent verbatim). */
 function msgFor(payload: unknown, redelivered = false) {
@@ -58,6 +62,7 @@ async function startAndCaptureHandler(
     reaction: OutboundReaction,
     isChannel: boolean,
   ) => Promise<void> = async () => undefined,
+  notifications?: OutboundNotifications,
 ): Promise<Handler> {
   const consumer = new OutboundConsumer(
     platform,
@@ -65,7 +70,9 @@ async function startAndCaptureHandler(
     deliver,
     deliverFile,
     gaiaApiUrl,
+    reportFailure,
     deliverReaction,
+    notifications,
   );
   await consumer.start();
   const calls = channel.consume.mock.calls;
@@ -136,6 +143,10 @@ describe("OutboundConsumer message handling", () => {
     expect(deliver).not.toHaveBeenCalled();
     expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ, no requeue
     expect(channel.ack).not.toHaveBeenCalled();
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith({
+      kind: "envelope_rejected",
+      reason: "envelope_unparseable",
+    });
   });
 
   it("dead-letters a schema-invalid envelope (missing destination_id)", async () => {
@@ -152,6 +163,57 @@ describe("OutboundConsumer message handling", () => {
 
     expect(deliver).not.toHaveBeenCalled();
     expect(channel.nack).toHaveBeenCalledWith(msg, false, false);
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith({
+      kind: "envelope_rejected",
+      reason: "envelope_invalid",
+      error_message: "invalid fields: destination_id",
+      destination_id: undefined,
+    });
+  });
+
+  it("never reports a destination that is not a plausible id", async () => {
+    const handle = await startAndCaptureHandler("whatsapp", vi.fn());
+    const msg = msgFor({
+      id: "1",
+      platform: "whatsapp",
+      destination_id: { nested: "object" },
+      text: "hi",
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        reason: "envelope_invalid",
+        destination_id: undefined,
+      }),
+    );
+  });
+
+  it("dead-letters and reports an envelope published for another platform", async () => {
+    const deliver = vi.fn();
+    const handle = await startAndCaptureHandler("whatsapp", deliver);
+    const msg = msgFor({
+      id: "env-9",
+      platform: "telegram",
+      destination_id: "5550001",
+      text: "hi",
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, false);
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: "envelope_rejected",
+        reason: "platform_mismatch",
+        destination_id: "5550001",
+        envelope_id: "env-9",
+      }),
+    );
   });
 
   it("splits a message over the platform limit into multiple sends", async () => {
@@ -330,6 +392,66 @@ describe("OutboundConsumer message handling", () => {
     await deliverMessage(handle, msg);
 
     expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith({
+      kind: "send_failed",
+      reason: "timeout",
+      error_message: "Request timed out",
+      destination_id: "1555",
+      is_channel: false,
+      envelope_id: "1",
+    });
+  });
+
+  it("requeues a first transient failure without alerting, since the retry may land", async () => {
+    const deliver = vi.fn().mockRejectedValue(new Error("Request timed out"));
+    const handle = await startAndCaptureHandler("whatsapp", deliver);
+    const msg = msgFor({
+      id: "1",
+      platform: "whatsapp",
+      destination_id: "1555",
+      text: "hi",
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, true);
+    expect(reportFailure).not.toHaveBeenCalled();
+  });
+
+  it("alerts on a permanent send failure without the bot token its URL carries", async () => {
+    const blocked = Object.assign(
+      new Error(
+        "Call to https://api.telegram.org/bot123:SECRET-TOKEN/sendMessage failed! (403: Forbidden: bot was blocked by the user)",
+      ),
+      { name: "GrammyError", error_code: 403 },
+    );
+    const handle = await startAndCaptureHandler(
+      "telegram",
+      vi.fn().mockRejectedValue(blocked),
+    );
+    const msg = msgFor({
+      id: "env-2",
+      platform: "telegram",
+      destination_id: "5550001",
+      text: "hi",
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, false);
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: "send_failed",
+        reason: "destination_blocked",
+        destination_id: "5550001",
+        envelope_id: "env-2",
+      }),
+    );
+    const [[failure]] = reportFailure.mock.calls;
+    expect(failure.error_message).toContain("bot was blocked by the user");
+    expect(failure.error_message).not.toContain("SECRET-TOKEN");
   });
 
   it("dead-letters non-empty text that renders to nothing instead of acking", async () => {
@@ -351,6 +473,12 @@ describe("OutboundConsumer message handling", () => {
     expect(deliver).not.toHaveBeenCalled();
     expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ, not acked
     expect(channel.ack).not.toHaveBeenCalled();
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: "envelope_rejected",
+        reason: "rendered_empty",
+      }),
+    );
   });
 
   it("routes an attachment to deliverFile (not the text path) and acks", async () => {
@@ -506,6 +634,13 @@ describe("OutboundConsumer message handling", () => {
 
     expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ, no requeue
     expect(channel.ack).not.toHaveBeenCalled();
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: "send_failed",
+        error_message: "upload failed",
+        destination_id: "1555",
+      }),
+    );
   });
 
   it("sends a rate-limited photo again after the platform's wait instead of dead-lettering it", async () => {
@@ -659,6 +794,12 @@ describe("OutboundConsumer message handling", () => {
 
     expect(channel.nack).toHaveBeenCalledWith(msg, false, false);
     expect(channel.ack).not.toHaveBeenCalled();
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: "send_failed",
+        error_message: "attach failed",
+      }),
+    );
   });
 
   it("delivers one chat's messages in published order while other chats proceed", async () => {
@@ -713,6 +854,89 @@ describe("OutboundConsumer message handling", () => {
   });
 });
 
+describe("OutboundConsumer outside a platform's messaging window", () => {
+  const twoBubbles = {
+    id: "env-n",
+    platform: "whatsapp",
+    destination_id: "1555",
+    text_parts: ["**Reminder:** water the plants", "Also: call mom"],
+    enqueued_at: "t",
+  };
+
+  function windowClosed(closed: boolean | Error) {
+    return {
+      windowClosed: vi.fn(async () => {
+        if (closed instanceof Error) throw closed;
+        return closed;
+      }),
+      deliver: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it("sends a multi-bubble message as ONE template, never as bubbles", async () => {
+    const deliver = vi.fn();
+    const notifications = windowClosed(true);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      deliver,
+      async () => undefined,
+      "https://api.gaia.test",
+      async () => undefined,
+      notifications,
+    );
+    const msg = msgFor(twoBubbles);
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(notifications.windowClosed).toHaveBeenCalledWith("1555", false);
+    expect(notifications.deliver).toHaveBeenCalledExactlyOnceWith(
+      "1555",
+      "*Reminder:* water the plants\n\nAlso: call mom",
+    );
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+    expect(reportFailure).not.toHaveBeenCalled();
+  });
+
+  it("sends ordinary bubbles while the window is open", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const notifications = windowClosed(false);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      deliver,
+      async () => undefined,
+      "https://api.gaia.test",
+      async () => undefined,
+      notifications,
+    );
+
+    await deliverMessage(handle, msgFor(twoBubbles));
+
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(notifications.deliver).not.toHaveBeenCalled();
+  });
+
+  it("requeues once, unreported, when the window cannot be checked", async () => {
+    const deliver = vi.fn();
+    const notifications = windowClosed(new Error("Request timed out"));
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      deliver,
+      async () => undefined,
+      "https://api.gaia.test",
+      async () => undefined,
+      notifications,
+    );
+    const msg = msgFor(twoBubbles);
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, true);
+    expect(reportFailure).not.toHaveBeenCalled();
+  });
+});
+
 describe("OutboundConsumer lifecycle", () => {
   it("never starts consuming when stopped while still connecting", async () => {
     // A bot whose boot fails (its health port taken) stops the consumer while
@@ -731,6 +955,7 @@ describe("OutboundConsumer lifecycle", () => {
       async () => undefined,
       async () => undefined,
       "https://api.gaia.test",
+      reportFailure,
     );
 
     const starting = consumer.start();

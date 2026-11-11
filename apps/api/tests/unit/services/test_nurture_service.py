@@ -24,6 +24,7 @@ from app.services.nurture.service import (
     _within_frequency_caps,
     run_nurture_sequence,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import NurtureEmailSent
 
@@ -369,6 +370,10 @@ class TestRunNurtureSequence:
     async def test_skips_when_email_not_configured(self) -> None:
         with (
             patch("app.services.nurture.service.settings") as mock_settings,
+            patch(
+                "app.services.nurture.service.resolve_resend_config",
+                new=AsyncMock(return_value=None),
+            ),
             patch("app.services.nurture.service.log"),
         ):
             mock_settings.RESEND_API_KEY = None
@@ -379,6 +384,16 @@ class TestRunNurtureSequence:
         users = [self._user(f"u-{i}") for i in range(2)]
         with (
             patch("app.services.nurture.service.settings") as mock_settings,
+            patch(
+                "app.services.nurture.service.resolve_resend_config",
+                new=AsyncMock(
+                    side_effect={
+                        "resend": ProviderConfig(
+                            api_key="re-stored",
+                        )
+                    }.get
+                ),
+            ),
             patch(
                 "app.services.nurture.service.user_repository.find_nurture_candidates",
                 new_callable=AsyncMock,
@@ -391,7 +406,6 @@ class TestRunNurtureSequence:
             ),
             patch("app.services.nurture.service.log"),
         ):
-            mock_settings.RESEND_API_KEY = "k"
             mock_settings.EMAIL_UNSUBSCRIBE_SECRET = "s"
             result = await run_nurture_sequence()
 

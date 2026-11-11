@@ -7,7 +7,6 @@ from fastapi.responses import HTMLResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
-from app.config.settings import settings
 from app.constants.referrals import (
     ATTRIBUTION_WINDOW,
     CODE_MAX_LENGTH,
@@ -36,6 +35,7 @@ from app.services.referrals.invites import (
 from app.services.referrals.nudges import dismiss_nudge, rendered_by_client, send_pitch
 from app.services.referrals.overview import get_referral_overview, resolve_referral_code
 from app.services.referrals.suggestions import suggest_invitees
+from app.utils.auth_utils import session_cookie_secure
 from app.utils.notification.unsubscribe import (
     UNSUBSCRIBE_INVALID_HTML,
     render_unsubscribe_confirmation,
@@ -78,7 +78,7 @@ async def resolve_code(
             value=cookie,
             max_age=int(ATTRIBUTION_WINDOW.total_seconds()),
             httponly=True,
-            secure=settings.ENV == "production",
+            secure=session_cookie_secure(request),
         )
     log.set_ns("referral", valid=result.valid, cookie_set=cookie is not None)
     return result

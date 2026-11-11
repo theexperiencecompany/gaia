@@ -23,7 +23,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphInterrupt
+from langgraph.prebuilt.tool_node import ToolInvocationError
 from langgraph.types import Command
+from pydantic import BaseModel, ValidationError
 import pytest
 
 from app.agents.tools.execute.execute_tool import execute
@@ -80,6 +82,7 @@ class TestTimeoutGuard:
 
         result = await timeout_guarded_tool_call(_request("GMAIL_SEND_EMAIL"), never_returns)
 
+        assert isinstance(result, ToolMessage)
         assert "may or may not have" in result.content
         assert "Verify" in result.content
 
@@ -168,7 +171,8 @@ class TestTimeoutGuard:
         ):
             result = await timeout_guarded_tool_call(request, run_the_proxy)
 
-        body = json.loads(result.content)
+        assert isinstance(result, ToolMessage)
+        body = json.loads(result.text)
         assert body["error"] == "timeout"
         assert "GMAIL_SEND_EMAIL" in body["detail"]
         assert "verify" in body["next"].lower()
@@ -208,6 +212,31 @@ class TestErrorText:
     def test_an_exception_with_no_message_still_reads_as_an_error(self):
         assert format_tool_error(ValueError()).startswith("Error: ValueError:")
 
+    def test_a_validation_error_from_a_running_tool_never_claims_it_did_not_run(self):
+        """Arguments are checked before the body; a ValidationError after that may follow a side effect."""
+
+        class _ProviderReply(BaseModel):
+            message_id: str
+
+        with pytest.raises(ValidationError) as caught:
+            _ProviderReply.model_validate({})
+
+        text = format_tool_error(ToolInvocationError("send_email", caught.value, {}, []))
+
+        assert text.startswith("Error: ValidationError: 1 validation error for _ProviderReply")
+        assert "message_id" in text
+        assert "not run" not in text
+        assert "Nothing happened" not in text
+
+    def test_an_interrupt_is_raised_again_instead_of_formatted(self):
+        """ToolNode hands a wrapper's exceptions to this formatter unfiltered, interrupts included."""
+        interrupt = GraphInterrupt(())
+
+        with pytest.raises(GraphInterrupt) as caught:
+            format_tool_error(interrupt)
+
+        assert caught.value is interrupt
+
 
 async def _never_returns(_request: Any) -> ToolMessage:
     await asyncio.sleep(5)
@@ -232,6 +261,7 @@ class TestTimeoutText:
 
     async def test_a_plain_timeout_names_the_tool_and_the_bound(self) -> None:
         result = await timeout_guarded_tool_call(_request("GMAIL_SEND_EMAIL"), _never_returns)
+        assert isinstance(result, ToolMessage)
         assert result.name == "GMAIL_SEND_EMAIL"
         assert result.content == (
             "Error: TimeoutError: 'GMAIL_SEND_EMAIL' timed out after 0.01s. The operation may "
@@ -240,8 +270,9 @@ class TestTimeoutText:
 
     async def test_a_proxied_timeout_names_the_real_tool_at_the_backstop_bound(self) -> None:
         result = await timeout_guarded_tool_call(_proxied("GMAIL_SEND_EMAIL"), _never_returns)
+        assert isinstance(result, ToolMessage)
         assert result.name == "execute"
-        assert result.content.startswith(
+        assert result.text.startswith(
             "Error: TimeoutError: 'GMAIL_SEND_EMAIL' timed out after 0.03s."
         )
 
@@ -259,6 +290,7 @@ class TestTimeoutText:
             raise TimeoutError
 
         result = await timeout_guarded_tool_call(_request("deep_research"), gives_up)
+        assert isinstance(result, ToolMessage)
         assert result.content == (
             "Error: TimeoutError: 'deep_research' timed out. The operation may or may not "
             "have completed on the provider side. Verify its effect before retrying."

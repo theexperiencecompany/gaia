@@ -1,0 +1,104 @@
+---
+title: "Run GAIA locally"
+description: "Pick the right command to start GAIA, plus ports and databases."
+icon: "play"
+---
+
+[Set up for development](/developers/development-setup) gets you to `mise dev --agent`. This page covers what else you can start.
+
+Run every command from the repository root. Each one starts the databases in Docker first, then runs your code with hot reload.
+
+## Choose how you sign in
+
+| Command | Sign-in | AI model | Use it when |
+| --- | --- | --- | --- |
+| `mise dev --agent` | None. You are the dev user | Real, from your key | Everyday work. The default |
+| `mise dev --sim` | None | Scripted replies, no key, no cost | You have no AI key, or want the same reply every time |
+| `mise dev` | The real sign-in flow | Real | You are working on sign-up, login or accounts |
+
+`--agent` and `--sim` act as the user in `DEV_USER` (default `dev@gaia.local`). Run `mise seed` once so that user exists. Both refuse to start when `ENV=production`.
+
+<AccordionGroup>
+  <Accordion title="Be a different user">
+    Start with `DEV_USER=alice@example.com mise dev --agent`, and seed the same email with `DEV_USER=alice@example.com mise seed`.
+
+    For a single request, send the header `X-Dev-User: <email>`.
+  </Accordion>
+
+  <Accordion title="Script the replies with --sim">
+    Put instructions in your message. `[[say:Hello!]]` makes GAIA reply "Hello!". `[[tool:<name> {"arg": "value"}]]` makes it call a tool first. A message without instructions gets a fixed reply.
+
+    The format lives in `tools/llm-stub/directives.py`.
+  </Accordion>
+
+  <Accordion title="Use the real sign-in flow">
+    Plain `mise dev` shows the login page.
+
+    - **Team members** use WorkOS with keys from Infisical: `mise infisical dev`.
+    - **Outside contributors** use `AUTH_MODE=local`. Set `NEXT_PUBLIC_GAIA_SELFHOST=true` in `apps/web/.env`, restart, then open [localhost:3000/signup](http://localhost:3000/signup). The first account becomes the administrator.
+  </Accordion>
+</AccordionGroup>
+
+## Start more of GAIA
+
+`mise dev` runs the API and web app. Everything else runs as its own process.
+
+| Command | Starts | Use it for |
+| --- | --- | --- |
+| `mise dev:api` | API only | Backend work with no browser |
+| `mise dev:web` | Web only | Frontend work against a running API |
+| `nx worker api` | The ARQ worker (job queue), in a second terminal | Reminders, scheduled workflows, emails |
+| `mise dev:arq` | API, web and the worker | The same, in one terminal |
+| `mise dev:bots` | All the bots | Bot work. Each needs its own token, see [Bots](/bots/overview) |
+| `mise dev:full` | API, web, worker, voice agent and bots | Testing everything together |
+| `mise dev:mobile` | API and the Expo dev server | The mobile app |
+| `mise //apps/desktop:dev` | API, web and Electron | The desktop app |
+| `mise dev:vm` | API in a container, web natively | Workspace files, uploads and sandbox file work |
+
+`--agent` and `--sim` work only on `mise dev` and `mise dev:vm`. The combined commands use the real sign-in flow. For skipped login plus the worker, run `mise dev --agent` and `nx worker api` in two terminals.
+
+<Accordion title="Why does mise dev:vm exist?">
+  Workspace files use JuiceFS, which needs a FUSE mount that macOS and Windows processes can't make. On plain `mise dev` those features raise `JuiceFSUnavailable`. `mise dev:vm` runs the API in a Linux container where the mount works.
+
+  It needs the R2 storage keys in `apps/api/.env`: `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY`, `R2_SECRET_KEY` and `JUICEFS_META_URL_TEMPLATE`. Stop `mise dev` first, since both use port 8000.
+</Accordion>
+
+## Ports and several checkouts
+
+| Service | Default port |
+| --- | --- |
+| Web app | 3000 |
+| API | 8000 |
+| Bots | 3200 (Discord), 3201 (Slack), 3202 (Telegram), 3203 (WhatsApp), 3204 (iMessage) |
+| Scripted model (`--sim`) | 9797 |
+
+`mise dev` stops if port 8000 or 3000 is taken, and names the process holding it.
+
+To run a second checkout at the same time, such as another [git worktree](https://git-scm.com/docs/git-worktree), run this in it:
+
+```bash
+mise run wt:env
+```
+
+It writes `.env.worktree` with free ports, and mise loads it for every task. Delete the file to go back to the defaults. Both checkouts share the same databases.
+
+## The databases
+
+`mise bootstrap` and every `mise dev*` command start these in Docker.
+
+| Service | Port | Holds |
+| --- | --- | --- |
+| MongoDB | 27017 | Users, conversations, todos, workflows |
+| PostgreSQL | 5432 | Agent state and the memory graph |
+| Redis | 6379 | Cache and the ARQ job queue |
+| ChromaDB | 8080 | Vector search for tools and memory |
+| RabbitMQ | 5672 | Messages from the API to the bots |
+| Mongo Express | 8083 | A web UI for MongoDB |
+
+Your data survives restarts. Stop everything with `nx run docker:docker:down`. See [Docker for development](/configuration/docker) for profiles and resetting data.
+
+## Next
+
+<Card title="Testing" icon="flask" href="/developers/testing">
+  Which tests to run for your change.
+</Card>

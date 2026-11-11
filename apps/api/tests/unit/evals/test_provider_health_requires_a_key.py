@@ -15,7 +15,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from scripts.evals.core.providers import ProviderConfig, health_check, load_config
 
 CONFIG = """
@@ -45,11 +47,11 @@ model_env = "JUDGE_MODEL"
 """
 
 
-def _lane(lane: str, api_key: str | None) -> ProviderConfig:
+def _lane(lane: str, api_key: str | None, base_url: str | None = None) -> ProviderConfig:
     return ProviderConfig(
         name=lane,
         lane=lane,
-        base_url=None,
+        base_url=base_url,
         api_key=api_key,
         model="a-model",
         budget_usd=0.0,
@@ -90,3 +92,36 @@ def test_a_native_lane_does_not_inherit_the_custom_development_endpoint(
 
     assert cfg.providers["opencode"].base_url == "http://localhost:9/api/v1"
     assert cfg.providers["openrouter"].base_url is None
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        (200, ""),
+        (400, ""),
+        (401, "custom rejected the API key (401)"),
+        (402, "custom quota exhausted (402)"),
+        (429, "custom quota exhausted (429)"),
+        (499, ""),
+        (500, "custom server error (500)"),
+    ],
+)
+@respx.mock
+def test_the_custom_lane_probe_reads_its_status(status: int, reason: str) -> None:
+    route = respx.post("https://gw.example/v1/chat/completions").mock(
+        return_value=httpx.Response(status)
+    )
+    check = health_check(_lane("custom", "a-key", "https://gw.example/v1/"))
+
+    assert (check.ok, check.reason) == (not reason, reason)
+    assert route.calls.last.request.headers["Authorization"] == "Bearer a-key"
+
+
+@respx.mock
+def test_an_unreachable_custom_lane_is_not_healthy() -> None:
+    respx.post("https://gw.example/v1/chat/completions").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    check = health_check(_lane("custom", "a-key", "https://gw.example/v1"))
+
+    assert (check.ok, check.reason) == (False, "custom unreachable: refused")

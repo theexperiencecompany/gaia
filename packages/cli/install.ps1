@@ -11,6 +11,16 @@ function Write-Err($msg) { Write-Host "[error] $msg" -ForegroundColor Red; exit 
 Write-Host "`nGAIA CLI Installer`n" -ForegroundColor Blue -NoNewline
 Write-Host "" # newline
 
+# Self-hosting needs Linux containers, so `gaia up` runs inside WSL 2, not here.
+function Write-WslSteps {
+    Write-Host "To self-host GAIA on Windows, run it inside WSL 2 (Ubuntu) with Docker Desktop:" -ForegroundColor White
+    Write-Host "  1. In PowerShell as Administrator: wsl --install -d Ubuntu   (then restart)" -ForegroundColor Green
+    Write-Host "  2. Install Docker Desktop: https://docs.docker.com/desktop/setup/install/windows-install/" -ForegroundColor Green
+    Write-Host "  3. In Docker Desktop: Settings > Resources > WSL integration, turn on Ubuntu" -ForegroundColor Green
+    Write-Host "  4. In the Ubuntu terminal: curl -fsSL https://heygaia.io/install.sh | sh" -ForegroundColor Green
+    Write-Host ""
+}
+
 # Detect package manager
 $PkgMgr = $null
 
@@ -27,6 +37,7 @@ if (Get-Command npm -ErrorAction SilentlyContinue) {
     Write-Ok "Bun is already installed ($ver)"
     $PkgMgr = "bun"
 } else {
+    Write-WslSteps
     Write-Err "No supported package manager found (npm, pnpm, or bun). Please install Node.js from https://nodejs.org"
 }
 
@@ -41,12 +52,6 @@ switch ($PkgMgr) {
 # Verify installation and fix PATH if needed
 if (Get-Command gaia -ErrorAction SilentlyContinue) {
     Write-Ok "GAIA CLI installed successfully!"
-    Write-Host ""
-    Write-Host "Get started:" -ForegroundColor White
-    Write-Host "  gaia init    - Set up GAIA from scratch" -ForegroundColor Green
-    Write-Host "  gaia setup   - Configure an existing repo" -ForegroundColor Green
-    Write-Host "  gaia status  - Check service health" -ForegroundColor Green
-    Write-Host "  gaia --help  - Show all commands" -ForegroundColor Green
     Write-Host ""
 } else {
     Write-Warn "Installation completed but 'gaia' command not found in PATH"
@@ -71,3 +76,5 @@ if (Get-Command gaia -ErrorAction SilentlyContinue) {
     }
     Write-Host ""
 }
+
+Write-WslSteps

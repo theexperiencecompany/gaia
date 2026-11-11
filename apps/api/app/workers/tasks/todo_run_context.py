@@ -6,8 +6,10 @@ logged; a failed parent-rules read raises so the run retries with its rules.
 """
 
 import asyncio
+from typing import NamedTuple
 
 from app.agents.prompts.todo_prompts import (
+    PARENT_NEXT_RUN_LINE,
     PARENT_STANDING_RULES_LABEL,
     SUB_TODOS_CUT_NOTE,
     SUB_TODOS_LABEL,
@@ -28,10 +30,18 @@ from app.models.todo_models import TodoDocument, TodoRunContext
 from app.services.canvas_markdown import section_body
 from app.services.integrations.integration_accounts import get_account_record
 from app.utils.general_utils import clip_text
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
 
-async def collect_run_context(doc: TodoDocument) -> TodoRunContext:
+class ParentContext(NamedTuple):
+    """What a sub-todo's run reads from its parent: the rules it obeys and when the parent runs next."""
+
+    rules: str = ""
+    next_run: str = ""
+
+
+async def collect_run_context(doc: TodoDocument, user_tz: Timezone) -> TodoRunContext:
     """Gather everything a run reads from the owner's other todos.
 
     The parent's Standing rules govern the run, so their read failure raises
@@ -39,7 +49,7 @@ async def collect_run_context(doc: TodoDocument) -> TodoRunContext:
     it must obey. The other two reads are enrichment: a failed one degrades
     to "" and is logged, so a Mongo blip does not burn the run's retries.
     """
-    parent_rules = await collect_parent_rules(doc.parent_todo_id, doc.user_id)
+    parent = await collect_parent_context(doc.parent_todo_id, doc.user_id, user_tz)
     # Required like the rules: without it the run would act on the primary account's mailbox.
     ref_account = await collect_ref_account(doc)
     sub_todos, learnings = await asyncio.gather(
@@ -62,7 +72,8 @@ async def collect_run_context(doc: TodoDocument) -> TodoRunContext:
         )
         degraded[name] = ""
     return TodoRunContext(
-        parent_rules=parent_rules,
+        parent_rules=parent.rules,
+        parent_next_run=parent.next_run,
         ref_account=ref_account or "",
         ref_account_gone=ref_account is None,
         **degraded,
@@ -79,19 +90,29 @@ async def collect_ref_account(doc: TodoDocument) -> str | None:
     return account.display_name if account else None
 
 
-async def collect_parent_rules(parent_todo_id: str | None, user_id: str) -> str:
-    """Render the parent's Standing rules, which a sub-todo's run obeys like its own."""
+async def collect_parent_context(
+    parent_todo_id: str | None, user_id: str, user_tz: Timezone
+) -> ParentContext:
+    """Render the parent's Standing rules, obeyed like the run's own, and its next run on the user's clock."""
     if parent_todo_id is None:
-        return ""
+        return ParentContext()
     parent = await todo_repository.get(parent_todo_id, user_id=user_id)
     if parent is None:
-        return ""
+        return ParentContext()
     rules = section_body(parent.canvas_content, CANVAS_STANDING_RULES_SECTION)
-    if not rules:
-        return ""
-    return (
+    rules_block = (
         f'{PARENT_STANDING_RULES_LABEL}\nFrom "{parent.title}":\n{rules[:STANDING_RULES_MAX_CHARS]}'
+        if rules
+        else ""
     )
+    next_run = (
+        PARENT_NEXT_RUN_LINE.format(
+            title=parent.title, when=user_tz.format(parent.scheduled_at, "%a %d %b, %H:%M")
+        )
+        if parent.scheduled_at is not None
+        else ""
+    )
+    return ParentContext(rules_block, next_run)
 
 
 async def collect_sub_todo_states(doc: TodoDocument) -> str:

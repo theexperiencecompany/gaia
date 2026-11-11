@@ -8,10 +8,11 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
+from dodopayments import DodoPayments
 import pytest
 
 from app.config.settings import settings
@@ -49,9 +50,11 @@ def _plan(duration: PlanDuration, amount: int) -> PlanResponse:
         dodo_product_id=f"pdt_pro_{duration.value}",
         name="Pro",
         plan_type=PlanTier.PRO,
+        description=None,
         amount=amount,
         currency="USD",
         duration=duration,
+        max_users=None,
         is_active=True,
         created_at=NOW,
         updated_at=NOW,
@@ -153,13 +156,14 @@ class TestCheckoutGift:
         referrer, friend = await _user("Aryan"), await _user("Priya")
         await attribute_signup(friend.id, ReferralAttribution(code=await ensure_code(referrer)))
         dodo = FakeDiscounts()
+        client = cast(DodoPayments, dodo)
 
         referral = await pending_gift_referral(friend.id)
-        monthly = await gift_code_for_checkout(dodo, referral, "pdt_pro_monthly", PLANS)
+        monthly = await gift_code_for_checkout(client, referral, "pdt_pro_monthly", PLANS)
         again = await gift_code_for_checkout(
-            dodo, await pending_gift_referral(friend.id), "pdt_pro_monthly", PLANS
+            client, await pending_gift_referral(friend.id), "pdt_pro_monthly", PLANS
         )
-        yearly = await gift_code_for_checkout(dodo, referral, "pdt_pro_yearly", PLANS)
+        yearly = await gift_code_for_checkout(client, referral, "pdt_pro_yearly", PLANS)
 
         assert monthly == again == "GIFT1" and yearly == "GIFT2"
         assert [
@@ -178,7 +182,12 @@ class TestCheckoutGift:
         dodo = FakeDiscounts()
 
         referral = await pending_gift_referral(friend.id)
-        assert await gift_code_for_checkout(dodo, referral, "pdt_max_monthly", PLANS) is None
+        assert (
+            await gift_code_for_checkout(
+                cast(DodoPayments, dodo), referral, "pdt_max_monthly", PLANS
+            )
+            is None
+        )
 
         await referral_repository.mark_paid(friend.id, payment_id="pay_1", paid_at=NOW)
         assert await pending_gift_referral(friend.id) is None

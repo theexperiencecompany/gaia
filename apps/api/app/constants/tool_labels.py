@@ -145,7 +145,8 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "disconnect_integration": "Disconnecting the account",
     "set_primary_integration_account": "Changing the primary account",
     "rename_integration_account": "Naming the account",
-    "get_integration_instructions": "Reading integration settings",
+    "get_user_instructions": "Reading your standing instructions",
+    "update_user_instructions": "Saving your standing instructions",
     "update_integration_instructions": "Saving integration settings",
     # ── Native: memory ─────────────────────────────────────────────────
     "add_memory": "Remembering that",

@@ -14,12 +14,15 @@ from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_channel import ExecutorInbox
+from app.agents.core.background.executor_progress import drop_progress
 from app.agents.core.background.executor_queue import (
     adopt_lock,
     build_lock_value,
     decode_raw_item,
     parse_lock_value,
+    reclaim_dead_lock,
     release_lock_if_owned,
     try_acquire_lock,
 )
@@ -32,6 +35,7 @@ from app.agents.core.background.session import (
     mark_executor_spawned,
 )
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
+from app.constants.agents import TimeHorizon
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
@@ -41,6 +45,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.models.ownership_models import ExecutorIntent
 from app.services.browser.chat_task import stop_report
 from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
@@ -105,6 +110,28 @@ async def call_executor(
         "executor a concrete target so it doesn't stop after one step. NEVER "
         "omit: even a single-step ask needs a concrete done state.",
     ],
+    desired_outcome: Annotated[
+        str,
+        "What the user actually wants in the end, in one line, beyond the literal "
+        "ask (e.g. 'never misses the visa filing deadline').",
+    ],
+    time_horizon: Annotated[
+        TimeHorizon,
+        "one_shot (done in this run), deadline (must happen by a date) or ongoing "
+        "(needs attention over days). Deadline and ongoing work must leave a "
+        "follow-up that wakes on its own.",
+    ],
+    defaults_assumed: Annotated[
+        list[str] | None,
+        "Every safe default you picked for a missing detail (e.g. '3pm for this "
+        "afternoon'), so the result names it. Omit when none.",
+    ] = None,
+    irreversible_approved: Annotated[
+        bool,
+        "True only when the user's own message already said yes to the exact delete, "
+        "bulk change, send or post this task performs. False makes the executor "
+        "prepare it and ask.",
+    ] = False,
     active_todo_id: Annotated[
         str | None,
         "Optional tracked-todo ID to BIND this executor run to. When set, "
@@ -173,12 +200,20 @@ async def call_executor(
         else ""
     )
 
+    # Every dispatch spends a pending ask: only the very next turn can be its answer.
+    answers_gaias_question = await spend_confirmation(conversation_id)
     composed_task = compose_executor_brief(
         task,
         acceptance_criteria,
         verbatim_request=base_configurable.get("user_request"),
         last_run=last_run,
         playbook_check=playbook_check,
+        intent=ExecutorIntent(
+            desired_outcome=desired_outcome,
+            time_horizon=time_horizon,
+            defaults_assumed=tuple(defaults_assumed or ()),
+            irreversible_approved=irreversible_approved and answers_gaias_question,
+        ),
     )
 
     try:
@@ -227,6 +262,11 @@ async def _dispatch_executor(
     acquired = await try_acquire_lock(lock_key, lock_value)
     if not acquired and (reserved := configurable.get("executor_lock_reservation")):
         acquired = await adopt_lock(conversation_id, reserved, lock_value)
+    # A holder whose process died (a restart mid-run) keeps the lock, but no run
+    # will ever drain the inbox: reclaim it as deliver_to_executor does, or this
+    # request is handed to nobody for the lock's whole TTL.
+    if not acquired and await reclaim_dead_lock(conversation_id):
+        acquired = await try_acquire_lock(lock_key, lock_value)
 
     if not acquired:
         # The lock is held: same stream_id means a duplicate call_executor in one
@@ -246,6 +286,7 @@ async def _dispatch_executor(
                 "starting it again. The results are on the way."
             )
 
+    if not acquired:
         # A same-turn redirect (cancel + call_executor together) races the
         # cancel: wait for it to free the lock and run live in the same turn's
         # card instead of queuing. Only waits when a cancel is in flight.
@@ -278,8 +319,8 @@ async def _dispatch_executor(
             )
             return (
                 "It's been added to the work already in progress and will be "
-                "covered in the same answer. Confirm briefly in plain words — "
-                "never mention runs, task ids, queues, or waiting."
+                "covered in the same answer. Acknowledge it with a reaction or a few plain "
+                "words; never mention runs, task ids, queues, or waiting."
             )
 
     # MCP tools load lazily inside each subagent's first use — the old eager
@@ -314,19 +355,14 @@ async def _dispatch_executor(
         task_id=task_id,
         stream_id=stream_id,
     )
-    # Comms writes its user-facing reply from THIS string, before the executor
-    # has run a single tool — so it must not read as completion, and it has to
-    # name the approval gate the user may be about to see.
+    return handoff_message(task_id)
+
+
+def handoff_message(task_id: str) -> str:
+    """What comms reads the moment work is handed off, before the executor has run a single tool."""
     return (
-        f"Task accepted (task_id: {task_id}). Nothing has run yet: this only means the "
-        "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
-        "finished. Risky actions pause for the user's approval first and they see an "
-        "approval card; if that happens the work waits on them, not on you. Acknowledge "
-        "it, a reaction is enough, and say in words that the action is waiting for their "
-        "approval if one is pending. This guidance applies ONLY to this acknowledgment. The real result "
-        "arrives later as its own message and supersedes it completely: by then the gate "
-        "is settled, so report what happened and never ask again for an approval the "
-        "user has already given."
+        f"Handed to the executor (task_id: {task_id}). If a step needs the user's approval, "
+        "it has not run yet and their decision releases it or skips it."
     )
 
 
@@ -352,7 +388,7 @@ async def cancel_executor(
     - Specific task_ids = cancel only those (running or pending), keep rest.
       Use for: "cancel the search task" / "stop the second one".
       Match user intent to task_ids from call_executor responses in
-      conversation history (e.g. "Task accepted (task_id: abc-123)").
+      conversation history (e.g. "Handed to the executor (task_id: abc-123)").
 
     For a redirect ("stop that, do X instead") pass ``message="X"``. The stop
     and the new instruction reach the executor together, so it cannot resume the
@@ -521,6 +557,7 @@ async def _cancel_running_task(
         await stop_stream(conversation_id, active_stream_id)
 
     await redis_cache.delete(lock_key)
+    await drop_progress(conversation_id, lock_value)
 
     log.info(
         f"{LogTag.TOOL} cancel_executor: stopped running task",

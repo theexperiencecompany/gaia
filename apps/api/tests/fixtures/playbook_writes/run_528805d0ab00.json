@@ -1,0 +1,104 @@
+{
+ "run": "run_528805d0ab00",
+ "captured_from": "2026-09-14",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "calendarId": "user@example.com",
+    "maxResults": 50,
+    "orderBy": "qkodwXshk",
+    "singleEvents": true,
+    "timeMax": "2026-09-21T13:50:49+0200",
+    "timeMin": "2026-09-14T13:50:49+0200"
+   },
+   "result_digest": "{\"data\": {\"accessRole\": \"wamkz\", \"defaultReminders\": [{\"method\": \"ifppq\", \"minutes\": 10}], \"description\": \"\", \"etag\": \"\\\"x39tz9vislvivn4e\\\"\", \"items\": [{\"created\": \"2025-06-01T16:49:00.000Z\", \"creator\": {\"email\": \"user@example.com\", \"self\": true}, \"end\": {\"date\": \"2026-09-15\"}, \"etag\": \"\\\"2354194450780461\\\"\", \"eventType\": \"shhaxvuMjuvbegy\", \"htmlLink\": \"https://example.com/2c78b1f7\", \"iCalUID\": \"user@example.com\", \"id\": \"qng0klli5qaigi5447l7vlnrln_90660025\", \"kind\": \"calendar#event\", \"organizer\": {\"email\": \"user@example.com\", \"self\": true}, \"originalStartTime\": {\"date\": \"2026-09-14\"}, \"recurringEventId\": \"qng0klli5qaigi5447l7vlnrln\", \"reminders\": {\"useDefault\": false}, \"sequence\": 0, \"start\": {\"date\": \"2026-09-14\"}, \"status\": \"tnmalswen\", \"summary\": \"Lnqx\", \"transparency\": \"avvaxyelegx\", \"updated\": \"2025-06-14T18:28:30.655Z\", \"visibility\": \"ooaazf\", \"workingLocationProperties\": {\"homeOffice\": {}, \"type\": \"tfxpQfzbxp\"}}, {\"attendees\": [{\"email\": \"user@example.com\", \"responseStatus\": \"alvaybtm\"}, {\"email\": \"user@example.com\", \"organizer\": true, \"responseStatus\": \"alvaybtm\", \"self\": true}], \"colorId\": \"6\", \"conferenceData\": {\"conferenceId\": \"rub-zyeq-ksy\", \"conferenceSolution\": {\"iconUri\": \"https://example.com/f1587438\", \"key\": {\"type\": \"tpeqidqhRwfg\"}, \"name\": \"Zmlvvp Jguu\"}, \"entryPoints\": [{\"entryPointType\": \"fdxdx\", \"label\": \"tbnc.google.jtu/rub-zyeq-ksy\", \"uri\": \"https://example.com/e6563958\"}, {\"entryPointType\": \"bejz\", \"pin\": \"5921025156362\", \"uri\": \"https://example.com/531e4dbd\"}, {\"entryPointType\": \"pzuzd\", \"label\": \"81312133411\", \"pin\": \"335932478\", \"regionCode\": \"XY\", \"uri\": \"pgi:16182894759\"}]}, \"created\": \"2026-08-15T05:41:34.000Z\", \"creator\": {\"email\": \"user@example.com\", \"self\": true}, \"end\": {\"dateTime\": \"2026-09-14T15:00:00+02:00\", \"timeZone\": \"Npzpif/Udoiflycclse\"}, \"etag\": \"\\\"0484049974180853\\\"\", \"eventLabelId\": \"p3611c85-9lq3-4112-l7v1-42vmv4432103\", \"eventType\": \"iwtqdhh\", \"hangoutLink\": \"https://example.com/e6563958\", \"htmlLink\": \"https://example.com/d1897186\", \"iCalUID\": \"user@example.com\", \"id\": \"5zt2e0usnkazpamfnst2u6h021_10445107F861162J\", \"kind\": \"calendar#event\", \"organizer\": {\"email\": \"user@example.com\", \"self\": true}, \"originalStartTime\": {\"dateTime\": \"2026-09-14T14:00:00+02:00\", \"timeZone\": \"Npzpif/Udoiflycclse\"}, \"recurringEventId\": \"5zt2e0usnkazpamfnst2u6h021_I96051131I941111\", \"reminders\": {\"useDefault\": true}, \"sequence\": 2, \"start\": {\"dateTime\": \"2026-09-14T14:00:00+02:00\", \"timeZone\": \"Npzpif/Udoiflycclse\"}, \"status\": \"tnmalswen\", \"summary\": \"Wkp Fptwjxnleo Dovtnio\", \"updated\": \"2026-09-11T21:04:23.238Z\"}], \"kind\": \"calendar#events\", \"summary\": \"user@example.com\", \"timeZone\": \"Npzpif/Udoiflycclse\", \"updated\": \"2026-09-14T09:35:19.810Z\"}, \"error\": null, \"successful\": true}",
+   "replayed": true
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_GET",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "calendar_id": "user@example.com",
+    "event_id": "3d3cdzh0nfjqkrsa40cnxytch0_31375712A284326E"
+   },
+   "result_digest": "{\"data\": {\"attendees\": [{\"email\": \"user@example.com\", \"responseStatus\": \"cuyjmIoyzql\"}, {\"email\": \"user@example.com\", \"responseStatus\": \"alvaybtm\"}, {\"email\": \"user@example.com\", \"organizer\": true, \"responseStatus\": \"alvaybtm\", \"self\": true}, {\"email\": \"user@example.com\", \"responseStatus\": \"cuyjmIoyzql\"}, {\"email\": \"user@example.com\", \"responseStatus\": \"alvaybtm\"}, {\"email\": \"user@example.com\", \"responseStatus\": \"alvaybtm\"}, {\"email\": \"user@example.com\", \"responseStatus\": \"cuyjmIoyzql\"}], \"colorId\": \"6\", \"conferenceData\": {\"conferenceId\": \"xxo-pcnj-xld\", \"conferenceSolution\": {\"iconUri\": \"https://example.com/f1587438\", \"key\": {\"type\": \"tpeqidqhRwfg\"}, \"name\": \"Zmlvvp Jguu\"}, \"entryPoints\": [{\"entryPointType\": \"fdxdx\", \"label\": \"tbnc.google.jtu/xxo-pcnj-xld\", \"uri\": \"https://example.com/c88025df\"}, {\"entryPointType\": \"bejz\", \"pin\": \"8247970294069\", \"uri\": \"https://example.com/78241baa\"}, {\"entryPointType\": \"pzuzd\", \"label\": \"03587273948\", \"pin\": \"409634702\", \"regionCode\": \"XY\", \"uri\": \"pgi:56017553775\"}]}, \"created\": \"2025-11-28T07:03:18.000Z\", \"creator\": {\"email\": \"user@example.com\", \"self\": true}, \"end\": {\"dateTime\": \"2026-09-18T09:45:00+02:00\", \"timeZone\": \"Npzpif/Udoiflycclse\"}, \"etag\": \"\\\"9139405003021422\\\"\", \"eventLabelId\": \"p3611c85-9lq3-4112-l7v1-42vmv4432103\", \"eventType\": \"iwtqdhh\", \"hangoutLink\": \"https://example.com/c88025df\", \"htmlLink\": \"https://example.com/27a63f27\", \"iCalUID\": \"user@example.com\", \"id\": \"3d3cdzh0nfjqkrsa40cnxytch0_31375712A284326E\", \"kind\": \"calendar#event\", \"organizer\": {\"email\": \"user@example.com\", \"self\": true}, \"originalStartTime\": {\"dateTime\": \"2026-09-18T08:30:00+02:00\", \"timeZone\": \"Npzpif/Udoiflycclse\"}, \"recurringEventId\": \"3d3cdzh0nfjqkrsa40cnxytch0\", \"reminders\": {\"useDefault\": true}, \"sequence\": 0, \"start\": {\"dateTime\": \"2026-09-18T08:30:00+02:00\", \"timeZone\": \"Npzpif/Udoiflycclse\"}, \"status\": \"tnmalswen\", \"summary\": \"YFJ Eqkl Vgkerotz\", \"updated\": \"2026-09-10T12:55:35.216Z\"}, \"error\": null, \"successful\": true}",
+   "replayed": true
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 2,
+   "written": {
+    "description": "Dovtnio Kkkppnct jcqviucr: fetch lar next upcoming calendar event qiq cgcsdzp w hogaq 93 zlls ovqcc-zh reminder udh lar ynrm.",
+    "steps": [
+     {
+      "id": "reminder_fetch",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "events",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 50,
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": {
+          "$time": "$today + 7d",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         },
+         "timeMin": {
+          "$time": "$today",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         }
+        }
+       },
+       {
+        "id": "event",
+        "tool": "GOOGLECALENDAR_EVENTS_GET",
+        "args": {
+         "calendar_id": "user@example.com",
+         "event_id": {
+          "$ask": "lar lm yg lar fahy xzorv wmda upcoming meeting/event hx smpw list ae start ohzt: zspfus lar dqgkyhlw event dzout bslueWksj uc mth 'shhaxvuMjuvbegy' (ewbu jzne-wbnz jqomcag-yuizmdvm mhsscej sxvt 'Lnqx' uzku bxdgw ga meeting ohzt). Bo UXJ mjnlyj sja snovdnmu trmwnlfmk xiqnztk; jdql nbhf lar vckylaegrbcysjd xzorv armqdsb meeting xhuc w start ohzt."
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cywj lar gxrbwril upcoming events, nbhf lar cnfu next wmda meeting uzku uc iroalls hx ohzt (ewbu shhaxvuMjuvbegy mhsscej sxvt \"Lnqx\" uzku bxdgw w jzne, mth w meeting ohzt). Uynahtp w 93 zlls ovqcc-zh reminder abrreiupxu lar event pnkwu, start ohzt (qiq qxg ohzt bg gamfcm) hx Degshda'n whdrf zixgmcwc (Npzpif/Udoiflycclse), qiq lar fdxdx opps umfp up yuizmdvm bg tkuppza. Dwp wbnz wmda details gxrbwril ae lar calendar LXN (summary, start/qxg, yuizmdvm, wjqfbmrikoFeah/xbzpggfNehj); seice qcgqho w ohzt, umfp, up yuizmdvm. Prv nm lbh-ysn event xhuc ga ohzt qiq ga opps umfp, ffq ic uc lbh-ysn qiq osig lar yuizmdvm bg tkuppza. Koku uc lar rui'n qjjnea qiq uc vhoddpjyu oa lar ynrm hq w cvuhzyugus hyahbzzhloek."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_EVENTS_LIST#1",
+     "id": "events",
+     "vary": {
+      "timeMax": {
+       "placeholder": "$today + 7d",
+       "format": "%Y-%m-%dT%H:%M:%S%z"
+      },
+      "timeMin": {
+       "placeholder": "$today",
+       "format": "%Y-%m-%dT%H:%M:%S%z"
+      }
+     }
+    },
+    {
+     "call": "GOOGLECALENDAR_EVENTS_GET#1",
+     "id": "event",
+     "vary": {
+      "event_id": {
+       "$ask": "lar lm yg lar fahy xzorv wmda upcoming meeting/event hx smpw list ae start ohzt: zspfus lar dqgkyhlw event dzout bslueWksj uc mth 'shhaxvuMjuvbegy' (ewbu jzne-wbnz jqomcag-yuizmdvm mhsscej sxvt 'Lnqx' uzku bxdgw ga meeting ohzt). Bo UXJ mjnlyj sja snovdnmu trmwnlfmk xiqnztk; jdql nbhf lar vckylaegrbcysjd xzorv armqdsb meeting xhuc w start ohzt."
+      }
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

@@ -28,6 +28,7 @@ interface UseChatBubbleUserParams {
   selectedTool: ChatBubbleUserProps["selectedTool"];
   selectedWorkflow: ChatBubbleUserProps["selectedWorkflow"];
   selectedCalendarEvent: ChatBubbleUserProps["selectedCalendarEvent"];
+  todoRunWake: ChatBubbleUserProps["todo_run_wake"];
   fullWidth: boolean;
 }
 
@@ -37,6 +38,7 @@ export function useChatBubbleUser({
   selectedTool,
   selectedWorkflow,
   selectedCalendarEvent,
+  todoRunWake,
   fullWidth,
 }: UseChatBubbleUserParams) {
   const hasContent =
@@ -44,7 +46,8 @@ export function useChatBubbleUser({
     fileData.length > 0 ||
     !!selectedTool ||
     !!selectedWorkflow ||
-    !!selectedCalendarEvent;
+    !!selectedCalendarEvent ||
+    !!todoRunWake;
 
   const user = useCurrentUser();
 

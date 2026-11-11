@@ -47,7 +47,7 @@ function skillToolLabel(call: ToolCallEntry): string | null {
     : null;
 }
 
-// Strips separators so two labels can be compared for redundancy ("retrieve_tools" vs "Retrieve tools").
+// Strips separators so two labels can be compared for redundancy ("Gmail" vs "Gmail search").
 function normalizeLabel(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -71,23 +71,17 @@ export interface ToolCallDisplay {
   hasDetails: boolean;
 }
 
-export function deriveToolCallDisplay(
-  call: ToolCallEntry,
-  getIntegrationName: (c: ToolCallEntry) => string | undefined,
-): ToolCallDisplay {
+export function deriveToolCallDisplay(call: ToolCallEntry): ToolCallDisplay {
   // The skill label wins over any backend-provided custom message.
   const skillLabel = skillToolLabel(call);
   const primaryLabel =
     skillLabel || call.message || formatToolName(call.tool_name);
   const integrationLabel =
-    getIntegrationName(call) || categoryLabel(call.tool_category);
-  // `show_category === false` means the backend sent a curated primary label,
-  // so the secondary shows the raw tool name for transparency.
-  const secondaryLabel =
-    call.show_category === false
-      ? call.tool_name.toLowerCase()
-      : integrationLabel;
-  // Hide the secondary when it adds nothing, e.g. "retrieve_tools" under "Retrieve tools".
+    call.integration_name || categoryLabel(call.tool_category);
+  // `show_category === false` means the backend sent a curated, user-facing label;
+  // the raw tool name under it would only show the user GAIA's internal machinery.
+  const secondaryLabel = call.show_category === false ? "" : integrationLabel;
+  // Hide the secondary when it adds nothing, e.g. "Gmail" under "Gmail search".
   const normPrimary = normalizeLabel(primaryLabel);
   const normSecondary = normalizeLabel(secondaryLabel);
   const hasCategoryText =

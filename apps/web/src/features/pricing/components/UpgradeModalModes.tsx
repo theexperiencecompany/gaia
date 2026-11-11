@@ -128,7 +128,7 @@ export function UpgradeModalOffer({
         <CheckoutConfirming isLate={checkoutPhase === "timeout"} />
       ) : (
         <RaisedButton
-          className="w-full text-black!"
+          className="w-full"
           color="#00bbff"
           onClick={onSubscribe}
           disabled={!isCheckoutSettled(checkoutPhase)}

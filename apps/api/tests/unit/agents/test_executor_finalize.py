@@ -14,21 +14,29 @@ import asyncio
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace
+import time
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from prometheus_client import REGISTRY
 import pytest
 
+from app.agents.context.live_work import build_executor_status_block, executor_status_text
+from app.agents.context.section_context import SectionContext
+from app.agents.context.tiers import AgentTier
 from app.agents.core.background import (
     executor_channel as ec,
+    executor_progress,
     executor_queue as eq,
     executor_runner as er,
     result_delivery as rd,
+    running_registry,
+    workflow_platform_delivery as wpd,
 )
+from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_capture import (
     await_executor_done,
     drain_executor_tool_data,
@@ -48,21 +56,28 @@ from app.agents.core.background.session import (
     get_session,
     mark_executor_spawned,
 )
-from app.agents.core.nodes import executor_status
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.agents.prompts.comms_prompts import outcome_delivery_note
+from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_INBOX_PREFIX
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
+    EXECUTOR_CARRY_TASK,
     EXECUTOR_CRASH_MESSAGE,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
+    INBOX_ENTRY_ID,
+    INTERRUPTION_NOTICE,
 )
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
+from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
 from app.models.chat_models import SourceCategory
+from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
+from app.services.delivery.chat_channel import InApp
 from app.services.hil import bridge
 from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder, captured_wide_event
@@ -142,7 +157,7 @@ class TestCancelledRouting:
         run = _run(RunKind.QUEUED)
         create_session("s1", RunKind.QUEUED)
 
-        await er._finalize_executor_run(run, TASK, "partial text", "final")
+        await er._finalize_executor_run(run, TASK, "partial text", "final", stopped=True)
 
         # Comms' context must record the cancellation regardless of card ownership.
         boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
@@ -165,7 +180,7 @@ class TestCancelledRouting:
         run = _run(RunKind.LIVE)
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(run, TASK, "partial text", "final")
+        await er._finalize_executor_run(run, TASK, "partial text", "final", stopped=True)
 
         # Cards defer to comms, but the cancellation is still recorded for context.
         boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
@@ -179,7 +194,7 @@ class TestCancelledRouting:
         run = _run(RunKind.LIVE, workflow_id="wf-1")
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(run, TASK, "", "final")
+        await er._finalize_executor_run(run, TASK, "", "final", stopped=True)
 
         boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
         boundaries.persist_cancelled.assert_awaited_once_with(run, [])
@@ -191,9 +206,71 @@ class TestCancelledRouting:
         boundaries.stream_manager.is_cancelled.return_value = True
         create_session("s1", RunKind.QUEUED)
 
-        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "txt", "final")
+        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "txt", "final", stopped=True)
 
         boundaries.note.assert_not_called()
+
+
+class TestACompletedResultIsNeverDiscarded:
+    """Regression for prod eefc68cc: Stop landed as the run finished, and the finished answer was thrown away."""
+
+    @pytest.mark.regression
+    async def test_a_stop_that_lands_after_the_run_finished_still_delivers(
+        self, boundaries
+    ) -> None:
+        boundaries.stream_manager.is_cancelled.return_value = True
+        run = _run(RunKind.LIVE)
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(run, TASK, "the finished answer", "final", stopped=False)
+
+        boundaries.deliver.assert_awaited_once()
+        assert boundaries.deliver.await_args.args[1] == "the finished answer"
+        boundaries.record_cancel.assert_not_awaited()
+
+    async def test_a_run_the_stop_cut_short_is_still_recorded_as_cancelled(
+        self, boundaries
+    ) -> None:
+        boundaries.stream_manager.is_cancelled.return_value = True
+        run = _run(RunKind.LIVE)
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(run, TASK, "partial text", "final", stopped=True)
+
+        boundaries.stream_manager.is_cancelled.assert_awaited_once_with("s1")
+        boundaries.deliver.assert_not_awaited()
+        boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
+
+    async def test_a_run_not_said_to_be_stopped_is_a_finished_one(self, boundaries) -> None:
+        """The default is the finished run: only the runner, which knows, says otherwise."""
+        boundaries.stream_manager.is_cancelled.return_value = True
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "the answer", "final")
+
+        boundaries.deliver.assert_awaited_once()
+
+    async def test_an_error_under_a_stop_counts_as_cut_short(self, boundaries) -> None:
+        """The stop is the likeliest cause of the error, so it is not reported as a failure."""
+        boundaries.stream_manager.is_cancelled.return_value = True
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "boom", "error")
+
+        boundaries.deliver.assert_not_awaited()
+        boundaries.record_cancel.assert_awaited_once()
+
+    @pytest.mark.regression
+    async def test_a_waiter_that_timed_out_does_not_suppress_delivery(self, boundaries) -> None:
+        """Regression for prod 3ea230d3: a voice turn stopped waiting after 90s and a 7.7k-char result was dropped."""
+        create_session("s1", RunKind.LIVE)
+        mark_executor_spawned("s1")
+
+        assert await await_executor_done("s1", timeout=0.01) is False
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "the late answer", "final")
+
+        boundaries.deliver.assert_awaited_once()
+        assert boundaries.deliver.await_args.args[1] == "the late answer"
 
 
 class TestCompletedRouting:
@@ -204,7 +281,9 @@ class TestCompletedRouting:
 
         await er._finalize_executor_run(run, TASK, "result", "final")
 
-        boundaries.deliver.assert_awaited_once_with(run, "result", "final", CARD_NOTE, tool_data=[])
+        boundaries.deliver.assert_awaited_once_with(
+            run, "result", "final", CARD_NOTE, tool_data=[], outcome_note=""
+        )
         # A completed run narrates and delivers — it never records a cancellation.
         boundaries.record_cancel.assert_not_awaited()
         boundaries.persist_cancelled.assert_not_awaited()
@@ -234,6 +313,87 @@ class TestCompletedRouting:
         boundaries.persist_cancelled.assert_not_awaited()
 
 
+def _tool_turn(name: str, args: dict[str, str], call_id: str) -> list[AnyMessage]:
+    return [
+        AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id}]),
+        ToolMessage(content="ok", tool_call_id=call_id, name=name, status="success"),
+    ]
+
+
+def _delegation(*work: list[AnyMessage], outcome: str) -> list[AnyMessage]:
+    finish = _tool_turn(FINISH_TASK_NAME, {"result": "report", "outcome": outcome}, "finish")
+    return [HumanMessage(content=TASK), *(m for turn in work for m in turn), *finish]
+
+
+@pytest.mark.usefixtures("fake_redis")
+class TestTheRunsDeclaredOutcomeIsCheckedAtFinalize:
+    """The outcome the executor declares is checked against its own thread before comms voices it."""
+
+    async def _finalize(
+        self, boundaries: _Boundaries, thread: list[AnyMessage]
+    ) -> tuple[str, dict[str, Any]]:
+        ctx = _executor_ctx()
+        create_session("s1", RunKind.QUEUED)
+        read = AsyncMock(side_effect=lambda c: thread if c is ctx else [])
+        with patch.object(er, "thread_messages", read):
+            async with log_context("executor_finalize_test"):
+                await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final", ctx)
+                event = dict(log.get())
+        return boundaries.deliver.await_args.kwargs["outcome_note"], event
+
+    async def test_a_verified_ask_is_voiced_as_an_ask_and_awaits_the_users_answer(
+        self, boundaries: _Boundaries
+    ) -> None:
+        note, event = await self._finalize(boundaries, _delegation(outcome="ask"))
+
+        assert note == outcome_delivery_note(OutcomeState.ASK, None)
+        assert event["executor"] == {"outcome": "ask", "outcome_verified": True}
+        assert await spend_confirmation("conv-1") is True
+
+    async def test_an_unbacked_done_is_voiced_as_not_verified_and_named_in_the_wide_event(
+        self, boundaries: _Boundaries
+    ) -> None:
+        problem = "done was declared but no work call succeeded"
+
+        note, event = await self._finalize(boundaries, _delegation(outcome="done"))
+
+        assert note == outcome_delivery_note(OutcomeState.DONE, problem)
+        assert event["executor"] == {"outcome": "done", "outcome_verified": False}
+        assert [(w["msg"], w["problem"]) for w in event["warnings"]] == [
+            (f"{LogTag.AGENT} Executor outcome not verified", problem)
+        ]
+        assert await spend_confirmation("conv-1") is False
+
+    async def test_a_verified_done_is_not_taken_for_a_question_to_the_user(
+        self, boundaries: _Boundaries
+    ) -> None:
+        thread = _delegation(_tool_turn("create_todo", {"title": "visa"}, "c1"), outcome="done")
+
+        note, event = await self._finalize(boundaries, thread)
+
+        assert note == outcome_delivery_note(OutcomeState.DONE, None)
+        assert "warnings" not in event
+        assert await spend_confirmation("conv-1") is False
+
+    async def test_a_review_that_cannot_read_the_thread_still_delivers_the_result(
+        self, boundaries: _Boundaries
+    ) -> None:
+        create_session("s1", RunKind.QUEUED)
+        unreadable = AsyncMock(side_effect=ConnectionError("checkpointer down"))
+        with patch.object(er, "thread_messages", unreadable):
+            async with log_context("executor_finalize_test"):
+                await er._finalize_executor_run(
+                    _run(RunKind.QUEUED), TASK, "result", "final", _executor_ctx()
+                )
+                event = dict(log.get())
+
+        assert boundaries.deliver.await_args.args[1] == "result"
+        assert boundaries.deliver.await_args.kwargs["outcome_note"] == ""
+        assert [(e["msg"], e["error_type"]) for e in event["errors"]] == [
+            (f"{LogTag.AGENT} Executor outcome review failed", "ConnectionError")
+        ]
+
+
 class TestDoneSignalAndOrdering:
     @pytest.mark.parametrize("cancelled", [True, False])
     async def test_done_event_is_always_signalled(self, boundaries, cancelled) -> None:
@@ -249,10 +409,12 @@ class TestDoneSignalAndOrdering:
         """Once done_event fires, the chat stream drains + tears down the session in parallel — reading the note after would race teardown."""
         session = create_session("s1", RunKind.LIVE)
         done_state_at_note_time: list[bool] = []
-        boundaries.note.side_effect = lambda _sid: (
-            done_state_at_note_time.append(session.done_event.is_set()),
-            "",
-        )[1]
+
+        def _note(_sid: str) -> str:
+            done_state_at_note_time.append(session.done_event.is_set())
+            return ""
+
+        boundaries.note.side_effect = _note
 
         await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "txt", "final")
 
@@ -289,7 +451,16 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
         stack.enter_context(
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None)
         )
-        stack.enter_context(patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock))
+        stack.enter_context(
+            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None))
+        )
+        stack.enter_context(
+            patch.object(
+                wpd,
+                "resolve_proactive_target",
+                AsyncMock(return_value=InApp(reason="no_chat_app")),
+            )
+        )
         stack.enter_context(
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock)
         )
@@ -337,14 +508,16 @@ class TestCancelStillCarriesHandedOverWork:
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "partial", "final")
+            await er._finalize_executor_run(
+                _run(RunKind.QUEUED), TASK, "partial", "final", stopped=True
+            )
             await asyncio.sleep(0)
 
         boundaries.inbox_cls.assert_called_with("conv-1")
         # A run is started to drain the inbox, seeded (not stuffed) with the ask;
         # the handed-over entry is never retired before a run is durably going to
         # take it, so a crash here cannot strand it.
-        assert boundaries.prepare.await_args.args[1]["task"] == er.EXECUTOR_CARRY_TASK
+        assert boundaries.prepare.await_args.args[1]["task"] == EXECUTOR_CARRY_TASK
         boundaries.inbox_cls.return_value.retire.assert_not_awaited()
         spawn.assert_awaited_once()
 
@@ -544,6 +717,15 @@ class _FakeRedisClient:
     async def delete(self, key: str) -> None:
         self.store.pop(key, None)
 
+    async def exists(self, key: str) -> int:
+        return int(key in self.store)
+
+    async def ttl(self, key: str) -> int:
+        return -1 if key in self.store else -2
+
+    async def hgetall(self, key: str) -> dict[str, str]:
+        return {}
+
 
 class _FakeRedisCache:
     def __init__(self) -> None:
@@ -555,10 +737,11 @@ class _FakeRedisCache:
 
 @contextmanager
 def _real_lock_lifecycle(cache: _FakeRedisCache):
-    """Drive finalize with the REAL lock functions over an in-memory Redis, so what the status hook reads afterwards is what the lock actually says."""
+    """Drive finalize with the REAL lock functions over an in-memory Redis, so what the turn-start status reads afterwards is what the lock actually says."""
     with ExitStack() as stack:
         stack.enter_context(patch.object(eq, "redis_cache", cache))
-        stack.enter_context(patch.object(executor_status, "redis_cache", cache))
+        stack.enter_context(patch.object(running_registry, "redis_cache", cache))
+        stack.enter_context(patch.object(executor_progress, "redis_cache", cache))
         stack.enter_context(patch.object(er, "StreamManager")).is_cancelled = AsyncMock(
             return_value=False
         )
@@ -572,11 +755,10 @@ def _real_lock_lifecycle(cache: _FakeRedisCache):
         yield
 
 
-async def _status_frames(thread_id: str) -> list[str]:
-    state = await executor_status.executor_status_hook(
-        {"messages": []}, {"configurable": {"thread_id": thread_id}}, store=None
+async def _status(conversation_id: str) -> str:
+    return await build_executor_status_block(
+        SectionContext(tier=AgentTier.COMMS, conversation_id=conversation_id)
     )
-    return [str(m.content) for m in state["messages"]]
 
 
 class TestTheBusyLockDoesNotOutliveTheResult:
@@ -587,15 +769,19 @@ class TestTheBusyLockDoesNotOutliveTheResult:
     delivered — and anything that raised on the way there left it held for the full 30-minute TTL.
     """
 
-    async def test_the_status_frame_is_gone_once_the_result_is_delivered(self) -> None:
+    async def test_the_status_reads_idle_once_the_result_is_delivered(self) -> None:
         cache = _FakeRedisCache()
         cache.client.store[f"{EXECUTOR_BUSY_PREFIX}conv-1"] = build_lock_value("s1", "task-1")
         create_session("s1", RunKind.LIVE)
 
         with _real_lock_lifecycle(cache):
-            assert await _status_frames("conv-1"), "the lock must read as running before finalize"
+            assert await _status("conv-1") == executor_status_text(
+                ExecutorActivity.RUNNING, "task-1", running=True
+            ), "the lock must read as running before finalize"
             await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "8 todos created", "final")
-            assert await _status_frames("conv-1") == []
+            assert await _status("conv-1") == executor_status_text(
+                ExecutorActivity.IDLE, "", running=False
+            )
 
     async def test_the_lock_is_released_even_when_the_handoff_blows_up(self) -> None:
         cache = _FakeRedisCache()
@@ -680,7 +866,7 @@ class TestFinalizeCarriesOnlyWorkTheThreadNeverTook:
 
     @staticmethod
     def _committed(entry_id: str) -> HumanMessage:
-        return HumanMessage(content="x", additional_kwargs={ec.INBOX_ENTRY_ID: entry_id})
+        return HumanMessage(content="x", additional_kwargs={INBOX_ENTRY_ID: entry_id})
 
     async def test_committed_work_is_not_re_run_but_late_work_is(self) -> None:
         cache = _FakeInboxCache()
@@ -697,12 +883,12 @@ class TestFinalizeCarriesOnlyWorkTheThreadNeverTook:
                 patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
             )
 
-            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), object())
+            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), _executor_ctx())
             still_pending = [entry.id for entry in await inbox.read()]
 
         prepare.assert_awaited_once()
         # The run is seeded to drain the inbox, not stuffed with the late work.
-        assert prepare.await_args.args[1]["task"] == er.EXECUTOR_CARRY_TASK
+        assert prepare.await_args.args[1]["task"] == EXECUTOR_CARRY_TASK
         # e1 was committed to the thread, so it is retired. e2 was not — it stays
         # for the new run's own drain to inject, commit, and retire crash-safely.
         assert still_pending == ["e2"]
@@ -720,12 +906,12 @@ class TestFinalizeCarriesOnlyWorkTheThreadNeverTook:
                 patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
             )
 
-            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), object())
+            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), _executor_ctx())
             still_pending = [entry.id for entry in await inbox.read()]
 
         # Seeded to drain; the un-committed entry stays for that drain, never
         # retired before a run exists to take it.
-        assert prepare.await_args.args[1]["task"] == er.EXECUTOR_CARRY_TASK
+        assert prepare.await_args.args[1]["task"] == EXECUTOR_CARRY_TASK
         assert still_pending == ["e1"]
 
     async def test_a_bare_stop_starts_no_run(self) -> None:
@@ -744,7 +930,7 @@ class TestFinalizeCarriesOnlyWorkTheThreadNeverTook:
             still_pending = [entry.text for entry in await inbox.read()]
 
         prepare.assert_not_awaited()
-        assert still_pending == [ec.INTERRUPTION_NOTICE]
+        assert still_pending == [INTERRUPTION_NOTICE]
 
     async def test_a_stopped_browser_jobs_notice_starts_no_run(self) -> None:
         """The stop already answered the user: a run woken for its notice would answer them again."""
@@ -782,10 +968,10 @@ class TestFinalizeCarriesOnlyWorkTheThreadNeverTook:
             still_pending = [entry.text for entry in await inbox.read()]
 
         spawn.assert_called_once()
-        assert prepare.await_args.args[1]["task"] == er.EXECUTOR_CARRY_TASK
+        assert prepare.await_args.args[1]["task"] == EXECUTOR_CARRY_TASK
         # Both entries stay in the inbox, each keeping its own tag, for the new
         # run's drain to inject and retire — never stuffed into the seed task.
-        assert still_pending == [ec.INTERRUPTION_NOTICE, "book the flight instead"]
+        assert still_pending == [INTERRUPTION_NOTICE, "book the flight instead"]
 
 
 class TestTheCardNoteOnlyGoesWhereCardsRender:
@@ -961,7 +1147,7 @@ class TestTerminalRunMetrics:
         error_before = _counter("executor_run_total", {"status": "error", "queued": "true"})
         success_before = _counter("executor_run_total", {"status": "success", "queued": "true"})
 
-        with patch.object(er.time, "perf_counter", return_value=1234.5):
+        with patch.object(time, "perf_counter", return_value=1234.5):
             await er._finalize_executor_run(run, TASK, "the model call failed", "error")
 
         assert (
@@ -983,8 +1169,8 @@ class TestTerminalRunMetrics:
         before = _counter("executor_run_total", {"status": "cancelled", "queued": "true"})
         success_before = _counter("executor_run_total", {"status": "success", "queued": "true"})
 
-        with patch.object(er.time, "perf_counter", return_value=1234.5):
-            await er._finalize_executor_run(run, TASK, "partial text", "final")
+        with patch.object(time, "perf_counter", return_value=1234.5):
+            await er._finalize_executor_run(run, TASK, "partial text", "final", stopped=True)
 
         assert (
             _counter("executor_run_total", {"status": "cancelled", "queued": "true"}) == before + 1
@@ -1106,7 +1292,7 @@ def _executor_ctx() -> SubagentExecutionContext:
     return SubagentExecutionContext(
         subagent_graph=MagicMock(),
         agent_name="executor_agent",
-        config={"configurable": {}},
+        config={"configurable": {}, "agent_name": "executor_agent"},
         configurable={},
         integration_id="executor",
         initial_state={},
@@ -1134,7 +1320,7 @@ class TestARunHandsFinalizeWhatItProduced:
         prepare = prepare or AsyncMock(return_value=(ctx, None))
         execute = execute or AsyncMock(return_value=SubagentOutcome(text="all done"))
         thread = [
-            HumanMessage(content="x", additional_kwargs={ec.INBOX_ENTRY_ID: entry_id})
+            HumanMessage(content="x", additional_kwargs={INBOX_ENTRY_ID: entry_id})
             for entry_id in committed
         ]
 
@@ -1150,7 +1336,7 @@ class TestARunHandsFinalizeWhatItProduced:
             enter(patch.object(er, "_record_pause", AsyncMock(return_value=record_pause)))
             deliver = enter(patch.object(er, "_deliver_terminal_outcome", AsyncMock()))
             enter(patch.object(er, "release_lock_if_owned", AsyncMock()))
-            enter(patch.object(er.StreamManager, "is_cancelled", AsyncMock(return_value=False)))
+            enter(patch.object(StreamManager, "is_cancelled", AsyncMock(return_value=False)))
             enter(patch("app.services.analytics_service.capture", MagicMock()))
             enter(patch.object(bridge, "flush_held_approval_cards", AsyncMock()))
             enter(patch.object(eq, "StreamManager", AsyncMock()))
@@ -1229,7 +1415,7 @@ class TestARunHandsFinalizeWhatItProduced:
 
         assert self._delivered(h.deliver) == delivered
         h.spawn.assert_called_once()
-        assert h.spawn.call_args.args[0].task == er.EXECUTOR_CARRY_TASK
+        assert h.spawn.call_args.args[0].task == EXECUTOR_CARRY_TASK
 
     async def test_a_pause_that_could_not_be_recorded_fails_and_carries_the_handed_work(
         self, fake_redis: Any

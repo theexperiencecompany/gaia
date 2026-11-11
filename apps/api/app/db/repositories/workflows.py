@@ -25,6 +25,7 @@ from app.constants.cache import (
     WORKFLOW_LIMIT_NOTICE_PREFIX,
     WORKFLOW_LIMIT_NOTICE_TTL,
 )
+from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import (
@@ -33,6 +34,7 @@ from app.models.scheduler_models import (
     TaskRearm,
     _Unset,
 )
+from app.models.trigger_gate_models import GateSkipRecord
 from app.models.workflow_models import (
     PublicWorkflowRow,
     SystemWorkflowDefinition,
@@ -454,6 +456,20 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {"_id": workflow_id, "user_id": user_id}, ops, scope=REPO_GLOBAL_SCOPE
         )
 
+    async def remember_gate_skip(
+        self, workflow_id: str, user_id: str, skip: GateSkipRecord
+    ) -> None:
+        """Count skip on the user's workflow gate and keep it among the newest few."""
+        pushed = {"$each": [skip.model_dump()], "$slice": -GATE_RECENT_SKIPS_KEPT}
+        # Workflows keep no entity cache (cache_policy is None), so the seam's cache knobs
+        # are inert here: no mutation of them could be observed.
+        await self._apply_raw_update(  # pragma: no mutate
+            {"_id": workflow_id, "user_id": user_id, "gate": {"$ne": None}},
+            {"$push": {"gate.recent_skips": pushed}, "$inc": {"gate.skipped_count": 1}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
     async def set_error_message(
         self, workflow_id: str, user_id: str, message: str
     ) -> WorkflowDocument | None:
@@ -741,41 +757,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             )
             return True
         return bool(acquired)
-
-    async def count_playbook_decline(
-        self, workflow_id: str, user_id: str, *, run_id: str, workflow_hash: str
-    ) -> int | None:
-        """Count one run's decision not to write a playbook, once per run.
-
-        Matched on the run that last grew the tally, since parallel calls in
-        one turn can't see each other's answer. A different workflow_hash (the
-        workflow was edited) restarts the tally at one. None when this run
-        already counted.
-        """
-        key = {**self._identity_filter(workflow_id), "user_id": user_id}
-        grown = await self._apply_raw_update(
-            {
-                **key,
-                "playbook_declined_hash": workflow_hash,
-                "playbook_declined_run": {"$ne": run_id},
-            },
-            {"$inc": {"playbook_declines": 1}, "$set": {"playbook_declined_run": run_id}},
-            scope=REPO_GLOBAL_SCOPE,
-        )
-        if grown is not None:
-            return grown.playbook_declines
-        fresh = await self._apply_raw_update(
-            {**key, "playbook_declined_hash": {"$ne": workflow_hash}},
-            {
-                "$set": {
-                    "playbook_declines": 1,
-                    "playbook_declined_hash": workflow_hash,
-                    "playbook_declined_run": run_id,
-                }
-            },
-            scope=REPO_GLOBAL_SCOPE,
-        )
-        return None if fresh is None else fresh.playbook_declines
 
 
 workflow_repository = WorkflowsRepository()

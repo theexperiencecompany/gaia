@@ -28,9 +28,9 @@ import {
 } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { TwitterShareButton } from "react-share";
-
 import { Dices, TwitterIcon } from "@/components/shared/icons";
 import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
+import { copyWithFeedback } from "@/lib/clipboard";
 import { randomUnit } from "@/lib/random";
 import { toast } from "@/lib/toast";
 
@@ -532,8 +532,9 @@ export const HoloCardEditor = ({
         );
         break;
       case "copy":
-        navigator.clipboard.writeText(url);
-        toast.success("Link copied to clipboard");
+        void copyWithFeedback(url).then((copied) => {
+          if (copied) toast.success("Link copied to clipboard");
+        });
         break;
     }
   };

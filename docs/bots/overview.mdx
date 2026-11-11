@@ -1,32 +1,83 @@
 ---
-title: "Overview"
-sidebarTitle: "Bot Architecture"
-description: "Self-host GAIA's Discord, Slack, Telegram, and WhatsApp bots, architecture, prerequisites, and per-platform setup guides"
+title: "Bot development"
+sidebarTitle: "Overview"
+description: "How GAIA's Discord, Slack, Telegram, WhatsApp and iMessage bots work, and the shared setup every bot needs before you run it from source."
 icon: "circle-info"
 ---
 
+GAIA has bots for Discord, Slack, Telegram, WhatsApp and iMessage. They live in `apps/bots/` and all talk to the same GAIA API, so a user's conversations, todos and workflows are the same on every platform.
 
-GAIA ships open-source bots for Discord, Slack, Telegram, and WhatsApp. All four live in the monorepo under `apps/bots/` and talk to the same GAIA API, so a self-hosted instance gives users the same synced conversations, todos, and workflows on every platform.
-
-<Note>
-  Looking to chat with GAIA on these platforms as a user? See [Slack](/guides/slack-bot), [Discord](/guides/discord-bot), [Telegram](/guides/telegram-bot), or [WhatsApp](/guides/whatsapp-bot).
-</Note>
+This section is for running and changing the bots from source. To add the bots to a self-hosted instance, see [Self-Hosting: Bots](/self-hosting/bots). To chat with GAIA on a platform as a user, see the guides for [Slack](/guides/slack-bot), [Discord](/guides/discord-bot), [Telegram](/guides/telegram-bot), [WhatsApp](/guides/whatsapp-bot) or [iMessage](/guides/imessage-bot).
 
 ## How the bots work
 
-Each bot is a thin TypeScript client that forwards messages to your GAIA API and renders responses in the platform's native format (embeds on Discord, Block Kit on Slack, Markdown on Telegram). Authentication is shared: users run `/auth` once per platform to link their messaging identity to their GAIA account.
+Each bot is a thin TypeScript process that forwards a platform's messages to the GAIA API, then renders the reply in the platform's own format: for example embeds on Discord, Block Kit on Slack, Markdown on Telegram and plain text on iMessage. The shared logic (commands, streaming, formatting, the API client) lives in `libs/shared/ts/src/bots/`, so most changes are made once for every platform.
 
-All bots require:
+Users link their platform account to their GAIA account once, with the `/auth` command.
 
-- Node.js 18+ and pnpm
-- A running GAIA API (see [Self-Hosting](/self-hosting/overview))
-- `GAIA_BOT_API_KEY` matching the value configured in your API
+| Bot | Folder | Nx project | Port | Connects by |
+| --- | --- | --- | --- | --- |
+| Discord | `apps/bots/discord` | `bot-discord` | 3200 | Gateway connection, no public URL |
+| Slack | `apps/bots/slack` | `bot-slack` | 3201 | Socket Mode, no public URL |
+| Telegram | `apps/bots/telegram` | `bot-telegram` | 3202 | Long polling, no public URL |
+| WhatsApp | `apps/bots/whatsapp` | `bot-whatsapp` | 3203 | Signed webhook from Kapso, needs a public URL |
+| iMessage | `apps/bots/imessage` | `bot-imessage` | 3204 | Signed webhook from Photon Spectrum, needs a public URL |
 
-## Setup guides
+Each bot serves `GET /health` on its port. `BOT_SERVER_PORT` overrides the port.
 
-<CardGroup cols={3}>
+## Shared setup
+
+Do this once, whichever bot you work on.
+
+<Steps>
+  <Step title="Run GAIA">
+    Follow [Set up GAIA for development](/developers/development-setup) until `mise dev --agent` is running.
+  </Step>
+
+  <Step title="Create the bots' env file">
+    All bots read one shared file, `apps/bots/.env`:
+
+    ```bash
+    cp apps/bots/.env.example apps/bots/.env
+    ```
+
+    Then set the four values every bot needs:
+
+    | Variable | Value |
+    | --- | --- |
+    | `GAIA_API_URL` | `http://localhost:8000` (already set) |
+    | `GAIA_FRONTEND_URL` | `http://localhost:3000` (already set) |
+    | `GAIA_BOT_API_KEY` | A shared secret between the bots and the API. Generate one with `openssl rand -hex 32` |
+    | `BOT_LOG_HASH_SECRET` | The key used to hash user ids in logs. Generate one with `openssl rand -hex 32`. At least 64 characters |
+
+    A bot refuses to start while any of these four is missing.
+  </Step>
+
+  <Step title="Give the API the same secrets">
+    In `apps/api/.env`, set `GAIA_BOT_API_KEY` to the **same** value: the API rejects bot requests whose key doesn't match. Set `BOT_LOG_HASH_SECRET` to the same value too, so a user's hashed id matches in the API's and the bots' logs. Also set `BOT_SESSION_TOKEN_SECRET` to a third value from `openssl rand -hex 32`: the API uses it to sign the bots' session tokens. Restart `mise dev` after editing.
+  </Step>
+
+  <Step title="Add the platform's credentials">
+    Follow the page for your platform below. It adds that platform's token to `apps/bots/.env`.
+  </Step>
+
+  <Step title="Start the bot">
+    ```bash
+    nx dev bot-telegram     # one bot, with hot reload
+    mise dev:bots           # all five
+    ```
+  </Step>
+</Steps>
+
+`RABBITMQ_URL` is already set in the template. Keep it: without it the bot can still answer messages, but it never receives the replies and reminders the API sends later on its own, such as the result of a long background task.
+
+Per-bot files (`apps/bots/<platform>/.env`) are still read, after the shared file, for Docker and older setups. Prefer the shared file: when both set a variable, the shared file wins.
+
+## Platform guides
+
+<CardGroup cols={2}>
   <Card title="Discord" icon="discord" href="/bots/discord">
-    Discord application, gateway intents, OAuth account linking, slash command deployment
+    Discord application, gateway intents, slash commands, account linking
   </Card>
   <Card title="Slack" icon="slack" href="/bots/slack">
     Slack app with Socket Mode, no public URL required
@@ -35,10 +86,23 @@ All bots require:
     BotFather setup with long polling, no webhook required
   </Card>
   <Card title="WhatsApp" icon="whatsapp" href="/bots/whatsapp">
-    Kapso + Meta Cloud API via signed webhook
+    Kapso and the Meta Cloud API, through a signed webhook
+  </Card>
+  <Card title="iMessage" icon="message" href="/bots/imessage">
+    Photon Spectrum, through a signed webhook
   </Card>
 </CardGroup>
 
+## Test without a platform account
+
+`bot-harness` (`apps/bots/harness`) is a simulated platform. It sends a message through the real shared bot code to your running API and records the reply, with no Discord, Slack or Telegram account:
+
+```bash
+nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local "remind me tomorrow"
+```
+
+It needs the same `apps/bots/.env`. `apps/bots/harness/README.md` covers scenarios and flags. The bots' unit tests run with `mise test:bots`.
+
 ## Commands
 
-All platforms expose the same core command set (`/gaia`, `/todo`, `/workflow`, `/conversations`, `/auth`). The full list, including platform-specific behavior, is in the [Commands Reference](/bots/commands).
+Every platform has the same core commands (`/gaia`, `/todo`, `/workflow`, `/conversations`, `/auth`). The full list, with platform differences, is in the [Commands reference](/bots/commands).

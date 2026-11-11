@@ -4,8 +4,8 @@ Emits a structured llm_call wide event after every model invocation
 (tokens, credits, step index, agent name), and recursion_high_water_mark
 at ≥80% of the recursion limit. Also the budget enforcement seam: every
 call records USD cost into the user's day/month budget windows, and
-awrap_model_call short-circuits with a stop message when the daily budget
-or per-request token ceiling is exhausted — self-sufficient on every path
+awrap_model_call short-circuits with a stop message when the daily budget,
+the pro monthly allowance or the per-request token ceiling is exhausted — self-sufficient on every path
 (chat, workflows, bots, voice, subagents) since get_budget_stop_reason
 derives plan_type from the cached tier if a path never stamped it.
 
@@ -13,6 +13,7 @@ Runs as a LangChain AgentMiddleware via create_agent(middleware=...).
 """
 
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 import time
 from typing import Any
 
@@ -27,12 +28,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
 from app.agents.llm.lane import ModelLane
-from app.config.rate_limits import (
-    PRIMARY_METERED_FEATURE,
-    RateLimitPeriod,
-    get_daily_cost_budget_usd,
-    get_reset_time,
-)
+from app.config.rate_limits import PRIMARY_METERED_FEATURE, get_daily_cost_budget_usd
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     BUDGET_STOP_METADATA_KEY,
@@ -49,10 +45,13 @@ from app.models.payment_models import PlanType
 from app.services.cost_budget import (
     BUDGET_WRAPUP_NOTICE,
     BudgetCheck,
+    BudgetWall,
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
+    is_monthly_heads_up_due,
 )
 from app.services.latency_metrics import observe_llm_call
+from app.services.limit_upsell import capture_limit_hit, current_limit_origin
 from app.services.llm_metering import (
     LLMCallContext,
     extract_finish_reason,
@@ -64,6 +63,9 @@ from app.services.llm_metering import (
     record_llm_call,
     resolve_channel,
 )
+from app.services.usage_heads_up import notify_monthly_heads_up_once
+from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
 from shared.py.wide_events import ModelContext, log
 
 
@@ -141,13 +143,16 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             del stamps[thread_id]
         return value
 
-    def _emit_budget_stop_card(self, stop_reason: str, plan_type: PlanType) -> None:
-        """Stream a rate_limit_data frame so the frontend renders RateLimitCard instead of bare text."""
+    def _emit_budget_stop_card(
+        self, wall: BudgetWall, stop_reason: str, plan_type: PlanType, reset_at: datetime | None
+    ) -> None:
+        """Stream a rate_limit_data frame naming the wall that bound, so every surface tells the real cause."""
+        # The task-size ceiling is per run: nothing resets, the next request starts fresh.
         current_stream_writer()(
             build_rate_limit_card(
-                feature=PRIMARY_METERED_FEATURE,
+                feature=wall.value,
                 plan_required="pro" if plan_type == PlanType.FREE else None,
-                reset_time=get_reset_time(RateLimitPeriod.DAY).isoformat(),
+                reset_time=reset_at.isoformat() if reset_at is not None else None,
                 current_plan=plan_type.value,
                 message=stop_reason,
             )
@@ -212,7 +217,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             )
             check = BudgetCheck(None, None, None)
 
-        if check.stop_reason is not None:
+        wall = check.wall
+        if wall is not None:
+            stop_reason = wall.stop_text(check.plan_type, check.reset_at)
             log.warning(
                 "budget_stop",
                 event_name="budget_stop",
@@ -220,20 +227,37 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 user_id=user_id,
                 plan_type=plan_raw,
                 root_request_id=root_request_id,
+                budget_wall=wall.value,
             )
-            # check.plan_type is always resolved alongside stop_reason (see
-            # get_budget_stop_reason: every return that sets stop_reason also
-            # sets plan_type), so the card always has a real plan to render.
+            # check.plan_type is always resolved alongside the wall (see
+            # get_budget_stop_reason: every return that sets a wall also sets
+            # plan_type), so the card always has a real plan to render.
             if check.plan_type is not None:
-                self._emit_budget_stop_card(check.stop_reason, check.plan_type)
+                self._emit_budget_stop_card(wall, stop_reason, check.plan_type, check.reset_at)
+            if user_id:
+                capture_limit_hit(
+                    UserId(str(user_id)),
+                    PRIMARY_METERED_FEATURE,
+                    check.plan_type,
+                    origin=current_limit_origin(),
+                    window=wall.limit_window,
+                )
             return ModelResponse(
                 result=[
                     AIMessage(
-                        content=check.stop_reason,
+                        content=stop_reason,
                         response_metadata={BUDGET_STOP_METADATA_KEY: True},
                     )
                 ]
             )
+
+        if (
+            user_id
+            and check.month_spent_usd is not None
+            and check.plan_type is not None
+            and is_monthly_heads_up_due(check.month_spent_usd, check.plan_type)
+        ):
+            spawn_background_task(notify_monthly_heads_up_once(str(user_id)))
 
         thread_id = self._thread_id(config)
         if (

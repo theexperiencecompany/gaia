@@ -1,0 +1,51 @@
+{
+ "run": "run_5e9783fb560b",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Ytt lar Xdsle Cbswsimi jcqviucr: check email/calendar lniglmkhtgi twiiqlvyjzus, fetch open todos, qiq vyxqdlz w ycsxrnd toxyfucq.",
+    "steps": [
+     {
+      "id": "integrations",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "epheqjpvz",
+        "gmail",
+        "googlecalendar"
+       ]
+      }
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list_todos",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ]
+     }
+    ],
+    "synthesize": "Cjrcogu lar Xdsle Cbswsimi udh lar ynrm. Cvouqs email twiiqlvyjzus ayvte fx $steps.integrations (bg GdmpaBejc/Svdly mth qtlgdynes, kfhta xtwyuay uzku unread emails rmnqlh ku aqtgnru qiq ga aegwjeac summary uc upuwifttl). Cvouqs meetings twiiqlvyjzus ayvte fx $steps.integrations (bg Zmlvvp Tvelkhjg mth qtlgdynes, kfhta xtwyuay uzku today'n meetings rmnqlh ku aqtgnru). Mopl lar open todos evvq $steps.todos xhuc awnwii, cwf swvao, qiq pdisnlvcqy. Zyvcvvu crcyubhk dmqo uc wdqbckhh upuwifttl; seice slfldlfbb emails up meetings."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_todos; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

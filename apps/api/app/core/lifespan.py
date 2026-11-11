@@ -12,6 +12,10 @@ from app.core.provider_registration import (
     unified_shutdown,
     unified_startup,
 )
+from app.core.runtime_config_subscriber import (
+    start_runtime_config_subscriber,
+    stop_runtime_config_subscriber,
+)
 from app.services.device.revoke_listener import (
     start_revoke_listener,
     stop_revoke_listener,
@@ -40,10 +44,10 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
                     if not settings.POSTHOG_PROJECT_TOKEN
                     else "POSTHOG_HOST"
                 )
-                # Never block boot: token-less environments (local dev, schemathesis)
-                # legitimately run without analytics — the SILENT loader no-ops
-                # captures. Log the gap loudly instead of taking the API down.
-                log.error(
+                # Never block boot: the SILENT loader no-ops captures. Analytics off
+                # is only a fault where GAIA Cloud's product analytics are expected.
+                log_missing = log.error if settings.deployment.product_analytics else log.info
+                log_missing(
                     f"{LogTag.STARTUP} PostHog not configured — analytics captures will no-op",
                     missing_var=missing_var,
                 )
@@ -53,6 +57,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
             start_browser_reaper()
             start_revoke_listener()
             start_up_listener()
+            start_runtime_config_subscriber()
         yield
 
     except Exception as e:
@@ -61,6 +66,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     finally:
         await stop_up_listener()
         await stop_revoke_listener()
+        await stop_runtime_config_subscriber()
         await stop_browser_reaper()
         await shutdown_crawl_obscura()
         if posthog_client is not None:

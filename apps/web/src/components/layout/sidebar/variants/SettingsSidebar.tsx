@@ -4,10 +4,14 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { usePathname, useRouter } from "next/navigation";
 
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import {
+  BILLING_ONLY_SETTINGS_KEYS,
   DESKTOP_ONLY_SETTINGS_KEYS,
+  isSettingsSectionAllowed,
   settingsPageItems,
 } from "@/features/settings/config/settingsConfig";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useElectron } from "@/hooks/useElectron";
 
 export default function SettingsSidebar() {
@@ -15,8 +19,15 @@ export default function SettingsSidebar() {
   const pathname = usePathname();
   const { isElectron } = useElectron();
 
+  // Self-host instances have no billing — the entries make no sense there.
+  const billingHidden = !useDeployment().bills;
+  const { role } = useCurrentUser();
+
   const visibleItems = settingsPageItems.filter(
-    (item) => isElectron || !DESKTOP_ONLY_SETTINGS_KEYS.has(item.key),
+    (item) =>
+      (isElectron || !DESKTOP_ONLY_SETTINGS_KEYS.has(item.key)) &&
+      !(billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(item.key)) &&
+      isSettingsSectionAllowed(item.key, role),
   );
 
   const handleNavigation = (href: string) => {
@@ -44,12 +55,13 @@ export default function SettingsSidebar() {
               color={isActive ? "primary" : "default"}
               className={`group ${isActive ? "text-primary" : "text-zinc-400 hover:text-white"} flex w-full justify-start`}
             >
-              {Icon && (
-                <Icon
-                  className="mr-1 h-5 w-5 transition-colors"
-                  color="currentColor"
-                />
-              )}
+              {item.iconElement ??
+                (Icon && (
+                  <Icon
+                    className="mr-1 h-5 w-5 transition-colors"
+                    color="currentColor"
+                  />
+                ))}
               <span className="text-sm">{item.label}</span>
               {item.isNew && (
                 <Chip size="sm" variant="flat" color="success">

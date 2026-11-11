@@ -4,114 +4,62 @@ description: "Choose where GAIA notifies you, in-app, Telegram, Discord, or mobi
 icon: "bell"
 ---
 
-GAIA notifies you when something needs your attention, an email draft is ready, a reminder fired, a background workflow finished. Notifications arrive in real time, and many include action buttons so you can respond without navigating away.
+Pick where GAIA reaches you when something needs your attention.
 
-There are four types:
-
-<CardGroup cols={2}>
-  <Card title="AI-Generated Actions" icon="wand-magic-sparkles">
-    Email drafts, calendar events, and tasks GAIA created on your behalf, with buttons to confirm, edit, or dismiss.
-  </Card>
-
-<Card title="Reminders" icon="bell">
-  Time-based alerts you asked GAIA to set. They fire at the scheduled time and
-  often include follow-up actions like marking a task complete.
-</Card>
-
-<Card title="Workflow Updates" icon="arrows-spin">
-  Status updates when a background workflow finishes or fails.
-</Card>
-
-  <Card title="System Notifications" icon="gear">
-    Account-level updates, like a new integration being connected or a background job completing.
-  </Card>
-</CardGroup>
+GAIA notifies you about AI-created drafts, events, and tasks, reminders, workflow results, and system updates. Many notifications have action buttons.
 
 <Frame>
   <img className="rounded-lg" src="/images/guides/notifications/notifications-panel.png" alt="Notifications panel showing unread workflow and reminder notifications" />
 </Frame>
 
-## Channels
-
-GAIA can notify you across multiple channels at once, each toggled independently:
-
-| Channel           | Where it appears                                       | Enabled by default              |
-| ----------------- | ------------------------------------------------------ | ------------------------------- |
-| **In-app**        | Notification panel inside the GAIA web and mobile apps | Always on                       |
-| **Telegram**      | Direct message from the GAIA Telegram bot              | Yes (requires linked account)   |
-| **Discord**       | Direct message from the GAIA Discord bot               | Yes (requires linked account)   |
-| **Push (mobile)** | Native push notification on your phone                 | Yes (after granting permission) |
-
-<Note>
-  In-app notifications are always on and can't be turned off, the baseline, so
-  you never miss something important even with other channels disabled.
-</Note>
-
-## Configure your channels
+## Choose your channels
 
 <Steps>
-  <Step title="Open Notification Settings">
-    Go to **Settings > Notifications** in the sidebar. Each channel is listed with a toggle.
-    <Frame>
-  <img className="rounded-lg" src="/images/guides/notifications/notification-settings.png" alt="Notification settings showing Telegram and Discord channel toggles" />
-</Frame>
+  <Step title="Link your accounts">
+    To get Telegram or Discord notifications, link them first in **Settings > Linked Accounts**.
   </Step>
-
-  <Step title="Link external accounts (if needed)">
-    Telegram and Discord toggles only appear after you've linked those accounts. If you see "Connect in Linked Accounts to enable," go to **Settings > Linked Accounts** first, then come back.
+  <Step title="Open Notifications">
+    Go to **Settings > Notifications**.
   </Step>
-
-  <Step title="Toggle channels on or off">
-    Flip the switch next to any platform. Changes save automatically.
+  <Step title="Toggle channels">
+    Flip the switch next to each channel. Changes save automatically.
   </Step>
 </Steps>
 
+| Channel           | Where it appears                          | Notes                                       |
+| ----------------- | ----------------------------------------- | ------------------------------------------- |
+| **In-app**        | Notification panel in the web and mobile apps | Always on. Can't be turned off.         |
+| **Telegram**      | Direct message from the GAIA bot          | Needs a linked account.                     |
+| **Discord**       | Direct message from the GAIA bot          | Needs a linked account.                     |
+| **Push (mobile)** | Native phone notification                 | Needs permission on your device.            |
+
 <Tip>
-  Keep at least one external channel enabled, Telegram or Discord, so you get
-  notified even when you're not in the GAIA app.
+  Keep one external channel on so you hear from GAIA outside the app.
 </Tip>
-
-## Mobile push
-
-The GAIA mobile app is in early access, [join the waitlist](https://heygaia.notion.site/307023640e7b802ca404dee12cb04e89?pvs=105) to get it. It uses native push notifications. The first time you open the app, it asks for permission, accept it and your device registers with GAIA's notification service automatically.
-
-Push notifications include sound and badge updates by default. Tapping one takes you directly to what triggered it, a todo, a workflow, or a conversation.
-
-<Warning>
-  If you denied the permission prompt, turn notifications on manually in your
-  device's system settings under the GAIA app.
-</Warning>
-
-You can register up to 10 devices. To stop notifications on a device, sign out of the GAIA app there, it unregisters automatically.
 
 ## Act on notifications
 
-Notifications are interactive. Depending on the source, you'll see buttons that let you respond directly:
+| Source             | Buttons                                           |
+| ------------------ | ------------------------------------------------- |
+| **Email draft**    | Preview & Send                                    |
+| **Calendar event** | Confirm Event                                     |
+| **New task**       | View Task, Mark Complete                          |
+| **Workflow**       | More Details                                      |
 
-| Source             | Available Actions                                                      |
-| ------------------ | ---------------------------------------------------------------------- |
-| **Email draft**    | Preview & Send (opens an editor so you can review and send the draft)  |
-| **Calendar event** | Confirm Event (creates the event on your calendar)                     |
-| **New task**       | View Task, Mark Complete                                               |
-| **Reminder**       | Context-specific actions based on what the reminder is about           |
-| **Workflow**       | More Details (takes you to the workflow or conversation)               |
+Buttons that write data run once, then disable. If one fails, retry from the relevant page.
 
-Actions that write data, confirming an event, completing a task, run once. The button disables after use to prevent duplicates.
+## Reduce noise
 
-<Note>
-  If an action fails, you'll see an error message. Retry from the relevant page
-  (Todos, Calendar, etc.).
-</Note>
+Select several notifications in the panel to mark them read or archive them. Archived ones leave the default view but stay accessible.
 
-## Keep the noise down
+## Mobile push
 
-A proactive assistant can generate a lot of notifications. To stay on top of them:
+The GAIA mobile app is in early access. [Join the waitlist](https://heygaia.notion.site/307023640e7b802ca404dee12cb04e89?pvs=105).
 
-- **Use bulk actions.** Select multiple notifications in the panel to mark them read or archive them in one step.
-- **Act inline.** Use the action buttons instead of digging into the full feature.
-- **Archive what you've handled.** Archived notifications leave the default view but stay accessible later.
+On first open, the app asks for notification permission. Accept, and your phone registers automatically. Tapping a push opens what triggered it.
 
-<Tip>
-  Clear your notifications at the end of each day. A clean panel makes it easy
-  to spot what actually needs your attention.
-</Tip>
+<Warning>
+  If you denied permission, turn notifications on in your device's system settings for GAIA.
+</Warning>
+
+Each account can register up to 10 devices. Signing out of the app on a device unregisters it.

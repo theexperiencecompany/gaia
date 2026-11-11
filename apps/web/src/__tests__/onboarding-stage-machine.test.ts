@@ -27,6 +27,7 @@ const answeredQuestions = apply(
   { type: "answer", field: FIELD_NAMES.PROFESSION, value: "founder" },
   { type: "toggleNeed", value: "inbox" },
   { type: "submitNeeds" },
+  { type: "preferencesPersisted" },
 );
 
 describe("onboarding stage machine", () => {
@@ -43,6 +44,9 @@ describe("onboarding stage machine", () => {
 
     state = apply(state, { type: "toggleNeed", value: "inbox" });
     state = apply(state, { type: "submitNeeds" });
+    expect(getStage(state, paid)).toBe("questions");
+
+    state = apply(state, { type: "preferencesPersisted" });
     expect(getStage(state, paid)).toBe("paidReveal");
 
     state = apply(state, { type: "ackPaidReveal" });
@@ -53,6 +57,14 @@ describe("onboarding stage machine", () => {
 
     state = apply(state, { type: "skipPlatforms" });
     expect(getStage(state, paid)).toBe("chat");
+  });
+
+  it("holds answered questions until the answers are stored", () => {
+    // Past this point the link opener and the first chat read the stored
+    // answers; a failed save must not let the user on with them lost.
+    const unsaved = { ...answeredQuestions, preferencesPersisted: false };
+    expect(getStage(unsaved, false)).toBe("questions");
+    expect(getStage(unsaved, true)).toBe("questions");
   });
 
   it("parks an unpaid user on the payment stage", () => {

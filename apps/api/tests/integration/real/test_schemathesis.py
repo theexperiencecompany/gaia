@@ -39,7 +39,7 @@ from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
 from app.db.repositories.plans import PlansRepository
 from app.db.repositories.subscriptions import SubscriptionsRepository
 from app.models.payment_models import PlanTier
-from tests.helpers import pick_free_port
+from tests.helpers import pick_free_port, worker_redis_url
 
 pytestmark = [
     pytest.mark.schemathesis,
@@ -88,13 +88,14 @@ def _operations_to_run(operation) -> bool:
     return key in SCOPED_OPERATIONS or FUZZ_FULL
 
 
-def _server_env() -> dict[str, str]:
+def _server_env(redis_url: str) -> dict[str, str]:
     env = os.environ.copy()
     env.update(
         {
             "ENV": "development",
             "USE_REAL_SERVICES": "1",
             "DEV_AUTH_BYPASS_EMAIL": DEV_USER,
+            "REDIS_URL": redis_url,
             "PYTHONUNBUFFERED": "1",
             "PYTHONPATH": str(API_ROOT),
         }
@@ -202,7 +203,7 @@ def _fail_if_parallel() -> None:
 
 
 @contextmanager
-def _uvicorn_process(log_path: Path) -> Iterator[subprocess.Popen[bytes]]:
+def _uvicorn_process(log_path: Path, redis_url: str) -> Iterator[subprocess.Popen[bytes]]:
     """Run the real app under uvicorn, terminated on the way out.
 
     Output goes to a file rather than subprocess.PIPE: nothing drains a pipe
@@ -222,7 +223,7 @@ def _uvicorn_process(log_path: Path) -> Iterator[subprocess.Popen[bytes]]:
                 str(PORT),
             ],
             cwd=API_ROOT,
-            env=_server_env(),
+            env=_server_env(redis_url),
             stdout=log_file,
             stderr=subprocess.STDOUT,
         )
@@ -308,12 +309,15 @@ def live_api_url(
     log_dir = Path(tempfile.mkdtemp(prefix="schemathesis-server-"))
     log_path = log_dir / "server.log"
     url = f"http://127.0.0.1:{PORT}"
+    # DB 0 is shared by every lane on one Redis; its cache would hand this lane
+    # another lane's fuzz user, whose id is absent from this lane's Mongo.
+    server_redis_url = worker_redis_url(redis_url)
 
     try:
-        with _uvicorn_process(log_path) as proc:
+        with _uvicorn_process(log_path, server_redis_url) as proc:
             _wait_until_serving(proc, url, log_path)
             fuzz_user_id = _mint_dev_user(url, log_path)
-            with _pro_subscription(mongodb_url, redis_url, fuzz_user_id):
+            with _pro_subscription(mongodb_url, server_redis_url, fuzz_user_id):
                 yield url
     finally:
         shutil.rmtree(log_dir, ignore_errors=True)

@@ -54,7 +54,7 @@ def _run_input(run_no: int) -> dict:
 class TestPromptFramingIsPrunedFromCheckpointState:
     @pytest.mark.regression
     async def test_stale_system_prompts_are_tombstoned_out_of_the_thread(self):
-        """Without durable pruning, each prompt slot would accumulate one message per run (production reached 39 static-prompt copies on one thread)."""
+        """Without durable pruning, each leading prompt slot would accumulate one message per run (production reached 39 static-prompt copies on one thread)."""
         thread_id = f"prune-{uuid4()}"
         async with comms_graph(["ok one", "ok two", "ok three"]) as graph:
             for run_no in (1, 2, 3):
@@ -79,8 +79,10 @@ class TestPromptFramingIsPrunedFromCheckpointState:
         assert "run 3" in str(statics[0].content), "kept static prompt is not the latest run's"
         assert len(dynamics) == 1, f"expected 1 dynamic-context message, found {len(dynamics)}"
         assert "run 3" in str(dynamics[0].content), "kept dynamic context is not the latest run's"
-        assert len(clocks) == 1, f"expected 1 time-context message, found {len(clocks)}"
-        assert "T03:" in str(clocks[0].content), "kept clock is not the latest run's"
+        # A clock is part of its turn, not a slot: each run's stays beside its request.
+        assert len(clocks) == 3, f"expected one clock per run, found {len(clocks)}"
+        for run_no, clock in enumerate(clocks, start=1):
+            assert f"T0{run_no}:" in str(clock.content)
 
     async def test_conversation_itself_survives_pruning(self):
         """Deliberately NOT @regression: guards against over-pruning and legitimately passes on base, where nothing is pruned."""

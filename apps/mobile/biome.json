@@ -1,6 +1,6 @@
 {
   "root": false,
-  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",
   "extends": "//",
   "files": {
     "includes": ["**/*.{js,jsx,ts,tsx,json,css}", "!.expo", "!**/*.d.ts"]
@@ -10,6 +10,28 @@
       "suspicious": {
         "noUnknownAtRules": "off",
         "noDuplicateCustomProperties": "off"
+      },
+      "correctness": {
+        "noReactNativeRawText": {
+          "level": "error",
+          "options": {
+            "skip": [
+              "Button.Label",
+              "Chip.Label",
+              "Card.Title",
+              "Card.Description",
+              "TextField.Label",
+              "TextField.Description",
+              "Dialog.Title",
+              "Dialog.Description",
+              "SectionHeader",
+              "SectionLabel",
+              "SubtleText",
+              "Spinner",
+              "SvgText"
+            ]
+          }
+        }
       }
     }
   },

@@ -1,62 +1,140 @@
 """Integration activation — pull an integration into the caller's own context.
 
 activate_integration(integration_id) gives the caller everything the
-integration's own subagent used to get at startup, without the second graph: its
-tools registered AND the most-used ones bound in this same turn, its operating
-prompt, the active account, standing instructions, and its skills. Execution
-stays with the caller — no worker graph, no handoff; spawn_subagent inherits the
-bound tools when work needs isolating.
+integration's own subagent used to get at startup, without a second graph: its
+tools registered (or, for a per-user MCP server, connected in the user's MCP
+client) with the most-used ones preloaded or bound in this same turn, its
+operating prompt, the active account, standing instructions, and its skills.
+Execution stays with the caller; spawn_subagent inherits it when work needs
+isolating.
 
-Binding in-turn is the point. Returning only prose would leave the caller to
+Preloading in-turn is the point. Returning only prose would leave the caller to
 spend a whole retrieve_tools round trip rediscovering tools the config names.
 """
 
+import asyncio
+from collections.abc import AsyncIterator, Callable, Sequence
+from dataclasses import dataclass, field
 from typing import Annotated
 
-from langchain_core.messages import ToolMessage
+import httpx
+from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import InjectedToolCallId, tool
+from langchain_core.tools import BaseTool, InjectedToolCallId, tool
+from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
+from mcp.shared.exceptions import McpError
+from mcp_use.client.exceptions import MCPError as McpUseError, OAuthAuthenticationError
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.context.fetchers import build_provider_metadata_block
 from app.agents.context.text import ACTIVATION_MULTI_ACCOUNT_POINTER
 from app.agents.core.subagents.active_integrations import mark_active
-from app.agents.core.subagents.handoff_tools import (
+from app.agents.core.subagents.integration_resolution import (
     CustomMcpSubagent,
-    _get_subagent_by_id,
     check_integration_connection,
+    check_mcp_connection,
+    get_integration_target,
+    is_per_user_mcp,
 )
 from app.agents.core.subagents.provider_subagents import register_integration_tools
-from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.core.subagents.subagent_helpers import build_subagent_system_prompt
+from app.agents.prompts.user_instructions_prompts import render_user_instructions
 from app.agents.skills.discovery import get_available_skills_text
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import render_preload_block, split_startup_tools
 from app.agents.workspace.system_docs import integration_skills_block
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
+from app.constants.integrations import ConnectMode
 from app.constants.log_tags import LogTag
+from app.constants.mcp import CUSTOM_MCP_AGENT_NAME_PREFIX, MCP_PRELOAD_ALL_MAX
+from app.db.repositories.integrations import integration_repository
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.subagent_models import Subagent
-from app.services.integration_instructions_service import get_instructions
 from app.services.integrations.integration_accounts import get_account_record
+from app.services.integrations.user_integrations import check_user_has_integration
+from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError, StepUpAuthRequiredError
+from app.services.user_instructions_service import get_instructions
+from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log
 
+#: Tool call id prefix of the activations a spawn is started with (see preload_integrations).
+PRELOAD_CALL_ID_PREFIX = "call_preload_"
+#: The reply to activating an integration whose activation is still in this run's history.
+ALREADY_ACTIVE_REPLY = (
+    "'{integration_id}' is already active in this conversation. Its tool schemas, notes "
+    "and accounts are in the earlier activate_integration result, its helpers are still "
+    "bound, and retrieve_tools still searches it: use those. Activating it again loads "
+    "nothing new, so it will not fix a failing tool call or connect another account."
+)
 
-def _requires_per_user_tokens(subagent: Subagent) -> bool:
-    """Whether the subagent's tools live only in a per-user MCP session, never bindable."""
-    return bool(
-        subagent.managed_by == "mcp" and subagent.mcp_config and subagent.mcp_config.requires_auth
-    )
+
+class ActivationRecord(BaseModel):
+    """Marks a reply that loaded an integration, so a later call can tell it is still loaded.
+
+    Stored as the reply's artifact in plain form, so the checkpoint keeps it; any
+    other artifact parses to activated_integration=None.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    activated_integration: str | None = None
 
 
-async def _activate_tools(
-    subagent: Subagent, user_id: str | None = None
-) -> tuple[int, list[str], list[str], str]:
-    """Register the integration's tools; return (total, bind, preloaded, docs).
+# The server refused our credential: the user has to sign in again.
+_MCP_AUTH_ERRORS: tuple[type[Exception], ...] = (
+    MCPAuthorizationRequiredError,
+    StepUpAuthRequiredError,
+    OAuthAuthenticationError,
+)
+# What MCPClient.ensure_connected / connect raise when the server cannot be
+# reached or its session cannot be opened (ValueError: not connected in the DB,
+# integration not found, refused URL; RuntimeError: no session after reconnect).
+_MCP_CONNECT_ERRORS: tuple[type[Exception], ...] = (
+    ValueError,
+    RuntimeError,
+    OSError,
+    httpx.HTTPError,
+    McpError,
+    McpUseError,
+)
+_MCP_ACTIVATION_ERRORS = (*_MCP_AUTH_ERRORS, *_MCP_CONNECT_ERRORS)
+
+
+@dataclass(frozen=True)
+class ActivatedTools:
+    """What activation made available; preload_capped marks an MCP server too large to preload."""
+
+    total: int
+    bind: list[str]
+    preload: list[str]
+    docs: str
+    preload_capped: bool = False
+
+
+def _display_name(target: Subagent | CustomMcpSubagent) -> str:
+    if isinstance(target, CustomMcpSubagent):
+        return target.name or target.id
+    return target.name
+
+
+def _available_startup_tools(
+    subagent: Subagent, available: Callable[[str], bool], dropped_message: str
+) -> list[str]:
+    """Return the subagent's declared startup tools that are available, warning with the rest."""
+    config = subagent.config
+    declared = dict.fromkeys([*(config.auto_bind_tools or []), *(config.extra_initial_tools or [])])
+    kept = [name for name in declared if available(name)]
+    if dropped := [name for name in declared if not available(name)]:
+        log.warning(dropped_message, integration=subagent.id, dropped_tools=dropped)
+    return kept
+
+
+async def _activate_tools(subagent: Subagent, user_id: str | None = None) -> ActivatedTools:
+    """Register a registry-backed integration's tools and pick what to bind and preload.
 
     bind is auto_bind_tools + extra_initial_tools minus execute-routed tools;
-    preloaded are integration tools held back from binding, with their schema docs
-    in docs for the reply (run via execute). docs is "" when nothing preloaded or
-    rendered; names that render no docs are reported, not silently kept.
+    preload are integration tools held back from binding, documented in docs.
     """
     category_name = await register_integration_tools(subagent)
     tool_registry = await get_tool_registry()
@@ -66,27 +144,82 @@ async def _activate_tools(
         category = tool_registry.get_category(category_name)
         total = len(category.tools) if category else 0
 
-    config = subagent.config
-    wanted = [*(config.auto_bind_tools or []), *(config.extra_initial_tools or [])]
     # A name the registry does not hold cannot be bound, and passing it on would
     # only be silently dropped later — drop it here so the reported set is honest.
-    known = [name for name in dict.fromkeys(wanted) if tool_registry.get_tool_meta(name)]
-    dropped = [name for name in dict.fromkeys(wanted) if not tool_registry.get_tool_meta(name)]
-    if dropped:
-        log.warning(
-            f"{LogTag.AGENT} Activation dropped unregistered startup tools",
-            integration=subagent.id,
-            dropped_tools=dropped,
-        )
+    known = _available_startup_tools(
+        subagent,
+        lambda name: tool_registry.get_tool_meta(name) is not None,
+        f"{LogTag.AGENT} Activation dropped unregistered startup tools",
+    )
     bind, preload = await split_startup_tools(user_id, known)
+    docs = await _render_preload(subagent.id, user_id, preload)
+    return ActivatedTools(total=total, bind=bind, preload=preload, docs=docs)
+
+
+async def _render_preload(integration_id: str, user_id: str | None, preload: list[str]) -> str:
     docs = await render_preload_block(user_id, preload)
     if preload and not docs:
         log.warning(
             f"{LogTag.AGENT} Activation preloaded tools but rendered no docs",
-            integration=subagent.id,
+            integration=integration_id,
             preloaded=preload,
         )
-    return total, bind, preload, docs
+    return docs
+
+
+def _mcp_preload_names(target: Subagent | CustomMcpSubagent, tools: list[BaseTool]) -> list[str]:
+    """Every tool of a small server; above the cap a platform MCP's startup tools, a custom one's none."""
+    names = [t.name for t in tools]
+    if len(names) <= MCP_PRELOAD_ALL_MAX:
+        return names
+    if isinstance(target, CustomMcpSubagent):
+        return []
+    exposed = set(names)
+    return _available_startup_tools(
+        target,
+        exposed.__contains__,
+        f"{LogTag.AGENT} Activation dropped startup tools the MCP server does not expose",
+    )
+
+
+async def _activate_mcp_tools(user_id: str, target: Subagent | CustomMcpSubagent) -> ActivatedTools:
+    """Connect a per-user MCP server and preload its schemas; its tools always run via execute."""
+    tools = await (await get_mcp_client(user_id)).ensure_connected(target.id)
+    preload = _mcp_preload_names(target, tools)
+    docs = await _render_preload(target.id, user_id, preload)
+    # `>=` is equivalent: at len == MAX every tool is preloaded, so `not preload` is False.
+    over_cap = len(tools) > MCP_PRELOAD_ALL_MAX  # pragma: no mutate
+    return ActivatedTools(
+        total=len(tools),
+        bind=[],
+        preload=preload,
+        docs=docs,
+        preload_capped=over_cap and not preload,
+    )
+
+
+async def _mcp_failure_text(
+    target: Subagent | CustomMcpSubagent, user_id: str, error: Exception
+) -> str:
+    """Log a failed MCP connect and say what the model should do; auth failures show the connect card."""
+    auth_failed = isinstance(error, _MCP_AUTH_ERRORS)
+    log.set_ns("activation", error_type=type(error).__name__)
+    log.warning(
+        f"{LogTag.AGENT} Activation could not connect the MCP server",
+        integration=target.id,
+        auth_failed=auth_failed,
+        error_type=type(error).__name__,
+        error=str(error),
+    )
+    name = _display_name(target)
+    if auth_failed:
+        return await request_integration_connection(
+            target.id, name, user_id, mode=ConnectMode.RECONNECT
+        )
+    return (
+        f"Could not connect to {name} ('{target.id}'): {error}. Its tools are unavailable "
+        "right now — tell the user instead of retrying it in this turn."
+    )
 
 
 async def _has_several_accounts(integration_id: str, user_id: str | None) -> bool:
@@ -106,112 +239,76 @@ async def _has_several_accounts(integration_id: str, user_id: str | None) -> boo
     return record is not None and len(record.accounts) > 1
 
 
-async def _activation_context(
-    integration_id: str, integration_name: str, user_id: str | None, several_accounts: bool
-) -> str:
-    """Best-effort enrichment prose for an activated integration.
+async def _overview_section(target: Subagent | CustomMcpSubagent) -> str:
+    """Return a custom MCP's own description, or a platform integration's reframed operating notes."""
+    if isinstance(target, CustomMcpSubagent):
+        doc = await integration_repository.get(target.id)
+        if not (doc and doc.description):
+            return ""
+        return f"## {_display_name(target)}: what it is\n{doc.description}"
+    notes = target.config.system_prompt
+    if not notes:
+        return ""
+    return f"## {target.id}: how it works\n{notes}"
 
-    This is enrichment, not the tools. The tools are already registered and bound
-    by the time this runs, so a transient store failure here must degrade to
-    whatever sections were gathered rather than abort the activation — same
-    contract as the context fetchers in app/agents/context/fetchers.py.
+
+def _agent_name(target: Subagent | CustomMcpSubagent) -> str:
+    if isinstance(target, CustomMcpSubagent):
+        return f"{CUSTOM_MCP_AGENT_NAME_PREFIX}{target.id}"
+    return target.config.agent_name
+
+
+async def _context_sections(
+    target: Subagent | CustomMcpSubagent, user_id: str | None, several_accounts: bool
+) -> AsyncIterator[str]:
+    """Yield each enrichment section in reply order; an empty string means the section has nothing."""
+    yield await _overview_section(target)
+    if user_id:
+        instructions = await get_instructions(user_id, target.id)
+        if instructions:
+            yield render_user_instructions(target.id, instructions)
+        # Several accounts can change mid-conversation, so those are read from
+        # the per-turn manifest instead of copied here.
+        if several_accounts:
+            yield ACTIVATION_MULTI_ACCOUNT_POINTER.format(integration=_display_name(target))
+        else:
+            yield await build_provider_metadata_block(target.id, user_id)
+        skills = await get_available_skills_text(user_id, _agent_name(target))
+        if skills:
+            yield f"## {target.id} skills available to read on demand\n{skills}"
+    yield integration_skills_block(target.id)
+
+
+async def _activation_context(
+    target: Subagent | CustomMcpSubagent, user_id: str | None, several_accounts: bool
+) -> str:
+    """Best-effort enrichment prose; a store failure keeps the sections gathered so far.
+
+    The tools are already registered and bound by the time this runs, so a
+    transient failure here must not abort the activation.
     """
     sections: list[str] = []
     try:
-        static_prompt = await build_subagent_system_prompt(integration_id=integration_id)
-        if static_prompt:
-            # The notes were written for this integration's worker graph, so left
-            # bare they misidentify the reader; reframe them for the actual reader,
-            # the executor acting with these tools in its own turn.
-            sections.append(
-                f"## {integration_id}: how it works\n"
-                "The notes below describe this integration's tools, conventions, "
-                "and standing rules — follow those. They were written for a "
-                "delegated worker, which you are not: you are the executor, "
-                "acting on this integration yourself in your own turn. IGNORE "
-                "any instruction about receiving a delegated task, reporting "
-                "to a parent, or calling finish_task (never call it — reply "
-                "normally when the work is done).\n"
-                f"{static_prompt}"
-            )
-
-        if user_id:
-            instructions = await get_instructions(user_id, integration_id)
-            if instructions:
-                sections.append(
-                    f"## The user's standing instructions for {integration_id}\n{instructions}"
-                )
-
-            # Which account the caller is acting as. Several accounts can change
-            # mid-conversation, so those are read from the per-turn manifest instead.
-            if several_accounts:
-                sections.append(
-                    ACTIVATION_MULTI_ACCOUNT_POINTER.format(integration=integration_name)
-                )
-            else:
-                identity = await build_provider_metadata_block(integration_id, user_id)
-                if identity:
-                    sections.append(identity)
-
-            agent_name = ""
-            subagent = get_subagent_by_id(integration_id)
-            if subagent:
-                agent_name = subagent.config.agent_name
-            skills = await get_available_skills_text(user_id, agent_name)
-            if skills:
-                sections.append(f"## {integration_id} skills available to read on demand\n{skills}")
-
-        workspace_skills = integration_skills_block(integration_id)
-        if workspace_skills:
-            sections.append(workspace_skills)
+        async for section in _context_sections(target, user_id, several_accounts):
+            if section:
+                sections.append(section)
     except Exception as e:
         log.warning(
             f"{LogTag.AGENT} Activation context enrichment failed; degrading to partial",
-            integration=integration_id,
+            integration=target.id,
             error_type=type(e).__name__,
             error=str(e),
         )
-
     return "\n\n".join(sections)
 
 
-def _handoff_redirect(integration_id: str) -> str:
-    """Tell the model to run a per-user integration through handoff instead.
-
-    Per-user MCP integrations (auth-required or custom) cannot be activated
-    in-context; handoff runs them in their own per-user graph and returns the
-    result. handoff stays bound under the flag for exactly this case.
-    """
-    return (
-        f"'{integration_id}' is a per-user integration, so its tools cannot be activated "
-        f"in-context. Delegate it with handoff(subagent_id='{integration_id}', task=...): that "
-        "runs it in its own per-user graph and returns the result."
-    )
-
-
-def _reply(tool_call_id: str, text: str, bind: list[str] | None = None) -> Command[str]:
-    """Build the tool's result, binding any tools it names in the same turn.
-
-    selected_tool_ids has an append reducer, so listing names here adds them to
-    what the model can call on its very next step — no discovery round trip.
-    """
-    update: dict[str, object] = {"messages": [ToolMessage(content=text, tool_call_id=tool_call_id)]}
-    if bind:
-        update["selected_tool_ids"] = bind
-    return Command(update=update)
-
-
 async def _stamp_activation(
-    configurable: AgentConfigurable,
-    integration_id: str,
-    bind: list[str],
-    preloaded: list[str],
-    tool_count: int,
+    configurable: AgentConfigurable, integration_id: str, activated: ActivatedTools
 ) -> bool:
     """Stamp the conversation while the activation is known good; return whether the stamp landed."""
     # Later retrieve_tools discovery searches this namespace too, so the tools
     # beyond the preloaded subset stay reachable from this run.
-    if not (bind or preloaded or tool_count):
+    if not (activated.bind or activated.preload or activated.total):
         # The header reads stamped only when one of these is non-empty.
         return False  # pragma: no mutate
     conversation_id = configurable.get("conversation_id")
@@ -225,25 +322,16 @@ async def _stamp_activation(
     return True
 
 
-def _activation_header(
-    integration_id: str,
-    tool_count: int,
-    bind: list[str],
-    preloaded: list[str],
-    docs: str,
-    stamped: bool,
-) -> str:
+def _activation_header(integration_id: str, activated: ActivatedTools, stamped: bool) -> str:
     """Build the activation reply's leading section; tool schemas stay last, never interleaved."""
-    # Tool schemas live in exactly one place: the trailing schemas section
-    # (render_preload_block, its own header) — the same last-position rule as
-    # handoff seeding. Never interleaved with the context sections.
+    tool_count, bind, preloaded = activated.total, activated.bind, activated.preload
     header_parts = [f"Integration '{integration_id}' is now active with {tool_count} tools."]
     if bind:
         header_parts.append(
             f"{len(bind)} helper tool(s) are ALREADY BOUND and callable right now: "
             f"{', '.join(bind)}. Call those directly."
         )
-    if preloaded and docs:
+    if preloaded and activated.docs:
         # The "searches X too" promise holds only when the stamp landed: without
         # it query-mode discovery never enters this namespace (exact names still
         # validate, so name them explicitly instead of searching).
@@ -270,6 +358,11 @@ def _activation_header(
                 "It registered no tools of its own — everything it offers is in "
                 "the context above. Use retrieve_tools only for unrelated needs."
             )
+        elif activated.preload_capped and stamped:
+            header_parts.append(
+                f"It exposes more than {MCP_PRELOAD_ALL_MAX} tools, so none are preloaded — "
+                "find the ones this task needs with retrieve_tools."
+            )
         elif stamped:
             header_parts.append("Use retrieve_tools to bind the ones this task needs.")
         else:
@@ -282,11 +375,150 @@ def _activation_header(
     return " ".join(header_parts) + "\n\n"
 
 
+def _registry_backed(target: Subagent | CustomMcpSubagent) -> Subagent | None:
+    """Target when its tools live in the global registry; None when its MCP server issues them per user."""
+    if isinstance(target, CustomMcpSubagent) or is_per_user_mcp(target):
+        return None
+    return target
+
+
+async def _connect_and_activate(
+    target: Subagent | CustomMcpSubagent, user_id: str | None
+) -> ActivatedTools | str:
+    """Activate target's tools, or return the reply text when it cannot be activated."""
+    registry_target = _registry_backed(target)
+    if registry_target is None:
+        # The server issues these tools per user: they never enter the global
+        # registry, so they are connected in the user's MCP client and run via execute.
+        if not user_id:
+            return f"'{target.id}' needs a signed-in user, so it cannot be activated in this run."
+        # A custom MCP is private to whoever added it: anyone else gets the same
+        # answer as for an id that does not exist, so ids cannot be probed.
+        if isinstance(target, CustomMcpSubagent) and not await check_user_has_integration(
+            user_id, target.id
+        ):
+            return f"Unknown integration '{target.id}'."
+        if connect_prompt := await check_mcp_connection(target.id, user_id):
+            return connect_prompt
+        try:
+            return await _activate_mcp_tools(user_id, target)
+        except _MCP_ACTIVATION_ERRORS as e:
+            return await _mcp_failure_text(target, user_id, e)
+    # Registering an unconnected integration's tools would bind tools that fail at
+    # call time with an auth error, and the check is what renders the connect card.
+    if registry_target.managed_by not in ("mcp", "internal") and user_id:
+        if connect_prompt := await check_integration_connection(registry_target.id, user_id):
+            return connect_prompt
+    return await _activate_tools(registry_target, user_id)
+
+
+def _still_active(messages: Sequence[AnyMessage], integration_id: str) -> bool:
+    """Whether a reply that loaded integration_id is still in the run's history.
+
+    The executor's thread outlives a turn, so a follow-up request still sees the
+    earlier activation. Whatever drops that reply (summarization, a tracked-todo
+    run's thread reset) drops the evidence with it, and the next call reloads.
+    """
+    return any(
+        isinstance(message, ToolMessage)
+        and message.name == ACTIVATE_INTEGRATION_TOOL_NAME
+        and isinstance(message.artifact, dict)
+        and ActivationRecord.model_validate(message.artifact).activated_integration
+        == integration_id
+        for message in messages
+    )
+
+
+@dataclass(frozen=True)
+class IntegrationLoad:
+    """What activating one integration produced: the reply text, the tools it binds, its marker."""
+
+    text: str
+    bind: list[str] = field(default_factory=list)
+    #: Set only when the integration loaded, so a later call can tell it is still active.
+    record: ActivationRecord | None = None
+
+    def reply(self, tool_call_id: str) -> ToolMessage:
+        """Build the activate_integration reply carrying this load, marked when it loaded."""
+        return ToolMessage(
+            content=self.text,
+            tool_call_id=tool_call_id,
+            name=ACTIVATE_INTEGRATION_TOOL_NAME,
+            artifact=self.record.model_dump() if self.record else None,
+        )
+
+
+def _reply(tool_call_id: str, loaded: IntegrationLoad) -> Command[str]:
+    """Build the tool's result, binding any tools it names in the same turn.
+
+    selected_tool_ids has an append reducer, so listing names here adds them to
+    what the model can call on its very next step — no discovery round trip.
+    """
+    update: dict[str, object] = {"messages": [loaded.reply(tool_call_id)]}
+    if loaded.bind:
+        update["selected_tool_ids"] = loaded.bind
+    return Command(update=update)
+
+
+async def load_integration(
+    integration_id: str, configurable: AgentConfigurable, history: Sequence[AnyMessage]
+) -> IntegrationLoad:
+    """Activate integration_id for the run configurable describes, given that run's history so far."""
+    user_id = configurable.get("user_id")
+
+    # Covers the static OAuth/builtin registry AND the user's custom MCP
+    # integrations, which the manifest lists but the registry alone does not know.
+    target = await get_integration_target(integration_id)
+    if target is None:
+        log.set(activation={"integration": integration_id})
+        log.warning(f"{LogTag.AGENT} Activation requested for unknown integration")
+        return IntegrationLoad(text=f"Unknown integration '{integration_id}'.")
+
+    if _still_active(history, target.id):
+        log.set(activation={"integration": target.id, "already_active": True})
+        # The reply is in the thread, but this process may not hold the tools (a
+        # restart, another replica); registering is a no-op when it already does.
+        if registry_target := _registry_backed(target):
+            await register_integration_tools(registry_target)
+        return IntegrationLoad(text=ALREADY_ACTIVE_REPLY.format(integration_id=target.id))
+
+    activated = await _connect_and_activate(target, user_id)
+    if isinstance(activated, str):
+        log.set(activation={"integration": target.id, "connected": False})
+        return IntegrationLoad(text=activated)
+
+    several_accounts = await _has_several_accounts(target.id, user_id)
+    context = await _activation_context(target, user_id, several_accounts)
+    log.set(
+        activation={
+            "integration": target.id,
+            "tool_count": activated.total,
+            "bound_now": len(activated.bind),
+            "preloaded": len(activated.preload),
+            "context_length": len(context),
+        }
+    )
+
+    stamped = await _stamp_activation(configurable, target.id, activated)
+
+    body = _activation_header(target.id, activated, stamped) + (
+        context or "(no additional context available)"
+    )
+    if activated.docs:
+        body += "\n\n" + activated.docs
+    return IntegrationLoad(
+        text=body,
+        bind=activated.bind,
+        record=ActivationRecord(activated_integration=target.id),
+    )
+
+
 @tool
 async def activate_integration(
     integration_id: Annotated[str, "The ID of the integration to activate (e.g., 'gmail')."],
     config: RunnableConfig,
     tool_call_id: Annotated[str, InjectedToolCallId],
+    messages: Annotated[list[AnyMessage], InjectedState("messages")],
 ) -> Command[str]:
     """Load an integration's tools and expertise into this conversation.
 
@@ -294,58 +526,51 @@ async def activate_integration(
     ``execute`` — no retrieve_tools needed for those), binds its most-used
     helper tools immediately, and returns how it works, which account you are
     acting as, the user's standing preferences, and its skills. Act on it
-    yourself; `spawn_subagent` inherits it.
+    yourself, or pass its id to spawn_subagent's integration_ids.
     """
-    configurable: AgentConfigurable = agent_configurable(config)
-    user_id = configurable.get("user_id")
+    loaded = await load_integration(integration_id, agent_configurable(config), messages)
+    return _reply(tool_call_id, loaded)
 
-    # Repository-aware resolution: covers the static OAuth/builtin registry AND
-    # user-created custom MCP integrations (a dict), which the manifest lists but
-    # the registry alone does not know — same resolver handoff uses.
-    resolved = await _get_subagent_by_id(integration_id)
-    if resolved is None:
-        log.set(activation={"integration": integration_id})
-        log.warning(f"{LogTag.AGENT} Activation requested for unknown integration")
-        return _reply(tool_call_id, f"Unknown integration '{integration_id}'.")
 
-    # Custom MCP and auth-required MCP issue their tools per user, so they never
-    # enter the global registry and cannot be bound in-context; route to handoff,
-    # which builds their per-user graph, instead of dead-ending.
-    if isinstance(resolved, CustomMcpSubagent) or _requires_per_user_tokens(resolved):
-        log.set(activation={"integration": integration_id, "routed_to_handoff": True})
-        return _reply(tool_call_id, _handoff_redirect(integration_id))
+@dataclass(frozen=True)
+class PreloadedIntegrations:
+    """Integrations activated for a spawn before it starts: its opening history and the tools bound."""
 
-    subagent = resolved
+    messages: list[AnyMessage]
+    bind: list[str]
 
-    # Registering an unconnected integration's tools would bind tools that fail at
-    # call time with an auth error. `handoff` gates on this too — and the check is
-    # what renders the connect card, so skipping it leaves the user with no button.
-    if subagent.managed_by not in ("mcp", "internal") and user_id:
-        connect_prompt = await check_integration_connection(integration_id, user_id)
-        if connect_prompt:
-            log.set(activation={"integration": integration_id, "connected": False})
-            return _reply(tool_call_id, connect_prompt)
 
-    tool_count, bind, preloaded, docs = await _activate_tools(subagent, user_id)
-    several_accounts = await _has_several_accounts(integration_id, user_id)
-    context = await _activation_context(integration_id, subagent.name, user_id, several_accounts)
-    log.set(
-        activation={
-            "integration": integration_id,
-            "tool_count": tool_count,
-            "bound_now": len(bind),
-            "preloaded": len(preloaded),
-            "context_length": len(context),
-        }
-    )
+async def preload_integrations(
+    integration_ids: Sequence[str], configurable: AgentConfigurable
+) -> PreloadedIntegrations:
+    """Activate each integration once, rendered as the spawn's own activate_integration call and reply.
 
-    stamped = await _stamp_activation(configurable, integration_id, bind, preloaded, tool_count)
-
-    header = _activation_header(integration_id, tool_count, bind, preloaded, docs, stamped)
-    body = header + (context or "(no additional context available)")
-    if docs:
-        body += "\n\n" + docs
-    return _reply(tool_call_id, body, bind)
+    Written as a call and its result, the spawn reads them exactly as if it had
+    activated them itself, and a later activate_integration of the same one sees
+    them and answers that it is already active.
+    """
+    unique = list(dict.fromkeys(integration_ids))
+    loads = await asyncio.gather(*(load_integration(i, configurable, []) for i in unique))
+    messages: list[AnyMessage] = []
+    bind: list[str] = []
+    for index, integration_id in enumerate(unique):
+        loaded = loads[index]
+        call_id = f"{PRELOAD_CALL_ID_PREFIX}{index}"
+        messages.append(
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": ACTIVATE_INTEGRATION_TOOL_NAME,
+                        "args": {"integration_id": integration_id},
+                        "id": call_id,
+                    }
+                ],
+            )
+        )
+        messages.append(loaded.reply(call_id))
+        bind.extend(name for name in loaded.bind if name not in bind)
+    return PreloadedIntegrations(messages=messages, bind=bind)
 
 
 tools = [activate_integration]

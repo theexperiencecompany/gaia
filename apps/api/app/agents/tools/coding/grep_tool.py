@@ -29,9 +29,10 @@ async def grep(
 ) -> str:
     """Search a workspace file with grep, host-side (no sandbox)."""
     log.set(tool={"name": "grep", "action": "search"})
-    # -n: prefix matches with line numbers. -e: the pattern is data, never a flag.
-    # trailing `--`: ends options so the (absolute) file path can't be a flag either.
-    args = ["-n", "-i", "-e", pattern, "--"] if ignore_case else ["-n", "-e", pattern, "--"]
+    # -E: basic regex reads `|` as a literal and silently matches nothing.
+    # -e and the trailing `--`: neither the pattern nor the path can be read as a flag.
+    flags = ["-E", "-n", "-i"] if ignore_case else ["-E", "-n"]
+    args = [*flags, "-e", pattern, "--"]
     async with fs_timer(FsOps.TOOL_GREP):
         return await run_file_filter(
             config=config,

@@ -88,14 +88,14 @@ def _activated_row() -> SubscriptionDocument:
     )
 
 
-def _service(remote: MagicMock | Exception) -> DodoPaymentService:
-    service = DodoPaymentService()
-    service.client = MagicMock()
+def _service(remote: MagicMock | Exception) -> tuple[DodoPaymentService, MagicMock]:
+    service, dodo = DodoPaymentService(), MagicMock()
+    service.client = dodo
     if isinstance(remote, Exception):
-        service.client.subscriptions.retrieve.side_effect = remote
+        dodo.subscriptions.retrieve.side_effect = remote
     else:
-        service.client.subscriptions.retrieve.return_value = remote
-    return service
+        dodo.subscriptions.retrieve.return_value = remote
+    return service, dodo
 
 
 @pytest.fixture(autouse=True)
@@ -120,7 +120,7 @@ def _no_recorded_checkout_session():
 class TestVerifyPaymentReconcilesWithDodo:
     @pytest.mark.asyncio
     async def test_activates_through_the_shared_path_when_dodo_says_active(self) -> None:
-        service = _service(_remote_subscription())
+        service, dodo = _service(_remote_subscription())
 
         with (
             patch(f"{SERVICE_MODULE}.subscription_repository") as service_repo,
@@ -146,7 +146,7 @@ class TestVerifyPaymentReconcilesWithDodo:
         # Dodo is asked about the subscription the caller named, and the
         # recovered row is read back for that caller — both reads scoped, or a
         # user could be handed someone else's subscription.
-        service.client.subscriptions.retrieve.assert_called_once_with(DODO_SUBSCRIPTION_ID)
+        dodo.subscriptions.retrieve.assert_called_once_with(DODO_SUBSCRIPTION_ID)
         assert [call.args for call in service_repo.get_latest_active_for_user.await_args_list] == [
             (USER_ID,),
             (USER_ID,),
@@ -160,7 +160,7 @@ class TestVerifyPaymentReconcilesWithDodo:
 
     @pytest.mark.asyncio
     async def test_refuses_a_subscription_owned_by_someone_else(self) -> None:
-        service = _service(_remote_subscription(metadata={"user_id": OTHER_USER_ID}))
+        service, _ = _service(_remote_subscription(metadata={"user_id": OTHER_USER_ID}))
 
         with (
             patch(f"{SERVICE_MODULE}.subscription_repository") as service_repo,
@@ -189,7 +189,7 @@ class TestVerifyPaymentReconcilesWithDodo:
 
     @pytest.mark.asyncio
     async def test_does_not_verify_a_subscription_dodo_has_never_heard_of(self) -> None:
-        service = _service(
+        service, dodo = _service(
             NotFoundError("not found", response=MagicMock(status_code=404), body=None)
         )
 
@@ -207,7 +207,7 @@ class TestVerifyPaymentReconcilesWithDodo:
 
         assert result.payment_completed is False
         activation_repo.create.assert_not_awaited()
-        service.client.subscriptions.retrieve.assert_called_once_with("sub_forged")
+        dodo.subscriptions.retrieve.assert_called_once_with("sub_forged")
         # An id Dodo has never seen is the forged-hint case: the wide event has
         # to say which user tried it and why nothing was reconciled.
         assert event["warnings"] == [
@@ -222,7 +222,7 @@ class TestVerifyPaymentReconcilesWithDodo:
 
     @pytest.mark.asyncio
     async def test_does_not_verify_a_subscription_dodo_reports_inactive(self) -> None:
-        service = _service(_remote_subscription(status="failed"))
+        service, _ = _service(_remote_subscription(status="failed"))
 
         with (
             patch(f"{SERVICE_MODULE}.subscription_repository") as service_repo,
@@ -251,7 +251,7 @@ class TestVerifyPaymentReconcilesWithDodo:
 
     @pytest.mark.asyncio
     async def test_never_calls_dodo_without_a_subscription_id(self) -> None:
-        service = _service(_remote_subscription())
+        service, dodo = _service(_remote_subscription())
 
         with patch(f"{SERVICE_MODULE}.subscription_repository") as service_repo:
             service_repo.get_latest_active_for_user = AsyncMock(return_value=None)
@@ -263,19 +263,19 @@ class TestVerifyPaymentReconcilesWithDodo:
         # a user who has just paid and is being told they have not. Left
         # unasserted, it could say anything at all.
         assert result.message == "No active subscription found"
-        service.client.subscriptions.retrieve.assert_not_called()
+        dodo.subscriptions.retrieve.assert_not_called()
 
 
-def _paid_checkout_service() -> DodoPaymentService:
+def _paid_checkout_service() -> tuple[DodoPaymentService, MagicMock]:
     """Build a service whose Dodo client reports the recorded checkout session paid, with a subscription behind the payment."""
-    service = DodoPaymentService()
-    service.client = MagicMock()
-    service.client.checkout_sessions.retrieve.return_value = MagicMock(
+    service, dodo = DodoPaymentService(), MagicMock()
+    service.client = dodo
+    dodo.checkout_sessions.retrieve.return_value = MagicMock(
         payment_id="pay_1", payment_status="succeeded"
     )
-    service.client.payments.retrieve.return_value = MagicMock(subscription_id=DODO_SUBSCRIPTION_ID)
-    service.client.subscriptions.retrieve.return_value = _remote_subscription()
-    return service
+    dodo.payments.retrieve.return_value = MagicMock(subscription_id=DODO_SUBSCRIPTION_ID)
+    dodo.subscriptions.retrieve.return_value = _remote_subscription()
+    return service, dodo
 
 
 def _recorded_checkout(session_id: str = "cks_1") -> CheckoutSessionDocument:
@@ -287,20 +287,20 @@ def _recorded_checkout(session_id: str = "cks_1") -> CheckoutSessionDocument:
     )
 
 
-def _buried_paid_session_service() -> DodoPaymentService:
+def _buried_paid_session_service() -> tuple[DodoPaymentService, MagicMock]:
     """Build a Dodo client for the user whose paid session is no longer the newest.
 
     Only cks_paid was ever paid; the sessions minted after it by the paywall
     are still sitting at the details step, which is what Dodo answers for a
     link nobody opened.
     """
-    service = _paid_checkout_service()
+    service, dodo = _paid_checkout_service()
     paid = MagicMock(payment_id="pay_1", payment_status="succeeded")
     unpaid = MagicMock(payment_id=None, payment_status=None)
-    service.client.checkout_sessions.retrieve.side_effect = (
+    dodo.checkout_sessions.retrieve.side_effect = (
         lambda session_id: paid if session_id == "cks_paid" else unpaid
     )
-    return service
+    return service, dodo
 
 
 @pytest.mark.unit
@@ -320,7 +320,7 @@ class TestVerifyPaymentMaterializesFromTheCheckoutSession:
 
     @pytest.mark.asyncio
     async def test_materialization_drops_the_plan_cache_and_restores_workflows(self) -> None:
-        service = _paid_checkout_service()
+        service, _ = _paid_checkout_service()
 
         with (
             patch(f"{SERVICE_MODULE}.checkout_session_repository") as checkout_repo,
@@ -366,7 +366,7 @@ class TestVerifyPaymentMaterializesFromTheCheckoutSession:
     @pytest.mark.asyncio
     async def test_a_paid_session_buried_under_later_paywall_mints_is_still_found(self) -> None:
         """Every 402 mints a session, burying the paid one — resolving only "the latest" would permanently disable the lost-webhook fallback."""
-        service = _buried_paid_session_service()
+        service, dodo = _buried_paid_session_service()
 
         with (
             patch(f"{SERVICE_MODULE}.checkout_session_repository") as checkout_repo,
@@ -399,19 +399,21 @@ class TestVerifyPaymentMaterializesFromTheCheckoutSession:
         assert result.subscription_id == DODO_SUBSCRIPTION_ID
         # Every session between the paid one and now was asked about, in
         # newest-first order — the scan stops at the first one Dodo calls paid.
-        assert [
-            call.args[0] for call in service.client.checkout_sessions.retrieve.call_args_list
-        ] == ["cks_block_2", "cks_block_1", "cks_paid"]
+        assert [call.args[0] for call in dodo.checkout_sessions.retrieve.call_args_list] == [
+            "cks_block_2",
+            "cks_block_1",
+            "cks_paid",
+        ]
         # The payment behind the paid session is the one that gets resolved.
-        service.client.payments.retrieve.assert_called_once_with("pay_1")
+        dodo.payments.retrieve.assert_called_once_with("pay_1")
         activation_repo.create.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_one_session_dodo_cannot_answer_for_does_not_end_the_scan(self) -> None:
         """The scan runs precisely when something has already gone wrong, so a session Dodo can't answer for must not hide the paid one."""
-        service = _buried_paid_session_service()
+        service, dodo = _buried_paid_session_service()
         paid = MagicMock(payment_id="pay_1", payment_status="succeeded")
-        service.client.checkout_sessions.retrieve.side_effect = (
+        dodo.checkout_sessions.retrieve.side_effect = (
             lambda session_id: paid
             if session_id == "cks_paid"
             else (_ for _ in ()).throw(RuntimeError("Dodo API down"))
@@ -454,8 +456,8 @@ class TestVerifyPaymentMaterializesFromTheCheckoutSession:
 
     @pytest.mark.asyncio
     async def test_refuses_a_checkout_subscription_owned_by_someone_else(self) -> None:
-        service = _paid_checkout_service()
-        service.client.subscriptions.retrieve.return_value = _remote_subscription(
+        service, dodo = _paid_checkout_service()
+        dodo.subscriptions.retrieve.return_value = _remote_subscription(
             metadata={"user_id": OTHER_USER_ID}
         )
 
@@ -488,7 +490,7 @@ class TestVerifyPaymentMaterializesFromTheCheckoutSession:
 
     @pytest.mark.asyncio
     async def test_the_welcome_email_is_sent_once_by_the_activation(self) -> None:
-        service = _paid_checkout_service()
+        service, _ = _paid_checkout_service()
 
         with (
             patch(f"{SERVICE_MODULE}.checkout_session_repository") as checkout_repo,

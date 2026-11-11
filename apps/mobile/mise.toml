@@ -15,9 +15,6 @@
 #
 # Run `mise tasks` to list all available commands.
 
-[tools]
-node = "22"
-
 [env]
 EXPO_PUBLIC_API_URL = "http://localhost:8000/api/v1"
 
