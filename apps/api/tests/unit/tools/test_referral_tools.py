@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.tools.referral_tools import (
+    PAUSED_MESSAGE,
     get_referral_link,
     get_referral_status,
     send_referral_invite,
@@ -133,6 +134,10 @@ class TestGetReferralLink:
 
         tool_log.set_ns.assert_called_once_with("referral", has_link=False)
 
+    @pytest.mark.usefixtures("referrals_off")
+    async def test_with_referrals_off_the_agent_is_told_sharing_is_paused(self) -> None:
+        assert await tool_coroutine(get_referral_link)(config=_cfg()) == PAUSED_MESSAGE
+
     async def test_any_other_failure_is_not_mistaken_for_no_subscription(self) -> None:
         broken = AsyncMock(side_effect=AppError(message="User not found", status_code=404))
         with (
@@ -218,6 +223,10 @@ class TestSuggestInvitees:
             "  - Priya Shah <priya@example.com>: met 6 times\n"
             "  - bob@example.com: emailed 9 times"
         )
+
+    @pytest.mark.usefixtures("referrals_off")
+    async def test_with_referrals_off_nobody_is_suggested(self) -> None:
+        assert await tool_coroutine(suggest_invitees)(config=_cfg()) == PAUSED_MESSAGE
 
     async def test_none_found(self) -> None:
         empty = ReferralSuggestionsResponse(suggestions=[])

@@ -1,8 +1,9 @@
 """The one budget every referral nudge draws on, whatever channel it rides.
 
-A pitch (nurture email, week-one DM, chat card) claims the user's weekly slot
-before it goes out and gives it back if it did not; two dismissals pause every
-pitch for a month. A reward note is never held back, but it starts the week.
+A pitch (nurture email, week-one DM, chat card, weekly card) goes out only while
+referrals are on, and claims the user's weekly slot before it goes out and gives
+it back if it did not; two dismissals pause every pitch for a month. A reward
+note is never held back, but it starts the week.
 """
 
 from collections.abc import Awaitable, Callable
@@ -19,6 +20,7 @@ from app.constants.referrals import (
 from app.db.repositories.referral_nudges import referral_nudge_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.services.analytics_service import capture
+from app.services.referrals.availability import referrals_enabled
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.referrals import ReferralNudgeDismissed, ReferralNudgeSent
 from shared.py.wide_events import log
@@ -41,6 +43,9 @@ async def send_pitch(
     """Deliver a pitch if the user's weekly slot is free; True only when deliver reports it went out."""
     if nudge not in PITCH_NUDGES:
         raise ValueError(f"{nudge.value} is a reward note, not a pitch; record_announcement it")
+    if not await referrals_enabled(user_id):
+        log.set_ns("referral", nudge=nudge.value, nudge_skipped="referrals_off")
+        return False
     if await subscription_repository.get_active_for_user(user_id) is None:
         log.set_ns("referral", nudge=nudge.value, nudge_skipped="not_subscribed")
         return False

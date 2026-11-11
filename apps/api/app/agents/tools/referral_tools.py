@@ -9,7 +9,7 @@ from typing import Annotated
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.constants.error_codes import REFERRAL_SUBSCRIPTION_REQUIRED
+from app.constants.error_codes import REFERRAL_SUBSCRIPTION_REQUIRED, REFERRALS_DISABLED
 from app.constants.referrals import (
     FORWARD_RECIPIENT_FALLBACK,
     FORWARDABLE_INVITE_TEMPLATE,
@@ -42,6 +42,16 @@ NO_LINK_MESSAGE = (
     "Sharing GAIA opens up once they subscribe; say so plainly, without pushing an upgrade."
 )
 
+PAUSED_MESSAGE = (
+    "Sharing GAIA is paused for everyone right now, so there is no invite link to share. "
+    "Say so plainly; any free months the user already earned still apply."
+)
+
+_REFUSALS: dict[str, str] = {
+    REFERRAL_SUBSCRIPTION_REQUIRED: NO_LINK_MESSAGE,
+    REFERRALS_DISABLED: PAUSED_MESSAGE,
+}
+
 _INVITE_OUTCOMES: dict[ReferralInviteStatus, str] = {
     ReferralInviteStatus.SENT: "sent",
     ReferralInviteStatus.ALREADY_INVITED: "already invited by this user, not sent again",
@@ -56,15 +66,16 @@ _FRIEND_STATUSES: dict[ReferredFriendStatus, str] = {
 }
 
 
-async def _overview_or_none(user_id: str) -> ReferralMeResponse | None:
-    """Return the user's referral overview, or None when they have no subscription and so no link."""
+async def _overview_or_refusal(user_id: str) -> ReferralMeResponse | str:
+    """Return the user's referral overview, or what to tell them when they have no link right now."""
     try:
         return await get_referral_overview(user_id)
     except AppError as e:
-        if e.code != REFERRAL_SUBSCRIPTION_REQUIRED:
+        refusal = _REFUSALS.get(e.code or "")
+        if refusal is None:
             raise
         log.set_ns("referral", has_link=False)
-        return None
+        return refusal
 
 
 def _share_text(overview: ReferralMeResponse) -> str:
@@ -77,9 +88,9 @@ def _share_text(overview: ReferralMeResponse) -> str:
 async def get_referral_link(config: RunnableConfig) -> str:
     user_id = get_user_id(config)
     log.set(tool={"name": "get_referral_link"}, referral={"operation": "agent_link"})
-    overview = await _overview_or_none(user_id)
-    if overview is None:
-        return NO_LINK_MESSAGE
+    overview = await _overview_or_refusal(user_id)
+    if isinstance(overview, str):
+        return overview
     offer = overview.offer
     _, regular = price_lines(offer)
     yearly_saving = format_price(offer.yearly_discount_minor, offer.currency)
@@ -98,9 +109,9 @@ async def get_referral_link(config: RunnableConfig) -> str:
 async def get_referral_status(config: RunnableConfig) -> str:
     user_id = get_user_id(config)
     log.set(tool={"name": "get_referral_status"}, referral={"operation": "agent_status"})
-    overview = await _overview_or_none(user_id)
-    if overview is None:
-        return NO_LINK_MESSAGE
+    overview = await _overview_or_refusal(user_id)
+    if isinstance(overview, str):
+        return overview
     lines = [
         f"Free months earned: {overview.months_earned} "
         f"({overview.months_applied} already added to the billing date, "
@@ -129,7 +140,12 @@ async def get_referral_status(config: RunnableConfig) -> str:
 async def suggest_invitees(config: RunnableConfig) -> str:
     user_id = get_user_id(config)
     log.set(tool={"name": "suggest_invitees"}, referral={"operation": "agent_suggestions"})
-    suggestions = (await compute_suggestions(user_id)).suggestions
+    try:
+        suggestions = (await compute_suggestions(user_id)).suggestions
+    except AppError as e:
+        if e.code != REFERRALS_DISABLED:
+            raise
+        return PAUSED_MESSAGE
     if not suggestions:
         return (
             "No one to suggest right now. Suggestions come from the people the user "
@@ -159,9 +175,9 @@ async def send_referral_invite(
         referral={"operation": "agent_invite", "requested": len(emails), "forward_only": on_bot},
     )
     if on_bot:
-        overview = await _overview_or_none(user_id)
-        if overview is None:
-            return NO_LINK_MESSAGE
+        overview = await _overview_or_refusal(user_id)
+        if isinstance(overview, str):
+            return overview
         forwardable = FORWARDABLE_INVITE_TEMPLATE.format(
             recipient=friend_name or FORWARD_RECIPIENT_FALLBACK,
             price_line=friend_price_line(overview.offer),
