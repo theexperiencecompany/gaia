@@ -5,7 +5,7 @@ back once with the problems named, and a second failure fails the run before any
 stored or sent.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
@@ -41,6 +41,7 @@ from app.services.briefing.slots import (
 )
 from app.services.short_link_service import optional_short_link
 from app.utils.markdown_utils import model_from_reply
+from app.utils.user_preferences_utils import build_user_context_parts, onboarding_preferences
 from shared.py.wide_events import log
 
 
@@ -148,6 +149,11 @@ async def written_brief(
     the model once with the problems named; a second failure fails the run before anything is
     stored or sent.
     """
+    preferences, _ = onboarding_preferences(user.onboarding)
+    # The agent's system prompt tells the writer the user's profile; the checker must know it too.
+    writing = replace(
+        writing, context="\n".join([*build_user_context_parts(preferences or {}), writing.context])
+    )
     note = ""
     failure = BriefingGenerationError("the brief was never voiced")
     for _ in range(MAX_VOICE_ATTEMPTS):

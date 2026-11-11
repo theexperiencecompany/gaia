@@ -214,3 +214,16 @@ class TestATypedFigureNamesItsSlot:
 
         assert slot_problems("lede", "Maya wants the 1x preference confirmed.", values) == []
         assert slot_problems("lede", "Maya wants the 2x preference.", values) != []
+
+
+class TestATimeSlotIsNotWrittenAround:
+    @pytest.mark.parametrize("meridiem", ["PM", "AM", "am", "p.m.", "A.M."])
+    def test_a_meridiem_written_after_a_time_slot_is_named(self, meridiem: str) -> None:
+        """Live brief: "[[fact:N.time]] PM" rendered "2:00 PM PM" and passed every check."""
+        assert slot_problems("lede", f"Sequoia at [[fact:9.time]] {meridiem}.", _VALUES) == [
+            f"the lede writes {meridiem!r} after [[fact:9.time]], which already renders "
+            "'11:00 AM'; drop it"
+        ]
+
+    def test_words_after_a_time_slot_are_left_alone(self) -> None:
+        assert slot_problems("lede", "Sequoia at [[fact:9.time]] and Amy at noon.", _VALUES) == []

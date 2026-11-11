@@ -92,6 +92,8 @@ from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import (
     BriefingBootstrap,
     BriefingDormancy,
+    OnboardingPreferences,
+    OnboardingSubdocument,
     ShuffleBag,
     UserDocument,
 )
@@ -1495,6 +1497,21 @@ class TestTheProseHoldsToItsFacts:
         assert blocks.context in checked
         assert "Raise a seed round from Accel" in checked
         assert world.checker.await_args.args[0] is UnsupportedClaims
+
+    async def test_the_checker_knows_the_profession_the_writer_was_told(self, world: World) -> None:
+        """Live: a goal question offering developer options was refused because only the writer saw "Developer"."""
+        world.user = world.user.model_copy(
+            update={
+                "onboarding": OnboardingSubdocument(
+                    preferences=OnboardingPreferences(profession="developer")
+                )
+            }
+        )
+        world.agent.return_value = _voiced("Sequoia is today", "Then the Accel intro.")
+
+        await daily.run_daily_briefing(_USER)
+
+        assert "User Profession: Developer" in _checked_prompt(world).split("## THE BRIEF", 1)[0]
 
     async def test_a_count_the_model_was_shown_is_voiced_by_its_slot(
         self, world: World, monkeypatch: pytest.MonkeyPatch

@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
+from app.constants.briefing import SilentTurnSource
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.briefing.context import UserClock
@@ -40,5 +41,5 @@ async def run_briefing_turn(
         conversation_id=(
             f"briefing-{conversation_key}-{user.user_id}-{clock.date_str}-{uuid4().hex[:6]}"
         ),
-        source="briefing",
+        source=SilentTurnSource.BRIEFING,
     )

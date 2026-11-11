@@ -88,6 +88,24 @@ _HONEST = {
         message=_TRUE_FIELDS["message"]
         + "\nWant me to draft a note to Lena so you only have to sign?",
     ),
+    # Sentences that state no fact, refused by live briefs: each must be skipped, not judged.
+    "an idiom": _with(
+        message=_TRUE_FIELDS["message"] + "\nThe rest of it landed while you were away."
+    ),
+    "advice": _with(
+        message=_TRUE_FIELDS["message"] + "\nThe NDA is the cleanest first move; the rest can wait."
+    ),
+    "a joke": _with(caption="HubSpot chose chaos before breakfast."),
+    "a true paraphrase": _with(
+        lede="Lena needs your signature, and the HubSpot login behind the CRM sync lapsed."
+    ),
+    "a question": _with(
+        message=_TRUE_FIELDS["message"] + "\nShould I treat the seed round as your main goal?"
+    ),
+    "a goal question offering options": _with(
+        message=_TRUE_FIELDS["message"]
+        + "\nWhich should I track as your main goal: hiring, the product launch or the seed round?"
+    ),
 }
 # Each must fail: a specific the facts contradict or do not hold.
 _FALSE = {

@@ -101,6 +101,8 @@ _SLOT_RESIDUE_RE = re.compile(
     r"\[[^\[\]\n]*\]\([^)\n]*\)|\S*(?:[\[\]]|\(fact:|\bfact:|\bcount:|\bseries:)\S*"
 )
 _WEB_ADDRESS_RE = re.compile(r"\S*(?:://|www\.)\S*")
+# A meridiem the prose writes itself, as "[[fact:N.time]] PM" does after a time that holds one.
+_MERIDIEM_RE = re.compile(r"\s*([AaPp](?:\.[Mm]\.|[Mm]\b))")
 # What a sentence wraps around a word it quotes from a title ("the Q3 interviews,").
 _WORD_EDGES = "()\"'.,;:!?"
 
@@ -220,6 +222,23 @@ def _typed_figure_problem(field: str, word: str, values: SlotValues) -> str:
     )
 
 
+def _meridiem_problems(field: str, text: str, values: SlotValues) -> list[str]:
+    """Name each AM or PM the prose writes after a time slot whose time already says it."""
+    problems = []
+    for match in _VALUE_SLOT_RE.finditer(text):
+        kind, key, slot_field = match.groups()
+        fact = values.facts.get(int(key)) if kind == "fact" and key.isdigit() else None
+        if slot_field != FactField.TIME or fact is None or fact.time is None:
+            continue
+        written = _MERIDIEM_RE.match(text, match.end())
+        if written and _MERIDIEM_RE.search(fact.time):
+            problems.append(
+                f"the {field} writes {written.group(1)!r} after {match.group(0)}, which already "
+                f"renders {fact.time!r}; drop it"
+            )
+    return problems
+
+
 def slot_problems(
     field: str, text: str, values: SlotValues, *, figures_are_slots: bool = True
 ) -> list[str]:
@@ -236,6 +255,7 @@ def slot_problems(
                 _value(match, values)
         except SlotError as exc:
             problems.append(f"the {field}: {exc}")
+    problems += _meridiem_problems(field, text, values)
     bare = LINK_SLOT_RE.sub(r"\1", _VALUE_SLOT_RE.sub("", text))
     problems += [
         f"the {field} has a malformed slot {match.group(0)!r}; write [[count:name]], "

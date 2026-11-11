@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from app.agents.core.background.platform_chat import post_to_platform_chat
 from app.agents.prompts.briefing_prompts import build_day_zero_hello_prompt
+from app.constants.briefing import SilentTurnSource
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
@@ -104,7 +105,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             auth_user,
             prompt,
             conversation_id=f"dayzero-{user_id}-{uuid4().hex[:6]}",
-            source="day_zero_hello",
+            source=SilentTurnSource.DAY_ZERO_HELLO,
         )
         bubbles = _parse_bubbles(reply)
 

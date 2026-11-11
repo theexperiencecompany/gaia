@@ -106,8 +106,9 @@ class TestBuildUserContextParts:
             "User Profession: Software Engineer",
             "Communication Style: Keep responses brief and to the point",
         ]
-        mock_log.set.assert_called_once_with(
-            operation="build_user_context_parts",
+        mock_log.set.assert_not_called()
+        mock_log.set_ns.assert_called_once_with(
+            "user_context",
             has_profession=True,
             has_response_style=True,
             has_language=False,
@@ -139,7 +140,7 @@ class TestBuildUserContextParts:
             "Communication Style: Use a casual and friendly tone",
             "Browser Language: de",
         ]
-        assert mock_log.set.call_args.kwargs["has_language"] is True
+        assert mock_log.set_ns.call_args.kwargs["has_language"] is True
 
     @patch("app.utils.user_preferences_utils.log")
     def test_a_legacy_custom_instructions_key_is_not_rendered(self, mock_log: Any) -> None:
