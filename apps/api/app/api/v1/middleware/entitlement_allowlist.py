@@ -58,6 +58,7 @@ FREE_PATH_PREFIXES: tuple[str, ...] = (
     "/api/v1/referrals/resolve/",  # the invite landing page a friend opens before signup
     # ── Referrals: a lapsed referrer sees "subscribe first", not the paywall ─
     "/api/v1/referrals/me",  # gates itself with a 403 the referral page renders
+    "/api/v1/referrals/gift",  # a referred friend's paywall prices their gift before they pay
     # ── Support: a blocked user must be able to tell us they are blocked ───
     "/api/v1/support",  # request submission + its rate-limit status
     # ── Self-authenticating callbacks and bridges (no user session) ────────

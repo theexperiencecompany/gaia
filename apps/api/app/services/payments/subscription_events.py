@@ -29,7 +29,7 @@ from app.constants.payments import (
     SUBSCRIPTION_WORKFLOW_SYNC_TASK,
     SubscriptionWorkflowSync,
 )
-from app.constants.referrals import APPLY_BANKED_MONTHS_TASK
+from app.constants.referrals import SETTLE_REWARDS_TASK
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import (
@@ -140,7 +140,7 @@ async def _queue_retry(task: str, *args: str, **context: str) -> None:
 
 async def _queue_banked_referral_months(user_id: str) -> None:
     """Hand a newly active subscriber's banked referral months to the worker, which moves the billing date."""
-    await _queue_retry(APPLY_BANKED_MONTHS_TASK, user_id, user_id=user_id)
+    await _queue_retry(SETTLE_REWARDS_TASK, user_id, user_id=user_id)
 
 
 async def _queue_workflow_sync(user_id: str, sync: SubscriptionWorkflowSync) -> None:

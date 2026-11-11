@@ -17,6 +17,7 @@ from app.constants.referrals import (
 )
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.schemas.referrals import (
+    ReferralGiftResponse,
     ReferralInviteRequest,
     ReferralInviteResponse,
     ReferralMeResponse,
@@ -28,7 +29,7 @@ from app.services.referrals.invites import (
     send_invites,
     unsubscribe_invite_recipient,
 )
-from app.services.referrals.overview import get_referral_overview, land_on_invite
+from app.services.referrals.overview import friend_gift, get_referral_overview, land_on_invite
 from app.services.referrals.suggestions import suggest_invitees
 from app.utils.auth_utils import session_cookie_secure
 from app.utils.notification.unsubscribe import (
@@ -48,6 +49,15 @@ async def get_my_referrals(user_id: Annotated[str, Depends(get_user_id)]) -> Ref
     log.set(user={"id": user_id}, referral={"operation": "me"})
     result = await get_referral_overview(user_id)
     log.set_ns("referral", friends=len(result.friends), months_earned=result.months_earned)
+    return result
+
+
+@router.get("/gift")
+async def get_my_gift(user_id: Annotated[str, Depends(get_user_id)]) -> ReferralGiftResponse:
+    """The caller's gift from the friend who referred them, for the paywall's price; null when none is owed."""
+    log.set(user={"id": user_id}, referral={"operation": "gift"})
+    result = await friend_gift(user_id)
+    log.set_ns("referral", gift_owed=result.gift is not None)
     return result
 
 

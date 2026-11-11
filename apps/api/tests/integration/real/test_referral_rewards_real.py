@@ -21,13 +21,23 @@ from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import SubscriptionDocument, SubscriptionStatus, SubscriptionUpdate
-from app.models.referral_models import ReferralDocument, ReferralRewardState, ReferredFriendStatus
+from app.models.referral_models import (
+    ReferralDocument,
+    ReferralRevokeReason,
+    ReferralRewardState,
+    ReferredFriendStatus,
+)
 from app.models.user_models import UserDocument
 from app.models.webhook_models import DodoPaymentData
 from app.services.payments.payment_service import payment_service
-from app.services.referrals.rewards import apply_banked_months, record_friend_payment
+from app.services.referrals.revocation import request_reward_revocation
+from app.services.referrals.rewards import RewardDelivery, record_friend_payment, settle_rewards
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.referrals import ReferralConverted, ReferralRewardGranted
+from shared.py.analytics.catalog.referrals import (
+    ReferralConverted,
+    ReferralRewardGranted,
+    ReferralRewardRevoked,
+)
 from tests.factories import make_dodo_payment, make_dodo_subscription
 
 pytestmark = pytest.mark.service
@@ -71,6 +81,12 @@ class Seams:
     dodo: FakeDodo
     capture: MagicMock
     notify: AsyncMock
+    revoke_capture: MagicMock
+
+
+async def _run_settle_job(referrer_user_id: str, *, friend_user_id: str | None = None) -> None:
+    """Run the queued settle job at once, as the worker would."""
+    await settle_rewards(referrer_user_id)
 
 
 @pytest.fixture
@@ -78,6 +94,9 @@ def seams(mongo_db: Any, real_redis: Any) -> Iterator[Seams]:
     dodo = FakeDodo()
     with (
         patch.object(payment_service, "client", dodo, create=True),
+        patch("app.services.referrals.rewards.queue_settlement", _run_settle_job),
+        patch("app.services.referrals.revocation.queue_settlement", _run_settle_job),
+        patch("app.services.referrals.revocation.capture") as revoke_capture,
         patch("app.services.referrals.rewards.capture") as capture,
         patch(
             "app.services.referrals.rewards.notification_service.create_notification",
@@ -85,7 +104,7 @@ def seams(mongo_db: Any, real_redis: Any) -> Iterator[Seams]:
         ) as notify,
         patch("app.services.payments.subscription_events.invalidate_plan_cache", AsyncMock()),
     ):
-        yield Seams(dodo, capture, notify)
+        yield Seams(dodo, capture, notify, revoke_capture)
 
 
 async def _user(first_name: str) -> UserDocument:
@@ -220,6 +239,27 @@ class TestFirstPaymentEarnsAMonth:
         assert seams.dodo.store[sub_id].next_billing_date == TWO_MONTHS_LATER
         assert len(seams.dodo.updates) == 2
 
+    async def test_two_friends_earn_two_months_when_the_first_ones_move_failed(
+        self, seams: Seams
+    ) -> None:
+        """Regression: the second friend pinned the date the first's failed move was still owed, so two friends earned one month."""
+        referrer = await _user("Aryan")
+        priya, sam = await _user("Priya"), await _user("Sam")
+        sub_id = await _active_subscription(seams.dodo, referrer, "cus_referrer")
+        await _refer(referrer, priya)
+        await _refer(referrer, sam)
+        seams.dodo.failures_left = 1
+
+        with pytest.raises(ConnectionError):
+            await record_friend_payment(_payment(priya))
+        await record_friend_payment(_payment(sam))
+        await record_friend_payment(_payment(priya))
+
+        assert seams.dodo.store[sub_id].next_billing_date == TWO_MONTHS_LATER
+        for friend in (priya, sam):
+            referral = await referral_repository.get(friend.id)
+            assert referral.reward_state is ReferralRewardState.APPLIED
+
     async def test_a_reward_waits_while_another_holds_the_referrers_lock(
         self, seams: Seams, real_redis: Any
     ) -> None:
@@ -291,8 +331,10 @@ class TestBankedMonths:
         ]
 
         sub_id = await _active_subscription(seams.dodo, referrer, "cus_referrer")
-        assert await apply_banked_months(referrer.id) == 1
-        assert await apply_banked_months(referrer.id) == 0
+        assert await settle_rewards(referrer.id) == [
+            RewardDelivery(ReferralRewardState.APPLIED, ONE_MONTH_LATER)
+        ]
+        assert await settle_rewards(referrer.id) == []
 
         assert seams.dodo.updates == [(sub_id, ONE_MONTH_LATER)]
         assert (
@@ -314,3 +356,76 @@ class TestBankedMonths:
 
         assert seams.dodo.updates == []
         assert (await referral_repository.get(friend.id)).reward_state is ReferralRewardState.BANKED
+
+
+def _revoked(capture: MagicMock) -> list[ReferralRewardRevoked]:
+    return [
+        c.args[1] for c in capture.call_args_list if isinstance(c.args[1], ReferralRewardRevoked)
+    ]
+
+
+class TestRevokedMonths:
+    async def test_a_refunded_friend_moves_the_bill_back_and_shows_as_revoked(
+        self, seams: Seams
+    ) -> None:
+        referrer, friend = await _user("Aryan"), await _user("Priya")
+        sub_id = await _active_subscription(seams.dodo, referrer, "cus_referrer")
+        await _refer(referrer, friend)
+        payment = _payment(friend)
+        await record_friend_payment(payment)
+
+        await request_reward_revocation(payment.payment_id, ReferralRevokeReason.REFUND)
+        await request_reward_revocation(payment.payment_id, ReferralRevokeReason.REFUND)
+
+        assert seams.dodo.updates == [(sub_id, ONE_MONTH_LATER), (sub_id, NEXT_BILL)]
+        referral = await referral_repository.get(friend.id)
+        assert referral.reward_state is ReferralRewardState.REVOKED
+        assert referral.revoke_reason is ReferralRevokeReason.REFUND
+        assert _revoked(seams.revoke_capture) == [
+            ReferralRewardRevoked(
+                friend_id=friend.id, reason="refund", prior_state="applied", reclaimed=True
+            )
+        ]
+
+    async def test_a_banked_month_disputed_away_is_never_applied(self, seams: Seams) -> None:
+        referrer, friend = await _user("Aryan"), await _user("Priya")
+        await _refer(referrer, friend)
+        payment = _payment(friend)
+        await record_friend_payment(payment)
+
+        await request_reward_revocation(payment.payment_id, ReferralRevokeReason.DISPUTE)
+        await _active_subscription(seams.dodo, referrer, "cus_referrer")
+
+        assert await settle_rewards(referrer.id) == []
+        assert seams.dodo.updates == []
+
+    async def test_a_refund_for_a_later_payment_takes_nothing_back(self, seams: Seams) -> None:
+        referrer, friend = await _user("Aryan"), await _user("Priya")
+        sub_id = await _active_subscription(seams.dodo, referrer, "cus_referrer")
+        await _refer(referrer, friend)
+        await record_friend_payment(_payment(friend))
+
+        await request_reward_revocation("pay_renewal", ReferralRevokeReason.REFUND)
+
+        assert seams.dodo.updates == [(sub_id, ONE_MONTH_LATER)]
+        assert (
+            await referral_repository.get(friend.id)
+        ).reward_state is ReferralRewardState.APPLIED
+
+    async def test_one_of_two_friends_refunded_leaves_exactly_one_month(self, seams: Seams) -> None:
+        referrer = await _user("Aryan")
+        priya, sam = await _user("Priya"), await _user("Sam")
+        sub_id = await _active_subscription(seams.dodo, referrer, "cus_referrer")
+        await _refer(referrer, priya)
+        await _refer(referrer, sam)
+        first = _payment(priya)
+        await record_friend_payment(first)
+        seams.dodo.failures_left = 1
+        with pytest.raises(ConnectionError):
+            await record_friend_payment(_payment(sam))
+
+        # Priya's refund lands while Sam's move is still in flight.
+        await request_reward_revocation(first.payment_id, ReferralRevokeReason.REFUND)
+
+        assert seams.dodo.store[sub_id].next_billing_date == ONE_MONTH_LATER
+        assert (await referral_repository.get(sam.id)).reward_state is ReferralRewardState.APPLIED

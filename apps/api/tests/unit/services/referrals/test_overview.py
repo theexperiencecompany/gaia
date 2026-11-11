@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -27,13 +27,22 @@ from app.models.referral_models import (
     ReferredFriendStatus,
 )
 from app.models.user_models import UserDocument
-from app.schemas.referrals import ReferralMeResponse, ReferralResolveResponse, ReferredFriend
+from app.schemas.referrals import (
+    ReferralFriendGift,
+    ReferralGiftResponse,
+    ReferralMeResponse,
+    ReferralResolveResponse,
+    ReferredFriend,
+)
 from app.services.referrals.codes import share_link
 from app.services.referrals.offer import build_offer
-from app.services.referrals.overview import get_referral_overview, land_on_invite
+from app.services.referrals.overview import friend_gift, get_referral_overview, land_on_invite
 from app.utils.errors import AppError
-from shared.py.analytics import UserId
+from shared.py.analytics import UserId, prepare_capture
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.catalog.auth import UserActive
 from shared.py.analytics.catalog.referrals import ReferralLandingResolved
+from shared.py.analytics.context import AnalyticsContext, analytics_context
 from tests.factories import make_pro_plans
 
 OVERVIEW = "app.services.referrals.overview"
@@ -227,6 +236,33 @@ class TestResolve:
             ReferralLandingResolved(outcome="valid", landing_variant="earn", cookie_set=True),
         )
 
+    @pytest.mark.usefixtures("plans")
+    async def test_a_visitor_opening_a_link_never_marks_its_owner_active(self) -> None:
+        """The landing is captured on the owner, under the anonymous visitor's request: it is not the owner using GAIA."""
+        visitor = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+            )
+        )
+        with (
+            patch(
+                f"{OVERVIEW}.referral_code_repository.get_by_code",
+                AsyncMock(return_value=OWNER_CODE),
+            ),
+            patch(f"{OVERVIEW}.user_repository.get", AsyncMock(return_value=OWNER)),
+            patch("app.services.analytics_service._get_posthog_client", return_value=MagicMock()),
+            patch(
+                "app.services.analytics_service.prepare_capture", wraps=prepare_capture
+            ) as prepared,
+            patch("app.services.analytics_service.spawn_background_task"),
+            analytics_context(visitor),
+        ):
+            await land_on_invite("aryan-k7f2", ReferralCopyVariant.GIFT, None)
+
+        captured = [type(c.args[1]) for c in prepared.call_args_list]
+        assert ReferralLandingResolved in captured
+        assert UserActive not in captured
+
     @pytest.mark.usefixtures("referrals_off")
     async def test_with_referrals_off_a_live_link_is_invalid_sets_no_cookie_and_records_disabled(
         self, owned_code: AsyncMock
@@ -307,3 +343,39 @@ class TestResolve:
         assert landing.resolved == ReferralResolveResponse(valid=False, offer=build_offer(PLANS))
         assert landing.cookie is None
         assert get_user.await_count == int(owner_exists)
+
+
+class TestFriendGift:
+    async def test_a_friend_owed_a_gift_sees_who_sent_it_and_its_price(self) -> None:
+        referral = ReferralDocument(
+            friend_user_id="64a0000000000000000000f1",
+            referrer_user_id=OWNER.id,
+            code="aryan-k7f2",
+            joined_at=JOINED,
+            created_at=JOINED,
+            updated_at=JOINED,
+        )
+        with (
+            patch(f"{OVERVIEW}.pending_gift_referral", AsyncMock(return_value=referral)) as owed,
+            patch(f"{OVERVIEW}.user_repository.get", AsyncMock(return_value=OWNER)),
+            patch(f"{OVERVIEW}.payment_service.get_pro_plans", AsyncMock(return_value=PLANS)),
+        ):
+            result = await friend_gift("64a0000000000000000000f1")
+
+        owed.assert_awaited_once_with("64a0000000000000000000f1")
+        assert result == ReferralGiftResponse(
+            gift=ReferralFriendGift(
+                referrer_first_name="Aryan",
+                referrer_picture="https://p/a.png",
+                offer=build_offer(PLANS),
+            )
+        )
+
+    async def test_anyone_owed_no_gift_gets_none_and_no_price_lookup(self) -> None:
+        with (
+            patch(f"{OVERVIEW}.pending_gift_referral", AsyncMock(return_value=None)),
+            patch(f"{OVERVIEW}.payment_service.get_pro_plans", AsyncMock()) as plans,
+        ):
+            assert await friend_gift("64a0000000000000000000f1") == ReferralGiftResponse(gift=None)
+
+        plans.assert_not_awaited()
