@@ -9,4 +9,5 @@ export const API_ERROR_CODES = {
   INVITE_INVALID: "invite_invalid",
   CANNOT_REMOVE_ADMIN: "cannot_remove_admin",
   INSTRUCTIONS_CONFLICT: INSTRUCTIONS_CONFLICT_CODE,
+  BRIEF_DELIVERY_WORKFLOWS_EXIST: "brief_delivery_workflows_exist",
 } as const;
