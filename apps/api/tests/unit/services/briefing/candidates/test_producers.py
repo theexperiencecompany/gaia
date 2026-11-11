@@ -12,6 +12,7 @@ from tests.factories import make_user_id
 
 from app.constants.briefing import BriefAction, BriefItemSource, BriefOutcome
 from app.constants.todos import (
+    BLOCKING_LABEL,
     FAILED_LABEL,
     GAIA_TRACKED_LABEL,
     NEEDS_REPLY_LABEL,
@@ -76,7 +77,7 @@ class TestTrackedTodos:
                 "you",
                 "b1",
                 "GAIA",
-                BriefAction.REVIEW,
+                BriefAction.APPROVE,
             ),
             (
                 "Book the Lisbon flights",
@@ -87,6 +88,20 @@ class TestTrackedTodos:
             ),
         ]
         assert all(c.outcome is None for c in found)
+
+    @pytest.mark.parametrize(
+        ("label", "action"),
+        [
+            (WAITING_FOR_APPROVAL_LABEL, BriefAction.APPROVE),
+            (NEEDS_REPLY_LABEL, BriefAction.REPLY),
+            (BLOCKING_LABEL, BriefAction.REVIEW),
+        ],
+    )
+    def test_a_waiting_todo_asks_what_its_label_says(self, label: str, action: BriefAction) -> None:
+        """Live brief: an approval read as "review", so "To approve" over it was refused."""
+        [found] = waiting_candidates(TrackedWork(blocked=[_todo("b1", "Priya's venues", label)]))
+
+        assert found.action is action
 
     def test_an_inbox_desk_thread_is_a_gmail_item_and_one_subject_counts_its_todos(self) -> None:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f")

@@ -108,7 +108,7 @@ class TestOneItemPerThing:
         assert (item.title, item.todo_id, item.action) == (
             "Reply to Maya on the term sheet",
             "todo-t-maya",
-            BriefAction.REVIEW,
+            BriefAction.REPLY,
         )
         assert item.signal is not None and item.signal.external_id == "t-maya"
         assert (item.people, item.importance, item.url) == (

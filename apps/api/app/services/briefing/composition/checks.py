@@ -87,6 +87,14 @@ def _item_problems(
         problems.append(
             f"{at}: give exactly one of action (it needs the user) or outcome (it got somewhere)"
         )
+    if candidate.outcome is not None and item.outcome is None:
+        problems.append(
+            f"{at}: its line gives outcome {candidate.outcome.value}, so it is placed as that outcome"
+        )
+    if candidate.action is not None and item.action is None:
+        problems.append(
+            f"{at}: its line gives action {candidate.action.value}, so it is placed as that action"
+        )
     if candidate.is_event and not leads:
         problems.append(
             f"{at}: a calendar event can only lead; the edition draws the day's calendar"

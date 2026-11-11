@@ -80,6 +80,7 @@ _FITTING = {
     "waiting on you, over asks of every kind": _group("Waiting on you", 1, 5, 6, 7),
     "money, over the invoices": _group("Money", 5, 8),
     "still running, over started work": _group("Still running", 4),
+    "needs your review, over a retry and a reply": _group("Needs your review", 7, 6),
 }
 # Each must be refused: an item under it does not satisfy it.
 _MISFITTING = {

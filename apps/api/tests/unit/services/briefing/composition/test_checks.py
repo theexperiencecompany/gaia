@@ -14,6 +14,8 @@ from app.constants.briefing import (
     MAX_BRIEF_ITEMS,
     MAX_ITEMS_PER_BLOCK,
     MIN_TREND_POINTS,
+    BriefAction,
+    BriefOutcome,
 )
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefComposition
@@ -86,6 +88,8 @@ POOL = FactPool(
         **{n: _item(title) for n, title in enumerate(_TITLES, start=1)},
         13: _item("Board call", state="note", is_event=True, time="4:00 PM"),
         14: _item("Re: Re: Fwd: the revised Series A term sheet, with all redlines"),
+        15: _item("Board deck numbers", state="gaia", outcome=BriefOutcome.STARTED),
+        16: _item("CRM sync", state="failed", action=BriefAction.RETRY),
     },
     series=[
         _series("meetings", [2, 1.5, 2, 0, 0, 2.5, 7]),
@@ -305,6 +309,20 @@ class TestEachBlockHasItsShape:
             "block 1 (items), item 1: give exactly one of action (it needs the user) or outcome (it got somewhere)",
             "block 1 (items), item 2: give exactly one of action (it needs the user) or outcome (it got somewhere)",
         ]
+
+    def test_an_item_goes_on_the_side_its_producer_gave_it(self) -> None:
+        """Live brief: a running todo, outcome started, was placed as an ask to read."""
+        asked = _placed(15, action="read", title="Board deck numbers")
+        reported = _placed(16, outcome="finished", title="CRM sync")
+
+        assert _problems(
+            {"kind": "items", "heading": "Worth a look", "items": [asked, reported]}
+        ) == [
+            "block 1 (items), item 15: its line gives outcome started, so it is placed as that outcome",
+            "block 1 (items), item 16: its line gives action retry, so it is placed as that action",
+        ]
+        agrees = [_placed(15, outcome="started", title="Board deck numbers")]
+        assert _problems({"kind": "items", "heading": "Still running", "items": agrees}) == []
 
     def test_a_title_is_measured_as_the_brief_shows_it_with_its_slots_filled(self) -> None:
         long_title = _placed(14, action="reply", title="[[fact:14]]")

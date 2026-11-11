@@ -1,7 +1,10 @@
 """Todos as candidates: what waits on the user, what GAIA did or is doing, and what the user finished."""
 
+from collections.abc import Callable
+
 from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefAction, BriefOutcome
 from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.constants.todos import NEEDS_REPLY_LABEL, WAITING_FOR_APPROVAL_LABEL
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.briefing_models import BriefingItemKind
 from app.models.todo_models import ExternalRefSource, TodoDocument
@@ -17,11 +20,29 @@ def _source(doc: TodoDocument) -> tuple[str, str]:
     return GAIA_SOURCE, GAIA_APP_NAME
 
 
+# What a todo waiting on the user asks, by the label that says why it waits; any other asks a look.
+_ASKED_BY_LABEL: dict[str, BriefAction] = {
+    WAITING_FOR_APPROVAL_LABEL: BriefAction.APPROVE,
+    NEEDS_REPLY_LABEL: BriefAction.REPLY,
+}
+
+
+def _asked(doc: TodoDocument) -> BriefAction:
+    return next(
+        (action for label, action in _ASKED_BY_LABEL.items() if label in doc.labels),
+        BriefAction.REVIEW,
+    )
+
+
+def _retried(_doc: TodoDocument) -> BriefAction:
+    return BriefAction.RETRY
+
+
 def _grouped(
     docs: list[TodoDocument],
     state: BriefingItemKind,
     *,
-    action: BriefAction | None = None,
+    action: Callable[[TodoDocument], BriefAction] | None = None,
     outcome: BriefOutcome | None = None,
 ) -> list[BriefCandidate]:
     """One candidate per subject, counting the todos it stands for, in first-seen order."""
@@ -42,7 +63,7 @@ def _grouped(
             detail=doc.description or None,
             due_at=doc.due_date,
             todo_id=doc.id,
-            action=action,
+            action=action(doc) if action is not None else None,
             outcome=outcome,
         )
     return list(by_subject.values())
@@ -50,8 +71,8 @@ def _grouped(
 
 def waiting_candidates(work: TrackedWork) -> list[BriefCandidate]:
     """Return the tracked todos waiting on the user, then the ones that failed."""
-    return _grouped(work.blocked, "you", action=BriefAction.REVIEW) + _grouped(
-        work.failed, "failed", action=BriefAction.RETRY
+    return _grouped(work.blocked, "you", action=_asked) + _grouped(
+        work.failed, "failed", action=_retried
     )
 
 

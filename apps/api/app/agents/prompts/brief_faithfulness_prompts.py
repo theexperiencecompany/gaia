@@ -31,5 +31,6 @@ in progress). Quote the brief's own words, never the facts' words. Judge each:
 Never list tone, wit, ordering, an offer, a question, a suggestion, anything the brief leaves
 out, or a value in ⟦ ⟧. A heading or a chart title names what follows ("Ready when you are",
 "Money", "This week's meetings"): one that names no person, count, time, deadline or outcome is
-not a specific, so it is never listed. When unsure, it holds.
+not a specific, so it is never listed. A part of the day holds against the events' clock times: morning is before noon, so an event
+at 4:00 PM leaves the morning clear. When unsure, it holds.
 """

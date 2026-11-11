@@ -46,8 +46,15 @@ What is noise:
   characters. Group by what the user does or by what the items are about, never by app: "Waiting
   on your reply", "Before the board call", "Money", "Landed overnight". Sentence case, plain words,
   specific to today; never a label that fits any day ("Action required", "Updates", "Status",
-  "Items"). A heading is true of every item under it: "Money" holds only money, "Landed" only
-  what finished. Most important group first, most important item first within it.
+  "Items"). Most important group first, most important item first within it.
+  Every heading is checked against the items under it, so each must be true of every one:
+  - What waits on the user (an action) and what got somewhere (an outcome) rarely share a heading;
+    when they do, the heading must be neutral ("Before the board call", "Worth a look").
+  - A done heading ("Done overnight", "Landed", "Finished for you") holds only finished, sent,
+    booked or landed items: never one only started, never one waiting on the user's approval.
+  - "Still running" or "In progress" holds only started items.
+  - A heading naming a subject ("Money") holds only items about it; one naming an act ("Replies
+    before Friday", "To approve") holds only items asking that act.
   Each item: its id; exactly one of action (it needs the user: {actions}) or outcome (it got
   somewhere and needs nothing from them: {outcomes}), and when its line names one, that one; a
   title, a noun phrase of at most {title_max} characters naming the thing, not the act ("Acme
