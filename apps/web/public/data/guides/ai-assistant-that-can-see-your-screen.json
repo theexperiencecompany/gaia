@@ -13,7 +13,7 @@
   ],
   "breadcrumbName": "AI Assistant That Can See Your Screen",
   "heading": "An AI assistant that can see your screen when you ask",
-  "answer": "GAIA's desktop app can look at your screen. In a desktop conversation, ask something like 'what does this error mean?' or 'turn this into a todo' and GAIA takes a screenshot of the display you are working on, reads it with an AI vision model, and answers or acts on what it sees. It is a single still image taken when the conversation needs it, not a live feed, and a thumbnail of every capture appears in the chat so you always know what was seen.",
+  "answer": "GAIA's desktop app can look at your screen. Ask what an error means or to turn something into a todo, and it reads a single screenshot, not a live feed, and acts on it.",
   "sections": [
     {
       "heading": "What happens when GAIA looks at your screen",

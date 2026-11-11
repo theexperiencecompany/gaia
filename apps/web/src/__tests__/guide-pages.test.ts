@@ -14,6 +14,8 @@ const LANDING_DIR = path.join(
   "(landing)",
 );
 const GUIDE_SLUG_DECLARATION = /const SLUG = "([^"]+)";/;
+// The answer sits in a large box under the H1: two sentences, never a paragraph wall.
+const ANSWER_MAX_WORDS = 45;
 
 const slugs: string[] = JSON.parse(
   readFileSync(path.join(GUIDES_DIR, "_slugs.json"), "utf8"),
@@ -39,6 +41,13 @@ describe("guide pages", () => {
   it.each(slugs)("loads %s with its own slug", async (slug) => {
     const guide = await getGuide(slug);
     expect(guide.slug).toBe(slug);
+  });
+
+  it.each(slugs)("opens %s with a short answer", async (slug) => {
+    const guide = await getGuide(slug);
+    expect(guide.answer.split(/\s+/).length).toBeLessThanOrEqual(
+      ANSWER_MAX_WORDS,
+    );
   });
 
   it("fails loudly for a guide with no data file", async () => {
