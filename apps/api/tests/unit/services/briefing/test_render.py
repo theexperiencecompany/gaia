@@ -13,6 +13,7 @@ import pytest
 
 from app.services.briefing import render as render_module
 from app.services.briefing.render import (
+    TRIM_ALPHA_THRESHOLD,
     TRIM_THRESHOLD,
     ImageRenderOptions,
     render_html_to_image,
@@ -145,6 +146,7 @@ class TestImageRenderOptions:
         assert options.timeout_ms == 15000
         assert options.clip_selector is None
         assert options.trim_margin_px is None
+        assert options.omit_background is False
 
     def test_options_are_immutable(self) -> None:
         options = ImageRenderOptions()
@@ -208,7 +210,20 @@ class TestRenderHtmlToImage:
     async def test_png_capture_sends_no_quality(self, browser: Harness) -> None:
         await render_html_to_image("<html>hi</html>", ImageRenderOptions(quality=55))
 
-        assert browser.page.screenshot_calls == [{"full_page": True, "type": "png", "clip": None}]
+        assert browser.page.screenshot_calls == [
+            {"full_page": True, "type": "png", "clip": None, "omit_background": False}
+        ]
+
+    async def test_a_png_capture_can_leave_the_page_background_out(self, browser: Harness) -> None:
+        await render_html_to_image("<html>hi</html>", ImageRenderOptions(omit_background=True))
+
+        assert browser.page.screenshot_calls == [
+            {"full_page": True, "type": "png", "clip": None, "omit_background": True}
+        ]
+
+    def test_a_jpeg_cannot_leave_the_background_out(self) -> None:
+        with pytest.raises(ValueError, match="JPEG has no alpha"):
+            ImageRenderOptions(image_format="jpeg", omit_background=True)
 
     async def test_jpeg_capture_forwards_the_quality(self, browser: Harness) -> None:
         await render_html_to_image(
@@ -229,7 +244,9 @@ class TestRenderHtmlToImage:
     async def test_viewport_only_capture_is_honoured(self, browser: Harness) -> None:
         await render_html_to_image("<html>hi</html>", ImageRenderOptions(full_page=False))
 
-        assert browser.page.screenshot_calls == [{"full_page": False, "type": "png", "clip": None}]
+        assert browser.page.screenshot_calls == [
+            {"full_page": False, "type": "png", "clip": None, "omit_background": False}
+        ]
 
     async def test_empty_html_still_renders(self, browser: Harness) -> None:
         result = await render_html_to_image("")
@@ -283,6 +300,7 @@ class TestClipSelector:
                 "full_page": True,
                 "type": "png",
                 "clip": {"x": 105.0, "y": 750.0, "width": 400.0, "height": 300.0},
+                "omit_background": False,
             }
         ]
 
@@ -423,16 +441,48 @@ class TestTrimToContent:
         assert trimmed.size == (200 - 2, 260)
         assert trimmed.getpixel((0, 0)) == far_drift
 
-    def test_a_transparent_capture_is_flattened_to_rgb(self) -> None:
-        image = Image.new("RGBA", (300, 400), (*_DESK, 255))
-        ImageDraw.Draw(image).rectangle((50, 70, 199, 329), fill=(*_PAPER, 255))
+    def test_a_transparent_capture_keeps_its_alpha(self) -> None:
+        image = _clear_with_paper()
 
         trimmed = Image.open(
             io.BytesIO(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions()))
         )
 
-        assert trimmed.mode == "RGB"
+        assert trimmed.mode == "RGBA"
         assert trimmed.size == (170, 280)
+        assert trimmed.getpixel((0, 0)) == (0, 0, 0, 0)
+        assert trimmed.getpixel((10, 10)) == (*_PAPER, 255)
+
+    def test_the_faintest_shadow_on_a_transparent_capture_is_kept(self) -> None:
+        image = _clear_with_paper()
+        faintest = (0, 0, 0, TRIM_ALPHA_THRESHOLD + 1)
+        ImageDraw.Draw(image).rectangle((50, 330, 199, 359), fill=faintest)
+
+        trimmed = Image.open(
+            io.BytesIO(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions()))
+        )
+
+        assert trimmed.size == (170, 280 + 30)
+        assert trimmed.getpixel((80, 10 + 260 + 5)) == faintest
+
+    def test_the_hidden_colour_of_a_transparent_background_is_not_content(self) -> None:
+        image = _clear_with_paper()
+        ImageDraw.Draw(image).rectangle((0, 0, 299, 30), fill=(255, 255, 255, 0))
+
+        trimmed = Image.open(
+            io.BytesIO(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions()))
+        )
+
+        assert trimmed.size == (170, 280)
+
+    def test_a_transparent_capture_saved_as_jpeg_is_flattened(self) -> None:
+        png = _saved(_clear_with_paper(), format="PNG")
+
+        trimmed = Image.open(
+            io.BytesIO(trim_to_content(png, 10, ImageRenderOptions(image_format="jpeg")))
+        )
+
+        assert (trimmed.format, trimmed.mode, trimmed.size) == ("JPEG", "RGB", (170, 280))
 
     def test_a_png_is_saved_optimized(self) -> None:
         png = _noisy_desk_with_paper()
@@ -462,6 +512,13 @@ def _noisy_desk_with_paper() -> bytes:
     texture = bytes((i * 37) % 256 for i in range(150 * 260 * 3))
     image.paste(Image.frombytes("RGB", (150, 260), texture), (50, 70))
     return _saved(image, format="PNG")
+
+
+def _clear_with_paper() -> Image.Image:
+    """Draw a paper on a fully transparent page, as a capture that leaves the desk out."""
+    image = Image.new("RGBA", (300, 400), (0, 0, 0, 0))
+    ImageDraw.Draw(image).rectangle((50, 70, 199, 329), fill=(*_PAPER, 255))
+    return image
 
 
 def _saved(image: Image.Image, **save_options: Any) -> bytes:

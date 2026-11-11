@@ -115,6 +115,13 @@ def hue_for_day(day_of_year: int) -> int:
 # Mail family, the only one that carries a city stamp.
 WEEKLY_FAMILY: Final[str] = "weekly"
 POSTAL_FAMILY: Final[str] = "postal"
+# Families whose paper lies on a desk: rendered without it, and trimmed to the paper.
+DESK_FAMILIES: Final[frozenset[str]] = frozenset(
+    {"boardingpass", "invoice", "librarycard", "memo", "menu", POSTAL_FAMILY, "receipt"}
+)
+# Room around a desk family's root, in CSS px, so its widest shadow is captured whole
+# (Air Mail's envelope: 44px blur, 26px drop) before the trim cuts back to the paper.
+DESK_SHADOW_BLEED_PX: Final[int] = 48
 # The web page that shows the user's collected Air Mail stamps.
 POSTMARKS_PATH: Final[str] = "/settings/postmarks"
 
@@ -156,6 +163,11 @@ BRIEFING_RUN_SUMMARIES: Final[dict[BriefingRunOutcome, str]] = {
 # bubble); 2x covers retina screens. The 2-6 MB original upload stays on the CDN,
 # and each surface is served a delivery transformation capped at this width.
 EDITION_DELIVERY_MAX_WIDTH_PX: Final[int] = 1080
+
+
+# A desk family's edition is transparent around its paper; a JPG has no alpha, so it is
+# flattened onto Air Mail's desk base instead of Cloudinary's default white.
+EDITION_JPG_BACKGROUND: Final[str] = "rgb:23262a"
 
 
 class EditionDeliveryFormat(StrEnum):

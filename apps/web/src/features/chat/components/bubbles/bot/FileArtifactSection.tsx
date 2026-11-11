@@ -196,6 +196,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
 
             <div className="flex items-center gap-2">
               <ShareLinkControls
+                iconOnly
                 targetType="session_artifact"
                 targetId={sessionArtifactTargetId(
                   conversationId,
