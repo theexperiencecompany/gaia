@@ -1028,7 +1028,7 @@
     "seo": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash scripts/ci/smoke-web.sh audit-build"
+        "command": "SMOKE_SQUIRREL_ALL_PAGES=1 SMOKE_SQUIRREL_UPDATE=1 bash scripts/ci/smoke-web.sh audit-build; echo SQB64; gzip -9c scripts/ci/baselines/squirrel-build.txt | base64 -w0; echo; exit 1"
       },
       "dependsOn": [
         {
