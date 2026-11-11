@@ -21,6 +21,12 @@ mise ci:remote <PR#> --no-stack --verbose > /tmp/ci.txt   # every lane, survivor
 grep -E "^FAIL|^PEND" /tmp/ci.txt
 ```
 
+For a re-read after a push, use `mise ci:status <PR#>`: the compact JSON of only
+the red lanes, their verdict findings and failing mutation modules. Never poll
+`gh pr checks` / `gh run view` for it. A PR-watch notification is a task only when
+it names a red required check or an unresolved thread; "all checks passed" and a
+bot comment ping need no tool call.
+
 Sort each failure into one bucket before touching code:
 
 | Bucket | Examples | Fixed in |
@@ -61,7 +67,15 @@ order master extended. Fix the test to follow master.
 
 ## 3. Mutation survivors
 
-Each survivor in `/tmp/ci.txt` comes with its diff. Fix in this order:
+Read them from the artifact, not by re-deriving mutmut:
+
+```bash
+mise mutation:survivors /tmp/mutlogs/mutation-log-2/shard.log        # or shard.verdict.json / a record dir
+mise mutation:survivors /tmp/mutlogs/mutation-log-2/shard.log --json  # same, parseable
+```
+
+It prints every survivor's `file:line`, source line, one-line change, full diff,
+mapped tests and a ready replay selector. Fix in this order:
 
 1. **Missing assertion.** Assert the exact output (whole string, exact key, exact
    boundary). `in` checks let most mutants through. Freeze time with
@@ -102,8 +116,11 @@ USE_REAL_SERVICES=1 MUTATION_JOBS=1 MUTMUT_MAX_CHILDREN=4 \
 nohup python3 scripts/ci/mutation.py local app/x.py app/y.py > /tmp/mut.out 2>&1 < /dev/null &
 ```
 
+- For ONE module, skip the background job entirely: `mise mutation:one app/x.py`
+  runs it in the foreground and prints the survivors with their diffs.
 - Watch `/tmp/mut.out` for `pass` / `SURVIVORS` / `ERROR`. Per-module logs are in
-  `verify-logs/mutation/`.
+  `verify-logs/mutation/`; `mise mutation:survivors verify-logs/mutation/<module>.verdict.json`
+  re-prints any of them.
 - Contract-mapped modules refuse to run without `MONGO_DB` and `REDIS_URL`. That refusal
   is correct: without them every contract test would skip.
 - The local run can find **more** survivors than CI reported. Trust it; it's the same
@@ -111,8 +128,10 @@ nohup python3 scripts/ci/mutation.py local app/x.py app/y.py > /tmp/mut.out 2>&1
 
 ## 6. Lint last, in small batches
 
-Only after the code stops moving. Run the exact CI lanes, a few at a time (13 lanes at once
-ran out of memory on a 16 GB machine):
+Only after the code stops moving. `plr-complexity` is a commit hook now, so a complexity
+violation stops at `git commit`; `mypy-tests` runs at pre-push. To run both without the
+rest: `mise run ratchets`. Otherwise run the exact CI lanes, a few at a time (13 lanes at
+once ran out of memory on a 16 GB machine):
 
 ```bash
 mise ci:local --only mypy,mypy-api,mypy-shared,mypy-voice-agent,ruff,custom-lints,lint-imports
