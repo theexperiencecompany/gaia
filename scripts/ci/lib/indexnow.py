@@ -120,6 +120,31 @@ class Repo:
         return ["" if loc == self.default_locale else loc for loc in locales or self.locales]
 
 
+def load_repo(root: Path, previous: str, head: str) -> Repo:
+    """Resolve previous and head to commits and read the locales each declares."""
+    head, previous = (git(root, "rev-parse", rev).strip() for rev in (head, previous))
+    locales, default_locale = parse_locales((root / LOCALE_CONFIG).read_text())
+    previous_locales, _ = parse_locales(git(root, "show", f"{previous}:{LOCALE_CONFIG}"))
+    return Repo(root, previous, head, locales, default_locale, previous_locales)
+
+
+def web_diff(repo: Repo) -> list[tuple[str, str]]:
+    """List (status, path) for every web app file changed between the repo's two commits."""
+    out = git(
+        repo.root,
+        "diff",
+        "--name-status",
+        "--no-renames",
+        "-z",
+        repo.previous,
+        repo.head,
+        "--",
+        WEB,
+    )
+    fields = out.split("\0")[:-1]
+    return list(zip(fields[::2], fields[1::2], strict=True))
+
+
 def parse_locales(text: str) -> tuple[tuple[str, ...], str]:
     """Read the locales and default locale a src/i18n/config.ts declares."""
     listed = re.search(r"export const locales = \[([^\]]*)\]", text)
@@ -266,7 +291,7 @@ def map_changes(repo: Repo, diff: list[tuple[str, str]]) -> Changes:
     return changes
 
 
-def _split(url: str, site: str, locales: tuple[str, ...]) -> tuple[str, str]:
+def split_url(url: str, site: str, locales: tuple[str, ...]) -> tuple[str, str]:
     """Split a live URL into its locale prefix ("" for the default) and its route path."""
     path = url[len(site) :].rstrip("/")
     for locale in locales:
@@ -293,7 +318,7 @@ def _removed_locale_urls(live: set[str], site: str, repo: Repo) -> set[str]:
     mirrors = [loc for loc in repo.locales if loc != repo.default_locale]
     if not mirrors:
         raise SystemExit("indexnow: every non-default locale was removed; no locale to mirror")
-    split = (_split(url, site, repo.locales) for url in live)
+    split = (split_url(url, site, repo.locales) for url in live)
     paths = {path for locale, path in split if locale == mirrors[0]}
     return {f"{site}/{locale}{path}" for locale in removed for path in paths}
 
@@ -310,7 +335,7 @@ def classify(changes: Changes, live: set[str], site: str, repo: Repo) -> tuple[s
             updated.add(page.hub(site))
     added_locales = set(repo.locales) - set(repo.previous_locales)
     for url in live:
-        locale, path = _split(url, site, repo.locales)
+        locale, path = split_url(url, site, repo.locales)
         if (
             changes.whole_site
             or locale in added_locales
@@ -425,15 +450,8 @@ def main() -> int:
 
     site = args.site.rstrip("/")
     key = read_key(args.repo)
-    locales, default_locale = parse_locales((args.repo / LOCALE_CONFIG).read_text())
-    previous = args.previous or last_notified_sha()
-    head, previous = (git(args.repo, "rev-parse", rev).strip() for rev in (args.head, previous))
-    previous_locales, _ = parse_locales(git(args.repo, "show", f"{previous}:{LOCALE_CONFIG}"))
-    repo = Repo(args.repo, previous, head, locales, default_locale, previous_locales)
-
-    out = git(args.repo, "diff", "--name-status", "--no-renames", "-z", previous, head, "--", WEB)
-    fields = out.split("\0")[:-1]
-    diff = list(zip(fields[::2], fields[1::2], strict=True))
+    repo = load_repo(args.repo, args.previous or last_notified_sha(), args.head)
+    diff = web_diff(repo)
     changes = map_changes(repo, diff)
     live = set(sitemap_urls(Site(site, site), None))
     updated, deleted = classify(changes, live, site, repo)
@@ -444,7 +462,7 @@ def main() -> int:
         print(f"deleted {url}")
     print(
         f"indexnow: {len(updated)} updated, {len(deleted)} deleted "
-        f"({len(diff)} files changed in {previous[:7]}..{head[:7]})"
+        f"({len(diff)} files changed in {repo.previous[:7]}..{repo.head[:7]})"
     )
     urls = sorted(updated | deleted)
     if args.dry_run or not urls:

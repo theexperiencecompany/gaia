@@ -9,16 +9,22 @@
 #           link that redirects or errors, a vanity short link that does not
 #           redirect.
 #   squirrel
-#           Audit the site with squirrelscan (pinned below, sha256-checked) at
-#           --level surface, every category, and ratchet it against a baseline
-#           (scripts/ci/baselines/squirrel-live.txt by default): a rule with more
-#           findings or a category scoring lower fails. The config is
-#           config/squirrel.toml plus seoSnippet.json's windows.
+#           Audit every sitemap page with squirrelscan (pinned below, sha256-checked),
+#           every category, links to other sites included on the live site, and hold
+#           it to a baseline (scripts/ci/baselines/squirrel-live.txt by default): a
+#           finding on a page, check and item the baseline does not list, or a
+#           category scoring below its line, fails. A fixed finding or a raised score
+#           is dropped from the baseline file in place, for `tighten` to propose. The
+#           config is config/squirrel.toml plus seoSnippet.json's windows.
 #   audit-build
 #           Start this checkout's production web build (`next start` on a free port)
-#           and run audit and squirrel against it as https://heygaia.io, ratcheted
-#           against squirrel-build.txt strictly: an improvement the baseline does not
-#           record fails too, so the PR that fixes a finding tightens the line. The PR gate.
+#           and run audit and squirrel against it as https://heygaia.io, squirrel on
+#           one page per template per locale plus every page the diff renders, held
+#           to squirrel-build.txt on those pages strictly: a fix the baseline does not
+#           record fails too, so the PR that fixes a finding drops its line. The PR gate.
+#   tighten
+#           Open (or update) the PR that commits the baseline a full crawl tightened,
+#           when it did.
 #   indexnow
 #           Submit to IndexNow the pages this deploy changed: the files changed
 #           since the last run whose production deploy succeeded and whose IndexNow
@@ -34,12 +40,19 @@
 # SMOKE_PER_SITEMAP=N to sample.
 # squirrel env: SMOKE_SITE_URL (default https://heygaia.io), SMOKE_BASE_URL (where
 # to fetch it from; when it differs, scripts/ci/lib/origin_proxy.py serves it as the
-# site), SMOKE_SQUIRREL_BASELINE (default the live site's), SMOKE_SQUIRREL_UPDATE=1
+# site), SMOKE_SQUIRREL_PAGES (a file of the URLs to audit instead of every sitemap
+# page, which the proxy then serves as the sitemap; only their findings are judged),
+# SMOKE_SQUIRREL_BASELINE (default the live site's), SMOKE_SQUIRREL_UPDATE=1
 # to rewrite the baseline instead of checking it, SMOKE_SQUIRREL_STRICT=1 to fail on
-# an improvement the baseline does not record,
+# an improvement the baseline does not record, GITHUB_OUTPUT (gets `alert`, the
+# short message for deploy.sh notify, on a red full crawl),
 # SQUIRREL_CACHE (where the binary is kept; default RUNNER_TOOL_CACHE or ~/.cache).
 # audit-build serves the web build nx's ci:seo task depends on (web:build), so
 # run it as `nx run ci:seo`, with the NEXT_PUBLIC_* values the build bakes in set.
+# audit-build env: GAIA_PR_BASE (the base the diff starts from, as changes.sh
+# base-rev reads it), SMOKE_SQUIRREL_ALL_PAGES=1 to audit every page (how
+# squirrel-build.txt is regenerated, with SMOKE_SQUIRREL_UPDATE=1).
+# tighten env: GH_TOKEN (contents and pull-requests write), SMOKE_SQUIRREL_BASELINE.
 # indexnow env: SMOKE_BASE_URL; GITHUB_SHA (default HEAD); GITHUB_REPOSITORY,
 # GITHUB_RUN_ID, GH_TOKEN (actions:read), INDEXNOW_DEPLOY_WORKFLOW (the workflow file
 # that declares the deploy, whose own runs are searched too), INDEXNOW_DEPLOY_JOB and
@@ -139,11 +152,12 @@ stop_squirrel() {
   if [ -n "$SQUIRREL_WORK" ]; then rm -rf "$SQUIRREL_WORK"; fi
 }
 
-# Start origin_proxy.py serving $2 as $1; set PROXY_URL once it listens.
+# Start origin_proxy.py serving $2 as $1, extra arguments passed on; set PROXY_URL once it listens.
 start_origin_proxy() {
   local site="$1" base="$2"
+  shift 2
   python3 -I "$REPO_ROOT/scripts/ci/lib/origin_proxy.py" --site "$site" --origin "$base" \
-    --cert-dir "$SQUIRREL_WORK/certs" --port-file "$SQUIRREL_WORK/proxy.port" >"$SQUIRREL_WORK/proxy.log" 2>&1 &
+    --cert-dir "$SQUIRREL_WORK/certs" --port-file "$SQUIRREL_WORK/proxy.port" "$@" >"$SQUIRREL_WORK/proxy.log" 2>&1 &
   PROXY_PID=$!
   for _ in $(seq 1 60); do
     if [ -s "$SQUIRREL_WORK/proxy.port" ]; then
@@ -160,31 +174,54 @@ start_origin_proxy() {
 cmd_squirrel() {
   local site="${SMOKE_SITE_URL:-https://heygaia.io}"
   local base="${SMOKE_BASE_URL:-${SMOKE_SITE_URL:-https://heygaia.io}}"
-  local bin status=0
+  local baseline="${SMOKE_SQUIRREL_BASELINE:-$REPO_ROOT/scripts/ci/baselines/squirrel-live.txt}"
+  local bin pages count status=0
   bin="$(install_squirrel)"
   SQUIRREL_WORK="$(mktemp -d)"
   trap stop_squirrel EXIT
-  # Its own HOME: squirrel keeps crawl state and a pinned user agent there per domain.
+  # Its own HOME: squirrel keeps the crawl there, which the ratchet reads, and a pinned user agent.
   mkdir -p "$SQUIRREL_WORK/home"
   python3 -I "$REPO_ROOT/scripts/ci/lib/squirrel.py" config --out "$SQUIRREL_WORK/squirrel.toml"
 
-  local -a run_env=(HOME="$SQUIRREL_WORK/home" SQUIRREL_NO_UPDATE=1)
+  local -a ratchet_args=() proxy_args=()
+  if [ -n "${SMOKE_SQUIRREL_PAGES:-}" ]; then
+    [ "$base" != "$site" ] || ci_die "smoke-web: SMOKE_SQUIRREL_PAGES needs SMOKE_BASE_URL: only the proxy can serve the list as the sitemap"
+    pages="$SMOKE_SQUIRREL_PAGES"
+    proxy_args=(--sitemap "$pages")
+    ratchet_args+=(--sample)
+  else
+    pages="$SQUIRREL_WORK/pages.txt"
+    python3 -I "$REPO_ROOT/scripts/ci/lib/squirrel.py" pages --all --site "$site" --base "$base" --out "$pages"
+    [ -n "${SMOKE_SQUIRREL_UPDATE:-}" ] || ratchet_args+=(--tighten)
+  fi
+  count="$(grep -c . "$pages")"
+
+  # --level quick crawls the seed and the sitemap's URLs and follows no links, so
+  # with --max-pages at the list's length it audits exactly the listed pages.
+  local -a run_env=(HOME="$SQUIRREL_WORK/home" SQUIRREL_NO_UPDATE=1 NO_TELEMETRY=1)
+  local -a audit_args=(--no-publish --level quick --max-pages "$count" --format json -o "$SQUIRREL_WORK/report.json")
   if [ "$base" != "$site" ]; then
-    start_origin_proxy "$site" "$base"
+    start_origin_proxy "$site" "$base" ${proxy_args[@]+"${proxy_args[@]}"}
     run_env+=(HTTPS_PROXY="$PROXY_URL" HTTP_PROXY="$PROXY_URL" NODE_EXTRA_CA_CERTS="$SQUIRREL_WORK/certs/ca.pem")
+    # The proxy refuses every other host, so links to other sites cannot be checked through it.
+    audit_args+=(--offline)
+  else
+    audit_args+=(--external-links)
   fi
 
-  ci_group "squirrel $SQUIRREL_VERSION audit of $site (served from $base)"
+  ci_group "squirrel $SQUIRREL_VERSION audit of $count pages of $site (served from $base)"
   env -C "$SQUIRREL_WORK" "${run_env[@]}" "$bin" -c "$SQUIRREL_WORK/squirrel.toml" audit "$site" \
-    --offline --no-publish --level surface --format json -o "$SQUIRREL_WORK/report.json" || status=$?
+    "${audit_args[@]}" || status=$?
   if [ -n "$PROXY_PID" ]; then cat "$SQUIRREL_WORK/proxy.log"; fi
   ci_endgroup
   [ "$status" -eq 0 ] || ci_die "smoke-web: squirrel could not audit $site (exit $status, output above)"
 
-  python3 -I "$REPO_ROOT/scripts/ci/lib/squirrel.py" ratchet --report "$SQUIRREL_WORK/report.json" \
-    --baseline "${SMOKE_SQUIRREL_BASELINE:-$REPO_ROOT/scripts/ci/baselines/squirrel-live.txt}" \
-    ${SMOKE_SQUIRREL_UPDATE:+--update} ${SMOKE_SQUIRREL_STRICT:+--strict} || ci_die "smoke-web: squirrel on $site does not match its baseline (above)"
-  ci_ok "smoke-web: squirrel OK ($site within its baseline)"
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then ratchet_args+=(--github-output "$GITHUB_OUTPUT"); fi
+  python3 -I "$REPO_ROOT/scripts/ci/lib/squirrel.py" ratchet --site "$site" --home "$SQUIRREL_WORK/home" \
+    --report "$SQUIRREL_WORK/report.json" --pages "$pages" --baseline "$baseline" \
+    ${ratchet_args[@]+"${ratchet_args[@]}"} ${SMOKE_SQUIRREL_UPDATE:+--update} ${SMOKE_SQUIRREL_STRICT:+--strict} \
+    || ci_die "smoke-web: squirrel on $site does not match its baseline (above)"
+  ci_ok "smoke-web: squirrel OK ($count pages of $site within their baseline)"
 }
 
 WEB_PID=""
@@ -214,18 +251,61 @@ start_web() {
   ci_die "smoke-web: next start did not become ready"
 }
 
+# Print the commit this checkout's diff starts from: where HEAD left the PR's base.
+diff_base() {
+  if [ "$(git -C "$REPO_ROOT" rev-parse --is-shallow-repository)" = true ]; then
+    ci_group "smoke-web: fetch the history the diff needs (shallow checkout)" >&2
+    git -C "$REPO_ROOT" fetch --no-tags --unshallow origin >&2
+    ci_endgroup >&2
+  fi
+  local rev
+  rev="$(bash "$REPO_ROOT/scripts/ci/changes.sh" base-rev)"
+  git -C "$REPO_ROOT" merge-base "$rev" HEAD
+}
+
 cmd_audit_build() {
-  local log status=0
+  local log pages previous status=0
   log="$(mktemp)"
   trap stop_web EXIT
   start_web "$log"
   export SMOKE_BASE_URL="$WEB_URL" SMOKE_SITE_URL="https://heygaia.io" \
-    SMOKE_SQUIRREL_BASELINE="$REPO_ROOT/scripts/ci/baselines/squirrel-build.txt" SMOKE_SQUIRREL_STRICT=1
+    SMOKE_SQUIRREL_BASELINE="$REPO_ROOT/scripts/ci/baselines/squirrel-build.txt"
+  if [ -z "${SMOKE_SQUIRREL_ALL_PAGES:-}" ]; then
+    pages="$(mktemp)"
+    previous="$(diff_base)"
+    python3 -I "$REPO_ROOT/scripts/ci/lib/squirrel.py" pages --site "$SMOKE_SITE_URL" --base "$WEB_URL" \
+      --previous "$previous" --out "$pages"
+    export SMOKE_SQUIRREL_PAGES="$pages" SMOKE_SQUIRREL_STRICT=1
+  fi
   # Separate processes: a function run on the left of || ignores set -e.
   bash "$0" audit || status=1
   bash "$0" squirrel || status=1
   [ "$status" -eq 0 ] || ci_die "smoke-web: the production build fails the SEO audit (findings above)"
   ci_ok "smoke-web: audit-build OK (seo audit and squirrel within bounds on the production build)"
+}
+
+cmd_tighten() {
+  local baseline="${SMOKE_SQUIRREL_BASELINE:-$REPO_ROOT/scripts/ci/baselines/squirrel-live.txt}"
+  local branch="chore/squirrel-baseline-tighten" existing
+  local title="chore(seo): drop the findings the full crawl no longer sees"
+  if git -C "$REPO_ROOT" diff --quiet -- "$baseline"; then
+    ci_ok "smoke-web: tighten OK (the crawl fixed nothing the baseline lists)"
+    return 0
+  fi
+  git -C "$REPO_ROOT" config user.name "github-actions[bot]"
+  git -C "$REPO_ROOT" config user.email "github-actions[bot]@users.noreply.github.com"
+  git -C "$REPO_ROOT" checkout -B "$branch"
+  git -C "$REPO_ROOT" add -- "$baseline"
+  git -C "$REPO_ROOT" commit -m "$title"
+  git -C "$REPO_ROOT" push --force origin "$branch"
+  existing="$(gh pr list --head "$branch" --base master --json url --jq '.[0].url')"
+  if [ -n "$existing" ]; then
+    ci_ok "smoke-web: tighten OK (updated $existing)"
+    return 0
+  fi
+  gh pr create --base master --head "$branch" --title "$title" \
+    --body "The full squirrelscan crawl of the live site no longer sees these findings, or scores a category higher, so its baseline drops them. Opened by \`smoke-web.sh tighten\`; generated by the crawl, not hand-edited."
+  ci_ok "smoke-web: tighten OK (opened the baseline PR)"
 }
 
 cmd_indexnow() {
@@ -240,8 +320,9 @@ main() {
     audit) cmd_audit ;;
     squirrel) cmd_squirrel ;;
     audit-build) cmd_audit_build ;;
+    tighten) cmd_tighten ;;
     indexnow) shift; cmd_indexnow "$@" ;;
-    *) echo "usage: $0 audit | squirrel | audit-build | indexnow [--dry-run] [--previous <sha>]" >&2; exit 2 ;;
+    *) echo "usage: $0 audit | squirrel | audit-build | tighten | indexnow [--dry-run] [--previous <sha>]" >&2; exit 2 ;;
   esac
 }
 

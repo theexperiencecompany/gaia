@@ -1,31 +1,1591 @@
-# squirrelscan at --level surface, which `scripts/ci/smoke-web.sh` holds to this
-# file. `<rule id>=<count>` is the most pages (or, for a site-wide check, items)
-# the rule may flag; `score:<category>=<score>` the lowest score a category below
-# 100 may fall to. squirrel-build.txt is the PR gate's, on the production build
-# served locally (`audit-build`); squirrel-live.txt is the post-deploy run's, on
-# https://heygaia.io (`squirrel`). They differ where Cloudflare's edge does:
-# image resizing, caching and response headers.
+# squirrelscan's findings, which `scripts/ci/smoke-web.sh` holds to this file:
+# `<page path>\t<rule id>/<check>[\t<item>]`, one per line, `*` as the page of a
+# site-wide finding, and `score:<category>=<score>` the lowest score a category
+# below 100 may fall to. squirrel-build.txt is the PR gate's, on the production
+# build served locally (`audit-build`, which audits only some pages and judges
+# only those); squirrel-live.txt is the full crawl's, on https://heygaia.io
+# (`squirrel`, after every deploy and nightly). They differ where Cloudflare's
+# edge does: image resizing, caching and response headers.
 #
-# This file only tightens. The PR that fixes a finding rewrites it
-# (SMOKE_SQUIRREL_UPDATE=1 on the subcommand above), and the PR gate fails until
-# it does; a rule or category worse than its line fails every run.
+# Generated, never hand-edited: a crawl rewrites it (SMOKE_SQUIRREL_UPDATE=1).
+# The PR that fixes a finding drops its line, and a finding not listed fails.
 
-a11y/duplicate-id-aria=3
-a11y/image-redundant-alt=1
-ax/token-weight=98
-content/keyword-stuffing=1
-content/word-count=15
-images/image-file-size=1
-links/orphan-pages=10
-links/weak-internal-links=8
-perf/critical-request-chains=100
-perf/css-file-size=100
-perf/total-byte-weight=1
-score:Accessibility=98
-score:Agent Experience=50
-score:Content=95
+score:Content=90
+score:Core SEO=99
 score:Images=92
-score:Links=90
+score:Links=91
 score:Performance=76
 score:Security=96
-security/csp=1
+score:Social Media=87
+score:Structured Data=93
+score:URL Structure=93
+*	images/image-file-size/image-file-size-warn	/cdn-cgi/image/width=1920,quality=75,format=auto/images/readme/self-host-installer.webp
+*	perf/critical-request-chains/critical-request-chains	CSS: /_next/static/chunks/*.css
+*	perf/css-file-size/css-file-size-warn	/_next/static/chunks/*.css
+*	perf/total-byte-weight/total-byte-weight
+*	schema/entity-authors/entity-authors	id:/#person-anurag-bansal
+*	schema/entity-authors/entity-authors	id:/#person-aryan
+*	schema/entity-authors/entity-authors	id:/#person-darsh-panchal
+*	schema/entity-authors/entity-authors	id:/#person-dev-patel
+*	schema/entity-authors/entity-authors	id:/#person-khyati-sheth
+*	schema/entity-authors/entity-authors	id:/#person-leonid-trikutko
+*	schema/entity-authors/entity-authors	id:/#person-sahil-soni
+*	schema/entity-authors/entity-authors	id:/#person-vidhi-rahi
+*	schema/entity-authors/entity-authors	id:/#person-vinit-thakkar
+*	schema/entity-conflicts/entity-conflicts	syn:Question|name:est-il difficile d’auto-héberger gaia ? name
+*	schema/entity-conflicts/entity-conflicts	syn:SoftwareApplication|name:dropbox ai integration description
+*	schema/entity-conflicts/entity-conflicts	syn:SoftwareApplication|name:dropbox ai integration url
+*	schema/entity-conflicts/entity-conflicts	syn:WebPage|name:dropbox ai integration - automate dropbox with ai description
+*	schema/entity-conflicts/entity-conflicts	syn:WebPage|name:dropbox ai integration - automate dropbox with ai url
+*	security/csp/csp-missing
+*	social/asset-divergence/asset-divergence	og-image:/api/og/integrations
+*	url/slug-convention/slug-convention	depth:category:1
+*	url/slug-convention/slug-convention	depth:category:2
+*	url/slug-convention/slug-convention	depth:category:3
+*	url/slug-convention/slug-convention	depth:faq:1
+*	url/slug-convention/slug-convention	depth:faq:2
+/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
+/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
+/alternative-to/fantastical	content/keyword-stuffing/keyword-stuffing	calendar
+/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	google
+/alternative-to/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/alternative-to/linear	content/keyword-stuffing/keyword-stuffing	linear
+/alternative-to/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
+/alternative-to/perplexity	content/keyword-stuffing/keyword-stuffing	perplexity
+/alternative-to/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
+/alternative-to/spark	content/keyword-stuffing/keyword-stuffing	email
+/automate/airtable-google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/asana-figma	content/keyword-stuffing/keyword-stuffing	design
+/automate/calendar-notion	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/calendar-slack	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/calendar-todoist	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/github-google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/gmail-google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/google-calendar-asana	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/google-calendar-clickup	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/google-calendar-figma	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/google-calendar-figma	content/keyword-stuffing/keyword-stuffing	design
+/automate/google-calendar-jira	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/google-calendar-linear	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/google-calendar-stripe	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/google-calendar-teams	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/google-calendar-trello	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/hubspot-drive	content/keyword-stuffing/keyword-stuffing	deal
+/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	design
+/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	design
+/automate/notion-google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/slack-google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/slack-zoom	content/keyword-stuffing/keyword-stuffing	meeting
+/automate/todoist-google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/todoist-loom	content/keyword-stuffing/keyword-stuffing	video
+/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	airtable
+/automate/with/airtable	content/word-count/word-count
+/automate/with/asana	content/keyword-stuffing/keyword-stuffing	asana
+/automate/with/asana	content/keyword-stuffing/keyword-stuffing	tasks
+/automate/with/asana	content/word-count/word-count
+/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	clickup
+/automate/with/clickup	content/word-count/word-count
+/automate/with/discord	content/keyword-stuffing/keyword-stuffing	discord
+/automate/with/discord	content/word-count/word-count
+/automate/with/figma	content/keyword-stuffing/keyword-stuffing	design
+/automate/with/figma	content/keyword-stuffing/keyword-stuffing	figma
+/automate/with/figma	content/word-count/word-count
+/automate/with/github	content/keyword-stuffing/keyword-stuffing	github
+/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	emails
+/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
+/automate/with/google-docs	content/word-count/word-count
+/automate/with/google-docs	links/orphan-pages/orphan-pages
+/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
+/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	google
+/automate/with/google-drive	content/word-count/word-count
+/automate/with/google-sheets	content/word-count/word-count
+/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
+/automate/with/hubspot	content/word-count/word-count
+/automate/with/jira	content/keyword-stuffing/keyword-stuffing	jira
+/automate/with/linear	content/keyword-stuffing/keyword-stuffing	issues
+/automate/with/linear	content/keyword-stuffing/keyword-stuffing	linear
+/automate/with/linear	content/word-count/word-count
+/automate/with/loom	content/keyword-stuffing/keyword-stuffing	loom
+/automate/with/loom	content/keyword-stuffing/keyword-stuffing	video
+/automate/with/loom	content/word-count/word-count
+/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	microsoft
+/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
+/automate/with/microsoft-teams	content/word-count/word-count
+/automate/with/notion	content/keyword-stuffing/keyword-stuffing	notion
+/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	salesforce
+/automate/with/salesforce	content/word-count/word-count
+/automate/with/slack	content/keyword-stuffing/keyword-stuffing	slack
+/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	payment
+/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	stripe
+/automate/with/stripe	content/word-count/word-count
+/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	tasks
+/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	todoist
+/automate/with/trello	content/keyword-stuffing/keyword-stuffing	cards
+/automate/with/trello	content/keyword-stuffing/keyword-stuffing	trello
+/automate/with/trello	content/word-count/word-count
+/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
+/automate/with/zoom	content/word-count/word-count
+/blog	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
+/blog/tool-calling-under-the-hood	content/keyword-stuffing/keyword-stuffing	tool
+/bots	a11y/image-redundant-alt/image-redundant-alt	alt="Discord" matches filename
+/bots	a11y/image-redundant-alt/image-redundant-alt	alt="Slack" matches filename
+/bots	a11y/image-redundant-alt/image-redundant-alt	alt="Telegram" matches filename
+/bots	a11y/image-redundant-alt/image-redundant-alt	alt="WhatsApp" matches filename
+/bots	a11y/image-redundant-alt/image-redundant-alt	alt="iMessage" matches filename
+/cli	links/orphan-pages/orphan-pages
+/cli	links/weak-internal-links/weak-internal-links
+/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
+/compare/category/ai-assistants	links/orphan-pages/orphan-pages
+/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
+/compare/category/automation	links/orphan-pages/orphan-pages
+/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
+/compare/category/calendar-scheduling	content/keyword-stuffing/keyword-stuffing	calendar
+/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
+/compare/category/email	a11y/heading-order/heading-order	H3 after H1
+/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
+/compare/category/email	links/orphan-pages/orphan-pages
+/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
+/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
+/compare/category/other	a11y/heading-order/heading-order	H3 after H1
+/compare/category/other	links/orphan-pages/orphan-pages
+/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
+/compare/category/project-management	links/orphan-pages/orphan-pages
+/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/compare/category/task-management	links/orphan-pages/orphan-pages
+/compare/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
+/compare/figma	content/keyword-stuffing/keyword-stuffing	design
+/compare/gemini	content/keyword-stuffing/keyword-stuffing	google
+/compare/google-assistant	content/keyword-stuffing/keyword-stuffing	google
+/compare/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/compare/linear	content/keyword-stuffing/keyword-stuffing	linear
+/compare/notion	content/keyword-stuffing/keyword-stuffing	notion
+/compare/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
+/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
+/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
+/compare/zoho	content/keyword-stuffing/keyword-stuffing	zoho
+/contact	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
+/de/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
+/de/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
+/de/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	google
+/de/alternative-to/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/de/alternative-to/linear	content/keyword-stuffing/keyword-stuffing	linear
+/de/alternative-to/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
+/de/alternative-to/openclaw	content/keyword-stuffing/keyword-stuffing	sie
+/de/alternative-to/perplexity	content/keyword-stuffing/keyword-stuffing	perplexity
+/de/automate/gmail-discord	content/keyword-stuffing/keyword-stuffing	sie
+/de/automate/notion-google-calendar	content/keyword-stuffing/keyword-stuffing	mit
+/de/automate/slack-zoom	content/keyword-stuffing/keyword-stuffing	meeting
+/de/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	airtable
+/de/automate/with/airtable	content/word-count/word-count
+/de/automate/with/asana	content/keyword-stuffing/keyword-stuffing	asana
+/de/automate/with/asana	content/word-count/word-count
+/de/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	aufgaben
+/de/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	clickup
+/de/automate/with/clickup	content/word-count/word-count
+/de/automate/with/discord	content/keyword-stuffing/keyword-stuffing	discord
+/de/automate/with/discord	content/word-count/word-count
+/de/automate/with/figma	content/word-count/word-count
+/de/automate/with/github	content/word-count/word-count
+/de/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	mails
+/de/automate/with/gmail	content/word-count/word-count
+/de/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/de/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
+/de/automate/with/google-docs	content/word-count/word-count
+/de/automate/with/google-docs	links/orphan-pages/orphan-pages
+/de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	anh
+/de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	automatisch
+/de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
+/de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	google
+/de/automate/with/google-drive	content/word-count/word-count
+/de/automate/with/google-sheets	content/word-count/word-count
+/de/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
+/de/automate/with/hubspot	content/word-count/word-count
+/de/automate/with/jira	content/keyword-stuffing/keyword-stuffing	jira
+/de/automate/with/jira	content/keyword-stuffing/keyword-stuffing	tickets
+/de/automate/with/jira	content/word-count/word-count
+/de/automate/with/linear	content/keyword-stuffing/keyword-stuffing	linear
+/de/automate/with/linear	content/keyword-stuffing/keyword-stuffing	mit
+/de/automate/with/linear	content/keyword-stuffing/keyword-stuffing	tickets
+/de/automate/with/linear	content/word-count/word-count
+/de/automate/with/loom	content/keyword-stuffing/keyword-stuffing	loomloom
+/de/automate/with/loom	content/word-count/word-count
+/de/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	microsoft
+/de/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
+/de/automate/with/microsoft-teams	content/word-count/word-count
+/de/automate/with/notion	content/keyword-stuffing/keyword-stuffing	notion
+/de/automate/with/notion	content/word-count/word-count
+/de/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	mit
+/de/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	salesforce
+/de/automate/with/salesforce	content/word-count/word-count
+/de/automate/with/slack	content/keyword-stuffing/keyword-stuffing	slack
+/de/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	stripe
+/de/automate/with/stripe	content/word-count/word-count
+/de/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	aufgaben
+/de/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	todoist
+/de/automate/with/todoist	content/word-count/word-count
+/de/automate/with/trello	content/keyword-stuffing/keyword-stuffing	trello
+/de/automate/with/trello	content/word-count/word-count
+/de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	automatisch
+/de/automate/with/zoom	content/word-count/word-count
+/de/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
+/de/compare/category/ai-assistants	links/orphan-pages/orphan-pages
+/de/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
+/de/compare/category/automation	links/orphan-pages/orphan-pages
+/de/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
+/de/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
+/de/compare/category/email	a11y/heading-order/heading-order	H3 after H1
+/de/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
+/de/compare/category/email	links/orphan-pages/orphan-pages
+/de/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
+/de/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
+/de/compare/category/other	a11y/heading-order/heading-order	H3 after H1
+/de/compare/category/other	links/orphan-pages/orphan-pages
+/de/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
+/de/compare/category/project-management	links/orphan-pages/orphan-pages
+/de/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/de/compare/category/task-management	links/orphan-pages/orphan-pages
+/de/compare/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
+/de/compare/gemini	content/keyword-stuffing/keyword-stuffing	google
+/de/compare/google-assistant	content/keyword-stuffing/keyword-stuffing	google
+/de/compare/linear	content/keyword-stuffing/keyword-stuffing	linear
+/de/compare/notion	content/keyword-stuffing/keyword-stuffing	notion
+/de/compare/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
+/de/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/de/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
+/de/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
+/de/compare/zoho	content/keyword-stuffing/keyword-stuffing	zoho
+/de/for/adhd-professionals	content/keyword-stuffing/keyword-stuffing	sie
+/de/for/content-creators	content/keyword-stuffing/keyword-stuffing	die
+/de/for/entrepreneurs	content/keyword-stuffing/keyword-stuffing	die
+/de/for/project-managers	content/keyword-stuffing/keyword-stuffing	project
+/de/for/team-leads	content/keyword-stuffing/keyword-stuffing	team
+/de/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
+/de/learn/category/ai-concepts	links/orphan-pages/orphan-pages
+/de/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
+/de/learn/category/automation	links/orphan-pages/orphan-pages
+/de/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
+/de/learn/category/calendar	links/orphan-pages/orphan-pages
+/de/learn/category/development	a11y/heading-order/heading-order	H3 after H1
+/de/learn/category/development	links/orphan-pages/orphan-pages
+/de/learn/category/email	a11y/heading-order/heading-order	H3 after H1
+/de/learn/category/email	content/keyword-stuffing/keyword-stuffing	mail
+/de/learn/category/email	links/orphan-pages/orphan-pages
+/de/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
+/de/learn/category/knowledge-management	content/word-count/word-count
+/de/learn/category/knowledge-management	links/orphan-pages/orphan-pages
+/de/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
+/de/learn/category/productivity	links/orphan-pages/orphan-pages
+/de/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/de/learn/category/task-management	links/orphan-pages/orphan-pages
+/de/learn/cognitive-load	content/keyword-stuffing/keyword-stuffing	die
+/de/learn/cron-job	content/unrendered-markup/unrendered-markup
+/de/learn/inference	content/keyword-stuffing/keyword-stuffing	die
+/de/learn/instinct	content/keyword-stuffing/keyword-stuffing	sie
+/de/learn/low-code	content/keyword-stuffing/keyword-stuffing	code
+/de/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	mcp
+/de/learn/no-code	content/keyword-stuffing/keyword-stuffing	code
+/de/learn/semantic-search	content/keyword-stuffing/keyword-stuffing	die
+/de/learn/time-zone-management	content/keyword-stuffing/keyword-stuffing	die
+/de/learn/trigger	content/keyword-stuffing/keyword-stuffing	ausl
+/de/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
+/es/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	que
+/es/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
+/es/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
+/es/alternative-to/dot-app	content/keyword-stuffing/keyword-stuffing	dot
+/es/alternative-to/friend-pendant	content/keyword-stuffing/keyword-stuffing	friend
+/es/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	google
+/es/alternative-to/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/es/alternative-to/linear	content/keyword-stuffing/keyword-stuffing	linear
+/es/alternative-to/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
+/es/alternative-to/openai-dots	content/keyword-stuffing/keyword-stuffing	que
+/es/alternative-to/perplexity	content/keyword-stuffing/keyword-stuffing	perplexity
+/es/alternative-to/siri	content/keyword-stuffing/keyword-stuffing	siri
+/es/alternative-to/spark	content/keyword-stuffing/keyword-stuffing	email
+/es/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	tareas
+/es/automate/airtable-google-sheets	content/keyword-stuffing/keyword-stuffing	airtable
+/es/automate/asana-jira	content/keyword-stuffing/keyword-stuffing	asana
+/es/automate/asana-jira	content/keyword-stuffing/keyword-stuffing	jira
+/es/automate/asana-trello	content/keyword-stuffing/keyword-stuffing	asana
+/es/automate/discord-trello	content/keyword-stuffing/keyword-stuffing	trello
+/es/automate/drive-notion	content/keyword-stuffing/keyword-stuffing	drive
+/es/automate/github-airtable	content/keyword-stuffing/keyword-stuffing	airtable
+/es/automate/github-airtable	content/keyword-stuffing/keyword-stuffing	github
+/es/automate/github-clickup	content/keyword-stuffing/keyword-stuffing	clickup
+/es/automate/github-discord	content/keyword-stuffing/keyword-stuffing	discord
+/es/automate/github-discord	content/keyword-stuffing/keyword-stuffing	los
+/es/automate/github-drive	content/keyword-stuffing/keyword-stuffing	drive
+/es/automate/github-figma	content/keyword-stuffing/keyword-stuffing	dise
+/es/automate/github-figma	content/keyword-stuffing/keyword-stuffing	figma
+/es/automate/github-hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
+/es/automate/github-jira	content/keyword-stuffing/keyword-stuffing	jira
+/es/automate/github-linear	content/keyword-stuffing/keyword-stuffing	linear
+/es/automate/github-loom	content/keyword-stuffing/keyword-stuffing	loom
+/es/automate/github-salesforce	content/keyword-stuffing/keyword-stuffing	salesforce
+/es/automate/github-stripe	content/keyword-stuffing/keyword-stuffing	stripe
+/es/automate/github-teams	content/keyword-stuffing/keyword-stuffing	teams
+/es/automate/github-todoist	content/keyword-stuffing/keyword-stuffing	github
+/es/automate/github-todoist	content/keyword-stuffing/keyword-stuffing	todoist
+/es/automate/github-trello	content/keyword-stuffing/keyword-stuffing	trello
+/es/automate/gmail-airtable	content/keyword-stuffing/keyword-stuffing	airtable
+/es/automate/gmail-figma	content/keyword-stuffing/keyword-stuffing	figma
+/es/automate/gmail-loom	content/keyword-stuffing/keyword-stuffing	loom
+/es/automate/gmail-notion	content/keyword-stuffing/keyword-stuffing	notion
+/es/automate/gmail-teams	content/keyword-stuffing/keyword-stuffing	teams
+/es/automate/gmail-trello	content/keyword-stuffing/keyword-stuffing	trello
+/es/automate/google-calendar-clickup	content/keyword-stuffing/keyword-stuffing	clickup
+/es/automate/google-calendar-clickup	content/keyword-stuffing/keyword-stuffing	google
+/es/automate/google-calendar-drive	content/keyword-stuffing/keyword-stuffing	google
+/es/automate/google-calendar-figma	content/keyword-stuffing/keyword-stuffing	dise
+/es/automate/google-calendar-figma	content/keyword-stuffing/keyword-stuffing	figma
+/es/automate/google-calendar-hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
+/es/automate/google-calendar-jira	content/keyword-stuffing/keyword-stuffing	jira
+/es/automate/google-calendar-teams	content/keyword-stuffing/keyword-stuffing	calendar
+/es/automate/google-calendar-teams	content/keyword-stuffing/keyword-stuffing	google
+/es/automate/google-docs-slack	content/keyword-stuffing/keyword-stuffing	los
+/es/automate/jira-linear	content/keyword-stuffing/keyword-stuffing	jira
+/es/automate/jira-linear	content/keyword-stuffing/keyword-stuffing	linear
+/es/automate/jira-todoist	content/keyword-stuffing/keyword-stuffing	jira
+/es/automate/jira-todoist	content/keyword-stuffing/keyword-stuffing	todoist
+/es/automate/jira-trello	content/keyword-stuffing/keyword-stuffing	jira
+/es/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	dise
+/es/automate/linear-todoist	content/keyword-stuffing/keyword-stuffing	todoist
+/es/automate/notion-clickup	content/keyword-stuffing/keyword-stuffing	clickup
+/es/automate/notion-clickup	content/keyword-stuffing/keyword-stuffing	notion
+/es/automate/notion-discord	content/keyword-stuffing/keyword-stuffing	discord
+/es/automate/notion-discord	content/keyword-stuffing/keyword-stuffing	notion
+/es/automate/notion-linear	content/keyword-stuffing/keyword-stuffing	las
+/es/automate/notion-loom	content/keyword-stuffing/keyword-stuffing	loom
+/es/automate/notion-loom	content/keyword-stuffing/keyword-stuffing	notion
+/es/automate/notion-salesforce	content/keyword-stuffing/keyword-stuffing	notion
+/es/automate/notion-salesforce	content/keyword-stuffing/keyword-stuffing	salesforce
+/es/automate/notion-stripe	content/keyword-stuffing/keyword-stuffing	notion
+/es/automate/notion-stripe	content/keyword-stuffing/keyword-stuffing	stripe
+/es/automate/notion-teams	content/keyword-stuffing/keyword-stuffing	notion
+/es/automate/notion-teams	content/keyword-stuffing/keyword-stuffing	teams
+/es/automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	tareas
+/es/automate/notion-trello	content/keyword-stuffing/keyword-stuffing	notion
+/es/automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	las
+/es/automate/slack-google-calendar	content/keyword-stuffing/keyword-stuffing	slack
+/es/automate/slack-loom	content/keyword-stuffing/keyword-stuffing	loom
+/es/automate/slack-stripe	content/keyword-stuffing/keyword-stuffing	stripe
+/es/automate/slack-teams	content/keyword-stuffing/keyword-stuffing	slack
+/es/automate/slack-teams	content/keyword-stuffing/keyword-stuffing	teams
+/es/automate/slack-trello	content/keyword-stuffing/keyword-stuffing	slack
+/es/automate/slack-trello	content/keyword-stuffing/keyword-stuffing	trello
+/es/automate/slack-zoom	content/keyword-stuffing/keyword-stuffing	slack
+/es/automate/slack-zoom	content/keyword-stuffing/keyword-stuffing	zoom
+/es/automate/todoist-airtable	content/keyword-stuffing/keyword-stuffing	airtable
+/es/automate/todoist-airtable	content/keyword-stuffing/keyword-stuffing	todoist
+/es/automate/todoist-asana	content/keyword-stuffing/keyword-stuffing	asana
+/es/automate/todoist-asana	content/keyword-stuffing/keyword-stuffing	tareas
+/es/automate/todoist-asana	content/keyword-stuffing/keyword-stuffing	todoist
+/es/automate/todoist-clickup	content/keyword-stuffing/keyword-stuffing	clickup
+/es/automate/todoist-drive	content/keyword-stuffing/keyword-stuffing	drive
+/es/automate/todoist-figma	content/keyword-stuffing/keyword-stuffing	figma
+/es/automate/todoist-hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
+/es/automate/todoist-hubspot	content/keyword-stuffing/keyword-stuffing	todoist
+/es/automate/todoist-loom	content/keyword-stuffing/keyword-stuffing	loom
+/es/automate/todoist-stripe	content/keyword-stuffing/keyword-stuffing	stripe
+/es/automate/todoist-teams	content/keyword-stuffing/keyword-stuffing	teams
+/es/automate/todoist-trello	content/keyword-stuffing/keyword-stuffing	trello
+/es/automate/todoist-zoom	content/keyword-stuffing/keyword-stuffing	zoom
+/es/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	airtable
+/es/automate/with/airtable	content/word-count/word-count
+/es/automate/with/asana	content/keyword-stuffing/keyword-stuffing	asana
+/es/automate/with/asana	content/keyword-stuffing/keyword-stuffing	tareas
+/es/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	clickup
+/es/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	tareas
+/es/automate/with/clickup	content/word-count/word-count
+/es/automate/with/discord	content/keyword-stuffing/keyword-stuffing	canales
+/es/automate/with/discord	content/keyword-stuffing/keyword-stuffing	discord
+/es/automate/with/discord	content/word-count/word-count
+/es/automate/with/figma	content/keyword-stuffing/keyword-stuffing	dise
+/es/automate/with/figma	content/keyword-stuffing/keyword-stuffing	figma
+/es/automate/with/figma	content/word-count/word-count
+/es/automate/with/github	content/keyword-stuffing/keyword-stuffing	github
+/es/automate/with/github	content/keyword-stuffing/keyword-stuffing	los
+/es/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	correos
+/es/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/es/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
+/es/automate/with/google-docs	content/word-count/word-count
+/es/automate/with/google-docs	links/orphan-pages/orphan-pages
+/es/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	autom
+/es/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
+/es/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	google
+/es/automate/with/google-drive	content/word-count/word-count
+/es/automate/with/google-sheets	content/word-count/word-count
+/es/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
+/es/automate/with/hubspot	content/word-count/word-count
+/es/automate/with/jira	content/keyword-stuffing/keyword-stuffing	jira
+/es/automate/with/linear	content/keyword-stuffing/keyword-stuffing	incidencias
+/es/automate/with/loom	content/keyword-stuffing/keyword-stuffing	loom
+/es/automate/with/loom	content/word-count/word-count
+/es/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	microsoft
+/es/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
+/es/automate/with/microsoft-teams	content/word-count/word-count
+/es/automate/with/notion	content/keyword-stuffing/keyword-stuffing	notion
+/es/automate/with/salesforce	content/word-count/word-count
+/es/automate/with/slack	content/keyword-stuffing/keyword-stuffing	slack
+/es/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	stripe
+/es/automate/with/stripe	content/word-count/word-count
+/es/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	tareas
+/es/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	todoist
+/es/automate/with/trello	content/keyword-stuffing/keyword-stuffing	tarjetas
+/es/automate/with/trello	content/keyword-stuffing/keyword-stuffing	trello
+/es/automate/with/trello	content/word-count/word-count
+/es/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	reuniones
+/es/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
+/es/automate/with/zoom	content/word-count/word-count
+/es/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
+/es/compare/category/ai-assistants	links/orphan-pages/orphan-pages
+/es/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
+/es/compare/category/automation	links/orphan-pages/orphan-pages
+/es/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
+/es/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
+/es/compare/category/email	a11y/heading-order/heading-order	H3 after H1
+/es/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
+/es/compare/category/email	links/orphan-pages/orphan-pages
+/es/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
+/es/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
+/es/compare/category/other	a11y/heading-order/heading-order	H3 after H1
+/es/compare/category/other	links/orphan-pages/orphan-pages
+/es/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
+/es/compare/category/project-management	links/orphan-pages/orphan-pages
+/es/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/es/compare/category/task-management	links/orphan-pages/orphan-pages
+/es/compare/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
+/es/compare/figma	content/keyword-stuffing/keyword-stuffing	design
+/es/compare/gemini	content/keyword-stuffing/keyword-stuffing	google
+/es/compare/google-assistant	content/keyword-stuffing/keyword-stuffing	google
+/es/compare/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/es/compare/linear	content/keyword-stuffing/keyword-stuffing	linear
+/es/compare/motion	content/keyword-stuffing/keyword-stuffing	calendar
+/es/compare/notion	content/keyword-stuffing/keyword-stuffing	notion
+/es/compare/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
+/es/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/es/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
+/es/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
+/es/compare/poke	content/keyword-stuffing/keyword-stuffing	que
+/es/compare/zoho	content/keyword-stuffing/keyword-stuffing	zoho
+/es/for/adhd-professionals	content/keyword-stuffing/keyword-stuffing	que
+/es/for/data-scientists	content/keyword-stuffing/keyword-stuffing	para
+/es/for/designers	content/keyword-stuffing/keyword-stuffing	dise
+/es/for/lawyers	content/keyword-stuffing/keyword-stuffing	los
+/es/for/real-estate-agents	content/keyword-stuffing/keyword-stuffing	los
+/es/for/students	content/keyword-stuffing/keyword-stuffing	para
+/es/for/team-leads	content/keyword-stuffing/keyword-stuffing	equipo
+/es/learn	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/ai-agent	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/bee	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/business-process-automation	content/keyword-stuffing/keyword-stuffing	automatizaci
+/es/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
+/es/learn/category/ai-concepts	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/category/ai-concepts	links/orphan-pages/orphan-pages
+/es/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
+/es/learn/category/automation	content/keyword-stuffing/keyword-stuffing	automatizaci
+/es/learn/category/automation	links/orphan-pages/orphan-pages
+/es/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
+/es/learn/category/calendar	links/orphan-pages/orphan-pages
+/es/learn/category/development	a11y/heading-order/heading-order	H3 after H1
+/es/learn/category/development	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/category/development	links/orphan-pages/orphan-pages
+/es/learn/category/email	a11y/heading-order/heading-order	H3 after H1
+/es/learn/category/email	content/keyword-stuffing/keyword-stuffing	electr
+/es/learn/category/email	links/orphan-pages/orphan-pages
+/es/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
+/es/learn/category/knowledge-management	content/word-count/word-count
+/es/learn/category/knowledge-management	links/orphan-pages/orphan-pages
+/es/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
+/es/learn/category/productivity	links/orphan-pages/orphan-pages
+/es/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/es/learn/category/task-management	links/orphan-pages/orphan-pages
+/es/learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	los
+/es/learn/cron-job	content/unrendered-markup/unrendered-markup
+/es/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	datos
+/es/learn/dot-app	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/email-deliverability	content/keyword-stuffing/keyword-stuffing	electr
+/es/learn/energy-management	content/keyword-stuffing/keyword-stuffing	energ
+/es/learn/event-driven-architecture	content/keyword-stuffing/keyword-stuffing	los
+/es/learn/friend-pendant	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/gdpr	content/keyword-stuffing/keyword-stuffing	datos
+/es/learn/guardrails	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/information-overload	content/keyword-stuffing/keyword-stuffing	informaci
+/es/learn/instinct	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/knowledge-worker	content/keyword-stuffing/keyword-stuffing	del
+/es/learn/meeting-fatigue	content/keyword-stuffing/keyword-stuffing	reuniones
+/es/learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	memoria
+/es/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	mcp
+/es/learn/okrs	content/keyword-stuffing/keyword-stuffing	los
+/es/learn/okrs	content/keyword-stuffing/keyword-stuffing	okr
+/es/learn/openai-dots	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/password-manager	content/keyword-stuffing/keyword-stuffing	contrase
+/es/learn/password-manager	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/scheduling-automation	content/keyword-stuffing/keyword-stuffing	para
+/es/learn/second-brain	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/semantic-search	content/keyword-stuffing/keyword-stuffing	squeda
+/es/learn/single-sign-on	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/siri	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/speech-to-text	content/keyword-stuffing/keyword-stuffing	voz
+/es/learn/system-prompt	content/keyword-stuffing/keyword-stuffing	del
+/es/learn/task-automation	content/keyword-stuffing/keyword-stuffing	tareas
+/es/learn/time-audit	content/keyword-stuffing/keyword-stuffing	tiempo
+/es/learn/token	content/keyword-stuffing/keyword-stuffing	tokens
+/es/learn/tokenization	content/keyword-stuffing/keyword-stuffing	los
+/es/learn/travel-time	content/keyword-stuffing/keyword-stuffing	tiempo
+/es/learn/two-factor-authentication	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/vector-database	content/keyword-stuffing/keyword-stuffing	datos
+/es/learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	flujos
+/es/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
+/features	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
+/features/calendar	perf/cache-headers/cache-control
+/features/code-execution	perf/cache-headers/cache-control
+/features/contacts	perf/cache-headers/cache-control
+/features/custom-integrations	perf/cache-headers/cache-control
+/features/dashboard	images/svg-inline/svg-inline
+/features/dashboard	links/orphan-pages/orphan-pages
+/features/dashboard	links/weak-internal-links/weak-internal-links
+/features/dashboard	perf/cache-headers/cache-control
+/features/deep-research	images/svg-inline/svg-inline
+/features/deep-research	perf/cache-headers/cache-control
+/features/discord-bot	perf/cache-headers/cache-control
+/features/document-generation	perf/cache-headers/cache-control
+/features/email	perf/cache-headers/cache-control
+/features/event-triggers	perf/cache-headers/cache-control
+/features/goals	perf/cache-headers/cache-control
+/features/image-generation	links/orphan-pages/orphan-pages
+/features/image-generation	links/weak-internal-links/weak-internal-links
+/features/image-generation	perf/cache-headers/cache-control
+/features/integrations	perf/cache-headers/cache-control
+/features/marketplace	content/keyword-stuffing/keyword-stuffing	integration
+/features/marketplace	perf/cache-headers/cache-control
+/features/mcp-support	content/keyword-stuffing/keyword-stuffing	mcp
+/features/mcp-support	perf/cache-headers/cache-control
+/features/memory	perf/cache-headers/cache-control
+/features/mobile	perf/cache-headers/cache-control
+/features/pins	links/orphan-pages/orphan-pages
+/features/pins	links/weak-internal-links/weak-internal-links
+/features/pins	perf/cache-headers/cache-control
+/features/proactive-ai	perf/cache-headers/cache-control
+/features/reminders	perf/cache-headers/cache-control
+/features/rich-responses	images/svg-inline/svg-inline
+/features/rich-responses	perf/cache-headers/cache-control
+/features/scheduled-automation	perf/cache-headers/cache-control
+/features/skills	perf/cache-headers/cache-control
+/features/slack-bot	perf/cache-headers/cache-control
+/features/smart-chat	images/svg-inline/svg-inline
+/features/smart-chat	perf/cache-headers/cache-control
+/features/subagents	images/svg-inline/svg-inline
+/features/subagents	perf/cache-headers/cache-control
+/features/telegram-bot	perf/cache-headers/cache-control
+/features/todos	perf/cache-headers/cache-control
+/features/voice	perf/cache-headers/cache-control
+/features/workflows	perf/cache-headers/cache-control
+/for/financial-advisors	content/keyword-stuffing/keyword-stuffing	client
+/for/project-managers	content/keyword-stuffing/keyword-stuffing	project
+/for/team-leads	content/keyword-stuffing/keyword-stuffing	team
+/for/virtual-assistants	content/keyword-stuffing/keyword-stuffing	client
+/fr/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
+/fr/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
+/fr/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	google
+/fr/alternative-to/linear	content/keyword-stuffing/keyword-stuffing	linear
+/fr/alternative-to/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
+/fr/alternative-to/perplexity	content/keyword-stuffing/keyword-stuffing	perplexity
+/fr/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	ches
+/fr/automate/drive-slack	content/keyword-stuffing/keyword-stuffing	dans
+/fr/automate/notion-loom	content/keyword-stuffing/keyword-stuffing	vid
+/fr/automate/todoist-loom	content/keyword-stuffing/keyword-stuffing	vid
+/fr/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	airtable
+/fr/automate/with/airtable	content/word-count/word-count
+/fr/automate/with/asana	content/keyword-stuffing/keyword-stuffing	asana
+/fr/automate/with/asana	content/keyword-stuffing/keyword-stuffing	ches
+/fr/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	ches
+/fr/automate/with/clickup	content/word-count/word-count
+/fr/automate/with/discord	content/keyword-stuffing/keyword-stuffing	discord
+/fr/automate/with/discord	content/word-count/word-count
+/fr/automate/with/figma	content/keyword-stuffing/keyword-stuffing	figma
+/fr/automate/with/figma	content/word-count/word-count
+/fr/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	mails
+/fr/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/fr/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
+/fr/automate/with/google-docs	content/word-count/word-count
+/fr/automate/with/google-docs	links/orphan-pages/orphan-pages
+/fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	aux
+/fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
+/fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	google
+/fr/automate/with/google-drive	content/word-count/word-count
+/fr/automate/with/google-sheets	content/word-count/word-count
+/fr/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
+/fr/automate/with/hubspot	content/word-count/word-count
+/fr/automate/with/jira	content/keyword-stuffing/keyword-stuffing	jira
+/fr/automate/with/jira	content/keyword-stuffing/keyword-stuffing	tickets
+/fr/automate/with/linear	content/keyword-stuffing/keyword-stuffing	linear
+/fr/automate/with/linear	content/keyword-stuffing/keyword-stuffing	tickets
+/fr/automate/with/loom	content/keyword-stuffing/keyword-stuffing	loom
+/fr/automate/with/loom	content/keyword-stuffing/keyword-stuffing	vid
+/fr/automate/with/loom	content/word-count/word-count
+/fr/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	microsoft
+/fr/automate/with/microsoft-teams	content/word-count/word-count
+/fr/automate/with/notion	content/keyword-stuffing/keyword-stuffing	notion
+/fr/automate/with/salesforce	content/word-count/word-count
+/fr/automate/with/slack	content/keyword-stuffing/keyword-stuffing	dans
+/fr/automate/with/slack	content/keyword-stuffing/keyword-stuffing	slack
+/fr/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	paiement
+/fr/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	stripe
+/fr/automate/with/stripe	content/word-count/word-count
+/fr/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	ches
+/fr/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	todoist
+/fr/automate/with/trello	content/keyword-stuffing/keyword-stuffing	cartes
+/fr/automate/with/trello	content/keyword-stuffing/keyword-stuffing	trello
+/fr/automate/with/trello	content/word-count/word-count
+/fr/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	unions
+/fr/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
+/fr/automate/with/zoom	content/word-count/word-count
+/fr/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
+/fr/compare/category/ai-assistants	links/orphan-pages/orphan-pages
+/fr/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
+/fr/compare/category/automation	links/orphan-pages/orphan-pages
+/fr/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
+/fr/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
+/fr/compare/category/email	a11y/heading-order/heading-order	H3 after H1
+/fr/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
+/fr/compare/category/email	links/orphan-pages/orphan-pages
+/fr/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
+/fr/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
+/fr/compare/category/other	a11y/heading-order/heading-order	H3 after H1
+/fr/compare/category/other	links/orphan-pages/orphan-pages
+/fr/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
+/fr/compare/category/project-management	links/orphan-pages/orphan-pages
+/fr/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/fr/compare/category/task-management	links/orphan-pages/orphan-pages
+/fr/compare/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
+/fr/compare/figma	content/keyword-stuffing/keyword-stuffing	conception
+/fr/compare/gemini	content/keyword-stuffing/keyword-stuffing	google
+/fr/compare/google-assistant	content/keyword-stuffing/keyword-stuffing	google
+/fr/compare/linear	content/keyword-stuffing/keyword-stuffing	linear
+/fr/compare/notion	content/keyword-stuffing/keyword-stuffing	notion
+/fr/compare/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
+/fr/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/fr/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
+/fr/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
+/fr/compare/zoho	content/keyword-stuffing/keyword-stuffing	zoho
+/fr/for/adhd-professionals	content/keyword-stuffing/keyword-stuffing	vous
+/fr/for/students	content/keyword-stuffing/keyword-stuffing	pour
+/fr/learn/agent-state	content/keyword-stuffing/keyword-stuffing	tat
+/fr/learn/business-process-automation	content/keyword-stuffing/keyword-stuffing	automatisation
+/fr/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
+/fr/learn/category/ai-concepts	links/orphan-pages/orphan-pages
+/fr/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
+/fr/learn/category/automation	content/keyword-stuffing/keyword-stuffing	automatisation
+/fr/learn/category/automation	links/orphan-pages/orphan-pages
+/fr/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
+/fr/learn/category/calendar	links/orphan-pages/orphan-pages
+/fr/learn/category/development	a11y/heading-order/heading-order	H3 after H1
+/fr/learn/category/development	links/orphan-pages/orphan-pages
+/fr/learn/category/email	a11y/heading-order/heading-order	H3 after H1
+/fr/learn/category/email	links/orphan-pages/orphan-pages
+/fr/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
+/fr/learn/category/knowledge-management	content/word-count/word-count
+/fr/learn/category/knowledge-management	links/orphan-pages/orphan-pages
+/fr/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
+/fr/learn/category/productivity	links/orphan-pages/orphan-pages
+/fr/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/fr/learn/category/task-management	links/orphan-pages/orphan-pages
+/fr/learn/cron-job	content/unrendered-markup/unrendered-markup
+/fr/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	donn
+/fr/learn/digital-executive-assistant	content/keyword-stuffing/keyword-stuffing	assistant
+/fr/learn/focus-session	content/keyword-stuffing/keyword-stuffing	une
+/fr/learn/foundation-model	content/keyword-stuffing/keyword-stuffing	mod
+/fr/learn/gdpr	content/keyword-stuffing/keyword-stuffing	donn
+/fr/learn/low-code	content/keyword-stuffing/keyword-stuffing	code
+/fr/learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	moire
+/fr/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	mcp
+/fr/learn/no-code	content/keyword-stuffing/keyword-stuffing	code
+/fr/learn/omi	content/keyword-stuffing/keyword-stuffing	est
+/fr/learn/password-manager	content/keyword-stuffing/keyword-stuffing	mots
+/fr/learn/password-manager	content/keyword-stuffing/keyword-stuffing	passe
+/fr/learn/reasoning-model	content/keyword-stuffing/keyword-stuffing	mod
+/fr/learn/single-tasking	content/keyword-stuffing/keyword-stuffing	che
+/fr/learn/subagent	content/keyword-stuffing/keyword-stuffing	agent
+/fr/learn/subagent	content/keyword-stuffing/keyword-stuffing	sous
+/fr/learn/task-automation	content/keyword-stuffing/keyword-stuffing	ches
+/fr/learn/time-audit	content/keyword-stuffing/keyword-stuffing	temps
+/fr/learn/work-life-integration	content/keyword-stuffing/keyword-stuffing	vie
+/fr/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
+/ja/alternative-to/anydo	core/meta-title/meta-title
+/ja/alternative-to/asana	core/meta-title/meta-title
+/ja/alternative-to/bardeen	core/meta-title/meta-title
+/ja/alternative-to/basecamp	core/meta-title/meta-title
+/ja/alternative-to/capacities	core/meta-title/meta-title
+/ja/alternative-to/chatgpt	core/meta-title/meta-title
+/ja/alternative-to/coda	core/meta-title/meta-title
+/ja/alternative-to/dot-app	core/meta-title/meta-title
+/ja/alternative-to/evernote	core/meta-title/meta-title
+/ja/alternative-to/friend-pendant	core/meta-title/meta-title
+/ja/alternative-to/hey-email	core/meta-title/meta-title
+/ja/alternative-to/jira	core/meta-title/meta-title
+/ja/alternative-to/logseq	core/meta-title/meta-title
+/ja/alternative-to/make	core/meta-title/meta-title
+/ja/alternative-to/mem-ai	core/meta-title/meta-title
+/ja/alternative-to/missive	core/meta-title/meta-title
+/ja/alternative-to/monday	core/meta-title/meta-title
+/ja/alternative-to/motion	core/meta-title/meta-title
+/ja/alternative-to/n8n	core/meta-title/meta-title
+/ja/alternative-to/omi	core/meta-title/meta-title
+/ja/alternative-to/reclaim	core/meta-title/meta-title
+/ja/alternative-to/reflect-app	core/meta-title/meta-title
+/ja/alternative-to/siri	core/meta-title/meta-title
+/ja/automate	core/meta-title/meta-title
+/ja/automate/with/asana	core/meta-title/meta-title
+/ja/automate/with/figma	core/meta-title/meta-title
+/ja/automate/with/github	core/meta-title/meta-title
+/ja/automate/with/gmail	core/meta-title/meta-title
+/ja/automate/with/google-docs	links/orphan-pages/orphan-pages
+/ja/automate/with/jira	core/meta-title/meta-title
+/ja/automate/with/linear	core/meta-title/meta-title
+/ja/automate/with/loom	core/meta-title/meta-title
+/ja/automate/with/notion	core/meta-title/meta-title
+/ja/automate/with/slack	core/meta-title/meta-title
+/ja/automate/with/stripe	core/meta-title/meta-title
+/ja/automate/with/trello	core/meta-title/meta-title
+/ja/automate/with/zoom	core/meta-title/meta-title
+/ja/compare/activepieces	core/meta-title/meta-title
+/ja/compare/akiflow	core/meta-title/meta-title
+/ja/compare/anydo	core/meta-title/meta-title
+/ja/compare/apple-reminders	core/meta-title/meta-title
+/ja/compare/asana	core/meta-title/meta-title
+/ja/compare/calendly	core/meta-title/meta-title
+/ja/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
+/ja/compare/category/ai-assistants	links/orphan-pages/orphan-pages
+/ja/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
+/ja/compare/category/automation	links/orphan-pages/orphan-pages
+/ja/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
+/ja/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
+/ja/compare/category/email	a11y/heading-order/heading-order	H3 after H1
+/ja/compare/category/email	core/meta-title/meta-title
+/ja/compare/category/email	links/orphan-pages/orphan-pages
+/ja/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
+/ja/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
+/ja/compare/category/other	a11y/heading-order/heading-order	H3 after H1
+/ja/compare/category/other	core/meta-title/meta-title
+/ja/compare/category/other	links/orphan-pages/orphan-pages
+/ja/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
+/ja/compare/category/project-management	links/orphan-pages/orphan-pages
+/ja/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/ja/compare/category/task-management	links/orphan-pages/orphan-pages
+/ja/compare/chatgpt	core/meta-title/meta-title
+/ja/compare/clickup	core/meta-title/meta-title
+/ja/compare/clockwise	core/meta-title/meta-title
+/ja/compare/coda	core/meta-title/meta-title
+/ja/compare/confluence	core/meta-title/meta-title
+/ja/compare/cursor-ai	core/meta-title/meta-title
+/ja/compare/deepseek	core/meta-title/meta-title
+/ja/compare/discord	core/meta-title/meta-title
+/ja/compare/dot-app	core/meta-title/meta-title
+/ja/compare/fantastical	core/meta-title/meta-title
+/ja/compare/fathom	core/meta-title/meta-title
+/ja/compare/friend-pendant	core/meta-title/meta-title
+/ja/compare/gemini	core/meta-title/meta-title
+/ja/compare/granola	core/meta-title/meta-title
+/ja/compare/grok	core/meta-title/meta-title
+/ja/compare/harvest	core/meta-title/meta-title
+/ja/compare/height	core/meta-title/meta-title
+/ja/compare/hubspot	core/meta-title/meta-title
+/ja/compare/instinct	core/meta-title/meta-title
+/ja/compare/jira	core/meta-title/meta-title
+/ja/compare/lark	core/meta-title/meta-title
+/ja/compare/linear	core/meta-title/meta-title
+/ja/compare/logseq	core/meta-title/meta-title
+/ja/compare/loom	core/meta-title/meta-title
+/ja/compare/make	core/meta-title/meta-title
+/ja/compare/mem-ai	core/meta-title/meta-title
+/ja/compare/missive	core/meta-title/meta-title
+/ja/compare/n8n	core/meta-title/meta-title
+/ja/compare/notion	core/meta-title/meta-title
+/ja/compare/omi	core/meta-title/meta-title
+/ja/compare/omnifocus	core/meta-title/meta-title
+/ja/compare/openclaw	core/meta-title/meta-title
+/ja/compare/otter-ai	core/meta-title/meta-title
+/ja/compare/pipedrive	core/meta-title/meta-title
+/ja/compare/poke	core/meta-title/meta-title
+/ja/compare/reflect-app	core/meta-title/meta-title
+/ja/compare/roam-research	core/meta-title/meta-title
+/ja/compare/sanebox	core/meta-title/meta-title
+/ja/compare/savvycal	core/meta-title/meta-title
+/ja/compare/siri	core/meta-title/meta-title
+/ja/compare/smartsheet	core/meta-title/meta-title
+/ja/compare/tana	core/meta-title/meta-title
+/ja/compare/things3	core/meta-title/meta-title
+/ja/compare/todoist	core/meta-title/meta-title
+/ja/compare/trello	core/meta-title/meta-title
+/ja/compare/whimsical	core/meta-title/meta-title
+/ja/compare/wrike	core/meta-title/meta-title
+/ja/compare/zapier	core/meta-title/meta-title
+/ja/learn	core/meta-title/meta-title
+/ja/learn/ai-agent	core/meta-title/meta-title
+/ja/learn/ai-orchestration	core/meta-title/meta-title
+/ja/learn/autonomous-agent	core/meta-title/meta-title
+/ja/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
+/ja/learn/category/ai-concepts	links/orphan-pages/orphan-pages
+/ja/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
+/ja/learn/category/automation	links/orphan-pages/orphan-pages
+/ja/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
+/ja/learn/category/calendar	links/orphan-pages/orphan-pages
+/ja/learn/category/development	a11y/heading-order/heading-order	H3 after H1
+/ja/learn/category/development	links/orphan-pages/orphan-pages
+/ja/learn/category/email	a11y/heading-order/heading-order	H3 after H1
+/ja/learn/category/email	core/meta-title/meta-title
+/ja/learn/category/email	links/orphan-pages/orphan-pages
+/ja/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
+/ja/learn/category/knowledge-management	links/orphan-pages/orphan-pages
+/ja/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
+/ja/learn/category/productivity	core/meta-title/meta-title
+/ja/learn/category/productivity	links/orphan-pages/orphan-pages
+/ja/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/ja/learn/category/task-management	core/meta-title/meta-title
+/ja/learn/category/task-management	links/orphan-pages/orphan-pages
+/ja/learn/cognitive-load	core/meta-title/meta-title
+/ja/learn/cold-email	core/meta-title/meta-title
+/ja/learn/cron-job	content/unrendered-markup/unrendered-markup
+/ja/learn/data-sovereignty	core/meta-title/meta-title
+/ja/learn/dot-app	core/meta-title/meta-title
+/ja/learn/email-automation	core/meta-title/meta-title
+/ja/learn/email-summarization	core/meta-title/meta-title
+/ja/learn/energy-management	core/meta-title/meta-title
+/ja/learn/flow-state	core/meta-title/meta-title
+/ja/learn/friend-pendant	core/meta-title/meta-title
+/ja/learn/function-calling	core/meta-title/meta-title
+/ja/learn/gemini-assistant	core/meta-title/meta-title
+/ja/learn/graph-based-memory	core/meta-title/meta-title
+/ja/learn/hallucination	core/meta-title/meta-title
+/ja/learn/idempotency	core/meta-title/meta-title
+/ja/learn/information-overload	core/meta-title/meta-title
+/ja/learn/intent-recognition	core/meta-title/meta-title
+/ja/learn/kanban	core/meta-title/meta-title
+/ja/learn/knowledge-graph	core/meta-title/meta-title
+/ja/learn/low-code	core/meta-title/meta-title
+/ja/learn/meeting-fatigue	core/meta-title/meta-title
+/ja/learn/meeting-scheduling	core/meta-title/meta-title
+/ja/learn/memory-augmented-ai	core/meta-title/meta-title
+/ja/learn/natural-language-processing	core/meta-title/meta-title
+/ja/learn/no-code	core/meta-title/meta-title
+/ja/learn/notification-fatigue	core/meta-title/meta-title
+/ja/learn/offline-first	core/meta-title/meta-title
+/ja/learn/okrs	core/meta-title/meta-title
+/ja/learn/omi	core/meta-title/meta-title
+/ja/learn/open-source-ai	core/meta-title/meta-title
+/ja/learn/password-manager	core/meta-title/meta-title
+/ja/learn/phishing	core/meta-title/meta-title
+/ja/learn/rate-limiting	core/meta-title/meta-title
+/ja/learn/recurring-event	core/meta-title/meta-title
+/ja/learn/retrieval-augmented-generation	core/meta-title/meta-title
+/ja/learn/rlhf	core/meta-title/meta-title
+/ja/learn/rpa	core/meta-title/meta-title
+/ja/learn/screen-sharing	core/meta-title/meta-title
+/ja/learn/sentiment-analysis	core/meta-title/meta-title
+/ja/learn/single-tasking	core/meta-title/meta-title
+/ja/learn/siri	core/meta-title/meta-title
+/ja/learn/task-automation	core/meta-title/meta-title
+/ja/learn/task-batching	core/meta-title/meta-title
+/ja/learn/time-blocking	core/meta-title/meta-title
+/ja/learn/token	core/meta-title/meta-title
+/ja/learn/transactional-email	core/meta-title/meta-title
+/ja/learn/transfer-learning	core/meta-title/meta-title
+/ja/learn/travel-time	core/meta-title/meta-title
+/ja/learn/two-factor-authentication	core/meta-title/meta-title
+/ja/learn/video-conferencing	core/meta-title/meta-title
+/ja/learn/workflow-automation	core/meta-title/meta-title
+/ko/alternative-to/airtable	core/meta-title/meta-title
+/ko/alternative-to/anydo	core/meta-title/meta-title
+/ko/alternative-to/asana	core/meta-title/meta-title
+/ko/alternative-to/bardeen	core/meta-title/meta-title
+/ko/alternative-to/basecamp	core/meta-title/meta-title
+/ko/alternative-to/dot-app	core/meta-title/meta-title
+/ko/alternative-to/evernote	core/meta-title/meta-title
+/ko/alternative-to/friend-pendant	core/meta-title/meta-title
+/ko/alternative-to/logseq	core/meta-title/meta-title
+/ko/alternative-to/make	core/meta-title/meta-title
+/ko/alternative-to/mem-ai	core/meta-title/meta-title
+/ko/alternative-to/missive	core/meta-title/meta-title
+/ko/alternative-to/n8n	core/meta-title/meta-title
+/ko/alternative-to/omi	core/meta-title/meta-title
+/ko/alternative-to/pipedream	core/meta-title/meta-title
+/ko/alternative-to/reflect-app	core/meta-title/meta-title
+/ko/alternative-to/siri	core/meta-title/meta-title
+/ko/automate	core/meta-title/meta-title
+/ko/automate/with/asana	core/meta-title/meta-title
+/ko/automate/with/figma	core/meta-title/meta-title
+/ko/automate/with/gmail	core/meta-title/meta-title
+/ko/automate/with/google-docs	links/orphan-pages/orphan-pages
+/ko/automate/with/jira	core/meta-title/meta-title
+/ko/automate/with/loom	core/meta-title/meta-title
+/ko/automate/with/slack	core/meta-title/meta-title
+/ko/automate/with/stripe	core/meta-title/meta-title
+/ko/automate/with/zoom	core/meta-title/meta-title
+/ko/compare/akiflow	core/meta-title/meta-title
+/ko/compare/anydo	core/meta-title/meta-title
+/ko/compare/asana	core/meta-title/meta-title
+/ko/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
+/ko/compare/category/ai-assistants	links/orphan-pages/orphan-pages
+/ko/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
+/ko/compare/category/automation	links/orphan-pages/orphan-pages
+/ko/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
+/ko/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
+/ko/compare/category/email	a11y/heading-order/heading-order	H3 after H1
+/ko/compare/category/email	links/orphan-pages/orphan-pages
+/ko/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
+/ko/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
+/ko/compare/category/other	a11y/heading-order/heading-order	H3 after H1
+/ko/compare/category/other	links/orphan-pages/orphan-pages
+/ko/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
+/ko/compare/category/project-management	links/orphan-pages/orphan-pages
+/ko/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/ko/compare/category/task-management	links/orphan-pages/orphan-pages
+/ko/compare/clickup	core/meta-title/meta-title
+/ko/compare/confluence	core/meta-title/meta-title
+/ko/compare/deepseek	core/meta-title/meta-title
+/ko/compare/dot-app	core/meta-title/meta-title
+/ko/compare/friend-pendant	core/meta-title/meta-title
+/ko/compare/grok	core/meta-title/meta-title
+/ko/compare/harvest	core/meta-title/meta-title
+/ko/compare/jira	core/meta-title/meta-title
+/ko/compare/linear	core/meta-title/meta-title
+/ko/compare/logseq	core/meta-title/meta-title
+/ko/compare/make	core/meta-title/meta-title
+/ko/compare/mem-ai	core/meta-title/meta-title
+/ko/compare/missive	core/meta-title/meta-title
+/ko/compare/n8n	core/meta-title/meta-title
+/ko/compare/omi	core/meta-title/meta-title
+/ko/compare/pipedrive	core/meta-title/meta-title
+/ko/compare/poke	core/meta-title/meta-title
+/ko/compare/relay	core/meta-title/meta-title
+/ko/compare/roam-research	core/meta-title/meta-title
+/ko/compare/sanebox	core/meta-title/meta-title
+/ko/compare/siri	core/meta-title/meta-title
+/ko/compare/tana	core/meta-title/meta-title
+/ko/compare/trello	core/meta-title/meta-title
+/ko/compare/wrike	core/meta-title/meta-title
+/ko/compare/zapier	core/meta-title/meta-title
+/ko/for/chiefs-of-staff	core/meta-title/meta-title
+/ko/learn	core/meta-title/meta-title
+/ko/learn/ai-agent	core/meta-title/meta-title
+/ko/learn/ai-email-assistant	core/meta-title/meta-title
+/ko/learn/availability-window	core/meta-title/meta-title
+/ko/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
+/ko/learn/category/ai-concepts	links/orphan-pages/orphan-pages
+/ko/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
+/ko/learn/category/automation	links/orphan-pages/orphan-pages
+/ko/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
+/ko/learn/category/calendar	links/orphan-pages/orphan-pages
+/ko/learn/category/development	a11y/heading-order/heading-order	H3 after H1
+/ko/learn/category/development	links/orphan-pages/orphan-pages
+/ko/learn/category/email	a11y/heading-order/heading-order	H3 after H1
+/ko/learn/category/email	links/orphan-pages/orphan-pages
+/ko/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
+/ko/learn/category/knowledge-management	links/orphan-pages/orphan-pages
+/ko/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
+/ko/learn/category/productivity	links/orphan-pages/orphan-pages
+/ko/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/ko/learn/category/task-management	links/orphan-pages/orphan-pages
+/ko/learn/chatbot-vs-ai-assistant	core/meta-title/meta-title
+/ko/learn/constitutional-ai	core/meta-title/meta-title
+/ko/learn/context-window	core/meta-title/meta-title
+/ko/learn/cron-job	content/unrendered-markup/unrendered-markup
+/ko/learn/digital-minimalism	core/meta-title/meta-title
+/ko/learn/energy-management	core/meta-title/meta-title
+/ko/learn/gemini-assistant	core/meta-title/meta-title
+/ko/learn/habit-stacking	core/meta-title/meta-title
+/ko/learn/information-overload	core/meta-title/meta-title
+/ko/learn/intent-recognition	core/meta-title/meta-title
+/ko/learn/kanban	core/meta-title/meta-title
+/ko/learn/knowledge-graph	core/meta-title/meta-title
+/ko/learn/local-llm	content/dev-leakage/dev-leakage	localhost
+/ko/learn/memory-augmented-ai	core/meta-title/meta-title
+/ko/learn/natural-language-processing	core/meta-title/meta-title
+/ko/learn/neural-network	core/meta-title/meta-title
+/ko/learn/no-code	core/meta-title/meta-title
+/ko/learn/okrs	core/meta-title/meta-title
+/ko/learn/omi	core/meta-title/meta-title
+/ko/learn/open-source-ai	core/meta-title/meta-title
+/ko/learn/phishing	core/meta-title/meta-title
+/ko/learn/screen-sharing	core/meta-title/meta-title
+/ko/learn/siri	core/meta-title/meta-title
+/ko/learn/smart-scheduling	core/meta-title/meta-title
+/ko/learn/social-engineering	core/meta-title/meta-title
+/ko/learn/task-automation	core/meta-title/meta-title
+/ko/learn/transactional-email	core/meta-title/meta-title
+/ko/learn/transfer-learning	core/meta-title/meta-title
+/ko/learn/travel-time	core/meta-title/meta-title
+/ko/learn/trigger	core/meta-title/meta-title
+/ko/learn/weekly-review	core/meta-title/meta-title
+/ko/learn/zero-shot-learning	core/meta-title/meta-title
+/learn/ai-calendar-management	content/keyword-stuffing/keyword-stuffing	calendar
+/learn/ai-email-assistant	content/keyword-stuffing/keyword-stuffing	email
+/learn/ai-meeting-assistant	content/keyword-stuffing/keyword-stuffing	meeting
+/learn/business-process-automation	content/keyword-stuffing/keyword-stuffing	automation
+/learn/calendar-automation	content/keyword-stuffing/keyword-stuffing	calendar
+/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
+/learn/category/ai-concepts	links/orphan-pages/orphan-pages
+/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
+/learn/category/automation	links/orphan-pages/orphan-pages
+/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
+/learn/category/calendar	links/orphan-pages/orphan-pages
+/learn/category/development	a11y/heading-order/heading-order	H3 after H1
+/learn/category/development	links/orphan-pages/orphan-pages
+/learn/category/email	a11y/heading-order/heading-order	H3 after H1
+/learn/category/email	content/keyword-stuffing/keyword-stuffing	email
+/learn/category/email	links/orphan-pages/orphan-pages
+/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
+/learn/category/knowledge-management	content/word-count/word-count
+/learn/category/knowledge-management	links/orphan-pages/orphan-pages
+/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
+/learn/category/productivity	links/orphan-pages/orphan-pages
+/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/learn/category/task-management	links/orphan-pages/orphan-pages
+/learn/context-window	content/keyword-stuffing/keyword-stuffing	context
+/learn/cron-job	content/unrendered-markup/unrendered-markup
+/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	data
+/learn/email-deliverability	content/keyword-stuffing/keyword-stuffing	email
+/learn/email-threading	content/keyword-stuffing/keyword-stuffing	email
+/learn/gdpr	content/keyword-stuffing/keyword-stuffing	data
+/learn/habit-stacking	content/keyword-stuffing/keyword-stuffing	habit
+/learn/ical	content/keyword-stuffing/keyword-stuffing	calendar
+/learn/low-code	content/keyword-stuffing/keyword-stuffing	code
+/learn/meeting-fatigue	content/keyword-stuffing/keyword-stuffing	meeting
+/learn/meeting-intelligence	content/keyword-stuffing/keyword-stuffing	meeting
+/learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	memory
+/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	mcp
+/learn/neural-network	content/keyword-stuffing/keyword-stuffing	neural
+/learn/no-code	content/keyword-stuffing/keyword-stuffing	code
+/learn/password-manager	content/keyword-stuffing/keyword-stuffing	password
+/learn/reasoning-model	content/keyword-stuffing/keyword-stuffing	reasoning
+/learn/rpa	content/keyword-stuffing/keyword-stuffing	automation
+/learn/semantic-search	content/keyword-stuffing/keyword-stuffing	search
+/learn/spam-filter	content/keyword-stuffing/keyword-stuffing	spam
+/learn/time-audit	content/keyword-stuffing/keyword-stuffing	time
+/learn/time-blocking	content/keyword-stuffing/keyword-stuffing	time
+/learn/time-zone-management	content/keyword-stuffing/keyword-stuffing	time
+/learn/travel-time	content/keyword-stuffing/keyword-stuffing	time
+/learn/work-life-integration	content/keyword-stuffing/keyword-stuffing	work
+/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
+/marketplace/adspo-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
+/marketplace/adspo-mcp-other	images/svg-inline/svg-inline
+/marketplace/adspo-mcp-other	perf/cache-headers/cache-control
+/marketplace/agentmail	images/svg-inline/svg-inline
+/marketplace/agentmail	links/orphan-pages/orphan-pages
+/marketplace/agentmail	links/weak-internal-links/weak-internal-links
+/marketplace/agentmail	perf/cache-headers/cache-control
+/marketplace/airtable	images/svg-inline/svg-inline
+/marketplace/airtable	perf/cache-headers/cache-control
+/marketplace/arxiv-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
+/marketplace/arxiv-mcp-education	images/svg-inline/svg-inline
+/marketplace/arxiv-mcp-education	perf/cache-headers/cache-control
+/marketplace/asana	images/svg-inline/svg-inline
+/marketplace/asana	perf/cache-headers/cache-control
+/marketplace/asana	perf/dom-size/dom-max-children
+/marketplace/astro-docs-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
+/marketplace/astro-docs-mcp-developer	images/svg-inline/svg-inline
+/marketplace/astro-docs-mcp-developer	links/orphan-pages/orphan-pages
+/marketplace/astro-docs-mcp-developer	links/weak-internal-links/weak-internal-links
+/marketplace/astro-docs-mcp-developer	perf/cache-headers/cache-control
+/marketplace/bible-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
+/marketplace/bible-mcp-other	images/svg-inline/svg-inline
+/marketplace/bible-mcp-other	perf/cache-headers/cache-control
+/marketplace/brave-search-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
+/marketplace/brave-search-mcp-other	images/svg-inline/svg-inline
+/marketplace/brave-search-mcp-other	perf/cache-headers/cache-control
+/marketplace/browser-tool-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
+/marketplace/browser-tool-mcp-capabilities	images/svg-inline/svg-inline
+/marketplace/browser-tool-mcp-capabilities	perf/cache-headers/cache-control
+/marketplace/calcom	images/svg-inline/svg-inline
+/marketplace/calcom	links/orphan-pages/orphan-pages
+/marketplace/calcom	links/weak-internal-links/weak-internal-links
+/marketplace/calcom	perf/cache-headers/cache-control
+/marketplace/calendly	images/svg-inline/svg-inline
+/marketplace/calendly	perf/cache-headers/cache-control
+/marketplace/clickup	images/svg-inline/svg-inline
+/marketplace/clickup	perf/cache-headers/cache-control
+/marketplace/clickup	perf/dom-size/dom-max-children
+/marketplace/code-interpreter-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
+/marketplace/code-interpreter-mcp-developer	images/svg-inline/svg-inline
+/marketplace/code-interpreter-mcp-developer	perf/cache-headers/cache-control
+/marketplace/context7	images/svg-inline/svg-inline
+/marketplace/context7	perf/cache-headers/cache-control
+/marketplace/deepwiki	images/svg-inline/svg-inline
+/marketplace/deepwiki	perf/cache-headers/cache-control
+/marketplace/dodo-payments-mcp-finance	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
+/marketplace/dodo-payments-mcp-finance	images/svg-inline/svg-inline
+/marketplace/dodo-payments-mcp-finance	perf/cache-headers/cache-control
+/marketplace/doi-resolver-mcp-education	images/svg-inline/svg-inline
+/marketplace/doi-resolver-mcp-education	perf/cache-headers/cache-control
+/marketplace/dropbox	images/svg-inline/svg-inline
+/marketplace/dropbox	links/orphan-pages/orphan-pages
+/marketplace/dropbox	links/weak-internal-links/weak-internal-links
+/marketplace/dropbox	perf/cache-headers/cache-control
+/marketplace/dropbox	perf/dom-size/dom-max-children
+/marketplace/dropbox-mcp-productivity	images/svg-inline/svg-inline
+/marketplace/dropbox-mcp-productivity	perf/cache-headers/cache-control
+/marketplace/duckduckgo-search-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
+/marketplace/duckduckgo-search-mcp-capabilities	images/svg-inline/svg-inline
+/marketplace/duckduckgo-search-mcp-capabilities	perf/cache-headers/cache-control
+/marketplace/fetch-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
+/marketplace/fetch-mcp-capabilities	images/svg-inline/svg-inline
+/marketplace/fetch-mcp-capabilities	perf/cache-headers/cache-control
+/marketplace/github	images/svg-inline/svg-inline
+/marketplace/github	perf/cache-headers/cache-control
+/marketplace/github	perf/dom-size/dom-max-children
+/marketplace/github	perf/dom-size/dom-total-nodes
+/marketplace/gmail	images/svg-inline/svg-inline
+/marketplace/gmail	perf/cache-headers/cache-control
+/marketplace/gmail	perf/dom-size/dom-max-children
+/marketplace/google-classroom-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
+/marketplace/google-classroom-mcp-education	images/svg-inline/svg-inline
+/marketplace/google-classroom-mcp-education	perf/cache-headers/cache-control
+/marketplace/google-scholar-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
+/marketplace/google-scholar-mcp-education	images/svg-inline/svg-inline
+/marketplace/google-scholar-mcp-education	perf/cache-headers/cache-control
+/marketplace/google_maps	images/svg-inline/svg-inline
+/marketplace/google_maps	perf/cache-headers/cache-control
+/marketplace/google_maps	url/hyphens/url-hyphens
+/marketplace/googlecalendar	content/keyword-stuffing/keyword-stuffing	calendar
+/marketplace/googlecalendar	content/placeholder-contact/placeholder-contact	email
+/marketplace/googlecalendar	images/svg-inline/svg-inline
+/marketplace/googlecalendar	perf/cache-headers/cache-control
+/marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	document
+/marketplace/googledocs	content/placeholder-contact/placeholder-contact	email
+/marketplace/googledocs	images/svg-inline/svg-inline
+/marketplace/googledocs	perf/cache-headers/cache-control
+/marketplace/googledrive	content/keyword-stuffing/keyword-stuffing	file
+/marketplace/googledrive	images/svg-inline/svg-inline
+/marketplace/googledrive	perf/cache-headers/cache-control
+/marketplace/googledrive	perf/dom-size/dom-max-children
+/marketplace/googlemeet	images/svg-inline/svg-inline
+/marketplace/googlemeet	perf/cache-headers/cache-control
+/marketplace/googlesheets	content/placeholder-contact/placeholder-contact	phone
+/marketplace/googlesheets	content/placeholder-text/placeholder-content	unrendered-template
+/marketplace/googlesheets	images/svg-inline/svg-inline
+/marketplace/googlesheets	perf/cache-headers/cache-control
+/marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	task
+/marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	tasks
+/marketplace/googletasks	images/svg-inline/svg-inline
+/marketplace/googletasks	perf/cache-headers/cache-control
+/marketplace/granola-mcp-productivity	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
+/marketplace/granola-mcp-productivity	images/svg-inline/svg-inline
+/marketplace/granola-mcp-productivity	perf/cache-headers/cache-control
+/marketplace/gumroad-mcp-finance	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
+/marketplace/gumroad-mcp-finance	images/svg-inline/svg-inline
+/marketplace/gumroad-mcp-finance	perf/cache-headers/cache-control
+/marketplace/hackernews	images/svg-inline/svg-inline
+/marketplace/hackernews	perf/cache-headers/cache-control
+/marketplace/hubspot	images/svg-inline/svg-inline
+/marketplace/hubspot	perf/cache-headers/cache-control
+/marketplace/hubspot	perf/dom-size/dom-max-children
+/marketplace/instagram	images/svg-inline/svg-inline
+/marketplace/instagram	perf/cache-headers/cache-control
+/marketplace/jira	images/svg-inline/svg-inline
+/marketplace/jira	perf/cache-headers/cache-control
+/marketplace/jira	perf/dom-size/dom-max-children
+/marketplace/keyloom-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
+/marketplace/keyloom-mcp-capabilities	images/svg-inline/svg-inline
+/marketplace/keyloom-mcp-capabilities	perf/cache-headers/cache-control
+/marketplace/linear	images/svg-inline/svg-inline
+/marketplace/linear	perf/cache-headers/cache-control
+/marketplace/linkedin	images/svg-inline/svg-inline
+/marketplace/linkedin	perf/cache-headers/cache-control
+/marketplace/linkup-mcp-capabilities	images/svg-inline/svg-inline
+/marketplace/linkup-mcp-capabilities	perf/cache-headers/cache-control
+/marketplace/manufact-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
+/marketplace/manufact-mcp-capabilities	images/svg-inline/svg-inline
+/marketplace/manufact-mcp-capabilities	links/orphan-pages/orphan-pages
+/marketplace/manufact-mcp-capabilities	links/weak-internal-links/weak-internal-links
+/marketplace/manufact-mcp-capabilities	perf/cache-headers/cache-control
+/marketplace/microsoft_teams	content/placeholder-contact/placeholder-contact	email
+/marketplace/microsoft_teams	images/svg-inline/svg-inline
+/marketplace/microsoft_teams	perf/cache-headers/cache-control
+/marketplace/microsoft_teams	url/hyphens/url-hyphens
+/marketplace/neon-database-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
+/marketplace/neon-database-mcp-developer	images/svg-inline/svg-inline
+/marketplace/neon-database-mcp-developer	links/orphan-pages/orphan-pages
+/marketplace/neon-database-mcp-developer	links/weak-internal-links/weak-internal-links
+/marketplace/neon-database-mcp-developer	perf/cache-headers/cache-control
+/marketplace/notion	images/svg-inline/svg-inline
+/marketplace/notion	perf/cache-headers/cache-control
+/marketplace/open-web-search-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
+/marketplace/open-web-search-mcp-capabilities	images/svg-inline/svg-inline
+/marketplace/open-web-search-mcp-capabilities	perf/cache-headers/cache-control
+/marketplace/outlook	content/keyword-stuffing/keyword-stuffing	calendar
+/marketplace/outlook	content/placeholder-contact/placeholder-contact	email
+/marketplace/outlook	images/svg-inline/svg-inline
+/marketplace/outlook	perf/cache-headers/cache-control
+/marketplace/outlook	perf/dom-size/dom-max-children
+/marketplace/outlook	perf/dom-size/dom-total-nodes
+/marketplace/page/2	content/word-count/word-count
+/marketplace/page/2	perf/cache-headers/cache-control
+/marketplace/page/3	content/word-count/word-count
+/marketplace/page/3	perf/cache-headers/cache-control
+/marketplace/paper-search-openai-mcp-education	images/svg-inline/svg-inline
+/marketplace/paper-search-openai-mcp-education	perf/cache-headers/cache-control
+/marketplace/paper-search-v2-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
+/marketplace/paper-search-v2-mcp-education	images/svg-inline/svg-inline
+/marketplace/paper-search-v2-mcp-education	perf/cache-headers/cache-control
+/marketplace/paypal-mcp-finance	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
+/marketplace/paypal-mcp-finance	images/svg-inline/svg-inline
+/marketplace/paypal-mcp-finance	perf/cache-headers/cache-control
+/marketplace/perplexity	images/svg-inline/svg-inline
+/marketplace/perplexity	perf/cache-headers/cache-control
+/marketplace/pixellab-mcp-ai-ml	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
+/marketplace/pixellab-mcp-ai-ml	images/svg-inline/svg-inline
+/marketplace/pixellab-mcp-ai-ml	perf/cache-headers/cache-control
+/marketplace/polymarket-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
+/marketplace/polymarket-mcp-analytics	images/svg-inline/svg-inline
+/marketplace/polymarket-mcp-analytics	perf/cache-headers/cache-control
+/marketplace/posthog	images/svg-inline/svg-inline
+/marketplace/posthog	perf/cache-headers/cache-control
+/marketplace/postman-code-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
+/marketplace/postman-code-eu-mcp-developer	images/svg-inline/svg-inline
+/marketplace/postman-code-eu-mcp-developer	perf/cache-headers/cache-control
+/marketplace/postman-code-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
+/marketplace/postman-code-mcp-developer	images/svg-inline/svg-inline
+/marketplace/postman-code-mcp-developer	perf/cache-headers/cache-control
+/marketplace/postman-full-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
+/marketplace/postman-full-eu-mcp-developer	images/svg-inline/svg-inline
+/marketplace/postman-full-eu-mcp-developer	perf/cache-headers/cache-control
+/marketplace/postman-full-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
+/marketplace/postman-full-mcp-developer	images/svg-inline/svg-inline
+/marketplace/postman-full-mcp-developer	perf/cache-headers/cache-control
+/marketplace/postman-minimal-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
+/marketplace/postman-minimal-eu-mcp-developer	images/svg-inline/svg-inline
+/marketplace/postman-minimal-eu-mcp-developer	perf/cache-headers/cache-control
+/marketplace/postman-minimal-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
+/marketplace/postman-minimal-mcp-developer	images/svg-inline/svg-inline
+/marketplace/postman-minimal-mcp-developer	links/orphan-pages/orphan-pages
+/marketplace/postman-minimal-mcp-developer	links/weak-internal-links/weak-internal-links
+/marketplace/postman-minimal-mcp-developer	perf/cache-headers/cache-control
+/marketplace/prisma-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
+/marketplace/prisma-mcp-developer	images/svg-inline/svg-inline
+/marketplace/prisma-mcp-developer	perf/cache-headers/cache-control
+/marketplace/pumpgtm-mcp-other	content/placeholder-text/placeholder-content	unrendered-template
+/marketplace/pumpgtm-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
+/marketplace/pumpgtm-mcp-other	images/svg-inline/svg-inline
+/marketplace/pumpgtm-mcp-other	perf/cache-headers/cache-control
+/marketplace/reddit	images/svg-inline/svg-inline
+/marketplace/reddit	perf/cache-headers/cache-control
+/marketplace/render-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
+/marketplace/render-mcp-developer	images/svg-inline/svg-inline
+/marketplace/render-mcp-developer	links/orphan-pages/orphan-pages
+/marketplace/render-mcp-developer	links/weak-internal-links/weak-internal-links
+/marketplace/render-mcp-developer	perf/cache-headers/cache-control
+/marketplace/resend-mcp-communication	content/placeholder-contact/placeholder-contact	email
+/marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	js-artifact
+/marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	unrendered-template
+/marketplace/resend-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
+/marketplace/resend-mcp-communication	images/svg-inline/svg-inline
+/marketplace/resend-mcp-communication	perf/cache-headers/cache-control
+/marketplace/resend-mcp-communication	perf/dom-size/dom-max-children
+/marketplace/scientific-computation-mcp-analytics	images/svg-inline/svg-inline
+/marketplace/scientific-computation-mcp-analytics	perf/cache-headers/cache-control
+/marketplace/scrapegraph-ai-mcp-ai-ml	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
+/marketplace/scrapegraph-ai-mcp-ai-ml	images/svg-inline/svg-inline
+/marketplace/scrapegraph-ai-mcp-ai-ml	perf/cache-headers/cache-control
+/marketplace/semantic-scholar-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
+/marketplace/semantic-scholar-mcp-education	images/svg-inline/svg-inline
+/marketplace/semantic-scholar-mcp-education	perf/cache-headers/cache-control
+/marketplace/sequential-thinking-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
+/marketplace/sequential-thinking-mcp-capabilities	images/svg-inline/svg-inline
+/marketplace/sequential-thinking-mcp-capabilities	perf/cache-headers/cache-control
+/marketplace/shopify-mcp-finance	images/svg-inline/svg-inline
+/marketplace/shopify-mcp-finance	perf/cache-headers/cache-control
+/marketplace/slack	images/svg-inline/svg-inline
+/marketplace/slack	perf/cache-headers/cache-control
+/marketplace/slack	perf/dom-size/dom-max-children
+/marketplace/strava-mcp-personal	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
+/marketplace/strava-mcp-personal	images/svg-inline/svg-inline
+/marketplace/strava-mcp-personal	perf/cache-headers/cache-control
+/marketplace/supabase-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
+/marketplace/supabase-mcp-developer	images/svg-inline/svg-inline
+/marketplace/supabase-mcp-developer	links/orphan-pages/orphan-pages
+/marketplace/supabase-mcp-developer	links/weak-internal-links/weak-internal-links
+/marketplace/supabase-mcp-developer	perf/cache-headers/cache-control
+/marketplace/todoist	images/svg-inline/svg-inline
+/marketplace/todoist	perf/cache-headers/cache-control
+/marketplace/todoist	perf/dom-size/dom-max-children
+/marketplace/trello	images/svg-inline/svg-inline
+/marketplace/trello	perf/cache-headers/cache-control
+/marketplace/trello	perf/dom-size/dom-max-children
+/marketplace/trello	perf/dom-size/dom-total-nodes
+/marketplace/twitter	content/keyword-stuffing/keyword-stuffing	user
+/marketplace/twitter	images/svg-inline/svg-inline
+/marketplace/twitter	perf/cache-headers/cache-control
+/marketplace/twitter	perf/dom-size/dom-max-children
+/marketplace/wakatime-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	GWNzsIGGO33nMDvAMWjVBWUvq2otiHKiyVYBnMXPqN8
+/marketplace/wakatime-mcp-analytics	images/svg-inline/svg-inline
+/marketplace/wakatime-mcp-analytics	perf/cache-headers/cache-control
+/marketplace/whoop-mcp-personal	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
+/marketplace/whoop-mcp-personal	images/svg-inline/svg-inline
+/marketplace/whoop-mcp-personal	perf/cache-headers/cache-control
+/marketplace/wix-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
+/marketplace/wix-mcp-other	images/svg-inline/svg-inline
+/marketplace/wix-mcp-other	perf/cache-headers/cache-control
+/marketplace/world-cup-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
+/marketplace/world-cup-mcp-other	images/svg-inline/svg-inline
+/marketplace/world-cup-mcp-other	perf/cache-headers/cache-control
+/marketplace/yelp	images/svg-inline/svg-inline
+/marketplace/yelp	perf/cache-headers/cache-control
+/marketplace/youtube-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
+/marketplace/youtube-mcp-analytics	images/svg-inline/svg-inline
+/marketplace/youtube-mcp-analytics	perf/cache-headers/cache-control
+/marketplace/zoho-mail-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
+/marketplace/zoho-mail-mcp-communication	images/svg-inline/svg-inline
+/marketplace/zoho-mail-mcp-communication	perf/cache-headers/cache-control
+/marketplace/zoom	content/placeholder-contact/placeholder-contact	address
+/marketplace/zoom	images/svg-inline/svg-inline
+/marketplace/zoom	perf/cache-headers/cache-control
+/pt-br/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
+/pt-br/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
+/pt-br/alternative-to/dot-app	content/keyword-stuffing/keyword-stuffing	dot
+/pt-br/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	google
+/pt-br/alternative-to/linear	content/keyword-stuffing/keyword-stuffing	linear
+/pt-br/alternative-to/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
+/pt-br/alternative-to/perplexity	content/keyword-stuffing/keyword-stuffing	perplexity
+/pt-br/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	tarefas
+/pt-br/automate/airtable-google-calendar	content/keyword-stuffing/keyword-stuffing	agenda
+/pt-br/automate/asana-figma	content/keyword-stuffing/keyword-stuffing	design
+/pt-br/automate/asana-zoom	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/automate/calendar-todoist	content/keyword-stuffing/keyword-stuffing	tarefas
+/pt-br/automate/gmail-zoom	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/automate/google-calendar-hubspot	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/automate/google-calendar-loom	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/automate/google-calendar-trello	content/keyword-stuffing/keyword-stuffing	agenda
+/pt-br/automate/hubspot-drive	content/keyword-stuffing/keyword-stuffing	neg
+/pt-br/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	design
+/pt-br/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	design
+/pt-br/automate/slack-zoom	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/automate/todoist-loom	content/keyword-stuffing/keyword-stuffing	deo
+/pt-br/automate/todoist-zoom	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	airtable
+/pt-br/automate/with/airtable	content/word-count/word-count
+/pt-br/automate/with/asana	content/keyword-stuffing/keyword-stuffing	asana
+/pt-br/automate/with/asana	content/keyword-stuffing/keyword-stuffing	tarefas
+/pt-br/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	clickup
+/pt-br/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	tarefas
+/pt-br/automate/with/clickup	content/word-count/word-count
+/pt-br/automate/with/discord	content/keyword-stuffing/keyword-stuffing	discord
+/pt-br/automate/with/discord	content/word-count/word-count
+/pt-br/automate/with/figma	content/keyword-stuffing/keyword-stuffing	design
+/pt-br/automate/with/figma	content/keyword-stuffing/keyword-stuffing	figma
+/pt-br/automate/with/figma	content/word-count/word-count
+/pt-br/automate/with/github	content/keyword-stuffing/keyword-stuffing	github
+/pt-br/automate/with/github	content/keyword-stuffing/keyword-stuffing	prs
+/pt-br/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	mails
+/pt-br/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	agenda
+/pt-br/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/pt-br/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
+/pt-br/automate/with/google-docs	content/word-count/word-count
+/pt-br/automate/with/google-docs	links/orphan-pages/orphan-pages
+/pt-br/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
+/pt-br/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	google
+/pt-br/automate/with/google-drive	content/word-count/word-count
+/pt-br/automate/with/google-sheets	content/word-count/word-count
+/pt-br/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
+/pt-br/automate/with/hubspot	content/word-count/word-count
+/pt-br/automate/with/jira	content/keyword-stuffing/keyword-stuffing	jira
+/pt-br/automate/with/linear	content/keyword-stuffing/keyword-stuffing	issues
+/pt-br/automate/with/linear	content/keyword-stuffing/keyword-stuffing	linear
+/pt-br/automate/with/loom	content/keyword-stuffing/keyword-stuffing	deo
+/pt-br/automate/with/loom	content/keyword-stuffing/keyword-stuffing	loom
+/pt-br/automate/with/loom	content/word-count/word-count
+/pt-br/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	microsoft
+/pt-br/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
+/pt-br/automate/with/microsoft-teams	content/word-count/word-count
+/pt-br/automate/with/notion	content/keyword-stuffing/keyword-stuffing	notion
+/pt-br/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	salesforce
+/pt-br/automate/with/salesforce	content/word-count/word-count
+/pt-br/automate/with/slack	content/keyword-stuffing/keyword-stuffing	slack
+/pt-br/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	stripe
+/pt-br/automate/with/stripe	content/word-count/word-count
+/pt-br/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	tarefas
+/pt-br/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	todoist
+/pt-br/automate/with/trello	content/keyword-stuffing/keyword-stuffing	cards
+/pt-br/automate/with/trello	content/keyword-stuffing/keyword-stuffing	trello
+/pt-br/automate/with/trello	content/word-count/word-count
+/pt-br/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
+/pt-br/automate/with/zoom	content/word-count/word-count
+/pt-br/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
+/pt-br/compare/category/ai-assistants	links/orphan-pages/orphan-pages
+/pt-br/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
+/pt-br/compare/category/automation	links/orphan-pages/orphan-pages
+/pt-br/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
+/pt-br/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
+/pt-br/compare/category/email	a11y/heading-order/heading-order	H3 after H1
+/pt-br/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
+/pt-br/compare/category/email	links/orphan-pages/orphan-pages
+/pt-br/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
+/pt-br/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
+/pt-br/compare/category/other	a11y/heading-order/heading-order	H3 after H1
+/pt-br/compare/category/other	links/orphan-pages/orphan-pages
+/pt-br/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
+/pt-br/compare/category/project-management	links/orphan-pages/orphan-pages
+/pt-br/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/pt-br/compare/category/task-management	links/orphan-pages/orphan-pages
+/pt-br/compare/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
+/pt-br/compare/figma	content/keyword-stuffing/keyword-stuffing	design
+/pt-br/compare/gemini	content/keyword-stuffing/keyword-stuffing	google
+/pt-br/compare/google-assistant	content/keyword-stuffing/keyword-stuffing	google
+/pt-br/compare/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/pt-br/compare/linear	content/keyword-stuffing/keyword-stuffing	linear
+/pt-br/compare/motion	content/keyword-stuffing/keyword-stuffing	calendar
+/pt-br/compare/notion	content/keyword-stuffing/keyword-stuffing	notion
+/pt-br/compare/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
+/pt-br/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
+/pt-br/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
+/pt-br/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
+/pt-br/compare/zoho	content/keyword-stuffing/keyword-stuffing	zoho
+/pt-br/for/adhd-professionals	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/for/adhd-professionals	content/keyword-stuffing/keyword-stuffing	voc
+/pt-br/for/freelancers	content/keyword-stuffing/keyword-stuffing	para
+/pt-br/for/project-managers	content/keyword-stuffing/keyword-stuffing	project
+/pt-br/for/team-leads	content/keyword-stuffing/keyword-stuffing	team
+/pt-br/learn/ai-meeting-assistant	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/learn/asynchronous-meeting	content/keyword-stuffing/keyword-stuffing	ass
+/pt-br/learn/asynchronous-meeting	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/learn/availability-window	content/keyword-stuffing/keyword-stuffing	para
+/pt-br/learn/bee	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
+/pt-br/learn/category/ai-concepts	links/orphan-pages/orphan-pages
+/pt-br/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
+/pt-br/learn/category/automation	links/orphan-pages/orphan-pages
+/pt-br/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
+/pt-br/learn/category/calendar	links/orphan-pages/orphan-pages
+/pt-br/learn/category/development	a11y/heading-order/heading-order	H3 after H1
+/pt-br/learn/category/development	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/learn/category/development	links/orphan-pages/orphan-pages
+/pt-br/learn/category/email	a11y/heading-order/heading-order	H3 after H1
+/pt-br/learn/category/email	links/orphan-pages/orphan-pages
+/pt-br/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
+/pt-br/learn/category/knowledge-management	content/word-count/word-count
+/pt-br/learn/category/knowledge-management	links/orphan-pages/orphan-pages
+/pt-br/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
+/pt-br/learn/category/productivity	links/orphan-pages/orphan-pages
+/pt-br/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
+/pt-br/learn/category/task-management	links/orphan-pages/orphan-pages
+/pt-br/learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	assistente
+/pt-br/learn/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/learn/cron-job	content/unrendered-markup/unrendered-markup
+/pt-br/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	dados
+/pt-br/learn/dot-app	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/learn/function-calling	content/keyword-stuffing/keyword-stuffing	fun
+/pt-br/learn/gdpr	content/keyword-stuffing/keyword-stuffing	dados
+/pt-br/learn/inference	content/keyword-stuffing/keyword-stuffing	ncia
+/pt-br/learn/information-overload	content/keyword-stuffing/keyword-stuffing	informa
+/pt-br/learn/meeting-fatigue	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/learn/meeting-intelligence	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/learn/meeting-scheduling	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	mem
+/pt-br/learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	ria
+/pt-br/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	mcp
+/pt-br/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/learn/notification-fatigue	content/keyword-stuffing/keyword-stuffing	notifica
+/pt-br/learn/password-manager	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/learn/password-manager	content/keyword-stuffing/keyword-stuffing	senhas
+/pt-br/learn/scheduling-automation	content/keyword-stuffing/keyword-stuffing	para
+/pt-br/learn/second-brain	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/learn/spam-filter	content/keyword-stuffing/keyword-stuffing	spam
+/pt-br/learn/task-automation	content/keyword-stuffing/keyword-stuffing	tarefas
+/pt-br/learn/time-zone-management	content/keyword-stuffing/keyword-stuffing	hor
+/pt-br/learn/time-zone-management	content/keyword-stuffing/keyword-stuffing	rio
+/pt-br/learn/token	content/keyword-stuffing/keyword-stuffing	tokens
+/pt-br/learn/travel-time	content/keyword-stuffing/keyword-stuffing	tempo
+/pt-br/learn/two-factor-authentication	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/learn/vector-database	content/keyword-stuffing/keyword-stuffing	dados
+/pt-br/learn/video-conferencing	content/keyword-stuffing/keyword-stuffing	reuni
+/pt-br/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
+/thanks	a11y/identical-links-same-purpose/identical-links-same-purpose	"discord" → 2 different URLs
+/thanks	content/word-count/word-count
+/thanks	links/orphan-pages/orphan-pages
+/use-cases/add-deadlines-to-calendar	content/word-count/word-count
+/use-cases/add-deadlines-to-calendar	links/orphan-pages/orphan-pages
+/use-cases/add-deadlines-to-calendar	links/weak-internal-links/weak-internal-links
+/use-cases/assignment-tracker	content/keyword-stuffing/keyword-stuffing	due
+/use-cases/assignment-tracker	content/word-count/word-count
+/use-cases/assignment-tracker	links/orphan-pages/orphan-pages
+/use-cases/auto-draft-replies	content/word-count/word-count
+/use-cases/auto-draft-replies	links/orphan-pages/orphan-pages
+/use-cases/auto-draft-replies	links/weak-internal-links/weak-internal-links
+/use-cases/birthday-gift-ideas	content/word-count/word-count
+/use-cases/birthday-gift-ideas	links/orphan-pages/orphan-pages
+/use-cases/code-review-reminders	content/word-count/word-count
+/use-cases/code-review-reminders	links/orphan-pages/orphan-pages
+/use-cases/code-review-reminders	links/weak-internal-links/weak-internal-links
+/use-cases/competitor-watch	content/word-count/word-count
+/use-cases/competitor-watch	links/orphan-pages/orphan-pages
+/use-cases/dailyposthogmetricsreport	content/word-count/word-count
+/use-cases/drink-water-reminder	content/word-count/word-count
+/use-cases/drink-water-reminder	links/orphan-pages/orphan-pages
+/use-cases/email-to-task	content/word-count/word-count
+/use-cases/email-to-task	links/orphan-pages/orphan-pages
+/use-cases/exam-revision-pack	content/word-count/word-count
+/use-cases/exam-revision-pack	links/orphan-pages/orphan-pages
+/use-cases/exam-revision-pack	links/weak-internal-links/weak-internal-links
+/use-cases/focus-time	content/word-count/word-count
+/use-cases/focus-time	links/orphan-pages/orphan-pages
+/use-cases/focus-time	links/weak-internal-links/weak-internal-links
+/use-cases/follow-up-reminders	content/word-count/word-count
+/use-cases/follow-up-reminders	links/orphan-pages/orphan-pages
+/use-cases/follow-up-reminders	links/weak-internal-links/weak-internal-links
+/use-cases/hackernewsfrontpage-6763ab	content/word-count/word-count
+/use-cases/inbox-triage	content/keyword-stuffing/keyword-stuffing	action
+/use-cases/inbox-triage	content/word-count/word-count
+/use-cases/inbox-triage	links/orphan-pages/orphan-pages
+/use-cases/inbox-triage	links/weak-internal-links/weak-internal-links
+/use-cases/lecture-notes-summarizer	content/keyword-stuffing/keyword-stuffing	notes
+/use-cases/lecture-notes-summarizer	content/word-count/word-count
+/use-cases/lecture-notes-summarizer	links/orphan-pages/orphan-pages
+/use-cases/meeting-briefing	content/word-count/word-count
+/use-cases/meeting-notes-summary	content/keyword-stuffing/keyword-stuffing	action
+/use-cases/meeting-notes-summary	content/word-count/word-count
+/use-cases/meeting-notes-summary	links/orphan-pages/orphan-pages
+/use-cases/meeting-prep	content/word-count/word-count
+/use-cases/meeting-prep	links/orphan-pages/orphan-pages
+/use-cases/meeting-reminder	content/word-count/word-count
+/use-cases/meeting-reminder	links/orphan-pages/orphan-pages
+/use-cases/monthly-subscription-audit	content/word-count/word-count
+/use-cases/monthly-subscription-audit	links/orphan-pages/orphan-pages
+/use-cases/morning-briefing	content/word-count/word-count
+/use-cases/morning-briefing	links/orphan-pages/orphan-pages
+/use-cases/morning-briefing	links/weak-internal-links/weak-internal-links
+/use-cases/morning-priority-map	content/word-count/word-count
+/use-cases/morning-priority-map	links/orphan-pages/orphan-pages
+/use-cases/nightly-gratitude	content/word-count/word-count
+/use-cases/nightly-gratitude	links/orphan-pages/orphan-pages
+/use-cases/nightly-review	content/word-count/word-count
+/use-cases/nightly-review	links/orphan-pages/orphan-pages
+/use-cases/post-meeting-follow-ups	content/word-count/word-count
+/use-cases/post-meeting-follow-ups	links/orphan-pages/orphan-pages
+/use-cases/rent-reminder	content/word-count/word-count
+/use-cases/rent-reminder	links/orphan-pages/orphan-pages
+/use-cases/research-to-outline	content/word-count/word-count
+/use-cases/research-to-outline	links/orphan-pages/orphan-pages
+/use-cases/save-the-bug	content/word-count/word-count
+/use-cases/save-the-bug	links/orphan-pages/orphan-pages
+/use-cases/save-the-bug	links/weak-internal-links/weak-internal-links
+/use-cases/social-post-drafts	content/word-count/word-count
+/use-cases/social-post-drafts	links/orphan-pages/orphan-pages
+/use-cases/study-plan-today	content/word-count/word-count
+/use-cases/study-plan-today	links/orphan-pages/orphan-pages
+/use-cases/weekly-content-ideas	content/word-count/word-count
+/use-cases/weekly-content-ideas	links/orphan-pages/orphan-pages
+/use-cases/weekly-meal-plan	content/word-count/word-count
+/use-cases/weekly-meal-plan	links/orphan-pages/orphan-pages
+/use-cases/weekly-productivity-check-in	content/word-count/word-count
+/use-cases/weekly-productivity-check-in	links/orphan-pages/orphan-pages
+/use-cases/weekly-work-summary	content/word-count/word-count
+/use-cases/weekly-work-summary	links/orphan-pages/orphan-pages
+/use-cases/weekly-work-summary	links/weak-internal-links/weak-internal-links
+/use-cases/workflow-229fb7	content/word-count/word-count
+/use-cases/workflow-229fb7	links/orphan-pages/orphan-pages
+/use-cases/workflow-229fb7	links/weak-internal-links/weak-internal-links
