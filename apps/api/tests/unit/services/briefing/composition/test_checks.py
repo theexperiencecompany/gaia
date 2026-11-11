@@ -7,8 +7,13 @@ from pydantic import ValidationError
 import pytest
 
 from app.constants.briefing import (
+    BRIEF_CHART_TITLE_MAX_CHARS,
     BRIEF_HEADING_MAX_CHARS,
+    BRIEF_ITEM_DETAIL_MAX_CHARS,
     BRIEF_ITEM_TITLE_MAX_CHARS,
+    BRIEF_NOTE_MAX_CHARS,
+    BRIEF_OFFER_MAX_CHARS,
+    BRIEF_TAKEAWAY_MAX_CHARS,
     MAX_BAR_CATEGORIES,
     MAX_BRIEF_BLOCKS,
     MAX_BRIEF_ITEMS,
@@ -35,7 +40,7 @@ _DAYS = [f"2026-11-{d:02d}" for d in range(5, 12)]
 
 
 def _series(
-    series_id: str, ys: list[float], *, unit: str = "hours", days: list[str] | None = None
+    series_id: str, ys: list[float], *, unit: str | None = "hours", days: list[str] | None = None
 ) -> DataSeries:
     xs = days or _DAYS[-len(ys) :]
     return DataSeries(
@@ -94,12 +99,14 @@ POOL = FactPool(
     series=[
         _series("meetings", [2, 1.5, 2, 0, 0, 2.5, 7]),
         _series("short", [1, 2, 3]),
+        _series("five_days", [1, 2, 3, 4, 5]),
         _series(
             "late_start", [1, 2, 3, 4, 5, 6, 7], days=[f"2026-11-{d:02d}" for d in range(6, 13)]
         ),
         _series("threads_closed", [1, 0, 2, 3, 1, 0, 4], unit="threads"),
         _series("threads_taken", [2, 1, 2, 4, 1, 1, 3], unit="threads"),
         _series("emails", [9, 8, 7, 9, 8, 9, 30], unit="emails"),
+        _series("untallied", [3, 1, 2, 0, 2, 1, 4], unit=None),
         _categories("invoices", MAX_BAR_CATEGORIES),
         _categories("all_invoices", MAX_BAR_CATEGORIES + 1),
     ],
@@ -253,6 +260,9 @@ class TestChartsFitTheirSeries:
         ]
         assert _problems(_chart("meetings", "emails", chart="stacked_bar")) == [
             "block 1 (chart): a stacked_bar stacks one unit, not emails, hours"
+        ]
+        assert _problems(_chart("meetings", "untallied", chart="stacked_bar")) == [
+            "block 1 (chart): a stacked_bar stacks one unit, not hours, no unit"
         ]
         assert _problems(_chart("meetings", "invoices", chart="stacked_bar")) == [
             "block 1 (chart): a stacked_bar needs two or more series sharing their days or categories"
@@ -509,3 +519,133 @@ class TestNoFreeNumbers:
             "the block 1 (note) text: [[series:invoices.latest]]: series invoices offers "
             "total, peak, peak_at, low, as [[series:invoices.field]]"
         ]
+
+
+_LONG_FACT = "[[fact:14]]"
+_LONG_FACT_CHARS = len(POOL.items[14].title)
+
+
+def _filled_to(slots: int) -> tuple[str, int]:
+    """Return text of that many long-fact slots and the characters it reads as once filled."""
+    return " ".join([_LONG_FACT] * slots), slots * _LONG_FACT_CHARS + slots - 1
+
+
+class TestTextIsMeasuredAsTheBriefShowsIt:
+    def test_a_heading_whose_filled_slots_run_past_its_limit_is_named(self) -> None:
+        text, chars = _filled_to(1)
+
+        assert _problems(_items(1, heading=text)) == [
+            f"block 1 (items): a heading of {chars} characters, over {BRIEF_HEADING_MAX_CHARS}"
+        ]
+
+    def test_a_chart_title_and_takeaway_are_measured_filled(self) -> None:
+        title, title_chars = _filled_to(1)
+        takeaway, takeaway_chars = _filled_to(3)
+        chart = {**_chart("meetings"), "title": title, "takeaway": takeaway}
+
+        assert _problems(chart) == [
+            f"block 1 (chart): a title of {title_chars} characters, over {BRIEF_CHART_TITLE_MAX_CHARS}",
+            f"block 1 (chart): a takeaway of {takeaway_chars} characters, over {BRIEF_TAKEAWAY_MAX_CHARS}",
+        ]
+
+    def test_a_note_is_measured_filled(self) -> None:
+        text, chars = _filled_to(4)
+
+        assert _problems({"kind": "note", "text": text}) == [
+            f"block 1 (note): a text of {chars} characters, over {BRIEF_NOTE_MAX_CHARS}"
+        ]
+
+    def test_a_lead_offer_is_measured_filled(self) -> None:
+        text, chars = _filled_to(2)
+
+        assert _problems({"kind": "lead", "item": _ask(1), "offer": text}) == [
+            f"block 1 (lead): a offer of {chars} characters, over {BRIEF_OFFER_MAX_CHARS}"
+        ]
+
+    def test_a_field_exactly_at_its_limit_holds(self) -> None:
+        assert _problems(_items(1, heading="h" * BRIEF_HEADING_MAX_CHARS)) == []
+
+    def test_an_item_detail_over_its_limit_is_named_and_at_it_holds(self) -> None:
+        def detailed(detail: str) -> dict[str, object]:
+            item = _placed(1, action="reply", title="Acme invoice", detail=detail)
+            return {"kind": "items", "state": "needs_you", "heading": "Waiting", "items": [item]}
+
+        assert _problems(detailed("d" * BRIEF_ITEM_DETAIL_MAX_CHARS)) == []
+        assert _problems(detailed("d" * (BRIEF_ITEM_DETAIL_MAX_CHARS + 1))) == [
+            f"block 1 (items), item 1: a detail over {BRIEF_ITEM_DETAIL_MAX_CHARS} characters"
+        ]
+
+    def test_a_linked_phrase_is_measured_as_its_phrase(self) -> None:
+        linked = {"kind": "note", "text": "See [the board call](fact:13) soon."}
+
+        assert _problems(linked) == []
+
+
+class TestEveryProblemOfABlockIsReported:
+    def test_a_chart_missing_title_and_takeaway_names_both(self) -> None:
+        chart = {**_chart("meetings"), "title": " ", "takeaway": ""}
+
+        assert _problems(chart) == ["block 1 (chart): no title", "block 1 (chart): no takeaway"]
+
+    def test_a_chart_with_a_blank_title_still_names_the_series_it_cannot_draw(self) -> None:
+        chart = {**_chart("short"), "title": ""}
+
+        assert _problems(chart) == [
+            "block 1 (chart): no title",
+            f"block 1 (chart): a line needs a time series of at least {MIN_TREND_POINTS} days",
+        ]
+
+    def test_every_unknown_series_is_listed(self) -> None:
+        assert _problems(_chart("nope", "ghost")) == [
+            "block 1 (chart): no series nope, ghost in the pool"
+        ]
+
+    def test_a_trend_on_exactly_the_minimum_days_holds(self) -> None:
+        assert len(POOL.series_by_id["five_days"].points) == MIN_TREND_POINTS
+        assert _problems(_chart("five_days")) == []
+
+    def test_a_brief_of_exactly_its_item_budget_holds(self) -> None:
+        assert MAX_BRIEF_ITEMS == 10
+        assert _problems(_items(1, 2, 3, 4, 5), _items(6, 7, 8, 9, 10, heading="Also")) == []
+
+    def test_an_item_after_a_fitting_one_is_still_checked_against_its_group(self) -> None:
+        group = {
+            "kind": "items",
+            "state": "done",
+            "heading": "Overnight",
+            "items": [
+                _placed(2, outcome="booked", title="Offsite venues"),
+                _placed(15, outcome="started", title="Board deck numbers"),
+            ],
+        }
+
+        assert _problems(group) == [
+            "block 1 (items), item 15 has outcome started, which a done group does not hold; "
+            "move it to an in_progress group"
+        ]
+
+    def test_slot_problems_in_blocks_and_in_items_all_come_back_in_order(self) -> None:
+        bad = "[[fact:1.time]]"
+        first_note = {"kind": "note", "text": f"One {bad}."}
+        item = _placed(1, action="reply", title=bad, detail=bad)
+        group = {"kind": "items", "state": "needs_you", "heading": "Waiting", "items": [item]}
+        second_note = {"kind": "note", "text": f"Two {bad}."}
+
+        assert _problems(first_note, group, second_note) == [
+            "the block 1 (note) text: [[fact:1.time]]: fact 1 has no time",
+            "the block 2 (items) item 1 title: [[fact:1.time]]: fact 1 has no time",
+            "the block 2 (items) item 1 detail: [[fact:1.time]]: fact 1 has no time",
+            "the block 3 (note) text: [[fact:1.time]]: fact 1 has no time",
+        ]
+
+    def test_an_item_may_quote_a_figure_its_own_line_gives(self) -> None:
+        item = _placed(1, action="reply", title="Pay 41 dollars", detail="Due in 3 days")
+        group = {"kind": "items", "state": "needs_you", "heading": "Waiting", "items": [item]}
+
+        assert _problems(group) == []
+
+
+def test_every_id_placed_twice_is_listed_in_order() -> None:
+    assert _problems(_items(1, 2), _items(2, 1, heading="Also")) == [
+        "placed more than once: item 1, item 2"
+    ]

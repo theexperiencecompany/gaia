@@ -3,17 +3,19 @@
 Faked seams: the structured model call and the heading check.
 """
 
-from datetime import date
-from unittest.mock import AsyncMock
+from datetime import UTC, date, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.agents.llm.client import StructuredCallOptions
 from app.agents.llm.exceptions import MalformedStructuredOutputError
+from app.constants.briefing import BRIEF_COMPOSITION_LABEL
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefComposition, ComposedChart, ComposedItems
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.services.briefing.composition import compose
-from app.services.briefing.composition.compose import compose_brief
+from app.services.briefing.composition.compose import compose_brief, pool_values
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.utils.errors import AppError
 
@@ -338,3 +340,221 @@ class TestRetryThenFailLoud:
 
         assert raised.value.why == "block 1 (items), item 7: no item 7 in the pool"
         assert model.await_count == 2
+
+
+def _items_block(*items: dict[str, object]) -> BriefComposition:
+    return BriefComposition.model_validate(
+        {
+            "blocks": [
+                {"kind": "items", "state": "needs_you", "heading": "Waiting on you", "items": items}
+            ]
+        }
+    )
+
+
+def _item(item_id: int, title: str = "Term sheet", detail: str | None = None) -> dict[str, object]:
+    return {"id": item_id, "action": "reply", "outcome": None, "title": title, "detail": detail}
+
+
+class TestWhatSlotsRender:
+    def test_a_due_item_renders_its_date_a_timed_one_its_time_and_a_count_is_kept(self) -> None:
+        pool = FactPool(
+            items={
+                1: BriefCandidate(
+                    source="gmail",
+                    app="Gmail",
+                    state="you",
+                    title="Due",
+                    due_at=datetime(2026, 11, 3, 9, tzinfo=UTC),
+                    count=3,
+                ),
+                2: BriefCandidate(
+                    source="gmail",
+                    app="Gmail",
+                    state="you",
+                    title="Timed",
+                    time="11:00 AM",
+                    due_at=datetime(2026, 11, 3, 9, tzinfo=UTC),
+                ),
+                3: BriefCandidate(source="gmail", app="Gmail", state="you", title="Open"),
+            },
+            series=[],
+            quotes=[],
+            goals=[],
+            context=_CONTEXT,
+            criteria={},
+        )
+
+        facts = pool_values(pool).facts
+
+        assert (facts[1].time, facts[1].count) == ("Tue Nov 3", 3)
+        assert facts[2].time == "11:00 AM"
+        assert facts[3].time is None
+
+    async def test_a_lead_items_wording_is_filled(self, model: AsyncMock) -> None:
+        model.return_value = BriefComposition.model_validate(
+            {
+                "blocks": [
+                    {
+                        "kind": "lead",
+                        "item": _item(1, title="[[fact:1]]", detail="From [[fact:2]]"),
+                        "offer": "Send Maya the reply I drafted",
+                    }
+                ]
+            }
+        )
+
+        composed = await compose_brief(USER, POOL, "daily")
+
+        lead = composed.rendered.blocks[0]
+        assert lead.model_dump()["item"]["title"] == "Re: Series A term sheet"
+        assert lead.model_dump()["item"]["detail"] == "From Board deck numbers"
+
+    async def test_a_linked_phrase_renders_as_plain_words_since_the_composition_links_nothing(
+        self, model: AsyncMock
+    ) -> None:
+        model.return_value = _items_block(_item(1, title="[Maya's thread](fact:1)"))
+
+        composed = await compose_brief(USER, POOL, "daily")
+
+        group = composed.rendered.blocks[0]
+        assert isinstance(group, ComposedItems)
+        assert group.items[0].title == "Maya's thread"
+        assert composed.rendered.blocks[0] != composed.written.blocks[0]
+
+    async def test_a_linked_phrase_in_a_blocks_own_words_renders_as_plain_words(
+        self, model: AsyncMock
+    ) -> None:
+        model.return_value = BriefComposition.model_validate(
+            {
+                "blocks": [
+                    {
+                        "kind": "items",
+                        "state": "needs_you",
+                        "heading": "[Maya](fact:1) is waiting",
+                        "items": [_item(1)],
+                    }
+                ]
+            }
+        )
+
+        composed = await compose_brief(USER, POOL, "daily")
+
+        group = composed.rendered.blocks[0]
+        assert isinstance(group, ComposedItems)
+        assert group.heading == "Maya is waiting"
+
+
+class TestTheCallItself:
+    async def test_the_call_is_labelled_metered_for_the_user_and_held_to_the_schema(
+        self, model: AsyncMock
+    ) -> None:
+        await compose_brief(USER, POOL, "daily")
+
+        assert model.await_args.kwargs == {
+            "label": BRIEF_COMPOSITION_LABEL,
+            "config": {"configurable": {"user_id": USER}},
+            "options": StructuredCallOptions(schema_held=True),
+        }
+
+    async def test_the_first_ask_is_the_bare_prompt(self, model: AsyncMock) -> None:
+        await compose_brief(USER, POOL, "daily")
+
+        assert not _prompt(model).endswith("\n\n")
+        assert "Your last composition was sent back" not in _prompt(model)
+
+    async def test_a_pool_with_nothing_to_compose_returns_the_empty_composition_and_its_values(
+        self, model: AsyncMock
+    ) -> None:
+        only_event = FactPool(
+            items={
+                1: BriefCandidate(
+                    source="googlecalendar",
+                    app="Google Calendar",
+                    state="note",
+                    title="Board call",
+                    is_event=True,
+                    time="9:00 AM",
+                )
+            },
+            series=[],
+            quotes=[],
+            goals=[],
+            context=_CONTEXT,
+            criteria={},
+        )
+
+        composed = await compose_brief(USER, only_event, "daily")
+
+        assert composed.written == BriefComposition(blocks=[])
+        assert composed.values == pool_values(only_event)
+        assert composed.values.facts[1].time == "9:00 AM"
+
+    async def test_the_composed_values_are_what_the_pool_renders(self, model: AsyncMock) -> None:
+        composed = await compose_brief(USER, POOL, "daily")
+
+        assert composed.values == pool_values(POOL)
+        assert composed.values.facts[1].title == "Re: Series A term sheet"
+
+
+class TestWhatARejectionSays:
+    async def test_every_problem_is_named_in_the_retry_and_logged(
+        self, model: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        log = MagicMock()
+        monkeypatch.setattr(compose, "log", log)
+        model.side_effect = [_items_block(_item(7), _item(8)), _GOOD]
+
+        await compose_brief(USER, POOL, "daily")
+
+        problems = [
+            "block 1 (items), item 7: no item 7 in the pool",
+            "block 1 (items), item 8: no item 8 in the pool",
+        ]
+        log.warning.assert_called_once_with("briefing.composition_rejected", problems=problems)
+        assert f"was sent back: {'; '.join(problems)}.\n" in _prompt(model, 1)
+
+    async def test_a_reply_that_was_no_composition_is_retried_with_no_last_answer_and_its_reason(
+        self, model: AsyncMock
+    ) -> None:
+        model.side_effect = [MalformedStructuredOutputError("cut off at the cap"), _GOOD]
+
+        await compose_brief(USER, POOL, "daily")
+
+        assert (
+            "was sent back: the answer was not a whole BriefComposition tool call "
+            "(cut off at the cap).\n"
+            "This was your last composition:\n(no whole composition)\n"
+        ) in _prompt(model, 1)
+
+    async def test_the_failure_names_every_problem_what_was_tried_and_the_last_answer(
+        self, model: AsyncMock
+    ) -> None:
+        broken = _items_block(_item(7), _item(8))
+        model.return_value = broken
+
+        with pytest.raises(AppError) as raised:
+            await compose_brief(USER, POOL, "daily")
+
+        error = raised.value
+        assert error.message == "the brief's composition broke its contract"
+        assert error.why == (
+            "block 1 (items), item 7: no item 7 in the pool; "
+            "block 1 (items), item 8: no item 8 in the pool"
+        )
+        assert error.fix == (
+            "the composition was asked again once with the problems named; "
+            "the next scheduled brief retries"
+        )
+        assert error.meta == {"answer": broken.model_dump()}
+
+    async def test_a_failure_with_no_answer_at_all_carries_none(self, model: AsyncMock) -> None:
+        model.side_effect = MalformedStructuredOutputError("cut off at the cap")
+
+        with pytest.raises(AppError) as raised:
+            await compose_brief(USER, POOL, "daily")
+
+        assert raised.value.meta == {"answer": None}
+        assert raised.value.why == (
+            "the answer was not a whole BriefComposition tool call (cut off at the cap)"
+        )

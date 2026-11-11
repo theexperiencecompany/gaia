@@ -166,13 +166,15 @@ def figures_in(texts: Iterable[str]) -> frozenset[str]:
 
 
 def _rendered_by_slot(values: SlotValues) -> list[tuple[str, str]]:
-    """Return every slot a figure comes from, beside the value it renders."""
-    slots = [(f"[[count:{slot.value}]]", str(n)) for slot, n in values.counts.items() if n]
-    for fact_id, fact in values.facts.items():
-        if fact.count > 1:
-            slots.append((f"[[fact:{fact_id}.count]]", str(fact.count)))
-        if fact.time is not None:
-            slots.append((f"[[fact:{fact_id}.time]]", fact.time))
+    """Return every slot a typed figure can come from, beside the value it renders.
+
+    A count slot is left out: its figure is in _counted, so prose that types it is never flagged.
+    """
+    slots = [
+        (f"[[fact:{fact_id}.time]]", fact.time)
+        for fact_id, fact in values.facts.items()
+        if fact.time is not None
+    ]
     slots += [
         (f"[[series:{series_id}.{figure_field.value}]]", text)
         for series_id, figures in values.series.items()
@@ -253,11 +255,11 @@ def _echo_problems(field: str, text: str, values: SlotValues) -> tuple[list[str]
 
 
 def slot_problems(
-    field: str, text: str, values: SlotValues, *, figures_are_slots: bool = True
+    field: str, text: str, values: SlotValues, *, may_quote_figures: bool = False
 ) -> list[str]:
     """Name every slot in one prose field that is malformed or unknown, and every figure it typed.
 
-    figures_are_slots False lets the field type figures: an item's wording quotes its own line's.
+    may_quote_figures lets the field type figures: an item's wording quotes its own line's.
     """
     problems: list[str] = []
     for match in [*_VALUE_SLOT_RE.finditer(text), *LINK_SLOT_RE.finditer(text)]:
@@ -277,8 +279,8 @@ def slot_problems(
         "[the phrase](fact:N) exactly"
         for match in _SLOT_RESIDUE_RE.finditer(bare)
     ]
-    bare = _SLOT_RESIDUE_RE.sub(" ", bare)
-    typed = _typed_figures(bare, values) if figures_are_slots else []
+    bare = _SLOT_RESIDUE_RE.sub(" ", bare)  # pragma: no mutate — digit-free either way
+    typed = [] if may_quote_figures else _typed_figures(bare, values)
     problems += [_typed_figure_problem(field, word, values) for word in dict.fromkeys(typed)]
     problems += [
         f"the {field} writes the address {match.group(0)!r}; link a phrase with (fact:N)"

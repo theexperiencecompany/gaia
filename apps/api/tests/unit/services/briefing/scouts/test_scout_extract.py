@@ -85,14 +85,42 @@ class TestReadingItems:
 
         assert (signal.amount, signal.amount_unit) == (None, None)
 
-    @pytest.mark.parametrize("raw", [True, "a lot", {"value": 3}])
-    def test_a_figure_that_is_not_a_number_is_a_moved_shape(self, raw: object) -> None:
+    @pytest.mark.parametrize(
+        ("raw", "kind"), [(True, "bool"), ("a lot", "str"), ({"value": 3}, "dict")]
+    )
+    def test_a_figure_that_is_not_a_number_is_a_moved_shape(self, raw: object, kind: str) -> None:
         source = SOURCE.model_copy(
             update={"fields": SOURCE.fields.model_copy(update={"amount": "total"})}
         )
 
-        with pytest.raises(PlaceholderError, match="amount is a"):
+        with pytest.raises(PlaceholderError) as raised:
             extract_signals(GITHUB, [source], {"reviews": {"items": [_pr(1, total=raw)]}})
+
+        assert raised.value.message == f"amount is a {kind}, not the value the scout learned"
+
+    def test_text_that_is_not_text_is_a_moved_shape(self) -> None:
+        source = SOURCE.model_copy(
+            update={"fields": SOURCE.fields.model_copy(update={"text": "body"})}
+        )
+
+        with pytest.raises(PlaceholderError) as raised:
+            extract_signals(GITHUB, [source], {"reviews": {"items": [_pr(1, body={"x": 1})]}})
+
+        assert raised.value.message == "text is a dict, not the value the scout learned"
+
+    def test_an_empty_figure_and_empty_text_read_as_absent(self) -> None:
+        source = SOURCE.model_copy(
+            update={
+                "fields": SOURCE.fields.model_copy(update={"amount": "total", "text": "body"}),
+                "amount_unit": "USD",
+            }
+        )
+
+        [signal] = extract_signals(
+            GITHUB, [source], {"reviews": {"items": [_pr(1, total="", body="")]}}
+        )
+
+        assert (signal.amount, signal.amount_unit, signal.text) == (None, None, None)
 
     def test_every_replayed_item_starts_normal_whatever_its_due_date(self) -> None:
         """Replay reset importance to due-date; the judge decides it now."""

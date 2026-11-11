@@ -1590,6 +1590,38 @@ class TestBriefingReads:
 
         assert [t.id for t in found] == [ids["latest"], ids["at_cutoff"]]
 
+    async def test_lists_the_users_activity_on_one_kind_of_outside_object_since_the_cutoff(
+        self, repo, make_doc, raw_collection
+    ):
+        user_id, since = "u-activity", datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        gmail = todo_models.ExternalRefSource.GMAIL_THREAD
+        desk = todo_models.ExternalRefSource.INBOX_DESK
+
+        async def seed(
+            title: str, source, *, created_at: datetime, completed_at=None, user=user_id
+        ):
+            todo = await repo.create(
+                make_doc(
+                    user_id=user,
+                    title=title,
+                    external_ref=todo_models.ExternalRef(source=source, id=title),
+                )
+            )
+            fields = {"created_at": created_at, "completed_at": completed_at}
+            await raw_collection.update_one({"_id": ObjectId(todo.id)}, {"$set": fields})
+            return todo.id
+
+        old = since - timedelta(days=3)
+        opened = await seed("opened", gmail, created_at=since)
+        closed = await seed("closed", gmail, created_at=old, completed_at=since)
+        await seed("stale", gmail, created_at=old, completed_at=since - timedelta(seconds=1))
+        await seed("other-kind", desk, created_at=since)
+        await seed("theirs", gmail, created_at=since, user="someone-else")
+
+        found = await repo.list_external_ref_activity_since(user_id, gmail, since=since)
+
+        assert sorted(t.id for t in found) == sorted([opened, closed])
+
     async def test_lists_the_users_own_open_todos_most_recently_updated_first(
         self, repo, make_doc, raw_collection
     ):

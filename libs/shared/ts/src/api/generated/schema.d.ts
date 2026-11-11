@@ -8605,9 +8605,9 @@ export interface components {
             source: string;
             /**
              * Unit
-             * @description What one y counts: "emails", "hours", "USD"
+             * @description What one y counts: "emails", "hours", "USD"; None when the source gives none
              */
-            unit: string;
+            unit: string | null;
         };
         /**
          * DeactivationReason

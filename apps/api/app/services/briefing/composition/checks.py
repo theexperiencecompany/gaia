@@ -127,8 +127,9 @@ def _bar_misfit(chart: ChartKind, series: list[DataSeries]) -> str | None:
         return None if len(series) == 1 else "a bar draws one series; stack several"
     if len(series) < 2 or not _shared_x(series):
         return "a stacked_bar needs two or more series sharing their days or categories"
-    units = sorted({s.unit for s in series})
-    return None if len(units) == 1 else f"a stacked_bar stacks one unit, not {', '.join(units)}"
+    units = {s.unit for s in series}
+    named = ", ".join(sorted(unit or "no unit" for unit in units))
+    return None if len(units) == 1 else f"a stacked_bar stacks one unit, not {named}"
 
 
 _CHART_MISFITS: dict[ChartKind, Callable[[ChartKind, list[DataSeries]], str | None]] = {
@@ -271,7 +272,7 @@ def _slot_problems(composition: BriefComposition, values: SlotValues) -> list[st
             for name, text in (("title", item.title), ("detail", item.detail)):
                 if text:
                     problems += slot_problems(
-                        f"{where} item {item.id} {name}", text, values, figures_are_slots=False
+                        f"{where} item {item.id} {name}", text, values, may_quote_figures=True
                     )
     return problems
 

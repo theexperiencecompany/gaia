@@ -36,7 +36,11 @@ class DataSeries(BaseModel):
     label: str = Field(
         min_length=1, description='What is counted: "Emails handled", "Meeting hours"'
     )
-    unit: str = Field(min_length=1, description='What one y counts: "emails", "hours", "USD"')
+    unit: str | None = Field(
+        default=None,
+        min_length=1,
+        description='What one y counts: "emails", "hours", "USD"; None when the source gives none',
+    )
     #: An integration id, or GAIA_SOURCE for GAIA's own work.
     source: str
     app: str = Field(description="The source's display name")

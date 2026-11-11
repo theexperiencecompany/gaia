@@ -273,3 +273,63 @@ class TestATimeSlotIsNotWrittenAround:
 
     def test_words_after_a_time_slot_are_left_alone(self) -> None:
         assert slot_problems("lede", "Sequoia at [[fact:9.time]] and Amy at noon.", _VALUES) == []
+
+
+class TestSeriesSlotProblems:
+    def test_a_series_nobody_shows_is_named_with_its_slot(self) -> None:
+        assert slot_problems("note", "[[series:nobody.total]] emails", _VALUES) == [
+            "the note: [[series:nobody.total]]: nobody is no series shown today"
+        ]
+
+    def test_a_figure_the_series_does_not_offer_lists_the_ones_it_does(self) -> None:
+        values = SlotValues(facts={}, counts={}, series={"gmail_sorted": series_figures(_MAIL)})
+
+        assert slot_problems("note", "[[series:gmail_sorted.latest]]", values) == [
+            "the note: [[series:gmail_sorted.latest]]: series gmail_sorted offers "
+            "total, peak, peak_at, low, as [[series:gmail_sorted.field]]"
+        ]
+
+
+class TestTypedFigures:
+    def test_a_request_count_of_two_stands_as_typed_and_a_single_request_does_not(self) -> None:
+        twice = SlotValues(facts={1: BriefFact(title="Reply to Dan", count=2)}, counts={})
+        once = SlotValues(facts={1: BriefFact(title="Reply to Dan", count=1)}, counts={})
+
+        assert slot_problems("message", "2 asks wait", twice) == []
+        assert slot_problems("message", "1 ask waits", once) == [
+            "the message types '1', a figure no fact carries; say it in words, from the "
+            "facts, or leave it out"
+        ]
+
+    def test_a_typed_figure_is_named_without_the_punctuation_around_it(self) -> None:
+        assert slot_problems("message", "up by (8).", _VALUES) == [
+            "the message types '8', a figure no fact carries; say it in words, from the "
+            "facts, or leave it out"
+        ]
+
+    def test_a_time_two_facts_render_names_both_slots(self) -> None:
+        values = SlotValues(
+            facts={
+                1: BriefFact(title="Sync", time="11:00 AM"),
+                2: BriefFact(title="Lunch", time="11:00 AM"),
+            },
+            counts={},
+        )
+
+        assert slot_problems("message", "Meet at 11:00 sharp", values) == [
+            "the message types '11:00' itself; write [[fact:1.time]] or [[fact:2.time]] where it says 11:00"
+        ]
+
+
+class TestEchoes:
+    def test_a_meridiem_after_a_24_hour_time_is_not_an_echo_of_it(self) -> None:
+        values = SlotValues(facts={1: BriefFact(title="Sync", time="14:00")}, counts={})
+
+        assert slot_problems("message", "Sync at [[fact:1.time]] PM", values) == []
+
+    def test_an_unfillable_slot_does_not_hide_a_later_echo(self) -> None:
+        assert slot_problems("message", "[[fact:99]] and [[fact:9.time]] 11:00 AM", _VALUES) == [
+            "the message: fact:99 is no fact shown today",
+            "the message writes '11:00 AM' after [[fact:9.time]], which already renders "
+            "'11:00 AM'; drop it",
+        ]

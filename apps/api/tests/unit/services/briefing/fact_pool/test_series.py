@@ -17,9 +17,10 @@ from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.workflow_execution_models import RunMoment
 from app.services.briefing.fact_pool.calendar_series import calendar_series
 from app.services.briefing.fact_pool.mail_series import sorted_mail_series, thread_series
+from app.services.briefing.fact_pool.render import series_line
 from app.services.briefing.fact_pool.run_series import run_series
 from app.services.briefing.fact_pool.signal_series import signal_series
-from app.services.briefing.fact_pool.window import SeriesWindow
+from app.services.briefing.fact_pool.window import SeriesName, SeriesWindow, day_series
 from app.services.briefing.fact_pool.work_series import work_series
 
 USER_ID = make_user_id()
@@ -125,6 +126,44 @@ class TestCalendarSeries:
         )
         assert series.points == _ys([0, 0.8, 0, 0, 0, 3, 1])
 
+    def test_the_series_is_labelled_meeting_hours(self) -> None:
+        [series] = calendar_series(
+            [_event("2026-11-08T10:00:00+05:30", "2026-11-08T11:00:00+05:30")], WINDOW
+        )
+
+        assert series.label == "Meeting hours"
+
+    def test_events_missing_either_end_or_either_time_count_for_nothing(self) -> None:
+        raw = [
+            _event("2026-11-08T10:00:00+05:30", "2026-11-08T11:00:00+05:30"),
+            GoogleCalendarEventResource(
+                summary="No start",
+                end=GoogleCalendarEventDateTime(dateTime="2026-11-08T13:00:00+05:30"),
+            ),
+            GoogleCalendarEventResource(
+                summary="No end",
+                start=GoogleCalendarEventDateTime(dateTime="2026-11-08T12:00:00+05:30"),
+            ),
+            _event(None, "2026-11-08T15:00:00+05:30"),
+            _event("2026-11-08T14:00:00+05:30", None),
+        ]
+
+        [series] = calendar_series(raw, WINDOW)
+
+        assert series.points == _ys([0, 0, 0, 1, 0, 0, 0])
+
+    def test_a_meeting_inside_another_adds_nothing_and_seconds_round_to_a_tenth(self) -> None:
+        raw = [
+            _event("2026-11-08T10:00:00+05:30", "2026-11-08T11:00:00+05:30"),
+            # 179 seconds, with a ten-second call inside it: 0.0497 of an hour rounds to 0.0.
+            _event("2026-11-09T10:00:00+05:30", "2026-11-09T10:02:59+05:30"),
+            _event("2026-11-09T10:00:10+05:30", "2026-11-09T10:00:20+05:30"),
+        ]
+
+        [series] = calendar_series(raw, WINDOW)
+
+        assert series.points == _ys([0, 0, 0, 1, 0, 0, 0])
+
     def test_all_day_events_and_focus_blocks_are_not_meetings(self) -> None:
         raw = [
             _event(None, None, all_day="2026-11-07"),
@@ -160,6 +199,10 @@ class TestMailSeries:
 
         assert (taken.id, taken.points) == ("gmail_threads_taken", _ys([0, 0, 0, 0, 2, 1, 0]))
         assert (closed.id, closed.points) == ("gmail_threads_closed", _ys([1, 0, 0, 0, 1, 0, 1]))
+        assert [(s.label, s.unit) for s in (taken, closed)] == [
+            ("Mail threads GAIA took on", "threads"),
+            ("Mail threads closed", "threads"),
+        ]
 
     def test_the_days_mail_is_counted_by_what_the_desk_does_with_it(self) -> None:
         buckets = [DeskBucket.JUNK] * 5 + [DeskBucket.REPLY] * 2 + [DeskBucket.FYI, None]
@@ -170,8 +213,9 @@ class TestMailSeries:
 
         [series] = sorted_mail_series(verdicts)
 
-        assert (series.id, series.shape, series.unit) == (
+        assert (series.id, series.label, series.shape, series.unit) == (
             "gmail_sorted",
+            "Mail sorted since yesterday",
             SeriesShape.CATEGORICAL,
             "emails",
         )
@@ -232,7 +276,9 @@ class TestSignalSeries:
             _signal("INV-9 Initech", amount=7, amount_unit=None),
         ]
 
-        invoices, payouts = sorted(signal_series(signals), key=lambda s: s.label)
+        unitless, invoices, payouts = sorted(
+            signal_series(signals), key=lambda s: (s.label, s.unit or "")
+        )
 
         assert (invoices.id, invoices.label, invoices.unit, invoices.app) == (
             "stripe_open_invoice_usd",
@@ -245,6 +291,38 @@ class TestSignalSeries:
             SeriesPoint(x="INV-2211 Globex", y=1250.5),
         ]
         assert (payouts.id, payouts.shape) == ("stripe_payout_usd", SeriesShape.CATEGORICAL)
+        assert (unitless.id, unitless.unit, unitless.points) == (
+            "stripe_open_invoice",
+            None,
+            [SeriesPoint(x="INV-9 Initech", y=7)],
+        )
+
+    def test_a_unitless_amount_comes_before_the_same_kinds_united_ones(self) -> None:
+        signals = [
+            _signal("INV-1", amount=1, amount_unit="USD"),
+            _signal("INV-2", amount=2, amount_unit=None),
+        ]
+
+        assert [(s.id, s.unit) for s in signal_series(signals)] == [
+            ("stripe_open_invoice", None),
+            ("stripe_open_invoice_usd", "USD"),
+        ]
+
+    def test_a_kind_with_punctuation_is_a_clean_series_id(self) -> None:
+        signal = _signal("INV-1", amount=1, amount_unit="USD").model_copy(
+            update={"kind": "(Open) invoice!"}
+        )
+
+        [series] = signal_series([signal])
+
+        assert series.id == "stripe_open_invoice_usd"
+
+    def test_a_series_with_no_unit_is_told_without_one(self) -> None:
+        [series] = signal_series([_signal("INV-9 Initech", amount=7, amount_unit=None)])
+
+        assert series_line(series, date(2026, 10, 14)).startswith(
+            "stripe_open_invoice | open invoice (Stripe), categorical of 1 points | "
+        )
 
     @pytest.mark.parametrize("app", ["hubspot", "github", "notion"])
     def test_any_app_counts_the_same_way(self, app: str) -> None:
@@ -261,6 +339,13 @@ class TestSignalSeries:
 
     def test_signals_without_figures_are_no_series(self) -> None:
         assert signal_series([_signal("Dispute DP-17")]) == []
+
+
+def test_a_series_must_have_one_value_per_window_day() -> None:
+    name = SeriesName(id="x", label="X", unit="u", source="s", app="App")
+
+    with pytest.raises(ValueError, match="argument 2 is shorter"):
+        day_series(name, [1.0, 2.0], WINDOW)
 
 
 def test_a_window_moment_outside_every_day_counts_nowhere() -> None:
