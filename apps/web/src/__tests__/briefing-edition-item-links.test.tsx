@@ -146,6 +146,42 @@ describe("brief item links", () => {
     ).toBe("/todos?todoId=t9");
   });
 
+  it("lists only what the edition left out under it, never the letter again", () => {
+    render(
+      <BriefingEdition
+        imageUrl="https://cdn.example/edition.png"
+        payload={{
+          ...payload({ text: "Deck", kind: "lookback" }),
+          message: "The deck is ready.",
+          uncomposed: [
+            {
+              title: "Fix the login redirect",
+              detail: "due tomorrow",
+              kind: "you",
+              app: "Linear",
+              url: "https://linear.app/ENG-12",
+              todo_id: null,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "Your morning" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Everything else" }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Fix the login redirect" })
+        .getAttribute("href"),
+    ).toBe("https://linear.app/ENG-12");
+    expect(screen.getByText("due tomorrow")).toBeTruthy();
+    expect(screen.queryByText("Your morning")).toBeNull();
+    expect(screen.queryByText("The deck is ready.")).toBeNull();
+    expect(screen.queryByText("Deck")).toBeNull();
+  });
+
   it("shows no Everything else group when the composition placed everything", () => {
     render(
       <BriefingEdition payload={payload({ text: "Deck", kind: "lookback" })} />,

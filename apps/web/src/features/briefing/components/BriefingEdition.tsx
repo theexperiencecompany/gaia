@@ -39,6 +39,11 @@ function itemHref(item: EditionItem): string | null {
   return item.link ?? null;
 }
 
+function poolItemHref(item: BriefPoolItem): string | null {
+  if (item.todo_id) return `/todos?todoId=${item.todo_id}`;
+  return item.url;
+}
+
 function ItemRow({ text, href }: { text: string; href: string | null }) {
   if (!href) {
     return <p className="text-sm font-medium text-zinc-200">{text}</p>;
@@ -51,11 +56,6 @@ function ItemRow({ text, href }: { text: string; href: string | null }) {
       {text}
     </Link>
   );
-}
-
-function poolItemHref(item: BriefPoolItem): string | null {
-  if (item.todo_id) return `/todos?todoId=${item.todo_id}`;
-  return item.url;
 }
 
 function ItemGroup({
@@ -73,22 +73,23 @@ function ItemGroup({
   );
 }
 
-/** One brief: the day's rendered edition, the message GAIA wrote, then its real items as a tappable list. */
-export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
+/** A calendar event's wall-clock "HH:MM" as the reader's own clock writes it. */
+function clockTime(start: string): string {
+  const [hours, minutes] = start.split(":").map(Number);
+  const at = new Date();
+  at.setHours(hours, minutes, 0, 0);
+  return at.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** A brief with no rendered edition, read as text: the headline, GAIA's message, its items, then what it left out. */
+function BriefingText({ payload }: { payload: BriefingEditionPayload }) {
   const calendar = payload.calendar ?? [];
   const uncomposed = payload.uncomposed ?? [];
   return (
     <article className="w-full rounded-2xl bg-zinc-800 p-4">
-      {imageUrl && (
-        <Image
-          src={imageUrl}
-          alt={payload.headline}
-          width={EDITION_WIDTH}
-          height={EDITION_TYPICAL_HEIGHT}
-          sizes="(max-width: 572px) 100vw, 540px"
-          className="mx-auto mb-4 h-auto w-full max-w-[540px] rounded-xl"
-        />
-      )}
       <p className="mb-3 text-sm font-semibold text-zinc-100">
         {payload.headline}
       </p>
@@ -107,8 +108,8 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
                 key={`${event.start ?? "all-day"}-${event.title}`}
                 className="text-sm font-medium text-zinc-200"
               >
-                <span className="mr-2 text-xs text-zinc-500">
-                  {event.start ?? "All day"}
+                <span className="mr-2 text-xs text-zinc-500 tabular-nums">
+                  {event.start ? clockTime(event.start) : "All day"}
                 </span>
                 {event.title}
               </p>
@@ -139,5 +140,71 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
         )}
       </div>
     </article>
+  );
+}
+
+/** What GAIA read but left out of the edition, one row each, opening its source when it has one. */
+function EverythingElse({ items }: { items: BriefPoolItem[] }) {
+  return (
+    <section
+      aria-labelledby="brief-everything-else"
+      className="mx-auto w-full max-w-[540px]"
+    >
+      <h2
+        id="brief-everything-else"
+        className="mb-1 text-sm font-medium text-zinc-300"
+      >
+        Everything else
+      </h2>
+      <ul className="divide-y divide-white/5">
+        {items.map((item) => {
+          const href = poolItemHref(item);
+          return (
+            <li
+              key={`${item.app}-${item.todo_id ?? item.title}`}
+              className="flex flex-col gap-0.5 py-3"
+            >
+              {href ? (
+                <Link
+                  href={href}
+                  isExternal={!href.startsWith("/")}
+                  className="w-fit text-sm text-zinc-100 hover:text-white"
+                >
+                  {item.title}
+                </Link>
+              ) : (
+                <p className="text-sm text-zinc-100">{item.title}</p>
+              )}
+              {item.detail && (
+                <p className="text-xs text-zinc-500">{item.detail}</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * One brief. The rendered edition already carries every composed item, so it
+ * stands on the page alone with only what it left out listed under it; a brief
+ * stored before editions were rendered reads as text.
+ */
+export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
+  if (!imageUrl) return <BriefingText payload={payload} />;
+  const uncomposed = payload.uncomposed ?? [];
+  return (
+    <div className="w-full space-y-8">
+      <Image
+        src={imageUrl}
+        alt={payload.headline}
+        width={EDITION_WIDTH}
+        height={EDITION_TYPICAL_HEIGHT}
+        sizes="(max-width: 572px) 100vw, 540px"
+        className="mx-auto h-auto w-full max-w-[540px]"
+      />
+      {uncomposed.length > 0 && <EverythingElse items={uncomposed} />}
+    </div>
   );
 }
