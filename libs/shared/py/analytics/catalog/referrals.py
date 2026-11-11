@@ -1,15 +1,26 @@
 """Referral program events: invites sent, friends attributed and converting, months earned."""
 
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier, ObjectIdStr
 
 __all__ = [
+    "GiftMintFailureReason",
+    "ReferralBankedMonthApplied",
     "ReferralConverted",
+    "ReferralGiftCheckoutOpened",
+    "ReferralGiftMintFailed",
     "ReferralInviteSent",
+    "ReferralLandingOutcome",
+    "ReferralLandingResolved",
     "ReferralRewardGranted",
     "ReferralSignupAttributed",
+]
+
+ReferralLandingOutcome = Literal["valid", "disabled"]
+GiftMintFailureReason = Literal[
+    "provider_unreachable", "provider_rejected", "provider_invalid_response"
 ]
 
 
@@ -53,4 +64,44 @@ class ReferralRewardGranted(ServerEvent):
 
     friend_id: ObjectIdStr
     delivery: Identifier
+    months: int
+
+
+class ReferralLandingResolved(ServerEvent):
+    """Someone opened a referrer's invite link; captured on the referrer, since the visitor has no account."""
+
+    event: ClassVar[str] = "referral:landing_resolved"
+    budget_per_user_day: ClassVar[int] = 500
+
+    outcome: ReferralLandingOutcome
+    landing_variant: Identifier | None = None
+    cookie_set: bool
+
+
+class ReferralGiftCheckoutOpened(ServerEvent):
+    """A referred friend's checkout opened with their gift code applied; captured on the friend."""
+
+    event: ClassVar[str] = "referral:gift_checkout_opened"
+    budget_per_user_day: ClassVar[int] = 20
+
+    referrer_id: ObjectIdStr
+    duration: Identifier
+
+
+class ReferralGiftMintFailed(ServerEvent):
+    """Dodo could not mint a referred friend's gift, so their checkout opened without it."""
+
+    event: ClassVar[str] = "referral:gift_mint_failed"
+    budget_per_user_day: ClassVar[int] = 20
+
+    reason: GiftMintFailureReason
+
+
+class ReferralBankedMonthApplied(ServerEvent):
+    """A free month the referrer banked while unsubscribed moved their billing date; one per friend."""
+
+    event: ClassVar[str] = "referral:banked_month_applied"
+    budget_per_user_day: ClassVar[int] = 50
+
+    friend_id: ObjectIdStr
     months: int

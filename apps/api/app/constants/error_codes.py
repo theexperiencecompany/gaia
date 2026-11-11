@@ -36,6 +36,8 @@ FEATURE_KILLED = "FEATURE_KILLED"
 
 # 403 — referral routes need an active subscription; the web shows a "subscribe first" state.
 REFERRAL_SUBSCRIPTION_REQUIRED = "REFERRAL_SUBSCRIPTION_REQUIRED"
+# 403 — the referral program is switched off; the web hides every referral surface.
+REFERRALS_DISABLED = "REFERRALS_DISABLED"
 
 # 404 — a self-hosted instance sends no support request to GAIA's support team.
 GAIA_SUPPORT_UNAVAILABLE = "gaia_support_unavailable"

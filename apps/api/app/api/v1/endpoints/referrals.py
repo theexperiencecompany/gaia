@@ -23,13 +23,12 @@ from app.schemas.referrals import (
     ReferralResolveResponse,
     ReferralSuggestionsResponse,
 )
-from app.services.referrals.attribution import ReferralAttribution, first_touch_cookie
 from app.services.referrals.invites import (
     invite_unsubscribe_subject,
     send_invites,
     unsubscribe_invite_recipient,
 )
-from app.services.referrals.overview import get_referral_overview, resolve_referral_code
+from app.services.referrals.overview import get_referral_overview, land_on_invite
 from app.services.referrals.suggestions import suggest_invitees
 from app.utils.auth_utils import session_cookie_secure
 from app.utils.notification.unsubscribe import (
@@ -62,22 +61,17 @@ async def resolve_code(
 ) -> ReferralResolveResponse:
     """Public: who sent this invite link and the gift it carries; sets the 30-day first-touch cookie."""
     log.set(referral={"operation": "resolve", "landing_variant": landing_variant})
-    result = await resolve_referral_code(code)
-    cookie = first_touch_cookie(
-        request.cookies.get(REFERRAL_COOKIE_NAME),
-        ReferralAttribution(code=code, landing_variant=landing_variant),
-        valid=result.valid,
-    )
-    if cookie is not None:
+    landing = await land_on_invite(code, landing_variant, request.cookies.get(REFERRAL_COOKIE_NAME))
+    if landing.cookie is not None:
         response.set_cookie(
             key=REFERRAL_COOKIE_NAME,
-            value=cookie,
+            value=landing.cookie,
             max_age=int(ATTRIBUTION_WINDOW.total_seconds()),
             httponly=True,
             secure=session_cookie_secure(request),
         )
-    log.set_ns("referral", valid=result.valid, cookie_set=cookie is not None)
-    return result
+    log.set_ns("referral", valid=landing.resolved.valid, cookie_set=landing.cookie is not None)
+    return landing.resolved
 
 
 @router.get("/suggestions")

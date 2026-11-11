@@ -1,6 +1,7 @@
 """The /referrals routes: the first-touch cookie, the subscribe-first 403 and the public opt-out page."""
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -15,15 +16,19 @@ from app.constants.referrals import (
     ReferralCopyVariant,
     ReferralLayoutVariant,
 )
-from app.models.referral_models import ReferredFriendStatus
-from app.schemas.referrals import ReferralMeResponse, ReferralResolveResponse, ReferredFriend
+from app.models.referral_models import ReferralCodeDocument, ReferredFriendStatus
+from app.models.user_models import UserDocument
+from app.schemas.referrals import ReferralMeResponse, ReferredFriend
 from app.services.referrals.offer import build_offer
 from app.utils.notification.unsubscribe import UNSUBSCRIBE_INVALID_HTML
 
 URL = "/api/v1/referrals"
 ENDPOINT = "app.api.v1.endpoints.referrals"
+OVERVIEW = "app.services.referrals.overview"
 NOW = datetime(2026, 10, 14, tzinfo=UTC)
-OFFER = build_offer(make_pro_plans())
+PLANS = make_pro_plans()
+OFFER = build_offer(PLANS)
+OWNER = UserDocument(id="65f0c0ffee00000000000a01", first_name="Aryan")
 
 
 @pytest.fixture
@@ -32,12 +37,21 @@ def route_log() -> Iterator[MagicMock]:
         yield mock_log
 
 
-def _resolved(valid: bool) -> AsyncMock:
-    return AsyncMock(
-        return_value=ReferralResolveResponse(
-            valid=valid, referrer_first_name="Aryan" if valid else None, offer=OFFER
-        )
+@contextmanager
+def _resolved(valid: bool) -> Iterator[AsyncMock]:
+    """Resolve every code to Aryan's link when valid, else to nobody's; yields the code lookup."""
+    owner_code = (
+        ReferralCodeDocument(user_id=OWNER.id, code="aryan-k7f2", created_at=NOW) if valid else None
     )
+    with (
+        patch(
+            f"{OVERVIEW}.referral_code_repository.get_by_code", AsyncMock(return_value=owner_code)
+        ) as get_by_code,
+        patch(f"{OVERVIEW}.user_repository.get", AsyncMock(return_value=OWNER)),
+        patch(f"{OVERVIEW}.payment_service.get_pro_plans", AsyncMock(return_value=PLANS)),
+        patch(f"{OVERVIEW}.capture"),
+    ):
+        yield get_by_code
 
 
 def _ref_cookie(response) -> list[str]:
@@ -50,8 +64,7 @@ class TestResolve:
     async def test_a_valid_link_sets_the_30_day_first_touch_cookie(
         self, unauthed_client: AsyncClient, route_log: MagicMock
     ) -> None:
-        resolve = _resolved(True)
-        with patch(f"{ENDPOINT}.resolve_referral_code", resolve):
+        with _resolved(True) as resolve:
             response = await unauthed_client.get(
                 f"{URL}/resolve/aryan-k7f2", params={"landing_variant": "time_back"}
             )
@@ -74,7 +87,7 @@ class TestResolve:
         self, unauthed_client: AsyncClient
     ) -> None:
         with (
-            patch(f"{ENDPOINT}.resolve_referral_code", _resolved(True)),
+            _resolved(True),
             patch("app.utils.auth_utils.settings.ENV", "production"),
         ):
             response = await unauthed_client.get(f"{URL}/resolve/aryan-k7f2")
@@ -85,7 +98,7 @@ class TestResolve:
     async def test_a_second_link_never_replaces_the_first(
         self, unauthed_client: AsyncClient, route_log: MagicMock
     ) -> None:
-        with patch(f"{ENDPOINT}.resolve_referral_code", _resolved(True)):
+        with _resolved(True):
             response = await unauthed_client.get(
                 f"{URL}/resolve/priya-ab23",
                 headers={"cookie": f"{REFERRAL_COOKIE_NAME}=aryan-k7f2"},
@@ -98,7 +111,7 @@ class TestResolve:
     async def test_an_unknown_code_is_invalid_and_sets_nothing(
         self, unauthed_client: AsyncClient, route_log: MagicMock
     ) -> None:
-        with patch(f"{ENDPOINT}.resolve_referral_code", _resolved(False)):
+        with _resolved(False):
             response = await unauthed_client.get(f"{URL}/resolve/nobody-zzzz")
 
         assert response.json()["valid"] is False
