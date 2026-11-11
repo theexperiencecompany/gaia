@@ -155,6 +155,41 @@ describe("brief item links", () => {
     expect(screen.queryByText("Everything else")).toBeNull();
   });
 
+  it("lists under the edition only what it could not draw or left out", () => {
+    render(
+      <BriefingEdition
+        imageUrl="https://cdn.example/edition.png"
+        payload={{
+          ...payload({ text: "Deck", kind: "lookback" }),
+          message: "The deck is ready.",
+          undrawn: [{ kind: "note", text: "Three hires closed this week." }],
+          uncomposed: [
+            {
+              title: "Fix the login redirect",
+              detail: "due tomorrow",
+              kind: "you",
+              app: "Linear",
+              url: "https://linear.app/ENG-12",
+              todo_id: null,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "Your morning" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "More from GAIA" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Three hires closed this week.")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Everything else" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Your morning")).toBeNull();
+    expect(screen.queryByText("The deck is ready.")).toBeNull();
+    expect(screen.queryByText("Deck")).toBeNull();
+  });
+
   it("says every block the edition could not draw, and nothing for the rest", () => {
     render(
       <BriefingEdition

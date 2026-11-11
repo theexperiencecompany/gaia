@@ -153,6 +153,39 @@ class TestUploadFile:
         data = response.json()
         assert data["type"] == "text/csv"
 
+    @patch("app.api.v1.endpoints.file.Request.is_disconnected", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.file.FileService.delete", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.file.FileService.upload", new_callable=AsyncMock)
+    async def test_an_upload_the_client_cancelled_is_deleted_once_stored(
+        self,
+        mock_upload: AsyncMock,
+        mock_delete: AsyncMock,
+        is_disconnected: AsyncMock,
+        client: AsyncClient,
+    ):
+        mock_upload.return_value = _file_doc(file_id="file-004")
+        is_disconnected.return_value = True
+
+        await client.post(
+            f"{FILE_BASE}/upload", files={"file": ("a.txt", BytesIO(b"a"), "text/plain")}
+        )
+
+        mock_delete.assert_awaited_once_with(file_id="file-004", user_id=FAKE_USER.user_id)
+
+    @patch("app.api.v1.endpoints.file.FileService.delete", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.file.FileService.upload", new_callable=AsyncMock)
+    async def test_a_finished_upload_is_kept(
+        self, mock_upload: AsyncMock, mock_delete: AsyncMock, client: AsyncClient
+    ):
+        mock_upload.return_value = _file_doc(file_id="file-005")
+
+        response = await client.post(
+            f"{FILE_BASE}/upload", files={"file": ("a.txt", BytesIO(b"a"), "text/plain")}
+        )
+
+        assert response.status_code == 201
+        mock_delete.assert_not_awaited()
+
 
 class TestUpdateFile:
     """PUT /api/v1/{file_id}."""

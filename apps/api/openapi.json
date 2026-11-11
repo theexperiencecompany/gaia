@@ -2628,7 +2628,7 @@
                 "type": "null"
               }
             ],
-            "description": "The edition family's display name (e.g. Air Mail); None for the legacy edition.",
+            "description": "Air Mail only: the family's name; None for every other family.",
             "title": "Edition Name"
           },
           "edition_paper": {
@@ -18246,9 +18246,30 @@
         "title": "ShortLinkResponse",
         "type": "object"
       },
+      "ShortLinkShareState": {
+        "description": "Whether one of the owner's artifacts is shared: its live heygaia.link, or None.",
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "ShortLinkShareState",
+        "type": "object"
+      },
       "ShortLinkTargetRequest": {
         "additionalProperties": false,
-        "description": "One of the owner's artifacts, to share (mint or fetch its link) or stop sharing.",
+        "description": "One of the owner's artifacts, to share (mint or fetch its link), read or stop sharing.",
         "properties": {
           "target_id": {
             "minLength": 1,
@@ -18935,6 +18956,20 @@
           "body"
         ],
         "title": "StaticReminderPayload",
+        "type": "object"
+      },
+      "StopSharingResult": {
+        "description": "Whether stopping killed a live link; False when the artifact was not shared.",
+        "properties": {
+          "revoked": {
+            "title": "Revoked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revoked"
+        ],
+        "title": "StopSharingResult",
         "type": "object"
       },
       "StoredIntegrationTool": {
@@ -31617,9 +31652,81 @@
         ]
       }
     },
+    "/api/v1/l/state": {
+      "get": {
+        "description": "Say whether one of your artifacts is shared, with its live link. Never mints one.",
+        "operationId": "short_links_get_share_state_route",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ShortLinkTargetType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLinkShareState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Share State Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
     "/api/v1/l/unshare": {
       "post": {
-        "description": "Stop sharing one of your artifacts: its link goes dead immediately, and GAIA\nattaches no new one until you share it again. Idempotent.",
+        "description": "Stop sharing one of your artifacts: its link goes dead immediately, and GAIA\nattaches no new one until you share it again. Idempotent; says whether a link died.",
         "operationId": "short_links_stop_sharing_route",
         "requestBody": {
           "content": {
@@ -31632,7 +31739,14 @@
           "required": true
         },
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopSharingResult"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
@@ -42782,7 +42896,7 @@
     },
     "/api/v1/upload": {
       "post": {
-        "description": "Upload a file, persist metadata, and generate embeddings for images.",
+        "description": "Upload a file, persist metadata, and generate embeddings for images.\n\nA client that cancelled while the file was being stored never learns its id, so\nthe stored file is deleted here instead of being left orphaned.",
         "operationId": "file_upload_file_endpoint",
         "parameters": [
           {

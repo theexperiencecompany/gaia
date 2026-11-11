@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { NewsIcon } from "@icons";
 import { format, parseISO } from "date-fns";
 import Image from "next/image";
+import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,9 @@ export interface FoldedBriefSummary {
   stampCityName?: string | null;
   needsYouCount?: number | null;
 }
+
+/** The preview's height over its width (aspect-[3/2]); it shows the top of the edition. */
+const PREVIEW_ASPECT = 2 / 3;
 
 /** Below this, a waiting count is the ordinary day and not worth a line. */
 const NOTABLE_NEEDS_YOU = 3;
@@ -58,14 +62,31 @@ function editionLabel(brief: FoldedBriefSummary): string | null {
   );
 }
 
-/** The edition's masthead, with a hairline crease where the letter was folded. */
+/**
+ * Where the letter's fold falls inside the preview, as a share of its height;
+ * null when the edition marks no fold or folds below what the preview shows.
+ */
+function creaseInPreview(
+  fold: number | null | undefined,
+  editionAspect: number | null,
+): number | null {
+  if (fold == null || editionAspect === null) return null;
+  const crease = fold / (PREVIEW_ASPECT / editionAspect);
+  return crease > 0 && crease < 1 ? crease : null;
+}
+
+/** The edition's masthead, with a hairline crease where the letter folds. */
 function Preview({
   imageUrl,
+  editionFold,
   isFeature,
 }: {
   imageUrl?: string | null;
+  editionFold?: number | null;
   isFeature: boolean;
 }) {
+  const [editionAspect, setEditionAspect] = useState<number | null>(null);
+  const crease = creaseInPreview(editionFold, editionAspect);
   return (
     <div
       className={cn(
@@ -84,20 +105,24 @@ function Preview({
               : "(max-width: 640px) 50vw, 240px"
           }
           className="object-cover object-top"
+          onLoad={(event) => {
+            const image = event.currentTarget;
+            setEditionAspect(image.naturalHeight / image.naturalWidth);
+          }}
         />
       ) : (
         <span className="absolute inset-0 flex items-center justify-center">
           <NewsIcon className="size-6 text-zinc-500" />
         </span>
       )}
-      <span
-        aria-hidden
-        className="absolute inset-x-0 top-2/3 h-px bg-black/20"
-      />
-      <span
-        aria-hidden
-        className="absolute inset-x-0 top-2/3 mt-px h-px bg-white/25"
-      />
+      {crease !== null && (
+        <span
+          aria-hidden
+          data-crease
+          className="absolute inset-x-0 h-0.5 border-t border-b border-t-black/20 border-b-white/25"
+          style={{ top: `${Math.round(crease * 1000) / 10}%` }}
+        />
+      )}
       <span
         aria-hidden
         className="pointer-events-none absolute inset-0 rounded-[10px] ring-1 ring-white/10 ring-inset"
@@ -135,7 +160,11 @@ export function BriefCard({
         TONE_CLASSES[tone],
       )}
     >
-      <Preview imageUrl={brief.imageUrl} isFeature={isFeature} />
+      <Preview
+        imageUrl={brief.imageUrl}
+        editionFold={brief.editionFold}
+        isFeature={isFeature}
+      />
       <span
         className={cn(
           "flex min-w-0 flex-1 flex-col gap-1 px-1.5 pt-2 pb-1",

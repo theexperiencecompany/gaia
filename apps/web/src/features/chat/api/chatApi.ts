@@ -165,13 +165,20 @@ export const chatApi = {
     }),
 
   // File upload
-  uploadFile: (file: File, conversationId?: string) =>
+  uploadFile: (file: File, conversationId?: string, signal?: AbortSignal) =>
     // No errorMessage override: let the backend detail surface (e.g. the 413
     // "File size exceeds the N MB limit." or 415 unsupported-type message)
     // instead of masking it with a generic "Failed to upload file".
     api.post("/api/v1/upload", {
       body: { file: binaryField(file), conversation_id: conversationId },
       bodySerializer: formDataSerializer,
+      signal,
+    }),
+
+  deleteFile: (fileId: string) =>
+    api.delete("/api/v1/{file_id}", {
+      path: { file_id: fileId },
+      errorMessage: "Couldn't remove the file",
     }),
 
   // Generate image

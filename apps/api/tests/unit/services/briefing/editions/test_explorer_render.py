@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.editions import explorer_render
+from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
 from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.editions.explorer_render import (
     _asset_data_uris,
@@ -237,6 +237,18 @@ class TestDocumentShell:
 
         assert cutive is not None
         assert "size-adjust:83%;" in cutive.group()
+
+
+@pytest.mark.unit
+class TestTransparentDesk:
+    @pytest.mark.parametrize(("family", "transparent"), [("postal", True), ("swiss", False)])
+    def test_a_paper_on_a_desk_is_rendered_without_its_desk(
+        self, family: str, transparent: bool
+    ) -> None:
+        html = EXPLORER_RENDERER[family](_payload(), edition_no=12, generated_local="")
+
+        assert ("#root > article { background: none; }" in html) is transparent
+        assert edition_frame(family).transparent_desk is transparent
 
 
 @pytest.mark.unit
