@@ -6398,6 +6398,10 @@ export interface components {
          * @description The conversations a client's sync request found stale.
          */
         BatchSyncResponse: {
+            /** Active Streams */
+            active_streams: {
+                [key: string]: string;
+            };
             /** Conversations */
             conversations: components["schemas"]["ConversationSyncRow"][];
             /** Missing */
@@ -7662,13 +7666,8 @@ export interface components {
          * ConversationSyncRow
          * @description One batch-sync row — the conversation's client-visible fields plus its full
          *     message history and artifact registry.
-         *
-         *     ``active_stream_id`` is the stream of an in-flight turn (``None`` when idle),
-         *     carried here so a reloading client re-attaches without a discovery request.
          */
         ConversationSyncRow: {
-            /** Active Stream Id */
-            active_stream_id: string | null;
             /** Artifacts */
             artifacts: components["schemas"]["ArtifactRegistryEntry"][];
             /** Conversation Id */
@@ -7685,6 +7684,7 @@ export interface components {
             is_unread: boolean | null;
             /** Messages */
             messages: components["schemas"]["MessageModelOutput"][];
+            source: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred: boolean | null;
             system_purpose: components["schemas"]["SystemPurpose"] | null;

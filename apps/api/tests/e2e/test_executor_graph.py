@@ -241,8 +241,10 @@ class TestPlanInTheThread:
         async with executor_graph([plan("one", "two"), "Planned."]) as graph:
             run = await run_graph(graph, "do two things")
 
-        first, second = run.prompts
-        assert second[: len(first)] == first
+        # An unfinished plan earns the run a third call, so compare each call to the last.
+        assert len(run.prompts) >= 2
+        for earlier, later in zip(run.prompts, run.prompts[1:], strict=False):
+            assert later[: len(earlier)] == earlier
 
 
 class TestTermination:
