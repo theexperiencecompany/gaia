@@ -36,7 +36,7 @@ export function BriefsOffBlockedModal({
       isOpen={block !== null}
       onClose={onCancel}
       isDismissable={!saving}
-      size="lg"
+      size="xl"
       scrollBehavior="inside"
     >
       <ModalContent>
@@ -94,7 +94,7 @@ function BriefsOffChoices({
               key={workflow.id}
               className="flex flex-col gap-2 rounded-2xl bg-zinc-800 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
             >
-              <span className="min-w-0 truncate text-sm font-medium text-zinc-100">
+              <span className="line-clamp-2 min-w-0 text-sm font-medium text-zinc-100">
                 {workflow.title}
               </span>
               <DeliverySegments
@@ -108,7 +108,7 @@ function BriefsOffChoices({
                   }))
                 }
                 isDisabled={() => saving}
-                className="shrink-0 flex-row bg-zinc-900 sm:w-72"
+                className="shrink-0 flex-row bg-zinc-900"
               />
             </li>
           ))}
