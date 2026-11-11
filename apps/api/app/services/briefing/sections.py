@@ -73,6 +73,7 @@ def _item(placed: ComposedItem, candidate: BriefCandidate, offer: str | None) ->
         kind=_item_kind(asks, candidate),
         count=candidate.count,
         app=candidate.app,
+        source=candidate.source,
         url=candidate.url,
         people=list(candidate.people),
         offer=offer,

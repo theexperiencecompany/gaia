@@ -1119,8 +1119,6 @@ def _a_full_week(monkeypatch: pytest.MonkeyPatch, world: World) -> None:
         AsyncMock(
             return_value=BriefingWeek(
                 days=[BriefingWeekDay(you=1, gaia=2)] * 7,
-                shipped=["Send the deck"],
-                handled=["Investor deck"],
                 ahead=[_FRIDAY_PITCH],
             )
         ),
@@ -1183,6 +1181,22 @@ class TestWeeklyRecap:
         assert payload.week == world.reads["gather_week"].return_value
         (since,) = world.reads["list_since"].await_args.args[1:2]
         assert since == _WEEK_START
+
+    async def test_a_lead_the_weekly_edition_cannot_draw_moves_to_the_briefs_page(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _a_full_week(monkeypatch, world)
+        world.agent.return_value = _weekly_voiced()
+        world.composer.side_effect = _composed(
+            {"GAIA's work": ["Investor deck"]}, lead=("CRM sync failed", "I can rerun it.")
+        )
+
+        await weekly.run_weekly_digest(_USER)
+
+        payload = _stored_payload(world)
+        assert payload.undrawn == [SectionBlock(kind="lead", section=0)]
+        assert payload.blocks == [SectionBlock(kind="items", section=1)]
+        assert [s.items[0].text for s in payload.sections] == ["CRM sync failed", "Investor deck"]
 
     async def test_the_week_ahead_is_timed_by_its_day_and_the_composer_reads_the_week(
         self, world: World, monkeypatch: pytest.MonkeyPatch

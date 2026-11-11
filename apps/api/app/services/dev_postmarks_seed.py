@@ -408,8 +408,6 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
         tallies=BriefingTallies(done_by_you=14, done_by_gaia=22),
         week=BriefingWeek(
             days=[BriefingWeekDay(you=you, gaia=gaia) for you, gaia in _WEEKLY_DAYS],
-            shipped=[text for _, text in shipped],
-            handled=["Rescheduled 3 meetings", "Paid 2 invoices", "Archived 120 emails"],
             ahead=[
                 BriefingEvent(date="2026-10-12", start="10:00", title="Quarterly planning"),
                 BriefingEvent(date="2026-10-14", start="18:40", title="Flight to Lisbon"),

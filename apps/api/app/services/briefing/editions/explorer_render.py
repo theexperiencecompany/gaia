@@ -19,7 +19,9 @@ from app.constants.briefing import POSTAL_FAMILY, ArtFamily
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.editions.edition_fonts import edition_font_faces_css
-from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
+from app.services.briefing.editions.edition_logos import logo_css, logo_kinds
+from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed, edition_calendar
+from app.services.briefing.editions.explorer_blocks import printed_logos
 from app.services.briefing.editions.stamps import (
     city_axis,
     city_axis_assets,
@@ -32,6 +34,8 @@ EXPLORER_CANVAS_PX = 540
 
 _EXPLORER_DIR = Path(__file__).parent / "explorer"
 _JS_DIR = _EXPLORER_DIR / "js"
+# Ours, not vendored: the item anatomy, app marks and plots every family draws its blocks with.
+_SHELL_DIR = _EXPLORER_DIR / "shell"
 _ASSETS_DIR = _EXPLORER_DIR / "assets"
 _ASSETS_JSON = _ASSETS_DIR / "assets.json"
 _TEC_MARK_WEBP = _ASSETS_DIR / "brand" / "tec_mark_black.webp"
@@ -70,6 +74,12 @@ function strSeed(s) {
 @lru_cache(maxsize=1)
 def _module_sources() -> tuple[str, ...]:
     return tuple(f.read_text() for f in sorted(_JS_DIR.glob("tpl-*.js")))
+
+
+@lru_cache(maxsize=1)
+def _shell_sources() -> tuple[str, str]:
+    """Return the shared block plumbing: its script and the reading system's CSS."""
+    return (_SHELL_DIR / "blocks.js").read_text(), (_SHELL_DIR / "reading.css").read_text()
 
 
 @lru_cache(maxsize=1)
@@ -171,6 +181,8 @@ def render_explorer_edition(
     )
 
     modules_html = "\n".join(f"<script>\n{source}\n</script>" for source in _module_sources())
+    shell_js, reading_css = _shell_sources()
+    logos = printed_logos(payload.blocks, payload.sections, edition_calendar(payload, family))
 
     ed_json = _json_for_script(ed)
     family_json = _json_for_script(family)
@@ -185,6 +197,8 @@ def render_explorer_edition(
 <meta name="viewport" content="width={EXPLORER_CANVAS_PX}">
 <style>
 {edition_font_faces_css(family)}
+{reading_css}
+{logo_css(logos)}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 html {{ -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }}
 body {{ width: {EXPLORER_CANVAS_PX}px; }}
@@ -210,7 +224,12 @@ const EXPLORER = {{
   }},
   assets: {assets_json},
   cities: {cities_json},
+  logoKinds: {_json_for_script(logo_kinds(logos))},
 }};
+</script>
+<script>
+"use strict";
+{shell_js}
 </script>
 {modules_html}
 <script>

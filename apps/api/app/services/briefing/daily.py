@@ -14,7 +14,6 @@ from app.constants.briefing import (
     RECENT_OPENINGS_SHOWN,
     TODAY_SPAN,
     UNNAMED_READER,
-    BriefingBag,
     BriefingRunOutcome,
 )
 from app.constants.user_activity import ActivityStatus
@@ -35,8 +34,7 @@ from app.services.briefing.candidates.pool import (
     gather_candidates,
 )
 from app.services.briefing.composition.compose import compose_brief
-from app.services.briefing.edition_draws import draw_from_bag
-from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.edition_draws import draw_edition
 from app.services.briefing.errors import BriefingGenerationError
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext, PoolReads, build_fact_pool
 from app.services.briefing.fact_pool.window import daily_window
@@ -255,14 +253,14 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         ),
     )
     links = await links_in(user_id, voice.message, facts)
-    family = draw_from_bag(user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS)
+    edition = draw_edition(user, laid.blocks)
     payload = voiced_payload(
         clock,
         Prose(voice, draft, links),
         facts,
         kicker=DAILY_KICKER,
         mood="winback" if winback.is_winback else draft.mood,
-        family=family.member,
+        family=edition.family.member,
     ).model_copy(
         update={
             "stats": work_stats(work),
@@ -272,7 +270,8 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             ),
             "sources_read": gathered.sources_read,
             "sources_unavailable": gathered.sources_unavailable,
-            "blocks": laid.blocks,
+            "blocks": edition.drawn,
+            "undrawn": edition.undrawn,
             "uncomposed": laid.uncomposed,
         }
     )
@@ -281,7 +280,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         clock,
         BRIEFING_KIND_DAILY,
         payload,
-        [family],
+        [edition.family],
         # The idle ladder's goal question, warning and goodbye are messages in
         # their own right, so they push even on an otherwise empty day.
         Push(

@@ -488,8 +488,6 @@ class TestWeek:
             (0, 0),
             (0, 1),
         ]
-        assert week.shipped == ["Gym"]
-        assert week.handled == ["Deck", "Memo"]
         assert context.week_start_utc(clock) == datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
 
 
@@ -786,8 +784,6 @@ class TestWeekEdges:
             week = await context.gather_week(_USER, clock, completed)
 
         assert [(d.you, d.gaia) for d in week.days][:2] == [(1, 1), (1, 1)]
-        assert week.shipped == ["Run", "Gym"]
-        assert week.handled == ["Brief", "Memo"]
         assert context.week_start_utc(clock).tzinfo is UTC
 
     async def test_two_on_one_day_count_twice(

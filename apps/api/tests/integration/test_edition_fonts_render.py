@@ -16,9 +16,11 @@ import pytest
 
 from app.services.briefing.editions import EXPLORER_RENDERER
 from app.services.briefing.editions.edition_fonts import EDITION_FAMILIES
+from tests.integration.brief_compositions import COMPOSITIONS, composed_payload
 from tests.integration.test_edition_families_render import (
     _DAILY,
     _QUIET,
+    _artwork,
     _as_rendered,
     _render_html,
 )
@@ -98,6 +100,29 @@ async def test_every_glyph_comes_from_an_embedded_font(
             await page.set_content(
                 _render_html(family, _as_rendered(family, payload)), wait_until="networkidle"
             )
+            failures = await _check_every_skin(page, family)
+        finally:
+            await browser.close()
+
+    assert not errors, errors
+    assert not failures, "\n".join(failures)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("composition", sorted(COMPOSITIONS))
+@pytest.mark.parametrize("family", sorted(EXPLORER_RENDERER))
+async def test_every_composed_block_draws_from_an_embedded_font(
+    family: str, composition: str
+) -> None:
+    payload = composed_payload(composition, family, _artwork(family))
+    html = EXPLORER_RENDERER[family](payload, edition_no=287, generated_local="6:02 AM")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        try:
+            page = await browser.new_page(viewport={"width": 540, "height": 900})
+            errors: list[str] = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            await page.set_content(html, wait_until="networkidle")
             failures = await _check_every_skin(page, family)
         finally:
             await browser.close()

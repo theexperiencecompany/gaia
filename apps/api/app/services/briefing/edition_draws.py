@@ -10,11 +10,14 @@ from app.constants.briefing import (
     BriefingBag,
 )
 from app.db.repositories.users import user_repository
+from app.models.brief_composition_models import BriefBlock
 from app.models.briefing_models import (
     BriefingPayload,
 )
 from app.models.user_models import ShuffleBag, UserDocument
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
+from app.services.briefing.editions.capabilities import families_drawing, split_drawable
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.shuffle_bag import draw
 from shared.py.wide_events import log
@@ -44,6 +47,34 @@ def draw_from_bag(
     state = (user.briefing_shuffle_bags or {}).get(bag)
     member, next_state = draw(state, weights, random.SystemRandom(), eligible=eligible)
     return BagDraw(bag=bag, member=member, next_state=next_state)
+
+
+@dataclass(frozen=True)
+class EditionDraw:
+    """Today's edition family, and the composed blocks it draws and leaves to the brief's page."""
+
+    family: BagDraw
+    drawn: list[BriefBlock]
+    undrawn: list[BriefBlock]
+
+
+def draw_edition(user: UserDocument, blocks: list[BriefBlock]) -> EditionDraw:
+    """Draw today's family from the bag's families that can draw every block, else the bag's next.
+
+    Only when no daily family can draw the whole composition does a block go undrawn.
+    """
+    fits = families_drawing(DAILY_FAMILY_WEIGHTS, blocks)
+    family = draw_from_bag(
+        user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS, eligible=fits or None
+    )
+    drawn, undrawn = split_drawable(family.member, blocks)
+    if undrawn:
+        log.info(
+            "briefing.blocks_undrawn",
+            family=family.member,
+            kinds=[block.kind for block in undrawn],
+        )
+    return EditionDraw(family=family, drawn=drawn, undrawn=undrawn)
 
 
 async def persist_draws(user_id: str, draws: list[BagDraw]) -> None:

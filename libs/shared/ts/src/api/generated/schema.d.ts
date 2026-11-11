@@ -6849,6 +6849,8 @@ export interface components {
             outcome: components["schemas"]["BriefOutcome"] | null;
             /** People */
             people: string[];
+            /** Source */
+            source: string | null;
             /** Text */
             text: string;
             /** Todo Id */
@@ -6953,6 +6955,11 @@ export interface components {
              * @description Everything the brief read that the composition left out, for its full page.
              */
             uncomposed: components["schemas"]["BriefPoolItem"][];
+            /**
+             * Undrawn
+             * @description Composed blocks the drawn edition cannot draw in its idiom (a chart on the Menu), moved out of blocks onto the brief's full page.
+             */
+            undrawn: (components["schemas"]["SectionBlock"] | components["schemas"]["ChartBlock"] | components["schemas"]["QuoteBlock"] | components["schemas"]["ProgressBlock"] | components["schemas"]["NoteBlock"])[];
             week: components["schemas"]["BriefingWeek"] | null;
         };
         /**
@@ -7056,19 +7063,14 @@ export interface components {
         };
         /**
          * BriefingWeek
-         * @description The real week the weekly edition draws: Monday-to-Sunday completions,
-         *     what shipped, what GAIA handled, and the calendar ahead. Every field is
-         *     counted or read, never estimated.
+         * @description The real week behind the weekly recap: Monday-to-Sunday completions and the
+         *     calendar ahead. Every field is counted or read, never estimated.
          */
         BriefingWeek: {
             /** Ahead */
             ahead?: components["schemas"]["BriefingEvent"][];
             /** Days */
             days: components["schemas"]["BriefingWeekDay"][];
-            /** Handled */
-            handled?: string[];
-            /** Shipped */
-            shipped?: string[];
         };
         /**
          * BriefingWeekDay

@@ -1,20 +1,16 @@
 /* ============================================================================
    tpl-brand.js (round 2) — GAIA · Band and Playfair Frontispiece on a 540 px
    portrait canvas (export at 3x). Body 17 px or larger.
-   Reading order: headline -> needs you -> today -> done overnight -> stats;
-   empty sections are omitted.
+   Reading order: headline -> the brief's blocks as GAIA composed them -> stats.
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
-  const clock = (t24) => {
-    if (!t24) return "";
-    const [h, m] = t24.split(":").map(Number);
-    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-  };
   const WORDS = ["None", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
-  const ROMAN = ["I", "II", "III", "IV"];
+  // A count spelled as the page spells it: one to nine in words, the rest in figures.
+  const spell = (n) => (n > 0 && n < WORDS.length ? WORDS[n] : String(n));
+  const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
   /* ==========================================================================
      GAIA · BAND — signature moves from the desktop original:
@@ -61,16 +57,22 @@
 .t-band .hd .date { position: absolute; left: 28px; top: 166px; font-size: 15px; color: #ffffff; z-index: 1; }
 .t-band .body { padding: 30px 28px 0; }
 .t-band .deck { font-size: 27px; line-height: 1.28; letter-spacing: -.01em; font-weight: 500; padding-bottom: 26px; border-bottom: 1px solid var(--hair); }
-.t-band section { padding: 34px 0 10px; }
+.t-band section { padding: 30px 0 18px; }
+.t-band section.rs { padding: 10px 0 8px; }
 .t-band section + section { border-top: 1px solid var(--hair); }
-.t-band h2 { font: 600 25px/1.2 'Aeonik Extended', 'TeX Gyre Heros', sans-serif; letter-spacing: -.01em; margin-bottom: 16px; }
-.t-band h2 b { color: var(--acc); font-weight: 600; }
-.t-band .row { display: grid; grid-template-columns: 92px 1fr; padding: 8px 0; line-height: 1.5; }
-.t-band .t { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; padding-top: 2px; }
-.t-band .t.verb { color: var(--acc); }
-.t-band .n { color: #a3a5ad; }
-.t-band .row > span:last-child { text-wrap: pretty; }
-.t-band .tag { display: block; font-size: 14px; font-weight: 500; color: #8d9098; margin-top: 2px; }
+.t-band h2 { font: 700 23.5px/28px 'Aeonik Extended', 'TeX Gyre Heros', sans-serif; letter-spacing: -.01em; }
+.t-band .sub { font-size: 15px; color: #a3a5ad; margin-top: 6px; }
+.t-band .sub b { color: var(--acc); font-weight: 700; }
+.t-band .key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; font-size: 14px; font-weight: 700; color: #a3a5ad; margin-top: 12px; }
+.t-band .key i { display: inline-block; width: 10px; height: 10px; margin-right: 7px; vertical-align: 0; }
+.t-band .key i.ln { width: 16px; height: 0; border-top: 2.5px solid var(--acc); vertical-align: 3px; }
+.t-band .key i.ln.dash { border-top: 2px dashed #f2f2f4; }
+.t-band .plot { margin-top: 16px; }
+.t-band .say { margin-top: 14px; font-size: 17px; line-height: 1.45; color: #d6d7dc; }
+.t-band .q { font-size: 19px; line-height: 1.42; letter-spacing: -.005em; color: #f2f2f4; text-wrap: pretty; }
+.t-band .tag { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: #8d9098; margin-top: 10px; }
+.t-band .qlogo { width: 16px; height: 16px; }
+.t-band { --rs-font: 'TeX Gyre Heros', sans-serif; --rs-font-h: 'Aeonik Extended', 'TeX Gyre Heros', sans-serif; --rs-ink: #f2f2f4; --rs-muted: #a3a5ad; --rs-acc: var(--acc); --rs-base: 15px; }
 .t-band .figs { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 30px; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
 .t-band .figs div { padding: 16px 14px; }
 .t-band .figs div + div { border-left: 1px solid var(--hair); }
@@ -80,18 +82,36 @@
 .t-band .foot { margin-top: 18px; font-size: 14px; color: #8d9098; }
 `,
     render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
-      /* Section heads read as sentences with the count spelled out in the accent: "Three things need your call". */
-      const sec = (head, rows) => `<section><h2>${head}</h2>${rows}</section>`;
-      const count = (n, one, many) => `<b>${WORDS[n] || n}</b> ${n === 1 ? one : many}`;
-      const row = (t, cls, label, note, tag) => `<div class="row" data-role="body"><span class="t${cls ? " " + cls : ""}">${esc(t)}${tag ? `<span class="tag">${esc(tag.toLowerCase())}</span>` : ""}</span><span>${esc(label)}${note ? ` <span class="n">— ${esc(note)}</span>` : ""}</span></div>`;
-      const secs = [];
-      if (needs.length) secs.push(sec(`${count(needs.length, "thing needs", "things need")} your call`, needs.map((d) => row(d.verb, "verb", d.label, d.note)).join("")));
-      if (c.today.length) secs.push(sec(`${count(c.today.length, "thing", "things")} on today`, c.today.map((e) => row(e.time || "EOD", "", e.label, e.note, e.tag)).join("")));
-      if (c.overnight.length) secs.push(sec(`${count(c.overnight.length, "thing", "things")} done while you slept`, c.overnight.map((e) => row(clock(e.t24), "", e.label, e.note, e.tag)).join("")));
-      if (c.running.length) secs.push(sec(`${count(c.running.length, "thing", "things")} still in progress`, c.running.map((e) => row(clock(e.t24), "", e.label, e.note, e.tag)).join("")));
-      const s = c.stats;
+      const B = EXPLORER.blocks;
+      const INK = "#f2f2f4";
+      const W = 484;
+      const O = { mode: "color" };
+      /* A data block is a band section of its own: an Aeonik head, a grey sub line, the picture. */
+      const block = (kind, html) => `<section class="data" data-block="${kind}">${html}</section>`;
+      const reading = (html) => `<section class="rs">${html}</section>`;
+      const fills = (c) => (c.series.length > 1 ? [INK, "var(--acc)", "#8d9098"] : ["var(--acc)"]);
+      const plot = (c) => {
+        const st = { w: W, font: "TeX Gyre Heros", size: 14, weight: 700, valueWeight: 700, ink: INK, soft: "#8d9098", rule: "var(--hair)", ruleW: 1, base: "#3a3d45" };
+        if (c.chart === "spark") return B.spark(c, { ...st, h: 60, line: "var(--acc)", lineW: 2.5, dot: 4 });
+        if (c.chart === "line") return B.line(c, { ...st, h: 156, gutter: 30, dot: 4, lines: [{ color: "var(--acc)", width: 2.5 }, { color: INK, width: 2, dash: "5 4" }] });
+        return B.bars(c, { ...st, h: 172, fills: fills(c), gapRatio: 0.42 });
+      };
+      const key = (c) => {
+        if (c.series.length < 2) return "";
+        const sw = c.chart === "line" ? (k) => `<i class="ln${k ? " dash" : ""}"></i>` : (k) => `<i style="background:${fills(c)[k]}"></i>`;
+        return `<p class="key">${B.legend(c, sw).map((x) => `<span>${x}</span>`).join("")}</p>`;
+      };
+      const R = {
+        lead: (b) => reading(B.lead(b, { ...O, kicker: "Top of the stack" })),
+        items: (b) => reading(B.section(b.heading, B.items(b, O))),
+        calendar: (b) => reading(B.section("Today", B.events(b, { ...O, clock: "t12", allDay: "All day" }))),
+        chart: (c) => block("chart", `<h2>${esc(c.title)}</h2><p class="sub">${esc(B.facts(c, ", "))}</p>${key(c)}<div class="plot">${plot(c)}</div><p class="say">${esc(c.takeaway)}</p>`),
+        quote: (q) => block("quote", `<p class="q">&ldquo;${esc(q.text)}&rdquo;</p><p class="tag">${B.logo(q.logo, { ...O, cls: "qlogo" })}${esc(q.author)} in ${esc(q.app)}</p>`),
+        progress: (p) => block("progress", `<h2>${esc(p.statement)}</h2><p class="sub"><b>${spell(p.done)}</b> of ${spell(p.total).toLowerCase()} done</p><div class="plot">${B.cells(p, { w: W, h: 14, gap: 6, on: "var(--acc)", off: "var(--hair)" })}</div>`),
+        note: (n) => block("note", `<p class="q">${esc(n.text)}</p>`),
+      };
+      const secs = B.layout(ed, R);
+      const s = ed.stats;
       const figs = s ? `<div class="figs"><div><b>${s.done}</b><span>Completed</span>${s.you && s.gaia ? `<small>you ${s.you} · GAIA ${s.gaia}</small>` : ""}</div>${s.mail ? `<div><b>${s.mail}</b><span>Emails handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span>Focus today</span></div>` : ""}</div>` : "";
       return `<article class="t-band" style="--filter:${skin.hue.filter}; --acc:${skin.hue.acc}; --h:${skin.header.h}; --field:${skin.field.field}; --hair:${skin.field.hair}">
 ${grain("bd-g", 0.9)}
@@ -147,35 +167,63 @@ ${grain("bd-g", 0.9)}
 .t-playfair h1 { font: italic 500 80px/.92 'Playfair Display', serif; text-align: center; margin-top: 26px; letter-spacing: -.01em; }
 .t-playfair .rule { border-top: 1px solid var(--ink); margin: 24px 0 18px; }
 .t-playfair .deck { font: italic 500 25px/1.32 'Playfair Display', serif; text-align: center; padding: 0 12px; }
-.t-playfair section { margin-top: 46px; }
-.t-playfair h2 { display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--ink); margin-bottom: 12px; }
-.t-playfair h2 b { font: 700 26px/1 'Playfair Display', serif; }
-.t-playfair h2 span { font: italic 500 23px/1.2 'Playfair Display', serif; }
-.t-playfair h2 em { margin-left: auto; font: italic 500 15px/1.2 'Playfair Display', serif; color: var(--soft); }
-.t-playfair .r { display: grid; grid-template-columns: 92px 1fr; padding: 9px 0; line-height: 1.5; }
-.t-playfair .r .k { font-size: 16px; font-variant-numeric: lining-nums tabular-nums; padding-top: 1px; }
-.t-playfair .r .k.verb { font-style: italic; color: var(--gilt); }
-.t-playfair .r i { color: var(--soft); }
-.t-playfair .r > span:last-child { text-wrap: pretty; }
-.t-playfair .r .tag { display: block; font-style: italic; font-size: 15px; color: var(--soft); margin-top: 2px; }
+.t-playfair section { margin-top: 36px; }
+.t-playfair section.rs { margin-top: 18px; }
+.t-playfair .lead { margin-top: 30px; border-top: 1px solid var(--gilt); }
+.t-playfair .rs-h b, .t-playfair .dh b { font: normal 700 .9em/1 'Playfair Display', serif; color: var(--gilt); margin-right: .45em; }
+.t-playfair .rs-h::after { content: ""; display: block; margin-top: 10px; border-top: 1px solid var(--ink); }
+.t-playfair .dh { font: italic 500 24.5px/32px 'Playfair Display', serif; padding-bottom: 10px; border-bottom: 1px solid var(--ink); }
+.t-playfair .sub { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; font-size: 15px; color: var(--soft); margin-top: 10px; }
+.t-playfair .sub > i { margin-right: auto; }
+.t-playfair .sub span i { display: inline-block; width: 10px; height: 10px; margin-right: 7px; }
+.t-playfair .sub span i.ln { width: 16px; height: 0; border-top: 2px solid var(--gilt); vertical-align: 3px; }
+.t-playfair .sub span i.ln.dash { border-top: 1.5px dashed var(--ink); }
+.t-playfair .plot { margin-top: 14px; }
+.t-playfair .plot.cells { margin-top: 18px; }
+.t-playfair .say { margin-top: 12px; font-style: italic; color: var(--ink); text-wrap: pretty; }
+.t-playfair .epi { margin: 0 18px; padding: 18px 0; border-top: 1px solid var(--gilt); border-bottom: 1px solid var(--gilt); text-align: center; }
+.t-playfair .epi p { font: italic 500 22px/1.35 'Playfair Display', serif; text-wrap: balance; }
+.t-playfair .epi cite { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 10px; font-style: italic; font-size: 15px; color: var(--soft); }
+.t-playfair .qlogo { width: 14px; height: 14px; color: var(--gilt); }
+.t-playfair .nb { font-style: italic; text-align: center; padding: 0 24px; text-wrap: balance; }
+.t-playfair { --rs-font: 'Literata', serif; --rs-font-h: 'Playfair Display', serif; --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--gilt); --rs-logo-ink: var(--gilt); --rs-base: 15px; --rs-title-weight: 400; --rs-h-style: italic; --rs-kick-case: none; --rs-kick-variant: small-caps; --rs-kick-track: .06em; }
 .t-playfair .figs { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; margin-top: 34px; padding: 18px 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
 .t-playfair .figs b { display: block; font: 700 42px/1 'Playfair Display', serif; font-variant-numeric: lining-nums; }
 .t-playfair .figs span { display: block; font-style: italic; font-size: 16px; margin-top: 8px; color: var(--soft); }
 .t-playfair .col { margin-top: 22px; text-align: center; font-size: 14px; letter-spacing: 0; color: var(--soft); }
 `,
     render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
+      const B = EXPLORER.blocks;
+      const W = 472;
       let n = 0;
       const num = () => (skin.numeral.id === "roman" ? ROMAN[n++] : String(++n));
-      const sec = (title, count, rows) => `<section><h2><b>${num()}</b><span>${title}</span><em>${WORDS[count] || count}</em></h2>${rows}</section>`;
-      const r = (k, cls, label, note, tag) => `<div class="r" data-role="body"><span class="k${cls ? " " + cls : ""}">${esc(k)}${tag ? `<span class="tag">${esc(tag.toLowerCase())}</span>` : ""}</span><span>${esc(label)}${note ? ` <i>— ${esc(note)}</i>` : ""}</span></div>`;
-      const secs = [];
-      if (needs.length) secs.push(sec("For your decision", needs.length, needs.map((d) => r(d.verb, "verb", d.label, d.note)).join("")));
-      if (c.today.length) secs.push(sec("The day ahead", c.today.length, c.today.map((e) => r(e.time || "EOD", "", e.label, e.note, e.tag)).join("")));
-      if (c.overnight.length) secs.push(sec("While you slept", c.overnight.length, c.overnight.map((e) => r(clock(e.t24), "", e.label, e.note, e.tag)).join("")));
-      if (c.running.length) secs.push(sec("Still in progress", c.running.length, c.running.map((e) => r(clock(e.t24), "", e.label, e.note, e.tag)).join("")));
-      const s = c.stats;
+      /* Every section continues the book's numbering: a numeral, an italic title, set as one heading. */
+      const head = (title, cls) => `<div class="${cls}" role="heading" aria-level="3"><b>${num()}</b>${esc(title)}</div>`;
+      const reading = (title, body) => `<section class="rs"><div class="rs-sec" role="group">${head(title, "rs-h")}${body}</div></section>`;
+      const block = (kind, title, html) => `<section class="data" data-block="${kind}">${title ? head(title, "dh") : ""}${html}</section>`;
+      const PLOT = { w: W, font: "Literata", size: 15, ink: "var(--ink)", soft: "var(--soft)", rule: "var(--hair)", base: "var(--ink)", valueWeight: 400 };
+      const fills = (c) => (c.series.length > 1 ? ["var(--ink)", "var(--gilt)", "var(--soft)"] : ["var(--gilt)"]);
+      const plot = (c) => {
+        if (c.chart === "spark") return B.spark(c, { ...PLOT, h: 58, line: "var(--gilt)", lineW: 2, dot: 3.5 });
+        if (c.chart === "line") return B.line(c, { ...PLOT, h: 152, gutter: 30, dot: 3.5, lines: [{ color: "var(--gilt)", width: 2 }, { color: "var(--ink)", width: 1.5, dash: "4 3" }] });
+        return B.bars(c, { ...PLOT, h: 170, rule: "var(--ink)", fills: fills(c), gapRatio: 0.46 });
+      };
+      const key = (c) => {
+        if (c.series.length < 2) return "";
+        const sw = c.chart === "line" ? (k) => `<i class="ln${k ? " dash" : ""}"></i>` : (k) => `<i style="background:${fills(c)[k]}"></i>`;
+        return B.legend(c, sw).map((x) => `<span>${x}</span>`).join("");
+      };
+      const R = {
+        lead: (b) => `<section class="lead">${B.lead(b, { kicker: "Foreword" })}</section>`,
+        items: (b) => reading(b.heading, B.items(b)),
+        calendar: (b) => reading("The day ahead", B.events(b, { clock: "t12", allDay: "All day" })),
+        chart: (c) => block("chart", c.title, `<p class="sub"><i>${esc(B.facts(c, ", "))}</i>${key(c)}</p><div class="plot">${plot(c)}</div><p class="say">${esc(c.takeaway)}</p>`),
+        quote: (q) => block("quote", "", `<blockquote class="epi"><p>&ldquo;${esc(q.text)}&rdquo;</p><cite>${B.logo(q.logo, { cls: "qlogo" })}${esc(q.author)}, in ${esc(q.app)}</cite></blockquote>`),
+        progress: (p) => block("progress", p.statement, `<div class="plot cells">${B.cells(p, { w: W, h: 12, gap: 6, on: "var(--gilt)", offStroke: "var(--soft)" })}</div><p class="sub"><i>${spell(p.done)} of ${spell(p.total).toLowerCase()} done</i></p>`),
+        note: (x) => block("note", "", `<p class="nb">${esc(x.text)}</p>`),
+      };
+      const secs = B.layout(ed, R);
+      const s = ed.stats;
       const figs = s ? `<div class="figs"><div><b>${s.done}</b><span>completed</span></div>${s.mail ? `<div><b>${s.mail}</b><span>emails handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span>focus today</span></div>` : ""}</div>` : "";
       const t1 = `The ${ed.weekday}`;
       const size = Math.min(80, Math.floor(470 / (t1.length * 0.46)));

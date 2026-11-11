@@ -3,7 +3,8 @@
  * Brief items: the owner's copy opens the in-app todo even when the brief also
  * shared a public link; the public copy (no todo_id) opens the shared link.
  * The written message links an item on its phrase, never as a pasted URL.
- * What the composition left out is listed after it, so the page loses nothing.
+ * What the composition left out is listed after it, so the page loses nothing,
+ * and so is every composed block the day's edition could not draw.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -152,5 +153,42 @@ describe("brief item links", () => {
     );
 
     expect(screen.queryByText("Everything else")).toBeNull();
+  });
+
+  it("says every block the edition could not draw, and nothing for the rest", () => {
+    render(
+      <BriefingEdition
+        payload={{
+          ...payload({ text: "Deck", kind: "lookback" }),
+          undrawn: [
+            {
+              kind: "chart",
+              chart: "line",
+              title: "Emails received each day",
+              takeaway: "Yesterday brought 61.",
+              series: [],
+            },
+            {
+              kind: "progress",
+              goal: {
+                id: "g1",
+                statement: "Fill eight roles",
+                origin: "memory",
+                done: 5,
+                open: 3,
+                linked: [],
+              },
+            },
+            { kind: "lead", section: 0 },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("More from GAIA")).toBeTruthy();
+    expect(
+      screen.getByText("Emails received each day: Yesterday brought 61."),
+    ).toBeTruthy();
+    expect(screen.getByText("Fill eight roles: 5 of 8 done")).toBeTruthy();
   });
 });

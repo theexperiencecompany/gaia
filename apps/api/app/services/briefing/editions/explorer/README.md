@@ -159,6 +159,72 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    line. Broadsheet's lead keeps its item's capital ("At 11:00 a.m., Sequoia
    partner meeting", not "sequoia").
 
+13. **Every family draws GAIA's composed blocks in its own idiom (2026-11-11,
+   founder-reviewed gallery `brief-gallery/v2` and its reading system).** The fixed
+   today / overnight / running / decisions sections are gone: `ed.content` and
+   `ed.week` are replaced by `ed.blocks` (lead, items, calendar, chart, quote,
+   progress, note, in reading order), `ed.awaiting` and `ed.stats`. Each family's
+   `render` maps every block kind to its own renderer through
+   `EXPLORER.blocks.layout(ed, R)`; the furniture (masthead, stats, codes, stamp,
+   painting) is unchanged. Items follow the reading system (`shell/reading.css`):
+   verb or outcome first, then the app's mark, the title and one detail; a label
+   column only for calendar times; one label per section; headings outrank items;
+   three rows and "+N more in the full brief". Charts are plotted from the series
+   points (`shell/blocks.js`), never from model numbers, each with its title,
+   takeaway, range, unit, labelled values and a legend. `shell/` is ours, not
+   vendored: it holds the shared anatomy, the app marks
+   (`editions/logos/logos.json`, built from the integration-logos registry by
+   `scripts/build_edition_logos.py`) and the plots, and decides nothing about a
+   family's look. What each family leaves out is `editions/capabilities.py`:
+   the Menu draws no chart and no goal, Air Mail no chart, the Memo no line or
+   spark, the weekly no lead and no quote. Per family:
+   - `band`, `playfair` (tpl-brand.js): each block is a band section under a
+     hairline / continues the book's roman numbering under one heading; charts
+     in white and the accent / gilt; the `clock` helper is gone. Playfair's
+     right-hand section count is dropped, and its titles are 400 (Literata has
+     no bold cut), the verb set apart by colour.
+   - `broadsheet`: groups that all ask go in the boxed notice, the rest are
+     stories; the plate hangs under the calendar's heading; charts are boxed
+     graphics with a halftone second series and a source line; quotes are pull
+     quotes (Caslon's historical ligatures off); notes run under "From GAIA's
+     desk". The front-page summary counts the blocks.
+   - `swiss` (tpl-poster.js): every block is a numbered section ("00" the lead);
+     the verb takes whichever of the skin's two marker colours shows on its
+     background; the spine's "No N" counts the rows printed.
+   - `gradient`, `exhibition`, `weekly` (tpl-image.js): the Horizon sets charts
+     in ink with a thinned second series and quotes large against the sky; the
+     Exhibition pins the lead as a museum label, hangs charts with a caption and
+     sets quotes as wall text, its titles at 400 so the 400-only Bodoni heading
+     outranks them; the weekly's fixed shape-of-the-week chart, shipped and
+     handled lists and its `chart` skin axis are gone (composed blocks replace
+     them, and the "weekend shown lighter" dimming with them), "The numbers"
+     reads `ed.stats`, and its calendar is the week ahead.
+   - `postal`: blocks are letter paragraphs; a quote is an indented italic
+     passage; the goal joins the P.S. as a sentence; `clock()` is gone.
+   - `librarycard`, `menu`, `invoice` (tpl-paper.js): the card's date stamps
+     and ditto marks give way to the anatomy, and charts and goals go on a
+     second "verso" card; the menu's courses are GAIA's groups under foil rules
+     with "The day's courses", its spelled-out times gone; the invoice prints
+     charts as line-item tables or a usage plot, goals under "Plans", quotes
+     under "Correspondence", notes in a "Notes" box. Librarycard and menu titles
+     are 400 (Special Elite and EB Garamond have no bold cut).
+   - `memo`, `almanac` (tpl-print.js): the memo's charts are typed
+     "Attachment" tables with typed-cell bars, the goal a typed `[XXX---]` bar,
+     the note "N.B."; the almanac's charts are engraved figures with a hatched
+     second series and "Fig. N." captions, the quote an epigraph, the goal and
+     note rubric pilcrow paragraphs, its titles at 400.
+   - `flightplan`, `instrument` (tpl-tech.js): blocks are lettered details on
+     the drafting sheet / screwed-in modules whose heading is their only label;
+     the elevation and the gauge plot timed events only, labelled with their
+     times (the 18:00 stand-in for untimed events is gone).
+   - `metromap`, `boardingpass` (tpl-transit.js): runs of groups and the
+     calendar become line segments (decision, day and night lines) joined by
+     interchanges and closed by a terminus, data blocks are panels or notice
+     bars, and the line guide lists only the lines drawn; the boarding pass
+     carries reading blocks on its body, a closing done group on the stub, and
+     charts and goals on a "Flight log" card, and departs and arrives at the
+     day's first and last timed starts.
+
 The painting that `broadsheet`, `exhibition` and `almanac` hang is drawn from the
 user's artwork shuffle bag, over the Met Open Access works whose image fits that
 family's frame (`editions/artworks.py`), and recorded on the payload as
@@ -166,15 +232,21 @@ family's frame (`editions/artworks.py`), and recorded on the payload as
 
 `tests/integration/test_edition_families_render.py` renders every family in
 Chromium and fails on a script error, a dropped item, a fixture string, a `null`
-or zero-filled figure, a heading above an empty bucket, overprinted item rows, or
+or zero-filled figure, a block drawn for an empty brief, overprinted item rows, or
 an image crop that lets the paper touch the edge or keeps more than 24px of desk.
+`tests/integration/test_edition_reading_system.py` renders every family over four
+compositions and measures the reading system's rules on the page.
 
 ## Which families are sent
 
 A daily brief draws its family from the user's shuffle bag
 (`DAILY_FAMILY_WEIGHTS` in `editions/__init__.py`: Air Mail twice, every other
-daily family once; `app/services/briefing/shuffle_bag.py`). The weekly recap is
-always `weekly`. Air Mail's city comes from a second bag over the cities in
+daily family once; `app/services/briefing/shuffle_bag.py`), after composition:
+only a family that can draw every composed block is eligible
+(`edition_draws.draw_edition`), and one that cannot keeps its turn for a later
+day. When no daily family can draw them all, the bag's next family draws and the
+rest are stored as `payload.undrawn` for the brief's page. The weekly recap is
+always `weekly`; a block it cannot draw goes to `undrawn` too. Air Mail's city comes from a second bag over the cities in
 `assets/stamps/` (`editions/stamps.py`); the render hands the drawn city to the
 template as its `city` skin, so the stamp art, the postmark and the dateline
 agree. A brief with nothing to report (no asks, no events, nothing overnight)

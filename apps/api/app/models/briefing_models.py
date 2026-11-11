@@ -96,6 +96,8 @@ class BriefingItem(BaseModel):
     count: int = Field(default=1, ge=1)
     #: The app the item came from ("GitHub", "Gmail", "GAIA"); None on legacy rows.
     app: str | None = None
+    #: That app's integration id ("github"), or GAIA_SOURCE; the edition prints its mark.
+    source: str | None = None
     #: A deep link into that app, when it gave one.
     url: str | None = None
     people: list[str] = Field(default_factory=list)
@@ -166,13 +168,10 @@ class BriefingWeekDay(BaseModel):
 
 
 class BriefingWeek(BaseModel):
-    """The real week the weekly edition draws: Monday-to-Sunday completions,
-    what shipped, what GAIA handled, and the calendar ahead. Every field is
-    counted or read, never estimated."""
+    """The real week behind the weekly recap: Monday-to-Sunday completions and the
+    calendar ahead. Every field is counted or read, never estimated."""
 
     days: list[BriefingWeekDay] = Field(min_length=7, max_length=7)
-    shipped: list[str] = Field(default_factory=list)
-    handled: list[str] = Field(default_factory=list)
     ahead: list[BriefingEvent] = Field(default_factory=list)
 
 
@@ -281,6 +280,13 @@ class BriefingPayload(BaseModel):
     uncomposed: list[BriefPoolItem] = Field(
         default_factory=list,
         description="Everything the brief read that the composition left out, for its full page.",
+    )
+    undrawn: list[BriefBlock] = Field(
+        default_factory=list,
+        description=(
+            "Composed blocks the drawn edition cannot draw in its idiom (a chart on the Menu), "
+            "moved out of blocks onto the brief's full page."
+        ),
     )
 
 

@@ -170,9 +170,23 @@ class TestDocumentShell:
     def test_each_module_gets_its_own_script_tag_on_its_own_line(self) -> None:
         html = _render()
 
-        # 10 modules => 9 joins between them, plus the shim before and the
-        # bootstrap after — anything else means the modules ran together.
-        assert html.count("</script>\n<script>") == 11
+        # 10 modules => 9 joins between them, plus the shim and the block plumbing
+        # before and the bootstrap after — anything else means the modules ran together.
+        assert html.count("</script>\n<script>") == 12
+
+    def test_only_the_marks_of_the_apps_the_brief_prints_are_embedded(self) -> None:
+        item = {"text": "PR #12", "kind": "you", "action": "review", "source": "github"}
+        payload = _payload(
+            sections=[{"numeral": "I", "title": "Needs you", "items": [item]}],
+            blocks=[{"kind": "items", "section": 0}],
+        )
+
+        html = _render(payload)
+
+        assert '.xb-logo[data-logo="github"]' in html
+        assert '.xb-logo[data-logo="googlecalendar"]' in html
+        assert '.xb-logo[data-logo="slack"]' not in html
+        assert 'logoKinds: {"github": "mono", "googlecalendar": "color"}' in html
 
     def test_deterministic_rng_shim_is_inlined(self) -> None:
         html = _render()
@@ -228,8 +242,8 @@ class TestEmbeddedLiterals:
         assert ed["time24"] == "06:02"
         assert ed["deck"] == "A quiet Sunday"
         assert ed["dateLong"] == "Sunday, 5 July 2026"
-        assert ed["content"]["today"][0]["label"] == "Standup"
-        assert ed["content"]["stats"]["done"] == 3
+        assert ed["blocks"][0]["events"][0]["title"] == "Standup"
+        assert ed["stats"]["done"] == 3
 
     @pytest.mark.parametrize("family", ["exhibition", "broadsheet", "almanac"])
     def test_a_framed_family_hangs_the_drawn_artwork_by_its_hosted_url(self, family: str) -> None:
@@ -313,7 +327,7 @@ class TestPostalStamp:
 
     def test_the_template_city_axis_is_every_hosted_city(self) -> None:
         html = _render(family="swiss")
-        match = re.search(r"\n  cities: (\[.*?\]),\n\};", html, re.S)
+        match = re.search(r"\n  cities: (\[.*?\]),\n", html, re.S)
 
         assert match is not None
         cities = json.loads(match.group(1))
@@ -361,7 +375,8 @@ class TestScriptEscaping:
                             {"text": "</script>alert(1)", "kind": "note", "outcome": "changed"}
                         ],
                     }
-                ]
+                ],
+                blocks=[{"kind": "items", "section": 0}],
             )
         )
 

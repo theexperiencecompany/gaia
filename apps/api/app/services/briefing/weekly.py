@@ -27,6 +27,7 @@ from app.services.briefing.candidates.pool import (
     gather_week_candidates,
 )
 from app.services.briefing.composition.compose import compose_brief
+from app.services.briefing.editions.capabilities import split_drawable
 from app.services.briefing.errors import BriefingGenerationError
 from app.services.briefing.fact_pool.pool import PoolContext, PoolReads, build_fact_pool
 from app.services.briefing.fact_pool.window import week_window
@@ -139,6 +140,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
             ),
         )
     links = await links_in(user_id, voice.message, facts)
+    drawn, undrawn = split_drawable(WEEKLY_FAMILY, laid.blocks)
     payload = voiced_payload(
         clock,
         Prose(voice, draft, links),
@@ -154,7 +156,8 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
                 done_by_gaia=sum(d.gaia for d in week.days),
             ),
             "sources_read": gathered.sources_read,
-            "blocks": laid.blocks,
+            "blocks": drawn,
+            "undrawn": undrawn,
             "uncomposed": laid.uncomposed,
         }
     )

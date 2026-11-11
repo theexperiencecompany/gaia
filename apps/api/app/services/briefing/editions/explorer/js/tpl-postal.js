@@ -16,11 +16,7 @@
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const clock = (t24) => {
-    if (!t24) return "";
-    const [h, m] = t24.split(":").map(Number);
-    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-  };
+  const B = EXPLORER.blocks;
 
   /* Every texture, tilt and noise seed is drawn from the edition's date, so one day always prints the same envelope. */
   function rngFor(ed) {
@@ -242,15 +238,13 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
 .t-postal .dated { margin-top: 18px; text-align: right; font-size: 15px; letter-spacing: .02em; color: #5f594d; }
 .t-postal .dear { margin-top: 10px; font-style: italic; font-size: 19px; }
 .t-postal .deck { margin-top: 8px; font-size: 29px; line-height: 1.25; font-style: italic; letter-spacing: -.005em; text-wrap: balance; }
-.t-postal .blk { margin-top: 36px; }
-.t-postal .blabel { font: italic 600 21px/1.2 'Source Serif 4', serif; color: #2a2822; margin-bottom: 10px; }
-.t-postal .blabel.red { color: var(--ribbon); }
-.t-postal .li { display: grid; grid-template-columns: 84px 1fr; column-gap: 12px; padding: 6px 0; font-size: 17px; line-height: 1.5; }
-.t-postal .li > span:last-child { text-wrap: pretty; }
-.t-postal .li .w { font-size: 15px; letter-spacing: 0; color: #4a4437; font-variant-numeric: tabular-nums; padding-top: 3px; }
-.t-postal .li .w.verb { color: var(--ribbon); font: italic 600 17px/1.5 'Source Serif 4', serif; padding-top: 0; }
-.t-postal .li .nt { color: #5a5345; font-style: italic; }
-.t-postal .li .tg { display: block; margin-top: 2px; font-size: 14px; letter-spacing: 0; color: #8a836c; }
+.t-postal .letter { --rs-font: 'Source Serif 4', serif; --rs-font-h: 'Source Serif 4', serif; --rs-ink: #2a2822; --rs-muted: #5a5345; --rs-acc: var(--ribbon); --rs-base: 15px; --rs-title-weight: 400; --rs-verb-weight: 600; --rs-h-style: italic; --rs-h-track: 0; --rs-title-track: 0; --rs-kick-case: none; --rs-kick-style: italic; --rs-kick-track: 0; }
+.t-postal .letter .rs-verb { font-style: italic; }
+.t-postal .blk { margin-top: 16px; }
+.t-postal .blk[data-block] { margin-top: 40px; }
+.t-postal .q { font-style: italic; font-size: 19px; line-height: 1.5; color: #3d382d; text-wrap: pretty; padding-left: 18px; border-left: 2px solid rgba(42,40,34,.25); }
+.t-postal .q .by { display: block; margin-top: 6px; font-style: normal; font-size: 15px; color: #5a5345; }
+.t-postal .para { font-size: 18px; line-height: 1.55; text-wrap: pretty; }
 .t-postal .ps { display: grid; grid-template-columns: 84px 1fr; column-gap: 12px; margin-top: 36px; font-size: 17px; line-height: 1.55; text-wrap: pretty; }
 .t-postal .ps .w { font-size: 15px; padding-top: 2px; }
 .t-postal .ps b { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -259,18 +253,27 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
 .t-postal .lfoot { margin-top: 26px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,.18); display: flex; justify-content: space-between; font-size: 13px; letter-spacing: .06em; color: #5f594d; }
 `,
     render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
       const city = skin.city;
       const rng = rngFor(ed);
-      const li = (w, wCls, text, note, tag) => `<div class="li" data-role="body"><span class="w${wCls ? " " + wCls : ""}">${esc(w)}</span><span>${esc(text)}${note ? ` <span class="nt">— ${esc(note)}</span>` : ""}${tag ? `<span class="tg">${esc(tag)}</span>` : ""}</span></div>`;
-      const blocks = [];
-      if (needs.length) blocks.push(`<div class="blk"><h3 class="blabel red">Waiting on your reply</h3>${needs.map((d) => li(d.verb, "verb", d.label, d.note)).join("")}</div>`);
-      if (c.today.length) blocks.push(`<div class="blk"><h3 class="blabel">Your day</h3>${c.today.map((e) => li(e.time || "EOD", "", e.label, e.note)).join("")}</div>`);
-      if (c.overnight.length) blocks.push(`<div class="blk"><h3 class="blabel">Done while you slept</h3>${c.overnight.map((e) => li(clock(e.t24), "", e.label, e.note)).join("")}</div>`);
-      if (c.running.length) blocks.push(`<div class="blk"><h3 class="blabel">Still in progress</h3>${c.running.map((e) => li(clock(e.t24), "", e.label, e.note)).join("")}</div>`);
-      const s = c.stats;
-      const ps = s ? `<p class="ps" data-role="body"><span class="w">P.S.</span><span>Yesterday we closed <b>${s.done}</b> things${s.you && s.gaia ? ` (you ${s.you}, me ${s.gaia})` : ""}${s.mail ? ` and handled <b>${s.mail}</b> emails` : ""}.${s.focus ? ` You have <b>${esc(s.focus)}</b> of focus ahead.` : ""}</span></p>` : "";
+      const blk = (html, kind) => `<div class="blk"${kind ? ` data-block="${kind}"` : ""}>${html}</div>`;
+      // A goal is told, not charted: it joins the P.S. as a sentence.
+      const told = [];
+      const R = {
+        lead: (b) => blk(B.lead(b, { kicker: "First, this", mode: "color" })),
+        items: (b) => blk(B.section(b.heading, B.items(b, { mode: "color" }))),
+        calendar: (b) => blk(B.section("Your day", B.events(b, { clock: "t12", allDay: "All day", mode: "color" }))),
+        quote: (q) => blk(`<blockquote class="q">&ldquo;${esc(q.text)}&rdquo;<span class="by">${esc(q.author)}, by ${esc(q.app)}</span></blockquote>`, "quote"),
+        progress: (p) => {
+          told.push(`<span data-block="progress">On your goal, &ldquo;${esc(p.statement)}&rdquo;, <b>${p.done}</b> of <b>${p.total}</b> are done.</span>`);
+          return "";
+        },
+        note: (n) => blk(`<p class="para">${esc(n.text)}</p>`, "note"),
+      };
+      const blocks = B.layout(ed, R);
+      const s = ed.stats;
+      const figures = s ? `Yesterday we closed <b>${s.done}</b> things${s.you && s.gaia ? ` (you ${s.you}, me ${s.gaia})` : ""}${s.mail ? ` and handled <b>${s.mail}</b> emails` : ""}.${s.focus ? ` You have <b>${esc(s.focus)}</b> of focus ahead.` : ""}` : "";
+      const said = [figures, ...told].filter(Boolean).join(" ");
+      const ps = said ? `<p class="ps"><span class="w">P.S.</span><span>${said}</span></p>` : "";
       return `<article class="t-postal" style="--env:${skin.paper.env}; --envInk:${skin.paper.ink}; --tint:${skin.paper.tint}; --mark:${skin.ink.mark}; --defin:${skin.ink.defin}; --ribbon:${skin.ink.ribbon}">
 <div class="env">${paper(rng)}<div class="face tw">
   <div class="ret"><img src="${ed.assets.TEC_MARK}" alt="The Experience Company"><span>GAIA Post<br>The Experience Company</span></div>

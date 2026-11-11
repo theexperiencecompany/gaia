@@ -82,6 +82,8 @@ BRIEF_HEADING_CHECK_LABEL: Final[str] = "brief_heading_check"
 MAX_BRIEF_BLOCKS: Final[int] = 7
 MAX_BRIEF_ITEMS: Final[int] = 10
 MAX_ITEMS_PER_BLOCK: Final[int] = 5
+#: Rows an edition prints in one group or the calendar; the rest are "+N more in the full brief".
+EDITION_ROWS_SHOWN: Final[int] = 3
 MAX_BRIEF_CHARTS: Final[int] = 2
 # The model-written strings of a composition, each one line on the narrowest edition.
 BRIEF_HEADING_MAX_CHARS: Final[int] = 40
@@ -122,7 +124,7 @@ BRIEF_FAITHFULNESS_LABEL: Final[str] = "brief_faithfulness_check"
 #: The check judges, it does not write: the same draft gets the same verdict.
 BRIEF_FAITHFULNESS_TEMPERATURE: Final[float] = 0.0
 
-# Rows per list in the weekly edition (shipped, handled, the week ahead).
+# Events the weekly recap carries from the week ahead.
 WEEK_LIST_LIMIT: Final[int] = 5
 
 # Consecutive unacknowledged briefings (no open, no activity) that flip a run into

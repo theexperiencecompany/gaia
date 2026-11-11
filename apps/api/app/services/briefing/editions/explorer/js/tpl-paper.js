@@ -1,20 +1,14 @@
 /* ============================================================================
    tpl-paper.js (round 2) — The Library Card, The Menu and The Invoice on a
    540 px portrait canvas (export at 3x). Body 17 px or larger.
-   Reading order: headline -> needs you -> today -> done overnight -> stats;
-   empty sections are omitted.
+   Reading order: headline -> the brief's blocks in GAIA's order (EXPLORER.blocks)
+   -> stats; each block drawn in the family's idiom.
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
   const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
-  /* Rubber-stamp ink voids: a thresholded noise mask applied to the impression. */
-  const inkMask = (id, seed) =>
-    `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="2" seed="${seed}" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.4 1.5" result="m"/><feComposite in="SourceGraphic" in2="m" operator="in"/></filter></svg>`;
-  /* Deterministic per-row variance so no two stamps land the same way. */
-  const jitter = (i) => ({ r: [-4, 2, -1, 3, -3, 1, 4, -2][i % 8], o: [0.97, 0.88, 0.93, 0.86, 1, 0.9, 0.87, 0.95][i % 8] });
-
   /* ==========================================================================
      THE LIBRARY CARD — signature moves from the desktop original:
        a buff circulation card on a dark desk; EX LIBRIS · GAIA CIRCULATION;
@@ -57,17 +51,30 @@
 .t-librarycard .no { text-align: right; font-size: 14px; letter-spacing: 0; }
 .t-librarycard .no b { display: block; font-size: 26px; letter-spacing: 0; }
 .t-librarycard .deck { margin-top: 12px; font-size: 19px; line-height: 1.4; font-weight: 700; }
-.t-librarycard .cols { display: grid; grid-template-columns: 86px 1fr 92px; margin-top: 16px; padding-bottom: 4px; border-bottom: 1px solid #211d17; font-size: 14px; letter-spacing: 0; }
+.t-librarycard .cols { display: grid; grid-template-columns: 86px 1fr 92px; margin-top: 10px; padding-bottom: 4px; border-bottom: 1px solid #211d17; font-size: 14px; letter-spacing: 0; }
 .t-librarycard .cols span:last-child { text-align: right; }
 .t-librarycard .sl { font-size: 15px; font-weight: 700; letter-spacing: 0; color: #4a4338; padding: 12px 0 4px; border-bottom: 1px solid var(--rule); }
-.t-librarycard .row { position: relative; display: grid; grid-template-columns: 86px 1fr 92px; align-items: start; padding: 9px 0; border-bottom: 1px solid var(--rule); }
+.t-librarycard .row { position: relative; display: grid; grid-template-columns: 86px 1fr 92px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--rule); }
 .t-librarycard .row::before { content: ""; position: absolute; left: 80px; top: 0; bottom: 0; border-left: 1px solid #c45a4b; }
-.t-librarycard .row .it { padding-left: 8px; text-wrap: pretty; }
-.t-librarycard .ditto { display: inline-block; width: 64px; text-align: center; font-size: 24px; line-height: 1; color: #3a342b; }
-.t-librarycard .row .it small { display: block; font-size: 15px; color: #4f483c; }
-.t-librarycard .row .due { text-align: right; font-variant-numeric: tabular-nums; }
-.t-librarycard .stamp { display: inline-block; border: 2px solid var(--stamp); color: var(--stamp); border-radius: 3px; padding: 1px 5px; font: 700 14px/1.25 'Special Elite', monospace; letter-spacing: 0; filter: url(#lc-ink); }
-.t-librarycard .verb { font-weight: 700; margin-right: 6px; }
+.t-librarycard .row .it { padding-left: 8px; }
+.t-librarycard .row .it svg { display: block; }
+.t-librarycard .row .due { text-align: right; font-variant-numeric: tabular-nums; line-height: 1; }
+.t-librarycard .deck { margin-bottom: 16px; }
+/* The typewriter's line sits loose in its box, so each block takes 6px more air to stay 2x the item gap clear. */
+.t-librarycard .bk { padding-block: 6px; }
+.t-librarycard .blk { padding: 20px 0; font-size: 17px; line-height: 1.45; text-wrap: pretty; }
+.t-librarycard .q p:first-child { font-size: 18px; }
+.t-librarycard .q .by { margin-top: 6px; font-size: 15px; color: #4f483c; }
+.t-librarycard .verso { margin-top: 30px; padding: 26px 24px 30px; transform: rotate(-.4deg); }
+.t-librarycard .vb + .vb { margin-top: 28px; }
+.t-librarycard .vb .sl { border-bottom: 0; padding-top: 14px; color: #211d17; font-size: 17px; }
+.t-librarycard .cap { font-size: 14px; color: #4a4338; }
+.t-librarycard .say { margin-top: 10px; font-size: 15px; line-height: 1.45; text-wrap: pretty; }
+.t-librarycard .plot { padding: 14px 0 6px; border-bottom: 1px solid var(--rule); }
+.t-librarycard .key { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 15px; color: #4a4338; }
+.t-librarycard .key i { display: inline-block; width: 14px; height: 14px; }
+.t-librarycard .key i:not(:first-child) { margin-left: 10px; }
+.t-librarycard { --rs-title-weight: 400; --rs-font: var(--face); --rs-font-h: var(--face); --rs-ink: #211d17; --rs-muted: #4f483c; --rs-acc: var(--stamp); --rs-base: 14px; --rs-kick-case: none; --rs-kick-track: 0; }
 .t-librarycard .sign { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 42px; font-size: 15px; }
 .t-librarycard .sign span:first-child { flex: 1; border-top: 1px solid #211d17; padding-top: 4px; margin-right: 18px; }
 .t-librarycard .sign i { font: italic 400 22px/1 'Pinyon Script', cursive; display: block; margin-bottom: -2px; transform: translateY(-26px); height: 0; color: #2a3a7a; }
@@ -79,50 +86,72 @@
 .t-librarycard .pocket small { font: 400 14px/1.4 var(--face); letter-spacing: 0; }
 `,
     render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
-      const mon = `${ed.monthShort.toUpperCase()} ${ed.day}`;
-      let k = 0;
-      const stamp = (txt) => {
-        const j = jitter(k++);
-        return `<span class="stamp" style="transform:rotate(${j.r}deg); opacity:${j.o}">${esc(txt)}</span>`;
+      const B = EXPLORER.blocks;
+      const INK = "#211d17";
+      const SOFT = "#4f483c";
+      // The verso's measure: the card's width inside the desk and its own padding.
+      const W = 440;
+      const BAR_W = W - 86 - 92 - 8;
+      const PLOT = { font: "Special Elite", size: 14, ink: INK, soft: SOFT, rule: "var(--rule)", base: INK, valueWeight: 400 };
+      // A black pad prints the same tone as the ribbon, so GAIA's share takes a worn grey impression.
+      const fills = [INK, skin.ink.id === "black" ? "#8a8274" : "var(--stamp)"];
+      const swatch = (k) => `<i style="background:${fills[k % 2]}"></i>`;
+      // Charts are typed on a second card from the same drawer: the circulation record, ruled like the front.
+      const chart = (c) => {
+        let body;
+        if (c.chart === "bar" || c.chart === "stacked_bar") {
+          const sums = B.totals(c);
+          const max = Math.max(...sums);
+          const rows = c.x.map((lab, i) => {
+            let x = 0;
+            const segs = c.series.map((s, k) => {
+              const w = (s.values[i] / max) * BAR_W;
+              const seg = B.rect(x, 0, w, 14, fills[k % 2]);
+              x += w;
+              return seg;
+            });
+            return `<div class="row br"><span>${esc(lab)}</span><span class="it">${B.svg(BAR_W, 14, segs.join(""))}</span><span class="due">${esc(B.fmt(sums[i]))}</span></div>`;
+          });
+          const key = c.series.length > 1 ? `<p class="key">${B.legend(c, swatch).join("")}</p>` : "";
+          body = `<div class="cols"><span>Date</span><span>${esc(cap(c.unit || c.series[0].unit))}</span><span>In all</span></div>${rows.join("")}${key}`;
+        } else if (c.chart === "line") {
+          const plot = B.line(c, { ...PLOT, w: W, h: 150, gutter: 30, lines: [{ color: "var(--stamp)", width: 2 }, { color: INK, width: 2, dash: "5 4" }] });
+          const key = c.series.length > 1 ? `<p class="key">${c.series.map((s, k) => `${swatch(k)}${esc(s.name)} ${esc(s.total)}`).join("")}</p>` : "";
+          body = `<div class="plot">${plot}</div>${key}`;
+        } else {
+          const sp = c.series[0];
+          body = `<div class="row br"><span>${esc(c.x[0])}&ndash;${esc(c.x[c.x.length - 1])}</span><span class="it">${B.spark(c, { ...PLOT, w: BAR_W, h: 34, line: "var(--stamp)" })}</span><span class="due">${esc(sp.total)}</span></div>`;
+        }
+        return `<div class="vb" data-block="chart"><div class="sl">${esc(c.title)}</div><p class="cap">${esc(B.facts(c))}</p>${body}<p class="say">${esc(c.takeaway)}</p></div>`;
       };
-      let first = true;
-      const row = (it, due) => {
-        const date = first ? stamp(mon) : `<span class="ditto" aria-label="same date">"</span>`;
-        first = false;
-        return `<div class="row" data-role="body"><span>${date}</span><span class="it">${it}</span><span class="due">${due}</span></div>`;
+      const progress = (p) =>
+        `<div class="vb" data-block="progress"><div class="sl">${esc(p.statement)}</div><div class="row br"><span>To date</span><span class="it">${B.cells(p, { w: BAR_W, h: 18, gap: 6, on: "var(--stamp)", offStroke: INK })}</span><span class="due">${p.done} of ${p.total}</span></div></div>`;
+      const verso = [];
+      const R = {
+        lead: (b) => `<div class="bk">${B.lead(b, { kicker: "Reserved for you" })}</div>`,
+        items: (b) => `<div class="bk">${B.section(b.heading, B.items(b))}</div>`,
+        calendar: (b) => `<div class="bk">${B.section("Checked out today", B.events(b, { clock: "t24", allDay: "All day" }))}</div>`,
+        quote: (q) => `<div class="blk q" data-block="quote"><p>&ldquo;${esc(q.text)}&rdquo;</p><p class="by">&mdash; ${esc(q.author)}, by ${esc(q.app)}</p></div>`,
+        note: (n) => `<div class="blk" data-block="note"><p><b>Librarian's note.</b> ${esc(n.text)}</p></div>`,
+        chart: (c) => (verso.push(chart(c)), ""),
+        progress: (p) => (verso.push(progress(p)), ""),
       };
-      const parts = [];
-      if (needs.length) {
-        first = true;
-        parts.push(`<div class="sl">Awaiting your signature</div>${needs.map((d) => row(`<span class="verb">${esc(d.verb)}</span>${esc(d.label)}${d.note ? `<small>${esc(d.note)}</small>` : ""}`, "____")).join("")}`);
-      }
-      if (c.today.length) {
-        first = true;
-        parts.push(`<div class="sl">Checked out — today</div>${c.today.map((e) => row(`${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}`, e.t24 ? esc(e.t24) : "EOD")).join("")}`);
-      }
-      if (c.overnight.length) {
-        first = true;
-        parts.push(`<div class="sl">Returned overnight by GAIA</div>${c.overnight.map((e) => row(`${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}`, stamp(e.tag))).join("")}`);
-      }
-      if (c.running.length) {
-        first = true;
-        parts.push(`<div class="sl">Still in progress with GAIA</div>${c.running.map((e) => row(`${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}`, stamp(e.tag))).join("")}`);
-      }
-      const s = c.stats;
+      const parts = B.layout(ed, R);
+      const s = ed.stats;
+      const back = verso.length
+        ? `<div class="card verso">${grain("lc-g2", 0.8)}<div class="lib"><span>Circulation record · GAIA</span><span>Card No ${ed.editionNo}, verso</span></div>${verso.join("")}</div>`
+        : "";
       return `<article class="t-librarycard" style="--card:${skin.stock.card}; --rule:${skin.stock.rule}; --pocket:${skin.stock.pocket}; --desk:${skin.stock.desk}; --stamp:${skin.ink.stamp}; --face:${skin.face.stack}">
-${inkMask("lc-ink", 7)}
 <div class="stack"><div class="card" data-paper>${grain("lc-g", 0.8)}<i class="notch" aria-hidden="true"></i>
   <div class="lib"><span>Ex libris · GAIA circulation</span><span>${esc(ed.dateLong)}</span></div>
   <div class="tt"><h1>The ${esc(ed.weekday)}<br>Brief</h1><div class="no">Card<b>No ${ed.editionNo}</b></div></div>
   <p class="deck">${esc(ed.deck)}</p>
-  <div class="cols"><span>Date</span><span>Item</span><span>Due</span></div>
   ${EXPLORER.fold(parts).join("")}
   <div class="sign"><span><i>GAIA</i>Prepared by GAIA — librarian on duty</span><span>Issued ${esc(ed.time24)}</span></div>
   ${s ? `<p class="rec">This card's record: items returned ${s.done}${s.you && s.gaia ? ` (${s.you} by your hand, ${s.gaia} by GAIA)` : ""}.${s.mail ? ` Correspondence filed ${s.mail}.` : ""}${s.focus ? ` Focus held ${esc(s.focus)}.` : ""}</p>` : ""}
 </div>
 <div class="pocket"><b>Return to GAIA circulation</b><small>Date due is stamped · card No ${ed.editionNo}</small></div></div>
+${back}
 </article>`;
     },
   });
@@ -138,19 +167,6 @@ ${inkMask("lc-ink", 7)}
      Added detail: gold-foil rules with a sheen, a bevelled card edge,
      letterpress impression, laid-paper texture.
      ======================================================================== */
-  const NUM = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"];
-  const COURSE = ["First", "Second", "Third", "Fourth", "Fifth"];
-  function spoken(t24) {
-    if (!t24) return "before nightfall";
-    const [h, m] = t24.split(":").map(Number);
-    const hr = NUM[h % 12];
-    const next = NUM[(h + 1) % 12];
-    if (m === 0) return `${hr} o'clock`;
-    if (m === 15) return `quarter past ${hr}`;
-    if (m === 30) return `half past ${hr}`;
-    if (m === 45) return `quarter to ${next}`;
-    return `${hr} ${String(m).padStart(2, "0")}`;
-  }
   EXPLORER.register({
     id: "menu",
     name: "The Menu",
@@ -183,32 +199,27 @@ ${inkMask("lc-ink", 7)}
 .t-menu .date { font-size: 16px; color: var(--soft); margin-top: 10px; }
 .t-menu .deck { font-style: italic; font-size: 20px; line-height: 1.4; margin: 18px auto 0; max-width: 24em; }
 .t-menu .foil { width: 90px; height: 2px; margin: 26px auto; background: linear-gradient(90deg, transparent, var(--foil) 20%, #fff3c9 50%, var(--foil) 80%, transparent); }
-.t-menu .course { font-size: 16px; color: var(--gold); }
-.t-menu .dish { margin-top: 6px; }
-.t-menu .dish + .course { margin-top: 20px; }
-.t-menu .name { font: 400 24px/1.2 var(--disp); text-wrap: balance; }
-.t-menu .when { font-size: 16px; color: var(--soft); margin-top: 6px; }
-.t-menu .desc { font-style: italic; font-size: 17px; color: var(--soft); margin-top: 4px; }
-.t-menu h2 { font: italic 400 23px/1.2 var(--disp); margin-bottom: 14px; }
-.t-menu .ask { margin-top: 10px; }
-.t-menu .ask em { color: var(--gold); }
-.t-menu .ask small { display: block; font-size: 16px; font-style: italic; color: var(--soft); }
-.t-menu .prep p { margin-top: 8px; font-size: 17px; }
-.t-menu .prep small { display: block; font-size: 16px; font-style: italic; color: var(--soft); }
+.t-menu .mq { padding: 4px 0; }
+.t-menu .mq .q { font: italic 400 22px/1.35 var(--disp); max-width: 20em; margin: 0 auto; text-wrap: balance; }
+.t-menu .mq .when { font-size: 16px; color: var(--soft); margin-top: 8px; }
+.t-menu .mnote { font-style: italic; font-size: 18px; line-height: 1.45; color: var(--soft); max-width: 22em; margin: 0 auto; text-wrap: balance; }
+.t-menu { --rs-title-weight: 400; --rs-font: var(--text); --rs-font-h: var(--disp); --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--gold); --rs-base: 15px; --rs-h-style: italic; --rs-kick-case: none; --rs-kick-variant: small-caps; --rs-kick-track: .08em; }
 .t-menu .dig { font: italic 400 23px/1.2 var(--disp); }
 .t-menu .cov { margin-top: 22px; font-size: 16px; line-height: 1.6; text-wrap: balance; color: var(--soft); }
 `,
     render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
+      const B = EXPLORER.blocks;
       const foil = `<div class="foil" aria-hidden="true"></div>`;
-      const parts = [];
-      if (needs.length) parts.push(`<h2>awaiting the table's decision</h2>${needs.map((d) => `<p class="ask" data-role="body"><em>to ${esc(d.verb.toLowerCase())}</em> — ${esc(d.label)}${d.note ? `<small>${esc(d.note)}</small>` : ""}</p>`).join("")}`);
-      if (c.today.length)
-        parts.push(c.today.map((e, i) => `<div class="course sc">— ${c.today.length === 1 ? "Plat du jour" : i === c.today.length - 1 ? "To finish" : COURSE[i]} —</div><div class="dish" data-role="body"><p class="name">${esc(cap(e.label))}</p><p class="when sc">${esc(spoken(e.t24))}</p>${e.note ? `<p class="desc">${esc(e.note)}</p>` : ""}</div>`).join(""));
-      if (c.overnight.length) parts.push(`<h2>prepared overnight</h2><div class="prep">${c.overnight.map((e) => `<p data-role="body">${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</p>`).join("")}</div>`);
-      if (c.running.length) parts.push(`<h2>still in preparation</h2><div class="prep">${c.running.map((e) => `<p data-role="body">${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</p>`).join("")}</div>`);
-      const s = c.stats;
+      // A menu prints dishes and prose: no plotted chart and no goal have a line on its card (capabilities.py).
+      const R = {
+        lead: (b) => B.lead(b, { kicker: "Chef's note" }),
+        items: (b) => B.section(b.heading, B.items(b)),
+        calendar: (b) => B.section("The day's courses", B.events(b, { clock: "t24", allDay: "All day" })),
+        quote: (q) => `<div class="mq" data-block="quote"><p class="q">&ldquo;${esc(q.text)}&rdquo;</p><p class="when sc">${esc(q.author)}, by ${esc(q.app)}</p></div>`,
+        note: (n) => `<p class="mnote" data-block="note">${esc(n.text)}</p>`,
+      };
+      const parts = B.layout(ed, R);
+      const s = ed.stats;
       return `<article class="t-menu" style="--ground:${skin.card.ground}; --card:${skin.card.card}; --ink:${skin.card.ink}; --soft:${skin.card.soft}; --gold:${skin.card.gold}; --foil:${skin.card.foil}; --disp:${skin.face.disp}; --text:${skin.face.text}">
 <div class="card${skin.border.id === "double" ? " dbl" : ""}" data-paper>${grain("mn-g", 0.8)}
   <div class="house">GAIA</div>
@@ -270,22 +281,16 @@ ${inkMask("lc-ink", 7)}
 .t-invoice .due .r { text-align: right; font-size: 15px; line-height: 1.5; }
 .t-invoice .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
 .t-invoice .k { font-size: 15px; color: var(--soft); }
-.t-invoice .li > span:first-child, .t-invoice .ap > span { text-wrap: pretty; }
+.t-invoice .li > span:first-child { text-wrap: pretty; }
 .t-invoice .memo { margin-top: 26px; font-size: 22px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; }
 .t-invoice section { margin-top: 34px; }
 .t-invoice h2 { display: flex; justify-content: space-between; align-items: baseline; font-size: 20px; font-weight: 800; letter-spacing: -.01em; padding-bottom: 10px; border-bottom: 2px solid var(--ink); }
 .t-invoice h2 > span:last-child { font: 400 15px/1 var(--fig); color: var(--soft); }
-.t-invoice h2 .ttl { font: inherit; color: inherit; }
-.t-invoice .paid { font-style: normal; }
-.t-invoice .ap { display: grid; grid-template-columns: 26px 1fr; gap: 12px; padding: 12px 0 4px; }
-.t-invoice .box { width: 20px; height: 20px; border: 2px solid var(--acc); border-radius: 3px; margin-top: 2px; }
-.t-invoice .ap b { color: var(--acc); }
 .t-invoice small.n { display: block; font-size: 15px; color: var(--soft); }
 .t-invoice .li { display: grid; grid-template-columns: 1fr 60px; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--hair); align-items: baseline; }
 .t-invoice .li .f { font: 400 16px/1.4 var(--fig); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .t-invoice .cols { display: grid; grid-template-columns: 1fr 60px; gap: 10px; padding: 10px 0 2px; font-size: 15px; color: var(--soft); }
 .t-invoice .cols span + span { text-align: right; }
-.t-invoice .paid { display: inline-block; margin-left: 12px; transform: rotate(-5deg); border: 3px double var(--acc); color: var(--acc); border-radius: 5px; padding: 1px 8px; font-size: 15px; font-weight: 800; vertical-align: 2px; }
 .t-invoice .tot { margin: 26px 0 0 auto; width: 300px; }
 .t-invoice .tot div { display: flex; justify-content: space-between; padding: 6px 0; font-size: 16px; }
 .t-invoice .tot b { font: 400 16px/1.4 var(--fig); font-variant-numeric: tabular-nums; }
@@ -298,24 +303,86 @@ ${inkMask("lc-ink", 7)}
 .t-invoice .slip b { display: block; font-size: 26px; font-weight: 800; letter-spacing: -.02em; color: var(--acc); }
 .t-invoice .qr { width: 108px; height: 108px; display: block; }
 .t-invoice .ref { font: 400 14px/1.3 var(--fig); text-align: center; margin-top: 6px; color: var(--soft); }
+.t-invoice .memo { margin-bottom: 16px; }
+.t-invoice section { margin-bottom: 14px; }
+.t-invoice .wk { display: grid; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--hair); font-size: 16px; }
+.t-invoice .wk .f { font: 400 16px/1.4 var(--fig); font-variant-numeric: tabular-nums; text-align: right; }
+.t-invoice .wk svg { display: block; }
+.t-invoice .wk.cols2 { font-size: 15px; color: var(--soft); border-bottom: 0; padding: 10px 0 2px; }
+.t-invoice .wk.cols2 span:nth-child(n+3) { text-align: right; white-space: nowrap; }
+.t-invoice .wk i, .t-invoice .sw { display: inline-block; width: 9px; height: 9px; margin-right: 5px; }
+.t-invoice .wk.sum { border-top: 3px double var(--ink); border-bottom: 0; margin-top: -1px; font-weight: 800; }
+.t-invoice .wk.sum .f { font-weight: 800; }
+.t-invoice .plot { padding: 12px 0 8px; border-bottom: 1px solid var(--hair); }
+.t-invoice .say { margin-top: 12px; font-size: 16px; line-height: 1.45; text-wrap: pretty; }
+.t-invoice .spk, .t-invoice .cells { display: block; margin-top: 8px; }
+.t-invoice .q { margin-top: 12px; font-size: 18px; line-height: 1.4; text-wrap: pretty; }
+.t-invoice small.n { margin-top: 4px; }
+.t-invoice .nb { margin-top: 12px; padding: 12px 14px; background: var(--tint); border-radius: 4px; font-size: 16px; line-height: 1.45; text-wrap: pretty; }
+.t-invoice { --rs-font: 'TeX Gyre Heros', sans-serif; --rs-font-h: 'TeX Gyre Heros', sans-serif; --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--acc); --rs-base: 15px; }
 `,
     render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
+      const B = EXPLORER.blocks;
       const no = String(ed.editionNo).padStart(4, "0");
-      const note = (t) => (t ? `<small class="n">${esc(t)}</small>` : "");
-      const owed = c.awaiting ? `${c.awaiting} item${c.awaiting > 1 ? "s" : ""}` : "Nothing";
-      const secs = [];
-      if (needs.length)
-        secs.push(`<section><h2>Approval required<span>${needs.length}</span></h2>${needs.map((d) => `<div class="ap" data-role="body"><i class="box" aria-hidden="true"></i><span><b>${esc(d.verb)}</b> ${esc(d.label)}${note(d.note)}</span></div>`).join("")}</section>`);
-      const cols = `<div class="cols"><span>Description</span><span>Time</span></div>`;
-      if (c.today.length)
-        secs.push(`<section><h2>Today, billable<span>${c.today.length} item${c.today.length > 1 ? "s" : ""}</span></h2>${cols}${c.today.map((e) => `<div class="li" data-role="body"><span>${esc(e.label)}${note(e.note)}</span><span class="f">${e.t24 ? esc(e.t24) : "EOD"}</span></div>`).join("")}</section>`);
-      if (c.overnight.length)
-        secs.push(`<section><h2><span class="ttl">Overnight<i class="paid">Paid in advance</i></span><span>${c.overnight.length}</span></h2>${cols}${c.overnight.map((e) => `<div class="li" data-role="body"><span>${esc(e.label)}${note(e.note)}</span><span class="f">${esc(e.t24)}</span></div>`).join("")}</section>`);
-      if (c.running.length)
-        secs.push(`<section><h2><span class="ttl">Still in progress</span><span>${c.running.length}</span></h2>${cols}${c.running.map((e) => `<div class="li" data-role="body"><span>${esc(e.label)}${note(e.note)}</span><span class="f">${esc(e.t24)}</span></div>`).join("")}</section>`);
-      const s = c.stats;
+      const owed = ed.awaiting ? `${ed.awaiting} item${ed.awaiting > 1 ? "s" : ""}` : "Nothing";
+      const LOGO = { mode: "color" };
+      // The sheet's measure inside its padding, and the figure columns a line-item table keeps.
+      const W = 440;
+      const FIG = 52;
+      const GAP = 8;
+      // The black-only paper has no accent to tell the second series by, so it takes the soft grey.
+      const second = skin.paper.acc === skin.paper.ink ? "var(--soft)" : "var(--acc)";
+      const fills = ["var(--ink)", second];
+      const PLOT = { font: "TeX Gyre Heros", size: 14, ink: "var(--ink)", soft: "var(--soft)", rule: "var(--hair)", base: "var(--ink)", valueWeight: 700 };
+      const head = (title, right) => `<h2>${esc(title)}<span>${esc(right)}</span></h2>`;
+      // Bars are billed as a line-item table: one line per day, its bar, a figure per series, totals on a double rule.
+      const table = (c) => {
+        const k = c.series.length;
+        const figs = k > 1 ? k + 1 : 1;
+        const bw = W - 64 - figs * FIG - (figs + 1) * GAP;
+        const cols = `grid-template-columns: 64px minmax(0, 1fr) repeat(${figs}, ${FIG}px)`;
+        const sums = B.totals(c);
+        const max = Math.max(...sums);
+        const line = (lab, i) => {
+          let x = 0;
+          const segs = c.series.map((s, j) => {
+            const w = (s.values[i] / max) * bw;
+            const seg = B.rect(x, 0, w, 10, k > 1 ? fills[j % 2] : second);
+            x += w;
+            return seg;
+          });
+          const each = k > 1 ? c.series.map((s) => `<span class="f">${esc(s.shown[i])}</span>`).join("") : "";
+          return `<div class="wk" style="${cols}"><span>${esc(lab)}</span><span>${B.svg(bw, 10, segs.join(""))}</span>${each}<span class="f">${esc(B.fmt(sums[i]))}</span></div>`;
+        };
+        const named = k > 1 ? c.series.map((s, j) => `<span><i style="background:${fills[j % 2]}"></i>${esc(s.name)}</span>`).join("") + "<span>Total</span>" : `<span>${esc(cap(c.unit || c.series[0].unit))}</span>`;
+        const total = B.fmt(sums.reduce((a, v) => a + v, 0));
+        const sum = `<div class="wk sum" style="${cols}"><span>In all</span><span></span>${k > 1 ? c.series.map((s) => `<span class="f">${esc(s.total)}</span>`).join("") : ""}<span class="f">${esc(total)}</span></div>`;
+        return `<div class="wk cols2" style="${cols}"><span>Day</span><span>${k > 1 ? esc(cap(c.unit || "")) : ""}</span>${named}</div>${c.x.map(line).join("")}${sum}`;
+      };
+      const usage = (c) => {
+        const plot = B.line(c, { ...PLOT, w: W, h: 150, gutter: 30, lines: [{ color: second, width: 2 }, { color: "var(--ink)", width: 2, dash: "5 4" }] });
+        const key = c.series.length > 1 ? `<div class="cols"><span>${c.series.map((s, j) => `<i class="sw" style="background:${j ? "var(--ink)" : second}"></i>${esc(s.name)}`).join("&ensp;")}</span><span></span></div>` : "";
+        const lines = c.series.map((s) => `<div class="li"><span>${esc(s.name)}, ${c.x.length} days</span><span class="f">${esc(s.total)}</span></div>`).join("");
+        return `${key}<div class="plot">${plot}</div>${lines}`;
+      };
+      const spark = (c) => {
+        const s = c.series[0];
+        return `<div class="li sp"><span>${esc(s.name)}<span class="spk">${B.spark(c, { ...PLOT, w: 260, h: 34, line: "var(--acc)" })}</span></span><span class="f">${esc(s.total)}</span></div>`;
+      };
+      const R = {
+        lead: (b) => B.lead(b, { kicker: "Line 1", ...LOGO }),
+        items: (b) => B.section(b.heading, B.items(b, LOGO)),
+        calendar: (b) => B.section("Today, billable", B.events(b, { clock: "t24", allDay: "All day", ...LOGO })),
+        chart: (c) => {
+          const body = c.chart === "line" ? usage(c) : c.chart === "spark" ? spark(c) : table(c);
+          return `<section data-block="chart">${head(c.title, B.facts(c))}${body}<p class="say">${esc(c.takeaway)}</p></section>`;
+        },
+        quote: (q) => `<section data-block="quote">${head("Correspondence", q.app)}<p class="q">&ldquo;${esc(q.text)}&rdquo;</p><small class="n">${esc(q.author)}, by ${esc(q.app)}</small></section>`,
+        progress: (p) => `<section data-block="progress">${head("Plans", `${p.done} of ${p.total}`)}<div class="li goal"><span>${esc(p.statement)}<span class="cells">${B.cells(p, { w: 220, h: 12, gap: 4, on: "var(--acc)", offStroke: "var(--soft)" })}</span></span><span class="f">${p.done} of ${p.total}</span></div></section>`,
+        note: (n) => `<section data-block="note">${head("Notes", "")}<p class="nb">${esc(n.text)}</p></section>`,
+      };
+      const secs = B.layout(ed, R);
+      const s = ed.stats;
       const tot = s ? `<div class="tot"><div><span>Settled yesterday</span><b>${s.done}${s.you && s.gaia ? ` (${s.you} you, ${s.gaia} GAIA)` : ""}</b></div>${s.mail ? `<div><span>Correspondence</span><b>${s.mail} filed</b></div>` : ""}${s.focus ? `<div><span>Focus held today</span><b>${esc(s.focus)}</b></div>` : ""}<div class="bal"><span>Awaiting you</span><b>${owed}</b></div></div>` : "";
       const slip = skin.stub.id === "remit"
         ? `<div class="perf"><span>Detach and return</span></div><div class="slip">${grain("iv-g2", 0.9)}<div><span class="k">Remittance for invoice ${no}</span><b>${owed}</b><span class="k">Payable to GAIA Studios, on waking</span></div><div>${EXPLORER.code(ed.codes.qr, "qr")}<p class="ref">Ref. GA-${no}</p></div></div>`

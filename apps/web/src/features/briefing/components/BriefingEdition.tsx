@@ -1,7 +1,11 @@
 "use client";
 
 import { Link } from "@heroui/link";
-import type { BriefingEvent, BriefPoolItem } from "@shared/api/generated";
+import type {
+  BriefingEvent,
+  BriefingPayload,
+  BriefPoolItem,
+} from "@shared/api/generated";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import type { z } from "zod";
@@ -15,7 +19,11 @@ export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
   message?: string | null;
   /** What the brief read but GAIA left out of today's composition. */
   uncomposed?: BriefPoolItem[];
+  /** Composed blocks the day's edition could not draw in its idiom. */
+  undrawn?: BriefingPayload["undrawn"];
 };
+
+type UndrawnBlock = BriefingPayload["undrawn"][number];
 
 type EditionItem = BriefingEditionPayload["sections"][number]["items"][number];
 
@@ -58,6 +66,22 @@ function poolItemHref(item: BriefPoolItem): string | null {
   return item.url;
 }
 
+/** A block the edition left to this page, said in one line: a lead or group is listed with the sections. */
+function undrawnLine(block: UndrawnBlock): string | null {
+  switch (block.kind) {
+    case "chart":
+      return `${block.title}: ${block.takeaway}`;
+    case "quote":
+      return `“${block.quote.text}” ${block.quote.author}, ${block.quote.app}`;
+    case "progress":
+      return `${block.goal.statement}: ${block.goal.done} of ${block.goal.done + block.goal.open} done`;
+    case "note":
+      return block.text;
+    default:
+      return null;
+  }
+}
+
 function ItemGroup({
   title,
   children,
@@ -77,6 +101,9 @@ function ItemGroup({
 export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
   const calendar = payload.calendar ?? [];
   const uncomposed = payload.uncomposed ?? [];
+  const undrawn = (payload.undrawn ?? [])
+    .map(undrawnLine)
+    .filter((line): line is string => line !== null);
   return (
     <article className="w-full rounded-2xl bg-zinc-800 p-4">
       {imageUrl && (
@@ -126,6 +153,15 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
             ))}
           </ItemGroup>
         ))}
+        {undrawn.length > 0 && (
+          <ItemGroup title="More from GAIA">
+            {undrawn.map((line) => (
+              <p key={line} className="text-sm text-zinc-300">
+                {line}
+              </p>
+            ))}
+          </ItemGroup>
+        )}
         {uncomposed.length > 0 && (
           <ItemGroup title="Everything else">
             {uncomposed.map((item) => (

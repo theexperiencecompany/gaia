@@ -332,18 +332,13 @@ def week_start_utc(clock: UserClock) -> datetime:
 
 
 async def gather_week(user_id: str, clock: UserClock, completed: CompletedWork) -> BriefingWeek:
-    """Lay this week's completions (gathered since week_start_utc) out by owner and day.
+    """Count this week's completions (gathered since week_start_utc) by owner and day.
 
     Also includes the calendar for the seven days ahead.
     """
     monday = clock.now_local.date() - timedelta(days=clock.now_local.weekday())
     days = [BriefingWeekDay(you=0, gaia=0) for _ in range(7)]
-    shipped: list[str] = []
-    handled: list[str] = []
-    for docs, titles, by_gaia in (
-        (completed.gaia, handled, True),
-        (completed.user, shipped, False),
-    ):
+    for docs, by_gaia in ((completed.gaia, True), (completed.user, False)):
         for doc in reversed(docs):
             if doc.completed_at is None:
                 continue
@@ -354,11 +349,5 @@ async def gather_week(user_id: str, clock: UserClock, completed: CompletedWork) 
                 days[index].gaia += 1
             else:
                 days[index].you += 1
-            titles.append(doc.title)
     ahead = await gather_calendar(user_id, clock, days=7, days_ahead=1)
-    return BriefingWeek(
-        days=days,
-        shipped=shipped[:WEEK_LIST_LIMIT],
-        handled=handled[:WEEK_LIST_LIMIT],
-        ahead=ahead[:WEEK_LIST_LIMIT],
-    )
+    return BriefingWeek(days=days, ahead=ahead[:WEEK_LIST_LIMIT])
