@@ -95,7 +95,7 @@ def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
 
 
 def _length_problems(exc: ValidationError) -> list[str]:
-    errors: list[ErrorDetails] = exc.errors(include_url=False, include_input=False)
+    errors: list[ErrorDetails] = exc.errors()
     return [f"the {error['loc'][0]} once its slots are filled: {error['msg']}" for error in errors]
 
 
