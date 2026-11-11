@@ -40,9 +40,7 @@
     name: "The Broadsheet",
     axes: {
       masthead: [
-        { id: "didot", label: "Didot", stack: "Didot, 'Bodoni 72', 'Hoefler Text', Georgia, serif", ratio: 0.6 },
-        { id: "bodoni", label: "Bodoni 72", stack: "'Bodoni 72', Didot, 'Hoefler Text', Georgia, serif", ratio: 0.6 },
-        { id: "hoefler", label: "Hoefler Text", stack: "'Hoefler Text', 'Iowan Old Style', Georgia, serif", ratio: 0.62 },
+        { id: "caslon", label: "Libre Caslon", stack: "'Broadsheet Caslon', serif", ratio: 0.6 },
       ],
       tone: [
         { id: "warm", label: "warm foxed stock", paper: "#ece2c8", ink: "#211b10", soft: "#463c25", rule: "#2a2213", hair: "rgba(42,34,19,.45)", fox: "rgba(120,86,30,.10)" },
@@ -60,7 +58,7 @@
     radial-gradient(140% 90% at 50% 40%, transparent 55%, var(--fox) 100%),
     repeating-linear-gradient(0deg, rgba(0,0,0,.018) 0 1px, transparent 1px 3px),
     var(--paper);
-  font: 400 17px/1.5 'Iowan Old Style', 'Hoefler Text', Georgia, serif; -webkit-font-smoothing: antialiased; }
+  font: 400 17px/1.5 'Source Serif 4', serif; -webkit-font-smoothing: antialiased; }
 .t-broadsheet * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-broadsheet .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; opacity: .16; }
 .t-broadsheet .platefig { margin: 4px 0 18px; }
@@ -70,12 +68,12 @@
 .t-broadsheet .screen { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(0,0,0,.7) 24%, transparent 30%); background-size: 3.5px 3.5px; mix-blend-mode: multiply; opacity: .35; }
 .t-broadsheet .cap { font-size: 14px; line-height: 1.35; color: var(--soft); text-align: center; margin-top: 8px; }
 .t-broadsheet .cap span { display: block; font-size: 14px; letter-spacing: 0; margin-top: 2px; }
-.t-broadsheet .bk { font-family: Baskerville, 'Hoefler Text', Georgia, serif; }
+.t-broadsheet .bk { font-family: 'Broadsheet Caslon', serif; }
 .t-broadsheet .ears { display: flex; justify-content: space-between; font-size: 14px; line-height: 1.35; letter-spacing: 0; color: var(--soft); }
 .t-broadsheet .ears em { display: block; font-style: italic; text-transform: none; letter-spacing: 0; font-size: 14px; }
 .t-broadsheet .ears .r { text-align: right; }
 .t-broadsheet .plate { font-family: var(--display); font-weight: 700; text-align: center; line-height: .9; letter-spacing: -.01em; white-space: nowrap; margin-top: 8px; }
-.t-broadsheet .the { display: block; font-family: Baskerville, 'Hoefler Text', Georgia, serif; font-weight: 400; font-size: 18px; letter-spacing: 0; text-indent: .5em; margin-bottom: 6px; }
+.t-broadsheet .the { display: block; font-family: 'Broadsheet Caslon', serif; font-weight: 400; font-size: 18px; letter-spacing: 0; text-indent: .5em; margin-bottom: 6px; }
 .t-broadsheet .dbl { border: 0; border-top: 3px solid var(--rule); border-bottom: 1px solid var(--rule); height: 3px; margin-top: 18px; }
 .t-broadsheet .dateline { display: flex; justify-content: center; gap: .6em; font-size: 14px; letter-spacing: 0; color: var(--soft);
   padding: 9px 0 10px; border-bottom: 3px double var(--rule); }

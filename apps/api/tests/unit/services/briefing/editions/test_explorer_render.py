@@ -15,7 +15,6 @@ from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.editions.explorer_render import (
     _asset_data_uris,
-    _font_faces_css,
     _module_sources,
     _raw_assets,
     explorer_family_ids,
@@ -32,7 +31,6 @@ _CACHED_LOADERS = (
     explorer_family_ids,
     _raw_assets,
     _asset_data_uris,
-    _font_faces_css,
 )
 
 
@@ -182,19 +180,27 @@ class TestDocumentShell:
         assert "function mulberry32(a) {" in html
         assert "function strSeed(s) {" in html
 
-    def test_five_font_faces_are_embedded_as_data_uris(self) -> None:
-        html = _render()
-        # The templates' own inline SVG styles name these fonts too; count the head's rules only.
+    def test_only_the_drawn_familys_fonts_are_embedded(self) -> None:
+        html = _render(family="swiss")
         faces = html[html.index("@font-face{") : html.index("* { margin")]
+        families = re.findall(r"@font-face\{font-family:'([^']+)'", faces)
 
-        assert html.count("@font-face{") == 5
-        assert faces.count("font-family:'Aeonik Extended'") == 2
-        assert faces.count("font-family:'Playfair Display'") == 3
-        assert faces.count("font-style:italic") == 1
-        assert "src:url(data:font/woff2;base64," in faces
-        # The rules are concatenated with nothing between them, so each one
-        # butts straight against the next.
-        assert faces.count("format('woff2');}@font-face{") == 4
+        assert families == [
+            "Aeonik Extended",
+            "Aeonik Extended",
+            "TeX Gyre Heros",
+            "TeX Gyre Heros",
+            "TeX Gyre Heros",
+        ]
+        assert faces.count("src:url(data:font/woff2;base64,") == 5
+        assert "size-adjust" not in faces
+
+    def test_a_scaled_face_carries_its_size_adjust(self) -> None:
+        html = _render(family="postal")
+        cutive = re.search(r"@font-face\{font-family:'Cutive';[^}]*\}", html)
+
+        assert cutive is not None
+        assert "size-adjust:83%;" in cutive.group()
 
 
 @pytest.mark.unit

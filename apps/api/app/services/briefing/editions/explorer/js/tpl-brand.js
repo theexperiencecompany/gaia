@@ -50,20 +50,20 @@
       ],
     },
     css: `
-.t-band { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; background: var(--field); color: #f2f2f4; font: 400 17px/1.45 system-ui, -apple-system, 'Helvetica Neue', sans-serif; padding-bottom: 30px; }
+.t-band { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; background: var(--field); color: #f2f2f4; font: 400 17px/1.45 'TeX Gyre Heros', sans-serif; padding-bottom: 30px; }
 .t-band * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-band .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: soft-light; opacity: .5; z-index: -1; }
 .t-band .hd::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--acc); opacity: .55; box-shadow: 0 0 14px 2px var(--acc); }
 .t-band .hd { position: relative; height: var(--h); overflow: hidden; }
 .t-band .hd img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 70%; filter: var(--filter); }
 .t-band .hd .k { position: absolute; left: 28px; top: 28px; font-size: 14px; font-weight: 600; color: #ffffff; letter-spacing: .02em; z-index: 1; }
-.t-band .hd .mark { position: absolute; left: 24px; top: 50px; font: 700 104px/1 'Aeonik Extended', system-ui, sans-serif; color: #ffffff; letter-spacing: -.01em; z-index: 1; }
+.t-band .hd .mark { position: absolute; left: 24px; top: 50px; font: 700 104px/1 'Aeonik Extended', 'TeX Gyre Heros', sans-serif; color: #ffffff; letter-spacing: -.01em; z-index: 1; }
 .t-band .hd .date { position: absolute; left: 28px; top: 166px; font-size: 15px; color: #ffffff; z-index: 1; }
 .t-band .body { padding: 30px 28px 0; }
 .t-band .deck { font-size: 27px; line-height: 1.28; letter-spacing: -.01em; font-weight: 500; padding-bottom: 26px; border-bottom: 1px solid var(--hair); }
 .t-band section { padding: 34px 0 10px; }
 .t-band section + section { border-top: 1px solid var(--hair); }
-.t-band h2 { font: 600 25px/1.2 'Aeonik Extended', system-ui, sans-serif; letter-spacing: -.01em; margin-bottom: 16px; }
+.t-band h2 { font: 600 25px/1.2 'Aeonik Extended', 'TeX Gyre Heros', sans-serif; letter-spacing: -.01em; margin-bottom: 16px; }
 .t-band h2 b { color: var(--acc); font-weight: 600; }
 .t-band .row { display: grid; grid-template-columns: 92px 1fr; padding: 8px 0; line-height: 1.5; }
 .t-band .t { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; padding-top: 2px; }
@@ -74,7 +74,7 @@
 .t-band .figs { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 30px; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
 .t-band .figs div { padding: 16px 14px; }
 .t-band .figs div + div { border-left: 1px solid var(--hair); }
-.t-band .figs b { display: block; font: 700 40px/1 'Aeonik Extended', system-ui, sans-serif; color: var(--acc); font-variant-numeric: tabular-nums; }
+.t-band .figs b { display: block; font: 700 40px/1 'Aeonik Extended', 'TeX Gyre Heros', sans-serif; color: var(--acc); font-variant-numeric: tabular-nums; }
 .t-band .figs span { display: block; font-size: 15px; font-weight: 600; margin-top: 8px; }
 .t-band .figs small { display: block; font-size: 14px; color: #9fa1a8; }
 .t-band .foot { margin-top: 18px; font-size: 14px; color: #8d9098; }
@@ -136,21 +136,21 @@ ${grain("bd-g", 0.9)}
     },
     css: `
 .t-playfair { position: relative; isolation: isolate; overflow: hidden; box-sizing: border-box; width: 540px; padding: 34px 34px 36px; color: var(--ink);
-  background: repeating-linear-gradient(90deg, var(--mark) 0 1px, transparent 1px 26px), var(--ground); font: 400 17px/1.5 Charter, Georgia, serif; }
+  background: repeating-linear-gradient(90deg, var(--mark) 0 1px, transparent 1px 26px), var(--ground); font: 400 17px/1.5 'Literata', serif; }
 .t-playfair * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-playfair .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; opacity: .12; z-index: -1; }
-.t-playfair .wm { position: absolute; top: 20px; left: 50%; transform: translateX(-38%); font: 700 250px/1 'Playfair Display', Georgia, serif; color: var(--mark); letter-spacing: -.04em; z-index: -1;
+.t-playfair .wm { position: absolute; top: 20px; left: 50%; transform: translateX(-38%); font: 700 250px/1 'Playfair Display', serif; color: var(--mark); letter-spacing: -.04em; z-index: -1;
   text-shadow: 1px 1px 0 rgba(255,255,255,.18), -1px -1px 0 rgba(0,0,0,.05); }
 .t-playfair .folio { display: flex; align-items: center; gap: 12px; font-size: 14px; letter-spacing: 0; color: var(--soft); }
 .t-playfair .folio::before, .t-playfair .folio::after { content: ""; flex: 1; border-top: 1px solid var(--gilt); }
 .t-playfair .folio b { color: var(--gilt); font-weight: 400; }
-.t-playfair h1 { font: italic 500 80px/.92 'Playfair Display', Georgia, serif; text-align: center; margin-top: 26px; letter-spacing: -.01em; }
+.t-playfair h1 { font: italic 500 80px/.92 'Playfair Display', serif; text-align: center; margin-top: 26px; letter-spacing: -.01em; }
 .t-playfair .rule { border-top: 1px solid var(--ink); margin: 24px 0 18px; }
-.t-playfair .deck { font: italic 500 25px/1.32 'Playfair Display', Georgia, serif; text-align: center; padding: 0 12px; }
+.t-playfair .deck { font: italic 500 25px/1.32 'Playfair Display', serif; text-align: center; padding: 0 12px; }
 .t-playfair section { margin-top: 46px; }
 .t-playfair h2 { display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--ink); margin-bottom: 12px; }
-.t-playfair h2 b { font: 700 26px/1 'Playfair Display', Georgia, serif; }
-.t-playfair h2 span { font: italic 500 23px/1.2 'Playfair Display', Georgia, serif; }
+.t-playfair h2 b { font: 700 26px/1 'Playfair Display', serif; }
+.t-playfair h2 span { font: italic 500 23px/1.2 'Playfair Display', serif; }
 .t-playfair h2 em { margin-left: auto; font-size: 15px; color: var(--soft); }
 .t-playfair .r { display: grid; grid-template-columns: 92px 1fr; padding: 9px 0; line-height: 1.5; }
 .t-playfair .r .k { font-size: 16px; font-variant-numeric: lining-nums tabular-nums; padding-top: 1px; }
@@ -159,7 +159,7 @@ ${grain("bd-g", 0.9)}
 .t-playfair .r > span:last-child { text-wrap: pretty; }
 .t-playfair .r .tag { display: block; font-style: italic; font-size: 15px; color: var(--soft); margin-top: 2px; }
 .t-playfair .figs { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; margin-top: 34px; padding: 18px 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
-.t-playfair .figs b { display: block; font: 700 42px/1 'Playfair Display', Georgia, serif; font-variant-numeric: lining-nums; }
+.t-playfair .figs b { display: block; font: 700 42px/1 'Playfair Display', serif; font-variant-numeric: lining-nums; }
 .t-playfair .figs span { display: block; font-style: italic; font-size: 16px; margin-top: 8px; color: var(--soft); }
 .t-playfair .col { margin-top: 22px; text-align: center; font-size: 14px; letter-spacing: 0; color: var(--soft); }
 `,

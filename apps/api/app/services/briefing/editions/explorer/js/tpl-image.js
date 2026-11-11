@@ -35,8 +35,7 @@
         { id: "aurora", label: "aurora (deep teal to green)", a: "#0e2a33", b: "#1c4747", c: "#5aa985", mid: "#1b4040", ink: "#eef5ef", soft: "#cfe0d6" },
       ],
       face: [
-        { id: "helvetica", label: "Helvetica Neue", head: "'Helvetica Neue', Helvetica, Arial, sans-serif", w: 700 },
-        { id: "aeonik", label: "Aeonik Extended", head: "'Aeonik Extended', 'Helvetica Neue', sans-serif", w: 700 },
+        { id: "schibsted", label: "Schibsted Grotesk", head: "'Schibsted Grotesk', sans-serif", w: 700 },
       ],
       weave: [
         { id: "canvas", label: "canvas weave", op: ".7" },
@@ -44,7 +43,7 @@
       ],
     },
     css: `
-.t-gradient { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; padding: 36px 30px 34px; color: var(--ink); font: 400 17px/1.45 Menlo, 'SF Mono', monospace;
+.t-gradient { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; padding: 36px 30px 34px; color: var(--ink); font: 400 17px/1.45 'JetBrains Mono', monospace;
   background-color: var(--mid); background-image: ${WEAVE}, linear-gradient(180deg, var(--a) 0%, var(--b) 55%, var(--c) 100%); }
 .t-gradient * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-gradient .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: soft-light; opacity: var(--weave); z-index: -1; }
@@ -106,14 +105,13 @@ ${EXPLORER.fold(secs).join("")}
         { id: "cypress", label: "crop: the cypress", pos: "78% 50%" },
       ],
       face: [
-        { id: "didot", label: "Didot", head: "Didot, 'Bodoni 72', serif" },
-        { id: "bodoni", label: "Bodoni 72", head: "'Bodoni 72', Didot, serif" },
+        { id: "bodoni", label: "Bodoni Moda", head: "'Bodoni Moda', serif" },
       ],
     },
     css: `
-.t-exhibition { position: relative; box-sizing: border-box; width: 540px; background: var(--wall); color: var(--ink); font: 400 17px/1.45 'Helvetica Neue', Helvetica, Arial, sans-serif; padding-bottom: 34px; }
+.t-exhibition { position: relative; box-sizing: border-box; width: 540px; background: var(--wall); color: var(--ink); font: 400 17px/1.45 'TeX Gyre Heros', sans-serif; padding-bottom: 34px; }
 .t-exhibition * { box-sizing: border-box; margin: 0; padding: 0; }
-.t-exhibition .mono { font-family: Menlo, 'SF Mono', monospace; }
+.t-exhibition .mono { font-family: 'TeX Gyre Heros', sans-serif; }
 .t-exhibition .art { position: relative; height: 360px; overflow: hidden; border-bottom: 4px solid #8a6a2a; }
 .t-exhibition .art img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: var(--pos); transform: scale(1.12); filter: saturate(1.05) contrast(1.04); }
 .t-exhibition .art::after { content: ""; position: absolute; inset: 0; background: ${WEAVE}; mix-blend-mode: multiply; }
@@ -194,30 +192,30 @@ ${EXPLORER.fold(secs).join("")}
       ],
     },
     css: `
-.t-weekly { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; padding: 32px 30px 34px; background: var(--paper); color: var(--ink); font: 400 17px/1.45 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+.t-weekly { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; padding: 32px 30px 34px; background: var(--paper); color: var(--ink); font: 400 17px/1.45 'TeX Gyre Heros', sans-serif; }
 .t-weekly * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-weekly .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; opacity: .12; z-index: -1; }
-.t-weekly .pf { font-family: 'Playfair Display', Georgia, serif; }
+.t-weekly .pf { font-family: 'Newsreader', serif; }
 .t-weekly .k { font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--soft); }
 .t-weekly .mast { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 12px; border-bottom: 2px solid var(--ink); box-shadow: 0 4px 0 -3px var(--ink); margin-top: 6px; }
-.t-weekly h1 { font: 700 82px/.95 'Playfair Display', Georgia, serif; letter-spacing: -.02em; }
+.t-weekly h1 { font: 700 82px/.95 'Newsreader', serif; letter-spacing: -.02em; }
 .t-weekly .no { text-align: right; font-size: 14px; color: var(--soft); }
-.t-weekly .no b { display: block; font: 700 30px/1 'Playfair Display', Georgia, serif; color: var(--ink); }
-.t-weekly .deck { font: italic 500 25px/1.3 'Playfair Display', Georgia, serif; margin-top: 18px; padding-bottom: 20px; border-bottom: 1px solid var(--hair); }
+.t-weekly .no b { display: block; font: 700 30px/1 'Newsreader', serif; color: var(--ink); }
+.t-weekly .deck { font: italic 500 25px/1.3 'Newsreader', serif; margin-top: 18px; padding-bottom: 20px; border-bottom: 1px solid var(--hair); }
 .t-weekly section { margin-top: 42px; }
-.t-weekly h2 { font: 700 23px/1.2 'Playfair Display', Georgia, serif; }
-.t-weekly h2 small { display: block; font: 400 14px/1.4 'Helvetica Neue', Helvetica, sans-serif; color: var(--soft); margin-top: 2px; }
+.t-weekly h2 { font: 700 23px/1.2 'Newsreader', serif; }
+.t-weekly h2 small { display: block; font: 400 14px/1.4 'TeX Gyre Heros', sans-serif; color: var(--soft); margin-top: 2px; }
 .t-weekly .list { margin-top: 8px; border-top: 1px solid var(--ink); }
 .t-weekly .li { display: grid; grid-template-columns: 58px 1fr; padding: 8px 0; line-height: 1.5; }
 .t-weekly .li > span:last-child { text-wrap: pretty; }
 .t-weekly .list.ruled .li { border-bottom: 1px solid var(--hair); }
 .t-weekly .li.one { grid-template-columns: 1fr; }
-.t-weekly .li .num { font: 400 19px/1.3 'Playfair Display', Georgia, serif; }
-.t-weekly .li .day { font: italic 700 17px/1.5 'Playfair Display', Georgia, serif; font-variant-numeric: lining-nums tabular-nums; }
+.t-weekly .li .num { font: 400 19px/1.3 'Newsreader', serif; }
+.t-weekly .li .day { font: italic 700 17px/1.5 'Newsreader', serif; font-variant-numeric: lining-nums tabular-nums; }
 .t-weekly .li b { color: var(--accText); }
 .t-weekly .li .n { display: block; font-size: 15px; color: var(--soft); }
 .t-weekly .figs { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 18px; margin-top: 12px; }
-.t-weekly .figs b { display: block; font: 700 46px/1 'Playfair Display', Georgia, serif; font-variant-numeric: lining-nums; }
+.t-weekly .figs b { display: block; font: 700 46px/1 'Newsreader', serif; font-variant-numeric: lining-nums; }
 .t-weekly .figs span { display: block; font-size: 15px; margin-top: 4px; }
 .t-weekly .figs small { display: block; font-size: 14px; color: var(--soft); }
 .t-weekly .legend { display: flex; gap: 16px; margin-top: 10px; font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--soft); }

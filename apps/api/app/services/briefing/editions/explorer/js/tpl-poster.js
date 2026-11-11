@@ -31,13 +31,13 @@
         { id: "yellow", label: "yellow marker", mark: "#ffd23f" },
       ],
       face: [
-        { id: "helvetica", label: "Helvetica Neue", stack: "'Helvetica Neue', Helvetica, Arial, sans-serif", ratio: 0.6 },
-        { id: "aeonik", label: "Aeonik Extended", stack: "'Aeonik Extended', 'Helvetica Neue', sans-serif", ratio: 0.78 },
+        { id: "heros", label: "TeX Gyre Heros", stack: "'TeX Gyre Heros', sans-serif", ratio: 0.6 },
+        { id: "aeonik", label: "Aeonik Extended", stack: "'Aeonik Extended', 'TeX Gyre Heros', sans-serif", ratio: 0.78 },
       ],
     },
     css: `
 .t-swiss { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; min-height: 820px; padding: 32px 28px 36px 0; background: var(--field); color: var(--ink);
-  font: 400 17px/1.4 'Helvetica Neue', Helvetica, Arial, sans-serif; display: grid; grid-template-columns: 158px 1fr; }
+  font: 400 17px/1.4 'TeX Gyre Heros', sans-serif; display: grid; grid-template-columns: 158px 1fr; }
 .t-swiss * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-swiss .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: soft-light; opacity: .35; z-index: -1; }
 .t-swiss .fold { position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: linear-gradient(180deg, rgba(0,0,0,.08), rgba(255,255,255,.18)); pointer-events: none; }

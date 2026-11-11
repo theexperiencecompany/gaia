@@ -43,8 +43,7 @@
         { id: "canary", label: "canary second sheet", paper: "#f5e9b4", rule: "#c9b773" },
       ],
       face: [
-        { id: "amtype", label: "American Typewriter", stack: "'American Typewriter', 'Courier New', monospace", size: "17px" },
-        { id: "courier", label: "Courier", stack: "'Courier New', Courier, monospace", size: "18px" },
+        { id: "courierprime", label: "Courier Prime", stack: "'Courier Prime', monospace", size: "18px" },
       ],
       stamp: [
         { id: "red", label: "red stamp", ink: "#b02a22" },
@@ -64,7 +63,7 @@
 .t-memo .clip { position: absolute; top: -16px; left: 70px; width: 26px; height: 74px; }
 .t-memo .title { text-align: center; font-size: 24px; letter-spacing: .5em; padding-left: .5em; }
 .t-memo .stamp { position: absolute; top: 96px; right: 26px; transform: rotate(8deg); color: var(--ink); border: 2.5px solid var(--ink); border-radius: 3px;
-  padding: 4px 10px 5px; text-align: center; font: 700 15px/1.2 'Courier New', monospace; letter-spacing: .14em; text-shadow: none; opacity: .92; filter: url(#mm-ink); }
+  padding: 4px 10px 5px; text-align: center; font: 700 15px/1.2 'Courier Prime', monospace; letter-spacing: .14em; text-shadow: none; opacity: .92; filter: url(#mm-ink); }
 .t-memo .stamp b { display: block; font-size: 19px; }
 .t-memo .head { position: relative; display: grid; grid-template-columns: 76px 1fr; row-gap: 2px; margin-top: 30px; }
 .t-memo .head.ghost { position: absolute; top: 0; left: 0; right: 0; margin: 0; color: #2b3f7a; opacity: .09; transform: translate(2px, 3px); text-shadow: none; }
@@ -143,8 +142,7 @@ ${inkMask("mm-ink")}
         { id: "ink", label: "black only", rub: "#2a241a" },
       ],
       face: [
-        { id: "hoefler", label: "Hoefler Text", stack: "'Hoefler Text', Baskerville, Georgia, serif" },
-        { id: "baskerville", label: "Baskerville", stack: "Baskerville, 'Hoefler Text', Georgia, serif" },
+        { id: "baskerville", label: "Libre Baskerville", stack: "'Libre Baskerville', serif" },
       ],
       plate: [
         { id: "engraving", label: "engraved plate" },

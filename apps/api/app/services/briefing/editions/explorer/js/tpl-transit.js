@@ -37,8 +37,7 @@
         { id: "white", label: "white enamel", ground: "#f7f7f5", ink: "#16171b", soft: "#53555c", panel: "#ebebe7" },
       ],
       face: [
-        { id: "helvetica", label: "Helvetica Neue", stack: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
-        { id: "johnston", label: "Gill-style (Avenir)", stack: "'Avenir Next', 'Helvetica Neue', sans-serif" },
+        { id: "overpass", label: "Overpass", stack: "'Overpass', sans-serif" },
       ],
     },
     css: `
@@ -149,7 +148,7 @@ ${legend}
       ],
     },
     css: `
-.t-boardingpass { position: relative; box-sizing: border-box; width: 540px; padding: 34px 26px 44px; background: radial-gradient(120% 80% at 30% 0%, color-mix(in srgb, var(--desk) 80%, #ffffff) 0%, var(--desk) 70%); color: #1b1c22; font: 400 17px/1.4 'Helvetica Neue', Helvetica, Arial, sans-serif; --ink: #1b1c22; }
+.t-boardingpass { position: relative; box-sizing: border-box; width: 540px; padding: 34px 26px 44px; background: radial-gradient(120% 80% at 30% 0%, color-mix(in srgb, var(--desk) 80%, #ffffff) 0%, var(--desk) 70%); color: #1b1c22; font: 400 17px/1.4 'TeX Gyre Heros', sans-serif; --ink: #1b1c22; }
 .t-boardingpass * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-boardingpass .pass { position: relative; isolation: isolate; transform: rotate(-.6deg); filter: drop-shadow(0 14px 18px rgba(0,0,0,.28)) drop-shadow(0 2px 3px rgba(0,0,0,.2)); }
 .t-boardingpass .body, .t-boardingpass .stub { position: relative; background: var(--paper); overflow: hidden; }
@@ -157,7 +156,7 @@ ${legend}
 .t-boardingpass .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; opacity: .1; }
 .t-boardingpass .guil { position: absolute; left: 0; right: 0; top: 150px; width: 100%; height: 200px; opacity: .5; pointer-events: none; }
 .t-boardingpass .top { position: relative; background: var(--liv); color: #ffffff; padding: 18px 22px; display: flex; justify-content: space-between; align-items: center; }
-.t-boardingpass .air { font: 700 24px/1 'Aeonik Extended', 'Helvetica Neue', sans-serif; letter-spacing: .02em; }
+.t-boardingpass .air { font: 700 24px/1 'Aeonik Extended', 'TeX Gyre Heros', sans-serif; letter-spacing: .02em; }
 .t-boardingpass .top small { display: block; font-size: 14px; font-weight: 700; letter-spacing: 0; margin-top: 6px; opacity: .9; }
 .t-boardingpass .top .r { text-align: right; font-size: 14px; font-weight: 700; letter-spacing: 0; }
 .t-boardingpass .top .r b { display: block; font-size: 19px; letter-spacing: .04em; margin-top: 4px; }
@@ -190,14 +189,14 @@ ${legend}
 .t-boardingpass .stub::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: linear-gradient(135deg, var(--desk) 50%, transparent 50%) 0 0 / 10px 6px repeat-x, linear-gradient(225deg, var(--desk) 50%, transparent 50%) 0 0 / 10px 6px repeat-x; }
 .t-boardingpass .hole { position: absolute; right: 26px; top: 20px; width: 18px; height: 18px; border-radius: 50%; background: var(--desk); box-shadow: inset 0 2px 3px rgba(0,0,0,.35); }
 .t-boardingpass .sh { display: flex; justify-content: space-between; align-items: baseline; padding-right: 40px; margin-bottom: 8px; }
-.t-boardingpass .sh b { font: 700 18px/1 'Aeonik Extended', 'Helvetica Neue', sans-serif; }
+.t-boardingpass .sh b { font: 700 18px/1 'Aeonik Extended', 'TeX Gyre Heros', sans-serif; }
 .t-boardingpass .svc { display: grid; grid-template-columns: 58px 1fr; padding: 4px 0; font-size: 17px; }
 .t-boardingpass .svc > span:first-child { font-weight: 700; font-variant-numeric: tabular-nums; }
 .t-boardingpass .svc > span:last-child, .t-boardingpass .it > span:last-child { text-wrap: pretty; }
 .t-boardingpass .svc .n { color: #5b5c63; }
 .t-boardingpass .code { margin: 16px auto 0; height: 64px; }
 .t-boardingpass .code svg { display: block; width: 100%; height: 100%; }
-.t-boardingpass .codeno { text-align: center; font: 600 13px/1 Menlo, monospace; letter-spacing: .24em; margin-top: 8px; color: #3c3c42; }
+.t-boardingpass .codeno { text-align: center; font: 600 13px/1 'JetBrains Mono', monospace; letter-spacing: .24em; margin-top: 8px; color: #3c3c42; }
 `,
     render(ed, skin) {
       const c = ed.content;

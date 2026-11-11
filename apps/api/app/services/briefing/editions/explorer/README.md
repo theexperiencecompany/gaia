@@ -36,7 +36,8 @@ teal and lime; the Boarding Pass liveries are now midnight + sunflower, sky blue
 signal red and graphite + champagne; the Horizon adds meadow, ember, rosewater and
 aurora. Applied by a three-way merge, so every deviation below is kept.
 
-`assets/assets.json` (webfonts and the band wallpaper) is carried over.
+`assets/assets.json` holds the band wallpaper. The webfonts live in
+`editions/fonts/` (deviation 10).
 `assets/brand/tec_mark_black.webp` is The Experience Company symbol, read by Air
 Mail as `TEC_MARK`. City stamps and paintings are not committed: both are loaded
 by URL (`assets/stamps/cities.json` with `editions/stamps.py`,
@@ -119,6 +120,21 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    module, and the Code 128 then reads only at render size, not at the delivered
    1080px. `tests/integration/test_edition_codes_scan.py` decodes each code from
    the rendered PNG.
+10. **Every family is set in embedded type (2026-11-11).** The templates named
+   macOS system faces (Helvetica Neue, Didot, Iowan Old Style, Menlo, American
+   Typewriter, ...), so a Linux render fell back to whatever the host had. Each
+   family's stacks now name the open-licensed faces the founder approved in the
+   type gallery, one face per stack plus its generic, and nothing else changed in
+   those declarations. `editions/fonts/` holds the subset WOFF2 files, their
+   licences and `fonts.json`, built by `scripts/build_edition_fonts.py` from pinned
+   sources. `explorer_render.py` embeds, as data URIs, only the families the drawn
+   family is set in (`edition_fonts.EDITION_FAMILIES`). Playfair Display and Aeonik
+   Extended moved out of `assets.json` into that directory. A type axis whose
+   options now draw the same face is one option: broadsheet's masthead, gradient's
+   and exhibition's heads, librarycard's, menu's, memo's, almanac's, flightplan's,
+   instrument's and metromap's faces. The invoice keeps only its Heros figures, so a
+   row is never set in two families. Memo keeps the Courier option's 18px. Swiss
+   keeps both its faces, which are different approved faces.
 
 The painting that `broadsheet`, `exhibition` and `almanac` hang is drawn from the
 user's artwork shuffle bag, over the Met Open Access works whose image fits that
