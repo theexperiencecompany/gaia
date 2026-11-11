@@ -166,13 +166,15 @@ def figures_in(texts: Iterable[str]) -> frozenset[str]:
 
 
 def _rendered_by_slot(values: SlotValues) -> list[tuple[str, str]]:
-    """Return every slot a figure comes from, beside the value it renders."""
-    slots = [(f"[[count:{slot.value}]]", str(n)) for slot, n in values.counts.items() if n]
-    for fact_id, fact in values.facts.items():
-        if fact.count > 1:
-            slots.append((f"[[fact:{fact_id}.count]]", str(fact.count)))
-        if fact.time is not None:
-            slots.append((f"[[fact:{fact_id}.time]]", fact.time))
+    """Return every slot a typed figure can come from, beside the value it renders.
+
+    A count slot is left out: its figure is in _counted, so prose that types it is never flagged.
+    """
+    slots = [
+        (f"[[fact:{fact_id}.time]]", fact.time)
+        for fact_id, fact in values.facts.items()
+        if fact.time is not None
+    ]
     slots += [
         (f"[[series:{series_id}.{figure_field.value}]]", text)
         for series_id, figures in values.series.items()

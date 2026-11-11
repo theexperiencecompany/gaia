@@ -5,7 +5,7 @@ not meetings. An event that crosses midnight counts on each day for the hours it
 """
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import datetime
 
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.brief_pool_models import DataSeries
@@ -27,9 +27,7 @@ def _interval(event: GoogleCalendarEventResource) -> tuple[datetime, datetime] |
         return None
     if event.start.dateTime is None or event.end.dateTime is None:
         return None
-    start = datetime.fromisoformat(event.start.dateTime).astimezone(UTC)
-    end = datetime.fromisoformat(event.end.dateTime).astimezone(UTC)
-    return (start, end) if end > start else None
+    return datetime.fromisoformat(event.start.dateTime), datetime.fromisoformat(event.end.dateTime)
 
 
 def _covered_seconds(intervals: list[tuple[datetime, datetime]]) -> float:
@@ -37,10 +35,8 @@ def _covered_seconds(intervals: list[tuple[datetime, datetime]]) -> float:
     total = 0.0
     reach: datetime | None = None
     for start, end in sorted(intervals):
-        if reach is not None and start < reach:
-            start = reach
-        if end > start:
-            total += (end - start).total_seconds()
+        counted_from = start if reach is None else max(start, reach)
+        total += max((end - counted_from).total_seconds(), 0.0)
         reach = end if reach is None else max(reach, end)
     return total
 
@@ -53,11 +49,7 @@ def calendar_series(
     hours: list[float] = []
     for day in window.dates:
         day_start, day_end = window.bounds(day)
-        clipped = [
-            (max(start, day_start), min(end, day_end))
-            for start, end in intervals
-            if start < day_end and end > day_start
-        ]
+        clipped = [(max(start, day_start), min(end, day_end)) for start, end in intervals]
         hours.append(round(_covered_seconds(clipped) / _SECONDS_PER_HOUR, _HOURS_DECIMALS))
     name = SeriesName(
         id="calendar_meeting_hours",

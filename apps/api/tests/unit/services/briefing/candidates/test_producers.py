@@ -137,6 +137,25 @@ class TestTrackedTodos:
 
         assert (found.app, found.source, found.count, found.todo_id) == ("Gmail", "gmail", 2, "t1")
 
+    def test_only_a_gmail_todo_carries_a_ref_to_its_thread(self) -> None:
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f")
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="int-9")
+        work = TrackedWork(
+            blocked=[
+                _todo("t1", "Reply to Dan", external_ref=thread),
+                _todo("t2", "Triage the mailbox", external_ref=desk),
+                _todo("t3", "Plain todo"),
+            ]
+        )
+
+        found = waiting_candidates(work)
+
+        assert [(c.todo_id, c.ref) for c in found] == [
+            ("t1", "gmail:18c2f"),
+            ("t2", None),
+            ("t3", None),
+        ]
+
     def test_gaias_finished_work_then_its_running_work(self) -> None:
         work = TrackedWork(
             completed=[_todo("c1", "Investor update")], running=[_todo("r1", "Vet the Q4 leads")]
