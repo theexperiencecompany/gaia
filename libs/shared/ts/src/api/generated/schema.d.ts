@@ -7018,7 +7018,7 @@ export interface components {
             edition_image_url: string | null;
             /**
              * Edition Name
-             * @description The edition family's display name (e.g. Air Mail); None for the legacy edition.
+             * @description Air Mail only: the family's name; None for every other family.
              */
             edition_name: string | null;
             /** Edition Paper */
