@@ -198,9 +198,7 @@ The HEADLINE and LEDE are printed above the brief's items, so they are written
 from TODAY'S FACTS alone: name only people and things that appear in an item or
 in today's calendar, and never say something needs the user, or mention an event,
 unless an item or the calendar shows it. Yesterday, the user's replies and goal
-memory may shape the message and caption, never the headline or lede. Once the
-slots are filled, a checker reads the headline, lede, caption and message against
-these facts and rejects any claim they do not support.
+memory may shape the message and caption, never the headline or lede.
 
 {craft}
 
@@ -237,14 +235,6 @@ class VoicePromptBlocks:
     setup: str = ""
     # What the user's connected apps hold that needs them, with what earlier briefs said.
     signals: str = ""
-
-    @property
-    def context(self) -> str:
-        """Return everything the model is told besides its instructions: what its prose may cite."""
-        return (
-            f"{self.reader}\n{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
-            f"\n{self.setup}\n{self.signals}"
-        )
 
 
 def _signals_section(signals: str) -> str:
@@ -436,9 +426,7 @@ _WEEKLY_HEADLINE = """
 The HEADLINE names the week's shape in one plain line and the LEDE sets the week up in
 1-2 sentences, both from THIS WEEK'S FACTS alone: name only people and things that appear
 in an item or in the week ahead, and never say something needs the user unless an item
-shows it. Goal memory may shape the message and caption, never the headline or lede. Once
-the slots are filled, a checker reads the headline, lede, caption and message against these
-facts and rejects any claim they do not support.
+shows it. Goal memory may shape the message and caption, never the headline or lede.
 """.strip()
 
 _WEEKLY_VOICE_CONTRACT = f"""

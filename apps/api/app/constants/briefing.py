@@ -78,6 +78,8 @@ MAX_COMPOSITION_ATTEMPTS: Final[int] = 2
 #: The composition call's metering label, and its heading check's.
 BRIEF_COMPOSITION_LABEL: Final[str] = "brief_composition"
 BRIEF_HEADING_CHECK_LABEL: Final[str] = "brief_heading_check"
+#: The heading check judges, it does not write: the same groups get the same verdict.
+BRIEF_HEADING_CHECK_TEMPERATURE: Final[float] = 0.0
 # The page budget a composition is held to: what one edition image and a minute's read can carry.
 MAX_BRIEF_BLOCKS: Final[int] = 7
 MAX_BRIEF_ITEMS: Final[int] = 10
@@ -116,13 +118,9 @@ MAX_BRIEF_CAPTION_CHARS: Final[int] = 148
 MAX_BRIEF_MESSAGE_CHARS: Final[int] = 2700
 # How many recent briefs' opening lines the model sees, so today's opens differently.
 RECENT_OPENINGS_SHOWN: Final[int] = 5
-# Voice attempts per brief: one mend of the last brief when its slots or its claims fail
-# the facts (the mend shows it what it wrote), then the run fails rather than ship it.
+# Voice attempts per brief: one mend of the last brief when its slots fail the facts (the
+# mend shows it what it wrote), then the run fails rather than ship it.
 MAX_VOICE_ATTEMPTS: Final[int] = 2
-#: The faithfulness check's metering label.
-BRIEF_FAITHFULNESS_LABEL: Final[str] = "brief_faithfulness_check"
-#: The check judges, it does not write: the same draft gets the same verdict.
-BRIEF_FAITHFULNESS_TEMPERATURE: Final[float] = 0.0
 
 # Events the weekly recap carries from the week ahead.
 WEEK_LIST_LIMIT: Final[int] = 5

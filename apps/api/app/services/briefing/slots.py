@@ -273,17 +273,10 @@ def slot_problems(
     return problems
 
 
-# Brackets the faithfulness check sees around each value a slot filled in.
-FILLED_OPEN, FILLED_CLOSE = "⟦", "⟧"
-
-
-def render_slots(
-    text: str, values: SlotValues, links: Mapping[int, str], *, mark_filled: bool = False
-) -> str:
+def render_slots(text: str, values: SlotValues, links: Mapping[int, str]) -> str:
     """Fill every slot; a fact's phrase gets the fact's address in links once, else stays text.
 
-    mark_filled brackets each filled value for the faithfulness check. Raises SlotError on a
-    slot slot_problems would have named.
+    Raises SlotError on a slot slot_problems would have named.
     """
     linked: set[int] = set()
 
@@ -296,11 +289,7 @@ def render_slots(
         linked.add(fact_id)
         return f"[{phrase}]({url})"
 
-    def fill(match: re.Match[str]) -> str:
-        value = _value(match, values)
-        return f"{FILLED_OPEN}{value}{FILLED_CLOSE}" if mark_filled else value
-
-    return _VALUE_SLOT_RE.sub(fill, LINK_SLOT_RE.sub(link, text))
+    return _VALUE_SLOT_RE.sub(lambda m: _value(m, values), LINK_SLOT_RE.sub(link, text))
 
 
 def referenced_facts(text: str) -> set[int]:

@@ -248,7 +248,6 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         Writing(
             # What was done since the last brief is the user's own record, quotable as it stands.
             values=replace(facts.values, quoted=facts.values.quoted | figures_in([lookback_block])),
-            context=f"Today is {clock.now_local:%A %-d %B %Y}.\n{blocks.context}",
             lead=None if winback.is_winback or ladder.wind_down is not None else facts.lead,
             kind=BRIEFING_KIND_DAILY,
         ),

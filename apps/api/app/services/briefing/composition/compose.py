@@ -1,11 +1,10 @@
-"""Compose a brief over its fact pool in one structured call, held to the pool and to the truth.
+"""Compose a brief over its fact pool in one structured call, held to the pool.
 
-A composition that breaks its contract, or whose words claim what the pool does not hold,
+A composition that breaks its contract, or heads a group with words untrue of its items,
 is sent back once with every problem named; a second failure fails the run loud, before
 anything is stored or sent.
 """
 
-from collections.abc import Iterator
 from dataclasses import dataclass
 
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
@@ -18,21 +17,17 @@ from app.models.brief_composition_models import (
     ComposedItem,
     ComposedItems,
     ComposedLead,
-    placed_items,
 )
 from app.models.briefing_models import BriefingKind
 from app.services.briefing.composition.checks import WRITTEN_FIELDS, composition_problems
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.composition.prompt import composition_prompt
 from app.services.briefing.fact_pool.pool import FactPool
-from app.services.briefing.fact_pool.render import context_block, pool_block
-from app.services.briefing.faithfulness import CheckedProse, unsupported_claims
+from app.services.briefing.fact_pool.render import pool_block
 from app.services.briefing.slots import BriefFact, SlotValues, render_slots, series_figures
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
-# Not read by the truth check: an offer claims nothing, and a heading is judged against its items.
-_JUDGED_APART = frozenset({"offer", "heading"})
 #: The provider holds the composition to its schema, so no weaker model can drop a field.
 _SCHEMA_HELD = StructuredCallOptions(schema_held=True)
 
@@ -62,61 +57,41 @@ def pool_values(pool: FactPool) -> SlotValues:
     )
 
 
-def _filled_item(item: ComposedItem, values: SlotValues, *, mark: bool) -> ComposedItem:
+def _filled_item(item: ComposedItem, values: SlotValues) -> ComposedItem:
     return item.model_copy(
         update={
-            name: render_slots(text, values, {}, mark_filled=mark)
+            name: render_slots(text, values, {})
             for name in ("title", "detail")
             if (text := getattr(item, name))
         }
     )
 
 
-def _filled(block: ComposedBlock, values: SlotValues, *, mark: bool) -> ComposedBlock:
+def _filled(block: ComposedBlock, values: SlotValues) -> ComposedBlock:
     update: dict[str, object] = {
-        name: render_slots(text, values, {}, mark_filled=mark)
+        name: render_slots(text, values, {})
         for name in WRITTEN_FIELDS[block.kind]
         if (text := getattr(block, name))
     }
     if isinstance(block, ComposedLead):
-        update["item"] = _filled_item(block.item, values, mark=mark)
+        update["item"] = _filled_item(block.item, values)
     if isinstance(block, ComposedItems):
-        update["items"] = [_filled_item(item, values, mark=mark) for item in block.items]
+        update["items"] = [_filled_item(item, values) for item in block.items]
     return block.model_copy(update=update)
 
 
-def rendered(
-    composition: BriefComposition, values: SlotValues, *, mark: bool = False
-) -> BriefComposition:
-    """Fill every slot the composition wrote; mark brackets each filled value for the check."""
-    return BriefComposition(blocks=[_filled(b, values, mark=mark) for b in composition.blocks])
-
-
-def _written_text(composition: BriefComposition) -> Iterator[tuple[str, str]]:
-    """Yield every string the composition wrote, named by its block, in reading order."""
-    for index, block in enumerate(composition.blocks):
-        where = f"block {index + 1} ({block.kind})"
-        for name in WRITTEN_FIELDS[block.kind]:
-            if name not in _JUDGED_APART and (text := getattr(block, name)):
-                yield f"{where} {name}", text
-        for item in placed_items(block):
-            if item.title:
-                yield f"{where} item {item.id} title", item.title
-            if item.detail:
-                yield f"{where} item {item.id} detail", item.detail
+def rendered(composition: BriefComposition, values: SlotValues) -> BriefComposition:
+    """Fill every slot the composition wrote."""
+    return BriefComposition(blocks=[_filled(b, values) for b in composition.blocks])
 
 
 async def _problems(
-    user_id: str, answer: BriefComposition, pool: FactPool, facts: str, values: SlotValues
+    user_id: str, answer: BriefComposition, pool: FactPool, values: SlotValues
 ) -> list[str]:
-    """Return the contract's problems, else every heading untrue of its items and every unsupported claim."""
-    problems = composition_problems(answer, pool, values)
-    if problems:
-        return problems
-    misheaded = await heading_problems(user_id, rendered(answer, values), pool)
-    checked = CheckedProse(fields=tuple(_written_text(rendered(answer, values, mark=True))))
-    claims = await unsupported_claims(user_id, facts, checked) if checked.fields else []
-    return [*misheaded, *(claim.problem() for claim in claims)]
+    """Return the contract's problems, else every heading untrue of its items."""
+    return composition_problems(answer, pool, values) or await heading_problems(
+        user_id, rendered(answer, values), pool
+    )
 
 
 async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Composed:
@@ -127,7 +102,6 @@ async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Com
         return Composed(written=empty, rendered=empty, values=values)
     facts = pool_block(pool)
     prompt = composition_prompt(pool, kind, facts)
-    checked_against = f"{context_block(pool.context)}\n\n{facts}"
 
     async def attempt(note: str) -> tuple[BriefComposition | None, list[str]]:
         try:
@@ -141,7 +115,7 @@ async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Com
         except MalformedStructuredOutputError as exc:
             # A reply that is no whole composition is a broken answer like any other: named, asked again.
             return None, [f"the answer was not a whole BriefComposition tool call ({exc})"]
-        return answer, await _problems(user_id, answer, pool, checked_against, values)
+        return answer, await _problems(user_id, answer, pool, values)
 
     answer, problems = await attempt("")
     for _ in range(MAX_COMPOSITION_ATTEMPTS - 1):

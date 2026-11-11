@@ -1,4 +1,4 @@
-"""Lay the fact pool out as the plain text the composition and its faithfulness check read."""
+"""Lay the fact pool out as the plain text the composition reads."""
 
 from datetime import date
 

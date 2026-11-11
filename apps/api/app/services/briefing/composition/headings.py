@@ -9,13 +9,13 @@ from pydantic import BaseModel, Field
 
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
 from app.agents.prompts.brief_heading_prompts import BRIEF_HEADING_PROMPT
-from app.constants.briefing import BRIEF_FAITHFULNESS_TEMPERATURE, BRIEF_HEADING_CHECK_LABEL
+from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL, BRIEF_HEADING_CHECK_TEMPERATURE
 from app.models.brief_composition_models import BriefComposition, ComposedItems
 from app.models.briefing_models import BRIEFING_ITEM_STATES
 from app.services.briefing.fact_pool.pool import FactPool
 from app.utils.errors import AppError
 
-_JUDGING = StructuredCallOptions(temperature=BRIEF_FAITHFULNESS_TEMPERATURE, schema_held=True)
+_JUDGING = StructuredCallOptions(temperature=BRIEF_HEADING_CHECK_TEMPERATURE, schema_held=True)
 
 
 class HeadingVerdict(BaseModel):
