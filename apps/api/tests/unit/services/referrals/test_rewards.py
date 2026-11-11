@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import re
+from typing import TypedDict, TypeVar, Unpack
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from dodopayments import NotFoundError
@@ -45,7 +46,7 @@ from app.models.referral_models import (
     ReferredFriendStatus,
 )
 from app.models.user_models import UserDocument
-from app.models.webhook_models import DodoSubscriptionData
+from app.models.webhook_models import DodoPaymentData, DodoSubscriptionData
 from app.services.payments.payment_service import payment_service
 from app.services.payments.subscription_events import SubscriptionEvent, SubscriptionEventKind
 from app.services.referrals.rewards import (
@@ -60,6 +61,7 @@ from tests.factories import make_dodo_payment, make_dodo_subscription
 from tests.helpers import local_timezone
 
 REWARDS = "app.services.referrals.rewards"
+EventT = TypeVar("EventT")
 NOW = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
 PAID_AT = datetime(2026, 10, 14, 11, 0, tzinfo=UTC)
 NEXT_BILL = datetime(2026, 11, 14, 9, 30, tzinfo=UTC)
@@ -87,13 +89,20 @@ def _referral(**overrides: object) -> ReferralDocument:
     return ReferralDocument.model_validate({**fields, **overrides})
 
 
-def _payment(**overrides: object):
-    fields: dict[str, object] = {
+class _PaymentOverrides(TypedDict, total=False):
+    user_id: str | None
+    email: str
+    amount: int
+    customer_id: str | None
+
+
+def _payment(**overrides: Unpack[_PaymentOverrides]) -> DodoPaymentData:
+    fields: _PaymentOverrides = {
         "user_id": FRIEND.id,
         "email": FRIEND.email,
         "customer_id": "cus_friend",
     }
-    payment = make_dodo_payment(**{**fields, **overrides})
+    payment = make_dodo_payment(**(fields | overrides))
     return payment.model_copy(update={"payment_id": "pay_1"})
 
 
@@ -130,16 +139,19 @@ class Seams:
     apply_event: AsyncMock
     log: MagicMock
 
-    def captured(self, kind: type) -> list[tuple[object, ...]]:
+    def captured(self, kind: type[EventT]) -> list[tuple[UserId, EventT, Dedupe]]:
         return [
             (c.args[0], c.args[1], c.kwargs["dedupe"])
             for c in self.capture.call_args_list
             if isinstance(c.args[1], kind)
         ]
 
-    def notification(self) -> dict[str, object]:
+    def notified(self) -> NotificationRequest:
         (request,) = [c.args[0] for c in self.notify.await_args_list]
-        return request.model_dump(exclude={"id", "created_at"})
+        return request
+
+    def notification(self) -> dict[str, object]:
+        return self.notified().model_dump(exclude={"id", "created_at"})
 
 
 @asynccontextmanager
@@ -397,7 +409,7 @@ class TestTheMonthMovesTheBill:
         seams.dodo.subscriptions.update.assert_not_called()
         seams.apply_event.assert_not_awaited()
         assert call("referral", billing_date_already_moved=True) in seams.log.set_ns.mock_calls
-        assert seams.notification()["content"]["body"] == REWARD_APPLIED_BODY.format(date="Nov 14")
+        assert seams.notified().content.body == REWARD_APPLIED_BODY.format(date="Nov 14")
 
     async def test_a_referral_deleted_mid_delivery_fails_loudly(self, seams: Seams) -> None:
         seams.pin_target.side_effect = None
@@ -576,9 +588,7 @@ class TestTheReferrerIsTold:
         ):
             await record_friend_payment(_payment())
 
-        assert seams.notification()["content"]["title"] == REWARD_APPLIED_TITLE.format(
-            friend="A friend"
-        )
+        assert seams.notified().content.title == REWARD_APPLIED_TITLE.format(friend="A friend")
 
     async def test_a_notification_that_was_not_created_is_logged(self, seams: Seams) -> None:
         seams.notify.return_value = None
@@ -605,7 +615,7 @@ class TestDatesAreUtc:
         with local_timezone("Asia/Kolkata"):
             await record_friend_payment(_payment())
 
-        assert seams.notification()["content"]["body"] == REWARD_APPLIED_BODY.format(date="Dec 14")
+        assert seams.notified().content.body == REWARD_APPLIED_BODY.format(date="Dec 14")
 
     async def test_a_bill_already_moved_is_named_by_its_utc_date(self, seams: Seams) -> None:
         seams.dodo.subscriptions.retrieve.side_effect = lambda sid: make_dodo_subscription(
@@ -617,4 +627,4 @@ class TestDatesAreUtc:
         with local_timezone("Asia/Kolkata"):
             await record_friend_payment(_payment())
 
-        assert seams.notification()["content"]["body"] == REWARD_APPLIED_BODY.format(date="Nov 14")
+        assert seams.notified().content.body == REWARD_APPLIED_BODY.format(date="Nov 14")
