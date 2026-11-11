@@ -151,7 +151,7 @@ ${grain("bd-g", 0.9)}
 .t-playfair h2 { display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--ink); margin-bottom: 12px; }
 .t-playfair h2 b { font: 700 26px/1 'Playfair Display', serif; }
 .t-playfair h2 span { font: italic 500 23px/1.2 'Playfair Display', serif; }
-.t-playfair h2 em { margin-left: auto; font-size: 15px; color: var(--soft); }
+.t-playfair h2 em { margin-left: auto; font: italic 500 15px/1.2 'Playfair Display', serif; color: var(--soft); }
 .t-playfair .r { display: grid; grid-template-columns: 92px 1fr; padding: 9px 0; line-height: 1.5; }
 .t-playfair .r .k { font-size: 16px; font-variant-numeric: lining-nums tabular-nums; padding-top: 1px; }
 .t-playfair .r .k.verb { font-style: italic; color: var(--gilt); }

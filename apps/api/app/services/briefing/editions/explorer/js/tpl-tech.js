@@ -179,7 +179,7 @@ ${grain("bp-g", 0.85)}${folds}
 .t-instrument .t { font-weight: 700; font-variant-numeric: tabular-nums; }
 .t-instrument .n { display: block; font-size: 15px; color: var(--soft); }
 .t-instrument .ann { display: grid; grid-template-columns: 96px 1fr; column-gap: 14px; align-items: start; padding: 8px 0; }
-.t-instrument .lamp { display: grid; place-items: center; height: 30px; border-radius: 3px; background: var(--sig); color: #16130c; font-size: 15px; font-weight: 800; letter-spacing: 0;
+.t-instrument .lamp { display: grid; place-items: center; height: 30px; border-radius: 3px; background: var(--sig); color: #16130c; font-size: 15px; font-weight: 700; letter-spacing: 0;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.2), 0 0 12px color-mix(in srgb, var(--sig) 45%, transparent); }
 .t-instrument .gauge { position: relative; height: 112px; margin: 6px 0 10px; background: var(--well); border-radius: 4px; box-shadow: inset 0 2px 6px rgba(0,0,0,.6); }
 .t-instrument .gauge svg { position: absolute; inset: 0; width: 100%; height: 100%; }

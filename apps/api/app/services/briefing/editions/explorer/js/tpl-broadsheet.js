@@ -83,7 +83,6 @@
 .t-broadsheet .lead .deck { font-style: italic; font-size: 19px; line-height: 1.35; text-align: center; color: var(--soft); margin: 12px auto 0; max-width: 30em; }
 .t-broadsheet .short { border: 0; border-top: 1px solid var(--rule); width: 34%; margin: 18px auto 0; }
 .t-broadsheet .notice { margin-top: 24px; border: 1px solid var(--rule); border-top: 3px double var(--rule); padding: 12px 16px 14px; }
-.t-broadsheet .notice .kick { border-bottom: 0; margin-bottom: 2px; padding-bottom: 0; }
 .t-broadsheet .sech { font-family: var(--display); font-weight: 700; text-transform: uppercase; text-align: center; font-size: 23px; letter-spacing: .03em; line-height: 1.05; }
 .t-broadsheet .hr { border: 0; border-top: 1px solid var(--rule); width: 46%; margin: 10px auto 14px; }
 .t-broadsheet .txt { text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
@@ -94,7 +93,7 @@
 .t-broadsheet .txt.cols p { break-inside: avoid; }
 .t-broadsheet .cue { font-variant-caps: small-caps; font-weight: 700; letter-spacing: .03em; }
 .t-broadsheet .drop::first-letter { font-family: var(--display); font-weight: 700; float: left; font-size: 3.35em; line-height: .78; padding: .05em .08em 0 0; }
-.t-broadsheet .story { margin-top: 34px; }
+.t-broadsheet .story { margin-top: 34px; padding-top: 14px; border-top: 1px solid var(--rule); }
 .t-broadsheet .orn { display: flex; justify-content: center; align-items: center; gap: 10px; margin: 26px 0 0; }
 .t-broadsheet .orn i { width: 6px; height: 6px; background: var(--ink); transform: rotate(45deg); }
 .t-broadsheet .orn i:nth-child(2) { width: 8px; height: 8px; }
@@ -118,25 +117,25 @@
       const orn = `<div class="orn${skin.ornament.id === "rule" ? " plain" : ""}" aria-hidden="true"><i></i><i></i><i></i></div>`;
 
       const notice = needs.length
-        ? `<div class="notice"><div class="kick bk">Awaiting the editor</div><h3 class="sech">Needs your call</h3><hr class="hr"><div class="txt">${needs.map((d) => `<p data-role="body"><span class="cue">${esc(d.verb)}</span> — ${esc(sentence(d.label))}${d.note ? ` ${esc(sentence(cap(d.note)))}` : ""}</p>`).join("")}</div></div>`
+        ? `<div class="notice"><h3 class="sech">Needs your call</h3><hr class="hr"><div class="txt">${needs.map((d) => `<p data-role="body"><span class="cue">${esc(d.verb)}</span> — ${esc(sentence(d.label))}${d.note ? ` ${esc(sentence(cap(d.note)))}` : ""}</p>`).join("")}</div></div>`
         : "";
 
       let lead = "";
       if (c.today.length) {
         const [first, ...rest] = c.today;
-        const lede = `${first.time ? `At ${paperTime(first.time)}` : "Before nightfall"}, ${first.label.charAt(0).toLowerCase()}${first.label.slice(1)}`;
+        const lede = `${first.time ? `At ${paperTime(first.time)}` : "Before nightfall"}, ${first.label}`;
         const firstP = `<p class="${c.today.length >= 2 ? "drop" : ""}" data-role="body">${esc(sentence(lede))}${first.note ? ` ${esc(sentence(cap(first.note)))}` : ""}</p>`;
         const restP = rest.map((e) => `<p data-role="body"><span class="cue">${e.time ? esc(paperTime(e.time)) : "Before nightfall"}</span> — ${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}</p>`).join("");
         const a = ed.art;
         const plate = `<figure class="platefig"><div class="platebox${c.today.length < 3 ? " short-plate" : ""}"><img src="${a.src}" alt="${esc(a.title)}, ${esc(a.artist)}, ${a.year}"><i class="screen"></i></div><figcaption class="cap bk"><em>${esc(a.title)}</em>, engraved for this edition after the ${esc(a.medium)}.<span>${esc(a.artist)}, ${a.year} · The Met · Public domain</span></figcaption></figure>`;
-        lead = `<div class="story"><div class="kick bk">The day ahead · Lead story</div><h3 class="sech">What matters today</h3><hr class="hr">${plate}<div class="txt${c.today.length >= 3 ? " cols" : ""}">${firstP}${restP}</div></div>`;
+        lead = `<div class="story"><h3 class="sech">What matters today</h3><hr class="hr">${plate}<div class="txt${c.today.length >= 3 ? " cols" : ""}">${firstP}${restP}</div></div>`;
       }
 
-      const report = (kicker, head, rows) =>
+      const report = (head, rows) =>
         rows.length
-          ? `<div class="story"><div class="kick bk">${kicker}</div><h3 class="sech">${head}</h3><hr class="hr"><div class="txt${rows.length >= 3 ? " cols" : ""}">${rows.map((e) => `<p data-role="body"><span class="cue">${esc(title(e.tag))}</span> — ${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}</p>`).join("")}</div></div>`
+          ? `<div class="story"><h3 class="sech">${head}</h3><hr class="hr"><div class="txt${rows.length >= 3 ? " cols" : ""}">${rows.map((e) => `<p data-role="body"><span class="cue">${esc(title(e.tag))}</span> — ${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}</p>`).join("")}</div></div>`
           : "";
-      const done = report("Filed overnight", "While you slept", c.overnight) + report("Developing", "Still in progress", c.running);
+      const done = report("While you slept", c.overnight) + report("Still in progress", c.running);
 
       const s = c.stats;
       const figs = s

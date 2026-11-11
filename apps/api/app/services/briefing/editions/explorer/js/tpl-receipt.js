@@ -93,11 +93,11 @@
   background: linear-gradient(180deg, transparent 0, rgba(0,0,0,.025) 45%, rgba(0,0,0,.05) 50%, rgba(255,255,255,.4) 52%, rgba(255,255,255,.1) 62%, transparent 100%); }
 .t-receipt .store { text-align: center; font-size: 56px; line-height: 1; font-weight: 700; letter-spacing: .32em; padding-left: .32em; }
 .t-receipt .meta { text-align: center; font-size: 15px; line-height: 1.6; letter-spacing: .06em; margin-top: 16px; }
-.t-receipt .rule { margin: 16px 0; overflow: hidden; white-space: nowrap; letter-spacing: 0; line-height: 1; }
+.t-receipt .rule { width: round(down, 100%, 1ch); margin: 16px 0; overflow: hidden; white-space: nowrap; letter-spacing: 0; line-height: 1; }
 .t-receipt .rule::before { content: "------------------------------------------------------------"; }
 .t-receipt .rule.dbl::before { content: "============================================================"; }
 .t-receipt .deck { text-align: center; font-size: 22px; line-height: 1.35; font-weight: 700; letter-spacing: 0; padding: 4px 4px; }
-.t-receipt .sec { letter-spacing: .14em; margin-bottom: 10px; }
+.t-receipt .sec { font-weight: 700; letter-spacing: .14em; margin-bottom: 10px; }
 .t-receipt .sec.red, .t-receipt .red .vl { color: var(--red); }
 .t-receipt .it { display: flex; align-items: flex-end; margin-bottom: 4px; }
 .t-receipt .lb { flex: 0 1 auto; min-width: 0; overflow-wrap: break-word; }
