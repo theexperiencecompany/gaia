@@ -75,6 +75,7 @@ from app.services.briefing import chat_sync, context, dormancy, service
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.link_tokens import link_token_problems
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
@@ -409,6 +410,7 @@ class TestDailyBrief:
         await service.run_daily_briefing(_USER)
         await service.run_daily_briefing(_USER)
 
+        assert {c.kwargs["owner_id"] for c in world.host_image.await_args_list} == {_USER}
         keys = [c.kwargs["render_key"] for c in world.host_image.await_args_list]
         assert len(keys) == 2 and keys[0] != keys[1]
         assert re.fullmatch(r"[0-9a-f]{32}", keys[0])
@@ -500,6 +502,7 @@ class TestDailyBrief:
         assert _stored_payload(world).new_stamp == NewStamp(
             city="Tokyo", country="Japan", collected=1, total=85
         )
+        world.stamped.assert_awaited_once_with(_USER)
         line = "New stamp: Tokyo, Japan. 1 of 85 collected. [See your stamps]("
         assert line in world.post.await_args.kwargs["text"]
         assert line in world.notify.await_args.args[0].content.body
@@ -767,6 +770,22 @@ class TestHeldItemsJoinTheBrief:
         world.consume.assert_awaited_once()
         assert world.consume.await_args.args[0] == _USER
         assert sorted(world.consume.await_args.args[1]) == ["h1", "h2", "h3"]
+
+    async def test_every_held_item_reaches_the_voice_facts_ahead_of_a_linkable_one(
+        self, world: World
+    ) -> None:
+        deck = _todo("c1", "Deck")
+        deck.canvas_content = "Ten slides"
+        world.work = context.TrackedWork(completed=[deck])
+        world.held = [_held("h1", "Digest", "first"), _held("h2", "Paper digest", "second")]
+
+        await service.run_daily_briefing(_USER)
+
+        assert (
+            "[While you were away]\n- Note: Digest: first\n- Note: Paper digest: second\n"
+            in _prompt(world)
+        )
+        assert "- Done: Deck | summary: Ten slides" in _prompt(world)
 
     async def test_held_items_the_cap_leaves_out_wait_for_the_next_brief(
         self, world: World
@@ -1497,6 +1516,14 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
         assert _stored_payload(world).message == (
             f"[The shortlist is ready]({_todo_link('c1')})\nreply waits on you\nSequoia at 11:00."
         )
+
+    def test_the_problems_name_each_bad_token_and_how_to_write_it(self) -> None:
+        assert link_token_problems("[deck](link:5) and [reply](link:0)(link:0)", {0}) == [
+            "the message links '[deck](link:5)', but no fact carries link:5; "
+            "link only an item whose fact has a link",
+            "the message has a malformed link 'reply(link:0)'; write a linked phrase "
+            "exactly as [the phrase](link:N) and nothing else around it",
+        ]
 
     async def test_a_link_malformed_twice_fails_and_sends_nothing(self, world: World) -> None:
         world.agent.side_effect = [
