@@ -7,6 +7,7 @@ stamps this onto the briefing workflows' crons, and a change to the schedule,
 quiet hours or timezone moves the workflows with it.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from app.constants.briefing import (
@@ -20,22 +21,32 @@ from app.constants.briefing import (
     WEEKLY_DIGEST_WORKFLOW_KEY,
     BriefingFrequency,
 )
+from app.constants.error_codes import BRIEF_DELIVERY_WORKFLOWS_EXIST
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
-from app.models.briefing_models import BriefingKind, BriefingSchedule
+from app.models.briefing_models import (
+    BriefDeliveryWorkflow,
+    BriefFreeDelivery,
+    BriefingKind,
+    BriefingSchedule,
+)
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import UserDocument
-from app.models.workflow_models import UpdateWorkflowRequest, Workflow
+from app.models.workflow_models import UpdateWorkflowRequest, Workflow, WorkflowDocument
 from app.services.analytics_service import capture
 from app.services.briefing import context
 from app.services.workflow.service import WorkflowService
+from app.utils.errors import AppError
 from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import (
     BriefingScheduleChangedVia,
     SettingsBriefingScheduleUpdated,
+    SettingsBriefsOffBlocked,
+    SettingsBriefsOffResolved,
 )
 from shared.py.wide_events import log
 
@@ -53,6 +64,27 @@ _FREQUENCY_DESCRIPTIONS: dict[BriefingFrequency, str] = {
     BriefingFrequency.WEEKLY_ONLY: "only the Sunday evening weekly digest, no daily brief",
     BriefingFrequency.OFF: "no briefs at all",
 }
+
+
+class BriefDeliveryWorkflowsError(AppError):
+    """Briefs cannot turn off while these workflows still deliver their results to the brief."""
+
+    def __init__(self, workflows: list[WorkflowDocument]) -> None:
+        count = len(workflows)
+        named = [BriefDeliveryWorkflow(id=w.id, title=w.title) for w in workflows]
+        super().__init__(
+            message=(
+                "1 workflow sends its results to your brief"
+                if count == 1
+                else f"{count} workflows send their results to your brief"
+            ),
+            why="With briefs off, their results would go nowhere",
+            fix=f"Set {', '.join(w.title for w in named)} to Tell me now or Don't notify me, "
+            "then turn briefs off",
+            status_code=409,
+            code=BRIEF_DELIVERY_WORKFLOWS_EXIST,
+            public={"workflows": [w.model_dump() for w in named]},
+        )
 
 
 def daily_briefing_hour(schedule: BriefingSchedule, quiet_hours: QuietHours) -> int:
@@ -149,10 +181,48 @@ async def _move(
     log.info("briefing.schedule_moved", user_id=user.id, key=key, cron=cron, timezone=timezone)
 
 
+async def _move_off_the_brief(
+    user_id: str,
+    deliveries: Mapping[str, BriefFreeDelivery],
+    via: BriefingScheduleChangedVia,
+) -> None:
+    """Give every brief-delivery workflow its new delivery; refuse, changing nothing, if one has none."""
+    on_brief = await workflow_repository.find_brief_delivery_for_user(user_id)
+    unresolved = [workflow for workflow in on_brief if workflow.id not in deliveries]
+    if unresolved:
+        capture(UserId(user_id), SettingsBriefsOffBlocked(workflow_count=len(unresolved), via=via))
+        raise BriefDeliveryWorkflowsError(unresolved)
+    for workflow in on_brief:
+        moved = await WorkflowService.update_workflow(
+            workflow.id, UpdateWorkflowRequest(delivery=deliveries[workflow.id]), user_id
+        )
+        if moved is None:
+            raise LookupError(f"Workflow {workflow.id} vanished while it was moved off the brief")
+    if on_brief:
+        chosen = [deliveries[workflow.id] for workflow in on_brief]
+        capture(
+            UserId(user_id),
+            SettingsBriefsOffResolved(
+                moved_to_now=chosen.count(WorkflowDelivery.NOW),
+                moved_to_silent=chosen.count(WorkflowDelivery.SILENT),
+                via=via,
+            ),
+        )
+
+
 async def set_briefing_schedule(
-    user_id: str, schedule: BriefingSchedule, via: BriefingScheduleChangedVia
+    user_id: str,
+    schedule: BriefingSchedule,
+    via: BriefingScheduleChangedVia,
+    workflow_deliveries: Mapping[str, BriefFreeDelivery] | None = None,
 ) -> UserDocument:
-    """Store the user's briefing schedule and move their briefing workflows onto it."""
+    """Store the user's briefing schedule and move their briefing workflows onto it.
+
+    Turning briefs off first moves each brief-delivery workflow to its delivery in
+    workflow_deliveries, and raises BriefDeliveryWorkflowsError while any has none.
+    """
+    if schedule.frequency is BriefingFrequency.OFF:
+        await _move_off_the_brief(user_id, workflow_deliveries or {}, via)
     await user_repository.set_briefing_schedule(user_id, schedule)
     user = await user_repository.get(user_id)
     if user is None:

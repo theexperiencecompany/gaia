@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Literal
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
@@ -18,8 +18,10 @@ from app.constants.briefing import (
     HUE_MAX,
     BriefingFrequency,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.base import UserScopedDocument
 from app.schemas.common import ResponseModel
+from app.schemas.errors import ErrorEnvelope
 
 BriefingKind = Literal["daily", "weekly"]
 
@@ -47,6 +49,43 @@ class BriefingSchedule(BaseModel):
 
     frequency: BriefingFrequency = BriefingFrequency.DAILY
     hour: int = Field(default=DAILY_BRIEFING_HOUR, ge=0, le=23)
+
+
+#: Where a workflow's results can go once there is no brief to hold them.
+BriefFreeDelivery = Literal[WorkflowDelivery.NOW, WorkflowDelivery.SILENT]
+
+
+class BriefingScheduleUpdate(BriefingSchedule):
+    """A new briefing schedule; turning briefs off also says where brief-delivery workflows go."""
+
+    workflow_deliveries: dict[str, BriefFreeDelivery] = Field(
+        default_factory=dict,
+        description="New delivery per workflow id, for workflows that deliver to the brief",
+    )
+
+    @model_validator(mode="after")
+    def deliveries_only_when_turning_off(self) -> "BriefingScheduleUpdate":
+        """Refuse new deliveries unless briefs are being turned off."""
+        if self.workflow_deliveries and self.frequency is not BriefingFrequency.OFF:
+            raise ValueError("workflow_deliveries is only accepted when frequency is off")
+        return self
+
+    def schedule(self) -> BriefingSchedule:
+        """Return the schedule to store, without the one-off deliveries."""
+        return BriefingSchedule(frequency=self.frequency, hour=self.hour)
+
+
+class BriefDeliveryWorkflow(BaseModel):
+    """A workflow whose results wait for the brief."""
+
+    id: str
+    title: str
+
+
+class BriefDeliveryWorkflowsConflict(ErrorEnvelope):
+    """The 409 body when briefs cannot turn off: the workflows still delivering to the brief."""
+
+    workflows: list[BriefDeliveryWorkflow]
 
 
 class BriefingStat(BaseModel):

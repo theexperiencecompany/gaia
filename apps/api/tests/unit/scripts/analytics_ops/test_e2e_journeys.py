@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 import json
 
 import httpx
@@ -13,12 +14,14 @@ from scripts.analytics_ops.e2e_journeys import (
     Stack,
     await_execution,
     briefing_schedule,
+    briefs_off_guard,
     workflow,
 )
 
 from app.constants.analytics import POSTHOG_SESSION_HEADER
+from app.constants.briefing import BriefingFrequency
 from app.constants.workflows import WorkflowDelivery
-from app.models.briefing_models import BriefingSchedule
+from app.models.briefing_models import BriefingSchedule, BriefingScheduleUpdate
 from app.models.workflow_models import CreateWorkflowRequest
 
 WORKFLOW = "wf_1"
@@ -138,3 +141,38 @@ def test_the_briefing_journey_puts_a_non_default_schedule_from_the_browser() -> 
     sent = BriefingSchedule.model_validate_json(stack.sent.content)
     assert sent == BRIEFING_SCHEDULE
     assert sent != BriefingSchedule()
+
+
+@dataclass
+class _BriefsOffStack(Stack):
+    """A Stack whose API refuses the first "off" as a brief workflow is still on the brief."""
+
+    puts: list[httpx.Request] = field(default_factory=list)
+    created: dict[str, object] | None = None
+
+    def client(self) -> httpx.Client:
+        def handle(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST":
+                self.created = json.loads(request.content)
+                return httpx.Response(200, json={"workflow": {"id": WORKFLOW}})
+            self.puts.append(request)
+            refused = len(self.puts) == 1
+            return httpx.Response(409 if refused else 200, json={})
+
+        return httpx.Client(
+            base_url="http://api.test/api/v1", transport=httpx.MockTransport(handle)
+        )
+
+
+def test_the_briefs_off_journey_is_refused_then_moves_the_workflow_to_now() -> None:
+    stack = _BriefsOffStack(api_url="http://api.test", email="e2e@example.com")
+
+    briefs_off_guard(stack)
+
+    assert stack.created is not None
+    assert CreateWorkflowRequest.model_validate(stack.created).delivery is WorkflowDelivery.BRIEF
+    refused, moved = (BriefingScheduleUpdate.model_validate_json(r.content) for r in stack.puts)
+    assert refused.frequency is moved.frequency is BriefingFrequency.OFF
+    assert refused.workflow_deliveries == {}
+    assert moved.workflow_deliveries == {WORKFLOW: WorkflowDelivery.NOW}
+    assert all(r.headers[POSTHOG_SESSION_HEADER] == stack.session_id for r in stack.puts)

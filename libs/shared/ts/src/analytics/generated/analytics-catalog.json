@@ -6131,6 +6131,68 @@
       }
     },
     {
+      "event": "settings:briefs_off_blocked",
+      "class": "SettingsBriefsOffBlocked",
+      "owner": "server",
+      "domain": "settings",
+      "description": "Turning briefs off was refused because workflows still deliver their results to the brief.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Turning briefs off was refused because workflows still deliver their results to the brief.",
+        "properties": {
+          "workflow_count": {
+            "title": "Workflow Count",
+            "type": "integer"
+          },
+          "via": {
+            "enum": ["settings", "agent"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["workflow_count", "via"],
+        "title": "SettingsBriefsOffBlocked",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:briefs_off_resolved",
+      "class": "SettingsBriefsOffResolved",
+      "owner": "server",
+      "domain": "settings",
+      "description": "Briefs were turned off after the user moved every brief-delivery workflow elsewhere.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Briefs were turned off after the user moved every brief-delivery workflow elsewhere.",
+        "properties": {
+          "moved_to_now": {
+            "title": "Moved To Now",
+            "type": "integer"
+          },
+          "moved_to_silent": {
+            "title": "Moved To Silent",
+            "type": "integer"
+          },
+          "via": {
+            "enum": ["settings", "agent"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["moved_to_now", "moved_to_silent", "via"],
+        "title": "SettingsBriefsOffResolved",
+        "type": "object"
+      }
+    },
+    {
       "event": "settings:chat_channel_priority_updated",
       "class": "SettingsChatChannelPriorityUpdated",
       "owner": "server",

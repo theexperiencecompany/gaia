@@ -22,7 +22,11 @@ from app.constants.notifications import (
     NotificationChannel,
 )
 from app.db.repositories.users import user_repository
-from app.models.briefing_models import BriefingSchedule
+from app.models.briefing_models import (
+    BriefDeliveryWorkflowsConflict,
+    BriefingSchedule,
+    BriefingScheduleUpdate,
+)
 from app.models.device_token_models import (
     PushTokenRequest,
     PushTokenResponse,
@@ -214,14 +218,24 @@ async def read_briefing_schedule(user_id: str = Depends(get_user_id)) -> Briefin
     return user.briefing_schedule
 
 
-@router.put("/notifications/preferences/briefing-schedule")
+@router.put(
+    "/notifications/preferences/briefing-schedule",
+    responses={
+        409: {
+            "model": BriefDeliveryWorkflowsConflict,
+            "description": "Briefs cannot turn off while workflows deliver to the brief",
+        }
+    },
+)
 async def update_briefing_schedule(
-    body: BriefingSchedule,
+    body: BriefingScheduleUpdate,
     user_id: str = Depends(get_user_id),
 ) -> BriefingSchedule:
     """Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored."""
     log.set(user={"id": user_id}, operation="update_briefing_schedule")
-    user = await set_briefing_schedule(user_id, body, via="settings")
+    user = await set_briefing_schedule(
+        user_id, body.schedule(), via="settings", workflow_deliveries=body.workflow_deliveries
+    )
     return user.briefing_schedule
 
 
