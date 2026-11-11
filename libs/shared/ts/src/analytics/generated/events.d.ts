@@ -112,6 +112,8 @@ export type ServerEventName =
   | "search:performed"
   | "session:artifact_pinned"
   | "settings:briefing_schedule_updated"
+  | "settings:briefs_off_blocked"
+  | "settings:briefs_off_resolved"
   | "settings:chat_channel_priority_updated"
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
@@ -1262,6 +1264,21 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "frequency": string;
     "hour": number;
+    "via": "settings" | "agent";
+  };
+  "settings:briefs_off_blocked": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "workflow_count": number;
+    "via": "settings" | "agent";
+  };
+  "settings:briefs_off_resolved": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "moved_to_now": number;
+    "moved_to_silent": number;
     "via": "settings" | "agent";
   };
   "settings:chat_channel_priority_updated": {

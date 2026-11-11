@@ -468,6 +468,7 @@ export {
   truncateText,
 } from "./utils";
 export type {
+  BriefFreeDelivery,
   BuiltinTriggerMeta,
   IntegrationTriggerGroup,
   TriggerDisplayConfig,
@@ -477,6 +478,7 @@ export type {
 } from "./workflows";
 export {
   BRIEF_DELIVERY_DESCRIPTION,
+  BRIEF_FREE_DELIVERIES,
   BRIEFS_OFF_DELIVERY_REASON,
   BUILTIN_TRIGGER_META,
   buildDefaultTriggerConfig,
