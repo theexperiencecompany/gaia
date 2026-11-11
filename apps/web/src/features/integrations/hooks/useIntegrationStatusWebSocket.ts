@@ -54,12 +54,11 @@ export function subscribeToIntegrationStatus(
 }
 
 /**
- * Keeps an open integrations page honest when a connection dies elsewhere.
+ * Keeps every open page's integration and tool caches honest, app-wide.
  *
- * The backend broadcasts `integration_status_update` when it marks an
- * integration expired (Composio revoked the grant, or a tool call hit a dead
- * account). Without this the page keeps showing "Connected" until a manual
- * refresh — the exact failure this feature exists to remove.
+ * The backend broadcasts `integration_status_update` on connect, again once an
+ * MCP's tools are stored (they are discovered after the connect returns), and
+ * when it marks an integration expired. Mounted once in the app shell.
  */
 export function useIntegrationStatusWebSocket(): void {
   const queryClient = useQueryClient();

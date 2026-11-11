@@ -31,6 +31,7 @@ from app.models.mcp_config import (
 )
 from app.services.integrations.integration_resolver import IntegrationResolver, ResolvedIntegration
 from app.services.integrations.user_integration_status import (
+    publish_connected,
     update_user_integration_status,
 )
 from app.services.integrations.user_integrations import (
@@ -739,6 +740,9 @@ class MCPClient:
         # store_tools; bust once more now that tools are persisted so a concurrent
         # read can't cache an empty-but-connected catalog for the TTL.
         await invalidate_user_integration_caches(self.user_id)
+        # The connect-time broadcast fired before these tools existed, so an open
+        # page refetched a tool-less catalog; announce again now that they do.
+        await publish_connected(self.user_id, integration_id)
 
     async def _handle_connect_failure(
         self,
