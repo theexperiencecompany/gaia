@@ -128,9 +128,9 @@ async def _open_desk(user_id: str, first_run: datetime) -> TodoDocument:
     except ExternalRefTakenError as taken:
         return taken.existing
     capture(UserId(user_id), TodosInboxDeskProvisioned())
-    desk = await todo_repository.get(created.id, user_id=user_id)
+    desk = await todo_repository.get(created.todo.id, user_id=user_id)
     if desk is None:
-        raise LookupError(f"Inbox desk {created.id} vanished right after it was created")
+        raise LookupError(f"Inbox desk {created.todo.id} vanished right after it was created")
     return desk
 
 

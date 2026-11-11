@@ -97,17 +97,23 @@ SLACK_FETCH_CONVERSATION_HISTORY(channel=channel_id, limit=30)
 SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION(channel=channel_id, thread_ts=message_ts)
 ```
 
-### Using spawn_subagent for Multiple Channels
+### Many channels: one spawn per channel group
 
-When gathering context from multiple channels in parallel:
+Reading two or three channels is a few direct calls: make them yourself. When the
+history to read is large (many channels, or weeks of a busy one), and you can spawn
+subagents, give each channel or group of channels its own spawn, all in the same
+turn. When and how to brief one is in spawn_subagent's description.
 
 ```
-spawn_subagent(task="Get recent messages from #engineering channel", context="Limit: 20 messages, focus on technical discussions")
-spawn_subagent(task="Get recent messages from #product channel", context="Limit: 20 messages, focus on roadmap updates")
-spawn_subagent(task="Get recent messages from #general channel", context="Limit: 20 messages, focus on announcements")
+spawn_subagent(
+  task="Read #engineering and #infra from Mon 3 Nov to today. Report decisions, open questions and anything addressed to the user, each with its channel, timestamp and permalink. Say plainly which channel or days you could not read.",
+  integration_ids=["slack"],
+)
+spawn_subagent(
+  task="Read #product from Mon 3 Nov to today. Same report: decisions, open questions, anything addressed to the user, each with channel, timestamp and permalink, plus what you could not read.",
+  integration_ids=["slack"],
+)
 ```
-
-This allows parallel context gathering from multiple channels.
 
 **Summarize by topic, not chronology:**
 ```

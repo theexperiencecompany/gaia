@@ -16,10 +16,8 @@ from app.constants.briefing import (
     BRIEF_OFFER_MAX_CHARS,
     BRIEF_TAKEAWAY_MAX_CHARS,
     MAX_BAR_CATEGORIES,
-    MAX_BRIEF_BLOCKS,
     MAX_BRIEF_CHARTS,
     MAX_BRIEF_ITEMS,
-    MAX_ITEMS_PER_BLOCK,
     MIN_TREND_POINTS,
 )
 from app.models.brief_composition_models import (
@@ -171,12 +169,7 @@ def _own_problems(
     if isinstance(block, ComposedLead):
         return _lead_problems(where, index, block, values)
     if isinstance(block, ComposedItems):
-        problems = _text_problems(where, "heading", block.heading, BRIEF_HEADING_MAX_CHARS, values)
-        if not 1 <= len(block.items) <= MAX_ITEMS_PER_BLOCK:
-            problems.append(
-                f"{where}: {len(block.items)} items; a group holds 1 to {MAX_ITEMS_PER_BLOCK}"
-            )
-        return problems
+        return _text_problems(where, "heading", block.heading, BRIEF_HEADING_MAX_CHARS, values)
     if isinstance(block, ComposedChart):
         return _chart_problems(where, block, pool, values)
     if isinstance(block, ComposedQuote):
@@ -215,8 +208,6 @@ def _placed_ids(composition: BriefComposition) -> Iterator[str]:
 def _budget_problems(composition: BriefComposition) -> list[str]:
     blocks = composition.blocks
     problems: list[str] = []
-    if len(blocks) > MAX_BRIEF_BLOCKS:
-        problems.append(f"{len(blocks)} blocks; a brief holds at most {MAX_BRIEF_BLOCKS}")
     items = sum(len(placed_items(b)) for b in blocks)
     if items > MAX_BRIEF_ITEMS:
         problems.append(f"{items} items in all; a brief holds at most {MAX_BRIEF_ITEMS}")

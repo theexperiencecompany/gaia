@@ -13,7 +13,9 @@ from app.agents.core.subagents.integration_activation import (
     _overview_section,
 )
 from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.core.subagents.registry import all_subagents
 from app.constants.mcp import MCP_PRELOAD_ALL_MAX
+from app.models.subagent_models import Subagent
 
 _MOD = "app.agents.core.subagents.integration_activation"
 
@@ -94,6 +96,40 @@ class TestOverviewSection:
 
         assert result == ""
         repo.get.assert_awaited_once_with("abc123")
+
+
+#: Phrases that only make sense to a delegated worker reporting to a parent. The
+#: executor reads these notes about itself, acting in its own turn, so any of them
+#: tells it to stop after one call, hand back a report, or call a tool it must not.
+_WORKER_ONLY_PHRASES = (
+    "delegated task",
+    "PRIMARY DIRECTIVE",
+    "finish_task",
+    "main agent",
+    "the parent",
+    "activity report",
+    "one successful tool call",
+)
+
+_PLATFORM_INTEGRATIONS = [sa for sa in all_subagents() if sa.config.system_prompt]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestOperatingNotesAddressTheExecutor:
+    """The notes activation injects are read by the executor about its own work.
+
+    They were written for per-integration worker graphs that no longer exist, so
+    they told the executor it was a delegated worker that stops after one read and
+    reports to a parent, which pulls against sweeps that should be split up.
+    """
+
+    @pytest.mark.parametrize("subagent", _PLATFORM_INTEGRATIONS, ids=lambda sa: sa.id)
+    async def test_notes_carry_no_worker_scaffolding(self, subagent: Subagent) -> None:
+        notes = await _overview_section(subagent)
+
+        found = [phrase for phrase in _WORKER_ONLY_PHRASES if phrase.lower() in notes.lower()]
+        assert not found, f"{subagent.id} notes still address a delegated worker: {found}"
 
 
 @pytest.mark.unit

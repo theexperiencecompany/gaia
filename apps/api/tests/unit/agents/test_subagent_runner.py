@@ -1,4 +1,4 @@
-"""Unit tests for subagent_runner.py and subagent_helpers.py."""
+"""Unit tests for subagent_runner.py."""
 
 from contextlib import contextmanager
 import json
@@ -1021,7 +1021,7 @@ class TestConsumeStreamEvent:
 
 _NARRATION = (
     "The test_agent subagent ended without running any tool; it only produced "
-    'planning text: "I will send the email". Re-issue the handoff with an '
+    'planning text: "I will send the email". Re-issue the task with an '
     "explicit instruction to perform the action."
 )
 
@@ -1610,81 +1610,6 @@ class TestPrepareExecutorExecution:
 
         assert 'activate_integration(integration_id="docs-mcp")' in task
         assert "handoff(" not in task
-
-
-# ---------------------------------------------------------------------------
-# subagent_helpers.py — build_subagent_system_prompt
-# ---------------------------------------------------------------------------
-
-
-from app.agents.core.subagents.subagent_helpers import build_subagent_system_prompt
-
-
-class TestBuildSubagentSystemPrompt:
-    @pytest.mark.asyncio
-    async def test_returns_static_base_prompt_without_user_metadata(self):
-        """The static subagent prompt must be byte-identical across users; provider metadata is a separate message."""
-        integration = _make_integration("github")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.context.fetchers.get_account_record", new_callable=AsyncMock
-            ) as mock_meta,
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await build_subagent_system_prompt("github")
-
-        assert "You are the GitHub agent." in result
-        assert "USER CONTEXT FOR GITHUB" not in result
-        assert "testuser" not in result
-        mock_meta.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_integration_not_found_uses_custom_prompt(self):
-        from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
-
-        with patch(
-            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-            return_value=None,
-        ):
-            result = await build_subagent_system_prompt("custom_tool_123")
-
-        assert result == CUSTOM_MCP_SUBAGENT_PROMPT
-
-    @pytest.mark.asyncio
-    async def test_integration_not_found_prefers_base_system_prompt(self):
-        with patch(
-            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-            return_value=None,
-        ):
-            result = await build_subagent_system_prompt(
-                "custom_tool_123", base_system_prompt="Explicit override"
-            )
-
-        assert result == "Explicit override"
-
-    @pytest.mark.asyncio
-    async def test_base_system_prompt_override(self):
-        integration = _make_integration("github")
-
-        with patch(
-            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-            return_value=integration,
-        ):
-            result = await build_subagent_system_prompt(
-                "github", base_system_prompt="Custom prompt"
-            )
-
-        assert result == "Custom prompt"
-
-    @pytest.mark.asyncio
-    async def test_blank_integration_id_returns_empty(self):
-        with patch("app.agents.core.subagents.subagent_helpers.log"):
-            assert await build_subagent_system_prompt("") == ""
 
 
 # ---------------------------------------------------------------------------

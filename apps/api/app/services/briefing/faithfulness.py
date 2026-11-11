@@ -112,7 +112,7 @@ async def unsupported_claims(
         BRIEF_FAITHFULNESS_PROMPT.format(facts=facts, brief=prose.written()),
         label=BRIEF_FAITHFULNESS_LABEL,
         config=metered_config(user_id),
-        options=StructuredCallOptions(temperature=BRIEF_FAITHFULNESS_TEMPERATURE),
+        options=StructuredCallOptions(temperature=BRIEF_FAITHFULNESS_TEMPERATURE, schema_held=True),
     )
     claims = [_claim(s) for s in answer.specifics if s.verdict != "holds"]
     unquoted = [c.quote for c in claims if not _verbatim(c.quote, prose)]

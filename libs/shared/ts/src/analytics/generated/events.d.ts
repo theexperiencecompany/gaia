@@ -136,6 +136,7 @@ export type ServerEventName =
   | "todos:deleted"
   | "todos:inbox_desk_provisioned"
   | "todos:open_state_repaired"
+  | "todos:ref_reopened"
   | "todos:run_result_delivered"
   | "todos:subscription_failed"
   | "todos:subscription_registered"
@@ -1472,6 +1473,13 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "todo_id": string;
     "waiting_on"?: string;
+  };
+  "todos:ref_reopened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "todo_id": string;
+    "ref_source": string;
   };
   "todos:run_result_delivered": {
     "actor": "user" | "agent";

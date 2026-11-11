@@ -79,6 +79,9 @@ class TodoRun:
     trigger_type: TriggerType
     #: URGENT when an event the trigger gate let through quiet hours woke the run.
     message_class: ProactiveMessageClass
+    #: Read when the run starts: a run that completes its todo tears its watches
+    #: down, so the todo read at delivery would look like one that runs once.
+    runs_once: bool
 
 
 @dataclass(frozen=True)

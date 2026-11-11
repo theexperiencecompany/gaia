@@ -7,11 +7,12 @@ The model writes a slot where a figure or a link goes and code renders it from t
 - [[series:meeting_hours.peak]]: a figure of a series: its total, latest, peak, low, or
   peak_at (the day or category the peak fell on);
 - [the phrase](fact:12): the phrase, linked to what fact 12 opens when it opens anything.
-Outside its slots the prose holds no web address and no figure a fact's title does not hold,
-so it cannot misstate a count, a time or a link.
+Outside its slots the prose holds no web address, no time, and no figure that is not as it
+stands in a fact's title, its own words (a detail, a quote) or a count a slot renders, so it
+cannot invent a count, a time or a link; a typed time is sent back naming its slot.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
@@ -85,6 +86,8 @@ class SlotValues:
     facts: Mapping[int, BriefFact]
     counts: Mapping[CountSlot, int]
     series: Mapping[str, Mapping[SeriesField, str]] = field(default_factory=dict)
+    #: Figures the facts' own words carry ("1x" in a quoted ask), which prose may quote as they stand.
+    quoted: frozenset[str] = frozenset()
 
 
 class SlotError(ValueError):
@@ -150,16 +153,67 @@ def _value(match: re.Match[str], values: SlotValues) -> str:
     raise SlotError(f"{slot}: a fact slot is [[fact:N]], [[fact:N.time]] or [[fact:N.count]]")
 
 
-def _typed_figures(text: str, values: SlotValues) -> list[str]:
-    """Return each word with a digit in it that no fact's title holds as it stands."""
-    titled = {
-        word.strip(_WORD_EDGES) for fact in values.facts.values() for word in fact.title.split()
-    }
-    return [
-        word
+def figures_in(texts: Iterable[str]) -> frozenset[str]:
+    """Return every word with a digit the texts hold, as prose would quote it."""
+    return frozenset(
+        word.strip(_WORD_EDGES)
+        for text in texts
         for word in text.split()
-        if any(ch.isdigit() for ch in word) and word.strip(_WORD_EDGES) not in titled
+        if any(ch.isdigit() for ch in word)
+    )
+
+
+def _rendered_by_slot(values: SlotValues) -> list[tuple[str, str]]:
+    """Return every slot a figure comes from, beside the value it renders."""
+    slots = [(f"[[count:{slot.value}]]", str(n)) for slot, n in values.counts.items() if n]
+    for fact_id, fact in values.facts.items():
+        if fact.count > 1:
+            slots.append((f"[[fact:{fact_id}.count]]", str(fact.count)))
+        if fact.time is not None:
+            slots.append((f"[[fact:{fact_id}.time]]", fact.time))
+    slots += [
+        (f"[[series:{series_id}.{figure_field.value}]]", text)
+        for series_id, figures in values.series.items()
+        for figure_field, text in figures.items()
     ]
+    return slots
+
+
+def _counted(values: SlotValues) -> set[str]:
+    """Return every count a slot renders: a [COUNTS] count, a request count, a series figure.
+
+    A count typed as it stands is the same figure its slot renders. Times are never counted
+    here: an event is referred to through its time slot.
+    """
+    counted = {str(n) for n in values.counts.values() if n}
+    counted |= {str(fact.count) for fact in values.facts.values() if fact.count > 1}
+    counted |= {text for figures in values.series.values() for text in figures.values()}
+    return counted
+
+
+def _typed_figures(text: str, values: SlotValues) -> list[str]:
+    """Return each word with a digit no fact carries as it stands: no title, own words or count."""
+    held = (
+        {word.strip(_WORD_EDGES) for fact in values.facts.values() for word in fact.title.split()}
+        | values.quoted
+        | _counted(values)
+    )
+    return [
+        word.strip(_WORD_EDGES)
+        for word in text.split()
+        if any(ch.isdigit() for ch in word) and word.strip(_WORD_EDGES) not in held
+    ]
+
+
+def _typed_figure_problem(field: str, word: str, values: SlotValues) -> str:
+    """Name the slot that renders a typed figure, so the retry writes it; else ask for words."""
+    slots = [slot for slot, value in _rendered_by_slot(values) if word in (value, value.split()[0])]
+    if slots:
+        return f"the {field} types {word!r} itself; write {' or '.join(slots)} where it says {word}"
+    return (
+        f"the {field} types {word!r}, a figure no fact carries; say it in words, from the "
+        "facts, or leave it out"
+    )
 
 
 def slot_problems(
@@ -187,11 +241,7 @@ def slot_problems(
     ]
     bare = _SLOT_RESIDUE_RE.sub(" ", bare)
     typed = _typed_figures(bare, values) if figures_are_slots else []
-    if typed:
-        problems.append(
-            f"the {field} types {', '.join(map(repr, typed))} itself; every count, time "
-            "and date is a slot, and any other figure is said in words"
-        )
+    problems += [_typed_figure_problem(field, word, values) for word in dict.fromkeys(typed)]
     problems += [
         f"the {field} writes the address {match.group(0)!r}; link a phrase with (fact:N)"
         for match in _WEB_ADDRESS_RE.finditer(bare)

@@ -51,12 +51,15 @@ What is noise:
   - What waits on the user (an action) and what got somewhere (an outcome) rarely share a heading;
     when they do, the heading must be neutral ("Before the board call", "Worth a look").
   - A done heading ("Done overnight", "Landed", "Finished for you") holds only finished, sent,
-    booked or landed items: never one only started, never one waiting on the user's approval.
-  - "Still running" or "In progress" holds only started items.
+    booked or landed items: never one only started, and never one waiting on the user, not
+    even a draft GAIA wrote that waits for their approval.
+  - "Still running" or "In progress" holds only started items. GAIA's finished and started
+    work together go under a heading true of both ("Overnight work", "GAIA's work"), or apart
+    under "Done overnight" and "Still running".
   - A heading naming a subject ("Money") holds only items about it; one naming an act ("Replies
     before Friday", "To approve") holds only items asking that act.
   Each item: its id; exactly one of action (it needs the user: {actions}) or outcome (it got
-  somewhere and needs nothing from them: {outcomes}), and when its line names one, that one; a
+  somewhere and needs nothing from them: {outcomes}); when its line names one, that one, always; a
   title, a noun phrase of at most {title_max} characters naming the thing, not the act ("Acme
   invoice", "Priya's offsite venues"); and a detail, one line of at most {detail_max} characters
   adding the one fact that matters (who, when, why), or null. A detail never repeats its title
@@ -104,8 +107,7 @@ full page, so leaving something out loses nothing.
 
 ## The pool
 Items: id. [app] state: title | detail | due | people | action or outcome. "important" is a
-scout's own judgement. "done" finished since the last brief; "in progress" is still running;
-"waiting on you" needs the user; "note" is news that needs nothing. Series: id | label, unit (app), shape | points | the figures its slots
+scout's own judgement; the states are defined beside ITEMS. Series: id | label, unit (app), shape | points | the figures its slots
 render. Quotes: id | author, app, the item they belong to: the words. Goals: id | the goal | the
 todos linked to it.
 
@@ -168,4 +170,7 @@ Why: the spike and its cause are one story, so the cause leads and the chart sho
 A standup never leads, and a heading names what its items are about."""
 
 COMPOSITION_RETRY_NOTE = """Your last composition was sent back: {problems}.
-Compose it again, fixing exactly those and keeping what was right."""
+This was your last composition:
+{last}
+Change only what each problem names, keep every other block and word as it was, and answer the
+whole composition again."""

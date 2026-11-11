@@ -345,6 +345,8 @@ class TestRetryThenFailLoud:
         retry = _prompt(model, 1)
         assert retry.startswith(_prompt(model, 0))
         assert "sent back: block 1 (items), item 7: no item 7 in the pool." in retry
+        # The retry sees what it wrote, so it can keep what was right.
+        assert _UNKNOWN_ID.model_dump_json() in retry
 
     async def test_a_reply_that_is_no_composition_is_asked_again_like_a_broken_one(
         self, model: AsyncMock, checker: AsyncMock

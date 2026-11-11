@@ -650,6 +650,13 @@ class TestFormatCommunityIntegrations:
 class TestUpdateUserIntegrationStatus:
     """The service delegates to repo.set_status; the upsert shape is the repository's concern."""
 
+    @pytest.fixture(autouse=True)
+    def _scout_learn_queue(self) -> Iterator[AsyncMock]:
+        with patch(
+            "app.services.integrations.user_integration_status.queue_scout_learn", AsyncMock()
+        ) as queue:
+            yield queue
+
     @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")

@@ -64,10 +64,14 @@ _SLOTS = f"""
 ## SLOTS (how every count, time and link gets into your prose)
 You never type a count, a time, a date or a web address. Where one goes, write a slot; the
 system fills it in from the facts:
-- ``[[count:needs_you]]``: a count from [COUNTS], by its name there.
+- ``[[count:needs_you]]``: a count from [COUNTS], by its name there. Every figure the facts
+  carry is listed beside the slot that writes it, as ``[[fact:9.time]] (11:00 AM)``: write
+  the slot, never the figure in brackets.
 - ``[[fact:N.time]]``: fact N's time or date, when its line has one ("Sequoia at
   [[fact:9.time]]").
 - ``[[fact:N.count]]``: how many requests fact N stands for, when its line says so.
+- ``[[series:ID.peak]]`` (or ``.total``, ``.latest``, ``.low``, ``.peak_at``): a figure of a
+  series a chart in [ALSO IN THE BRIEF] draws, by the series id listed there.
 - ``[the phrase](fact:N)``: your own words for fact N, linked to what it opens when it is
   marked ``linkable`` and plain text otherwise. This is how you refer to an item.
 - ``[[fact:N]]``: fact N's title exactly as listed. Titles are written as to-dos
@@ -76,8 +80,10 @@ system fills it in from the facts:
   "[approve the Acme renewal](fact:3)".
 The message must refer to every item waiting on the user and every calendar event through
 one of its slots, usually its phrase; a brief that leaves one out is sent back.
-A figure you type must stand as it is in a fact's title ("the Q3 interviews"); any other is
-said in words or left out. A slot naming no fact shown, a count not in [COUNTS] or a field
+Every count the brief carries has a slot: the items waiting, done, in progress and while away,
+the events, the open todos, each request count and each charted figure. A figure you type must
+stand as it is in a fact's own words (its title, detail or a quote: "the Q3 interviews", "the
+1x preference"); any other count is its slot, and any other figure is said in words or left out. A slot naming no fact shown, a count not in [COUNTS] or a field
 the fact lacks is rejected. Lengths count the prose with its slots filled in: headline at
 most {MAX_BRIEF_HEADLINE_CHARS} characters, lede {MAX_BRIEF_LEDE_CHARS}, caption
 {MAX_BRIEF_CAPTION_CHARS}, message {MAX_BRIEF_MESSAGE_CHARS}.
@@ -229,6 +235,8 @@ class VoicePromptBlocks:
     setup: str = ""
     # What the user's connected apps hold that needs them, with what earlier briefs said.
     signals: str = ""
+    # The facts the message must refer to, each by id and title, one per line.
+    references: str = ""
 
     @property
     def context(self) -> str:
@@ -237,6 +245,17 @@ class VoicePromptBlocks:
             f"{self.reader}\n{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
             f"\n{self.setup}\n{self.signals}"
         )
+
+
+def _references_section(references: str) -> str:
+    if not references:
+        return ""
+    return (
+        "\n## BEFORE YOU ANSWER\n"
+        "Your message refers to each of these through its slot, usually [your phrase](fact:N); "
+        "a brief that leaves one out is sent back:\n"
+        f"{references}\n"
+    )
 
 
 def _signals_section(signals: str) -> str:
@@ -397,26 +416,30 @@ a hard failure. Never ask an open-ended "what can I help with".
 {_SLOTS}
 
 {_VOICE_CONTRACT}
-"""
+{_references_section(blocks.references)}"""
 
 
-def voice_correction_note(problems: list[str]) -> str:
-    """Return the retry instruction naming how the last brief broke the facts."""
+def voice_correction_note(problems: list[str], last: str) -> str:
+    """Return the retry instruction: how the last brief broke the facts, and that brief to mend."""
     listed = "\n".join(f"- {problem}" for problem in problems)
     return (
         "## YOUR LAST BRIEF WAS REJECTED\n"
         f"It did not match today's facts:\n{listed}\n"
-        "Write it again from today's facts only, then return the whole JSON."
+        f"This was your last brief:\n{last}\n"
+        "Change only what each problem names, keep every other word and slot as it was, "
+        "then return the whole JSON."
     )
 
 
-def voice_unreadable_note(problems: list[str]) -> str:
-    """Return the retry instruction naming why the last reply could not be read as the voice JSON."""
+def voice_unreadable_note(problems: list[str], last: str) -> str:
+    """Return the retry instruction: why the last reply was not the voice JSON, and that reply."""
     listed = "\n".join(f"- {problem}" for problem in problems)
     return (
         "## YOUR LAST REPLY COULD NOT BE READ\n"
         f"It was not the voice JSON object:\n{listed}\n"
-        "Return the whole JSON again in one ```json fence, with every field of the schema."
+        f"This was your last reply:\n{last}\n"
+        "Change only what each problem names, keep everything else as it was, and return the "
+        "whole JSON in one ```json fence, with every field of the schema."
     )
 
 
@@ -468,7 +491,7 @@ digest's one ask. Never a generic "next week let's keep the momentum going".
 {_SLOTS}
 
 {_WEEKLY_VOICE_CONTRACT}
-"""
+{_references_section(blocks.references)}"""
 
 
 def build_day_zero_hello_prompt(*, first_name: str, goal_block: str, has_goal: bool) -> str:

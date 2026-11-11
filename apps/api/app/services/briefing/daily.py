@@ -42,6 +42,7 @@ from app.services.briefing.facts import (
     TODAY,
     FactSources,
     build_facts,
+    references,
     user_todos_note,
     work_stats,
 )
@@ -224,6 +225,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         goal=goal_block,
         lookback=lookback_block,
         replies=await chat_sync.format_replies_block(user_id, since),
+        references=references(facts)
+        if not (winback.is_winback or ladder.wind_down is not None)
+        else "",
         setup=await _setup_block(user, first_week=ladder.first_week, offer_lighter=offer_lighter),
         signals=signals_block(remembered, seen_at),
     )
@@ -245,7 +249,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         prompt,
         Writing(
             values=facts.values,
-            context=blocks.context,
+            context=f"Today is {clock.now_local:%A %-d %B %Y}.\n{blocks.context}",
             must_mention=frozenset()
             if winback.is_winback or ladder.wind_down is not None
             else facts.must_mention,
