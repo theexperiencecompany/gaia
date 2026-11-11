@@ -83,9 +83,10 @@ build to squirrel as https://heygaia.io, since squirrel cannot remap a host),
 `mutation_matrix.py` (the AST detector behind `mutation.py matrix`),
 `mutation_gap.py` (the executable-line detector behind the no-covering-test
 verdict) and `mutation_report.py` (the grouped human report, the shard's
-`shard.verdict.json` replay artifact, and the `verdict.py emit` call that
-reports each mutated module to the gate — `mutation.py replay` is the engine it
-drives).
+`shard.verdict.json` replay artifact, the `verdict.py emit` call that reports
+each mutated module to the gate, and the `survivors` view behind
+`mutation.py survivors`; `mutation.py replay` and `mutation.py survivors` are
+the two engines it drives).
 
 The mutation lane produces TWO artifacts on purpose. `shard.verdict.json` sits
 beside `shard.log` and carries every survivor with its mutant id, resolved line
@@ -95,6 +96,13 @@ reads every JSON in that tree as a lane verdict and indexes `doc["lane"]`: a
 foreign shape there does not degrade, it crashes the gate. The lane verdicts
 themselves are written only by `verdict.py emit`, one per module, lane
 `mutation/<module path>`.
+
+A survivor is read back through `mutation.py survivors <shard.verdict.json |
+record dir | shard.log> [--json]` (`mise mutation:survivors`), never by parsing
+`shard.log` or mutmut's own state. `mutation.py one <module> [tests]`
+(`mise mutation:one`) runs a single module locally, writes the same records to
+`verify-logs/mutation/one/`, and prints that view on failure — the local proof
+step, with no lane and nothing to poll.
 
 The bots scanner and the three `mutation_*.py` modules live in `lib/` rather
 than inline because they are large bodies with their own tests and a second
