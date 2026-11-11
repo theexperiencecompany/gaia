@@ -470,9 +470,9 @@ async def batch_sync_conversations(
 ) -> BatchSyncResponse:
     """Return only conversations updated since the client's last-seen timestamp.
 
-    Includes their messages and the stream id of an in-flight turn
-    (active_stream_id) so a reloaded client can re-attach without a separate
-    discovery request.
+    Also reports the in-flight stream of every requested conversation it owns
+    (active_streams), stale or not, so a reloaded client can re-attach without
+    refetching the history it already holds.
     """
     user_id = user.user_id
     if not user_id:
@@ -501,14 +501,20 @@ async def batch_sync_conversations(
                 updatedAt=document.updatedAt,
                 messages=document.messages,
                 artifacts=document.artifacts,
-                active_stream_id=await stream_manager.get_resumable_stream_id(
-                    user_id, document.conversation_id
-                ),
                 has_live_approval=document.has_live_approval,
                 todo_id=document.todo_id,
+                source=document.source,
             )
         )
 
+    owned_ids = [cid for cid in requested if cid in owned]
+    stream_ids = await asyncio.gather(
+        *(stream_manager.get_resumable_stream_id(user_id, cid) for cid in owned_ids)
+    )
     return BatchSyncResponse(
-        conversations=rows, missing=[cid for cid in requested if cid not in owned]
+        conversations=rows,
+        missing=[cid for cid in requested if cid not in owned],
+        active_streams={
+            cid: stream_id for cid, stream_id in zip(owned_ids, stream_ids) if stream_id
+        },
     )
