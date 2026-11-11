@@ -12,6 +12,13 @@ import {
   workflowFormSchema,
 } from "@/features/workflows/schemas/workflowFormSchema";
 
+vi.mock("@/services/api/notifications", () => ({
+  NotificationsAPI: {
+    getBriefingSchedule: vi.fn(async () => ({ frequency: "daily", hour: 8 })),
+    updateBriefingSchedule: vi.fn(),
+  },
+}));
+
 const READY_BUT_DELIVERY: WorkflowFormData = {
   ...getDefaultFormValues(),
   title: "Morning digest",
