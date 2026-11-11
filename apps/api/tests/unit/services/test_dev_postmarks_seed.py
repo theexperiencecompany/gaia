@@ -250,3 +250,25 @@ async def test_no_editions_seeds_nothing_and_too_many_is_refused(user, seeded) -
 
     assert exc.value.status_code == 400
     assert seeded.rendered == []
+
+
+async def test_a_seed_count_past_the_daily_families_is_refused_naming_the_limit(
+    user, seeded
+) -> None:
+    families = len(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+
+    with pytest.raises(AppError) as raised:
+        await seed_dev_editions(user, families + 1)
+
+    assert raised.value.message == f"Cannot seed {families + 1} editions"
+    assert raised.value.why == f"there are only {families} daily edition families besides Air Mail"
+    assert raised.value.fix == f"ask for at most {families}"
+    seeded.upsert.assert_not_awaited()
+
+
+async def test_every_daily_family_can_be_seeded_at_once(user, seeded) -> None:
+    families = len(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+
+    await seed_dev_editions(user, families)
+
+    assert len(seeded.payloads()) == families + 1
