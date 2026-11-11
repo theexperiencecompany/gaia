@@ -1,8 +1,15 @@
 "use client";
 
-import { WORKFLOW_DELIVERIES, WORKFLOW_DELIVERY_COPY } from "@gaia/shared";
+import {
+  BRIEF_DELIVERY_DESCRIPTION,
+  BRIEFS_OFF_DELIVERY_REASON,
+  WORKFLOW_DELIVERIES,
+  WORKFLOW_DELIVERY_COPY,
+} from "@gaia/shared";
 import { Button } from "@heroui/button";
 import type { WorkflowDelivery } from "@shared/api/generated";
+import Link from "next/link";
+import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
 import { cn } from "@/lib/utils";
 import WorkflowSection from "./WorkflowSection";
 
@@ -16,7 +23,9 @@ interface WorkflowDeliveryFieldProps {
 
 /**
  * How each run's result reaches the user. A segmented control with no default:
- * the choice is the user's to make, so nothing is preselected.
+ * the choice is the user's to make, so nothing is preselected. "Add to my
+ * brief" follows the briefing schedule: it names the brief that will carry the
+ * results, and is unavailable while briefs are off.
  */
 export default function WorkflowDeliveryField({
   value,
@@ -24,15 +33,20 @@ export default function WorkflowDeliveryField({
   errorMessage,
   isDisabled = false,
 }: WorkflowDeliveryFieldProps) {
+  const { schedule } = useBriefingScheduleSettings();
+  const briefDescription = schedule?.frequency
+    ? BRIEF_DELIVERY_DESCRIPTION[schedule.frequency]
+    : WORKFLOW_DELIVERY_COPY.brief.description;
+  const briefsOff = briefDescription === null;
+  // While briefs are off, the reason line below the control speaks for "brief".
+  const helper = !value
+    ? "Choose how you hear about each run."
+    : value === "brief"
+      ? (briefDescription ?? undefined)
+      : WORKFLOW_DELIVERY_COPY[value].description;
+
   return (
-    <WorkflowSection
-      label="When a run finishes"
-      description={
-        value
-          ? WORKFLOW_DELIVERY_COPY[value].description
-          : "Choose how you hear about each run."
-      }
-    >
+    <WorkflowSection label="When a run finishes" description={helper}>
       <fieldset
         aria-label="When a run finishes"
         className={cn(
@@ -49,7 +63,7 @@ export default function WorkflowDeliveryField({
               radius="lg"
               variant="light"
               aria-pressed={isSelected}
-              isDisabled={isDisabled}
+              isDisabled={isDisabled || (delivery === "brief" && briefsOff)}
               onPress={() => onChange(delivery)}
               className={cn(
                 "h-9 font-medium",
@@ -63,6 +77,14 @@ export default function WorkflowDeliveryField({
           );
         })}
       </fieldset>
+      {briefsOff && (
+        <p className="px-1 text-xs text-zinc-500">
+          {BRIEFS_OFF_DELIVERY_REASON}{" "}
+          <Link href="/settings/notifications" className="text-primary">
+            Turn on briefs
+          </Link>
+        </p>
+      )}
       {errorMessage && (
         <p className="px-1 text-xs text-danger">{errorMessage}</p>
       )}
