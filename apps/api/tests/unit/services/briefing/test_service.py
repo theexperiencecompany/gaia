@@ -1978,6 +1978,35 @@ class TestTheDailyRunWiring:
             ),
         )
 
+    async def test_a_block_the_drawn_edition_cannot_draw_moves_to_the_briefs_page(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        world.work = _brief_work()
+        placed = _composed({"Waiting": ["Approve the Priya reply"]})
+
+        def with_progress(
+            schema: type[BriefComposition], prompt: str, **kw: object
+        ) -> BriefComposition:
+            base = placed(schema, prompt, **kw)
+            return schema.model_validate(
+                {
+                    "blocks": [
+                        *(b.model_dump() for b in base.blocks),
+                        {"kind": "progress", "goal_id": "g1"},
+                    ]
+                }
+            )
+
+        world.composer.side_effect = with_progress
+        monkeypatch.setattr(edition_draws, "families_drawing", lambda *_: set())
+        _family_first(world, "menu")
+
+        await daily.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        assert [b.kind for b in payload.undrawn] == ["progress"]
+        assert [b.kind for b in payload.blocks] == ["items"]
+
     async def test_a_chart_in_the_brief_is_counted_among_its_blocks(self, world: World) -> None:
         world.work = _brief_work()
         world.reads["list_completed_since"].return_value = [

@@ -12,11 +12,13 @@ from typing import Any
 import pytest
 
 from app.models.briefing_models import BriefingPayload
+from app.services.briefing.editions import explorer_render
 from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.editions.explorer_render import (
     _asset_data_uris,
     _module_sources,
     _raw_assets,
+    _shell_sources,
     explorer_family_ids,
     explorer_family_names,
     render_explorer_edition,
@@ -27,6 +29,7 @@ from app.services.briefing.editions.stamps import hosted_stamp_weights, stamp_as
 # so each test must start cold.
 _CACHED_LOADERS = (
     _module_sources,
+    _shell_sources,
     explorer_family_names,
     explorer_family_ids,
     _raw_assets,
@@ -187,6 +190,25 @@ class TestDocumentShell:
         assert '.xb-logo[data-logo="googlecalendar"]' in html
         assert '.xb-logo[data-logo="slack"]' not in html
         assert 'logoKinds: {"github": "mono", "googlecalendar": "color"}' in html
+
+    def test_the_shared_block_script_and_reading_css_are_inlined(self) -> None:
+        html = _render()
+
+        assert (explorer_render._SHELL_DIR / "blocks.js").read_text() in html
+        assert (explorer_render._SHELL_DIR / "reading.css").read_text() in html
+
+    def test_the_weekly_edition_prints_the_marks_of_its_week_ahead_not_todays_calendar(
+        self,
+    ) -> None:
+        week = {
+            "days": [{"you": 0, "gaia": 0}] * 7,
+            "ahead": [{"date": "2026-07-07", "start": "10:00", "title": "Board"}],
+        }
+        payload = _payload(template_family="weekly", calendar=[], week=week)
+
+        html = _render(payload, family="weekly")
+
+        assert '.xb-logo[data-logo="googlecalendar"]' in html
 
     def test_deterministic_rng_shim_is_inlined(self) -> None:
         html = _render()

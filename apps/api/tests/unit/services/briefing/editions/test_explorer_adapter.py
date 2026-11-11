@@ -224,6 +224,18 @@ class TestBlocks:
             e["title"] for b in ed["blocks"] if b["kind"] == "calendar" for e in b["events"]
         ] == ["Sequoia"]
 
+    def test_todays_events_are_not_named_by_a_weekday_and_the_apps_read_carry_their_marks(
+        self,
+    ) -> None:
+        ed = _build(
+            _payload(calendar=[_TODAY_EVENT], sources_read=["Gmail"]),
+            family="swiss",
+        )
+
+        [calendar] = [b for b in ed["blocks"] if b["kind"] == "calendar"]
+        assert [e["day"] for e in calendar["events"]] == [None]
+        assert ed["sources"] == [{"name": "Gmail", "logo": "gmail"}]
+
 
 @pytest.mark.unit
 class TestHeadline:
