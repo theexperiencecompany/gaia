@@ -86,3 +86,10 @@ async def test_a_creator_without_a_subscription_has_no_link_to_credit(seams: Sea
     assert await workflow_creator_code("wf-1") is None
     seams.ensure_code.assert_not_awaited()
     seams.log.set_ns.assert_called_once_with("referral", workflow_credit="creator_not_subscribed")
+
+
+@pytest.mark.usefixtures("referrals_off")
+async def test_with_referrals_off_no_creator_is_credited(seams: Seams) -> None:
+    assert await workflow_creator_code("wf-1") is None
+    seams.ensure_code.assert_not_awaited()
+    seams.log.set_ns.assert_called_once_with("referral", workflow_credit="referrals_off")

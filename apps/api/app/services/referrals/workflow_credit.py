@@ -3,6 +3,7 @@
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
+from app.services.referrals.availability import referrals_enabled
 from app.services.referrals.codes import ensure_code
 from shared.py.wide_events import log
 
@@ -23,6 +24,9 @@ async def workflow_creator_code(workflow_id: str) -> str | None:
         return None
     if await subscription_repository.get_active_for_user(creator.id) is None:
         log.set_ns("referral", workflow_credit="creator_not_subscribed")
+        return None
+    if not await referrals_enabled(creator.id):
+        log.set_ns("referral", workflow_credit="referrals_off")
         return None
     log.set_ns("referral", workflow_credit="eligible", referrer_id=creator.id)
     return await ensure_code(creator)
