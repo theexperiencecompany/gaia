@@ -1,6 +1,6 @@
 """Composing a brief: one call over the pool, sent back once with its problems named, then failing loud.
 
-Faked seams: the structured model call and the faithfulness check's model call.
+Faked seams: the structured model call and the heading check.
 """
 
 from datetime import date
@@ -15,7 +15,6 @@ from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.services.briefing.composition import compose
 from app.services.briefing.composition.compose import compose_brief
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
-from app.services.briefing.faithfulness import CheckedProse, UnsupportedClaim
 from app.utils.errors import AppError
 
 USER = "64f1c0ffee0000000000abcd"
@@ -129,13 +128,6 @@ def model(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     return mock
 
 
-@pytest.fixture
-def checker(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    mock = AsyncMock(return_value=[])
-    monkeypatch.setattr(compose, "unsupported_claims", mock)
-    return mock
-
-
 @pytest.fixture(autouse=True)
 def headings(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     mock = AsyncMock(return_value=[])
@@ -149,7 +141,7 @@ def _prompt(model: AsyncMock, call: int = 0) -> str:
 
 class TestOneCall:
     async def test_a_holding_composition_comes_back_with_its_slots_filled(
-        self, model: AsyncMock, checker: AsyncMock
+        self, model: AsyncMock
     ) -> None:
         composed = await compose_brief(USER, POOL, "daily")
 
@@ -161,7 +153,7 @@ class TestOneCall:
         assert model.await_args.args[0] is BriefComposition
 
     async def test_the_prompt_holds_the_whole_pool_the_criteria_and_the_day(
-        self, model: AsyncMock, checker: AsyncMock
+        self, model: AsyncMock
     ) -> None:
         await compose_brief(USER, POOL, "daily")
 
@@ -178,16 +170,12 @@ class TestOneCall:
         assert '"Maya is waiting on the term sheet."' in prompt
         assert "{" not in prompt.split("## The pool", 1)[1].split("## Three compositions", 1)[0]
 
-    async def test_a_weekly_composition_is_framed_as_the_week(
-        self, model: AsyncMock, checker: AsyncMock
-    ) -> None:
+    async def test_a_weekly_composition_is_framed_as_the_week(self, model: AsyncMock) -> None:
         await compose_brief(USER, POOL, "weekly")
 
         assert "Ada's weekly digest for the week ending 2026-11-11" in _prompt(model)
 
-    async def test_a_pool_with_nothing_to_compose_makes_no_call(
-        self, model: AsyncMock, checker: AsyncMock
-    ) -> None:
+    async def test_a_pool_with_nothing_to_compose_makes_no_call(self, model: AsyncMock) -> None:
         only_event = FactPool(
             items={
                 1: BriefCandidate(
@@ -209,30 +197,11 @@ class TestOneCall:
 
         assert composed.rendered.blocks == []
         model.assert_not_awaited()
-        checker.assert_not_awaited()
 
 
-class TestTheTruthCheck:
-    async def test_every_claim_the_composition_wrote_is_checked_with_its_slots_marked(
-        self, model: AsyncMock, checker: AsyncMock
-    ) -> None:
-        await compose_brief(USER, POOL, "daily")
-
-        user_id, facts, checked = checker.await_args.args
-        assert user_id == USER
-        assert "1. [Gmail] waiting on you: Re: Series A term sheet" in facts
-        # The day's context is a fact too: an empty morning is checked against the whole calendar.
-        assert "Calendar today: 1 event(s), every one listed below." in facts
-        assert isinstance(checked, CheckedProse)
-        assert checked.fields == (
-            ("block 1 (lead) item 1 title", "Series A term sheet"),
-            ("block 1 (lead) item 1 detail", "Maya needs your sign-off"),
-            ("block 2 (chart) title", "Meeting hours this week"),
-            ("block 2 (chart) takeaway", "⟦Wednesday⟧ holds ⟦7⟧ hours."),
-        )
-
-    async def test_a_heading_is_judged_against_its_items_and_not_by_the_truth_check(
-        self, model: AsyncMock, checker: AsyncMock, headings: AsyncMock
+class TestTheHeadingCheck:
+    async def test_a_heading_is_judged_against_its_rendered_items(
+        self, model: AsyncMock, headings: AsyncMock
     ) -> None:
         model.return_value = _GROUPED
 
@@ -241,10 +210,9 @@ class TestTheTruthCheck:
         user_id, shown, pool = headings.await_args.args
         assert (user_id, pool) == (USER, POOL)
         assert shown.blocks[0].heading == "Landed overnight"
-        assert all("heading" not in name for name, _ in checker.await_args.args[2].fields)
 
     async def test_a_heading_untrue_of_its_items_sends_it_back_named(
-        self, model: AsyncMock, checker: AsyncMock, headings: AsyncMock
+        self, model: AsyncMock, headings: AsyncMock
     ) -> None:
         model.side_effect = [_GROUPED, _GOOD]
         headings.side_effect = [['block 1 heading "Landed overnight" is not true of item(s) 1'], []]
@@ -254,23 +222,10 @@ class TestTheTruthCheck:
         assert composed.written == _GOOD
         assert 'block 1 heading "Landed overnight" is not true of item(s) 1' in _prompt(model, 1)
 
-    async def test_a_claim_the_pool_does_not_hold_sends_it_back_named(
-        self, model: AsyncMock, checker: AsyncMock
-    ) -> None:
-        checker.side_effect = [
-            [UnsupportedClaim(quote="Maya needs your sign-off", fact="absent", truth="no ask")],
-            [],
-        ]
-
-        await compose_brief(USER, POOL, "daily")
-
-        assert model.await_count == 2
-        assert '"Maya needs your sign-off": no fact holds it; no ask' in _prompt(model, 1)
-
 
 class TestItemWording:
     async def test_a_slot_in_an_items_wording_is_filled_and_a_figure_from_its_line_may_stay(
-        self, model: AsyncMock, checker: AsyncMock
+        self, model: AsyncMock
     ) -> None:
         worded = BriefComposition.model_validate(
             {
@@ -300,13 +255,9 @@ class TestItemWording:
         assert isinstance(group, ComposedItems)
         item = group.items[0]
         assert (item.title, item.detail) == ("Re: Series A term sheet", "Maya needs it by the 14th")
-        assert (
-            "block 1 (items) item 1 title",
-            "⟦Re: Series A term sheet⟧",
-        ) in checker.await_args.args[2].fields
 
     async def test_a_slot_in_an_items_wording_that_names_nothing_is_sent_back(
-        self, model: AsyncMock, checker: AsyncMock
+        self, model: AsyncMock
     ) -> None:
         bad = BriefComposition.model_validate(
             {
@@ -339,7 +290,7 @@ class TestItemWording:
 
 class TestRetryThenFailLoud:
     async def test_a_broken_composition_is_asked_again_once_with_its_problem_named(
-        self, model: AsyncMock, checker: AsyncMock
+        self, model: AsyncMock
     ) -> None:
         model.side_effect = [_UNKNOWN_ID, _GOOD]
 
@@ -353,7 +304,7 @@ class TestRetryThenFailLoud:
         assert _UNKNOWN_ID.model_dump_json() in retry
 
     async def test_a_reply_that_is_no_composition_is_asked_again_like_a_broken_one(
-        self, model: AsyncMock, checker: AsyncMock
+        self, model: AsyncMock
     ) -> None:
         """Gemini flash-lite answered in prose instead of the tool call; one sample is not the lane."""
         model.side_effect = [
@@ -368,9 +319,7 @@ class TestRetryThenFailLoud:
         assert composed.written == _GOOD
         assert "the answer was not a whole BriefComposition tool call" in _prompt(model, 1)
 
-    async def test_no_composition_twice_fails_loud(
-        self, model: AsyncMock, checker: AsyncMock
-    ) -> None:
+    async def test_no_composition_twice_fails_loud(self, model: AsyncMock) -> None:
         model.side_effect = MalformedStructuredOutputError(
             "BriefComposition: reply stopped at the output cap"
         )
@@ -381,9 +330,7 @@ class TestRetryThenFailLoud:
         assert "reply stopped at the output cap" in raised.value.why
         assert model.await_count == 2
 
-    async def test_broken_twice_fails_loud_naming_the_problem(
-        self, model: AsyncMock, checker: AsyncMock
-    ) -> None:
+    async def test_broken_twice_fails_loud_naming_the_problem(self, model: AsyncMock) -> None:
         model.return_value = _UNKNOWN_ID
 
         with pytest.raises(AppError, match="composition broke its contract") as raised:
@@ -391,4 +338,3 @@ class TestRetryThenFailLoud:
 
         assert raised.value.why == "block 1 (items), item 7: no item 7 in the pool"
         assert model.await_count == 2
-        checker.assert_not_awaited()

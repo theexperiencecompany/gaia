@@ -1,11 +1,11 @@
-"""Voice the brief, hold its prose to its facts, and build the payload from it.
+"""Voice the brief, hold its slots to its facts, and build the payload from it.
 
-Code builds every fact; the agent writes only the voice. Prose that breaks a fact is sent
+Code builds every fact; the agent writes only the voice. Prose whose slots break a fact is sent
 back once with the problems named, and a second failure fails the run before anything is
 stored or sent.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
@@ -31,7 +31,6 @@ from app.services.briefing.errors import BriefingGenerationError, VoiceUnreadabl
 from app.services.briefing.facts import (
     Facts,
 )
-from app.services.briefing.faithfulness import CheckedProse, unsupported_claims
 from app.services.briefing.silent_turn import run_briefing_turn
 from app.services.briefing.slots import (
     SlotValues,
@@ -41,7 +40,6 @@ from app.services.briefing.slots import (
 )
 from app.services.short_link_service import optional_short_link
 from app.utils.markdown_utils import model_from_reply
-from app.utils.user_preferences_utils import build_user_context_parts, onboarding_preferences
 from shared.py.wide_events import log
 
 
@@ -73,10 +71,9 @@ def _parse_voice(raw: str) -> BriefVoice:
 
 @dataclass(frozen=True)
 class Writing:
-    """What the written brief is held to: the values its slots render and everything the model was shown."""
+    """What the written brief is held to: the values its slots render and the fact it must lead with."""
 
     values: SlotValues
-    context: str
     #: The lead's fact, which the message refers to by a slot; None without a lead, or for a
     #: winback or wind-down note.
     lead: int | None
@@ -104,13 +101,8 @@ def _length_problems(exc: ValidationError) -> list[str]:
     ]
 
 
-async def _held_to_facts(
-    user_id: str, voice: BriefVoice, writing: Writing
-) -> BriefVoice | list[str]:
-    """Return the voice rendered from its facts, or every way it breaks them.
-
-    Slots, coverage and lengths are checked in code; the rendered prose's claims by one model call.
-    """
+def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str]:
+    """Return the voice rendered from its facts, or every way its slots, lead or lengths break them."""
     problems = [
         problem
         for name in _VOICED_FIELDS
@@ -126,18 +118,9 @@ async def _held_to_facts(
     if problems:
         return problems
     try:
-        draft = _draft(voice, writing.values)
+        return _draft(voice, writing.values)
     except ValidationError as exc:
         return _length_problems(exc)
-
-    def marked(text: str) -> str:
-        return render_slots(text, writing.values, {}, mark_filled=True)
-
-    prose = CheckedProse(
-        fields=tuple((name, marked(getattr(voice, name))) for name in _VOICED_FIELDS)
-    )
-    claims = await unsupported_claims(user_id, writing.context, prose)
-    return [claim.problem() for claim in claims] or draft
 
 
 async def written_brief(
@@ -145,15 +128,10 @@ async def written_brief(
 ) -> tuple[BriefVoice, BriefVoice]:
     """Voice the brief and hold it to its facts; return what the model wrote and its rendered draft.
 
-    An unreadable reply, a bad slot, an overlong field or an unsupported claim is sent back to
+    An unreadable reply, a bad slot, a missing lead or an overlong field is sent back to
     the model once with the problems named; a second failure fails the run before anything is
     stored or sent.
     """
-    preferences, _ = onboarding_preferences(user.onboarding)
-    # The agent's system prompt tells the writer the user's profile; the checker must know it too.
-    writing = replace(
-        writing, context="\n".join([*build_user_context_parts(preferences or {}), writing.context])
-    )
     note = ""
     failure = BriefingGenerationError("the brief was never voiced")
     for _ in range(MAX_VOICE_ATTEMPTS):
@@ -164,7 +142,7 @@ async def written_brief(
         except VoiceUnreadableError as exc:
             failure, note = exc, voice_unreadable_note(exc.problems, raw)
             continue
-        checked = await _held_to_facts(user.user_id, voice, writing)
+        checked = _held_to_facts(voice, writing)
         if isinstance(checked, BriefVoice):
             return voice, checked
         log.warning("briefing.voice_rejected", problems=checked)

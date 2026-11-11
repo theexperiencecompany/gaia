@@ -41,13 +41,6 @@ class TestRendering:
             f"Then Sequoia partner meeting at 11:00 AM, and the [deck]({_DECK}) is ready."
         )
 
-    def test_the_check_sees_each_filled_value_bracketed_and_each_phrase_as_written(self) -> None:
-        written = "[[count:needs_you]] need you, then [[fact:9]] at [[fact:9.time]] and the [deck](fact:7)"
-
-        assert render_slots(written, _VALUES, {7: _DECK}, mark_filled=True) == (
-            f"⟦2⟧ need you, then ⟦Sequoia partner meeting⟧ at ⟦11:00 AM⟧ and the [deck]({_DECK})"
-        )
-
     def test_a_fact_is_linked_once_however_often_its_phrase_is_written(self) -> None:
         written = "the [deck](fact:7) is done, [open it](fact:7)"
 

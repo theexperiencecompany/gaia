@@ -92,8 +92,6 @@ from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import (
     BriefingBootstrap,
     BriefingDormancy,
-    OnboardingPreferences,
-    OnboardingSubdocument,
     ShuffleBag,
     UserDocument,
 )
@@ -106,7 +104,6 @@ from app.services.briefing import (
     dormancy,
     edition_draws,
     errors,
-    faithfulness,
     prose,
     publish,
     silent_turn,
@@ -119,11 +116,6 @@ from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
-from app.services.briefing.faithfulness import (
-    CheckedSpecific,
-    UnsupportedClaim,
-    UnsupportedClaims,
-)
 from app.services.briefing.scouts import service as scout_service
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
@@ -370,8 +362,6 @@ class World:
     capture: MagicMock
     voice_prompt: MagicMock
     weekly_prompt: MagicMock
-    #: The faithfulness model; by default every claim holds.
-    checker: AsyncMock
     recent: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
     stamped: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
     clear_bootstrap: AsyncMock = field(default_factory=AsyncMock)
@@ -398,8 +388,6 @@ class World:
     composer: AsyncMock = field(default_factory=lambda: AsyncMock(side_effect=_composes_by_state))
     #: The heading check's model; by default every heading fits its items.
     headings: AsyncMock = field(default_factory=lambda: AsyncMock(side_effect=_every_heading_fits))
-    #: The composition's faithfulness check; by default every claim holds.
-    composition_checker: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
 
 
 def _seam(
@@ -471,16 +459,8 @@ def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
 
 
 @pytest.fixture
-def checker(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    model = AsyncMock(return_value=UnsupportedClaims(specifics=[]))
-    monkeypatch.setattr(faithfulness, "ainvoke_structured", model)
-    return model
-
-
-@pytest.fixture
-def world(monkeypatch: pytest.MonkeyPatch, checker: AsyncMock) -> Iterator[World]:
+def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     w = World(
-        checker=checker,
         agent=AsyncMock(return_value=SimpleNamespace(message=_fenced(_VOICE))),
         upsert=AsyncMock(
             side_effect=lambda user_id, date, kind, payload, *, briefing_id, edition: BriefingModel(
@@ -565,7 +545,6 @@ def world(monkeypatch: pytest.MonkeyPatch, checker: AsyncMock) -> Iterator[World
     monkeypatch.setattr(user_repository, "set_briefing_bag", set_bag)
     _seam(monkeypatch, w, context, "gather_calendar", AsyncMock(return_value=[_EVENT]))
     monkeypatch.setattr(compose, "ainvoke_structured", w.composer)
-    monkeypatch.setattr(compose, "unsupported_claims", w.composition_checker)
     monkeypatch.setattr(composition_headings, "ainvoke_structured", w.headings)
     _seam(monkeypatch, w, context, "read_calendar", AsyncMock(return_value=[]))
     for repository, read in (
@@ -708,7 +687,7 @@ class TestDailyBrief:
 
         assert _stored_payload(world).recipient_name is None
         assert "writing to" not in world.voice_prompt.call_args.kwargs["blocks"].reader
-        assert "Delivered" not in world.voice_prompt.call_args.kwargs["blocks"].context
+        assert "Delivered" not in _prompt(world)
 
     async def test_an_empty_day_stays_in_app_and_spends_no_draw(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -941,31 +920,6 @@ class TestDailyBrief:
         retry = world.composer.await_args_list[1].args[1]
         assert "sent back: block 1 (items), item 99: no item 99 in the pool" in retry
         _assert_nothing_sent(world)
-
-    async def test_a_composition_whose_words_claim_too_much_is_retried_with_the_claim(
-        self, world: World
-    ) -> None:
-        world.work = _brief_work()
-        world.composer.side_effect = _composed({"Waiting on you": ["Approve the Priya reply"]})
-        world.composition_checker.side_effect = [
-            [
-                UnsupportedClaim(
-                    quote="Approve the Priya reply", fact="absent", truth="no fact says so"
-                )
-            ],
-            [],
-        ]
-
-        await daily.run_daily_briefing(_USER)
-
-        assert world.composer.await_count == 2
-        assert (
-            '"Approve the Priya reply": no fact holds it'
-            in world.composer.await_args_list[1].args[1]
-        )
-        checked = world.composition_checker.await_args_list[0].args[2]
-        assert ("block 1 (items) item 1 title", "Approve the Priya reply") in checked.fields
-        _stored_payload(world)
 
     async def test_a_heading_untrue_of_its_items_is_retried_with_the_items_named(
         self, world: World
@@ -1223,49 +1177,15 @@ class TestWeeklyRecap:
 
 
 class TestTheWeeklyHoldsToItsFacts:
-    """The weekly's prose is held to its facts by the daily's slots, coverage and faithfulness check."""
+    """The weekly's prose is held to its facts by the daily's slots and lead."""
 
-    async def test_an_unsupported_claim_is_regenerated_once_with_the_claim_named(
-        self, world: World
-    ) -> None:
-        invented = UnsupportedClaim(
-            quote="closed the Sequoia round", fact="absent", truth="no fact names a round"
-        )
-        world.agent.side_effect = [
-            _weekly_voiced(lede="You closed the Sequoia round."),
-            _weekly_voiced(),
-        ]
-        world.checker.side_effect = [_claims(invented), _claims()]
-
-        await weekly.run_weekly_digest(_USER)
-
-        assert world.agent.await_count == 2
-        assert invented.problem() in world.agent.await_args_list[1].kwargs["request"].message
-        assert _stored_payload(world).lede == _WEEKLY_VOICE["lede"]
-        assert "lede: You closed the Sequoia round.\n" in _checked_prompt(world)
-        assert world.weekly_prompt.call_args.kwargs["blocks"].context in _checked_prompt(world)
-
-    async def test_a_recap_unsupported_on_every_attempt_fails_and_sends_nothing(
-        self, world: World
-    ) -> None:
-        invented = UnsupportedClaim(quote="shipped twelve features", fact="absent", truth="one")
-        world.agent.return_value = _weekly_voiced(lede="You shipped twelve features.")
-        world.checker.return_value = _claims(invented)
-
-        with pytest.raises(errors.BriefingGenerationError, match="no fact holds it"):
-            await weekly.run_weekly_digest(_USER)
-
-        assert world.checker.await_count == MAX_VOICE_ATTEMPTS
-        _assert_nothing_sent(world)
-
-    async def test_a_typed_count_is_sent_back_before_the_checker_runs(self, world: World) -> None:
+    async def test_a_typed_count_is_sent_back(self, world: World) -> None:
         world.agent.side_effect = [_weekly_voiced(lede="You finished 9 things."), _weekly_voiced()]
 
         await weekly.run_weekly_digest(_USER)
 
         retry = world.agent.await_args_list[1].kwargs["request"].message
         assert "the lede types '9', a figure no fact carries" in retry
-        assert world.checker.await_count == 1
 
     async def test_a_recap_without_a_lead_need_not_name_the_failed_run_or_the_week_ahead(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -1384,120 +1304,20 @@ def _voiced(headline: str, lede: str) -> SimpleNamespace:
     return SimpleNamespace(message=_fenced({**_VOICE, "headline": headline, "lede": lede}))
 
 
-_LIVE_CONTRADICTION = _voiced(
-    "Arjun's contract redlines need you today",
-    "The Inbox desk also flagged a few items needing you, and an event today.",
-)
-_ARJUN = UnsupportedClaim(
-    quote="Arjun's contract redlines need you", fact="absent", truth="no fact names Arjun"
-)
-
-
-def _claims(*claims: UnsupportedClaim) -> UnsupportedClaims:
-    """Stand in for a checker answer that judged each claim's specific as the claim says."""
-    return UnsupportedClaims(
-        specifics=[
-            CheckedSpecific(
-                quote=c.quote,
-                verdict="absent" if c.fact == "absent" else "contradicted",
-                fact=None if c.fact == "absent" else c.fact,
-                truth=c.truth,
-            )
-            for c in claims
-        ]
-    )
-
-
-def _checked_prompt(world: World, call: int = 0) -> str:
-    return world.checker.await_args_list[call].args[1]
-
-
 class TestTheProseHoldsToItsFacts:
-    """The rendered headline, lede, caption and message are checked against the facts before anything renders.
+    """The headline, lede, caption and message are held to their slots before anything renders."""
 
-    Regression: a live brief's headline named a need over an empty needs-you section and
-    its lede counted an event over an empty calendar.
-    """
-
-    async def test_an_unsupported_claim_is_regenerated_once_with_the_claims_named(
+    async def test_the_stored_brief_holds_each_slot_filled_from_its_fact(
         self, world: World
     ) -> None:
-        world.work = context.TrackedWork(completed=[_todo("c1", "Investor update")])
-        world.agent.side_effect = [
-            _LIVE_CONTRADICTION,
-            _voiced("The investor update is done", "Sequoia is the one thing on today."),
-        ]
-        world.checker.side_effect = [_claims(_ARJUN), _claims()]
-
-        await daily.run_daily_briefing(_USER)
-
-        assert world.agent.await_count == 2
-        retry = world.agent.await_args_list[1].kwargs["request"].message
-        assert (
-            f"YOUR LAST BRIEF WAS REJECTED\nIt did not match today's facts:\n- {_ARJUN.problem()}\n"
-        ) in retry
-        assert _stored_payload(world).headline == "The investor update is done"
-
-    async def test_a_brief_unsupported_on_every_attempt_fails_and_sends_nothing(
-        self, world: World
-    ) -> None:
-        world.work = context.TrackedWork(completed=[_todo("c1", "Investor update")])
-        world.agent.side_effect = [_LIVE_CONTRADICTION] * MAX_VOICE_ATTEMPTS
-        world.checker.return_value = _claims(_ARJUN)
-
-        with pytest.raises(errors.BriefingGenerationError, match="no fact holds it"):
-            await daily.run_daily_briefing(_USER)
-
-        assert world.checker.await_count == MAX_VOICE_ATTEMPTS
-        _assert_nothing_sent(world)
-
-    async def test_the_checker_reads_the_rendered_prose_and_everything_the_writer_was_shown(
-        self, world: World, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seam(
-            monkeypatch,
-            world,
-            context,
-            "stated_goals",
-            AsyncMock(
-                return_value=[
-                    context.StatedGoal("Raise a seed round from Accel", GoalOrigin.MEMORY)
-                ]
-            ),
-        )
         world.agent.return_value = _voiced(
             "Sequoia at [[fact:<fact of Sequoia>.time]]", "Then the Accel intro."
         )
 
         await daily.run_daily_briefing(_USER)
 
-        checked = _checked_prompt(world)
-        # Live brief: "Wednesday" was refused because the check never saw the date.
-        assert "Today is Wednesday 14 October 2026." in checked
-        assert "headline: Sequoia at ⟦11:00 AM⟧\n" in checked
-        assert "lede: Then the Accel intro.\n" in checked
-        assert "message: ⟦Sequoia⟧\n" in checked
-        assert "[[" not in checked.split("## THE BRIEF", 1)[1]
         assert _stored_payload(world).headline == "Sequoia at 11:00 AM"
-        blocks = world.voice_prompt.call_args.kwargs["blocks"]
-        assert blocks.context in checked
-        assert "Raise a seed round from Accel" in checked
-        assert world.checker.await_args.args[0] is UnsupportedClaims
-
-    async def test_the_checker_knows_the_profession_the_writer_was_told(self, world: World) -> None:
-        """Live: a goal question offering developer options was refused because only the writer saw "Developer"."""
-        world.user = world.user.model_copy(
-            update={
-                "onboarding": OnboardingSubdocument(
-                    preferences=OnboardingPreferences(profession="developer")
-                )
-            }
-        )
-        world.agent.return_value = _voiced("Sequoia is today", "Then the Accel intro.")
-
-        await daily.run_daily_briefing(_USER)
-
-        assert "User Profession: Developer" in _checked_prompt(world).split("## THE BRIEF", 1)[0]
+        assert _stored_payload(world).message == "Sequoia"
 
     async def test_a_count_the_model_was_shown_is_voiced_by_its_slot(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -1543,7 +1363,6 @@ class TestTheProseHoldsToItsFacts:
         await daily.run_daily_briefing(_USER)
 
         assert named in world.agent.await_args_list[1].kwargs["request"].message
-        assert world.checker.await_count == 1
         assert _stored_payload(world).headline == "A quiet one"
 
     async def test_a_headline_past_its_limit_once_filled_is_regenerated(
@@ -1620,7 +1439,6 @@ class TestTheMessageRefersToTheLead:
         with pytest.raises(errors.BriefingGenerationError, match="never refers to the lead"):
             await daily.run_daily_briefing(_USER)
 
-        world.checker.assert_not_awaited()
         _assert_nothing_sent(world)
 
     async def test_a_winback_note_need_not_cover_everything(
@@ -2663,26 +2481,23 @@ class TestTheAgentOutput:
             "No valid voice JSON in agent output: invalid JSON: Expecting value (char 0 of 400)"
         )
 
-    async def test_a_lede_alone_making_an_unsupported_claim_is_sent_back(
+    async def test_a_lede_alone_typing_a_figure_is_sent_back_and_logged(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
         world.work = context.TrackedWork(completed=[_todo("c1", "Investor update")])
         world.agent.side_effect = [
-            _voiced("The investor update is done", "You have a meeting at noon."),
+            _voiced("The investor update is done", "You have 3 meetings."),
             _voiced("The investor update is done", "Nothing else today."),
         ]
-        claim = UnsupportedClaim(quote="a meeting at noon", fact="absent", truth="no events today")
-        world.checker.side_effect = [_claims(claim), _claims()]
+        problem = "the lede types '3', a figure no fact carries; say it in words, from the facts, or leave it out"
 
         async with captured_wide_event() as event:
             await daily.run_daily_briefing(_USER)
 
         assert world.agent.await_count == 2
-        assert claim.problem() in world.agent.await_args_list[1].kwargs["request"].message
-        assert {"msg": "briefing.voice_rejected", "problems": [claim.problem()]} in event[
-            "warnings"
-        ]
+        assert problem in world.agent.await_args_list[1].kwargs["request"].message
+        assert {"msg": "briefing.voice_rejected", "problems": [problem]} in event["warnings"]
 
 
 def _weekly_completed() -> context.CompletedWork:

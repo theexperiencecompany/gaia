@@ -40,10 +40,8 @@ _BLOCKS = VoicePromptBlocks(
 )
 
 
-def test_the_voice_knows_the_readers_first_name_and_may_cite_it() -> None:
-    """The voice check rejects any name outside the context, so the reader's must be in it."""
+def test_the_voice_knows_the_readers_first_name() -> None:
     assert "You're writing to Ada." in _prompt()
-    assert "Ada" in _BLOCKS.context
 
 
 def test_a_named_reader_is_named_at_most_once_and_never_in_a_greeting() -> None:
@@ -297,13 +295,6 @@ def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() ->
     assert "## NEXT WEEK'S EDGE" in prompt
     for daily_only in (_BLOCKS.lookback, _BLOCKS.replies, "TODAY'S FACTS", "EMPTY DAYS"):
         assert daily_only not in prompt
-
-
-def test_everything_the_model_is_shown_is_what_its_prose_may_cite() -> None:
-    context = _BLOCKS.context
-
-    for block in (_BLOCKS.facts, _BLOCKS.goal, _BLOCKS.lookback, _BLOCKS.replies):
-        assert block in context
 
 
 _OFFERS_A_DELIVERABLE = "OFFER one specific\nfirst deliverable as a QUESTION"
