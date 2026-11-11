@@ -22,6 +22,9 @@ const validateFile = (file: File): string | null => {
   return null;
 };
 
+// Each uploading chip's request, so removing the chip can cancel it.
+const inFlightUploads = new Map<string, AbortController>();
+
 /**
  * Uploads files straight into the composer: each file appears as an
  * uploading chip immediately and resolves in place, no modal step.
@@ -87,10 +90,13 @@ export const useFileAttachments = () => {
     try {
       await Promise.allSettled(
         pending.map(async ({ file, tempId }) => {
+          const upload = new AbortController();
+          inFlightUploads.set(tempId, upload);
           try {
             const response = await chatApi.uploadFile(
               file,
               currentConversationId(),
+              upload.signal,
             );
             const description = response.description || `File: ${file.name}`;
             const message = response.message || "File uploaded successfully";
@@ -116,13 +122,19 @@ export const useFileAttachments = () => {
                 type: file.type,
                 size: file.size,
               });
+            } else {
+              // The chip was removed after the server had stored the file.
+              await chatApi.deleteFile(response.fileId);
             }
             return uploaded;
           } catch (error) {
+            if (upload.signal.aborted) return undefined;
             // The API client already surfaced the backend detail (413/415…)
             // as a toast — just drop the failed chip.
             removeUploadedFile(tempId);
             throw error;
+          } finally {
+            inFlightUploads.delete(tempId);
           }
         }),
       );
@@ -135,5 +147,10 @@ export const useFileAttachments = () => {
     }
   }, []);
 
-  return { attachFiles };
+  const removeAttachment = useCallback((chipId: string) => {
+    inFlightUploads.get(chipId)?.abort();
+    useComposerStore.getState().removeUploadedFile(chipId);
+  }, []);
+
+  return { attachFiles, removeAttachment };
 };

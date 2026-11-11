@@ -5284,6 +5284,9 @@ export interface paths {
         /**
          * Upload File Endpoint
          * @description Upload a file, persist metadata, and generate embeddings for images.
+         *
+         *     A client that cancelled while the file was being stored never learns its id, so
+         *     the stored file is deleted here instead of being left orphaned.
          */
         post: operations["file_upload_file_endpoint"];
         delete?: never;
