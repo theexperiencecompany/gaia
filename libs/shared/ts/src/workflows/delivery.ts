@@ -7,6 +7,14 @@ export const WORKFLOW_DELIVERIES = [
   "silent",
 ] as const satisfies readonly WorkflowDelivery[];
 
+/** The deliveries a workflow can move to when briefs turn off. */
+export const BRIEF_FREE_DELIVERIES = [
+  "now",
+  "silent",
+] as const satisfies readonly WorkflowDelivery[];
+
+export type BriefFreeDelivery = (typeof BRIEF_FREE_DELIVERIES)[number];
+
 /**
  * Delivery for a workflow added in one click from a card (a use case, a
  * suggestion), where there is no form to choose in: the user just asked for it,

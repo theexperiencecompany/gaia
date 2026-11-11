@@ -24,6 +24,7 @@ from pydantic import ValidationError
 import redis
 
 from app.config.settings import settings
+from app.constants.briefing import BriefingFrequency
 from app.constants.chat import ConversationSource
 from app.models.chat_models import SystemPurpose
 from app.workers.config.worker_settings import WorkerSettings
@@ -51,7 +52,11 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingStarted,
 )
 from shared.py.analytics.catalog.reminders import ReminderCompleted
-from shared.py.analytics.catalog.settings import SettingsBriefingScheduleUpdated
+from shared.py.analytics.catalog.settings import (
+    SettingsBriefingScheduleUpdated,
+    SettingsBriefsOffBlocked,
+    SettingsBriefsOffResolved,
+)
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from shared.py.analytics.catalog.workflows import (
     WorkflowCreated,
@@ -273,6 +278,31 @@ def build_journeys(transcript: Path) -> list[Journey]:
                         ("hour", journeys.BRIEFING_SCHEDULE.hour),
                         ("via", "settings"),
                     ),
+                ),
+            ),
+        ),
+        Journey(
+            "briefs off guard",
+            journeys.briefs_off_guard,
+            (
+                Expect(WorkflowCreated.event, BROWSER, True),
+                Expect(
+                    SettingsBriefsOffBlocked.event,
+                    BROWSER,
+                    True,
+                    (("workflow_count", 1), ("via", "settings")),
+                ),
+                Expect(
+                    SettingsBriefsOffResolved.event,
+                    BROWSER,
+                    True,
+                    (("moved_to_now", 1), ("moved_to_silent", 0), ("via", "settings")),
+                ),
+                Expect(
+                    SettingsBriefingScheduleUpdated.event,
+                    BROWSER,
+                    True,
+                    (("frequency", BriefingFrequency.OFF.value), ("via", "settings")),
                 ),
             ),
         ),
