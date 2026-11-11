@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.integration_models import StoredIntegrationTool
-from app.models.oauth_models import IntegrationContent
+from app.models.integration_models import Integration, StoredIntegrationTool
+from app.models.oauth_models import IntegrationContent, IntegrationFAQ, IntegrationHowItWorksStep
 from app.services.integrations.integration_inference_service import (
     _is_complete,
     _server_domain,
-    _tools_summary,
+    _tools_catalog,
     infer_integration_category,
     infer_integration_content,
 )
@@ -23,11 +23,24 @@ from app.services.integrations.integration_inference_service import (
 _MOD = "app.services.integrations.integration_inference_service"
 
 
+def _integration(tools: list[StoredIntegrationTool]) -> Integration:
+    return Integration.model_validate(
+        {
+            "integration_id": "int-1",
+            "name": "My Tool",
+            "description": "desc",
+            "category": "custom",
+            "managed_by": "mcp",
+            "tools": tools,
+        }
+    )
+
+
 def _complete_content() -> IntegrationContent:
     return IntegrationContent(
         use_cases=[f"use {i}" for i in range(5)],
-        how_it_works=[{"title": f"t{i}", "body": "b"} for i in range(3)],
-        faqs=[{"question": f"q{i}", "answer": "a"} for i in range(4)],
+        how_it_works=[IntegrationHowItWorksStep(title=f"t{i}", body="b") for i in range(3)],
+        faqs=[IntegrationFAQ(question=f"q{i}", answer="a") for i in range(4)],
     )
 
 
@@ -41,19 +54,22 @@ def mock_llm():
         yield SimpleNamespace(llm=m_llm, invoke=m_invoke, structured=m_structured)
 
 
-class TestToolsSummary:
-    def test_joins_first_n_names(self):
-        tools = [StoredIntegrationTool(name=n) for n in ("a", "b", "c", "d")]
+class TestToolsCatalog:
+    def test_lists_each_tool_with_its_first_description_sentence(self):
+        tools = [
+            StoredIntegrationTool(name="a", description="Reads a. Also more."),
+            StoredIntegrationTool(name="b"),
+        ]
 
-        assert _tools_summary(tools, 2) == "a, b"
+        assert _tools_catalog(tools) == "- a: Reads a.\n- b"
 
     def test_skips_nameless_tools(self):
         tools = [StoredIntegrationTool(name="a"), StoredIntegrationTool(name="", description="x")]
 
-        assert _tools_summary(tools, 5) == "a"
+        assert _tools_catalog(tools) == "- a"
 
     def test_none_when_empty(self):
-        assert _tools_summary([], 5) == "None"
+        assert _tools_catalog([]) == "None"
 
 
 class TestServerDomain:
@@ -139,22 +155,37 @@ class TestInferIntegrationContent:
         mock_llm.structured.return_value = content
 
         result = await infer_integration_content(
-            "My Tool",
-            "desc",
-            [StoredIntegrationTool(name="a")],
-            "https://x.example",
+            _integration([StoredIntegrationTool(name="a")]),
             "productivity",
+            auth_type="oauth",
             user_id="u-1",
         )
 
         assert result is content
+
+    @pytest.mark.regression
+    async def test_prompt_carries_every_tool_its_description_and_the_auth(self, mock_llm):
+        mock_llm.structured.return_value = _complete_content()
+        tools = [
+            StoredIntegrationTool(name=f"tool_{i}", description=f"Does thing {i}.")
+            for i in range(60)
+        ]
+
+        await infer_integration_content(
+            _integration(tools), "other", auth_type="bearer", user_id="u"
+        )
+
+        prompt = mock_llm.structured.call_args.args[1]
+        assert all(f"- tool_{i}: Does thing {i}." in prompt for i in range(60))
+        assert "60 in total" in prompt
+        assert "paste an API token" in prompt
 
     async def test_incomplete_content_returns_none(self, mock_llm):
         mock_llm.structured.return_value = IntegrationContent(use_cases=["only one"])
 
         assert (
             await infer_integration_content(
-                "My Tool", "desc", [], "https://x.example", "other", user_id="u-1"
+                _integration([]), "other", auth_type=None, user_id="u-1"
             )
             is None
         )
@@ -164,7 +195,7 @@ class TestInferIntegrationContent:
 
         assert (
             await infer_integration_content(
-                "My Tool", "desc", [], "https://x.example", "other", user_id="u-1"
+                _integration([]), "other", auth_type=None, user_id="u-1"
             )
             is None
         )
@@ -174,7 +205,7 @@ class TestInferIntegrationContent:
 
         assert (
             await infer_integration_content(
-                "My Tool", "desc", [], "https://x.example", "other", user_id="u-1"
+                _integration([]), "other", auth_type=None, user_id="u-1"
             )
             is None
         )

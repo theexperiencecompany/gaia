@@ -21,24 +21,40 @@ from app.constants.integrations import (
     FAQ_COUNT,
     HOW_IT_WORKS_COUNT,
     INTEGRATION_CATEGORIES,
-    MAX_TOOLS_FOR_CATEGORY,
-    MAX_TOOLS_FOR_CONTENT,
+    MAX_TOOLS_IN_PROMPT,
+    TOOL_DESCRIPTION_MAX_CHARS,
     USE_CASES_COUNT,
 )
 from app.constants.log_tags import LogTag
-from app.models.integration_models import StoredIntegrationTool
+from app.models.db_oauth import MCPAuthType
+from app.models.integration_models import AuthType, Integration, StoredIntegrationTool
 from app.models.oauth_models import IntegrationContent
+from app.services.integrations.integration_content_fallback import first_sentence, named_tools
 from shared.py.wide_events import log
 
 # Best-effort caps so a slow upstream LLM never stalls the inline publish flow.
-_CONTENT_GENERATION_TIMEOUT_SECONDS = 12
+_CONTENT_GENERATION_TIMEOUT_SECONDS = 20
 _CATEGORY_INFERENCE_TIMEOUT_SECONDS = 10
 
 
-def _tools_summary(tools: list[StoredIntegrationTool], limit: int) -> str:
-    """Comma-joined names of the first limit tools, or "None" when empty."""
-    names = [t.name for t in tools[:limit] if t.name]
-    return ", ".join(names) or "None"
+_AUTH_DESCRIPTIONS: dict[MCPAuthType, str] = {
+    MCPAuthType.OAUTH: "they sign in and approve access on an OAuth consent screen",
+    MCPAuthType.BEARER: "they paste an API token from their account",
+    MCPAuthType.NONE: "no credentials, it works as soon as it is added",
+}
+
+
+def _tools_catalog(tools: list[StoredIntegrationTool]) -> str:
+    """One "- name: first sentence of its description" line per named tool, or "None"."""
+    lines = []
+    for tool in named_tools(tools)[:MAX_TOOLS_IN_PROMPT]:
+        summary = first_sentence(tool.description, max_len=TOOL_DESCRIPTION_MAX_CHARS)
+        lines.append(f"- {tool.name}: {summary}" if summary else f"- {tool.name}")
+    return "\n".join(lines) or "None"
+
+
+def _auth_description(auth_type: AuthType | None) -> str:
+    return _AUTH_DESCRIPTIONS[MCPAuthType(auth_type)] if auth_type else "not specified"
 
 
 def _server_domain(server_url: str) -> str:
@@ -65,7 +81,7 @@ async def infer_integration_category(
         categories=", ".join(INTEGRATION_CATEGORIES),
         name=name,
         description=description or "No description provided",
-        tools=_tools_summary(tools, MAX_TOOLS_FOR_CATEGORY),
+        tools=_tools_catalog(tools),
         domain=_server_domain(server_url),
     )
     try:
@@ -105,11 +121,9 @@ async def infer_integration_category(
 
 
 async def infer_integration_content(
-    name: str,
-    description: str,
-    tools: list[StoredIntegrationTool],
-    server_url: str,
+    integration: Integration,
     category: str,
+    auth_type: AuthType | None,
     user_id: str,
 ) -> IntegrationContent | None:
     """Generate rich marketplace content for an integration, or None.
@@ -119,12 +133,21 @@ async def infer_integration_content(
     FAQ_COUNT contract, so the caller stays unblocked and the frontend falls
     back to its generic copy. Content is a nice-to-have, never a publish gate.
     """
+    name = integration.name
+    tools = integration.tools
+    server_url = integration.mcp_config.server_url if integration.mcp_config else ""
     log.set(integration={"provider": name, "action": "infer_content"})
+    tool_count = len(named_tools(tools))
     prompt = CONTENT_INFERENCE_PROMPT.format(
         name=name,
         category=category,
-        description=description or "No description provided",
-        tools=_tools_summary(tools, MAX_TOOLS_FOR_CONTENT),
+        description=integration.description or "No description provided",
+        auth=_auth_description(auth_type),
+        tool_count=tool_count,
+        tools_note=f", first {MAX_TOOLS_IN_PROMPT} listed"
+        if tool_count > MAX_TOOLS_IN_PROMPT
+        else "",
+        tools=_tools_catalog(tools),
         domain=_server_domain(server_url),
         use_cases_count=USE_CASES_COUNT,
         how_it_works_count=HOW_IT_WORKS_COUNT,
