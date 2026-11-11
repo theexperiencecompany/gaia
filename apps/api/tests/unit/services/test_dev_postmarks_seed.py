@@ -16,6 +16,7 @@ from app.constants.briefing import (
     SECTION_NUMERALS,
     SECTION_TITLES,
     WEEKLY_FAMILY,
+    WEEKLY_KICKER,
     BriefAction,
     BriefOutcome,
     SectionKey,
@@ -235,3 +236,62 @@ async def test_no_editions_seeds_nothing_and_too_many_is_refused(user, seeded) -
 
     assert exc.value.status_code == 400
     assert seeded.rendered == []
+
+
+async def test_a_seed_count_past_the_daily_families_is_refused_naming_the_limit(
+    user, seeded
+) -> None:
+    families = len(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+
+    with pytest.raises(AppError) as raised:
+        await seed_dev_editions(user, families + 1)
+
+    assert raised.value.message == f"Cannot seed {families + 1} editions"
+    assert raised.value.why == f"there are only {families} daily edition families besides Air Mail"
+    assert raised.value.fix == f"ask for at most {families}"
+    seeded.upsert.assert_not_awaited()
+
+
+async def test_the_weekly_recap_is_the_one_seeded_week_in_full(user, seeded) -> None:
+    await seed_dev_editions(user, 1)
+
+    weekly = seeded.payloads()[-1]
+    assert (weekly.kicker, weekly.date, weekly.template_family) == (
+        WEEKLY_KICKER,
+        "2026-10-11",
+        WEEKLY_FAMILY,
+    )
+    assert (weekly.headline, weekly.lede, weekly.message) == (
+        "A steady week: the release shipped and two decisions are still open",
+        "You closed 14 todos and I handled 22; the offsite venue and the lease still wait.",
+        "You closed 14 todos and I handled 22; the offsite venue and the lease still wait.",
+    )
+    assert (weekly.mood, weekly.caption, weekly.hue) == (
+        "clear",
+        "Two decisions and the week is closed.",
+        hue_for_day(date(2026, 10, 11).timetuple().tm_yday),
+    )
+    assert (weekly.recipient_name, weekly.generated_at) == ("Ada", "7:58 AM")
+    assert (weekly.tallies.done_by_you, weekly.tallies.done_by_gaia) == (14, 22)
+    asks, work = weekly.sections
+    assert [(s.numeral, s.key) for s in weekly.sections] == [
+        (SECTION_NUMERALS[0], SectionKey.NEEDS_YOU),
+        (SECTION_NUMERALS[1], SectionKey.GAIA_DID),
+    ]
+    assert [(i.text, i.kind) for i in asks.items] == [
+        ("Confirm the offsite venue", "you"),
+        ("Accept the new lease terms", "you"),
+    ]
+    shipped = [seed.done[0] for seed in dev_postmarks_seed._SEED_DAYS[:4]]
+    assert [(i.text, i.kind) for i in work.items] == [(t, "lookback") for t in shipped]
+    assert weekly.week is not None
+    assert weekly.week.shipped == shipped
+    assert weekly.week.handled == [
+        "Rescheduled 3 meetings",
+        "Paid 2 invoices",
+        "Archived 120 emails",
+    ]
+    assert [(e.date, e.start, e.title) for e in weekly.week.ahead] == [
+        ("2026-10-12", "10:00", "Quarterly planning"),
+        ("2026-10-14", "18:40", "Flight to Lisbon"),
+    ]

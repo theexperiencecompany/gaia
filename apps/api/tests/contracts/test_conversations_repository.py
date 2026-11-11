@@ -1058,6 +1058,24 @@ class TestWorkflowAndOnboarding:
         assert found.source is ConversationSource.WORKFLOW_SYSTEM
         assert await repo.find_workflow_conversation(doc.user_id, "missing") is None
 
+    async def test_a_users_system_conversation_is_found_by_its_purpose(self, repo):
+        user = _uid()
+        briefings = _doc(
+            user_id=user, is_system_generated=True, system_purpose=SystemPurpose.BRIEFING
+        )
+        email = _doc(
+            user_id=user, is_system_generated=True, system_purpose=SystemPurpose.EMAIL_PROCESSING
+        )
+        other_user = _doc(is_system_generated=True, system_purpose=SystemPurpose.BRIEFING)
+        plain = _doc(user_id=user)
+        for doc in (briefings, email, other_user, plain):
+            await repo.create(doc)
+
+        found = await repo.find_system_conversation(user, SystemPurpose.BRIEFING)
+
+        assert found is not None and found.conversation_id == briefings.conversation_id
+        assert await repo.find_system_conversation(_uid(), SystemPurpose.BRIEFING) is None
+
     async def test_is_workflow_execution_only_for_a_workflows_own_conversation(self, repo):
         # The workflow thread reset keys on this: an email or reminder run is
         # system-generated too, and a chat conversation must never match.

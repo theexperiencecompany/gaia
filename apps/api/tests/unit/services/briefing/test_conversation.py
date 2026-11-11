@@ -1,11 +1,18 @@
 """GAIA's brief message: one Briefings conversation per user, each brief its text plus the folded edition."""
 
+from datetime import UTC, datetime
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import time_machine
+
 from app.models.briefing_models import BriefingCardData
 from app.models.chat_models import SystemPurpose
-from app.services.briefing.conversation import post_brief_message
+from app.services.briefing.conversation import (
+    BRIEFING_CONVERSATION_MAX_MESSAGES,
+    post_brief_message,
+)
 
 MODULE = "app.services.briefing.conversation"
 CARD = BriefingCardData(
@@ -58,3 +65,24 @@ async def test_later_briefs_join_the_existing_conversation() -> None:
 
     create.assert_not_awaited()
     assert update.await_args.args[0].conversation_id == "conv-1"
+
+
+@time_machine.travel(datetime(2026, 10, 23, 1, 35, tzinfo=UTC), tick=False)
+async def test_a_brief_is_stamped_with_now_a_fresh_id_and_the_conversations_cap() -> None:
+    finder = AsyncMock(return_value=SimpleNamespace(conversation_id="conv-1"))
+    with (
+        patch(f"{MODULE}.conversation_repository.find_system_conversation", finder),
+        patch(f"{MODULE}.update_messages", AsyncMock()) as update,
+    ):
+        await post_brief_message("user-1", "First.", CARD)
+        await post_brief_message("user-1", "Second.", CARD)
+
+    finder.assert_awaited_with("user-1", SystemPurpose.BRIEFING)
+    first, second = (call.args[0].messages[0] for call in update.await_args_list)
+    assert first.date == "2026-10-23T01:35:00+00:00"
+    assert first.tool_data is not None
+    assert first.tool_data[0]["timestamp"] == "2026-10-23T01:35:00+00:00"
+    assert re.fullmatch(r"[0-9a-f-]{36}", first.message_id or "")
+    assert first.message_id != second.message_id
+    assert update.await_args.kwargs == {"max_messages": BRIEFING_CONVERSATION_MAX_MESSAGES}
+    assert BRIEFING_CONVERSATION_MAX_MESSAGES == 60

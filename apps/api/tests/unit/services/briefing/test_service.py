@@ -68,6 +68,7 @@ from app.models.briefing_models import (
     BriefingTallies,
     BriefingWeek,
     BriefingWeekDay,
+    EditionRender,
     NewStamp,
 )
 from app.models.chat_models import ConversationSource
@@ -138,7 +139,10 @@ _WEEK_START = datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
 _EVENT = BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia")
 _CHAT = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="priority")
 _EDITION = HostedEditionImage(
-    display_url="https://cdn.example/f_auto/brief", chat_url="https://cdn.example/f_jpg/brief"
+    display_url="https://cdn.example/f_auto/brief",
+    chat_url="https://cdn.example/f_jpg/brief",
+    fold=0.3,
+    paper=(0.1, 0.2, 0.9, 0.8),
 )
 _BRIEF_ID = "brief_abc123"
 _BRIEF_LINK = "https://heygaia.link/briefabc123"
@@ -550,7 +554,9 @@ class TestDailyBrief:
         assert [i.todo_id for s in payload.sections for i in s.items] == ["b1", "c1"]
         message = "Approve the Priya reply\nInvestor update\nSequoia"
         assert payload.message == message
-        assert world.upsert.await_args.kwargs["edition"].image_url == _EDITION.display_url
+        assert world.upsert.await_args.kwargs["edition"] == EditionRender(
+            image_url=_EDITION.display_url, fold=0.3, paper=[0.1, 0.2, 0.9, 0.8]
+        )
         request = world.notify.await_args.args[0]
         assert request.metadata["edition_image_url"] == _EDITION.display_url
         # One URL, minted before the render: the edition's codes, the email image and the chat post.
