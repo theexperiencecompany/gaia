@@ -13,11 +13,11 @@ from app.models.brief_pool_models import DataSeries, SeriesPoint
 from app.models.scout_models import Signal
 from app.services.briefing.fact_pool.window import SeriesName, categorical_series
 
-_ID_UNSAFE = re.compile(r"[^a-z0-9]+")
+_ID_WORD = re.compile(r"[a-z0-9]+")
 
 
 def _slug(text: str) -> str:
-    return _ID_UNSAFE.sub("_", text.casefold()).strip("_")
+    return "_".join(_ID_WORD.findall(text.casefold()))
 
 
 def _group(signal: Signal) -> tuple[str, str, str | None]:
