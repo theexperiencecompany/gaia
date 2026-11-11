@@ -306,7 +306,7 @@ async def send_referral_reward_email(reward: ReferralRewardEmail) -> None:
             subject=REWARD_APPLIED_TITLE.format(friend=reward.friend_name),
             html=render_email_template(
                 REWARD_EMAIL_TEMPLATE,
-                user_name=reward.user_name,
+                first_name=reward.first_name,
                 friend_name=reward.friend_name,
                 reward_line=reward.reward_line,
                 cta_url=f"{settings.FRONTEND_URL}{REFERRALS_PAGE_PATH}",

@@ -761,7 +761,7 @@ class TestTheNewsReachesEveryChannel:
             ReferralRewardEmail(
                 to=REFERRER.email,
                 user_id=REFERRER.id,
-                user_name="Aryan Randeriya",
+                first_name="Aryan",
                 friend_name="Priya",
                 reward_line=REWARD_APPLIED_BODY.format(date="Dec 14"),
             )

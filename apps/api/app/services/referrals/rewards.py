@@ -316,7 +316,7 @@ async def _email_referrer(referral: ReferralDocument, friend_name: str, reward_l
             ReferralRewardEmail(
                 to=referrer.email,
                 user_id=referrer.id,
-                user_name=referrer.name,
+                first_name=first_name_of(referrer),
                 friend_name=friend_name,
                 reward_line=reward_line,
             )

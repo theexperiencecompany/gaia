@@ -227,7 +227,7 @@ class TestFirstPaymentEarnsAMonth:
             ReferralRewardEmail(
                 to=referrer.email,
                 user_id=referrer.id,
-                user_name=referrer.name,
+                first_name="Aryan",
                 friend_name="Priya",
                 reward_line="Your next bill moves to Dec 14. Enjoy the free month.",
             )

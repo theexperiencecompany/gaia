@@ -464,7 +464,7 @@ class TestSendReferralRewardEmail:
             ReferralRewardEmail(
                 to="aryan@example.com",
                 user_id=SENDER_USER_ID,
-                user_name="Aryan",
+                first_name="Aryan",
                 friend_name="Priya",
                 reward_line="Your next bill moves to Dec 14. Enjoy the free month.",
             )
@@ -476,6 +476,7 @@ class TestSendReferralRewardEmail:
         assert message.sender == FOUNDER_SENDER
         assert message.reply_to == CONTACT_EMAIL
         assert message.headers == {"List-Unsubscribe": "<u>"}
+        assert "Hey Aryan," in message.html
         assert "Yay, Priya joined GAIA!" in message.html
         assert "Your next bill moves to Dec 14. Enjoy the free month." in message.html
         assert f"{settings.FRONTEND_URL}/settings/referrals" in message.html
