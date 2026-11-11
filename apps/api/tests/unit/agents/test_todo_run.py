@@ -26,7 +26,6 @@ from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.streaming import DetachedStreamKind
 from app.constants.todos import TodoWakeKind
-from app.models.agent_models import SpawnJob
 from app.models.message_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.models.workflow_models import TriggerType
@@ -45,6 +44,7 @@ REQUEST = TodoRunRequest(
         todo_id="todo-1",
         trigger_type=TriggerType.SCHEDULED_TODO,
         message_class=ProactiveMessageClass.ROUTINE,
+        runs_once=True,
     ),
     todo_title="Watch the deploy",
     task="Execute the following scheduled task: Watch the deploy",
@@ -336,7 +336,6 @@ async def test_the_executor_config_is_a_background_run_bound_to_the_todo() -> No
     assert configurable == {
         "thread_id": "run-conv",
         "stream_id": "stream-1",
-        "spawn_job": SpawnJob.FOCUSED,
     }
     kwargs = built.await_args.kwargs
     assert kwargs["identity"].conversation_id == "run-conv"

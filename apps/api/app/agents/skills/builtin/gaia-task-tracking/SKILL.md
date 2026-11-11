@@ -14,7 +14,7 @@ When the user says "email Rahul about the contract" and months later asks "what 
 
 **One todo per initiative.** "Email Rahul, create a Linear issue, follow up Friday" = ONE tracked todo ("Contract negotiation with Rahul") whose canvas.md holds the email thread ID, Linear issue URL, and follow-up schedule.
 
-**One todo per email thread.** A todo about one email thread is created with `gmail_thread_id`; it then watches the thread for new mail and for the user's own replies. A thread has at most one open todo: creating another returns the existing one instead of creating anything, so update that one.
+**One todo per email thread.** A todo about one email thread is created with `gmail_thread_id`; it then watches the thread for new mail and for the user's own replies. A thread has at most one open todo: creating another returns the existing one instead of creating anything, so update that one. When the thread's todo was completed, creating one reopens it with its canvas and activity history instead; bring its Current State up to date.
 
 ## Files
 
