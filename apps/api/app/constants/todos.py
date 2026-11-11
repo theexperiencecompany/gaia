@@ -216,6 +216,26 @@ class TodoActivityEvent(StrEnum):
     OPEN_STATE_REPAIRED = "open_state_repaired"
     SANDBOX_EVENT = "sandbox_event"
     COMPLETED = "completed"
+    REOPENED = "reopened"
+
+
+# The activity detail of a reopen made from the todos page, as completion's is "Completed via UI".
+REOPENED_IN_THE_APP_DETAIL: Final[str] = "via UI"
+
+# What a reopen starts again from zero, as on a new todo: retries, re-asks and holds.
+REOPEN_RESET_COUNTERS: Final[tuple[str, ...]] = ("gaia_retry_count", "reasks_used", "hold_checks")
+
+# What a create sets on a todo it reopens even when left out, as a new todo starts without them.
+REOPEN_CLEARED_SCHEDULE_FIELDS: Final[tuple[str, ...]] = (
+    "scheduled_at",
+    "recurrence",
+    "due_date",
+    "expires_at",
+    "waiting_on",
+    "question",
+    "if_no_reply",
+    "default_action",
+)
 
 
 # The sections every canvas.md carries exactly once, in this order. Activity

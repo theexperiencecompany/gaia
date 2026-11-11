@@ -75,3 +75,37 @@ async def test_a_skip_is_kept_only_on_the_users_gated_watch_without_reading_it_b
         array_filters=[{"watch.id": "watch-1"}],
         return_document=False,
     )
+
+
+async def test_a_reopen_write_is_filtered_to_the_users_todo_still_completed() -> None:
+    collection = MagicMock()
+    collection.find_one_and_update = AsyncMock(
+        return_value={"_id": ObjectId(TODO_ID), "user_id": "u1", "title": "t"}
+    )
+    with (
+        patch("app.db.repositories.base.get_async_collection", return_value=collection),
+        patch.object(todo_repository, "_cache_store", AsyncMock()) as store,
+        patch.object(todo_repository, "_invalidate", AsyncMock()) as invalidate,
+    ):
+        reopened = await todo_repository.update_if_completed(
+            TODO_ID, "u1", update=TodoUpdate(completed=False)
+        )
+
+    (query, operations), _ = collection.find_one_and_update.await_args
+    assert query == {"_id": ObjectId(TODO_ID), "user_id": "u1", "completed": True}
+    assert operations["$set"]["completed"] is False
+    assert reopened is not None and reopened.id == TODO_ID
+    # The reopened todo is refreshed in its owner's cache, not a scope-less one.
+    assert store.await_args.args[0] == "u1"
+    invalidate.assert_awaited_once_with("u1")
+
+
+async def test_a_reopen_write_that_matches_nothing_returns_none() -> None:
+    collection = MagicMock()
+    collection.find_one_and_update = AsyncMock(return_value=None)
+    with patch("app.db.repositories.base.get_async_collection", return_value=collection):
+        reopened = await todo_repository.update_if_completed(
+            TODO_ID, "u1", update=TodoUpdate(completed=False)
+        )
+
+    assert reopened is None

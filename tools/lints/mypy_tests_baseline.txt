@@ -371,7 +371,6 @@ apps/api/tests/unit/services/test_share_fetcher_compat.py	misc
 apps/api/tests/unit/services/test_share_fetcher_compat.py	str-bytes-safe
 apps/api/tests/unit/services/test_social_profile_service.py	arg-type
 apps/api/tests/unit/services/test_startup_validation.py	func-returns-value
-apps/api/tests/unit/services/test_todo_canvas_storage.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers.py	union-attr
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	attr-defined
@@ -402,7 +401,6 @@ apps/api/tests/unit/tools/coding/test_bash_execute_env.py	attr-defined
 apps/api/tests/unit/tools/coding/test_bash_exit.py	attr-defined
 apps/api/tests/unit/tools/coding/test_bash_lab_run.py	arg-type
 apps/api/tests/unit/tools/coding/test_bash_lab_run.py	attr-defined
-apps/api/tests/unit/tools/coding/test_grep_filter_tools.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	index
 apps/api/tests/unit/tools/coding/test_read_fallback.py	arg-type

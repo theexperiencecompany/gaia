@@ -1,7 +1,7 @@
 """Shared lifecycle for capturing background-executor tool events.
 
 The executor runs as a detached asyncio task (spawned by call_executor).
-Its tool events, and those of any subagent it hands off to, are appended to
+Its tool events, and those of any subagent it spawns, are appended to
 the stream's StreamSession.tool_events by make_redis_stream_writer.
 
 Both the live chat path and the silent path (workflows, background tasks)

@@ -104,6 +104,7 @@ class FinishedTodoRun(BaseModel):
     user_id: str
     conversation_id: str
     trigger_type: TriggerType
+    runs_once: bool
     result_text: str
     #: Defaulted for a job queued before the class was carried.
     message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
@@ -131,6 +132,7 @@ async def deliver_todo_run_result(
         user_id=run.user.user_id,
         conversation_id=run.conversation_id,
         trigger_type=todo_run.trigger_type,
+        runs_once=todo_run.runs_once,
         result_text=result_text,
         message_class=todo_run.message_class,
     )
@@ -305,7 +307,7 @@ async def _narrate_and_send(
                 todo.title,
                 _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
                 _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
-                runs_once=not (todo.recurrence or todo.trigger_subscriptions),
+                runs_once=finished.runs_once,
                 run_history=recent_run_outcomes(todo.activity_content, DELIVERY_RUN_HISTORY_LINES),
             ),
         ),

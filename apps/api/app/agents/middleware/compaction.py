@@ -322,7 +322,7 @@ def _stub_spill_message(
         f"[Full output ({size_kb:.1f} KB / {len(content_str)} chars) "
         f"stored at: {sandbox_path}]\n"
         f"[Do NOT `read` the whole file back into context, that undoes the offload. "
-        f"To pull just what you need, {mine}; `bash` and spawn_subagent also work "
+        f"To pull just what you need, {mine}; `bash` also works "
         f"for {sandbox_path}.]"
     )
 
@@ -608,7 +608,7 @@ async def compact_tool_output(
     )
 
 
-def _as_tool_message_command(result: object) -> tuple[Command[str], ToolMessage] | None:
+def as_tool_message_command(result: object) -> tuple[Command[str], ToolMessage] | None:
     """Return (result, its ToolMessage) when result is a Command carrying exactly one ToolMessage.
 
     None for anything else — a multi-message or message-less Command is not a
@@ -635,7 +635,7 @@ def _merge_into_command(
     never replaced: the tool's own bindings and the offload miners both have to
     reach the model.
     """
-    # A dict by construction — _as_tool_message_command only matches that shape.
+    # A dict by construction — as_tool_message_command only matches that shape.
     update: _ToolBindingState = cast(_ToolBindingState, original.update)
     update["messages"] = [message]
     if isinstance(bound, Command) and isinstance(bound.update, dict):
@@ -689,7 +689,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         # A tool that binds tools or drives the graph returns a Command wrapping a
         # ToolMessage (spawn_subagent, activate_integration); unwrapped it is never
         # compacted. Updated in place so any goto/resume it carries survives.
-        matched = _as_tool_message_command(result)
+        matched = as_tool_message_command(result)
         command, message = matched if matched is not None else (None, result)
         if not isinstance(message, ToolMessage):
             return result
