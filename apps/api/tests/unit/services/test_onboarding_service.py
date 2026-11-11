@@ -7,6 +7,7 @@ the phase lands on PERSONALIZATION_COMPLETE in one write.
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1134,6 +1135,7 @@ class TestGetUserOnboardingStatus:
         result = await get_user_onboarding_status(sample_user_id)
 
         assert result.completed is True
+        assert result.completed_at == datetime(2024, 1, 1, tzinfo=UTC)
         assert result.preferences.profession == "Engineer"
 
     async def test_user_not_found_raises_404(

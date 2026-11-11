@@ -399,15 +399,21 @@ class TestDeliverWorkflowResultToPlatforms:
             ),
             patch(f"{PLATFORM_CHAT}.publish_outbound_message", AsyncMock()) as publish,
         ):
-            await deliver_result_to_platforms(
-                user=USER,
-                notification_text=TEXT,
-                origin=self.ORIGIN,
-                message_class=ProactiveMessageClass.ROUTINE,
-                target=TELEGRAM,
-            )
+            async with captured_wide_event() as event:
+                await deliver_result_to_platforms(
+                    user=USER,
+                    notification_text=TEXT,
+                    origin=self.ORIGIN,
+                    message_class=ProactiveMessageClass.ROUTINE,
+                    target=TELEGRAM,
+                )
 
         publish.assert_not_called()
+        (error,) = event["errors"]
+        assert error["msg"] == f"{LogTag.AGENT} workflow platform delivery failed"
+        assert error["platform"] == "telegram"
+        assert error["error"] == "mongo down"
+        assert error["error_type"] == "RuntimeError"
 
 
 class TestDeliveredResultsReachTheSessionThread:
