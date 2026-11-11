@@ -3,9 +3,14 @@ import { WORKFLOW_DELIVERY_COPY } from "@gaia/shared";
 import type { BriefingSchedule } from "@gaia/shared/types";
 import type { WorkflowDelivery } from "@shared/api/generated";
 import { render, screen } from "@testing-library/react";
+import { useForm } from "react-hook-form";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkflowDeliveryField from "@/features/workflows/components/workflow-modal/WorkflowDeliveryField";
+import {
+  getDefaultFormValues,
+  type WorkflowFormData,
+} from "@/features/workflows/schemas/workflowFormSchema";
 import { NotificationsAPI } from "@/services/api/notifications";
 
 vi.mock("@/services/api/notifications", () => ({
@@ -15,9 +20,16 @@ vi.mock("@/services/api/notifications", () => ({
   },
 }));
 
-function renderField(schedule: BriefingSchedule, value: WorkflowDelivery) {
+function DeliveryOnly({ delivery }: { delivery: WorkflowDelivery }) {
+  const { control } = useForm<WorkflowFormData>({
+    defaultValues: { ...getDefaultFormValues(), delivery },
+  });
+  return <WorkflowDeliveryField control={control} />;
+}
+
+function renderField(schedule: BriefingSchedule, delivery: WorkflowDelivery) {
   vi.mocked(NotificationsAPI.getBriefingSchedule).mockResolvedValue(schedule);
-  return render(<WorkflowDeliveryField value={value} onChange={vi.fn()} />);
+  return render(<DeliveryOnly delivery={delivery} />);
 }
 
 const briefButton = () =>
