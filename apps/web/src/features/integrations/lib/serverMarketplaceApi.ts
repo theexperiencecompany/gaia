@@ -162,11 +162,14 @@ export async function getMarketplacePath(
   return integration === undefined ? null : `/marketplace/${integration.slug}`;
 }
 
-/** The live marketplace integration with exactly this slug, or null when the marketplace has none. */
+/** The live marketplace integration with this id, or null when the marketplace has none. */
 export async function getMarketplaceIntegration(
-  slug: string,
+  integrationId: string,
 ): Promise<CommunityIntegration | null> {
   const index = await getMarketplaceSlugIndex();
-  const integration = index.get(normalizeToolSlug(slug));
-  return integration?.slug === slug ? integration : null;
+  return (
+    [...index.values()].find(
+      (integration) => integration.integrationId === integrationId,
+    ) ?? null
+  );
 }

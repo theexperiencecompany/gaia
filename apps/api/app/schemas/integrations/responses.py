@@ -44,7 +44,7 @@ class IntegrationConfigItem(CamelModel):
     auth_type: Literal["none", "oauth", "bearer"] | None = None
     requires_auth: bool = False
     source: Literal["platform"] = "platform"
-    slug: str  # For platform integrations, this is the same as id
+    slug: str  # For platform integrations, OAuthIntegration.slug
     # "instance": a Composio toolkit the instance admin enabled; no hand-written tools or triggers.
     origin: Literal["code", "instance"] = "code"
     icon_url: str | None = None

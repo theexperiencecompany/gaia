@@ -23,6 +23,9 @@ const CANONICAL_REDIRECT_PAIRS = [
   ["/compare/limitless-ai", "/alternative-to/limitless-ai"],
   ["/compare/sunsama", "/alternative-to/sunsama"],
   ["/alternative-to/shortwave", "/compare/shortwave"],
+  // Native marketplace integrations whose ids use underscores: the slug is kebab-case (OAuthIntegration.slug)
+  ["/marketplace/google_maps", "/marketplace/google-maps"],
+  ["/marketplace/microsoft_teams", "/marketplace/microsoft-teams"],
   // /learn glossary wiring (canonicalSlug existed in data, unwired until now)
   ["/learn/mcp-model-context-protocol", "/learn/model-context-protocol"],
   // Pre-existing canonicalSlug markers (already canonical-tagged their

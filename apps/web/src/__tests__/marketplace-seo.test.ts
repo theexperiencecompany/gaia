@@ -266,7 +266,7 @@ const NATIVE_CONFIG = {
     },
     {
       id: "microsoft_teams",
-      slug: "microsoft_teams",
+      slug: "microsoft-teams",
       name: "Microsoft Teams",
       description: "",
       category: "communication",
@@ -327,7 +327,7 @@ describe("marketplace cross-links", () => {
       "/marketplace/googlecalendar",
     );
     await expect(getMarketplacePath("microsoft-teams")).resolves.toBe(
-      "/marketplace/microsoft_teams",
+      "/marketplace/microsoft-teams",
     );
     await expect(getMarketplacePath("figma")).resolves.toBeNull();
   });
