@@ -3,6 +3,7 @@
 Faked seams: the repository reads the pool makes. Every producer runs for real.
 """
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -248,6 +249,27 @@ class TestThePoolAsTheComposerReadsIt:
             'g1 | "Launch the GAIA mobile app" (from memory) | linked todos: 1 finished in the '
             "window, 1 open: GAIA privacy labels; GAIA beta invite email"
         ) in block
+
+
+class TestSeveralOfEachPart:
+    async def test_series_quotes_and_goals_each_take_a_line(self, stores: Stores) -> None:
+        pool = await _pool()
+        crowded = replace(
+            pool,
+            quotes=[pool.quotes[0], pool.quotes[0].model_copy(update={"id": "q2"})],
+            goals=[pool.goals[0], pool.goals[0].model_copy(update={"id": "g2"})],
+        )
+
+        lines = pool_block(crowded).splitlines()
+
+        assert [
+            line.split(" | ")[0]
+            for line in lines[lines.index("SERIES") + 1 : lines.index("QUOTES")]
+        ] == [s.id for s in pool.series]
+        assert [
+            line.split(" | ")[0] for line in lines[lines.index("QUOTES") + 1 : lines.index("GOALS")]
+        ] == ["q1", "q2"]
+        assert [line.split(" | ")[0] for line in lines[lines.index("GOALS") + 1 :]] == ["g1", "g2"]
 
 
 class TestAnItemLine:

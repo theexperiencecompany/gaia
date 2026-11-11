@@ -126,6 +126,44 @@ class TestCalendarSeries:
         )
         assert series.points == _ys([0, 0.8, 0, 0, 0, 3, 1])
 
+    def test_the_series_is_labelled_meeting_hours(self) -> None:
+        [series] = calendar_series(
+            [_event("2026-11-08T10:00:00+05:30", "2026-11-08T11:00:00+05:30")], WINDOW
+        )
+
+        assert series.label == "Meeting hours"
+
+    def test_events_missing_either_end_or_either_time_count_for_nothing(self) -> None:
+        raw = [
+            _event("2026-11-08T10:00:00+05:30", "2026-11-08T11:00:00+05:30"),
+            GoogleCalendarEventResource(
+                summary="No start",
+                end=GoogleCalendarEventDateTime(dateTime="2026-11-08T13:00:00+05:30"),
+            ),
+            GoogleCalendarEventResource(
+                summary="No end",
+                start=GoogleCalendarEventDateTime(dateTime="2026-11-08T12:00:00+05:30"),
+            ),
+            _event(None, "2026-11-08T15:00:00+05:30"),
+            _event("2026-11-08T14:00:00+05:30", None),
+        ]
+
+        [series] = calendar_series(raw, WINDOW)
+
+        assert series.points == _ys([0, 0, 0, 1, 0, 0, 0])
+
+    def test_a_meeting_inside_another_adds_nothing_and_seconds_round_to_a_tenth(self) -> None:
+        raw = [
+            _event("2026-11-08T10:00:00+05:30", "2026-11-08T11:00:00+05:30"),
+            # 179 seconds, with a ten-second call inside it: 0.0497 of an hour rounds to 0.0.
+            _event("2026-11-09T10:00:00+05:30", "2026-11-09T10:02:59+05:30"),
+            _event("2026-11-09T10:00:10+05:30", "2026-11-09T10:00:20+05:30"),
+        ]
+
+        [series] = calendar_series(raw, WINDOW)
+
+        assert series.points == _ys([0, 0, 0, 1, 0, 0, 0])
+
     def test_all_day_events_and_focus_blocks_are_not_meetings(self) -> None:
         raw = [
             _event(None, None, all_day="2026-11-07"),
