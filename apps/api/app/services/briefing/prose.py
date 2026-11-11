@@ -8,6 +8,7 @@ stored or sent.
 from dataclasses import dataclass
 
 from pydantic import ValidationError
+from pydantic_core import ErrorDetails
 
 from app.agents.prompts.briefing_prompts import (
     voice_correction_note,
@@ -94,9 +95,8 @@ def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
 
 
 def _length_problems(exc: ValidationError) -> list[str]:
-    return [
-        f"the {error['loc'][0]} once its slots are filled: {error['msg']}" for error in exc.errors()
-    ]
+    errors: list[ErrorDetails] = exc.errors(include_url=False, include_input=False)
+    return [f"the {error['loc'][0]} once its slots are filled: {error['msg']}" for error in errors]
 
 
 async def _held_to_facts(
