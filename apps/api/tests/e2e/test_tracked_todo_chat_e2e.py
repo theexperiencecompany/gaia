@@ -778,7 +778,11 @@ class TestDeletingTheTodoDeletesItsChat:
             "/api/v1/conversations/batch-sync",
             json={"conversations": [{"conversation_id": conversation_id}]},
         )
-        assert synced.json() == {"conversations": [], "missing": [conversation_id]}
+        assert synced.json() == {
+            "conversations": [],
+            "missing": [conversation_id],
+            "active_streams": {},
+        }
 
 
 # ---------------------------------------------------------------------------
