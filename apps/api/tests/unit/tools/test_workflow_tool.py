@@ -676,6 +676,19 @@ class TestGetMyIntegrations:
         assert result["data"]["truncated"] is False
         assert result["data"]["query"] == "email"
 
+    async def test_only_the_connected_integrations_are_counted(self) -> None:
+        from app.agents.tools.workflow_shared_tools import get_my_integrations
+
+        matched = [
+            _my_integration("gmail", connected=True),
+            _my_integration("notion"),
+            _my_integration("slack"),
+        ]
+        with patch(f"{SHARED_MODULE}.match_my_integrations", AsyncMock(return_value=matched)):
+            result = await cast(Any, get_my_integrations).coroutine(config=_make_config())
+
+        assert result["data"]["connected_count"] == 1
+
     async def test_results_are_capped_and_flagged_truncated(self) -> None:
         from app.agents.tools.workflow_shared_tools import get_my_integrations
 
