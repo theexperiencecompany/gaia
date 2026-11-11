@@ -233,10 +233,10 @@ def shrunk_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(f"{NODE}.TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS", 0.02)
 
 
-@pytest.mark.usefixtures("shrunk_bounds")
 class TestRealMiddlewarePath:
     """The tool call runs through a real MiddlewareExecutor around LangGraph's execution."""
 
+    @pytest.mark.usefixtures("shrunk_bounds")
     async def test_a_hung_tool_is_cut_short_under_its_own_name(self) -> None:
         message = await _run(_real_node(hangs), "hangs", {"query": "q"})
         assert message.status == "error"
@@ -247,6 +247,7 @@ class TestRealMiddlewarePath:
             "not have completed on the provider side. Verify its effect before retrying."
         )
 
+    @pytest.mark.usefixtures("shrunk_bounds")
     async def test_a_proxied_timeout_names_the_real_tool_at_the_backstop_bound(self) -> None:
         message = await _run(
             _real_node(proxy), "execute", {"tool_name": "GMAIL_SEND_EMAIL", "data": {}}
@@ -256,6 +257,7 @@ class TestRealMiddlewarePath:
             "Error: TimeoutError: 'GMAIL_SEND_EMAIL' timed out after 0.03s."
         )
 
+    @pytest.mark.usefixtures("shrunk_bounds")
     async def test_a_proxied_exempt_tool_runs_unbounded(self) -> None:
         message = await _run(
             _real_node(proxy), "execute", {"tool_name": "deep_research", "data": {}}
