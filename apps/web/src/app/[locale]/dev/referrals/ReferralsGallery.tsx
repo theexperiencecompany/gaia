@@ -16,10 +16,13 @@ import { GalleryPreview } from "./GalleryPreview";
 import { useGalleryParams } from "./galleryParams";
 
 const VIEW_LABELS: Record<GalleryView, string> = {
+  onboarding: "After payment",
   page: "Settings page",
-  landing: "Landing",
-  og: "OG image",
+  settings: "Settings states",
+  nudges: "In-app nudges",
   weekly: "Weekly card",
+  og: "OG image",
+  landing: "Landing",
 };
 
 interface ControlProps {

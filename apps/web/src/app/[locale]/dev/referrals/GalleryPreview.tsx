@@ -4,30 +4,21 @@ import type { ReferralCopyVariant } from "@shared/api/generated";
 import { InviteLanding } from "@/features/referrals/components/InviteLanding";
 import { WeeklyStatsCard } from "@/features/referrals/components/WeeklyStatsCard";
 import { weeklyImagePath } from "@/features/referrals/hooks/useWeeklyCard";
+import { Frame } from "./Frame";
 import {
   FIXTURE_RESOLVE,
   FIXTURE_WEEKLY,
   GALLERY_STATES,
   type GalleryView,
 } from "./fixtures";
+import {
+  NudgesPreview,
+  OnboardingPreview,
+  SettingsStatesPreview,
+} from "./JourneyPreviews";
 
-interface PreviewProps {
+export interface PreviewProps {
   copyVariant: ReferralCopyVariant;
-}
-
-function Frame({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <figure className="flex flex-col gap-3">
-      <figcaption className="text-xs text-zinc-500">{label}</figcaption>
-      {children}
-    </figure>
-  );
 }
 
 function LandingPreview({ copyVariant }: PreviewProps) {
@@ -101,6 +92,12 @@ interface GalleryPreviewProps extends PreviewProps {
 
 export function GalleryPreview({ view, copyVariant }: GalleryPreviewProps) {
   switch (view) {
+    case "onboarding":
+      return <OnboardingPreview copyVariant={copyVariant} />;
+    case "settings":
+      return <SettingsStatesPreview copyVariant={copyVariant} />;
+    case "nudges":
+      return <NudgesPreview copyVariant={copyVariant} />;
     case "landing":
       return <LandingPreview copyVariant={copyVariant} />;
     case "og":
