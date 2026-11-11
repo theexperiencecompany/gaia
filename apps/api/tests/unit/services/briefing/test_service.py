@@ -1964,6 +1964,37 @@ class TestTheDailyRunWiring:
             ),
         )
 
+    async def test_a_chart_in_the_brief_is_counted_among_its_blocks(self, world: World) -> None:
+        world.work = _brief_work()
+        world.reads["list_completed_since"].return_value = [
+            _todo("c1", "Investor update").model_copy(
+                update={"completed": True, "completed_at": _NOW - timedelta(hours=1)}
+            )
+        ]
+        placed = _composed({"Waiting": ["Approve the Priya reply"]})
+
+        def with_a_chart(
+            schema: type[BriefComposition], prompt: str, **kw: object
+        ) -> BriefComposition:
+            base = placed(schema, prompt, **kw)
+            chart = {
+                "kind": "chart",
+                "chart": "bar",
+                "series_ids": ["gaia_finished"],
+                "title": "Finished",
+                "takeaway": "One thing done.",
+            }
+            return schema.model_validate(
+                {"blocks": [*(b.model_dump() for b in base.blocks), chart]}
+            )
+
+        world.composer.side_effect = with_a_chart
+
+        await daily.run_daily_briefing(_USER)
+
+        event = world.capture.call_args.args[1]
+        assert (event.block_kinds, event.chart_count) == (["items", "chart"], 1)
+
     async def test_the_run_is_tagged_on_its_wide_event(self, world: World) -> None:
         async with captured_wide_event() as event:
             await daily.run_daily_briefing(_USER)
@@ -2713,6 +2744,45 @@ class TestTheWeeklyRunWiring:
             event["brief_composition"]["items"],
             event["brief_composition"]["uncomposed"],
         ) == (32, 2, 30)
+        assert len(payload.uncomposed) == 30
+
+    async def test_the_goals_composition_and_pool_are_the_users_and_the_weeks(
+        self, world: World
+    ) -> None:
+        world.agent.return_value = _weekly_voiced()
+        world.user.name = "Ada Lovelace"
+        world.reads["gather_week"].return_value = BriefingWeek(
+            days=[BriefingWeekDay(you=1, gaia=2)] * 7, ahead=[_FRIDAY_PITCH]
+        )
+
+        await weekly.run_weekly_digest(_USER)
+
+        world.reads["stated_goals"].assert_awaited_once_with(_USER, world.user)
+        assert world.reads["list_since"].await_args.args == (_USER, _WEEK_START)
+        assert world.composer.await_args.kwargs["config"] == {"configurable": {"user_id": _USER}}
+        composed = world.composer.await_args.args[1]
+        assert f"Wednesday 14 October 2026, {_TZ}." in composed
+        assert "Calendar in the week ahead: 1 event(s), every one listed below." in composed
+        assert "Recent briefs opened on" not in composed
+        blocks = world.weekly_prompt.call_args.kwargs["blocks"]
+        assert blocks.goal == "Stated goal: Ship v2"
+        assert "open_todos" not in blocks.facts and "todos" not in blocks.facts.lower()
+        payload = _stored_payload(world)
+        assert [b.kind for b in payload.blocks] == ["items"]
+        assert payload.uncomposed == []
+
+    async def test_a_user_without_a_name_or_timezone_is_read_to_as_the_unnamed_reader_on_utc(
+        self, world: World
+    ) -> None:
+        world.agent.return_value = _weekly_voiced()
+        world.user.name = None
+        world.user.timezone = None
+
+        await weekly.run_weekly_digest(_USER)
+
+        composed = world.composer.await_args.args[1]
+        assert "composing the user's weekly digest" in composed
+        assert "Wednesday 14 October 2026, UTC." in composed
 
     async def test_the_voice_is_found_past_other_blocks(self, world: World) -> None:
         world.agent.return_value = SimpleNamespace(message=_NOISE_BLOCKS + _fenced(_WEEKLY_VOICE))

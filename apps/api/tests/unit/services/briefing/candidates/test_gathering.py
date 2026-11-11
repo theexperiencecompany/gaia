@@ -18,6 +18,8 @@ from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.brief_candidate_models import BriefCandidate
+from app.models.briefing_models import BriefingEvent
 from app.models.scout_models import (
     RememberedSignal,
     ScoutOutcome,
@@ -29,6 +31,7 @@ from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.services.briefing.candidates.pool import (
     CandidateSources,
     GatheredCandidates,
+    _one_per_thing,
     gather_candidates,
 )
 from app.services.briefing.context import TrackedWork, UserClock
@@ -92,6 +95,78 @@ def _scouts(*remembered: RememberedSignal) -> ScoutSignals:
 
 async def _gathered(work: TrackedWork, scouts: ScoutSignals) -> GatheredCandidates:
     return await gather_candidates(USER_ID, CLOCK, NOW, NOW, CandidateSources(work, [], scouts, []))
+
+
+def _found(title: str, **fields: object) -> BriefCandidate:
+    return BriefCandidate(
+        source="gmail",
+        app="Gmail",
+        state="you",
+        title=title,
+        ref="gmail:t1",
+        **fields,
+    )
+
+
+class TestFoldingTwoFindsOfOneThing:
+    def test_what_only_the_second_find_knew_is_kept(self) -> None:
+        first = _found("Reply to Maya")
+        again = _found(
+            "Re: term sheet",
+            detail="needs sign-off",
+            due_at=NOW,
+            todo_id="todo-1",
+            held_id="held-1",
+        )
+
+        [merged] = _one_per_thing([first, again])
+
+        assert (merged.title, merged.detail, merged.due_at, merged.todo_id, merged.held_id) == (
+            "Reply to Maya",
+            "needs sign-off",
+            NOW,
+            "todo-1",
+            "held-1",
+        )
+
+    def test_what_the_first_find_knew_wins_over_the_second(self) -> None:
+        first = _found(
+            "Reply to Maya", detail="first", due_at=NOW, todo_id="todo-1", held_id="held-1"
+        )
+        again = _found(
+            "Re: term sheet",
+            detail="second",
+            due_at=datetime(2026, 11, 20, tzinfo=UTC),
+            todo_id="todo-2",
+            held_id="held-2",
+        )
+
+        [merged] = _one_per_thing([first, again])
+
+        assert (merged.detail, merged.due_at, merged.todo_id, merged.held_id) == (
+            "first",
+            NOW,
+            "todo-1",
+            "held-1",
+        )
+
+    def test_a_repeat_does_not_end_the_folding_of_what_follows(self) -> None:
+        other = BriefCandidate(source="gmail", app="Gmail", state="you", title="Offsite")
+
+        kept = _one_per_thing([_found("a"), _found("b"), other])
+
+        assert [c.title for c in kept] == ["a", "Offsite"]
+
+
+class TestTheCalendarJoinsThePool:
+    async def test_todays_events_are_timed_in_the_users_own_clock(self) -> None:
+        events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
+        sources = CandidateSources(TrackedWork(), [], _scouts(), events)
+
+        gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
+
+        [event] = gathered.pool.values()
+        assert (event.title, event.is_event, event.time) == ("Board call", True, "3:00 PM")
 
 
 class TestOneItemPerThing:

@@ -5,7 +5,7 @@ here. The composition places these by id, and nothing outside the pool can be pl
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
@@ -48,7 +48,7 @@ class PoolContext:
     calendar_events: int
     calendar_span: str
     #: The opening line of each recent brief, newest first, so today's opens differently.
-    recent_openings: list[str]
+    recent_openings: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

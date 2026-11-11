@@ -100,7 +100,6 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
             today=clock.now_local.date(),
             calendar_events=len(week.ahead),
             calendar_span=WEEK_AHEAD_SPAN,
-            recent_openings=[],
         ),
         seen_at,
     )

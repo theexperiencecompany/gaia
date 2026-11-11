@@ -85,8 +85,8 @@ def _unreadable_problems(exc: MalformedStructuredOutputError) -> list[str]:
     cause = exc.__cause__
     if not isinstance(cause, ValidationError):
         return [exc.reason]
-    errors: list[ErrorDetails] = cause.errors(include_url=False, include_input=False)
-    return [f"{'.'.join(map(str, error['loc']))}: {error['msg']}" for error in errors]
+    errors: list[ErrorDetails] = cause.errors()
+    return [f"{error['loc'][0]}: {error['msg']}" for error in errors]
 
 
 async def _voice(user_id: str, prompt: str) -> BriefVoice:
@@ -127,11 +127,8 @@ def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
 
 
 def _length_problems(exc: ValidationError) -> list[str]:
-    errors: list[ErrorDetails] = exc.errors(include_url=False, include_input=False)
-    return [
-        f"the {'.'.join(map(str, error['loc']))} once its slots are filled: {error['msg']}"
-        for error in errors
-    ]
+    errors: list[ErrorDetails] = exc.errors()
+    return [f"the {error['loc'][0]} once its slots are filled: {error['msg']}" for error in errors]
 
 
 def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str]:

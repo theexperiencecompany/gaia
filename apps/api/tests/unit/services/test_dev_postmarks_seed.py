@@ -228,6 +228,7 @@ async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user
             ],
         ),
     ]
+    assert [(b.kind, b.section) for b in weekly.blocks] == [("items", 0), ("items", 1)]
     assert seeded.deliver.await_count == 5
 
 
