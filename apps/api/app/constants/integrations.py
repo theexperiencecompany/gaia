@@ -110,10 +110,12 @@ GMAIL_INTEGRATION_ID = "gmail"
 GOOGLE_CALENDAR_INTEGRATION_ID = "googlecalendar"
 
 # --- LLM inference (category + marketplace content) -------------------------
-# Every tool goes into the prompt, one line each, so the copy can cover the whole
-# tool set; the cap only bounds the prompt for an outsized server.
-MAX_TOOLS_IN_PROMPT = 200
+# Every tool name goes into the prompt; descriptions share what the budget leaves,
+# so 30 tools get full sentences and 300 get names only (~4k tokens either way).
+TOOLS_PROMPT_CHAR_BUDGET = 16_000
 TOOL_DESCRIPTION_MAX_CHARS = 160
+# A description cut shorter than this says less than the tool's name already does.
+TOOL_DESCRIPTION_MIN_CHARS = 40
 
 # How many of each content element to request. The frontend needs at least 3
 # FAQs for its rich-snippet schema, so never drop FAQ_COUNT below that.
@@ -183,7 +185,7 @@ Category: {category}
 Description: {description}
 Server domain: {domain}
 How users connect: {auth}
-Tools ({tool_count} in total{tools_note}):
+Tools ({tool_count} in total):
 {tools}
 
 First, sort the tools into groups by what they let someone do (for example:

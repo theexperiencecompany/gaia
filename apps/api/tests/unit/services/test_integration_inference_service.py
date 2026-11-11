@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.integrations import TOOLS_PROMPT_CHAR_BUDGET
 from app.models.integration_models import Integration, StoredIntegrationTool
 from app.models.oauth_models import IntegrationContent, IntegrationFAQ, IntegrationHowItWorksStep
 from app.services.integrations.integration_inference_service import (
@@ -70,6 +71,29 @@ class TestToolsCatalog:
 
     def test_none_when_empty(self):
         assert _tools_catalog([]) == "None"
+
+    def test_a_huge_server_keeps_every_tool_and_stays_inside_the_budget(self):
+        tools = [
+            StoredIntegrationTool(name=f"tool_number_{i}", description="Does a thing. " * 20)
+            for i in range(400)
+        ]
+
+        catalog = _tools_catalog(tools)
+
+        assert catalog.splitlines() == [f"- tool_number_{i}" for i in range(400)]
+        assert len(catalog) <= TOOLS_PROMPT_CHAR_BUDGET
+
+    def test_a_large_server_shortens_descriptions_to_fit_the_budget(self):
+        long_sentence = "Reads " + "very " * 60 + "much."
+        tools = [StoredIntegrationTool(name=f"t{i}", description=long_sentence) for i in range(120)]
+
+        catalog = _tools_catalog(tools)
+
+        assert len(catalog.splitlines()) == 120
+        assert all(
+            line.startswith(f"- t{i}: Reads very") for i, line in enumerate(catalog.splitlines())
+        )
+        assert len(catalog) <= TOOLS_PROMPT_CHAR_BUDGET
 
 
 class TestServerDomain:

@@ -21,8 +21,9 @@ from app.constants.integrations import (
     FAQ_COUNT,
     HOW_IT_WORKS_COUNT,
     INTEGRATION_CATEGORIES,
-    MAX_TOOLS_IN_PROMPT,
     TOOL_DESCRIPTION_MAX_CHARS,
+    TOOL_DESCRIPTION_MIN_CHARS,
+    TOOLS_PROMPT_CHAR_BUDGET,
     USE_CASES_COUNT,
 )
 from app.constants.log_tags import LogTag
@@ -45,12 +46,22 @@ _AUTH_DESCRIPTIONS: dict[MCPAuthType, str] = {
 
 
 def _tools_catalog(tools: list[StoredIntegrationTool]) -> str:
-    """One "- name: first sentence of its description" line per named tool, or "None"."""
+    """One line per named tool: every name, plus as much description as the budget allows."""
+    named = named_tools(tools)
+    if not named:
+        return "None"
+    name_chars = sum(len(tool.name) + len("- : ") for tool in named)
+    share = (TOOLS_PROMPT_CHAR_BUDGET - name_chars) // len(named)
+    description_chars = min(TOOL_DESCRIPTION_MAX_CHARS, share)
     lines = []
-    for tool in named_tools(tools)[:MAX_TOOLS_IN_PROMPT]:
-        summary = first_sentence(tool.description, max_len=TOOL_DESCRIPTION_MAX_CHARS)
+    for tool in named:
+        summary = (
+            first_sentence(tool.description, max_len=description_chars)
+            if description_chars >= TOOL_DESCRIPTION_MIN_CHARS
+            else None
+        )
         lines.append(f"- {tool.name}: {summary}" if summary else f"- {tool.name}")
-    return "\n".join(lines) or "None"
+    return "\n".join(lines)
 
 
 def _auth_description(auth_type: AuthType | None) -> str:
@@ -137,16 +148,12 @@ async def infer_integration_content(
     tools = integration.tools
     server_url = integration.mcp_config.server_url if integration.mcp_config else ""
     log.set(integration={"provider": name, "action": "infer_content"})
-    tool_count = len(named_tools(tools))
     prompt = CONTENT_INFERENCE_PROMPT.format(
         name=name,
         category=category,
         description=integration.description or "No description provided",
         auth=_auth_description(auth_type),
-        tool_count=tool_count,
-        tools_note=f", first {MAX_TOOLS_IN_PROMPT} listed"
-        if tool_count > MAX_TOOLS_IN_PROMPT
-        else "",
+        tool_count=len(named_tools(tools)),
         tools=_tools_catalog(tools),
         domain=_server_domain(server_url),
         use_cases_count=USE_CASES_COUNT,
