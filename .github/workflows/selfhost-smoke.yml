@@ -7,12 +7,11 @@ name: Self-host smoke
 # checkout's CLI build on a GitHub-hosted runner, the scripted LLM stub as the
 # `custom` provider, and a Playwright journey through setup, chat, tools,
 # uploads, invites, roles, readiness and the code sandbox
-# (scripts/ci/selfhost.sh + apps/web/e2e/selfhost). It runs on PRs that touch
-# what a self-hoster runs (nx task ci:selfhost-e2e) and on dispatch.
-# No `branches:` filter on pull_request: it matches the PR's base, so it would
-# exempt every stacked PR (see CLAUDE.md, Skipped / Non-Gated Lanes).
+# (scripts/ci/selfhost.sh + apps/web/e2e/selfhost). Both run in the merge
+# queue (the e2e only when the group touches what a self-hoster runs, nx task
+# ci:selfhost-e2e), on master and on dispatch: a PR push pays for neither.
 on:
-  pull_request:
+  merge_group:
   push:
     branches:
       - master
@@ -41,11 +40,10 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      pull-requests: read
       actions: read
     outputs:
       tasks: ${{ steps.affected.outputs.tasks }}
-      selfhost_e2e: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(fromJSON(steps.affected.outputs.tasks), 'ci:selfhost-e2e')) }}
+      selfhost_e2e: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'merge_group' && contains(fromJSON(steps.affected.outputs.tasks), 'ci:selfhost-e2e')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -58,13 +56,13 @@ jobs:
 
       - uses: ./.github/actions/setup-node-pnpm
 
-      # The PR's real base (a stacked PR's payload names the stack trunk).
-      - name: Resolve the PR base
+      # The commit the merge group was built on, like ci.yml#detect.
+      - name: Resolve the merge group base
         id: base
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'merge_group'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: bash scripts/ci/changes.sh base
 
       - name: Ask nx which checks this change reaches
