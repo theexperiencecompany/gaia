@@ -26,6 +26,7 @@ from app.agents.prompts.briefing_prompts import (
     VoiceSituation,
     build_briefing_voice_prompt,
     build_weekly_voice_prompt,
+    voice_unreadable_note,
 )
 from app.constants.briefing import (
     FIRST_WEEK_DAYS,
@@ -590,6 +591,7 @@ class TestDailyBrief:
         await daily.run_daily_briefing(_USER)
         await daily.run_daily_briefing(_USER)
 
+        assert {c.kwargs["owner_id"] for c in world.host_image.await_args_list} == {_USER}
         keys = [c.kwargs["render_key"] for c in world.host_image.await_args_list]
         assert len(keys) == 2 and keys[0] != keys[1]
         assert re.fullmatch(r"[0-9a-f]{32}", keys[0])
@@ -681,6 +683,7 @@ class TestDailyBrief:
         assert _stored_payload(world).new_stamp == NewStamp(
             city="Tokyo", country="Japan", collected=1, total=85
         )
+        world.stamped.assert_awaited_once_with(_USER)
         line = "New stamp: Tokyo, Japan. 1 of 85 collected. [See your stamps]("
         assert line in world.post.await_args.kwargs["text"]
         assert line in world.notify.await_args.args[0].content.body
@@ -1435,12 +1438,30 @@ class TestAnUnreadableVoiceIsRetried:
         await daily.run_daily_briefing(_USER)
 
         assert world.agent.await_count == 2
+        first = world.agent.await_args_list[0].kwargs["request"].message
         retry = world.agent.await_args_list[1].kwargs["request"].message
-        assert (
-            "YOUR LAST REPLY COULD NOT BE READ\nIt was not the voice JSON object:\n- mood: Field required\n"
-            in retry
-        )
+        assert retry == f"{first}\n\n{voice_unreadable_note(['mood: Field required'])}"
         assert _stored_payload(world).headline == _VOICE["headline"]
+
+    async def test_an_unreadable_reply_is_logged_by_length_and_problems_never_its_text(
+        self, world: World
+    ) -> None:
+        world.agent.side_effect = [_MOOD_LEFT_OUT, SimpleNamespace(message=_fenced(_VOICE))]
+
+        async with captured_wide_event() as event:
+            await daily.run_daily_briefing(_USER)
+
+        first = world.agent.await_args_list[0].kwargs["request"].message
+        assert {
+            "msg": "briefing.voice_unreadable",
+            "raw_length": len(_message_written(first, _MOOD_LEFT_OUT.message)),
+            "problems": ["mood: Field required"],
+        } in event["warnings"]
+
+    def test_the_failure_lists_every_problem_joined(self) -> None:
+        error = errors.VoiceUnreadableError(["first problem", "second problem"])
+
+        assert str(error) == "No valid voice JSON in agent output: first problem; second problem"
 
     async def test_a_reply_unreadable_twice_fails_naming_the_shape_not_the_text(
         self, world: World

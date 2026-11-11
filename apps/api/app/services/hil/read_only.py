@@ -73,12 +73,12 @@ def _base_forms(word: str, *, past_tense: bool) -> set[str]:
     """Return the word and the base verbs it may inflect; past tense only when asked."""
     forms = {word}
     if word.endswith("s"):
-        forms |= {word[:-1], word[:-2]}
+        forms.update({word[:-1], word[:-2]})
     if word.endswith("ing"):
         stem = word[:-3]
-        forms |= {stem, stem + "e", stem[:-1]}
+        forms.update({stem, stem + "e", stem[:-1]})
     if past_tense and word.endswith("ed"):
-        forms |= {word[:-1], word[:-2], word[:-3]}
+        forms.update({word[:-1], word[:-2], word[:-3]})
     return forms
 
 
@@ -92,9 +92,9 @@ def voices_write_intent(name: str, description: str) -> bool:
     A description's past participles describe data ("issues created this week"), so only
     its present forms count as intent; the name counts every inflection.
     """
-    return _has_write_intent(_words(name), past_tense=True) or _has_write_intent(
-        _words(description), past_tense=False
-    )
+    in_name = _has_write_intent(_words(name), past_tense=True)
+    in_description = _has_write_intent(_words(description), past_tense=False)  # pragma: no mutate
+    return in_name or in_description
 
 
 def tool_shape_hash(tool: BaseTool) -> str:

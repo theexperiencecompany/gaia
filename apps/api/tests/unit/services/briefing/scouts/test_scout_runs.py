@@ -213,6 +213,16 @@ class TestReplayOrLearn:
         assert result.criteria == CRITERIA
         scouts.learn.assert_not_awaited()
 
+    async def test_a_learn_that_finds_nothing_to_watch_says_so(self, scouts: Scouts) -> None:
+        scouts.learn.side_effect = lambda user, user_id, integration, tools: Learned(
+            signals=[],
+            scout=_scout(integration, status=ScoutStatus.NOTHING_TO_WATCH),
+        )
+
+        [result] = await service.run_scouts(USER)
+
+        assert (result.outcome, result.signals) == (ScoutOutcome.NOTHING_TO_WATCH, [])
+
     async def test_a_changed_tool_list_relearns_and_refreezes(self, scouts: Scouts) -> None:
         scouts.stored["linear"] = _scout(LINEAR, fingerprint="fp-old")
         scouts.fingerprint = "fp-new"
@@ -325,6 +335,23 @@ class TestWhoRunsScouts:
         assert event["scouts"] == {"skipped": "dormant"}
 
 
+class TestLearningAFreshConnection:
+    async def test_the_connected_integration_is_scouted_and_no_other(self, scouts: Scouts) -> None:
+        scouts.integrations = [GITHUB, LINEAR]
+
+        result = await service.learn_connected_integration(USER, "linear")
+
+        assert result is not None
+        assert (result.integration_id, result.outcome) == ("linear", ScoutOutcome.LEARNED)
+        assert list(scouts.stored) == ["linear"]
+
+    async def test_an_integration_no_scout_watches_is_not_scouted(self, scouts: Scouts) -> None:
+        scouts.integrations = [GITHUB]
+
+        assert await service.learn_connected_integration(USER, "linear") is None
+        scouts.learn.assert_not_awaited()
+
+
 class TestTypedSkips:
     async def test_a_stale_integration_record_is_skipped_without_an_error(
         self, scouts: Scouts
@@ -384,6 +411,16 @@ class TestBackoff:
             1,
             _NOW + SCOUT_RELEARN_BACKOFF[0],
         )
+
+    async def test_a_relearn_that_raises_extends_the_streak_it_ended_the_backoff_of(
+        self, scouts: Scouts
+    ) -> None:
+        scouts.stored["linear"] = _failed(2, _NOW)
+        scouts.learn.side_effect = TimeoutError()
+
+        await service.run_scouts(USER)
+
+        assert scouts.stored["linear"].failed_learns == 3
 
     async def test_inside_the_backoff_the_scout_is_skipped_without_a_learn(
         self, scouts: Scouts
@@ -450,6 +487,9 @@ class TestOneScoutFailing:
         assert (linear.outcome, _ids(linear)) == (ScoutOutcome.REPLAYED, ["replayed-1"])
         [error] = event["errors"]
         assert error["integration_id"] == "github"
+        assert error["msg"] == "briefing.scout_failed"
+        assert error["error"] == "no tools reachable for github"
+        assert error["error_type"] == "AppError"
 
 
 class TestWhatEachScoutIsHanded:

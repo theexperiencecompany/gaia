@@ -121,7 +121,12 @@ async def scout_tools(user_id: str, integration_id: str) -> ScoutTools:
     verdicts = await asyncio.gather(*(is_read_only(tool) for tool in tools))
     return ScoutTools(
         integration_id=integration_id,
-        read_only={tool.name: tool for tool, reads in zip(tools, verdicts, strict=True) if reads},
+        # strict=True only restates that gather answered once per tool, so no input reaches it.
+        read_only={
+            tool.name: tool
+            for tool, reads in zip(tools, verdicts, strict=True)  # pragma: no mutate
+            if reads
+        },
         total=len(tools),
         fingerprint=tool_fingerprint(tools),
     )
