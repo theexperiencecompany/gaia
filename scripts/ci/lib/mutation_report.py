@@ -857,7 +857,9 @@ def _verdicts_from_json(path: Path) -> list[ModuleVerdict]:
     if not isinstance(data, dict):
         raise SystemExit(f"mutation: {path} is not a mutation record")
     if "modules" in data:
-        items = _as_list(data["modules"])
+        items = data["modules"]
+        if not isinstance(items, list):
+            raise SystemExit(f"mutation: {path} is not a mutation record ('modules' is not a list)")
         return [_record_from_dict(item, path) for item in items]
     if "module" not in data:
         raise SystemExit(

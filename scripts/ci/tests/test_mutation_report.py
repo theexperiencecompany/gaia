@@ -265,6 +265,18 @@ def test_survivors_rejects_a_foreign_json_instead_of_crashing(tmp_path: Path) ->
     assert "shard.verdict.json" in result.stderr
 
 
+def test_survivors_rejects_a_null_module_list(tmp_path: Path) -> None:
+    """A record set whose modules is null is malformed, not an empty run with no survivors."""
+    broken = tmp_path / "shard.verdict.json"
+    broken.write_text(json.dumps({"modules": None}))
+
+    result = _run(["survivors", str(broken)])
+
+    assert result.returncode != 0
+    assert "shard.verdict.json" in result.stderr
+    assert "not a mutation record" in result.stderr
+
+
 def test_survivors_names_the_foreign_file_in_a_record_directory(tmp_path: Path) -> None:
     """A record dir holds only records; one other json names itself instead of a traceback."""
     records = _record_dir(tmp_path, [(f"{BOT_PREFIX}3", f"CHANGED:{BOT_ARGS_LINE}")])
