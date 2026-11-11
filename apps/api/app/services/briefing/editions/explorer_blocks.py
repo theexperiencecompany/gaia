@@ -20,6 +20,7 @@ from app.models.brief_composition_models import (
 )
 from app.models.brief_pool_models import DataSeries, SeriesShape
 from app.models.briefing_models import BriefingEvent, BriefingItem, BriefingSection
+from app.services.briefing.candidates.app_names import integration_id_named
 from app.services.briefing.editions.edition_logos import logo_key
 
 # A week or less of days is named by weekday; a longer run by its date.
@@ -47,6 +48,13 @@ class ExplorerEvent(TypedDict):
     title: str
     detail: str | None
     logo: str
+
+
+class ExplorerSource(TypedDict):
+    """An app the brief read, for the "made from your apps" line: its name and its mark."""
+
+    name: str
+    logo: str | None
 
 
 class ExplorerLead(TypedDict):
@@ -276,10 +284,14 @@ def build_blocks(
 
 
 def printed_logos(
-    blocks: list[BriefBlock], sections: list[BriefingSection], calendar: list[BriefingEvent]
+    blocks: list[BriefBlock],
+    sections: list[BriefingSection],
+    calendar: list[BriefingEvent],
+    sources_read: list[str],
 ) -> set[str]:
-    """Return every app mark the drawn blocks and the calendar print."""
+    """Return every app mark the drawn blocks, the calendar and the apps-read line print."""
     sources: list[str | None] = [GOOGLE_CALENDAR_INTEGRATION_ID] if calendar else []
+    sources += [integration_id_named(name) for name in sources_read]
     for block in blocks:
         if isinstance(block, SectionBlock):
             sources += [item.source for item in sections[block.section].items]
@@ -288,6 +300,11 @@ def printed_logos(
         elif isinstance(block, ChartBlock):
             sources += [series.source for series in block.series]
     return {key for source in sources if (key := logo_key(source)) is not None}
+
+
+def read_sources(sources_read: list[str]) -> list[ExplorerSource]:
+    """Return the apps the brief read, each with its registered mark when it has one."""
+    return [{"name": name, "logo": logo_key(integration_id_named(name))} for name in sources_read]
 
 
 def awaiting(blocks: list[BriefBlock], sections: list[BriefingSection]) -> int | None:

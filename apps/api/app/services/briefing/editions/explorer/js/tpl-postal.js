@@ -16,6 +16,11 @@
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
+  const appList = (sources) => {
+    const n = sources.map((x) => x.name);
+    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
+  };
   const B = EXPLORER.blocks;
 
   /* Every texture, tilt and noise seed is drawn from the edition's date, so one day always prints the same envelope. */
@@ -250,6 +255,9 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
 .t-postal .ps b { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .t-postal .sign { margin-top: 22px; font-size: 18px; font-style: italic; }
 .t-postal .sig { display: inline-block; margin-top: 4px; font: italic 500 36px/1 'Source Serif 4', serif; color: #233f7d; transform: rotate(-4deg); }
+.t-postal .src { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 13px; letter-spacing: .02em; line-height: 1.4; color: #5f594d; }
+.t-postal .src .logos { display: inline-flex; gap: 7px; flex: none; }
+.t-postal .src .xb-logo { width: 15px; height: 15px; color: #2a2822; }
 .t-postal .lfoot { margin-top: 26px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,.18); display: flex; justify-content: space-between; font-size: 13px; letter-spacing: .06em; color: #5f594d; }
 `,
     render(ed, skin) {
@@ -271,7 +279,7 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
       };
       const blocks = B.layout(ed, R);
       const s = ed.stats;
-      const figures = s ? `Yesterday we closed <b>${s.done}</b> things${s.you && s.gaia ? ` (you ${s.you}, me ${s.gaia})` : ""}${s.mail ? ` and handled <b>${s.mail}</b> emails` : ""}.${s.focus ? ` You have <b>${esc(s.focus)}</b> of focus ahead.` : ""}` : "";
+      const figures = s ? `Yesterday we closed <b>${s.done}</b> ${s.done === 1 ? "thing" : "things"}${s.you && s.gaia ? ` (you ${s.you}, me ${s.gaia})` : ""}${s.mail ? ` and handled <b>${s.mail}</b> emails` : ""}.${s.focus ? ` You have <b>${esc(s.focus)}</b> of focus ahead.` : ""}` : "";
       const said = [figures, ...told].filter(Boolean).join(" ");
       const ps = said ? `<p class="ps"><span class="w">P.S.</span><span>${said}</span></p>` : "";
       return `<article class="t-postal" style="--env:${skin.paper.env}; --envInk:${skin.paper.ink}; --tint:${skin.paper.tint}; --mark:${skin.ink.mark}; --defin:${skin.ink.defin}; --ribbon:${skin.ink.ribbon}">
@@ -292,6 +300,7 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
   ${ps}
   <p class="sign">Yours, always on watch,<br><span class="sig">GAIA</span></p>
   <div class="lfoot tw"><span>Posted ${esc(ed.time)} · GAIA Post</span><span>Edition No. ${ed.editionNo}</span></div>
+  ${ed.sources.length ? `<p class="src tw" data-block="sources"><span class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { mode: "color", cls: "" })).join("")}</span><span>Written from your ${esc(appList(ed.sources))}</span></p>` : ""}
 </div></article>`;
     },
   });

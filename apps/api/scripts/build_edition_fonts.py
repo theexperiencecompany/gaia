@@ -195,7 +195,10 @@ FACES: tuple[Face, ...] = (
     Face(
         "Libre Baskerville",
         gf_variable(
-            "librebaskerville", "LibreBaskerville[wght].ttf", ((400, ROMAN), (400, ITALIC)), {}
+            "librebaskerville",
+            "LibreBaskerville[wght].ttf",
+            ((400, ROMAN), (700, ROMAN), (400, ITALIC)),
+            {},
         ),
         {"OFL-Libre-Baskerville": ofl("librebaskerville")},
     ),
@@ -226,7 +229,10 @@ FACES: tuple[Face, ...] = (
     Face(
         "Bodoni Moda",
         gf_variable(
-            "bodonimoda", "BodoniModa[opsz,wght].ttf", ((400, ROMAN), (400, ITALIC)), {"opsz": 28}
+            "bodonimoda",
+            "BodoniModa[opsz,wght].ttf",
+            ((400, ROMAN), (400, ITALIC), (700, ITALIC)),
+            {"opsz": 28},
         ),
         {"OFL-Bodoni-Moda": ofl("bodonimoda")},
     ),
@@ -284,12 +290,16 @@ FACES: tuple[Face, ...] = (
     ),
     Face(
         "Cormorant",
-        gf_variable("cormorant", "Cormorant[wght].ttf", ((400, ROMAN), (400, ITALIC)), {}),
+        gf_variable(
+            "cormorant", "Cormorant[wght].ttf", ((400, ROMAN), (400, ITALIC), (600, ITALIC)), {}
+        ),
         {"OFL-Cormorant": ofl("cormorant")},
     ),
     Face(
         "EB Garamond",
-        gf_variable("ebgaramond", "EBGaramond[wght].ttf", ((400, ROMAN), (400, ITALIC)), {}),
+        gf_variable(
+            "ebgaramond", "EBGaramond[wght].ttf", ((400, ROMAN), (600, ROMAN), (400, ITALIC)), {}
+        ),
         {"OFL-EB-Garamond": ofl("ebgaramond")},
     ),
     Face(
@@ -302,7 +312,10 @@ FACES: tuple[Face, ...] = (
     Face(
         "Playfair Display",
         gf_variable(
-            "playfairdisplay", "PlayfairDisplay[wght].ttf", ((700, ROMAN), (500, ITALIC)), {}
+            "playfairdisplay",
+            "PlayfairDisplay[wght].ttf",
+            ((700, ROMAN), (500, ITALIC), (700, ITALIC)),
+            {},
         ),
         {"OFL-Playfair-Display": ofl("playfairdisplay")},
     ),
@@ -311,7 +324,7 @@ FACES: tuple[Face, ...] = (
         gf_variable(
             "literata",
             "Literata[opsz,wght].ttf",
-            ((400, ROMAN), (400, ITALIC)),
+            ((400, ROMAN), (700, ROMAN), (400, ITALIC)),
             {"opsz": 18},
         ),
         {"OFL-Literata": ofl("literata")},

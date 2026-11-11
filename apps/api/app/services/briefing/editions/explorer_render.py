@@ -182,7 +182,9 @@ def render_explorer_edition(
 
     modules_html = "\n".join(f"<script>\n{source}\n</script>" for source in _module_sources())
     shell_js, reading_css = _shell_sources()
-    logos = printed_logos(payload.blocks, payload.sections, edition_calendar(payload, family))
+    logos = printed_logos(
+        payload.blocks, payload.sections, edition_calendar(payload, family), payload.sources_read
+    )
 
     ed_json = _json_for_script(ed)
     family_json = _json_for_script(family)

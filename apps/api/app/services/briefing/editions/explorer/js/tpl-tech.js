@@ -94,6 +94,9 @@
 .t-flightplan .tb span { display: block; font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--soft); }
 .t-flightplan .tb b { display: block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .t-flightplan .tb .nw { white-space: nowrap; }
+.t-flightplan .tb .refs b { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 16px; }
+.t-flightplan .tb .refs .nw { display: inline-flex; align-items: center; font-size: 16px; font-weight: 600; color: var(--ink); }
+.t-flightplan .tb .refs .rl { width: 16px; height: 16px; margin-right: 6px; color: var(--ink); }
 `,
     render(ed, skin) {
       const B = EXPLORER.blocks;
@@ -183,7 +186,11 @@
       };
       const parts = B.layout(ed, R);
       const s = ed.stats;
-      const tb = `<div class="tb"><div><span>Project</span><b>${esc(ed.weekday)}</b></div><div><span>Sheet</span><b>${String(ed.editionNo).padStart(3, "0")}</b></div><div><span>Drawn by</span><b>GAIA · ${esc(ed.time24)}</b></div><div><span>Date</span><b>${pad2(ed.day)} ${esc(ed.monthShort.toUpperCase())} ${ed.year}</b></div>${s ? `<div class="wide"><span>Yield</span><b><span class="nw">${s.done} done${s.you && s.gaia ? ` (${s.you} you · ${s.gaia} GAIA)` : ""}</span>${s.mail ? ` · <span class="nw">${s.mail} emails cleared</span>` : ""}${s.focus ? ` · <span class="nw">${esc(s.focus)} focus held</span>` : ""}</b></div>` : ""}</div>`;
+      // The sources a drawing was made from are its references, lettered in the title block.
+      const refs = ed.sources.length
+        ? `<div class="wide refs" data-block="sources"><span>References</span><b>${ed.sources.map((x) => `<span class="nw">${B.logo(x.logo, { cls: "rl" })}${esc(x.name)}</span>`).join("")}</b></div>`
+        : "";
+      const tb = `<div class="tb"><div><span>Project</span><b>${esc(ed.weekday)}</b></div><div><span>Sheet</span><b>${String(ed.editionNo).padStart(3, "0")}</b></div><div><span>Drawn by</span><b>GAIA · ${esc(ed.time24)}</b></div><div><span>Date</span><b>${pad2(ed.day)} ${esc(ed.monthShort.toUpperCase())} ${ed.year}</b></div>${s ? `<div class="wide"><span>Yield</span><b><span class="nw">${s.done} done${s.you && s.gaia ? ` (${s.you} you · ${s.gaia} GAIA)` : ""}</span>${s.mail ? ` · <span class="nw">${s.mail} emails cleared</span>` : ""}${s.focus ? ` · <span class="nw">${esc(s.focus)} focus held</span>` : ""}</b></div>` : ""}${refs}</div>`;
       const folds = skin.folds.id === "folded" ? `<i class="fold h"></i><i class="fold v"></i>` : "";
       return `<article class="t-flightplan" style="--stock:${skin.stock.stock}; --ink:${skin.stock.ink}; --soft:${skin.stock.soft}; --line:${skin.stock.line}; --grid:${skin.stock.grid}; --warn:${skin.stock.warn}; --face:${skin.face.stack}">
 ${grain("bp-g", 0.85)}${folds}
@@ -244,7 +251,7 @@ ${grain("bp-g", 0.85)}${folds}
 .t-instrument .gauge { position: relative; height: 112px; margin: 6px 0 10px; background: var(--well); border-radius: 4px; box-shadow: inset 0 2px 6px rgba(0,0,0,.6); }
 .t-instrument .gauge svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .t-instrument .gauge text { font-family: inherit; }
-.t-instrument .read { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 6px; margin-top: 10px; }
+.t-instrument .read { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; margin-top: 10px; }
 .t-instrument .read div { background: var(--well); border-radius: 4px; padding: 10px 8px; box-shadow: inset 0 2px 5px rgba(0,0,0,.55); }
 .t-instrument .read .sub { display: block; margin-top: 2px; font-size: 15px; color: var(--soft); }
 .t-instrument .read b { display: block; font-size: 34px; line-height: 1; font-weight: 700; color: var(--sig); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px color-mix(in srgb, var(--sig) 40%, transparent); }
@@ -262,6 +269,11 @@ ${grain("bp-g", 0.85)}${folds}
 .t-instrument .isoft { color: var(--soft); }
 .t-instrument .irx { grid-template-columns: 60px 1fr; text-wrap: pretty; }
 .t-instrument .foot { display: flex; justify-content: space-between; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--hair); }
+.t-instrument .isrc { display: flex; gap: 14px; align-items: baseline; margin-top: 22px; padding-top: 12px; border-top: 1px solid var(--hair); }
+.t-instrument .iinputs { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 15px; color: var(--soft); }
+.t-instrument .iinputs > span { display: inline-flex; align-items: center; white-space: nowrap; }
+.t-instrument .iinputs .il { width: 15px; height: 15px; margin-right: 6px; color: var(--ink); }
+.t-instrument .isrc + .foot { margin-top: 12px; }
 `,
     render(ed, skin) {
       const B = EXPLORER.blocks;
@@ -315,6 +327,7 @@ ${grain("bp-g", 0.85)}${folds}
 <div class="top"><span class="brand">GAIA</span><span class="serial lbl">GAIA RB-${ed.editionNo} · Daily briefing instrument<br>Serial ${esc(ed.weekday.slice(0, 3))} ${ed.day} ${esc(ed.monthShort)} ${ed.year} · issued ${esc(ed.time24)}</span></div>
 <p class="deck">${esc(ed.deck)}</p>
 ${EXPLORER.fold(mods).join("")}
+${ed.sources.length ? `<div class="isrc" data-block="sources"><span class="lbl">Inputs</span><span class="iinputs">${ed.sources.map((x) => `<span>${B.logo(x.logo, { cls: "il" })}${esc(x.name)}</span>`).join("")}</span></div>` : ""}
 <div class="foot"><span class="lbl">GAIA daily brief · edition No. ${ed.editionNo}</span><span class="lbl">Issued ${esc(ed.time24)}</span></div>
 </article>`;
     },

@@ -15,7 +15,13 @@ from typing import TypedDict
 from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
 from app.models.briefing_models import BriefingEvent, BriefingPayload, BriefingTallies
 from app.services.briefing.editions.codes import CodeGeometry, Symbology, family_codes
-from app.services.briefing.editions.explorer_blocks import ExplorerBlock, awaiting, build_blocks
+from app.services.briefing.editions.explorer_blocks import (
+    ExplorerBlock,
+    ExplorerSource,
+    awaiting,
+    build_blocks,
+    read_sources,
+)
 from app.services.briefing.editions.stamps import Stamp, stamp_for
 
 _WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -89,6 +95,8 @@ class ExplorerEdition(TypedDict):
     #: Todos waiting on the reader (a grouped ask counts each); None when nothing waits.
     awaiting: int | None
     stats: ExplorerStats | None
+    #: The apps the brief read, for the "made from your apps" line.
+    sources: list[ExplorerSource]
     stamp: Stamp | None
     #: None for a family that hangs no painting.
     art: ExplorerArt | None
@@ -131,6 +139,7 @@ def build_ed(
         "blocks": build_blocks(payload.blocks, payload.sections, calendar, payload.date),
         "awaiting": awaiting(payload.blocks, payload.sections),
         "stats": _build_stats(payload.tallies),
+        "sources": read_sources(payload.sources_read),
         "stamp": _build_stamp(payload.stamp_city) if family == POSTAL_FAMILY else None,
         "art": art,
         "assets": assets,

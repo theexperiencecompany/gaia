@@ -7,7 +7,7 @@ from tests.factories import make_brief_item
 
 from app.constants.briefing import EDITION_ROWS_SHOWN, BriefAction, BriefOutcome
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.editions.explorer_blocks import build_blocks
+from app.services.briefing.editions.explorer_blocks import build_blocks, read_sources
 
 _EVENT = {"date": "2026-11-10", "start": "09:30", "title": "Standup"}
 
@@ -273,3 +273,12 @@ def test_the_calendar_spans_the_days_timed_starts_beyond_the_rows_it_shows() -> 
 
     assert len(block["events"]) == EDITION_ROWS_SHOWN
     assert (block["first"], block["last"]) == ("09:30", "15:30")
+
+
+@pytest.mark.unit
+def test_an_app_the_brief_read_carries_its_mark_and_one_without_a_registered_mark_none() -> None:
+    assert read_sources(["GitHub", "Google Calendar", "Stripe"]) == [
+        {"name": "GitHub", "logo": "github"},
+        {"name": "Google Calendar", "logo": "googlecalendar"},
+        {"name": "Stripe", "logo": None},
+    ]

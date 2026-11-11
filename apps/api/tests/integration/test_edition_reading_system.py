@@ -76,6 +76,7 @@ def expectations(payload: BriefingPayload) -> dict[str, Any]:
             for g in goals
         ],
         "notes": [b.text for b in payload.blocks if isinstance(b, NoteBlock)],
+        "sources": payload.sources_read,
     }
 
 

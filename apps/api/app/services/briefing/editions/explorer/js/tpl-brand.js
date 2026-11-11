@@ -4,6 +4,11 @@
    Reading order: headline -> the brief's blocks as GAIA composed them -> stats.
    ========================================================================== */
 (() => {
+  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
+  const appList = (sources) => {
+    const n = sources.map((s) => s.name);
+    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
+  };
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
@@ -73,13 +78,16 @@
 .t-band .tag { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: #8d9098; margin-top: 10px; }
 .t-band .qlogo { width: 16px; height: 16px; }
 .t-band { --rs-font: 'TeX Gyre Heros', sans-serif; --rs-font-h: 'Aeonik Extended', 'TeX Gyre Heros', sans-serif; --rs-ink: #f2f2f4; --rs-muted: #a3a5ad; --rs-acc: var(--acc); --rs-base: 15px; }
-.t-band .figs { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 30px; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+.t-band .figs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin-top: 30px; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
 .t-band .figs div { padding: 16px 14px; }
 .t-band .figs div + div { border-left: 1px solid var(--hair); }
 .t-band .figs b { display: block; font: 700 40px/1 'Aeonik Extended', 'TeX Gyre Heros', sans-serif; color: var(--acc); font-variant-numeric: tabular-nums; }
 .t-band .figs span { display: block; font-size: 15px; font-weight: 600; margin-top: 8px; }
 .t-band .figs small { display: block; font-size: 14px; color: #9fa1a8; }
 .t-band .foot { margin-top: 18px; font-size: 14px; color: #8d9098; }
+.t-band .src { margin-top: 8px; line-height: 1.5; }
+.t-band .src .logos { display: flex; gap: 10px; margin-bottom: 8px; color: #c4c6cc; }
+.t-band .src .xb-logo { width: 16px; height: 16px; }
 `,
     render(ed, skin) {
       const B = EXPLORER.blocks;
@@ -121,6 +129,7 @@ ${grain("bd-g", 0.9)}
   ${EXPLORER.fold(secs).join("")}
   ${figs}
   <p class="foot">Edition No. ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA</p>
+  ${ed.sources.length ? `<p class="foot src" data-block="sources"><span class="logos">${ed.sources.map((s) => EXPLORER.blocks.logo(s.logo, { mode: "color", cls: "" })).join("")}</span>Made from your ${esc(appList(ed.sources))}</p>` : ""}
 </div></article>`;
     },
   });
@@ -186,11 +195,15 @@ ${grain("bd-g", 0.9)}
 .t-playfair .epi cite { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 10px; font-style: italic; font-size: 15px; color: var(--soft); }
 .t-playfair .qlogo { width: 14px; height: 14px; color: var(--gilt); }
 .t-playfair .nb { font-style: italic; text-align: center; padding: 0 24px; text-wrap: balance; }
-.t-playfair { --rs-font: 'Literata', serif; --rs-font-h: 'Playfair Display', serif; --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--gilt); --rs-logo-ink: var(--gilt); --rs-base: 15px; --rs-title-weight: 400; --rs-h-style: italic; --rs-kick-case: none; --rs-kick-variant: small-caps; --rs-kick-track: .06em; }
-.t-playfair .figs { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; margin-top: 34px; padding: 18px 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.t-playfair { --rs-font: 'Literata', serif; --rs-font-h: 'Playfair Display', serif; --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--gilt); --rs-logo-ink: var(--gilt); --rs-base: 15px; --rs-h-style: italic; --rs-kick-case: none; --rs-kick-variant: small-caps; --rs-kick-track: .06em; }
+.t-playfair .figs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); text-align: center; margin-top: 34px; padding: 18px 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
 .t-playfair .figs b { display: block; font: 700 42px/1 'Playfair Display', serif; font-variant-numeric: lining-nums; }
 .t-playfair .figs span { display: block; font-style: italic; font-size: 16px; margin-top: 8px; color: var(--soft); }
 .t-playfair .col { margin-top: 22px; text-align: center; font-size: 14px; letter-spacing: 0; color: var(--soft); }
+.t-playfair .src { margin-top: 18px; }
+.t-playfair .src .col { margin-top: 8px; text-wrap: balance; }
+.t-playfair .src .logos { display: flex; justify-content: center; gap: 12px; color: var(--gilt); }
+.t-playfair .src .xb-logo { width: 15px; height: 15px; }
 `,
     render(ed, skin) {
       const B = EXPLORER.blocks;
@@ -236,6 +249,7 @@ ${grain("pf-g", 0.8)}${skin.watermark.id === "on" ? `<div class="wm" aria-hidden
 ${EXPLORER.fold(secs).join("")}
 ${figs}
 <p class="col">Edition No ${ed.editionNo} · set by GAIA at ${esc(ed.time)}${s && s.you && s.gaia ? ` · yesterday ${s.you} by you, ${s.gaia} by GAIA` : ""}</p>
+${ed.sources.length ? `<div class="src" data-block="sources"><p class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</p><p class="col">Made from your ${esc(appList(ed.sources))}</p></div>` : ""}
 </article>`;
     },
   });

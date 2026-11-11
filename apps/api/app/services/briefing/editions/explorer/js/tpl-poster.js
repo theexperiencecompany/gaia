@@ -3,6 +3,11 @@
    Reading order: headline -> the brief's blocks as GAIA composed them -> stats.
    ========================================================================== */
 (() => {
+  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
+  const appList = (sources) => {
+    const n = sources.map((s) => s.name);
+    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
+  };
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
@@ -72,6 +77,9 @@
 .t-swiss .figs b { display: block; font-family: var(--face); font-size: 50px; line-height: .95; font-weight: 700; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .t-swiss .figs span { display: block; font-size: 15px; font-weight: 700; letter-spacing: 0; margin-top: 6px; line-height: 1.25; }
 .t-swiss .colo { margin-top: 24px; font-size: 15px; font-weight: 700; letter-spacing: 0; color: var(--soft); }
+.t-swiss .src { display: flex; align-items: center; gap: 12px; margin-top: 30px; padding-top: 12px; border-top: 2px solid var(--ink); font-size: 15px; font-weight: 700; line-height: 1.3; }
+.t-swiss .src .logos { display: flex; gap: 8px; flex: none; color: var(--ink); }
+.t-swiss .src .xb-logo { width: 17px; height: 17px; }
 `,
     render(ed, skin) {
       const B = EXPLORER.blocks;
@@ -121,6 +129,7 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
   <p class="deck">${esc(ed.deck)}</p>
   ${EXPLORER.fold(secs).join("")}
   ${figs}
+  ${ed.sources.length ? `<div class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</span><span>Made from your ${esc(appList(ed.sources))}</span></div>` : ""}
   <p class="colo">Edition No ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA</p>
 </div></article>`;
     },

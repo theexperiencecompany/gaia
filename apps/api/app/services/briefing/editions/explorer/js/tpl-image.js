@@ -6,6 +6,11 @@
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
+  const appList = (sources) => {
+    const n = sources.map((x) => x.name);
+    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
+  };
   const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
   /* Primed-canvas weave: two fine crossing thread patterns. */
@@ -68,6 +73,9 @@
 .t-gradient .foot { display: flex; justify-content: space-between; margin-top: 44px; font-size: 15px; line-height: 1.6; letter-spacing: 0; }
 .t-gradient .foot b { font-weight: 700; }
 .t-gradient .foot .r2 { text-align: right; }
+.t-gradient .src { margin-top: 18px; font-size: 15px; line-height: 1.6; }
+.t-gradient .src .logos { display: flex; gap: 12px; margin-bottom: 6px; }
+.t-gradient .src .xb-logo { width: 15px; height: 15px; }
 `,
     render(ed, skin) {
       const k = skin.palette;
@@ -99,6 +107,7 @@ ${grain("hz-g", 0.7)}
 <h1>${esc(ed.deck)}</h1>
 ${EXPLORER.fold(B.layout(ed, R)).join("")}
 <div class="foot"><span><b>The ${esc(ed.weekday)} Brief</b><br>Edition No ${ed.editionNo}<br>${esc(ed.dateLong)}</span>${s ? `<span class="r2">Done ${s.done}${s.mail ? ` · mail ${s.mail}` : ""}${s.focus ? ` · focus ${esc(s.focus)}` : ""}${s.you && s.gaia ? `<br>${s.you} by you · ${s.gaia} by GAIA` : ""}</span>` : ""}</div>
+${ed.sources.length ? `<p class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => B.logo(x.logo, { cls: "" })).join("")}</span>Made from your ${esc(appList(ed.sources))}</p>` : ""}
 </article>`;
     },
   });
@@ -145,7 +154,7 @@ ${EXPLORER.fold(B.layout(ed, R)).join("")}
 .t-exhibition .label { position: relative; margin: -14px 0 0 auto; width: 300px; background: #fbfaf6; color: #1b1a17; padding: 12px 14px; font-size: 14px; line-height: 1.5; box-shadow: 0 6px 12px -6px rgba(0,0,0,.35); }
 .t-exhibition .label b { display: block; font-size: 15px; }
 .t-exhibition .deck { font: italic 400 24px/1.35 var(--head); margin-top: 22px; text-wrap: balance; }
-.t-exhibition { --rs-font: 'TeX Gyre Heros', sans-serif; --rs-font-h: var(--head); --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--acc); --rs-base: 15px; --rs-h-style: italic; --rs-title-weight: 400; --rs-verb-weight: 700; --rs-h-track: 0; }
+.t-exhibition { --rs-font: 'TeX Gyre Heros', sans-serif; --rs-font-h: var(--head); --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--acc); --rs-base: 15px; --rs-h-style: italic; --rs-h-track: 0; }
 .t-exhibition .grp { margin-top: 16px; }
 .t-exhibition .feat { margin-top: 30px; background: #fbfaf6; padding: 0 22px 20px; box-shadow: 0 6px 12px -6px rgba(0,0,0,.35);
   --rs-ink: #1b1a17; --rs-muted: #5a554c; --rs-acc: #a8361f; }
@@ -160,6 +169,9 @@ ${EXPLORER.fold(B.layout(ed, R)).join("")}
 .t-exhibition .q cite { display: block; margin-top: 12px; font-style: normal; font-size: 14px; line-height: 1.5; color: var(--soft); }
 .t-exhibition .wall { font-size: 17px; line-height: 1.5; padding-left: 16px; border-left: 2px solid var(--acc); text-wrap: pretty; }
 .t-exhibition .foot { margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--ink); font-size: 15px; line-height: 1.6; }
+.t-exhibition .src { margin-top: 18px; font-size: 14px; line-height: 1.6; color: var(--soft); }
+.t-exhibition .src .logos { display: flex; gap: 12px; margin-bottom: 6px; }
+.t-exhibition .src .xb-logo { width: 16px; height: 16px; }
 `,
     render(ed, skin) {
       const k = skin.wall;
@@ -195,6 +207,7 @@ ${EXPLORER.fold(B.layout(ed, R)).join("")}
   <p class="deck">${esc(ed.deck)}</p>
   ${B.layout(ed, R).join("")}
   ${s ? `<p class="foot">Yesterday ${s.done} done${s.you && s.gaia ? ` (you ${s.you} / GAIA ${s.gaia})` : ""}${s.mail || s.focus ? `<br>${[s.mail ? `${s.mail} emails handled` : "", s.focus ? `${esc(s.focus)} of focus today` : ""].filter(Boolean).join(" · ")}` : ""}<br>Brief generated ${esc(ed.time)}</p>` : ""}
+  ${ed.sources.length ? `<p class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => B.logo(x.logo, { mode: "color", cls: "" })).join("")}</span>Made from your ${esc(appList(ed.sources))}</p>` : ""}
 </div></article>`;
     },
   });
@@ -256,6 +269,9 @@ ${EXPLORER.fold(B.layout(ed, R)).join("")}
 .t-weekly .ax { font-size: 14px; color: var(--soft); margin-top: 6px; text-align: right; }
 .t-weekly .ednote { font: italic 500 22px/1.35 'Newsreader', serif; text-wrap: pretty; padding-top: 16px; border-top: 1px solid var(--hair); }
 .t-weekly .foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid var(--ink); font-size: 14px; letter-spacing: 0; color: var(--soft); line-height: 1.6; }
+.t-weekly .src { display: block; margin-top: 10px; }
+.t-weekly .src .logos { display: flex; gap: 12px; margin-bottom: 4px; color: var(--ink); }
+.t-weekly .src .xb-logo { width: 15px; height: 15px; }
 `,
     render(ed, skin) {
       const k = { ...skin.accent, ...skin.paper };
@@ -287,7 +303,7 @@ ${EXPLORER.fold(B.layout(ed, R)).join("")}
       const parts = B.layout(ed, R);
       const s = ed.stats;
       if (s) {
-        const numbers = `<section><h2>The numbers</h2><div class="figs"><div><b>${s.done}</b><span>tasks done</span>${s.you && s.gaia ? `<small>${s.you} by you · ${s.gaia} by GAIA</small>` : ""}</div></div></section>`;
+        const numbers = `<section><h2>The numbers</h2><div class="figs"><div><b>${s.done}</b><span>${s.done === 1 ? "task" : "tasks"} done</span>${s.you && s.gaia ? `<small>${s.you} by you · ${s.gaia} by GAIA</small>` : ""}</div></div></section>`;
         const at = ed.blocks.findIndex((b) => b.kind === "chart" || b.kind === "progress");
         parts.splice(at < 0 ? parts.length : at, 0, numbers);
       }
@@ -297,7 +313,7 @@ ${grain("wk-g", 0.85)}
 <div class="mast"><h1>The Week</h1><div class="no"><b>No ${weekNo}</b>${esc(range)}</div></div>
 <p class="deck">${esc(ed.deck)}</p>
 ${EXPLORER.fold(parts).join("")}
-<p class="foot">Weekly review · compiled by GAIA ${esc(ed.dateLong)} · week No&nbsp;${weekNo} · from daily edition No&nbsp;${ed.editionNo}</p>
+<p class="foot">Weekly review · compiled by GAIA ${esc(ed.dateLong)} · week No&nbsp;${weekNo} · from daily edition No&nbsp;${ed.editionNo}${ed.sources.length ? `<span class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => B.logo(x.logo, { cls: "" })).join("")}</span>Made from your ${esc(appList(ed.sources))}</span>` : ""}</p>
 </article>`;
     },
   });

@@ -80,6 +80,11 @@
 .t-metromap .ride b { display: block; font-size: 28px; line-height: 1.05; font-weight: 700; margin-bottom: 2px; }
 .t-metromap .legend i { display: inline-block; width: 26px; height: 6px; vertical-align: middle; margin-right: 8px; }
 .t-metromap .legend b { font-variant-numeric: tabular-nums; }
+.t-metromap .conn { margin-top: 22px; }
+.t-metromap .conn h3 { font-size: 15px; letter-spacing: 0; margin-bottom: 8px; }
+.t-metromap .conn > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.t-metromap .cbox { display: inline-flex; align-items: center; border: 2.5px solid var(--ink); background: #ffffff; border-radius: 4px; padding: 2px 8px; font-size: 14px; font-weight: 700; letter-spacing: 0; color: #1b1c22; }
+.t-metromap .cbox .cl { width: 15px; height: 15px; margin-right: 6px; color: #1b1c22; }
 `,
     render(ed, skin) {
       const B = EXPLORER.blocks;
@@ -171,12 +176,16 @@
       const legend = used.length || s
         ? `<div class="legend"><h3>Line guide</h3>${used.map((l) => `<span><i style="background:${l.cls ? `repeating-linear-gradient(90deg, ${l.c} 0 8px, transparent 8px 12px)` : l.c}"></i>${l.name}</span>`).join("")}${s ? `<div class="ride"><span><b>${s.done}</b>done yesterday${s.you && s.gaia ? `<br>you ${s.you} / GAIA ${s.gaia}` : ""}</span>${s.mail ? `<span><b>${s.mail}</b>emails handled</span>` : ""}${s.focus ? `<span><b>${esc(s.focus)}</b>focus time today</span>` : ""}</div>` : ""}</div>`
         : "";
+      // The apps the brief read are its connecting services, boxed like station names.
+      const conn = ed.sources.length
+        ? `<div class="conn" data-block="sources"><h3>Connecting services</h3><div>${ed.sources.map((x) => `<span class="cbox">${B.logo(x.logo, { mode: "color", cls: "cl" })}${esc(x.name)}</span>`).join("")}</div></div>`
+        : "";
       return `<article class="t-metromap" style="--ground:${skin.ground.ground}; --ink:${skin.ground.ink}; --soft:${skin.ground.soft}; --panel:${skin.ground.panel}; --day:${L.day}; --night:${L.night}; --dec:${L.dec}; --decText:${L.decText}; --face:${skin.face.stack}">
 ${grain("mt-g", 0.9)}
 <div class="hd"><div class="roundel"><span>${esc(ed.weekday.slice(0, 3).toUpperCase())}</span></div><div><div class="auth">GAIA transit authority</div><h1>The ${esc(ed.weekday)} Brief</h1><p class="sub">Line guide No ${ed.editionNo} · ${esc(ed.dateLong)} · ${esc(ed.time)}</p></div></div>
 <div class="notice"><b>Service notice</b><p>${esc(ed.deck)}</p></div>
 ${EXPLORER.fold(out).join("")}
-${legend}
+${legend}${conn}
 </article>`;
     },
   });
@@ -253,7 +262,14 @@ ${legend}
 .t-boardingpass .it { display: grid; grid-template-columns: 112px 1fr; padding: 9px 0; border-top: 1px solid #ebe7dd; }
 .t-boardingpass .it:first-of-type { border-top: 0; }
 .t-boardingpass .it .n { display: block; font-size: 15px; color: #5b5c63; }
-.t-boardingpass .stats { display: grid; grid-template-columns: repeat(3, 1fr); border: 1.5px solid #dcd7cb; border-radius: 6px; margin-top: 4px; }
+.t-boardingpass .stats { display: grid; grid-template-columns: repeat(var(--n), 1fr); border: 1.5px solid #dcd7cb; border-radius: 6px; margin-top: 4px; }
+.t-boardingpass .stats .sub { font-weight: 400; margin-top: 2px; }
+.t-boardingpass .stats.one div { display: flex; align-items: baseline; gap: 12px; text-align: left; padding: 10px 16px; }
+.t-boardingpass .stats.one .sub { margin: 0 0 0 auto; }
+.t-boardingpass .bsrc { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.t-boardingpass .bsrc .lbl { font-weight: 400; max-width: 300px; }
+.t-boardingpass .blogos { display: flex; gap: 10px; flex: none; }
+.t-boardingpass .blogos .bl { width: 18px; height: 18px; color: #1b1c22; }
 .t-boardingpass .stats div { padding: 10px 12px; text-align: center; }
 .t-boardingpass .stats div + div { border-left: 1.5px solid #dcd7cb; }
 .t-boardingpass .stats b { display: block; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -332,14 +348,29 @@ ${legend}
       const body = B.layout({ blocks: reading }, R);
       const log = B.layout({ blocks: ed.blocks.filter((b) => b.kind === "chart" || b.kind === "progress") }, R);
       const s = ed.stats;
-      const stats = s ? `<div class="sec bstats"><div class="stats"><div><b>${s.done}</b><span class="lbl">done</span></div>${s.mail ? `<div><b>${s.mail}</b><span class="lbl">emails handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="lbl">focus</span></div>` : ""}</div></div>` : "";
+      // Only the figures the brief has: several share the box in equal cells, a lone one reads across it.
+      const figs = [
+        s && { v: s.done, l: "done yesterday", sub: s.you && s.gaia ? `you ${s.you} · GAIA ${s.gaia}` : "" },
+        ed.awaiting && { v: ed.awaiting, l: "need you", sub: "" },
+        s && s.mail && { v: s.mail, l: "emails handled", sub: "" },
+        s && s.focus && { v: esc(s.focus), l: "focus", sub: "" },
+      ].filter(Boolean);
+      const fig = (f) => `<div><b>${f.v}</b><span class="lbl">${f.l}</span>${f.sub ? `<span class="lbl sub">${f.sub}</span>` : ""}</div>`;
+      const stats = figs.length
+        ? `<div class="sec bstats"><div class="stats${figs.length === 1 ? " one" : ""}" style="--n:${figs.length}">${figs.map(fig).join("")}</div></div>`
+        : "";
+      // The apps the brief read operate the flight: a line closing the log card, else the pass body.
+      const andList = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+      const operated = ed.sources.length
+        ? `<div class="sec bsrc" data-block="sources"><span class="lbl">Operated with your ${esc(andList(ed.sources.map((x) => x.name)))}</span><span class="blogos">${ed.sources.map((x) => B.logo(x.logo, { mode: "color", cls: "bl" })).join("")}</span></div>`
+        : "";
       const bars = ed.codes[skin.code.symbology];
       const flight = `GA-${String(ed.editionNo).padStart(3, "0")}`;
       const date = `${pad2(ed.day)} ${esc(ed.monthShort.toUpperCase())}`;
       const names = ed.recipient ? ed.recipient.name.toUpperCase().split(/\s+/) : [];
       const pax = names.length > 1 ? `${names[names.length - 1]}/${names[0][0]}` : names.join("");
       const logCard = log.length
-        ? `<div class="pass bplog"><div class="body"><div class="top"><div><span class="air">GAIA AIR</span><small>Flight log</small></div><div class="r">${flight}<b>${date}</b></div></div>${log.join("")}</div></div>`
+        ? `<div class="pass bplog"><div class="body"><div class="top"><div><span class="air">GAIA AIR</span><small>Flight log</small></div><div class="r">${flight}<b>${date}</b></div></div>${log.join("")}${operated}</div></div>`
         : "";
       return `<article class="t-boardingpass" style="--liv:${skin.livery.liv}; --acc:${skin.livery.acc}; --accOn:${skin.livery.accOn}; --paper:${skin.card.paper}; --desk:${skin.card.desk}">
 <div class="pass" data-paper>
@@ -350,7 +381,7 @@ ${legend}
     </div>
     <div class="sec" style="padding-top:0" data-fold><span class="lbl acc">Captain's note</span><p class="deck">${esc(ed.deck)}</p></div>
     <div class="sec" style="padding-top:0"><div class="grid"><div><span class="lbl">Passenger</span><b>${ed.recipient ? esc(ed.recipient.name) : "You"}</b></div><div><span class="lbl">Flight</span><b>${flight}</b></div><div><span class="lbl">Date</span><b>${date}</b></div><div><span class="lbl">Gate</span><b>${esc(ed.weekday.slice(0, 1))}${ed.day}</b></div><div><span class="lbl">Seat</span><b class="acc">${ed.editionNo}A</b></div></div></div>
-    ${body.join("")}${stats}
+    ${body.join("")}${stats}${log.length ? "" : operated}
   </div>
   <div class="perf"><i></i><i></i></div>
   <div class="stub"><div class="sec"><i class="hole" aria-hidden="true"></i>

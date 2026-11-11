@@ -130,6 +130,7 @@ _CALENDAR = [
 ]
 
 BUSY: dict[str, Any] = _BASE | {
+    "sources_read": ["GitHub", "Gmail", "Slack", "Linear", "Notion", "Google Calendar"],
     "headline": "Three things need you before Thursday, and the contract is the one that can't slip",
     "sections": [_LEAD, _NEEDS_YOU, _DONE],
     "calendar": _CALENDAR,
@@ -175,6 +176,7 @@ BUSY: dict[str, Any] = _BASE | {
 }
 
 QUIET_GOAL: dict[str, Any] = _BASE | {
+    "sources_read": ["Gmail", "Google Calendar"],
     "headline": "A quiet Tuesday, and the hiring plan is five roles in",
     "mood": "idle",
     "sections": [
@@ -218,6 +220,7 @@ QUIET_GOAL: dict[str, Any] = _BASE | {
 }
 
 SPIKE: dict[str, Any] = _BASE | {
+    "sources_read": ["Gmail", "Google Calendar"],
     "headline": "Your inbox tripled overnight, and two of the new threads need you",
     "sections": [
         {
@@ -299,6 +302,7 @@ SPIKE: dict[str, Any] = _BASE | {
 }
 
 WEEKLY: dict[str, Any] = _BASE | {
+    "sources_read": ["GitHub", "Gmail", "Linear", "Google Calendar"],
     "headline": "Your busiest week since September, and GAIA carried most of it",
     "mood": "weekly",
     "date": "2026-11-15",

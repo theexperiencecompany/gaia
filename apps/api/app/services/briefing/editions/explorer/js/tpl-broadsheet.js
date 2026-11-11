@@ -15,6 +15,11 @@
    (today) and the overnight report, then the figures box.
    ========================================================================== */
 (() => {
+  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
+  const appList = (sources) => {
+    const n = sources.map((s) => s.name);
+    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
+  };
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
   const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
@@ -116,6 +121,9 @@
 .t-broadsheet .desk .txt { font-style: italic; font-size: 18px; line-height: 1.42; margin-top: 2px; text-wrap: pretty; }
 .t-broadsheet { --rs-font: 'Source Serif 4', serif; --rs-font-h: var(--display); --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--ink); --rs-base: 15px; --rs-kick-case: none; --rs-kick-variant: small-caps; --rs-kick-track: .06em; --rs-h-variant: small-caps; --rs-verb-variant: small-caps; }
 .t-broadsheet .imprint { margin-top: 26px; padding-top: 11px; border-top: 3px double var(--rule); text-align: center; font-size: 14px; letter-spacing: 0; color: var(--soft); }
+.t-broadsheet .wire { margin-top: 10px; }
+.t-broadsheet .wire .logos { display: flex; justify-content: center; gap: 12px; margin-bottom: 6px; color: var(--ink); }
+.t-broadsheet .wire .xb-logo { width: 15px; height: 15px; }
 `,
     render(ed, skin) {
       const B = EXPLORER.blocks;
@@ -185,7 +193,7 @@ ${grain("bs-g", 0.75)}
 <div class="lead"><div class="kick bk">Front page</div><h2>${esc(ed.deck)}</h2>${dek}<hr class="short"></div>
 ${EXPLORER.fold(sections).join(orn)}
 ${figs}
-<div class="imprint bk">Edition No. ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA · Printed for a readership of one</div>
+<div class="imprint bk">Edition No. ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA · Printed for a readership of one${ed.sources.length ? `<div class="wire" data-block="sources"><p class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</p><p>Reported from your ${esc(appList(ed.sources))}</p></div>` : ""}</div>
 </article>`;
     },
   });

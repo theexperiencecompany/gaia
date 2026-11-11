@@ -6,6 +6,8 @@
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // "GitHub, Gmail and Slack": the apps the brief read, named the way a sentence names them.
+  const andList = (names) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
   const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
@@ -74,11 +76,15 @@
 .t-librarycard .key { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 15px; color: #4a4338; }
 .t-librarycard .key i { display: inline-block; width: 14px; height: 14px; }
 .t-librarycard .key i:not(:first-child) { margin-left: 10px; }
+/* Special Elite has one weight: a typed card emphasises in the stamp ink and by size, never a faux bold. */
 .t-librarycard { --rs-title-weight: 400; --rs-font: var(--face); --rs-font-h: var(--face); --rs-ink: #211d17; --rs-muted: #4f483c; --rs-acc: var(--stamp); --rs-base: 14px; --rs-kick-case: none; --rs-kick-track: 0; }
 .t-librarycard .sign { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 42px; font-size: 15px; }
 .t-librarycard .sign span:first-child { flex: 1; border-top: 1px solid #211d17; padding-top: 4px; margin-right: 18px; }
 .t-librarycard .sign i { font: italic 400 22px/1 'Pinyon Script', cursive; display: block; margin-bottom: -2px; transform: translateY(-26px); height: 0; color: #2a3a7a; }
 .t-librarycard .rec { margin-top: 16px; font-size: 15px; line-height: 1.5; text-wrap: pretty; }
+.t-librarycard .src { margin-top: 10px; font-size: 15px; line-height: 1.5; color: #4a4338; text-wrap: pretty; }
+.t-librarycard .src .logos { display: flex; gap: 12px; margin-bottom: 6px; color: #211d17; }
+.t-librarycard .src .mk { width: 16px; height: 16px; }
 .t-librarycard .pocket { position: relative; z-index: 2; margin: -96px -8px 0; height: 118px; background: linear-gradient(180deg, rgba(255,255,255,.18), transparent 30%), var(--pocket);
   clip-path: polygon(0 18px, 34% 18px, 40% 0, 60% 0, 66% 18px, 100% 18px, 100% 100%, 0 100%); box-shadow: 0 -2px 4px rgba(0,0,0,.18); text-align: center; padding-top: 46px; color: #3b3021; }
 .t-librarycard .pocket::before { content: ""; position: absolute; left: 10px; right: 10px; top: 28px; bottom: 10px; border: 1.5px dashed rgba(59,48,33,.45); border-top: 0; }
@@ -149,6 +155,7 @@
   ${EXPLORER.fold(parts).join("")}
   <div class="sign"><span><i>GAIA</i>Prepared by GAIA — librarian on duty</span><span>Issued ${esc(ed.time24)}</span></div>
   ${s ? `<p class="rec">This card's record: items returned ${s.done}${s.you && s.gaia ? ` (${s.you} by your hand, ${s.gaia} by GAIA)` : ""}.${s.mail ? ` Correspondence filed ${s.mail}.` : ""}${s.focus ? ` Focus held ${esc(s.focus)}.` : ""}</p>` : ""}
+  ${ed.sources.length ? `<div class="src" data-block="sources"><p class="logos">${ed.sources.map((a) => B.logo(a.logo, { cls: "mk" })).join("")}</p><p>Catalogued from your ${esc(andList(ed.sources.map((a) => a.name)))}.</p></div>` : ""}
 </div>
 <div class="pocket"><b>Return to GAIA circulation</b><small>Date due is stamped · card No ${ed.editionNo}</small></div></div>
 ${back}
@@ -203,9 +210,13 @@ ${back}
 .t-menu .mq .q { font: italic 400 22px/1.35 var(--disp); max-width: 20em; margin: 0 auto; text-wrap: balance; }
 .t-menu .mq .when { font-size: 16px; color: var(--soft); margin-top: 8px; }
 .t-menu .mnote { font-style: italic; font-size: 18px; line-height: 1.45; color: var(--soft); max-width: 22em; margin: 0 auto; text-wrap: balance; }
-.t-menu { --rs-title-weight: 400; --rs-font: var(--text); --rs-font-h: var(--disp); --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--gold); --rs-base: 15px; --rs-h-style: italic; --rs-kick-case: none; --rs-kick-variant: small-caps; --rs-kick-track: .08em; }
+.t-menu { --rs-title-weight: 600; --rs-font: var(--text); --rs-font-h: var(--disp); --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--gold); --rs-base: 15px; --rs-h-style: italic; --rs-kick-case: none; --rs-kick-variant: small-caps; --rs-kick-track: .08em; }
 .t-menu .dig { font: italic 400 23px/1.2 var(--disp); }
 .t-menu .cov { margin-top: 22px; font-size: 16px; line-height: 1.6; text-wrap: balance; color: var(--soft); }
+.t-menu .src { margin-top: 22px; }
+.t-menu .src .cov { margin-top: 8px; }
+.t-menu .src .logos { display: flex; justify-content: center; gap: 14px; color: var(--soft); }
+.t-menu .src .mk { width: 16px; height: 16px; }
 `,
     render(ed, skin) {
       const B = EXPLORER.blocks;
@@ -229,6 +240,7 @@ ${back}
   ${foil}${EXPLORER.fold(parts).join(foil)}${foil}
   <p class="dig">digestif — the evening is yours.</p>
   ${s ? `<p class="cov sc">Couverts ${s.done}${s.you && s.gaia ? ` — ${s.you} by your hand, ${s.gaia} by the kitchen` : ""}${s.mail ? ` · correspondence ${s.mail}` : ""}${s.focus ? ` · ${esc(s.focus)} of focus` : ""}</p>` : ""}
+  ${ed.sources.length ? `<div class="src" data-block="sources"><p class="logos">${ed.sources.map((a) => B.logo(a.logo, { cls: "mk" })).join("")}</p><p class="cov sc">With produce from your ${esc(andList(ed.sources.map((a) => a.name)))}</p></div>` : ""}
   <p class="cov sc">GAIA · service No ${ed.editionNo} · seated ${esc(ed.time24)}</p>
 </div></article>`;
     },
@@ -281,6 +293,9 @@ ${back}
 .t-invoice .due .r { text-align: right; font-size: 15px; line-height: 1.5; }
 .t-invoice .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
 .t-invoice .k { font-size: 15px; color: var(--soft); }
+.t-invoice .src { display: flex; align-items: center; gap: 12px; margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--hair); }
+.t-invoice .src .logos { display: flex; gap: 8px; flex: none; color: var(--ink); }
+.t-invoice .src .mk { width: 16px; height: 16px; }
 .t-invoice .li > span:first-child { text-wrap: pretty; }
 .t-invoice .memo { margin-top: 26px; font-size: 22px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; }
 .t-invoice section { margin-top: 34px; }
@@ -396,6 +411,7 @@ ${back}
     <p class="memo">${esc(ed.deck)}</p>
     ${EXPLORER.fold(secs).join("")}
     ${tot}
+    ${ed.sources.length ? `<div class="src" data-block="sources"><span class="logos">${ed.sources.map((a) => B.logo(a.logo, { mode: "color", cls: "mk" })).join("")}</span><span class="k">Prepared from your ${esc(andList(ed.sources.map((a) => a.name)))}</span></div>` : ""}
   </div>
   ${slip}
 </div></article>`;

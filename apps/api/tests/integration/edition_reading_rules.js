@@ -225,6 +225,19 @@
     // A number may be spelled, as a menu or a playbill spells it.
     for (const n of [p.done, p.total]) if (!n.some((w) => new RegExp(`\\b${w}\\b`, "i").test(text(el)))) fails.push(`progress does not print ${n[0]}`);
   });
+  // The apps the brief read: one line in the family's idiom, every app named, each mark painted.
+  if (expect.sources.length) {
+    const line = byKind("sources")[0];
+    if (!line) fails.push("no line naming the apps the brief read");
+    else {
+      for (const name of expect.sources) if (!has(line, name)) fails.push(`the apps line does not name ${name}`);
+      for (const lg of line.querySelectorAll(".xb-logo")) {
+        const ls = getComputedStyle(lg);
+        const painted = ls.backgroundImage !== "none" || (ls.maskImage && ls.maskImage !== "none") || (ls.webkitMaskImage && ls.webkitMaskImage !== "none");
+        if (R(lg).width < 4 || !painted) fails.push(`an app mark in the apps line is not painted: ${lg.dataset.logo}`);
+      }
+    }
+  }
   expect.notes.forEach((n, i) => {
     const el = byKind("note")[i];
     if (el && !has(el, n)) fails.push(`note does not print its text`);

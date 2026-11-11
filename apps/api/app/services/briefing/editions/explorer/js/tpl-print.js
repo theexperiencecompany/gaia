@@ -6,6 +6,8 @@
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // "GitHub, Gmail and Slack": the apps the brief read, named the way a sentence names them.
+  const andList = (names) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
   const sentence = (s) => (/[.!?]$/.test(s) ? s : s + ".");
   const ord = (n) => {
@@ -77,6 +79,9 @@
 .t-memo .num div { display: flex; align-items: baseline; gap: 8px; }
 .t-memo .num i { flex: 1; border-bottom: 2px dotted #6d685c; transform: translateY(-5px); }
 .t-memo .end { text-align: center; margin-top: 34px; letter-spacing: .4em; }
+.t-memo .enc { display: grid; grid-template-columns: 76px 1fr; margin-top: 34px; }
+.t-memo .via { white-space: nowrap; }
+.t-memo .via .mk { width: 1.2cap; height: 1.2cap; vertical-align: -0.1cap; margin-right: .35em; color: #24221d; }
 .t-memo .colo { text-align: center; font-size: 14px; letter-spacing: .04em; margin-top: 6px; color: #4f4b42; }
 .t-memo .deck { margin-bottom: 20px; }
 .t-memo .rs-h { text-decoration: underline; text-underline-offset: 5px; text-decoration-thickness: 1px; }
@@ -166,6 +171,7 @@ ${inkMask("mm-ink")}
   <div class="typed-rule" aria-hidden="true"></div>
   <p class="deck">${esc(ed.deck)}</p>
   ${EXPLORER.fold(sections).join("")}
+  ${ed.sources.length ? `<div class="enc" data-block="sources"><span>VIA:</span><span>Your ${ed.sources.map((a) => `<span class="via">${B.logo(a.logo, { cls: "mk" })}${esc(a.name)}</span>`).join(", ")}.</span></div>` : ""}
   <p class="end">###</p>
   <p class="colo">EDITION NO. ${ed.editionNo} -- TYPED ${esc(ed.time)} BY GAIA</p>
 </div></article>`;
@@ -235,6 +241,10 @@ ${inkMask("mm-ink")}
 .t-almanac figcaption { text-align: center; font-size: 15px; margin-top: 8px; line-height: 1.4; text-wrap: balance; }
 .t-almanac .reck { margin-top: 30px; text-align: center; font-size: 17px; line-height: 1.5; font-style: italic; text-wrap: balance; }
 .t-almanac .reck .sc { font-style: normal; }
+.t-almanac .src { margin-top: 18px; }
+.t-almanac .src .reck { margin-top: 6px; }
+.t-almanac .src .logos { display: flex; justify-content: center; gap: 14px; color: #2a241a; }
+.t-almanac .src .mk { width: 16px; height: 16px; }
 .t-almanac .defs { position: absolute; }
 .t-almanac .deck { margin-bottom: 20px; }
 .t-almanac .fg { margin: 28px 0 24px; width: auto; }
@@ -246,7 +256,7 @@ ${inkMask("mm-ink")}
 .t-almanac .ep cite { display: block; font-size: 15px; margin-top: 6px; color: #5a4f3c; }
 .t-almanac .blk { margin: 20px 0; }
 .t-almanac .cells { display: block; margin: 8px 0 2px; }
-.t-almanac { --rs-title-weight: 400; --rs-font: var(--face); --rs-font-h: var(--face); --rs-ink: #2a241a; --rs-muted: #5e5443; --rs-acc: var(--rub); --rs-base: 16px; --rs-kick-case: none; --rs-kick-variant: small-caps; --rs-kick-track: .06em; --rs-h-variant: small-caps; }
+.t-almanac { --rs-font: var(--face); --rs-font-h: var(--face); --rs-ink: #2a241a; --rs-muted: #5e5443; --rs-acc: var(--rub); --rs-base: 16px; --rs-kick-case: none; --rs-kick-variant: small-caps; --rs-kick-track: .06em; --rs-h-variant: small-caps; }
 `,
     render(ed, skin) {
       const B = EXPLORER.blocks;
@@ -281,7 +291,7 @@ ${inkMask("mm-ink")}
       };
       const secs = B.layout(ed, R);
       const s = ed.stats;
-      const calc = s ? `<div class="calc"><h2 class="sc">Calculations for the day</h2><div class="row">${s.done ? `<div><b>${s.done}</b><span class="sc">tasks done</span></div>` : ""}${s.mail ? `<div><b>${s.mail}</b><span class="sc">letters</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="sc">focus hours</span></div>` : ""}</div></div>` : "";
+      const calc = s ? `<div class="calc"><h2 class="sc">Calculations for the day</h2><div class="row">${s.done ? `<div><b>${s.done}</b><span class="sc">${s.done === 1 ? "task" : "tasks"} done</span></div>` : ""}${s.mail ? `<div><b>${s.mail}</b><span class="sc">letters</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="sc">focus hours</span></div>` : ""}</div></div>` : "";
       const a = ed.art;
       const plate = skin.plate.id === "engraving" ? `<figure><div class="frame"><img src="${a.src}" alt="${esc(a.title)}, ${esc(a.artist)}"></div><figcaption><span class="sc">Plate I. — ${esc(a.title)}</span><br><i>${esc(a.artist)}, ${a.year}, ${esc(a.medium)}</i></figcaption></figure>` : "";
       return `<article class="t-almanac" style="--paper:${skin.paper.paper}; --hair:${skin.paper.hair}; --fox:${skin.paper.fox}; --rub:${skin.rubric.rub}; --face:${skin.face.stack}">
@@ -294,6 +304,7 @@ ${calc}
 ${plate}
 ${fleuron}
 <p class="reck"><span class="sc">Reckoning of the day</span>${s ? ` — ${s.done} tasks accomplished${s.you && s.gaia ? `, whereof ${s.you} by your own hand and ${s.gaia} by the machine` : ""}` : ""}. Printed at ${esc(ed.time)} by GAIA.</p>
+${ed.sources.length ? `<div class="src" data-block="sources"><p class="logos">${ed.sources.map((a) => B.logo(a.logo, { cls: "mk" })).join("")}</p><p class="reck"><span class="sc">Sources consulted</span> — your ${esc(andList(ed.sources.map((a) => a.name)))}.</p></div>` : ""}
 </article>`;
     },
   });

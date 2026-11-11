@@ -16,6 +16,11 @@
    Reading order: deck -> awaiting payment -> today -> overnight -> totals.
    ========================================================================== */
 (() => {
+  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
+  const appList = (sources) => {
+    const n = sources.map((s) => s.name);
+    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
+  };
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const caps = (s) => esc(String(s).toUpperCase());
   const pad2 = (n) => String(n).padStart(2, "0");
@@ -116,6 +121,9 @@
 .t-receipt .bars svg { display: block; width: 100%; height: 100%; }
 .t-receipt .barnum { text-align: center; letter-spacing: .3em; padding-left: .3em; margin-bottom: 14px; font-size: 15px; }
 .t-receipt .colo { text-align: center; font-size: 13px; letter-spacing: .06em; color: var(--soft); }
+.t-receipt .src { margin-top: 14px; text-wrap: balance; }
+.t-receipt .src .logos { display: flex; justify-content: center; gap: 14px; color: var(--soft); margin-bottom: 8px; }
+.t-receipt .src .xb-logo { width: 17px; height: 17px; }
 .t-receipt { --rs-font: 'JetBrains Mono', monospace; --rs-font-h: 'JetBrains Mono', monospace; --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--red); --rs-base: 14px; --rs-title-case: uppercase; --rs-verb-case: uppercase; --rs-h-case: uppercase; --rs-kick-track: .14em; --rs-detail-case: uppercase; --rs-title-track: 0; --rs-h-track: .04em; }
 .t-receipt .defs { position: absolute; }
 .t-receipt .hb { align-items: center; margin-bottom: 0; }
@@ -196,6 +204,7 @@
   <div class="bars" style="width:min(100%, ${bars.width}px)">${EXPLORER.code(bars, "code")}</div>
   <p class="barnum">ED${ed.editionNo}-${ed.time24.replace(":", "")}-GAIA</p>
   <p class="colo">EDITION No. ${ed.editionNo} &middot; GENERATED ${ed.time24} BY GAIA</p>
+  ${ed.sources.length ? `<div class="src" data-block="sources"><p class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</p><p class="colo">MADE FROM YOUR ${caps(appList(ed.sources))}</p></div>` : ""}
 </div></div></article>`;
     },
   });

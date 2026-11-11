@@ -224,6 +224,21 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
      carries reading blocks on its body, a closing done group on the stub, and
      charts and goals on a "Flight log" card, and departs and arrives at the
      day's first and last timed starts.
+   - Every family closes on a line naming the apps the brief read, with their
+     marks (`ed.sources`), in its idiom: the receipt's "MADE FROM YOUR …" under
+     the colophon, the invoice's "Prepared from your …" at the sheet's foot,
+     the weekly's line under its folio, the menu's "With produce from your …",
+     the memo's typed "VIA:", the line guide's "Connecting services" chips and
+     so on.
+   - Item titles are bold in a real cut: Libre Baskerville 700, Literata 700,
+     EB Garamond 600, Playfair Display 700 italic, Bodoni Moda 700 italic and
+     Cormorant 600 italic are added to the font build. Special Elite has one
+     weight, so the library card's titles stay 400 and its verbs carry the
+     stamp ink; no weight is ever synthesised.
+   - A figures box holds only the figures a brief has: the instrument's
+     readout, the band's and playfair's figures, and the boarding pass's box
+     take as many columns as there are figures, never a lone third. Air Mail,
+     the weekly and the almanac say "1 thing" and "1 task".
 
 The painting that `broadsheet`, `exhibition` and `almanac` hang is drawn from the
 user's artwork shuffle bag, over the Met Open Access works whose image fits that

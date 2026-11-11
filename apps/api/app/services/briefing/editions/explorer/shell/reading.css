@@ -106,3 +106,7 @@
 #root .xb-logo.xb-color { background: var(--xb-img) center / contain no-repeat; }
 #root .rs-logo { width: 1.2cap; height: 1.2cap; vertical-align: -0.1cap; margin-right: 0.3em; color: var(--rs-logo-ink, var(--rs-ink)); }
 #root .xb-plot { display: block; overflow: visible; }
+
+/* A sources line, a note or a quote never strands one word on its last line. */
+#root [data-block="sources"] { text-wrap: balance; }
+#root [data-block="note"], #root [data-block="quote"] { text-wrap: pretty; }
