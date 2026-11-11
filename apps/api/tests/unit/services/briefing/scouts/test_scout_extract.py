@@ -98,6 +98,16 @@ class TestReadingItems:
 
         assert raised.value.message == f"amount is a {kind}, not the value the scout learned"
 
+    def test_text_that_is_not_text_is_a_moved_shape(self) -> None:
+        source = SOURCE.model_copy(
+            update={"fields": SOURCE.fields.model_copy(update={"text": "body"})}
+        )
+
+        with pytest.raises(PlaceholderError) as raised:
+            extract_signals(GITHUB, [source], {"reviews": {"items": [_pr(1, body={"x": 1})]}})
+
+        assert raised.value.message == "text is a dict, not the value the scout learned"
+
     def test_an_empty_figure_and_empty_text_read_as_absent(self) -> None:
         source = SOURCE.model_copy(
             update={
