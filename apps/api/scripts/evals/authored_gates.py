@@ -57,7 +57,6 @@ from scripts.evals.suites.authored_gate import (
     load_recorded,
     load_requests,
     load_rules,
-    prompt_sha,
     write_jsonl,
 )
 from scripts.evals.suites.trigger_gate import jev_body, request_sha
@@ -127,7 +126,6 @@ async def _author_workflow(client: httpx.AsyncClient, request: CreationRequest) 
         rule=parsed.draft.runs_only_when,
         title=parsed.draft.title,
         description=parsed.draft.description,
-        prompt_sha=prompt_sha(AuthoringPath.WORKFLOW),
     )
 
 
@@ -146,7 +144,6 @@ async def _author_todo(client: httpx.AsyncClient, request: CreationRequest) -> A
         rule=rule if isinstance(rule, str) and rule else None,
         title=request["request"],
         description=None,
-        prompt_sha=prompt_sha(AuthoringPath.TODO),
     )
 
 

@@ -28,7 +28,7 @@ def worker_pre_model_hooks(
     drains_inbox: bool = False,
     drains_subagent_inbox: bool = False,
 ) -> list[HookType]:
-    """Executor, provider subagents and spawned subagents.
+    """Executor, the workflow authoring subagent and spawned subagents.
 
     drains_inbox is executor-only, drains_subagent_inbox is subagent-only; a
     tier gets at most one. A drained message is committed to the thread by the

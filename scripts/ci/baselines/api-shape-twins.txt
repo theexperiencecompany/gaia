@@ -131,6 +131,7 @@ apps/web/src/lib/seo.ts:PageMetadataOptions=SupportRequestCreate
 apps/web/src/stores/chatStore.ts:OptimisticMessage=ReplyToMessageData
 apps/web/src/types/api/aboutApiTypes.ts:Author=AuthorDetails
 apps/web/src/types/api/calendarApiTypes.ts:CalendarItem=GoogleCalendarListEntry
+apps/web/src/types/features/briefingTypes.ts:BriefMessageData=BriefingView
 apps/web/src/types/features/calendarTypes.ts:CalendarDeleteOptions=EventDeleteRequest
 apps/web/src/types/features/calendarTypes.ts:CalendarEditOptions=EventDeleteRequest
 apps/web/src/types/features/calendarTypes.ts:CalendarEventDateTime=GoogleCalendarEventDateTime

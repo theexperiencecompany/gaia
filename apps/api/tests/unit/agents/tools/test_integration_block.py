@@ -200,7 +200,8 @@ async def test_activating_an_unconnected_integration_blocks_its_calls(fake_redis
         "type": "tool_call",
         "id": "call-activate",
         "name": "activate_integration",
-        "args": {"integration_id": "gmail"},
+        # messages is injected from graph state at run time; a direct invoke passes it.
+        "args": {"integration_id": "gmail", "messages": []},
     }
 
     with (

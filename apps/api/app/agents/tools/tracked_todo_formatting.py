@@ -13,7 +13,7 @@ from app.constants.todos import (
     EXISTING_TODO_STATE_EXCERPT_CHARS,
     GAIA_TRACKED_LABEL,
 )
-from app.models.todo_models import TodoDocument, TodoResponse
+from app.models.todo_models import TodoDocument, TrackedTodoCreation
 from app.models.trigger_subscription_models import (
     OPERATORS_BY_FIELD_TYPE,
     ConditionArgs,
@@ -143,15 +143,24 @@ def render_catalog(trigger_name: str) -> str:
 
 
 def format_create_output(
-    result: TodoResponse,
+    created: TrackedTodoCreation,
     parsed_scheduled_at: datetime | None,
     user_tz_name: str | None,
     notes: list[str],
 ) -> str:
     """Assemble the user-facing summary returned by create_tracked_todo."""
+    result = created.todo
     folder = f"/workspace/gaia-tasks/{folder_name(result.id, result.title)}"
-    out = (
-        f"Tracked todo created: {result.id}\n"
+    if created.reopened:
+        out = (
+            f"Tracked todo reopened: {result.id}\n"
+            "What it tracks already had this todo, completed; it is open again with your title, "
+            "labels and schedule. Its canvas.md and activity.md keep their history and "
+            "initial_canvas was not written: bring its Current State up to date.\n"
+        )
+    else:
+        out = f"Tracked todo created: {result.id}\n"
+    out += (
         f"Title: {result.title}\n"
         f"Working notes: {folder}/canvas.md (recall doc) and {folder}/activity.md "
         "(dated log). Read and edit them with the read / edit / write tools."

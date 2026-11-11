@@ -595,6 +595,7 @@ class TestPersistCancelledRun:
                     todo_id="todo-1",
                     trigger_type=TriggerType.SCHEDULED_TODO,
                     message_class=ProactiveMessageClass.ROUTINE,
+                    runs_once=True,
                 ),
                 TODO_CONVERSATION_MAX_MESSAGES,
             ),
@@ -2415,7 +2416,7 @@ class TestRunBoundaryCarriesTheOriginatingSurface:
             patch.object(er, "wide_task") as boundary,
         ):
             await er.run_executor_background(run, "do things", configurable)
-        return boundary.call_args.kwargs
+        return dict(boundary.call_args.kwargs)
 
     async def test_the_turns_surface_is_carried_onto_the_run(self) -> None:
         fields = await self._boundary_fields({"user_id": "u1", "conversation_source": "web"})
