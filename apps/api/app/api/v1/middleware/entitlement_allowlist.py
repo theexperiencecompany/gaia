@@ -80,6 +80,9 @@ FREE_PATH_PREFIXES: tuple[str, ...] = (
     "/api/v1/browser/live/",
     "/api/v1/browser/replays/",
     "/api/v1/browser/shots/",
+    # A heygaia.link opens by its slug for anyone, signed in or not; the owner's
+    # state and stop-sharing beside it spend nothing. Minting (POST /api/v1/l) stays paid.
+    "/api/v1/l/",
 )
 
 
