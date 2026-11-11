@@ -7,8 +7,13 @@ import type {
   ReferralSuggestion,
   ReferralWeeklyCardResponse,
   ReferredFriend,
+  URLResponse,
 } from "@shared/api/generated";
-import type { InviteSender } from "@/features/referrals/stores/inviteStore";
+import type { UserInfo } from "@/features/auth/api/authApi";
+import type {
+  InvitePhase,
+  InviteSender,
+} from "@/features/referrals/stores/inviteStore";
 
 export const FIXTURE_OFFER: ReferralOffer = {
   currency: "USD",
@@ -19,7 +24,16 @@ export const FIXTURE_OFFER: ReferralOffer = {
   yearly_discount_minor: 3000,
 };
 
-export const GALLERY_VIEWS = ["page", "landing", "og", "weekly"] as const;
+/** In the order a referrer meets them, then what their friend sees. */
+export const GALLERY_VIEWS = [
+  "onboarding",
+  "page",
+  "settings",
+  "nudges",
+  "weekly",
+  "og",
+  "landing",
+] as const;
 export type GalleryView = (typeof GALLERY_VIEWS)[number];
 
 export const COPY_VARIANTS: readonly ReferralCopyVariant[] = [
@@ -177,3 +191,116 @@ export const fixtureSender: InviteSender = async (email) => {
   await new Promise((resolve) => setTimeout(resolve, 400));
   return email === ALREADY_INVITED_EMAIL ? "already_invited" : "sent";
 };
+
+/** The signed-in gallery user, as GET /user/me returns them. */
+export const fixtureUser = (sentWithGaia: boolean): UserInfo => ({
+  message: "ok",
+  auth_provider: "workos",
+  user_id: "6650f0c2a1b2c3d4e5f60718",
+  name: "Aryan K",
+  email: "aryan@heygaia.io",
+  picture: null,
+  onboarding: {
+    completed: true,
+    completed_at: "2026-10-01T09:00:00Z",
+    first_message_conversation_id: null,
+    phase: null,
+    preferences: { sent_with_gaia: sentWithGaia },
+  },
+});
+
+/** One friend at each stage the API reports, plus the one with no first name. */
+export const FIXTURE_FRIEND_STATES: Record<
+  "pending" | "earned" | "unnamed",
+  ReferredFriend
+> = {
+  pending: {
+    first_name: "Priya",
+    status: "joined",
+    joined_at: "2026-10-28T00:00:00Z",
+    paid_at: null,
+  },
+  earned: {
+    first_name: "Marcus",
+    status: "paid",
+    joined_at: "2026-10-12T00:00:00Z",
+    paid_at: "2026-10-14T00:00:00Z",
+  },
+  unnamed: {
+    first_name: null,
+    status: "joined",
+    joined_at: "2026-11-02T00:00:00Z",
+    paid_at: null,
+  },
+};
+
+/** A suggestion per settled invite label, held in the invite store as that phase. */
+export const FIXTURE_SUGGESTION_PHASES: {
+  suggestion: ReferralSuggestion;
+  phase: InvitePhase;
+}[] = [
+  {
+    suggestion: {
+      name: "Hana Sato",
+      email: "hana@sato.design",
+      reason: "met",
+      count: 3,
+    },
+    phase: { phase: "held" },
+  },
+  {
+    suggestion: {
+      name: "Felix Brandt",
+      email: "felix@brandt.dev",
+      reason: "emailed",
+      count: 8,
+    },
+    phase: { phase: "done", status: "sent" },
+  },
+  {
+    suggestion: {
+      name: "Elif Kaya",
+      email: "elif@kaya.io",
+      reason: "emailed",
+      count: 2,
+    },
+    phase: { phase: "done", status: "invalid" },
+  },
+  {
+    suggestion: {
+      name: "Jonah Weiss",
+      email: "jonah@weiss.fm",
+      reason: "met",
+      count: 1,
+    },
+    phase: { phase: "done", status: "unsubscribed" },
+  },
+];
+
+/** People whose address GAIA wrote into a reply, one per hover-card invite state. */
+export const FIXTURE_CONTACTS: {
+  label: string;
+  metadata: URLResponse;
+  phase: InvitePhase | null;
+}[] = [
+  {
+    label: "Not invited yet",
+    metadata: { url: "maya@lumen.studio", title: "Maya Chen" },
+    phase: null,
+  },
+  {
+    label: "Sent, inside the undo window",
+    metadata: { url: "oscar@fjord.no", title: "Oscar Lund" },
+    phase: { phase: "held" },
+  },
+  {
+    label: "Sent",
+    metadata: { url: "sofia@arcade.co", title: "Sofia Marin" },
+    phase: { phase: "done", status: "sent" },
+  },
+  {
+    label: "Already invited",
+    metadata: { url: "ravi@kiln.app", title: null },
+    phase: { phase: "done", status: "already_invited" },
+  },
+];
