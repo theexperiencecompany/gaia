@@ -448,8 +448,18 @@ def test_a_thread_with_a_todo_is_left_to_it_and_the_desk_drafts_only_for_new_one
         "For each TO_REPLY or AWAITING_REPLY thread line that none of your open sub-todos owns"
     )
     assert (
-        "A create that returns an existing todo means that todo owns the thread: leave it." in step
+        "A create that returns an existing open todo means that todo owns the thread: leave it."
+        in step
     )
+
+
+def test_a_thread_whose_todo_was_completed_gets_its_state_written_into_the_reopened_todo() -> None:
+    step = "\n".join(_step(THREAD_TODO_STEP))
+
+    assert (
+        "One that reopens a completed todo hands the thread back to it: write the line's state "
+        'into its canvas.md "## Current State", as its initial_canvas was not written.'
+    ) in step
 
 
 def _preamble() -> str:

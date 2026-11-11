@@ -75,17 +75,24 @@ LINEAR_CUSTOM_GET_ISSUE_FULL_CONTEXT(issue_identifier="GEN-142")
 → Comments, history, sub-issues, relations
 ```
 
-### Using spawn_subagent for Multiple Issues
+### Many issues: one spawn per batch
 
-When you need to get full context for multiple issues in parallel:
+A handful of issues is a few direct calls: fetch them yourself, in one turn. When
+there are many (a whole cycle, a project, every issue matching a filter) and you can
+spawn subagents, split them into batches and give each batch its own spawn, all in
+the same turn. A spawn per single issue costs a whole model run for two calls. When
+and how to brief one is in spawn_subagent's description.
 
 ```
-spawn_subagent(task="Get full context for issue GEN-142", context="Extract: comments, history, sub-issues, relations")
-spawn_subagent(task="Get full context for issue GEN-201", context="Extract: comments, history, sub-issues, relations")
-spawn_subagent(task="Get full context for issue GEN-98", context="Extract: comments, history, sub-issues, relations")
+spawn_subagent(
+  task="For issues GEN-142, GEN-150, GEN-163, GEN-170 and GEN-188: read each one's comments, history, sub-issues and relations. Per issue return its identifier, status, assignee, the latest decision and any blocker, plus which issues you could not read.",
+  integration_ids=["linear"],
+)
+spawn_subagent(
+  task="Same report for GEN-190, GEN-201, GEN-204, GEN-212 and GEN-98.",
+  integration_ids=["linear"],
+)
 ```
-
-This parallelizes fetching details for multiple issues.
 
 ## Step 4: Team Context
 

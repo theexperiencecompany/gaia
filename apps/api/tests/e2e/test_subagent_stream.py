@@ -192,7 +192,7 @@ class TestReturnValue:
         )
 
         assert "ended without running any tool" in outcome.text
-        assert "Re-issue the handoff" in outcome.text
+        assert "Re-issue the task" in outcome.text
         assert outcome.paused is False
 
     async def test_narration_alongside_a_real_tool_call_is_returned_as_the_answer(self):
@@ -271,7 +271,7 @@ class TestReturnValue:
         )
 
         assert outcome.text == "I sent the email."
-        assert "Re-issue the handoff" not in outcome.text
+        assert "Re-issue the task" not in outcome.text
 
     async def test_a_silent_run_is_never_reported_as_done(self):
         _, outcome, _ = await run_subagent([])

@@ -2,7 +2,7 @@
 
 One immutable :class:ModelLane is resolved once per user turn by
 :func:resolve_lane and then carried verbatim — to the executor, to every
-handoff subagent, across a queue hop, through a HIL resume. Everything
+spawned subagent, across a queue hop, through a HIL resume. Everything
 downstream reads the lane instead of re-deriving a model from loose keys, so
 there is exactly one place a lane can be wrong.
 

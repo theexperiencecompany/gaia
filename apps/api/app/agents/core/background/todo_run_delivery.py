@@ -111,6 +111,7 @@ class FinishedTodoRun(BaseModel):
     user_id: str
     conversation_id: str
     trigger_type: TriggerType
+    runs_once: bool
     result_text: str
     #: Defaulted for a job queued before the class was carried.
     message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
@@ -138,6 +139,7 @@ async def deliver_todo_run_result(
         user_id=run.user.user_id,
         conversation_id=run.conversation_id,
         trigger_type=todo_run.trigger_type,
+        runs_once=todo_run.runs_once,
         result_text=result_text,
         message_class=todo_run.message_class,
     )
@@ -259,14 +261,14 @@ def _is_desk_sweep(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
     )
 
 
-def _can_wait(todo: TodoDocument, finished: FinishedTodoRun, *, runs_once: bool) -> bool:
+def _can_wait(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
     """Whether code lets this result wait for the brief; comms still decides if it can.
 
     Never a one-time todo's answer, a watch the user set, a reminder they timed, a reply
     to what they just did, or a run the trigger gate let through as urgent. A thread
     the inbox desk opened alerts only when the user cannot wait, so comms judges it.
     """
-    if runs_once or finished.message_class in QUIET_HOURS_EXEMPT:
+    if finished.runs_once or finished.message_class in QUIET_HOURS_EXEMPT:
         return False
     desk_thread = (
         todo.external_ref is not None and todo.external_ref.source is ExternalRefSource.GMAIL_THREAD
@@ -357,11 +359,10 @@ async def _narrate_and_deliver(
     A report whose form its todo's guidance sets is delivered as written: comms decides
     only whether. The inbox desk's scheduled findings go into the next brief, never a message.
     """
-    runs_once = not (todo.recurrence or todo.trigger_subscriptions)
     desk_sweep = _is_desk_sweep(todo, finished)
-    may_wait = (
-        desk_sweep or _can_wait(todo, finished, runs_once=runs_once)
-    ) and await _has_live_daily_brief(todo.user_id)
+    may_wait = (desk_sweep or _can_wait(todo, finished)) and await _has_live_daily_brief(
+        todo.user_id
+    )
     # Where it goes is looked up while comms writes it up: neither waits on the other.
     text, target = await asyncio.gather(
         narrate_executor_result(
@@ -373,7 +374,7 @@ async def _narrate_and_deliver(
                 todo.title,
                 _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
                 _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
-                runs_once=runs_once,
+                runs_once=finished.runs_once,
                 run_history=recent_run_outcomes(todo.activity_content, DELIVERY_RUN_HISTORY_LINES),
                 may_wait=may_wait and not desk_sweep,
             ),

@@ -283,3 +283,44 @@
         - "MUST: the reply says the unsigned contract makes the terms revert to month-to-month."
         - "MUST: the reply says the unpaid invoice gets the account paused."
         - "MUST NOT: the reply invents a consequence no email states, such as late fees or collections."
+
+# ── Spawning when the user asks for it ───────────────────────────────────────
+- id: hard-gmail-sweep-spawns-on-request
+  ticket: "The user asked for a subagent and the executor ran the whole sweep in its own context instead, which is how a request runs out of its token budget."
+  tags: [hard, gmail]
+  prompt: >-
+    use a subagent for this: go through my mail and list every person who has
+    emailed me from acme-corp.com, with their address and what they wanted.
+  setup:
+    counterfeit:
+      text: >-
+        Four people at acme-corp.com have emailed you: accounts@acme-corp.com
+        about invoice #4021, david@acme-corp.com with Q2 review notes,
+        alex@acme-corp.com about the invoice, and legal@acme-corp.com about
+        the contract renewal.
+      messages:
+        - {role: user, content: "use a subagent for this: go through my mail"}
+        - role: assistant
+          content: >-
+            Four people at acme-corp.com have emailed you: accounts@acme-corp.com,
+            david@acme-corp.com, alex@acme-corp.com and legal@acme-corp.com.
+      tool_calls: [{name: GMAIL_FETCH_MESSAGES, args: {query: "from:acme-corp.com"}}]
+      end_state: {answer_contains: "legal@acme-corp.com", sent: 0, drafts: 0}
+  expected:
+    category: gmail
+    # The counterfeit is a CORRECT answer done in the executor's own context.
+    # It must fail: the claim under test is that the explicit ask produced a
+    # spawn, so spawn_subagent is the gate. The addresses are corpus literals
+    # (m6 david@, m16 legal@) absent from the prompt, so a spawn whose result
+    # never made it back cannot pass on communicate.
+    communicate: ["david@acme-corp.com", "legal@acme-corp.com"]
+    tool_calls: [{tool: spawn_subagent, min_calls: 1}]
+    end_state:
+      answer_contains: "legal@acme-corp.com"
+      sent: 0
+      drafts: 0
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reply lists all four acme-corp.com senders: accounts@, david@, alex@ and legal@."
+        - "MUST NOT: the reply mentions a subagent, executor or any other internal machinery."

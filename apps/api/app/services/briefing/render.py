@@ -14,7 +14,8 @@ from playwright.async_api import FloatRect, Page, async_playwright
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
-_CHROMIUM_LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"]
+# Unhinted glyphs keep fractional advances on Linux, so text spaces as it does on macOS.
+_CHROMIUM_LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none"]
 
 # Chromium reports fonts as ready before glyphs are fully painted; a short settle
 # avoids capturing a frame mid-layout without polling for an arbitrary condition.

@@ -321,6 +321,7 @@ def _todo_run() -> ExecutorRun:
             todo_id="todo-1",
             trigger_type=TriggerType.SCHEDULED_TODO,
             message_class=ProactiveMessageClass.ROUTINE,
+            runs_once=True,
         ),
     )
 
