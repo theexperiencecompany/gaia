@@ -6485,14 +6485,14 @@
       "class": "ShortLinkOpened",
       "owner": "server",
       "domain": "short_link",
-      "description": "Someone opened one of the user's heygaia.links (attributed to the owner).",
+      "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\n    Attributed to the owner. Unfurl bots building a chat preview never count.",
       "previous_names": [],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "Someone opened one of the user's heygaia.links (attributed to the owner).",
+        "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\nAttributed to the owner. Unfurl bots building a chat preview never count.",
         "properties": {
           "target_type": {
             "enum": [
@@ -6503,9 +6503,13 @@
             ],
             "title": "Target Type",
             "type": "string"
+          },
+          "viewer_signed_in": {
+            "title": "Viewer Signed In",
+            "type": "boolean"
           }
         },
-        "required": ["target_type"],
+        "required": ["target_type", "viewer_signed_in"],
         "title": "ShortLinkOpened",
         "type": "object"
       }

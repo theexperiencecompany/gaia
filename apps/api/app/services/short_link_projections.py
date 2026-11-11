@@ -128,8 +128,7 @@ async def _locate_session_artifact(user_id: str, target_id: str) -> _SessionArti
     return _SessionArtifactFile(host_path=host_path, info=info)
 
 
-async def session_artifact_file(user_id: str, target_id: str) -> Path | None:
-    """Return the host path the public file route streams, or None once it is gone."""
+async def _session_artifact_file(user_id: str, target_id: str) -> Path | None:
     located = await _locate_session_artifact(user_id, target_id)
     return located.host_path if located else None
 
@@ -177,6 +176,25 @@ _PROJECTORS: dict[ShortLinkTargetType, Projector] = {
     ShortLinkTargetType.SESSION_ARTIFACT: _project_session_artifact,
     ShortLinkTargetType.WORKFLOW_RUN: _project_workflow_run,
 }
+
+
+FileLocator = Callable[[str, str], Awaitable[Path | None]]
+
+# The target types whose link also serves raw bytes; every other type has none.
+_FILE_LOCATORS: dict[ShortLinkTargetType, FileLocator] = {
+    ShortLinkTargetType.SESSION_ARTIFACT: _session_artifact_file,
+}
+
+
+async def target_file(
+    target_type: ShortLinkTargetType, user_id: str, target_id: str
+) -> Path | None:
+    """Return the host path of the bytes behind target_id as user_id owns it.
+
+    None when the type serves no file or that owner's file is gone.
+    """
+    locate = _FILE_LOCATORS.get(target_type)
+    return await locate(user_id, target_id) if locate else None
 
 
 async def project_target(
