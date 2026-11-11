@@ -251,7 +251,7 @@ class TestQuietHours:
     ) -> tuple[OutboundResult, AsyncMock, AsyncMock]:
         enqueue = AsyncMock()
         publish = AsyncMock(return_value=OutboundResult.PUBLISHED)
-        get_user = AsyncMock(return_value=user)
+        get_user = AsyncMock(side_effect=lambda user_id: user if user_id == USER.user_id else None)
         with (
             patch.object(user_repository, "get", get_user),
             patch.object(platform_chat, "enqueue_worker_job", enqueue),
