@@ -1,6 +1,9 @@
 """A checked composition laid out as the brief: numbered sections, data blocks, and everything left out."""
 
+from dataclasses import replace
 from datetime import date
+
+import pytest
 
 from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.brief_candidate_models import BriefCandidate
@@ -24,7 +27,7 @@ from app.models.brief_pool_models import (
 from app.models.briefing_models import BriefPoolItem
 from app.models.scout_models import Signal
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
-from app.services.briefing.sections import carried_ids, lay_out
+from app.services.briefing.sections import _data_block, carried_ids, lay_out
 
 _SIGNAL = Signal(
     integration_id="linear",
@@ -205,6 +208,93 @@ class TestLayOut:
             None,
         )
         assert (investor.outcome, investor.kind) == (BriefOutcome.SENT, "lookback")
+
+    def test_a_placed_item_says_where_it_came_from_how_many_asked_and_what_it_was_told(
+        self,
+    ) -> None:
+        pool = replace(
+            POOL,
+            items={
+                **POOL.items,
+                7: BriefCandidate(
+                    source="gmail",
+                    app="Gmail",
+                    state="you",
+                    title="Three asks",
+                    count=3,
+                    url="https://mail.example/t7",
+                ),
+            },
+        )
+        composition = BriefComposition.model_validate(
+            {
+                "blocks": [
+                    {
+                        "kind": "items",
+                        "state": "needs_you",
+                        "heading": "Waiting",
+                        "items": [
+                            {
+                                "id": 7,
+                                "action": "reply",
+                                "outcome": None,
+                                "title": " Three asks ",
+                                "detail": "  one thread, three nudges ",
+                            },
+                            {
+                                "id": 6,
+                                "action": "read",
+                                "outcome": None,
+                                "title": "Digest",
+                                "detail": "   ",
+                            },
+                            {
+                                "id": 2,
+                                "action": "retry",
+                                "outcome": None,
+                                "title": "CRM sync",
+                                "detail": None,
+                            },
+                        ],
+                    }
+                ]
+            }
+        )
+
+        [section] = lay_out(composition, pool).chosen.sections
+
+        asks, digest, sync = section.items
+        assert (asks.text, asks.detail, asks.count, asks.app, asks.url) == (
+            "Three asks",
+            "one thread, three nudges",
+            3,
+            "Gmail",
+            "https://mail.example/t7",
+        )
+        assert (digest.detail, digest.kind) == (None, "you")
+        assert (sync.kind, sync.detail) == ("failed", None)
+
+    def test_a_pool_item_left_out_keeps_the_todo_it_names(self) -> None:
+        pool = replace(
+            POOL,
+            items={
+                7: BriefCandidate(
+                    source="gaia", app="GAIA", state="note", title="Left", todo_id="t7"
+                )
+            },
+        )
+
+        laid = lay_out(BriefComposition(blocks=[]), pool)
+
+        assert [(i.title, i.todo_id) for i in laid.uncomposed] == [("Left", "t7")]
+
+    def test_a_section_block_is_not_a_data_block(self) -> None:
+        lead = _COMPOSITION.blocks[0]
+
+        with pytest.raises(
+            ValueError, match="^a lead block is laid out as a section, not as data$"
+        ):
+            _data_block(lead, POOL)
 
     def test_everything_left_out_is_kept_for_the_page_but_the_calendar(self) -> None:
         laid = lay_out(_COMPOSITION, POOL)

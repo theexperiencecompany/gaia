@@ -183,7 +183,8 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
                 else _work_fact_line(fact_id, it, facts[fact_id], art)
             )
             fact_lines.append(f"{line} | linkable" if linkable else line)
-    for fact_id, event in zip(sources.event_ids, sources.calendar, strict=True):
+    events = list(zip(sources.event_ids, sources.calendar, strict=True))
+    for fact_id, event in events:
         facts[fact_id] = BriefFact(title=event.title, time=event_time(event, clock.date_str))
     if not chosen.sections:
         fact_lines.append(
@@ -193,7 +194,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     fact_lines += voiced_block_lines(sources.blocks)
     if sources.todos_note is not None:
         fact_lines.append(sources.todos_note)
-    fact_lines.append(_calendar_note(sources, clock))
+    fact_lines.append(_calendar_note(events, sources.span, clock))
     return Facts(
         sections=chosen.sections,
         block="\n".join(fact_lines),
@@ -230,14 +231,16 @@ def _event_slot(fact_id: int, time: str | None) -> str:
     return f"[[fact:{fact_id}.time]] ({time})" if time else "all day"
 
 
-def _calendar_note(sources: FactSources, clock: UserClock) -> str:
-    if not sources.calendar:
-        return sources.span.empty
+def _calendar_note(
+    events: list[tuple[int, BriefingEvent]], span: CalendarSpan, clock: UserClock
+) -> str:
+    if not events:
+        return span.empty
     lines = [
         f"- fact {fact_id} | {_event_slot(fact_id, event_time(e, clock.date_str))}: {e.title}"
-        for fact_id, e in zip(sources.event_ids, sources.calendar, strict=True)
+        for fact_id, e in events
     ]
-    return f"{sources.span.heading}:\n" + "\n".join(lines)
+    return f"{span.heading}:\n" + "\n".join(lines)
 
 
 def user_todos_note(open_count: int, open_titles: list[str]) -> str:

@@ -136,7 +136,7 @@ class WorkflowExecutionsRepository(
                         "workflow_id": {"$nin": list(exclude_workflow_ids)},
                     }
                 },
-                {"$project": {"_id": 0, "started_at": 1, "status": 1}},
+                {"$project": {"started_at": 1, "status": 1}},
             ],
             RunMoment,
         )
