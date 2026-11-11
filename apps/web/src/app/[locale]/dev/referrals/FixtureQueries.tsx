@@ -1,5 +1,6 @@
 "use client";
 
+import { ApiError } from "@shared/api";
 import type {
   PlanType,
   ReferralMeResponse,
@@ -19,6 +20,17 @@ export interface FixtureAccount {
   weekly: ReferralWeeklyCardResponse;
   contacts?: URLResponse[];
 }
+
+const NOT_SUBSCRIBED = new ApiError(
+  "Subscribe to GAIA to get your invite link",
+  403,
+  {
+    envelope: {
+      message: "Subscribe to GAIA to get your invite link",
+      code: "REFERRAL_SUBSCRIPTION_REQUIRED",
+    },
+  },
+);
 
 const subscription = (plan: PlanType): UserSubscriptionStatus => ({
   user_id: "6650f0c2a1b2c3d4e5f60718",
@@ -49,6 +61,7 @@ function fixtureClient(account: FixtureAccount): QueryClient {
         refetchOnWindowFocus: false,
         refetchOnReconnect: false,
         retry: false,
+        retryOnMount: false,
       },
     },
   });
@@ -57,7 +70,19 @@ function fixtureClient(account: FixtureAccount): QueryClient {
 
   answer(CURRENT_USER_QUERY_KEY, fixtureUser(account.sentWithGaia));
   answer(["subscription-status"], subscription(account.plan));
-  answer(["referrals", "me"], account.me);
+  if (account.plan === "pro") {
+    answer(["referrals", "me"], account.me);
+  } else {
+    // What the server answers a free user, so the page shows its subscribe-first state.
+    client
+      .getQueryCache()
+      .build(client, { queryKey: ["referrals", "me"] })
+      .setState({
+        status: "error",
+        fetchStatus: "idle",
+        error: NOT_SUBSCRIBED,
+      });
+  }
   answer(["referrals", "weekly-card"], account.weekly);
   answer(["referrals", "chat-card"], { show: true });
   for (const contact of account.contacts ?? []) {
