@@ -1,4 +1,4 @@
-"""Check the daily brief's rendered prose against its facts with one cheap structured call."""
+"""Check a brief's rendered text, composed or voiced, against its facts with one cheap structured call."""
 
 from dataclasses import dataclass
 from typing import Literal
@@ -19,12 +19,18 @@ Verdict = Literal["holds", "contradicted", "absent"]
 
 @dataclass(frozen=True)
 class CheckedProse:
-    """The brief's prose as the check reads it: slots filled, each filled value bracketed."""
+    """The brief's model-written text as the check reads it: slots filled, each filled value bracketed.
 
-    headline: str
-    lede: str
-    caption: str
-    message: str
+    fields name each string ("headline", "block 2 heading") beside its text, in reading order.
+    """
+
+    fields: tuple[tuple[str, str], ...]
+
+    def written(self) -> str:
+        """Lay the fields out as the check reads them, a multi-line one under its name."""
+        return "\n".join(
+            f"{name}:\n{text}" if "\n" in text else f"{name}: {text}" for name, text in self.fields
+        )
 
 
 class UnsupportedClaim(BaseModel):
@@ -82,7 +88,8 @@ def _claim(specific: CheckedSpecific) -> UnsupportedClaim:
 def _verbatim(quote: str, prose: CheckedProse) -> bool:
     """Whether the brief holds the quote; a quote the brief never wrote is not its claim."""
     written = " ".join(
-        f"{prose.headline} {prose.lede} {prose.caption} {prose.message}".replace(FILLED_OPEN, "")
+        " ".join(text for _, text in prose.fields)
+        .replace(FILLED_OPEN, "")
         .replace(FILLED_CLOSE, "")
         .split()
     ).casefold()
@@ -102,13 +109,7 @@ async def unsupported_claims(
     """
     answer = await ainvoke_structured(
         UnsupportedClaims,
-        BRIEF_FAITHFULNESS_PROMPT.format(
-            facts=facts,
-            headline=prose.headline,
-            lede=prose.lede,
-            caption=prose.caption,
-            message=prose.message,
-        ),
+        BRIEF_FAITHFULNESS_PROMPT.format(facts=facts, brief=prose.written()),
         label=BRIEF_FAITHFULNESS_LABEL,
         config=metered_config(user_id),
         options=StructuredCallOptions(temperature=BRIEF_FAITHFULNESS_TEMPERATURE),

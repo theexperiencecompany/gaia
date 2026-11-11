@@ -1,10 +1,11 @@
 """Gather every producer's candidates for one brief, daily or weekly, numbered once and deduplicated."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from app.constants.briefing import GAIA_SOURCE
-from app.models.brief_candidate_models import BriefCandidate, CandidateKind
+from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent, UnreadSource
 from app.models.scout_models import ScoutOutcome
@@ -13,7 +14,6 @@ from app.services.briefing.candidates.approvals import approval_candidates
 from app.services.briefing.candidates.calendar import calendar_candidates
 from app.services.briefing.candidates.failed_runs import failed_run_candidates
 from app.services.briefing.candidates.held import held_candidates
-from app.services.briefing.candidates.judge import CandidatePool
 from app.services.briefing.candidates.reminders import reminder_candidates
 from app.services.briefing.candidates.subjects import same_text_key
 from app.services.briefing.candidates.tracked import (
@@ -41,7 +41,7 @@ class GatheredCandidates:
     @property
     def has_news(self) -> bool:
         """Whether anything besides the calendar is in the pool."""
-        return any(c.kind is not CandidateKind.EVENT for c in self.pool.values())
+        return any(not c.is_event for c in self.pool.values())
 
 
 @dataclass(frozen=True)
@@ -70,11 +70,13 @@ def _numbered(candidates: list[BriefCandidate]) -> tuple[dict[int, BriefCandidat
     return pool, duplicates
 
 
-def _apps_in(pool: CandidatePool) -> list[str]:
+def _apps_in(pool: Mapping[int, BriefCandidate]) -> list[str]:
     return [c.app for c in pool.values() if c.source != GAIA_SOURCE]
 
 
-def _sources(scouts: ScoutSignals, pool: CandidatePool) -> tuple[list[str], list[UnreadSource]]:
+def _sources(
+    scouts: ScoutSignals, pool: Mapping[int, BriefCandidate]
+) -> tuple[list[str], list[UnreadSource]]:
     read = [r.app for r in scouts.results if r.outcome is not ScoutOutcome.SKIPPED]
     read += _apps_in(pool)
     unavailable = [
@@ -100,7 +102,7 @@ async def gather_candidates(
         *app_signal_candidates(sources.scouts.remembered, now),
         *await held_candidates(user_id, sources.held),
         *gaia_work_candidates(work),
-        *calendar_candidates(sources.calendar),
+        *calendar_candidates(sources.calendar, clock.date_str),
     ]
     pool, duplicates = _numbered(candidates)
     read, unavailable = _sources(sources.scouts, pool)
@@ -108,14 +110,18 @@ async def gather_candidates(
 
 
 async def gather_week_candidates(
-    user_id: str, since: datetime, completed: CompletedWork, ahead: list[BriefingEvent]
+    user_id: str,
+    clock: UserClock,
+    since: datetime,
+    completed: CompletedWork,
+    ahead: list[BriefingEvent],
 ) -> GatheredCandidates:
     """Run the producers over the week since Monday: failed runs, what got done, the week ahead."""
     candidates = [
         *await failed_run_candidates(user_id, since),
         *user_done_candidates(completed.user),
         *gaia_work_candidates(TrackedWork(completed=completed.gaia)),
-        *calendar_candidates(ahead),
+        *calendar_candidates(ahead, clock.date_str),
     ]
     pool, duplicates = _numbered(candidates)
     return GatheredCandidates(pool, duplicates, list(dict.fromkeys(_apps_in(pool))), [])

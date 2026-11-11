@@ -23,10 +23,12 @@ _FACTS = (
     "[Updates]\n- fact 1 | Done: Investor update\nToday's calendar:\n- fact 2 | 11:00 AM: Sequoia"
 )
 _DRAFT = CheckedProse(
-    headline="Arjun's contract redlines need you today",
-    lede="The investor update is still a draft.",
-    caption="One meeting, one decision.",
-    message="Arjun is waiting on the redlines.\nThen Sequoia at ⟦11:00 AM⟧.",
+    fields=(
+        ("headline", "Arjun's contract redlines need you today"),
+        ("lede", "The investor update is still a draft."),
+        ("block 2 (items) heading", "Before Sequoia"),
+        ("message", "Arjun is waiting on the redlines.\nThen Sequoia at ⟦11:00 AM⟧."),
+    )
 )
 
 
@@ -90,10 +92,10 @@ async def test_the_model_reads_the_facts_and_every_rendered_field_at_zero_temper
     assert schema is UnsupportedClaims
     assert _FACTS in prompt
     for line in (
-        f"headline: {_DRAFT.headline}",
-        f"lede: {_DRAFT.lede}",
-        f"caption: {_DRAFT.caption}",
-        f"message:\n{_DRAFT.message}",
+        "headline: Arjun's contract redlines need you today",
+        "lede: The investor update is still a draft.",
+        "block 2 (items) heading: Before Sequoia",
+        "message:\nArjun is waiting on the redlines.\nThen Sequoia at ⟦11:00 AM⟧.",
     ):
         assert line in prompt
     kwargs = model.await_args.kwargs

@@ -271,6 +271,13 @@ def largest_list_len(value: object) -> int | None:
 WorkflowExecutionStatus = Literal["running", "success", "failed", "skipped"]
 
 
+class RunMoment(BaseModel):
+    """When one execution started and how it stands: what a per-day run count reads."""
+
+    started_at: datetime
+    status: WorkflowExecutionStatus
+
+
 class RecordedCall(BaseModel):
     """One tool call as it actually ran, recorded by app.agents.tools.invocation.
 

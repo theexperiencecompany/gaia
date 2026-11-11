@@ -3,6 +3,7 @@
  * Brief items: the owner's copy opens the in-app todo even when the brief also
  * shared a public link; the public copy (no todo_id) opens the shared link.
  * The written message links an item on its phrase, never as a pasted URL.
+ * What the composition left out is listed after it, so the page loses nothing.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -103,5 +104,53 @@ describe("brief item links", () => {
         .getAttribute("href"),
     ).toBe(PUBLIC_LINK);
     expect(screen.queryByText(/\]\(/)).toBeNull();
+  });
+
+  it("lists what the composition left out under Everything else, each opening its source", () => {
+    render(
+      <BriefingEdition
+        payload={{
+          ...payload({ text: "Deck", kind: "lookback" }),
+          uncomposed: [
+            {
+              title: "Fix the login redirect",
+              detail: "due tomorrow",
+              kind: "you",
+              app: "Linear",
+              url: "https://linear.app/ENG-12",
+              todo_id: null,
+            },
+            {
+              title: "Digest: three papers",
+              detail: null,
+              kind: "note",
+              app: "GAIA",
+              url: null,
+              todo_id: "t9",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Everything else")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Fix the login redirect" })
+        .getAttribute("href"),
+    ).toBe("https://linear.app/ENG-12");
+    expect(
+      screen
+        .getByRole("link", { name: "Digest: three papers" })
+        .getAttribute("href"),
+    ).toBe("/todos?todoId=t9");
+  });
+
+  it("shows no Everything else group when the composition placed everything", () => {
+    render(
+      <BriefingEdition payload={payload({ text: "Deck", kind: "lookback" })} />,
+    );
+
+    expect(screen.queryByText("Everything else")).toBeNull();
   });
 });

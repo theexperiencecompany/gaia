@@ -40,7 +40,6 @@ from app.constants.briefing import (
     BriefingRunOutcome,
     BriefItemSource,
     BriefOutcome,
-    SectionKey,
 )
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -51,6 +50,7 @@ from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.email_verdicts import email_verdict_repository
 from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.reminders import reminder_repository
@@ -59,7 +59,9 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.brief_composition_models import BriefComposition, SectionBlock
 from app.models.brief_models import PendingBriefItemDocument
+from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingModel,
@@ -108,8 +110,7 @@ from app.services.briefing import (
     store,
     weekly,
 )
-from app.services.briefing.candidates import judge
-from app.services.briefing.candidates.judge import BriefSelectionAnswer
+from app.services.briefing.composition import compose
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
@@ -197,62 +198,98 @@ def _message_written(prompt: str, reply: str) -> str:
 _DIGEST_REPORT = "3 new papers on retrieval\nThe longest is 40 pages; two cite your draft."
 
 
-_CANDIDATE_LINE = re.compile(r"^(\d+)\. \[[^\]]+\] (needs_you|update|gaia_did|event)", re.M)
-_FILED_UNDER = {"needs_you": "needs_you", "update": "updates", "gaia_did": "gaia_did"}
-_CANDIDATE_TITLE = re.compile(
-    r"^(\d+)\. \[[^\]]+\] [a-z_]+(?:, important)?: (.+?)(?: \| .*)?$", re.M
+# One pool item line: "7. [GitHub] waiting on you, important: Title | detail | action review".
+_POOL_ITEM = re.compile(
+    r"^(\d+)\. \[([^\]]+)\] ([a-z ]+?)(?:, important)?: (.+?)(?: \| (.*))?$", re.M
 )
-# How the stand-in judge words what its line does not settle: asks reply, reports changed.
-_SECTION_READS_AS = {
-    "lead": {"action": "reply"},
-    "needs_you": {"action": "reply"},
-    "updates": {"outcome": "changed"},
-    "gaia_did": {"outcome": "finished"},
-}
+_ASKING_STATES = {"waiting on you", "failed"}
+_PRODUCER_SAYS = re.compile(r"\b(action|outcome) (\w+)\b")
+# How the stand-in composer words what a line does not settle: asks reply, reports finished.
+_UNSETTLED = {True: ("action", "reply"), False: ("outcome", "finished")}
 
 
-def _worded(prompt: str, section: str, candidate_id: int) -> dict[str, object]:
-    """Word a kept candidate as a judge would: its own title, its section's action or outcome."""
-    titles = {int(n): title for n, title in _CANDIDATE_TITLE.findall(prompt)}
-    return {"id": candidate_id, "title": titles[candidate_id], **_SECTION_READS_AS[section]}
+@dataclass(frozen=True)
+class _PoolItem:
+    id: int
+    app: str
+    state: str
+    title: str
+    rest: str
+
+    @property
+    def asks(self) -> bool:
+        return self.state in _ASKING_STATES
+
+    def placed(self, *, asks: bool | None = None) -> dict[str, object]:
+        """Word the item as a composer would: its own title, and its producer's action or outcome."""
+        asking = self.asks if asks is None else asks
+        side, value = _UNSETTLED[asking]
+        for said_side, said in _PRODUCER_SAYS.findall(self.rest):
+            if said_side == side:
+                value = said
+        return {"id": self.id, "title": self.title, side: value}
 
 
-def _files_by_kind(
-    schema: type[BriefSelectionAnswer], prompt: str, **_: object
-) -> BriefSelectionAnswer:
-    """Stand in for the selection model: file every candidate where its producer would, in order."""
-    lists: dict[str, list[dict[str, object]]] = {"needs_you": [], "updates": [], "gaia_did": []}
-    for number, kind in _CANDIDATE_LINE.findall(prompt):
-        if kind in _FILED_UNDER:
-            section = _FILED_UNDER[kind]
-            lists[section].append(_worded(prompt, section, int(number)))
-    return schema.model_validate(lists)
+def _pool_items(prompt: str) -> list[_PoolItem]:
+    pool = prompt.split("## The pool", 1)[1].split("\nSERIES\n", 1)[0]
+    return [
+        _PoolItem(int(n), app, state, title, rest or "")
+        for n, app, state, title, rest in _POOL_ITEM.findall(pool)
+    ]
 
 
-def _judged(
-    lead: tuple[str, str] | None = None, **sections: list[str]
-) -> Callable[..., BriefSelectionAnswer]:
-    """Stand in for a selection model that files candidates by title and drops the rest."""
-
-    def answer(
-        schema: type[BriefSelectionAnswer], prompt: str, **_: object
-    ) -> BriefSelectionAnswer:
-        ids = {title: int(n) for n, title in _CANDIDATE_TITLE.findall(prompt)}
-        lists = {
-            key: [_worded(prompt, key, ids[title]) for title in titles]
-            for key, titles in sections.items()
-        }
-        kept = {c["id"] for chosen in lists.values() for c in chosen}
-        if lead is not None:
-            kept.add(ids[lead[0]])
-        return schema.model_validate(
-            {
-                **lists,
-                "lead": _worded(prompt, "lead", ids[lead[0]]) if lead else None,
-                "offer": lead[1] if lead else None,
-                "dropped": [i for i in ids.values() if i not in kept],
-            }
+def _composes_by_state(
+    schema: type[BriefComposition], prompt: str, **_: object
+) -> BriefComposition:
+    """Stand in for the composer: what asks under Needs you, then GAIA's work, then the apps', in order."""
+    groups: dict[str, list[dict[str, object]]] = {
+        "Needs you": [],
+        "GAIA's work": [],
+        "From your apps": [],
+    }
+    for item in _pool_items(prompt):
+        if item.state == "calendar event":
+            continue
+        heading = (
+            "Needs you" if item.asks else "GAIA's work" if item.app == "GAIA" else "From your apps"
         )
+        groups[heading].append(item.placed())
+    return schema.model_validate(
+        {
+            "blocks": [
+                {"kind": "items", "heading": heading, "items": items}
+                for heading, items in groups.items()
+                if items
+            ]
+        }
+    )
+
+
+def _composed(
+    groups: dict[str, list[str]],
+    *,
+    lead: tuple[str, str] | None = None,
+    reports: frozenset[str] = frozenset(),
+) -> Callable[..., BriefComposition]:
+    """Stand in for a composer that places items by title under each heading, the lead first.
+
+    reports are titles placed as reports (with an outcome) whatever their state.
+    """
+
+    def placed(item: _PoolItem) -> dict[str, object]:
+        return item.placed(asks=False) if item.title in reports else item.placed()
+
+    def answer(schema: type[BriefComposition], prompt: str, **_: object) -> BriefComposition:
+        by_title = {item.title: item for item in _pool_items(prompt)}
+        blocks: list[dict[str, object]] = []
+        if lead is not None:
+            title, offer = lead
+            blocks.append({"kind": "lead", "items": [placed(by_title[title])], "offer": offer})
+        blocks += [
+            {"kind": "items", "heading": heading, "items": [placed(by_title[t]) for t in titles]}
+            for heading, titles in groups.items()
+        ]
+        return schema.model_validate({"blocks": blocks})
 
     return answer
 
@@ -320,8 +357,10 @@ class World:
     brief_message: AsyncMock = field(default_factory=AsyncMock)
     #: The context and repository reads the run makes, by name, as patched.
     reads: dict[str, AsyncMock] = field(default_factory=dict)
-    #: The selection model; by default it files every candidate where its producer would.
-    judge: AsyncMock = field(default_factory=lambda: AsyncMock(side_effect=_files_by_kind))
+    #: The composition model; by default it groups every item by whether it asks.
+    composer: AsyncMock = field(default_factory=lambda: AsyncMock(side_effect=_composes_by_state))
+    #: The composition's faithfulness check; by default every claim holds.
+    composition_checker: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
 
 
 def _seam(
@@ -334,7 +373,13 @@ def _seam(
 def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
     """Patch what the run gathers its context from (work, goals, dormancy, apps) and the scouts."""
     _seam(monkeypatch, w, chat_sync, "format_replies_block", AsyncMock(return_value="No replies."))
-    _seam(monkeypatch, w, context, "format_goal_block", AsyncMock(return_value=("Ship v2", True)))
+    _seam(
+        monkeypatch,
+        w,
+        context,
+        "stated_goals",
+        AsyncMock(return_value=[context.StatedGoal("Ship v2", GoalOrigin.ONBOARDING)]),
+    )
     _seam(
         monkeypatch, w, context, "get_yesterday_payload", AsyncMock(return_value=sentinel.yesterday)
     )
@@ -480,7 +525,20 @@ def world(monkeypatch: pytest.MonkeyPatch, checker: AsyncMock) -> Iterator[World
 
     monkeypatch.setattr(user_repository, "set_briefing_bag", set_bag)
     _seam(monkeypatch, w, context, "gather_calendar", AsyncMock(return_value=[_EVENT]))
-    monkeypatch.setattr(judge, "ainvoke_structured", w.judge)
+    monkeypatch.setattr(compose, "ainvoke_structured", w.composer)
+    monkeypatch.setattr(compose, "unsupported_claims", w.composition_checker)
+    _seam(monkeypatch, w, context, "read_calendar", AsyncMock(return_value=[]))
+    for repository, read in (
+        (todo_repository, "list_completed_since"),
+        (todo_repository, "list_external_ref_activity_since"),
+        (todo_repository, "list_open_user_todos"),
+        (todo_repository, "list_active_tracked"),
+        (workflow_executions_repository, "list_run_moments_since"),
+    ):
+        _seam(monkeypatch, w, repository, read, AsyncMock(return_value=[]))
+    # Keyed apart: the executions repository's own list_since is a read of its own.
+    w.reads["verdicts_since"] = AsyncMock(return_value=[])
+    monkeypatch.setattr(email_verdict_repository, "list_since", w.reads["verdicts_since"])
     for owner, name in (
         (approval_ledger_repository, "list_pending_for_user"),
         (hil_approval_repository, "list_pending_for_user"),
@@ -761,63 +819,101 @@ class TestDailyBrief:
 
         assert "artwork" not in world.bags
 
-    async def test_each_section_holds_at_most_its_cap_in_the_judges_order(
+    async def test_the_brief_holds_the_composers_groups_under_its_headings_in_its_order(
         self, world: World
     ) -> None:
         """Regression: needs-you was truncated by a fixed order, never by what mattered."""
         world.work = context.TrackedWork(
-            running=[_todo(f"r{i}", f"Running {i}") for i in range(6)],
-            blocked=[_todo(f"b{i}", f"Blocked {i}") for i in range(5)],
+            running=[_todo(f"r{i}", f"Running {i}") for i in range(3)],
+            blocked=[_todo(f"b{i}", f"Blocked {i}") for i in range(3)],
             failed=[_todo("f1", "Failed one")],
         )
-        world.judge.side_effect = _judged(
-            needs_you=["Failed one", *(f"Blocked {i}" for i in range(5))],
-            gaia_did=[f"Running {i}" for i in range(6)],
+        world.composer.side_effect = _composed(
+            {
+                "Before the Sequoia call": ["Blocked 2", "Failed one"],
+                "Still running": ["Running 1"],
+            }
         )
 
         await daily.run_daily_briefing(_USER)
 
-        sections = _stored_payload(world).sections
-        assert [(s.key, [i.text for i in s.items]) for s in sections] == [
-            (SectionKey.NEEDS_YOU, ["Failed one", "Blocked 0", "Blocked 1", "Blocked 2"]),
-            (SectionKey.GAIA_DID, ["Running 0", "Running 1", "Running 2"]),
+        payload = _stored_payload(world)
+        assert [(s.numeral, s.title, [i.text for i in s.items]) for s in payload.sections] == [
+            ("I", "Before the Sequoia call", ["Blocked 2", "Failed one"]),
+            ("II", "Still running", ["Running 1"]),
         ]
-        assert [s.numeral for s in sections] == ["I", "II"]
-        assert [(s.key, s.more) for s in sections] == [
-            (SectionKey.NEEDS_YOU, 2),
-            (SectionKey.GAIA_DID, 3),
+        assert payload.blocks == [
+            SectionBlock(kind="items", section=0),
+            SectionBlock(kind="items", section=1),
+        ]
+        assert sorted(i.title for i in payload.uncomposed) == [
+            "Blocked 0",
+            "Blocked 1",
+            "Running 0",
+            "Running 2",
         ]
 
-    async def test_the_judges_lead_opens_the_brief_with_its_offer(self, world: World) -> None:
+    async def test_the_composers_lead_opens_the_brief_with_its_offer(self, world: World) -> None:
         world.work = _brief_work()
-        world.judge.side_effect = _judged(
+        world.composer.side_effect = _composed(
+            {"Done overnight": ["Investor update"]},
             lead=("Approve the Priya reply", "Send the reply once you approve"),
-            gaia_did=["Investor update"],
         )
 
         await daily.run_daily_briefing(_USER)
 
         lead, work = _stored_payload(world).sections
-        assert (lead.key, lead.title, lead.numeral) == (SectionKey.LEAD, "First up", "I")
+        assert (lead.title, lead.numeral) == ("First up", "I")
         assert [(i.text, i.kind, i.offer) for i in lead.items] == [
             ("Approve the Priya reply", "you", "Send the reply once you approve")
         ]
         assert [(i.text, i.offer) for i in work.items] == [("Investor update", None)]
+        assert _stored_payload(world).blocks[0] == SectionBlock(kind="lead", section=0)
 
-    async def test_a_selection_the_judge_breaks_twice_fails_and_sends_nothing(
+    async def test_a_composition_broken_twice_fails_and_sends_nothing(self, world: World) -> None:
+        world.work = _brief_work()
+        world.composer.side_effect = None
+        world.composer.return_value = BriefComposition.model_validate(
+            {
+                "blocks": [
+                    {
+                        "kind": "items",
+                        "heading": "Waiting",
+                        "items": [{"id": 99, "action": "reply", "title": "Nobody"}],
+                    }
+                ]
+            }
+        )
+
+        with pytest.raises(AppError, match="composition broke its contract"):
+            await daily.run_daily_briefing(_USER)
+
+        assert world.composer.await_count == 2
+        retry = world.composer.await_args_list[1].args[1]
+        assert "sent back: block 1 (items), item 99: no item 99 in the pool" in retry
+        _assert_nothing_sent(world)
+
+    async def test_a_composition_whose_words_claim_too_much_is_retried_with_the_claim(
         self, world: World
     ) -> None:
         world.work = _brief_work()
-        world.judge.side_effect = None
-        world.judge.return_value = BriefSelectionAnswer.model_validate(
-            {"needs_you": [{"id": 99, "action": "reply", "title": "Nobody"}]}
-        )
+        world.composer.side_effect = _composed({"Priya is waiting": ["Approve the Priya reply"]})
+        world.composition_checker.side_effect = [
+            [
+                UnsupportedClaim(
+                    quote="Priya is waiting", fact="absent", truth="no fact says Priya waits"
+                )
+            ],
+            [],
+        ]
 
-        with pytest.raises(AppError, match="selection judge broke its contract"):
-            await daily.run_daily_briefing(_USER)
+        await daily.run_daily_briefing(_USER)
 
-        assert world.judge.await_count == 2
-        _assert_nothing_sent(world)
+        assert world.composer.await_count == 2
+        assert '"Priya is waiting": no fact holds it' in world.composer.await_args_list[1].args[1]
+        checked = world.composition_checker.await_args_list[0].args[2]
+        assert ("block 1 (items) heading", "Priya is waiting") in checked.fields
+        _stored_payload(world)
 
     async def test_voice_the_agent_botched_stores_and_sends_nothing(self, world: World) -> None:
         world.agent.return_value = SimpleNamespace(message="Sorry, something went wrong.")
@@ -1012,23 +1108,28 @@ class TestWeeklyRecap:
         """Regression: the model wrote the whole weekly payload, its sections and items included."""
         _a_full_week(monkeypatch, world)
         world.agent.return_value = _weekly_voiced()
+        world.composer.side_effect = _composed(
+            {
+                "Needs you": ["CRM sync failed"],
+                "You finished": ["Send the deck"],
+                "GAIA's work": ["Investor deck"],
+            }
+        )
 
         await weekly.run_weekly_digest(_USER)
 
         payload = _stored_payload(world)
-        assert [
-            (s.key, s.title, [(i.text, i.kind) for i in s.items]) for s in payload.sections
-        ] == [
-            (SectionKey.NEEDS_YOU, "Needs you", [("CRM sync failed", "failed")]),
-            (SectionKey.UPDATES, "You finished", [("Send the deck", "lookback")]),
-            (SectionKey.GAIA_DID, "GAIA's work", [("Investor deck", "lookback")]),
+        assert [(s.title, [(i.text, i.kind) for i in s.items]) for s in payload.sections] == [
+            ("Needs you", [("CRM sync failed", "failed")]),
+            ("You finished", [("Send the deck", "lookback")]),
+            ("GAIA's work", [("Investor deck", "lookback")]),
         ]
         assert payload.message == "CRM sync failed\nSend the deck\nInvestor deck\nPitch to Accel"
         assert payload.week == world.reads["gather_week"].return_value
         (since,) = world.reads["list_since"].await_args.args[1:2]
         assert since == _WEEK_START
 
-    async def test_the_week_ahead_is_timed_by_its_day_and_the_judge_reads_the_week(
+    async def test_the_week_ahead_is_timed_by_its_day_and_the_composer_reads_the_week(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _a_full_week(monkeypatch, world)
@@ -1042,7 +1143,7 @@ class TestWeeklyRecap:
         facts = _facts_shown(_prompt(world))
         assert "The week ahead:\n- fact " in facts and "| Fri 3:00 PM: Pitch to Accel" in facts
         assert "summary: Final numbers in" in facts
-        assert "weekly digest" in world.judge.await_args.args[1]
+        assert "weekly digest for the week ending 2026-10-14" in world.composer.await_args.args[1]
         assert "## THIS WEEK'S FACTS" in _prompt(world)
 
 
@@ -1126,9 +1227,9 @@ class TestHeldItemsJoinTheBrief:
 
         await daily.run_daily_briefing(_USER)
 
-        assert [(s.key, [i.text for i in s.items]) for s in _stored_payload(world).sections] == [
-            (SectionKey.NEEDS_YOU, ["Approve the Priya reply"]),
-            (SectionKey.GAIA_DID, ["Paper digest: 3 new papers on retrieval", "Investor update"]),
+        assert [(s.title, [i.text for i in s.items]) for s in _stored_payload(world).sections] == [
+            ("Needs you", ["Approve the Priya reply"]),
+            ("GAIA's work", ["Paper digest: 3 new papers on retrieval", "Investor update"]),
         ]
         # The headline and lede are voiced from the items, so a report's body never
         # reaches the prompt to be claimed from.
@@ -1154,20 +1255,25 @@ class TestHeldItemsJoinTheBrief:
         assert world.consume.await_args.args[0] == _USER
         assert sorted(world.consume.await_args.args[1]) == ["h1", "h2", "h3"]
 
-    async def test_a_held_result_the_judge_dropped_is_cleared_and_one_past_the_cap_waits(
+    async def test_a_held_result_left_out_of_the_composition_is_on_the_page_and_cleared(
         self, world: World
     ) -> None:
+        """Nothing the composition leaves out is lost: it is on the brief's full page."""
         world.work = context.TrackedWork(completed=[_todo(f"c{i}", f"Done {i}") for i in range(3)])
         world.held = [_held("h1", "Digest", "first"), _held("h2", "Paper digest", "second")]
-        world.judge.side_effect = _judged(
-            gaia_did=["Done 0", "Done 1", "Done 2", "Paper digest: second"]
+        world.composer.side_effect = _composed(
+            {"Done overnight": ["Done 0", "Done 1", "Done 2", "Paper digest: second"]}
         )
 
         await daily.run_daily_briefing(_USER)
 
-        texts = [i.text for s in _stored_payload(world).sections for i in s.items]
-        assert texts == ["Done 0", "Done 1", "Done 2"]
-        world.consume.assert_awaited_once_with(_USER, ["h1"])
+        payload = _stored_payload(world)
+        texts = [i.text for s in payload.sections for i in s.items]
+        assert texts == ["Done 0", "Done 1", "Done 2", "Paper digest: second"]
+        assert [(i.title, i.app, i.kind) for i in payload.uncomposed] == [
+            ("Digest: first", "GAIA", "note")
+        ]
+        world.consume.assert_awaited_once_with(_USER, ["h1", "h2"])
 
     async def test_an_inbox_desk_finding_is_a_gmail_update(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -1184,7 +1290,7 @@ class TestHeldItemsJoinTheBrief:
         await daily.run_daily_briefing(_USER)
 
         [section] = _stored_payload(world).sections
-        assert section.key is SectionKey.UPDATES
+        assert section.title == "From your apps"
         assert [(i.text, i.app, i.kind) for i in section.items] == [
             ("Stripe payout of 2,400 dollars landed", "Gmail", "note")
         ]
@@ -1276,8 +1382,12 @@ class TestTheProseHoldsToItsFacts:
             monkeypatch,
             world,
             context,
-            "format_goal_block",
-            AsyncMock(return_value=("Raise a seed round from Accel", True)),
+            "stated_goals",
+            AsyncMock(
+                return_value=[
+                    context.StatedGoal("Raise a seed round from Accel", GoalOrigin.MEMORY)
+                ]
+            ),
         )
         world.agent.return_value = _voiced(
             "Sequoia at [[fact:<fact of Sequoia>.time]]", "Then the Accel intro."
@@ -1288,7 +1398,7 @@ class TestTheProseHoldsToItsFacts:
         checked = _checked_prompt(world)
         assert "headline: Sequoia at ⟦11:00 AM⟧\n" in checked
         assert "lede: Then the Accel intro.\n" in checked
-        assert "message:\n⟦Sequoia⟧\n" in checked
+        assert "message: ⟦Sequoia⟧\n" in checked
         assert "[[" not in checked.split("## THE BRIEF", 1)[1]
         assert _stored_payload(world).headline == "Sequoia at 11:00 AM"
         blocks = world.voice_prompt.call_args.kwargs["blocks"]
@@ -1610,7 +1720,7 @@ class TestTheDailyRunWiring:
     async def test_every_read_is_for_this_user_and_the_last_local_day(self, world: World) -> None:
         await daily.run_daily_briefing(_USER)
 
-        world.reads["format_goal_block"].assert_awaited_once_with(_USER, world.user)
+        world.reads["stated_goals"].assert_awaited_once_with(_USER, world.user)
         world.reads["get_yesterday_payload"].assert_awaited_once_with(_USER, before_date=_DATE)
         world.reads["format_lookback_block"].assert_awaited_once_with(
             _USER, sentinel.yesterday, _DAY_START
@@ -1634,8 +1744,27 @@ class TestTheDailyRunWiring:
             prompt_args["blocks"].goal,
             prompt_args["blocks"].lookback,
             prompt_args["blocks"].replies,
-        ) == ("Ship v2", "-", "No replies.")
+        ) == ("Stated goal: Ship v2", "-", "No replies.")
         assert prompt_args["situation"] == VoiceSituation()
+
+    async def test_the_pool_reads_this_users_week_ending_today(self, world: World) -> None:
+        await daily.run_daily_briefing(_USER)
+
+        # Seven local days ending today: 8 Oct, Kolkata midnight, to the midnight after 14 Oct.
+        week_start = datetime(2026, 10, 7, 18, 30, tzinfo=UTC)
+        world.reads["read_calendar"].assert_awaited_once_with(
+            _USER, week_start, datetime(2026, 10, 14, 18, 30, tzinfo=UTC)
+        )
+        world.reads["list_completed_since"].assert_awaited_once_with(_USER, since=week_start)
+        world.reads["list_external_ref_activity_since"].assert_awaited_once_with(
+            _USER, ExternalRefSource.GMAIL_THREAD, since=week_start
+        )
+        world.reads["list_run_moments_since"].assert_awaited_once_with(
+            _USER, week_start, exclude_workflow_ids=[]
+        )
+        world.reads["verdicts_since"].assert_awaited_once_with(
+            _USER, since=_NOW - timedelta(days=1)
+        )
 
     async def test_a_users_first_brief_is_voiced_as_their_first(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -1719,6 +1848,11 @@ class TestTheDailyRunWiring:
         self, world: World
     ) -> None:
         world.work = _brief_work()
+        world.reads["list_completed_since"].return_value = [
+            _todo("c1", "Investor update").model_copy(
+                update={"completed": True, "completed_at": _NOW - timedelta(hours=1)}
+            )
+        ]
         _family_first(world, "memo")
 
         await daily.run_daily_briefing(_USER)
@@ -1736,10 +1870,10 @@ class TestTheDailyRunWiring:
                 channel_count=3,
                 signal_count=0,
                 stamp_collected=payload.new_stamp is not None,
-                lead_count=0,
-                needs_you_count=1,
-                updates_count=0,
-                gaia_did_count=1,
+                block_kinds=["items", "items"],
+                chart_count=0,
+                pool_item_count=3,
+                series_count=1,
                 source_count=1,
             ),
         )
@@ -1783,7 +1917,7 @@ class TestTheFactsTheModelVoices:
         await daily.run_daily_briefing(_USER)
 
         assert (
-            "[COUNTS] needs_you: 3 · done: 1 · in_progress: 1 · while_away: 1 · events: 1\n"
+            "[COUNTS] needs_you: 3 · done: 1 · in_progress: 2 · while_away: 1 · events: 1\n"
             "[Needs you]\n"
             "- fact 1 | Waiting on you: Approve the reply | summary: Draft ready"
             " | artifact holds ~11 chars | waiting on you | linkable\n"
@@ -1793,11 +1927,12 @@ class TestTheFactsTheModelVoices:
             "- fact 4 | Note: Digest: first\n"
             "- fact 5 | Done: Deck | artifact holds ~0 chars\n"
             "- fact 6 | In progress: Research | artifact holds ~0 chars\n"
+            "- fact 7 | In progress: Outreach | artifact holds ~0 chars\n"
             "The user's own todo list is empty.\n"
             "Today's calendar:\n"
             "- fact 8 | 11:00 AM: Sequoia"
         ) in _prompt(world)
-        assert "GAIA has no tracked work" not in _prompt(world)
+        assert "The brief holds no items today" not in _prompt(world)
         assert [(s.value, s.label) for s in _stored_payload(world).stats] == [
             ("1", "done since yesterday"),
             ("2", "in progress"),
@@ -1856,8 +1991,8 @@ class TestTheFactsTheModelVoices:
 
         assert (
             "[COUNTS] events: 1\n"
-            "GAIA has no tracked work and no background work ran. Do not claim anything "
-            "ran, finished, or is pending beyond what is stated here.\n"
+            "The brief holds no items today. Do not claim anything ran, finished, or is "
+            "pending beyond what is stated here.\n"
             "The user's own todo list is empty.\n"
             "Today's calendar:\n- fact 1 | 11:00 AM: Sequoia"
         ) in _prompt(world)
@@ -2109,7 +2244,7 @@ class TestTheGoalHold:
 
     @staticmethod
     def _no_goal(monkeypatch: pytest.MonkeyPatch, world: World) -> None:
-        _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
+        _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
 
     @pytest.mark.parametrize(
         "since", [_NOW - timedelta(days=1), (_NOW - timedelta(days=1)).replace(tzinfo=None)]
@@ -2216,7 +2351,15 @@ class TestTheIdleLadder:
     ) -> None:
         world.work, world.held = work, held
         _seam(
-            monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", has_goal))
+            monkeypatch,
+            world,
+            context,
+            "stated_goals",
+            AsyncMock(
+                return_value=[context.StatedGoal("Ship v2", GoalOrigin.ONBOARDING)]
+                if has_goal
+                else []
+            ),
         )
 
         await daily.run_daily_briefing(_USER)
@@ -2227,7 +2370,7 @@ class TestTheIdleLadder:
     async def test_the_idle_streak_sets_the_wind_down_and_the_goodbye_goes_dormant(
         self, world: World, monkeypatch: pytest.MonkeyPatch, idle_days: int, stage: str
     ) -> None:
-        _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
+        _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
         _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=idle_days))
 
         await daily.run_daily_briefing(_USER)
@@ -2241,7 +2384,7 @@ class TestTheIdleLadder:
     async def test_the_wind_down_message_is_pushed_even_on_an_empty_day(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
+        _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
         _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=2))
         _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
 
@@ -2280,7 +2423,7 @@ class TestTheIdleLadder:
                 )
             ),
         )
-        _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
+        _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
         _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=idle_days))
 
         await daily.run_daily_briefing(_USER)
@@ -2291,7 +2434,7 @@ class TestTheIdleLadder:
 
 def _idle_day(monkeypatch: pytest.MonkeyPatch, world: World, streak: int) -> None:
     """Make today a day with nothing to report, at the given idle streak."""
-    _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
+    _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
     _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=streak))
 
 
@@ -2454,6 +2597,7 @@ class TestTheWeeklyRunWiring:
             AsyncMock(return_value=_weekly_completed()),
         )
         world.agent.return_value = _weekly_voiced()
+        world.composer.side_effect = _composed({"This week": ["Deck", "U15"]})
 
         async with captured_wide_event() as event:
             await weekly.run_weekly_digest(_USER)
@@ -2463,9 +2607,14 @@ class TestTheWeeklyRunWiring:
         assert (week_call.args[0], week_call.args[1].date_str) == (_USER, _DATE)
         # The sections, the prose and the tallies read the same completions: one window for all.
         assert week_call.args[2] is world.reads["gather_completed_since"].return_value
-        judged = world.judge.await_args.args[1]
-        assert "[GAIA] gaia_did: Deck" in judged
-        assert "[GAIA] update: U15" in judged
+        composed = world.composer.await_args.args[1]
+        assert "[GAIA] done: Deck" in composed
+        assert "[GAIA] done: U15" in composed
+        # The week's series run Monday to today, the calendar's among them.
+        world.reads["read_calendar"].assert_awaited_once_with(
+            _USER, _WEEK_START, datetime(2026, 10, 14, 18, 30, tzinfo=UTC)
+        )
+        world.reads["list_completed_since"].assert_awaited_once_with(_USER, since=_WEEK_START)
         assert world.agent.await_args.kwargs["conversation_id"].startswith(
             f"briefing-weekly-{_USER}-{_DATE}-"
         )
@@ -2476,7 +2625,11 @@ class TestTheWeeklyRunWiring:
             "run_weekly_digest",
             _USER,
         )
-        assert event["brief_selection"]["candidates"] == 32
+        assert (
+            event["brief_composition"]["pool_items"],
+            event["brief_composition"]["items"],
+            event["brief_composition"]["uncomposed"],
+        ) == (32, 2, 30)
 
     async def test_the_voice_is_found_past_other_blocks(self, world: World) -> None:
         world.agent.return_value = SimpleNamespace(message=_NOISE_BLOCKS + _fenced(_WEEKLY_VOICE))
@@ -2597,7 +2750,10 @@ class TestSignalsInTheBrief:
                 last_state="Todo",
             )
         ]
-        world.judge.side_effect = _judged(needs_you=[_LOGIN.title], updates=[_DOCS.title])
+        world.composer.side_effect = _composed(
+            {"Needs you": [_LOGIN.title], "From your apps": [_DOCS.title]},
+            reports=frozenset({_DOCS.title}),
+        )
         world.agent.return_value = _saying("[the login redirect](fact:1) still needs you.")
 
         await daily.run_daily_briefing(_USER)
@@ -2633,7 +2789,10 @@ class TestSignalsInTheBrief:
         self, world: World
     ) -> None:
         world.scouts = _scouted(_LOGIN, _DOCS)
-        world.judge.side_effect = _judged(needs_you=[_LOGIN.title], updates=[_DOCS.title])
+        world.composer.side_effect = _composed(
+            {"Needs you": [_LOGIN.title], "From your apps": [_DOCS.title]},
+            reports=frozenset({_DOCS.title}),
+        )
         world.agent.return_value = _saying("[[fact:<fact of Fix the login>]] is yours today.")
 
         await daily.run_daily_briefing(_USER)
@@ -2700,11 +2859,11 @@ class TestEverySourceReachesItsSection:
 
         payload = _stored_payload(world)
         assert [
-            (s.key, [(i.text, i.app, i.kind, i.action or i.outcome) for i in s.items])
+            (s.title, [(i.text, i.app, i.kind, i.action or i.outcome) for i in s.items])
             for s in payload.sections
         ] == [
             (
-                SectionKey.NEEDS_YOU,
+                "Needs you",
                 [
                     ("Send the invoice to Acme", "Gmail", "you", BriefAction.APPROVE),
                     ("CRM sync failed", "GAIA", "failed", BriefAction.RETRY),
@@ -2712,8 +2871,8 @@ class TestEverySourceReachesItsSection:
                 ],
             ),
             (
-                SectionKey.UPDATES,
-                [("Stripe payout of 2,400 dollars landed", "Gmail", "note", BriefOutcome.CHANGED)],
+                "From your apps",
+                [("Stripe payout of 2,400 dollars landed", "Gmail", "note", BriefOutcome.FINISHED)],
             ),
         ]
         assert payload.sections[0].items[2].url == _LOGIN.url
@@ -2722,6 +2881,11 @@ class TestEverySourceReachesItsSection:
             ("Notion", ScoutSkipReason.FAILED)
         ]
         event = world.capture.call_args.args[1]
-        assert (event.needs_you_count, event.updates_count, event.source_count) == (3, 1, 3)
+        assert (event.block_kinds, event.item_count, event.pool_item_count, event.source_count) == (
+            ["items", "items"],
+            4,
+            5,
+            3,
+        )
         world.consume.assert_awaited_once_with(_USER, ["h1"])
         world.shown.assert_awaited_once_with(_USER, [_LOGIN], _NOW)

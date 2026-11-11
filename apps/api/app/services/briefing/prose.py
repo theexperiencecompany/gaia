@@ -130,10 +130,7 @@ async def _held_to_facts(
         return render_slots(text, writing.values, {}, mark_filled=True)
 
     prose = CheckedProse(
-        headline=marked(voice.headline),
-        lede=marked(voice.lede),
-        caption=marked(voice.caption),
-        message=marked(voice.message),
+        fields=tuple((name, marked(getattr(voice, name))) for name in _VOICED_FIELDS)
     )
     claims = await unsupported_claims(user_id, writing.context, prose)
     return [claim.problem() for claim in claims] or draft

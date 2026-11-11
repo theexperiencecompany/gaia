@@ -36,6 +36,12 @@ class Signal(BaseModel):
     people: list[str] = Field(default_factory=list)
     url: str | None = None
     state: str | None = Field(default=None, description="The item's status as the app shows it")
+    #: The item's own figure (an invoice's total, a payout), when it carries one.
+    amount: float | None = None
+    #: What the amount counts, as the app's values read ("USD", "USD cents", "points").
+    amount_unit: str | None = None
+    #: The item's own words (a message, a comment), verbatim; None when it has none.
+    text: str | None = None
 
 
 class SignalFields(BaseModel):
@@ -49,6 +55,8 @@ class SignalFields(BaseModel):
     due_at: str | None = None
     state: str | None = None
     people: str | None = None
+    amount: str | None = None
+    text: str | None = None
 
 
 class SignalSource(BaseModel):
@@ -62,6 +70,9 @@ class SignalSource(BaseModel):
         default="", description="Dotted path from the step's result to the list; '' is the result"
     )
     fields: SignalFields
+    amount_unit: str | None = Field(
+        default=None, description="What each item's amount counts, as its values read"
+    )
 
 
 class LearnedSignal(BaseModel):
@@ -76,6 +87,9 @@ class LearnedSignal(BaseModel):
     people: list[str] = Field(default_factory=list)
     url: str | None = None
     state: str | None = None
+    amount: float | None = None
+    amount_unit: str | None = None
+    text: str | None = None
 
 
 class ScoutStep(BaseModel):

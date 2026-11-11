@@ -1889,6 +1889,74 @@
         "title": "BriefOutcome",
         "type": "string"
       },
+      "BriefPoolItem": {
+        "description": "A pool item the composition left out, in its source's own words, for the full brief page.",
+        "properties": {
+          "app": {
+            "title": "App",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "kind": {
+            "enum": [
+              "gaia",
+              "you",
+              "lookback",
+              "failed",
+              "note"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "title",
+          "detail",
+          "kind",
+          "app",
+          "url",
+          "todo_id"
+        ],
+        "title": "BriefPoolItem",
+        "type": "object"
+      },
       "BriefingEvent": {
         "description": "One calendar event on the user's own clock, read from their calendar.",
         "properties": {
@@ -2113,6 +2181,41 @@
             "description": "Exhibition, Broadsheet and Almanac editions only: the painting (an artworks/artworks.json slug) this brief hangs, so a re-render hangs it again.",
             "title": "Artwork Id"
           },
+          "blocks": {
+            "description": "The brief as GAIA composed it, in reading order: each lead or items block names its section; charts, quotes, progress and notes carry their data. Empty on legacy rows.",
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "chart": "#/components/schemas/ChartBlock",
+                  "items": "#/components/schemas/SectionBlock",
+                  "lead": "#/components/schemas/SectionBlock",
+                  "note": "#/components/schemas/NoteBlock",
+                  "progress": "#/components/schemas/ProgressBlock",
+                  "quote": "#/components/schemas/QuoteBlock"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SectionBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ChartBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/QuoteBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ProgressBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/NoteBlock"
+                }
+              ]
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
           "calendar": {
             "description": "Today's calendar events, in start order.",
             "items": {
@@ -2274,6 +2377,14 @@
             "title": "Template Family",
             "type": "string"
           },
+          "uncomposed": {
+            "description": "Everything the brief read that the composition left out, for its full page.",
+            "items": {
+              "$ref": "#/components/schemas/BriefPoolItem"
+            },
+            "title": "Uncomposed",
+            "type": "array"
+          },
           "week": {
             "anyOf": [
               {
@@ -2307,7 +2418,9 @@
           "week",
           "sources_read",
           "sources_unavailable",
-          "message"
+          "message",
+          "blocks",
+          "uncomposed"
         ],
         "title": "BriefingPayload",
         "type": "object"
@@ -2331,7 +2444,7 @@
         "type": "object"
       },
       "BriefingSection": {
-        "description": "A Roman-numeraled section of the briefing.",
+        "description": "A group of items under the heading GAIA gave it, numbered in reading order.",
         "properties": {
           "items": {
             "items": {
@@ -2339,22 +2452,6 @@
             },
             "title": "Items",
             "type": "array"
-          },
-          "key": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SectionKey"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "more": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "More",
-            "type": "integer"
           },
           "numeral": {
             "title": "Numeral",
@@ -2368,9 +2465,7 @@
         "required": [
           "numeral",
           "title",
-          "items",
-          "key",
-          "more"
+          "items"
         ],
         "title": "BriefingSection",
         "type": "object"
@@ -3699,6 +3794,56 @@
         ],
         "title": "ChannelPriorityList",
         "type": "object"
+      },
+      "ChartBlock": {
+        "description": "A chart over real series, with the title and takeaway GAIA wrote for it.",
+        "properties": {
+          "chart": {
+            "$ref": "#/components/schemas/ChartKind"
+          },
+          "kind": {
+            "const": "chart",
+            "default": "chart",
+            "title": "Kind",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/DataSeries"
+            },
+            "minItems": 1,
+            "title": "Series",
+            "type": "array"
+          },
+          "takeaway": {
+            "title": "Takeaway",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "chart",
+          "title",
+          "takeaway",
+          "series"
+        ],
+        "title": "ChartBlock",
+        "type": "object"
+      },
+      "ChartKind": {
+        "description": "How a chart draws its series.",
+        "enum": [
+          "bar",
+          "line",
+          "spark",
+          "stacked_bar"
+        ],
+        "title": "ChartKind",
+        "type": "string"
       },
       "CheckoutSource": {
         "description": "Where in the product a checkout was started.\n\nThe server is the single emitter of ``payment:checkout_started``, so the\nattribution the funnel reads has to arrive on the request. Closed and\nrepository-owned: it mirrors ``CheckoutSource`` in\n``apps/web/src/features/pricing/hooks/useDodoPayments.ts``, and a new\nsurface adds a member on both sides in the same change.",
@@ -5799,6 +5944,58 @@
           "status"
         ],
         "title": "CustomIntegrationConnectionResult",
+        "type": "object"
+      },
+      "DataSeries": {
+        "description": "Numeric history from one real source, counted or summed by code.",
+        "properties": {
+          "app": {
+            "description": "The source's display name",
+            "title": "App",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "description": "What is counted: \"Emails handled\", \"Meeting hours\"",
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesPoint"
+            },
+            "minItems": 1,
+            "title": "Points",
+            "type": "array"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/SeriesShape"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "unit": {
+            "description": "What one y counts: \"emails\", \"hours\", \"USD\"",
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "unit",
+          "source",
+          "app",
+          "shape",
+          "points"
+        ],
+        "title": "DataSeries",
         "type": "object"
       },
       "DeactivationReason": {
@@ -8053,6 +8250,59 @@
           }
         },
         "title": "GmailPollInboxConfig",
+        "type": "object"
+      },
+      "GoalOrigin": {
+        "description": "Where GAIA learned the goal.",
+        "enum": [
+          "onboarding",
+          "memory"
+        ],
+        "title": "GoalOrigin",
+        "type": "string"
+      },
+      "GoalState": {
+        "description": "A goal the user stated, and the work linked to it, counted from their todos.",
+        "properties": {
+          "done": {
+            "minimum": 0.0,
+            "title": "Done",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "linked": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Linked",
+            "type": "array"
+          },
+          "open": {
+            "minimum": 0.0,
+            "title": "Open",
+            "type": "integer"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/GoalOrigin"
+          },
+          "statement": {
+            "minLength": 1,
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "statement",
+          "origin",
+          "done",
+          "open",
+          "linked"
+        ],
+        "title": "GoalState",
         "type": "object"
       },
       "GoogleCalendarEventDateTime": {
@@ -12506,6 +12756,27 @@
         "title": "NewStamp",
         "type": "object"
       },
+      "NoteBlock": {
+        "description": "A pattern GAIA noticed, a heads-up or a suggestion, rendered from its slots.",
+        "properties": {
+          "kind": {
+            "const": "note",
+            "default": "note",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "NoteBlock",
+        "type": "object"
+      },
       "NoteModel": {
         "properties": {
           "content": {
@@ -14699,6 +14970,26 @@
         "title": "ProactiveMessageClass",
         "type": "string"
       },
+      "ProgressBlock": {
+        "description": "Where one of the user's goals stands.",
+        "properties": {
+          "goal": {
+            "$ref": "#/components/schemas/GoalState"
+          },
+          "kind": {
+            "const": "progress",
+            "default": "progress",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "goal"
+        ],
+        "title": "ProgressBlock",
+        "type": "object"
+      },
       "ProjectCreate": {
         "description": "Model for creating projects",
         "properties": {
@@ -16205,6 +16496,79 @@
         "title": "QuietHours",
         "type": "object"
       },
+      "QuoteBlock": {
+        "description": "Someone's own words, set apart.",
+        "properties": {
+          "kind": {
+            "const": "quote",
+            "default": "quote",
+            "title": "Kind",
+            "type": "string"
+          },
+          "quote": {
+            "$ref": "#/components/schemas/QuoteSpan"
+          }
+        },
+        "required": [
+          "kind",
+          "quote"
+        ],
+        "title": "QuoteBlock",
+        "type": "object"
+      },
+      "QuoteSpan": {
+        "description": "Someone's own words, verbatim as their app holds them, with who wrote them and where.",
+        "properties": {
+          "app": {
+            "title": "App",
+            "type": "string"
+          },
+          "author": {
+            "minLength": 1,
+            "title": "Author",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "author",
+          "source",
+          "app",
+          "url",
+          "item_id"
+        ],
+        "title": "QuoteSpan",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "description": "``GET /health/ready``: whether every backing service answered a real request.",
         "properties": {
@@ -17267,16 +17631,29 @@
         "title": "SearchResultsResponse",
         "type": "object"
       },
-      "SectionKey": {
-        "description": "What one section of a brief holds; every surface reads the key, never the title or position.",
-        "enum": [
-          "lead",
-          "needs_you",
-          "updates",
-          "gaia_did"
+      "SectionBlock": {
+        "description": "A lead or items block, stored as the payload section it became (sections[section]).",
+        "properties": {
+          "kind": {
+            "enum": [
+              "lead",
+              "items"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "section": {
+            "minimum": 0.0,
+            "title": "Section",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "section"
         ],
-        "title": "SectionKey",
-        "type": "string"
+        "title": "SectionBlock",
+        "type": "object"
       },
       "SelectedCalendarEventData": {
         "description": "Calendar event the user attached to a message.",
@@ -17662,6 +18039,35 @@
         ],
         "title": "SendEmailWithAttachmentsResponse",
         "type": "object"
+      },
+      "SeriesPoint": {
+        "description": "One computed point: a day or a category, and its value.",
+        "properties": {
+          "x": {
+            "minLength": 1,
+            "title": "X",
+            "type": "string"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "SeriesPoint",
+        "type": "object"
+      },
+      "SeriesShape": {
+        "description": "How a series' points are laid out, which decides the charts that can draw it.",
+        "enum": [
+          "time_series",
+          "categorical"
+        ],
+        "title": "SeriesShape",
+        "type": "string"
       },
       "SetToolOverrideRequest": {
         "description": "Body for setting or clearing one tool's approval override.",

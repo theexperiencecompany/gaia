@@ -14,14 +14,13 @@ from app.constants.briefing import (
     DAILY_KICKER,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
-    SECTION_TITLES,
     WEEKLY_FAMILY,
     ArtFamily,
     BriefOutcome,
-    SectionKey,
     hue_for_day,
 )
 from app.constants.notifications import NotificationChannel
+from app.models.brief_composition_models import SectionBlock
 from app.models.briefing_models import BriefingPayload, EditionRender
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
@@ -139,9 +138,13 @@ async def test_a_day_with_asks_and_work_reads_as_two_numbered_sections(user, see
     seed = dev_postmarks_seed._SEED_DAYS[PACKED_THURSDAY]
     brief = seeded.payloads()[PACKED_THURSDAY]
     day = LAST_DAY - timedelta(days=PACKED_THURSDAY)
-    assert [(s.numeral, s.key, s.title) for s in brief.sections] == [
-        (SECTION_NUMERALS[0], SectionKey.NEEDS_YOU, SECTION_TITLES[SectionKey.NEEDS_YOU]),
-        (SECTION_NUMERALS[1], SectionKey.GAIA_DID, SECTION_TITLES[SectionKey.GAIA_DID]),
+    assert [(s.numeral, s.title) for s in brief.sections] == [
+        (SECTION_NUMERALS[0], "Waiting on you"),
+        (SECTION_NUMERALS[1], "Done overnight"),
+    ]
+    assert brief.blocks == [
+        SectionBlock(kind="items", section=0),
+        SectionBlock(kind="items", section=1),
     ]
     asks, work = brief.sections
     assert [(i.action, i.text, i.kind) for i in asks.items] == [
@@ -165,8 +168,8 @@ async def test_a_day_with_nothing_waiting_drops_the_asks_section(user, seeded) -
     await seed_dev_postmarks(user, EMPTY_INBOX_DAY + 1)
 
     brief = seeded.payloads()[EMPTY_INBOX_DAY]
-    assert [(s.numeral, s.key) for s in brief.sections] == [
-        (SECTION_NUMERALS[0], SectionKey.GAIA_DID)
+    assert [(s.numeral, s.title) for s in brief.sections] == [
+        (SECTION_NUMERALS[0], "Done overnight")
     ]
 
 

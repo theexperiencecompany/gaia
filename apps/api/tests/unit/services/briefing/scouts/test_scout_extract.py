@@ -47,8 +47,52 @@ class TestReadingItems:
             "people": ["ana"],
             "url": "https://gh/7",
             "state": "open",
+            "amount": None,
+            "amount_unit": None,
+            "text": None,
         }
         assert signal.due_at == datetime(2026, 10, 30, tzinfo=UTC)
+
+    @pytest.mark.parametrize(("raw", "read"), [(1250, 1250.0), (99.5, 99.5), ("42.10", 42.1)])
+    def test_an_items_figure_reads_as_a_number_in_its_sources_unit(
+        self, raw: object, read: float
+    ) -> None:
+        source = SOURCE.model_copy(
+            update={
+                "fields": SOURCE.fields.model_copy(update={"amount": "total", "text": "body"}),
+                "amount_unit": "USD",
+            }
+        )
+        values = {"reviews": {"items": [_pr(1, total=raw, body="Can you look today?")]}}
+
+        [signal] = extract_signals(GITHUB, [source], values)
+
+        assert (signal.amount, signal.amount_unit, signal.text) == (
+            read,
+            "USD",
+            "Can you look today?",
+        )
+
+    def test_an_item_without_a_figure_carries_no_unit(self) -> None:
+        source = SOURCE.model_copy(
+            update={
+                "fields": SOURCE.fields.model_copy(update={"amount": "total"}),
+                "amount_unit": "USD",
+            }
+        )
+
+        [signal] = extract_signals(GITHUB, [source], {"reviews": {"items": [_pr(1)]}})
+
+        assert (signal.amount, signal.amount_unit) == (None, None)
+
+    @pytest.mark.parametrize("raw", [True, "a lot", {"value": 3}])
+    def test_a_figure_that_is_not_a_number_is_a_moved_shape(self, raw: object) -> None:
+        source = SOURCE.model_copy(
+            update={"fields": SOURCE.fields.model_copy(update={"amount": "total"})}
+        )
+
+        with pytest.raises(PlaceholderError, match="amount is a"):
+            extract_signals(GITHUB, [source], {"reviews": {"items": [_pr(1, total=raw)]}})
 
     def test_every_replayed_item_starts_normal_whatever_its_due_date(self) -> None:
         """Replay reset importance to due-date; the judge decides it now."""

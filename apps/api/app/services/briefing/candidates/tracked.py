@@ -2,7 +2,7 @@
 
 from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefAction, BriefOutcome
 from app.constants.integrations import GMAIL_INTEGRATION_ID
-from app.models.brief_candidate_models import BriefCandidate, CandidateKind
+from app.models.brief_candidate_models import BriefCandidate
 from app.models.briefing_models import BriefingItemKind
 from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.services.briefing.candidates.app_names import integration_name
@@ -19,7 +19,6 @@ def _source(doc: TodoDocument) -> tuple[str, str]:
 
 def _grouped(
     docs: list[TodoDocument],
-    kind: CandidateKind,
     state: BriefingItemKind,
     *,
     action: BriefAction | None = None,
@@ -36,7 +35,6 @@ def _grouped(
         by_subject[key] = BriefCandidate(
             source=source,
             app=app,
-            kind=kind,
             state=state,
             title=doc.title,
             detail=doc.description or None,
@@ -50,18 +48,18 @@ def _grouped(
 
 def waiting_candidates(work: TrackedWork) -> list[BriefCandidate]:
     """Return the tracked todos waiting on the user, then the ones that failed."""
-    return _grouped(
-        work.blocked, CandidateKind.NEEDS_YOU, "you", action=BriefAction.REVIEW
-    ) + _grouped(work.failed, CandidateKind.NEEDS_YOU, "failed", action=BriefAction.RETRY)
+    return _grouped(work.blocked, "you", action=BriefAction.REVIEW) + _grouped(
+        work.failed, "failed", action=BriefAction.RETRY
+    )
 
 
 def gaia_work_candidates(work: TrackedWork) -> list[BriefCandidate]:
     """Return what GAIA finished since the last brief, then what it is still working on."""
-    return _grouped(
-        work.completed, CandidateKind.GAIA_DID, "lookback", outcome=BriefOutcome.FINISHED
-    ) + _grouped(work.running, CandidateKind.GAIA_DID, "gaia", outcome=BriefOutcome.STARTED)
+    return _grouped(work.completed, "lookback", outcome=BriefOutcome.FINISHED) + _grouped(
+        work.running, "gaia", outcome=BriefOutcome.STARTED
+    )
 
 
 def user_done_candidates(docs: list[TodoDocument]) -> list[BriefCandidate]:
     """Return what the user finished themselves, one candidate per subject."""
-    return _grouped(docs, CandidateKind.UPDATE, "lookback", outcome=BriefOutcome.FINISHED)
+    return _grouped(docs, "lookback", outcome=BriefOutcome.FINISHED)

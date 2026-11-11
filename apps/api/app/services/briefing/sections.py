@@ -1,13 +1,30 @@
-"""Lay the judge's selection out as the brief's sections, and read back what it kept."""
+"""Lay a checked composition out as the brief's sections and blocks, and read back what it placed."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from app.constants.briefing import SECTION_NUMERALS, SECTION_ORDER, SectionKey
-from app.models.brief_candidate_models import BriefCandidate, CandidateKind
-from app.models.briefing_models import BriefingSection
+from app.constants.briefing import LEAD_HEADING, SECTION_NUMERALS
+from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_composition_models import (
+    BriefBlock,
+    BriefComposition,
+    ChartBlock,
+    ComposedBlock,
+    ComposedItem,
+    NoteBlock,
+    ProgressBlock,
+    QuoteBlock,
+    SectionBlock,
+)
+from app.models.briefing_models import (
+    NEEDS_YOU_ITEM_KINDS,
+    BriefingItem,
+    BriefingItemKind,
+    BriefingSection,
+    BriefPoolItem,
+)
 from app.models.scout_models import RememberedSignal
-from app.services.briefing.candidates.judge import BriefSelection, CandidatePool
+from app.services.briefing.fact_pool.pool import FactPool
 from shared.py.wide_events import log
 
 
@@ -19,41 +36,115 @@ class Chosen:
     picked: list[list[tuple[int, BriefCandidate]]]
 
 
-def chosen_sections(
-    selection: BriefSelection, pool: CandidatePool, titles: Mapping[SectionKey, str]
-) -> Chosen:
-    """Lay the judge's selection out as the brief's sections, in reading order, empty ones left out."""
-    filled = [
-        (key, selection.sections[key]) for key in SECTION_ORDER if selection.sections.get(key)
-    ]
-    return Chosen(
-        sections=[
-            BriefingSection(
-                numeral=SECTION_NUMERALS[n],
-                title=titles[key],
-                key=key,
-                items=[selection.items[i] for i in ids],
-                more=selection.more.get(key, 0),
-            )
-            for n, (key, ids) in enumerate(filled)
-        ],
-        picked=[[(i, pool[i]) for i in ids] for _, ids in filled],
+@dataclass(frozen=True)
+class Laid:
+    """The composition laid out: its sections, its blocks in reading order, and what it left out."""
+
+    chosen: Chosen
+    blocks: list[BriefBlock]
+    uncomposed: list[BriefPoolItem]
+
+
+def _item_kind(asks: bool, candidate: BriefCandidate) -> BriefingItemKind:
+    """How a placed item reads: its own state, unless placing it says it waits on the user or not."""
+    if asks and candidate.state not in NEEDS_YOU_ITEM_KINDS:
+        return "you"
+    if not asks and candidate.state in NEEDS_YOU_ITEM_KINDS:
+        return "note"
+    return candidate.state
+
+
+def _item(placed: ComposedItem, candidate: BriefCandidate, offer: str | None) -> BriefingItem:
+    """Word a placed item; what its producer knows beats the composition's word on the same side."""
+    asks = placed.action is not None
+    return BriefingItem(
+        text=(placed.title or "").strip(),
+        detail=(placed.detail or "").strip() or None,
+        action=(candidate.action or placed.action) if asks else None,
+        outcome=None if asks else (candidate.outcome or placed.outcome),
+        todo_id=candidate.todo_id,
+        kind=_item_kind(asks, candidate),
+        count=candidate.count,
+        app=candidate.app,
+        url=candidate.url,
+        people=list(candidate.people),
+        offer=offer,
     )
 
 
-def carried_ids(selection: BriefSelection, pool: CandidatePool, duplicates: list[str]) -> list[str]:
-    """Return the held results this brief accounts for: kept, dropped by the judge, or said twice.
+def _section(block: ComposedBlock, pool: FactPool, numeral: str) -> BriefingSection:
+    offer = (block.offer or "").strip() or None
+    return BriefingSection(
+        numeral=numeral,
+        title=LEAD_HEADING if block.kind == "lead" else (block.heading or "").strip(),
+        items=[_item(placed, pool.items[placed.id], offer) for placed in block.items],
+    )
 
-    A held result the section caps left out waits for the next brief.
-    """
-    accounted = [i for ids in selection.sections.values() for i in ids] + selection.dropped
-    return [held for i in accounted if (held := pool[i].held_id) is not None] + duplicates
+
+def _data_block(block: ComposedBlock, pool: FactPool) -> BriefBlock:
+    """Resolve a chart, quote, progress or note block's ids into the data the pool holds."""
+    if block.kind == "chart" and block.chart is not None:
+        by_id = pool.series_by_id
+        return ChartBlock(
+            chart=block.chart,
+            title=(block.title or "").strip(),
+            takeaway=(block.takeaway or "").strip(),
+            series=[by_id[i] for i in block.series_ids],
+        )
+    if block.kind == "quote" and block.quote_id is not None:
+        return QuoteBlock(quote=pool.quotes_by_id[block.quote_id])
+    if block.kind == "progress" and block.goal_id is not None:
+        return ProgressBlock(goal=pool.goals_by_id[block.goal_id])
+    if block.kind == "note" and block.text is not None:
+        return NoteBlock(text=block.text.strip())
+    raise ValueError(f"a {block.kind} block reached layout without the fields its check requires")
+
+
+def _uncomposed(candidate: BriefCandidate) -> BriefPoolItem:
+    signal = candidate.signal
+    detail = (signal.why or signal.state) if signal is not None else candidate.detail
+    return BriefPoolItem(
+        title=candidate.title,
+        detail=detail,
+        kind=candidate.state,
+        app=candidate.app,
+        url=candidate.url,
+        todo_id=candidate.todo_id,
+    )
+
+
+def lay_out(composition: BriefComposition, pool: FactPool) -> Laid:
+    """Lay the rendered composition out: lead and items blocks as numbered sections, the rest as data."""
+    sections: list[BriefingSection] = []
+    picked: list[list[tuple[int, BriefCandidate]]] = []
+    blocks: list[BriefBlock] = []
+    for block in composition.blocks:
+        match block.kind:
+            case "lead" | "items" as kind:
+                blocks.append(SectionBlock(kind=kind, section=len(sections)))
+                sections.append(_section(block, pool, SECTION_NUMERALS[len(sections)]))
+                picked.append([(p.id, pool.items[p.id]) for p in block.items])
+            case _:
+                blocks.append(_data_block(block, pool))
+    placed = {i for ids in picked for i, _ in ids}
+    return Laid(
+        chosen=Chosen(sections=sections, picked=picked),
+        blocks=blocks,
+        uncomposed=[
+            _uncomposed(c) for i, c in pool.items.items() if i not in placed and not c.is_event
+        ],
+    )
+
+
+def carried_ids(items: Mapping[int, BriefCandidate], duplicates: list[str]) -> list[str]:
+    """Return every held result the brief accounts for: each is on its page, composed or not."""
+    return [held for c in items.values() if (held := c.held_id) is not None] + duplicates
 
 
 def chosen_signals(
     chosen: Chosen, remembered: list[RememberedSignal]
 ) -> list[tuple[int, RememberedSignal]]:
-    """Return the app signals the judge kept, by fact id, with their memory for the apps block."""
+    """Return the app signals the composition placed, by fact id, with their memory for the apps block."""
     by_key = {(r.signal.integration_id, r.signal.external_id): r for r in remembered}
     return [
         (fact_id, by_key[(c.signal.integration_id, c.signal.external_id)])
@@ -63,16 +154,19 @@ def chosen_signals(
     ]
 
 
-def log_selection(candidates: int, selection: BriefSelection) -> None:
+def log_composition(pool: FactPool, laid: Laid) -> None:
     log.set_ns(
-        "brief_selection",
-        candidates=candidates,
-        kept={key.value: len(ids) for key, ids in selection.sections.items()},
-        dropped=len(selection.dropped),
-        more={key.value: count for key, count in selection.more.items()},
+        "brief_composition",
+        pool_items=len(pool.items),
+        series=len(pool.series),
+        quotes=len(pool.quotes),
+        goals=len(pool.goals),
+        blocks=[b.kind for b in laid.blocks],
+        items=sum(len(s.items) for s in laid.chosen.sections),
+        uncomposed=len(laid.uncomposed),
     )
 
 
-def event_ids(pool: CandidatePool) -> list[int]:
+def event_ids(pool: Mapping[int, BriefCandidate]) -> list[int]:
     """Return the pool id of each calendar event, in calendar order."""
-    return [i for i, c in pool.items() if c.kind is CandidateKind.EVENT]
+    return [i for i, c in pool.items() if c.is_event]

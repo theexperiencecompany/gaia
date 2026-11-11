@@ -41,15 +41,6 @@ DAILY_KICKER: Final[str] = "THE MORNING BRIEF"
 WEEKLY_KICKER: Final[str] = "THE WEEKLY DIGEST"
 
 
-class SectionKey(StrEnum):
-    """What one section of a brief holds; every surface reads the key, never the title or position."""
-
-    LEAD = "lead"
-    NEEDS_YOU = "needs_you"
-    UPDATES = "updates"
-    GAIA_DID = "gaia_did"
-
-
 class BriefAction(StrEnum):
     """What a brief item asks the reader to do; set only on items that need them."""
 
@@ -75,46 +66,44 @@ class BriefOutcome(StrEnum):
     FAILED = "failed"
 
 
-# Daily brief section heads, numbered in order. Display casing: every surface shows
-# these as written; an edition that sets its heads in capitals does so in its own CSS.
-SECTION_TITLES: Final[dict[SectionKey, str]] = {
-    SectionKey.LEAD: "First up",
-    SectionKey.NEEDS_YOU: "Needs you",
-    SectionKey.UPDATES: "From your apps",
-    SectionKey.GAIA_DID: "GAIA's work",
-}
-# The weekly digest's updates are what the user finished this week.
-WEEKLY_SECTION_TITLES: Final[dict[SectionKey, str]] = {
-    **SECTION_TITLES,
-    SectionKey.UPDATES: "You finished",
-}
-SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV")
-# Every brief's sections in reading order, and the most items the selection judge
-# may put in each: the brief reads in under a minute.
-SECTION_ORDER: Final[tuple[SectionKey, ...]] = (
-    SectionKey.LEAD,
-    SectionKey.NEEDS_YOU,
-    SectionKey.UPDATES,
-    SectionKey.GAIA_DID,
-)
-SECTION_CAPS: Final[dict[SectionKey, int]] = {
-    SectionKey.LEAD: 1,
-    SectionKey.NEEDS_YOU: 4,
-    SectionKey.UPDATES: 3,
-    SectionKey.GAIA_DID: 3,
-}
-# The sections whose items ask something of the reader; every other section reports.
-ACTION_SECTIONS: Final[frozenset[SectionKey]] = frozenset({SectionKey.LEAD, SectionKey.NEEDS_YOU})
+#: What the lead's section is headed: the composition gives the lead no heading of its own.
+LEAD_HEADING: Final[str] = "First up"
+#: Section numerals, in reading order, for the editions that number their sections.
+SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII")
 # Every brief item is a short noun-phrase title and at most one muted detail line.
 BRIEF_ITEM_TITLE_MAX_CHARS: Final[int] = 50
 BRIEF_ITEM_DETAIL_MAX_CHARS: Final[int] = 80
-#: Selection judge calls per brief: one more when its answer breaks the contract, then the run fails.
-MAX_SELECTION_ATTEMPTS: Final[int] = 2
-#: The selection judge's metering label.
-BRIEF_SELECTION_LABEL: Final[str] = "brief_selection_judge"
+#: Composition calls per brief: one more when the answer breaks the contract, then the run fails.
+MAX_COMPOSITION_ATTEMPTS: Final[int] = 2
+#: The composition call's metering label.
+BRIEF_COMPOSITION_LABEL: Final[str] = "brief_composition"
+# The page budget a composition is held to: what one edition image and a minute's read can carry.
+MAX_BRIEF_BLOCKS: Final[int] = 7
+MAX_BRIEF_ITEMS: Final[int] = 10
+MAX_ITEMS_PER_BLOCK: Final[int] = 5
+MAX_BRIEF_CHARTS: Final[int] = 2
+# The model-written strings of a composition, each one line on the narrowest edition.
+BRIEF_HEADING_MAX_CHARS: Final[int] = 40
+BRIEF_CHART_TITLE_MAX_CHARS: Final[int] = 48
+BRIEF_TAKEAWAY_MAX_CHARS: Final[int] = 140
+BRIEF_NOTE_MAX_CHARS: Final[int] = 240
+BRIEF_OFFER_MAX_CHARS: Final[int] = 90
+# A line or spark chart reads a trend only over at least this many days; a bar reads at most this many bars.
+MIN_TREND_POINTS: Final[int] = 5
+MAX_BAR_CATEGORIES: Final[int] = 12
+#: The days a series covers: the week ending today.
+SERIES_WINDOW_DAYS: Final[int] = 7
+# A quote is a whole sentence or two of someone's own words, short enough to set large.
+QUOTE_MIN_CHARS: Final[int] = 24
+QUOTE_MAX_CHARS: Final[int] = 200
 #: What a candidate's source is when GAIA itself, not a connected app, produced it.
 GAIA_SOURCE: Final[str] = "gaia"
 GAIA_APP_NAME: Final[str] = "GAIA"
+#: How the composition names a reader whose name GAIA does not know.
+UNNAMED_READER: Final[str] = "the user"
+# The span each kind of brief reads the calendar over, as its composition is told.
+TODAY_SPAN: Final[str] = "today"
+WEEK_AHEAD_SPAN: Final[str] = "in the week ahead"
 # Longest render that fits (Chromium, real renderers, worst of 20 skin seeds): headline 3 lines
 # of gradient's 46px h1, the tightest family; lede 3 lines, caption 1, of the classic edition.
 MAX_BRIEF_HEADLINE_CHARS: Final[int] = 52

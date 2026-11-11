@@ -93,7 +93,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             log.set(skipped="not_linked")
             return f"skip {user_id}: {platform} not linked"
 
-        goal_block, has_goal = await context.format_goal_block(user_id, user)
+        goal_block, has_goal = context.format_goal_block(await context.stated_goals(user_id, user))
         prompt = build_day_zero_hello_prompt(
             first_name=display_first_name(user) or "there",
             goal_block=goal_block,

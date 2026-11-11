@@ -1,7 +1,7 @@
 "use client";
 
 import { Link } from "@heroui/link";
-import type { BriefingEvent } from "@shared/api/generated";
+import type { BriefingEvent, BriefPoolItem } from "@shared/api/generated";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import type { z } from "zod";
@@ -13,6 +13,8 @@ import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRende
 export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
   calendar?: BriefingEvent[];
   message?: string | null;
+  /** What the brief read but GAIA left out of today's composition. */
+  uncomposed?: BriefPoolItem[];
 };
 
 type EditionItem = BriefingEditionPayload["sections"][number]["items"][number];
@@ -37,19 +39,23 @@ function itemHref(item: EditionItem): string | null {
   return item.link ?? null;
 }
 
-function ItemRow({ item }: { item: EditionItem }) {
-  const href = itemHref(item);
+function ItemRow({ text, href }: { text: string; href: string | null }) {
   if (!href) {
-    return <p className="text-sm font-medium text-zinc-200">{item.text}</p>;
+    return <p className="text-sm font-medium text-zinc-200">{text}</p>;
   }
   return (
     <Link
       href={href}
       className="block text-sm font-medium text-zinc-200 hover:text-zinc-50"
     >
-      {item.text}
+      {text}
     </Link>
   );
+}
+
+function poolItemHref(item: BriefPoolItem): string | null {
+  if (item.todo_id) return `/todos?todoId=${item.todo_id}`;
+  return item.url;
 }
 
 function ItemGroup({
@@ -70,6 +76,7 @@ function ItemGroup({
 /** One brief: the day's rendered edition, the message GAIA wrote, then its real items as a tappable list. */
 export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
   const calendar = payload.calendar ?? [];
+  const uncomposed = payload.uncomposed ?? [];
   return (
     <article className="w-full rounded-2xl bg-zinc-800 p-4">
       {imageUrl && (
@@ -111,10 +118,25 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
         {payload.sections.map((section) => (
           <ItemGroup key={section.title} title={section.title}>
             {section.items.map((item) => (
-              <ItemRow key={item.todo_id ?? item.text} item={item} />
+              <ItemRow
+                key={item.todo_id ?? item.text}
+                text={item.text}
+                href={itemHref(item)}
+              />
             ))}
           </ItemGroup>
         ))}
+        {uncomposed.length > 0 && (
+          <ItemGroup title="Everything else">
+            {uncomposed.map((item) => (
+              <ItemRow
+                key={`${item.app}-${item.todo_id ?? item.title}`}
+                text={item.title}
+                href={poolItemHref(item)}
+              />
+            ))}
+          </ItemGroup>
+        )}
       </div>
     </article>
   );

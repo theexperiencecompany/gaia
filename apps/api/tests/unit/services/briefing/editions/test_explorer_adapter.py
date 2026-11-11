@@ -267,7 +267,6 @@ class TestContent:
                     {
                         "numeral": "I",
                         "title": "First up",
-                        "key": "lead",
                         "items": [_item("Sequoia", "note", action=BriefAction.ATTEND)],
                     }
                 ]
@@ -298,29 +297,6 @@ class TestContent:
         assert overnight == [
             {"t24": None, "label": "Heads up", "note": None, "tag": "", "outcome": "changed"}
         ]
-
-    def test_each_section_says_how_many_its_cap_left_out(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {
-                        "numeral": "I",
-                        "title": "Needs you",
-                        "key": "needs_you",
-                        "items": [_item("Acme invoice", "you")],
-                        "more": 2,
-                    },
-                    {
-                        "numeral": "II",
-                        "title": "GAIA's work",
-                        "key": "gaia_did",
-                        "items": [_item("Deck", "lookback")],
-                    },
-                ]
-            )
-        )["content"]
-
-        assert content["more"] == {"needs_you": 2, "updates": 0, "gaia_did": 0}
 
 
 @pytest.mark.unit

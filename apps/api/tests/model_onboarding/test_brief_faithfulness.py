@@ -8,8 +8,6 @@ Values in ⟦ ⟧ are what slots filled in, as the check sees them in production
 drafts are vague, paraphrased or reordered on purpose: the check must never flag those.
 """
 
-from dataclasses import replace
-
 import pytest
 
 from app.services.briefing.faithfulness import CheckedProse, unsupported_claims
@@ -32,21 +30,24 @@ Raising a seed round [mentioned 2026-10-01]
 Yesterday: two investor drafts written
 (no replies)"""
 
-_TRUE = CheckedProse(
-    headline="Lena's NDA is waiting on you",
-    lede="Send the signed NDA back to Lena, then Sequoia at ⟦11:00 AM⟧.",
-    caption="One signature before the partner meeting.",
-    message=(
+_TRUE_FIELDS = {
+    "headline": "Lena's NDA is waiting on you",
+    "lede": "Send the signed NDA back to Lena, then Sequoia at ⟦11:00 AM⟧.",
+    "caption": "One signature before the partner meeting.",
+    "message": (
         "Lena at Northwind is waiting on the signed NDA, so that's the one to clear first.\n"
         "The CRM sync failed because the HubSpot token expired. Want me to reconnect it?\n"
         "The investor update went out, and Elad Gil and Nat Friedman already replied.\n"
         "Then the Sequoia partner meeting at ⟦11:00 AM⟧, a good moment for the seed round."
     ),
-)
+}
 
 
 def _with(**prose: str) -> CheckedProse:
-    return replace(_TRUE, **prose)
+    return CheckedProse(fields=tuple({**_TRUE_FIELDS, **prose}.items()))
+
+
+_TRUE = _with()
 
 
 # Each must pass: true, however loosely, briefly or out of order it says so.
@@ -84,7 +85,8 @@ _HONEST = {
     ),
     "offer and wit": _with(
         caption="Fourteen investors emailed, and only one signature left for you.",
-        message=_TRUE.message + "\nWant me to draft a note to Lena so you only have to sign?",
+        message=_TRUE_FIELDS["message"]
+        + "\nWant me to draft a note to Lena so you only have to sign?",
     ),
 }
 # Each must fail: a specific the facts contradict or do not hold.
@@ -94,17 +96,17 @@ _FALSE = {
         lede="Send Lena the NDA; your calendar is clear all day."
     ),
     "a count the facts never gave": _with(
-        message=_TRUE.message.replace("Lena at Northwind", "Three things need you. Lena")
+        message=_TRUE_FIELDS["message"].replace("Lena at Northwind", "Three things need you. Lena")
     ),
     "a failure called fixed": _with(
-        message=_TRUE.message.replace(
+        message=_TRUE_FIELDS["message"].replace(
             "The CRM sync failed because the HubSpot token expired. Want me to reconnect it?",
             "I fixed the CRM sync overnight, so HubSpot is back in step.",
         )
     ),
     "an invented deadline": _with(caption="Your lawyer needs the NDA by Friday."),
     "done work called unfinished": _with(
-        message=_TRUE.message.replace(
+        message=_TRUE_FIELDS["message"].replace(
             "The investor update went out, and Elad Gil and Nat Friedman already replied.",
             "I'm still drafting the investor update; nobody has seen it yet.",
         )

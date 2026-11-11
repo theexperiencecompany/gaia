@@ -1346,20 +1346,24 @@
             "title": "Stamp Collected",
             "type": "boolean"
           },
-          "lead_count": {
-            "title": "Lead Count",
+          "block_kinds": {
+            "items": {
+              "enum": ["lead", "items", "chart", "quote", "progress", "note"],
+              "type": "string"
+            },
+            "title": "Block Kinds",
+            "type": "array"
+          },
+          "chart_count": {
+            "title": "Chart Count",
             "type": "integer"
           },
-          "needs_you_count": {
-            "title": "Needs You Count",
+          "pool_item_count": {
+            "title": "Pool Item Count",
             "type": "integer"
           },
-          "updates_count": {
-            "title": "Updates Count",
-            "type": "integer"
-          },
-          "gaia_did_count": {
-            "title": "Gaia Did Count",
+          "series_count": {
+            "title": "Series Count",
             "type": "integer"
           },
           "source_count": {
@@ -1375,10 +1379,10 @@
           "channel_count",
           "signal_count",
           "stamp_collected",
-          "lead_count",
-          "needs_you_count",
-          "updates_count",
-          "gaia_did_count",
+          "block_kinds",
+          "chart_count",
+          "pool_item_count",
+          "series_count",
           "source_count"
         ],
         "title": "BriefingSent",

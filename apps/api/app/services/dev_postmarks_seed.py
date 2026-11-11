@@ -16,17 +16,16 @@ from app.constants.briefing import (
     DAILY_KICKER,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
-    SECTION_TITLES,
     WEEKLY_FAMILY,
     WEEKLY_KICKER,
     ArtFamily,
     BriefAction,
     BriefOutcome,
-    SectionKey,
     hue_for_day,
 )
 from app.constants.notifications import NotificationChannel
 from app.db.repositories.briefings import briefing_repository
+from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingItem,
@@ -263,6 +262,15 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
 )
 
 
+# The headings a composition gives a seeded brief's asks and its finished work.
+_ASKS_HEADING = "Waiting on you"
+_DONE_HEADING = "Done overnight"
+
+
+def _section_blocks(count: int) -> list[BriefBlock]:
+    return [SectionBlock(kind="items", section=i) for i in range(count)]
+
+
 def _brief_payload(
     day: date,
     seed: _SeedDay,
@@ -275,11 +283,11 @@ def _brief_payload(
     iso_day = day.isoformat()
     keyed_items = (
         (
-            SectionKey.NEEDS_YOU,
+            _ASKS_HEADING,
             [BriefingItem(text=text, action=action, kind="you") for action, text in seed.needs_you],
         ),
         (
-            SectionKey.GAIA_DID,
+            _DONE_HEADING,
             [
                 BriefingItem(text=text, outcome=outcome, kind="lookback")
                 for outcome, text in seed.done
@@ -290,18 +298,17 @@ def _brief_payload(
             ],
         ),
     )
-    filled = [(key, items) for key, items in keyed_items if items]
+    filled = [(heading, items) for heading, items in keyed_items if items]
     return BriefingPayload(
         kicker=DAILY_KICKER,
         date=iso_day,
         headline=seed.headline,
         lede=seed.lede,
         sections=[
-            BriefingSection(
-                numeral=SECTION_NUMERALS[i], title=SECTION_TITLES[key], key=key, items=items
-            )
-            for i, (key, items) in enumerate(filled)
+            BriefingSection(numeral=SECTION_NUMERALS[i], title=heading, items=items)
+            for i, (heading, items) in enumerate(filled)
         ],
+        blocks=_section_blocks(len(filled)),
         mood=seed.mood,
         caption=seed.caption,
         hue=hue_for_day(day.timetuple().tm_yday),
@@ -376,8 +383,7 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
         sections=[
             BriefingSection(
                 numeral=SECTION_NUMERALS[0],
-                title=SECTION_TITLES[SectionKey.NEEDS_YOU],
-                key=SectionKey.NEEDS_YOU,
+                title=_ASKS_HEADING,
                 items=[
                     BriefingItem(text="Offsite venue", action=BriefAction.REPLY, kind="you"),
                     BriefingItem(text="New lease terms", action=BriefAction.APPROVE, kind="you"),
@@ -385,14 +391,14 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
             ),
             BriefingSection(
                 numeral=SECTION_NUMERALS[1],
-                title=SECTION_TITLES[SectionKey.GAIA_DID],
-                key=SectionKey.GAIA_DID,
+                title=_DONE_HEADING,
                 items=[
                     BriefingItem(text=text, outcome=outcome, kind="lookback")
                     for outcome, text in shipped
                 ],
             ),
         ],
+        blocks=_section_blocks(2),
         mood="clear",
         caption="Two decisions and the week is closed.",
         hue=hue_for_day(_WEEKLY_SEEDED_DATE.timetuple().tm_yday),

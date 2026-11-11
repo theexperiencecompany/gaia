@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
-    SectionKey,
 )
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -25,6 +24,7 @@ from app.services.analytics_service import capture
 from app.services.briefing.context import UserClock
 from app.services.briefing.delivery import deliver_brief
 from app.services.briefing.edition_draws import BagDraw, draw_stamp_or_artwork, persist_draws
+from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.postmarks import new_stamp
 from app.services.briefing.store import store_brief
 from app.utils.user_display import display_name
@@ -34,10 +34,23 @@ from shared.py.wide_events import log
 
 
 @dataclass(frozen=True)
+class PoolCounts:
+    """How much the brief's fact pool held, beside what the composition placed from it."""
+
+    items: int
+    series: int
+
+    @classmethod
+    def of(cls, pool: FactPool) -> "PoolCounts":
+        return cls(items=len(pool.items), series=len(pool.series))
+
+
+@dataclass(frozen=True)
 class Push:
-    """Whether a brief goes beyond in-app, and how many app signals it carried."""
+    """Whether a brief goes beyond in-app, how many app signals it carried, and what its pool held."""
 
     push: bool
+    pool: PoolCounts
     signal_count: int = 0
 
 
@@ -45,10 +58,6 @@ _NOTIFICATION_KINDS: dict[BriefingKind, str] = {
     BRIEFING_KIND_DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
     BRIEFING_KIND_WEEKLY: NOTIFICATION_KIND_BRIEFING_WEEKLY,
 }
-
-
-def _section_count(payload: BriefingPayload, key: SectionKey) -> int:
-    return sum(len(s.items) for s in payload.sections if s.key is key)
 
 
 async def publish_brief(
@@ -86,10 +95,10 @@ async def publish_brief(
             channel_count=len(channels),
             signal_count=sending.signal_count,
             stamp_collected=payload.new_stamp is not None,
-            lead_count=_section_count(payload, SectionKey.LEAD),
-            needs_you_count=_section_count(payload, SectionKey.NEEDS_YOU),
-            updates_count=_section_count(payload, SectionKey.UPDATES),
-            gaia_did_count=_section_count(payload, SectionKey.GAIA_DID),
+            block_kinds=[block.kind for block in payload.blocks],
+            chart_count=sum(1 for block in payload.blocks if block.kind == "chart"),
+            pool_item_count=sending.pool.items,
+            series_count=sending.pool.series,
             source_count=len(payload.sources_read),
         ),
     )

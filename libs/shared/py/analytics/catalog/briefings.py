@@ -6,6 +6,7 @@ from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
+    "BriefBlockKindName",
     "BriefingDayZeroHelloSent",
     "BriefingKindName",
     "BriefingOpened",
@@ -15,6 +16,8 @@ __all__ = [
 ]
 
 BriefingKindName = Literal["daily", "weekly"]
+#: The kinds of block a composed brief holds.
+BriefBlockKindName = Literal["lead", "items", "chart", "quote", "progress", "note"]
 
 
 class BriefingSent(ServerEvent):
@@ -31,11 +34,12 @@ class BriefingSent(ServerEvent):
     #: Items the user's connected-app scouts found needing them.
     signal_count: int
     stamp_collected: bool
-    #: Items per section, as the selection judge kept them (flat: PostHog breaks down by property).
-    lead_count: int
-    needs_you_count: int
-    updates_count: int
-    gaia_did_count: int
+    #: The composition's blocks in reading order, by kind.
+    block_kinds: list[BriefBlockKindName]
+    chart_count: int
+    #: Everything the brief could have placed, and the numeric series among it.
+    pool_item_count: int
+    series_count: int
     #: Apps the brief read.
     source_count: int
 

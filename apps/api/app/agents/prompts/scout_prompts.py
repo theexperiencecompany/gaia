@@ -31,8 +31,11 @@ When you are done, your ENTIRE final message is one JSON object in a ```json fen
         "url": "<path to its link, or null>",
         "due_at": "<path to its due date, or null>",
         "state": "<path to its status, or null>",
-        "people": "<path to the person or people involved, or null>"
-      }}
+        "people": "<path to the person or people involved, or null>",
+        "amount": "<path to the item's own figure (a total, an amount due, a payout), or null>",
+        "text": "<path to the item's own words (a message body, a comment), or null>"
+      }},
+      "amount_unit": "<what that figure counts, exactly as the values read: USD, USD cents, points; or null>"
     }}
   ],
   "signals": [
@@ -45,7 +48,10 @@ When you are done, your ENTIRE final message is one JSON object in a ```json fen
       "due_at": "<ISO 8601 or null>",
       "people": ["<name>"],
       "url": "<link or null>",
-      "state": "<status or null>"
+      "state": "<status or null>",
+      "amount": <the figure at the amount path, as a number, or null>,
+      "amount_unit": "<its unit, or null>",
+      "text": "<the words at the text path, verbatim, or null>"
     }}
   ]
 }}

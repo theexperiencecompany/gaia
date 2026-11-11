@@ -18,7 +18,6 @@ from app.constants.briefing import (
     WEEKLY_FAMILY,
     BriefAction,
     BriefOutcome,
-    SectionKey,
 )
 from app.models.briefing_models import (
     NEEDS_YOU_ITEM_KINDS,
@@ -81,14 +80,6 @@ class ExplorerDecisionItem(TypedDict):
     action: str
 
 
-class ExplorerMore(TypedDict):
-    """Per section, the items its cap left out, for "+N more in the full brief"."""
-
-    needs_you: int
-    updates: int
-    gaia_did: int
-
-
 class ExplorerStats(TypedDict):
     """Each figure is None when unknown or zero; the templates guard on it."""
 
@@ -107,7 +98,6 @@ class ExplorerContent(TypedDict):
     #: Todos waiting on the reader (a grouped ask counts each); None when nothing waits.
     awaiting: int | None
     stats: ExplorerStats | None
-    more: ExplorerMore
 
 
 class ExplorerArt(TypedDict):
@@ -214,7 +204,6 @@ def build_ed(
             "decisions": buckets.decisions,
             "awaiting": _awaiting(payload.sections),
             "stats": _build_stats(payload.tallies),
-            "more": _build_more(payload.sections),
         },
         "week": _build_week(payload.week) if family == WEEKLY_FAMILY else None,
         "stamp": _build_stamp(payload.stamp_city) if family == POSTAL_FAMILY else None,
@@ -328,15 +317,6 @@ def _awaiting(sections: list[BriefingSection]) -> int | None:
     return _positive(
         sum(item.count for s in sections for item in s.items if item.kind in NEEDS_YOU_ITEM_KINDS)
     )
-
-
-def _build_more(sections: list[BriefingSection]) -> ExplorerMore:
-    more = {s.key: s.more for s in sections if s.key is not None}
-    return {
-        "needs_you": more.get(SectionKey.NEEDS_YOU, 0),
-        "updates": more.get(SectionKey.UPDATES, 0),
-        "gaia_did": more.get(SectionKey.GAIA_DID, 0),
-    }
 
 
 def _build_stats(tallies: BriefingTallies | None) -> ExplorerStats | None:

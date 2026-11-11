@@ -2,13 +2,16 @@
 
 import pytest
 
+from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.services.briefing.slots import (
     BriefFact,
     CountSlot,
+    SeriesField,
     SlotError,
     SlotValues,
     referenced_facts,
     render_slots,
+    series_figures,
     slot_problems,
 )
 
@@ -141,3 +144,77 @@ class TestProblems:
 
     def test_a_figure_inside_a_slot_is_not_typed_by_the_model(self) -> None:
         assert slot_problems("message", "[[fact:7]] at [[fact:9.time]]", _VALUES) == []
+
+
+_WEEK = [f"2026-11-{d:02d}" for d in range(5, 12)]
+_MEETINGS = DataSeries(
+    id="calendar_meeting_hours",
+    label="Meeting hours",
+    unit="hours",
+    source="googlecalendar",
+    app="Google Calendar",
+    shape=SeriesShape.TIME_SERIES,
+    points=[SeriesPoint(x=x, y=y) for x, y in zip(_WEEK, [2, 1.5, 2, 0, 0, 2.5, 7], strict=True)],
+)
+_MAIL = DataSeries(
+    id="gmail_sorted",
+    label="Mail sorted since yesterday",
+    unit="emails",
+    source="gmail",
+    app="Gmail",
+    shape=SeriesShape.CATEGORICAL,
+    points=[SeriesPoint(x="Needs a reply", y=9), SeriesPoint(x="Junk", y=22)],
+)
+
+
+class TestSeriesSlots:
+    def test_a_time_series_renders_its_total_latest_peak_its_day_and_low(self) -> None:
+        assert series_figures(_MEETINGS) == {
+            SeriesField.TOTAL: "15",
+            SeriesField.PEAK: "7",
+            SeriesField.PEAK_AT: "Wednesday",
+            SeriesField.LOW: "0",
+            SeriesField.LATEST: "7",
+        }
+
+    def test_a_categorical_series_peaks_at_a_category_and_has_no_latest(self) -> None:
+        figures = series_figures(_MAIL)
+
+        assert (figures[SeriesField.PEAK_AT], figures[SeriesField.TOTAL]) == ("Junk", "31")
+        assert SeriesField.LATEST not in figures
+
+    def test_a_series_slot_is_filled_from_its_figures(self) -> None:
+        values = SlotValues(
+            facts={}, counts={}, series={s.id: series_figures(s) for s in (_MEETINGS, _MAIL)}
+        )
+        written = (
+            "[[series:calendar_meeting_hours.peak_at]] holds [[series:calendar_meeting_hours.peak]]"
+            " hours; [[series:gmail_sorted.peak]] emails were [[series:gmail_sorted.peak_at]]."
+        )
+
+        assert slot_problems("takeaway", written, values) == []
+        assert render_slots(written, values, {}) == (
+            "Wednesday holds 7 hours; 22 emails were Junk."
+        )
+
+    @pytest.mark.parametrize(
+        "written",
+        [
+            "[[series:gmail_sorted]] emails",
+            "[[series:gmail_sorted.latest]] emails",
+            "[[series:nobody.total]] emails",
+        ],
+    )
+    def test_a_series_slot_without_a_figure_the_series_offers_raises(self, written: str) -> None:
+        values = SlotValues(facts={}, counts={}, series={"gmail_sorted": series_figures(_MAIL)})
+
+        with pytest.raises(SlotError):
+            render_slots(written, values, {})
+        assert slot_problems("note", written, values)
+
+    def test_a_half_slot_on_a_series_is_malformed(self) -> None:
+        values = SlotValues(facts={}, counts={}, series={"gmail_sorted": series_figures(_MAIL)})
+
+        [problem] = slot_problems("note", "[[series:gmail_sorted.peak]", values)
+
+        assert "malformed slot" in problem
