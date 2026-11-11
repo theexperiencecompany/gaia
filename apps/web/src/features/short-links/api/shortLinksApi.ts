@@ -22,18 +22,32 @@ export async function createShortLink(
   return url;
 }
 
+/** The owner's live heygaia.link for an artifact, or null when it isn't shared. Never mints one. */
+export async function fetchShareState(
+  targetType: ShortLinkTargetType,
+  targetId: string,
+): Promise<string | null> {
+  const { url } = await api.get("/api/v1/l/state", {
+    query: { target_type: targetType, target_id: targetId },
+    errorMessage: "Couldn't check whether this is shared",
+  });
+  return url;
+}
+
 /**
  * Stop sharing an artifact: its link stops opening at once, and GAIA attaches
- * no new link to it until the owner shares it again.
+ * no new link to it until the owner shares it again. Resolves to whether a
+ * live link was actually turned off.
  */
 export async function stopSharingShortLink(
   targetType: ShortLinkTargetType,
   targetId: string,
-): Promise<void> {
-  await api.post("/api/v1/l/unshare", {
+): Promise<boolean> {
+  const { revoked } = await api.post("/api/v1/l/unshare", {
     body: { target_type: targetType, target_id: targetId },
     errorMessage: "Couldn't stop sharing",
   });
+  return revoked;
 }
 
 /** Browser URL of the raw file behind a session-artifact slug. */
