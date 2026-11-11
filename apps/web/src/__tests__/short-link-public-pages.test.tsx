@@ -13,8 +13,12 @@ vi.mock("@/features/chat/components/interface/RichContentRenderer", () => ({
 }));
 
 import { LinkUnavailable } from "@/features/short-links/components/LinkUnavailable";
+import { PublicSessionArtifactView } from "@/features/short-links/components/PublicSessionArtifactView";
 import { PublicWorkflowRunView } from "@/features/short-links/components/PublicWorkflowRunView";
-import type { PublicWorkflowRun } from "@/types/features/shortLinkTypes";
+import type {
+  PublicSessionArtifact,
+  PublicWorkflowRun,
+} from "@/types/features/shortLinkTypes";
 
 const RUN: PublicWorkflowRun = {
   target_type: "workflow_run",
@@ -74,5 +78,24 @@ describe("a shared workflow run", () => {
     expect(html).toMatch(
       /<time dateTime="2026-11-10T06:27:00Z"[^>]*>Nov 10, 2026<\/time>/,
     );
+  });
+});
+
+describe("a shared PDF", () => {
+  const PDF: PublicSessionArtifact = {
+    target_type: "session_artifact",
+    filename: "report.pdf",
+    content_type: "application/pdf",
+    size_bytes: 2048,
+    content: null,
+  };
+
+  it("is offered as a download, never framed from the API host that holds the session", () => {
+    const { container } = render(
+      withLocale(<PublicSessionArtifactView slug="abcdefghijk" view={PDF} />),
+    );
+
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(screen.getByText(/Download it to open it/)).toBeTruthy();
   });
 });
