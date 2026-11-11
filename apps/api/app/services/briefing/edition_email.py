@@ -17,8 +17,10 @@ import cloudinary.utils
 
 from app.constants.briefing import (
     EDITION_DELIVERY_MAX_WIDTH_PX,
+    EDITION_JPG_BACKGROUND,
     FOLD_MARKER_SELECTOR,
     PAPER_MARKER_SELECTOR,
+    WEEKLY_FAMILY,
     EditionDeliveryFormat,
 )
 from app.constants.files import BlobKind
@@ -51,6 +53,10 @@ _TEXT = "#f4f4f5"
 _MUTED = "#a1a1aa"
 _SANS = "Inter,-apple-system,Helvetica,Arial,sans-serif"
 
+# What the footer says is switched on, so the reader knows which setting sends the mail.
+_DAILY_SUBSCRIPTION = "daily briefs"
+_WEEKLY_SUBSCRIPTION = "weekly digests"
+
 
 def _edition_no(iso_date: str) -> int:
     """Return the edition number: days since the epoch; an unparseable date raises."""
@@ -82,7 +88,7 @@ def _message_html(message: str) -> str:
     )
 
 
-def _text_strip(message: str, brief_url: str, unsubscribe_url: str) -> str:
+def _text_strip(message: str, brief_url: str, unsubscribe_url: str, subscription: str) -> str:
     """Build the email-safe (table + inline-styled) strip under the image.
 
     It holds the written message as real text, so the email reads with images off, then
@@ -101,7 +107,7 @@ def _text_strip(message: str, brief_url: str, unsubscribe_url: str) -> str:
         (
             f'<tr><td align="center" style="padding:20px 24px 28px 24px;">'
             f'<div style="font:400 11px/1.5 {_SANS};color:{_MUTED};">'
-            "You&#39;re getting this because GAIA works your day. "
+            f"You get this because {subscription} are on in GAIA. "
             f'<a href="{escape(unsubscribe_url)}" style="color:{_MUTED};">Unsubscribe</a>.'
             "</div></td></tr>"
         ),
@@ -129,6 +135,7 @@ async def render_edition_png(payload: BriefingPayload) -> RenderedImage:
             trim_margin_px=frame.trim_margin_px,
             fold_selector=FOLD_MARKER_SELECTOR,
             paper_selector=PAPER_MARKER_SELECTOR,
+            omit_background=frame.transparent_desk,
         ),
     )
 
@@ -155,6 +162,7 @@ def edition_delivery_url(public_id: str, fetch_format: EditionDeliveryFormat) ->
         quality="auto",
         width=EDITION_DELIVERY_MAX_WIDTH_PX,
         crop="limit",
+        background=EDITION_JPG_BACKGROUND if fetch_format is EditionDeliveryFormat.JPG else None,
     )
     return delivery[0]
 
@@ -212,7 +220,14 @@ def render_edition_email(
         f'<img src="{escape(image_url)}" alt="{alt}" width="600" '
         'style="display:block;width:100%;max-width:600px;height:auto;border:0;" /></a>'
         "</td></tr></table>"
-        + _text_strip(delivered_message(payload), brief_url, unsubscribe_url)
+        + _text_strip(
+            delivered_message(payload),
+            brief_url,
+            unsubscribe_url,
+            _WEEKLY_SUBSCRIPTION
+            if payload.template_family == WEEKLY_FAMILY
+            else _DAILY_SUBSCRIPTION,
+        )
         + "</div>"
     )
 

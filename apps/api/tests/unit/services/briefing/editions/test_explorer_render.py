@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from app.models.briefing_models import BriefingPayload
+from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
 from app.services.briefing.editions.artworks import ARTWORKS
 from app.services.briefing.editions.explorer_render import (
     _asset_data_uris,
@@ -195,6 +196,18 @@ class TestDocumentShell:
         # The rules are concatenated with nothing between them, so each one
         # butts straight against the next.
         assert faces.count("format('woff2');}@font-face{") == 4
+
+
+@pytest.mark.unit
+class TestTransparentDesk:
+    @pytest.mark.parametrize(("family", "transparent"), [("postal", True), ("swiss", False)])
+    def test_a_paper_on_a_desk_is_rendered_without_its_desk(
+        self, family: str, transparent: bool
+    ) -> None:
+        html = EXPLORER_RENDERER[family](_payload(), edition_no=12, generated_local="")
+
+        assert ("#root > article { background: none; }" in html) is transparent
+        assert edition_frame(family).transparent_desk is transparent
 
 
 @pytest.mark.unit

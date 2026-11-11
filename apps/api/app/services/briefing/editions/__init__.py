@@ -10,7 +10,7 @@ the renderer forever so the archive re-renders identically.
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
+from app.constants.briefing import DESK_FAMILIES, POSTAL_FAMILY, WEEKLY_FAMILY
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.explorer_render import (
     EXPLORER_CANVAS_PX,
@@ -82,11 +82,12 @@ class EditionFrame:
     #: full-bleed page, whose root element is the paper.
     trim_margin_px: int | None
 
+    @property
+    def transparent_desk(self) -> bool:
+        """Whether the desk is left out of the raster, so the paper lies on whatever surface shows it."""
+        return self.trim_margin_px is not None
 
-# Families whose paper lies on a background; their image is trimmed to the paper.
-_ON_A_DESK = frozenset(
-    {"boardingpass", "invoice", "librarycard", "memo", "menu", POSTAL_FAMILY, "receipt"}
-)
+
 DESK_MARGIN_PX = 16
 _EXPLORER_ROOT = "#root > article"
 _EXPLORER_SCALE = 3
@@ -98,7 +99,7 @@ def edition_frame(family: str) -> EditionFrame:
         width=EXPLORER_CANVAS_PX,
         device_scale_factor=_EXPLORER_SCALE,
         clip_selector=_EXPLORER_ROOT,
-        trim_margin_px=DESK_MARGIN_PX if family in _ON_A_DESK else None,
+        trim_margin_px=DESK_MARGIN_PX if family in DESK_FAMILIES else None,
     )
 
 

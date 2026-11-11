@@ -115,6 +115,10 @@ def hue_for_day(day_of_year: int) -> int:
 # Mail family, the only one that carries a city stamp.
 WEEKLY_FAMILY: Final[str] = "weekly"
 POSTAL_FAMILY: Final[str] = "postal"
+# Families whose paper lies on a desk: rendered without it, and trimmed to the paper.
+DESK_FAMILIES: Final[frozenset[str]] = frozenset(
+    {"boardingpass", "invoice", "librarycard", "memo", "menu", POSTAL_FAMILY, "receipt"}
+)
 # The web page that shows the user's collected Air Mail stamps.
 POSTMARKS_PATH: Final[str] = "/settings/postmarks"
 
@@ -164,6 +168,11 @@ FOLD_MARKER_SELECTOR: Final[str] = "[data-fold]"
 # An edition laid on a desk marks its paper element with this attribute; its box
 # is recorded so the letter and the unfold show the paper alone.
 PAPER_MARKER_SELECTOR: Final[str] = "[data-paper]"
+
+
+# A desk family's edition is transparent around its paper; a JPG has no alpha, so it is
+# flattened onto Air Mail's desk base instead of Cloudinary's default white.
+EDITION_JPG_BACKGROUND: Final[str] = "rgb:23262a"
 
 
 class EditionDeliveryFormat(StrEnum):
