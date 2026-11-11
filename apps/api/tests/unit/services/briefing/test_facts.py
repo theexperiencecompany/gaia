@@ -7,7 +7,7 @@ import pytest
 
 from app.constants.briefing import BriefAction
 from app.models.brief_candidate_models import BriefCandidate
-from app.models.brief_composition_models import ChartBlock, ChartKind
+from app.models.brief_composition_models import BriefBlock, ChartBlock, ChartKind, SectionBlock
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.models.briefing_models import BriefingEvent, BriefingItem, BriefingSection
 from app.models.scout_models import Signal
@@ -15,7 +15,7 @@ from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.context import UserClock
 from app.services.briefing.facts import TODAY, CalendarSpan, FactSources, build_facts
 from app.services.briefing.sections import Chosen
-from app.services.briefing.slots import SeriesField
+from app.services.briefing.slots import BriefFact, CountSlot, SeriesField
 
 pytestmark = pytest.mark.unit
 
@@ -40,16 +40,24 @@ def _chosen(*picked: tuple[BriefingItem, BriefCandidate]) -> Chosen:
     )
 
 
-def _sources(**fields: object) -> FactSources:
-    base: dict[str, object] = {
-        "artifacts": {},
-        "open_todos": 0,
-        "calendar": [],
-        "event_ids": [],
-        "span": TODAY,
-        "todos_note": None,
-    }
-    return FactSources(**{**base, **fields})  # type: ignore[arg-type]
+def _sources(
+    *,
+    artifacts: dict[str, ArtifactFact] | None = None,
+    open_todos: int = 0,
+    calendar: list[BriefingEvent] | None = None,
+    event_ids: list[int] | None = None,
+    span: CalendarSpan = TODAY,
+    blocks: list[BriefBlock] | None = None,
+) -> FactSources:
+    return FactSources(
+        artifacts=artifacts or {},
+        open_todos=open_todos,
+        calendar=calendar or [],
+        event_ids=event_ids or [],
+        span=span,
+        todos_note=None,
+        blocks=blocks or [],
+    )
 
 
 class TestTheFactLines:
@@ -67,10 +75,12 @@ class TestTheFactLines:
             count=3,
         )
 
-        facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
+        facts = build_facts(_chosen((item, candidate)), _sources(open_todos=4), _CLOCK)
 
+        assert facts.values.counts == {CountSlot.NEEDS_YOU: 1, CountSlot.OPEN_TODOS: 4}
+        assert facts.values.facts[1] == BriefFact(title="Reply to Maya", time="Fri Nov 13", count=3)
         assert facts.block.splitlines()[:3] == [
-            "[COUNTS] [[count:needs_you]] (1)",
+            "[COUNTS] [[count:needs_you]] (1) · [[count:open_todos]] (4)",
             "[Waiting]",
             "- fact 1 | Waiting on you: Reply to Maya | in Gmail | time: [[fact:1.time]] "
             "(Fri Nov 13) | detail: needs sign-off | [[fact:1.count]] (3) requests, one item",
@@ -108,12 +118,12 @@ class TestWhatProseMayQuote:
         )
         item = BriefingItem(text="Fix login", kind="you", action=BriefAction.REPLY)
         candidate = BriefCandidate(
-            source="linear", app="Linear", state="you", title="Fix login", signal=signal
+            source="linear", app="Linear", state="you", title="Fix login 4", signal=signal
         )
 
         facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
 
-        assert facts.values.quoted == {"2", "P1", "88"}
+        assert facts.values.quoted == {"4", "2", "P1", "88"}
 
 
 class TestTheCalendarAndTheCharts:
@@ -152,3 +162,47 @@ class TestTheCalendarAndTheCharts:
             "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
             "- fact 8 | all day: Offsite",
         ]
+
+
+class TestTheEmptyBriefAndTheLead:
+    def test_a_brief_with_no_items_tells_the_voice_not_to_claim_any_work(self) -> None:
+        facts = build_facts(Chosen(sections=[], picked=[]), _sources(), _CLOCK)
+
+        assert (
+            "The brief holds no items today. Do not claim anything ran, finished, or is pending "
+            "beyond what is stated here."
+        ) in facts.block.splitlines()
+        assert facts.lead is None
+
+    def test_an_event_is_a_fact_timed_on_the_users_day(self) -> None:
+        event = BriefingEvent(date="2026-11-11", start="15:00", title="Board call")
+
+        facts = build_facts(
+            Chosen(sections=[], picked=[]), _sources(calendar=[event], event_ids=[7]), _CLOCK
+        )
+
+        assert facts.values.facts == {7: BriefFact(title="Board call", time="3:00 PM")}
+
+    def test_the_lead_is_the_first_item_of_the_section_the_composition_leads_with(self) -> None:
+        def item(text: str) -> tuple[BriefingItem, BriefCandidate]:
+            return (
+                BriefingItem(text=text, kind="you", action=BriefAction.REPLY),
+                BriefCandidate(source="gaia", app="GAIA", state="you", title=text),
+            )
+
+        sections = [
+            BriefingSection(numeral="I", title="Waiting", items=[item("a")[0], item("b")[0]]),
+            BriefingSection(numeral="II", title="First", items=[item("c")[0], item("d")[0]]),
+        ]
+        picked = [
+            [(1, item("a")[1]), (2, item("b")[1])],
+            [(5, item("c")[1]), (6, item("d")[1])],
+        ]
+        blocks: list[BriefBlock] = [
+            SectionBlock(kind="items", section=0),
+            SectionBlock(kind="lead", section=1),
+        ]
+
+        facts = build_facts(Chosen(sections, picked), _sources(blocks=blocks), _CLOCK)
+
+        assert facts.lead == 5

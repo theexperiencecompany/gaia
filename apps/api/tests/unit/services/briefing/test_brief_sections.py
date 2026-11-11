@@ -272,7 +272,7 @@ class TestLayOut:
             "https://mail.example/t7",
         )
         assert (digest.detail, digest.kind) == (None, "you")
-        assert sync.kind == "failed"
+        assert (sync.kind, sync.detail) == ("failed", None)
 
     def test_a_pool_item_left_out_keeps_the_todo_it_names(self) -> None:
         pool = replace(
