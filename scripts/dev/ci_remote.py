@@ -28,6 +28,9 @@ explained twice.
 `--stack` prints the gh stack alone, one line per PR.
 `--verbose` adds full finding details, passing lanes, and the source used.
 `--json` emits the same report as one object.
+`--compact` (with --json) trims it to what a reader must act on: red lanes,
+their verdicts and failing modules, and the last log lines. `mise ci:status`
+is `--json --compact --no-stack` — the one read a polling agent needs.
 
 Exit codes: 0 = no failed checks and no conflicts (pending is NOT failure);
             1 = at least one failed check or conflicting branch;
@@ -224,6 +227,7 @@ class Options:
     """The flags, parsed and validated once."""
 
     as_json: bool
+    compact: bool
     verbose: bool
     watch: bool
     fail_fast: bool
@@ -1373,6 +1377,55 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
     return report, (1 if (red or pr_meta["mergeable"] == "CONFLICTING") else 0)
 
 
+COMPACT_TAIL_LINES = 12
+
+
+def compact_report(report: dict) -> dict:
+    """Return only what a reader must act on: red lanes, their verdicts, their modules.
+
+    The full `--json` report also carries passing checks, every lane's sources,
+    the stack and the whole log-tail window. An agent that already knows what to
+    do with a red lane pays for all of it on every poll. `mise ci:status` is
+    this object: same PR state, same findings, nothing to scroll past.
+    """
+    red = [c for c in report["checks"] if c["status"] in FAILING]
+    verdicts: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for check in red:
+        for verdict in explaining_verdicts(check, report["verdicts"]):
+            key = (str(verdict.get("lane")), str(verdict.get("artifact")))
+            if key not in seen:
+                seen.add(key)
+                verdicts.append(verdict)
+    shards = []
+    for check in red:
+        shard = shard_for_check(check, report["shards"])
+        if shard is not None:
+            shards.append({**shard, "modules": failing_modules(shard)})
+    names = {check["name"] for check in red}
+    tails = {
+        name: report["fallback_tails"][name][-COMPACT_TAIL_LINES:]
+        for name in names
+        if name in report["fallback_tails"]
+    }
+    return {
+        "schema_version": report["schema_version"],
+        "repo": report["repo"],
+        "pr": report["pr"],
+        "counts": report["counts"],
+        "unresolved_thread_count": report["unresolved_thread_count"],
+        "failed": [
+            {"name": check["name"], "status": check["status"], "url": check["url"]} for check in red
+        ],
+        "early_failures": report["early_failures"],
+        "verdicts": verdicts,
+        "shards": shards,
+        "fallback_tails": tails,
+        "advice": report["advice"],
+        "truncated": report["truncated"],
+    }
+
+
 def rerun_timeouts(repo: Repo, report: dict) -> int:
     """Re-run the failed jobs of a run whose only mutation failures are timeouts.
 
@@ -1415,6 +1468,11 @@ def build_parser() -> argparse.ArgumentParser:
         "branch", nargs="?", default=None, help="branch or PR number (default: current branch)"
     )
     parser.add_argument("--json", action="store_true", help="emit only the JSON report")
+    parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="with --json, drop passing lanes and tails: the actionable red-lane report",
+    )
     parser.add_argument(
         "--verbose", action="store_true", help="full finding details + passing lanes"
     )
@@ -1473,11 +1531,15 @@ def parse_options(args: argparse.Namespace) -> Options:
     if args.fail_fast and not args.watch:
         eprint("usage error: --fail-fast only applies to --watch")
         sys.exit(2)
-    if args.stack and (args.no_stack or args.watch or args.rerun_timeouts):
+    if args.compact and not args.json:
+        eprint("usage error: --compact only applies to --json")
+        sys.exit(2)
+    if args.stack and (args.no_stack or args.watch or args.rerun_timeouts or args.compact):
         eprint("usage error: --stack is its own mode — it takes no other mode flag")
         sys.exit(2)
     return Options(
         as_json=args.json,
+        compact=args.compact,
         verbose=args.verbose,
         watch=args.watch,
         fail_fast=args.fail_fast,
@@ -1553,7 +1615,7 @@ def main() -> int:
     if options.rerun_timeouts:
         return rerun_timeouts(repo, report)
     if options.as_json:
-        print(json.dumps(report, indent=2))
+        print(json.dumps(compact_report(report) if options.compact else report, indent=2))
     else:
         render(report, options.verbose)
     return exit_code
