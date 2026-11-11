@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { MotionGlobalConfig } from "motion/react";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -25,9 +26,6 @@ import {
   NotificationStatus,
   type NotificationView,
 } from "@/types/features/notificationTypes";
-
-// The letter's exit animation can outlast waitFor's 1s default on a loaded machine.
-const MODAL_EXIT_TIMEOUT_MS = 5000;
 
 const HEADLINE = "Three decisions are waiting on you";
 const MESSAGE = "The Acme renewal needs your sign-off today.";
@@ -75,6 +73,14 @@ function renderCard(view: NotificationView) {
 }
 
 describe("briefing notification", () => {
+  // The letter's unfold and exit run on timers jsdom does not keep in step; settle them at once.
+  beforeAll(() => {
+    MotionGlobalConfig.skipAnimations = true;
+  });
+  afterAll(() => {
+    MotionGlobalConfig.skipAnimations = false;
+  });
+
   it("folds the brief and opens it, loaded by id, as a letter", async () => {
     fetchBriefing.mockResolvedValue({
       id: "brief_1",
@@ -208,9 +214,7 @@ describe("briefing notification", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: "Close" }));
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), {
-      timeout: MODAL_EXIT_TIMEOUT_MS,
-    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("keeps an action that goes somewhere other than the brief", () => {
