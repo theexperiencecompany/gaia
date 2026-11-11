@@ -1360,6 +1360,13 @@
       "BatchSyncResponse": {
         "description": "The conversations a client's sync request found stale.",
         "properties": {
+          "active_streams": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Active Streams",
+            "type": "object"
+          },
           "conversations": {
             "items": {
               "$ref": "#/components/schemas/ConversationSyncRow"
@@ -1377,7 +1384,8 @@
         },
         "required": [
           "conversations",
-          "missing"
+          "missing",
+          "active_streams"
         ],
         "title": "BatchSyncResponse",
         "type": "object"
@@ -4858,19 +4866,8 @@
         "type": "object"
       },
       "ConversationSyncRow": {
-        "description": "One batch-sync row \u2014 the conversation's client-visible fields plus its full\nmessage history and artifact registry.\n\n``active_stream_id`` is the stream of an in-flight turn (``None`` when idle),\ncarried here so a reloading client re-attaches without a discovery request.",
+        "description": "One batch-sync row \u2014 the conversation's client-visible fields plus its full\nmessage history and artifact registry.",
         "properties": {
-          "active_stream_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Active Stream Id"
-          },
           "artifacts": {
             "items": {
               "$ref": "#/components/schemas/ArtifactRegistryEntry"
@@ -4937,6 +4934,16 @@
             "title": "Messages",
             "type": "array"
           },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "starred": {
             "anyOf": [
               {
@@ -4993,9 +5000,9 @@
           "updatedAt",
           "messages",
           "artifacts",
-          "active_stream_id",
           "has_live_approval",
-          "todo_id"
+          "todo_id",
+          "source"
         ],
         "title": "ConversationSyncRow",
         "type": "object"

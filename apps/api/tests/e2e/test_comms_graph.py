@@ -303,25 +303,23 @@ class TestSystemPromptSlots:
         prompt = run.last_prompt()
         assert isinstance(prompt[0], SystemMessage)
 
-    async def test_only_the_latest_clock_reaches_the_model(self):
-        """Time rides a HumanMessage so the system prefix stays byte-stable."""
+    async def test_each_clock_reaches_the_model_where_the_thread_wrote_it(self):
+        """Time rides a HumanMessage in thread order, so the system prefix stays byte-stable and each call extends the last."""
         from app.helpers.message_helpers import build_current_time_message
 
         old_clock = build_current_time_message(user_timezone="UTC")
         new_clock = build_current_time_message(user_timezone="UTC")
+        asked = HumanMessage(content="hello")
 
         async with comms_graph(["Hi."]) as graph:
             run = await run_graph(
                 graph,
                 "hello",
-                state={
-                    "messages": [old_clock, new_clock, HumanMessage(content="hello")],
-                    "todos": [],
-                },
+                state={"messages": [old_clock, new_clock, asked], "todos": []},
             )
 
-        clocks = [m for m in run.last_prompt() if "Current UTC Time" in str(m.content)]
-        assert len(clocks) == 1
+        thread = [m.id for m in run.last_prompt() if m.id in {old_clock.id, new_clock.id, asked.id}]
+        assert thread == [old_clock.id, new_clock.id, asked.id]
 
 
 class TestAcrossTurns:
