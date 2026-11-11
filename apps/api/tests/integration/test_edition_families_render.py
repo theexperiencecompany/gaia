@@ -17,7 +17,7 @@ import re
 import struct
 from typing import Any
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageStat
 from playwright.async_api import async_playwright
 import pytest
 
@@ -269,37 +269,33 @@ _BUSY = {
     ],
 }
 _DENSITIES = {"busy": _BUSY, "normal": _DAILY, "sparse": _SPARSE}
-# The design-px band each side's visible margin must fall in: nothing touches the
-# edge, and no more than the target of background is kept around a paper.
+# The design px a desk family keeps around its paper: the opaque paper never comes
+# nearer the edge than the minimum, and no more than the target of clear background
+# is kept past the outermost shadow.
 _MARGIN_MIN_PX = 4
 _MARGIN_TARGET_PX = 24
-# Above a background's gradient drift, below the faintest visible shadow.
-_INK_THRESHOLD = 24
+_OPAQUE = 255
+# Only a shadow's tail (the design clips it at the page box) may reach a desk family's edge.
+_EDGE_SHADOW_ALPHA_MAX = 64
 
 
-def _side_margins(png: bytes, scale: int) -> dict[str, float]:
-    """Design px from each image edge to the first pixel unlike that edge's own."""
-    image = Image.open(io.BytesIO(png)).convert("RGB")
-    width, height = image.size
+def _highest(band: Image.Image) -> float:
+    """Return a single-band image's highest value."""
+    return ImageStat.Stat(band).extrema[0][1]
 
-    def run(lines: range, columns: bool) -> int:
-        def line(i: int) -> Image.Image:
-            return image.crop((i, 0, i + 1, height) if columns else (0, i, width, i + 1))
 
-        edge = line(lines[0])
-        for count, i in enumerate(lines):
-            differs = ImageChops.difference(line(i), edge).point(
-                lambda v: 255 if v > _INK_THRESHOLD else 0
-            )
-            if differs.getbbox() is not None:
-                return count
-        return len(lines)
-
+def _clear_margins(png: bytes, scale: int, coverage_floor: int) -> dict[str, float]:
+    """Design px from each image edge to the first pixel whose alpha passes coverage_floor."""
+    alpha = Image.open(io.BytesIO(png)).convert("RGBA").getchannel("A")
+    mask = alpha.point(lambda value: 255 if value > coverage_floor else 0)
+    box = mask.getbbox()
+    assert box is not None, "the edition rendered nothing"
+    left, top, right, bottom = box
     return {
-        "left": run(range(width), True) / scale,
-        "right": run(range(width - 1, -1, -1), True) / scale,
-        "top": run(range(height), False) / scale,
-        "bottom": run(range(height - 1, -1, -1), False) / scale,
+        "left": left / scale,
+        "right": (alpha.width - right) / scale,
+        "top": top / scale,
+        "bottom": (alpha.height - bottom) / scale,
     }
 
 
@@ -327,11 +323,37 @@ async def test_a_paper_on_a_desk_is_cropped_tight_with_an_even_margin(
 
     png = await render_edition_png(_shipped(family, _DENSITIES[density]))
 
-    margins = _side_margins(png, frame.device_scale_factor)
-    touching = {side: m for side, m in margins.items() if m < _MARGIN_MIN_PX}
-    loose = {side: m for side, m in margins.items() if m > _MARGIN_TARGET_PX}
+    paper = _clear_margins(png, frame.device_scale_factor, _OPAQUE - 1)
+    shadow = _clear_margins(png, frame.device_scale_factor, 0)
+    touching = {side: m for side, m in paper.items() if m < _MARGIN_MIN_PX}
+    loose = {side: m for side, m in shadow.items() if m > _MARGIN_TARGET_PX}
     assert not touching, f"{family} paper touches the image edge: {touching}"
-    assert not loose, f"{family} keeps more than {_MARGIN_TARGET_PX}px of desk: {loose}"
+    assert not loose, f"{family} keeps more than {_MARGIN_TARGET_PX}px past its shadow: {loose}"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("family", _ON_A_DESK)
+async def test_a_paper_on_a_desk_ships_without_its_desk(family: str) -> None:
+    image = Image.open(io.BytesIO(await render_edition_png(_shipped(family, _DAILY))))
+
+    assert image.mode == "RGBA"
+    alpha = image.getchannel("A")
+    edges = [
+        alpha.crop((0, 0, alpha.width, 1)),
+        alpha.crop((0, alpha.height - 1, alpha.width, alpha.height)),
+        alpha.crop((0, 0, 1, alpha.height)),
+        alpha.crop((alpha.width - 1, 0, alpha.width, alpha.height)),
+    ]
+    assert max(_highest(edge) for edge in edges) <= _EDGE_SHADOW_ALPHA_MAX
+    assert _highest(alpha) == _OPAQUE
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("family", _FULL_BLEED)
+async def test_a_full_bleed_family_ships_opaque(family: str) -> None:
+    image = Image.open(io.BytesIO(await render_edition_png(_shipped(family, _DAILY))))
+
+    assert ImageStat.Stat(image.convert("RGBA").getchannel("A")).extrema == [(_OPAQUE, _OPAQUE)]
 
 
 @pytest.mark.integration
