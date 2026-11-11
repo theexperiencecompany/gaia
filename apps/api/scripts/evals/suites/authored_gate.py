@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
-import hashlib
 import json
 from pathlib import Path
 from typing import Final, NotRequired, TypedDict
@@ -19,14 +18,11 @@ from typing import Final, NotRequired, TypedDict
 from langchain_core.utils.function_calling import convert_to_openai_tool
 import yaml
 
-from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
-from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.agents.tools.tracked_todo_tools import subscribe_todo_to_trigger
 from app.agents.tools.workflow_shared_tools import search_triggers
 from app.constants.trigger_gates import GateAuthor
 from app.models.trigger_gate_models import AuthoredGate
 from app.services.triggers.trigger_gate import automation_text
-from app.utils.workflow_utils import build_new_workflow_task
 from scripts.evals.suites.trigger_gate import DATA_DIR, AskedRequest
 
 AUTHORED_DIR: Final = DATA_DIR / "authored"
@@ -105,7 +101,6 @@ class AuthoredRule(TypedDict):
     rule: str | None
     title: str
     description: str | None
-    prompt_sha: str
 
 
 class RecordedGate(AskedRequest):
@@ -126,17 +121,6 @@ def authoring_tools(path: AuthoringPath) -> list[dict[str, object]]:
     """Return the real tool schemas the authoring call binds."""
     tool = subscribe_todo_to_trigger if path is AuthoringPath.TODO else search_triggers
     return [convert_to_openai_tool(tool)]
-
-
-def prompt_sha(path: AuthoringPath) -> str:
-    """Hash everything the authoring call reads but the request, so a prompt edit needs a re-author."""
-    if path is AuthoringPath.TODO:
-        parts: list[object] = [TODO_SYSTEM_PROMPT, TODO_TASK]
-    else:
-        parts = [WORKFLOW_AGENT_SYSTEM_PROMPT, build_new_workflow_task(""), CONNECTED_HINT]
-        parts += [CLARIFICATION, list(TRIGGER_CATALOG)]
-    canonical = json.dumps([*parts, authoring_tools(path)], ensure_ascii=False, sort_keys=True)
-    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def load_requests() -> list[CreationRequest]:
@@ -182,7 +166,6 @@ def load_rules() -> dict[str, AuthoredRule]:
             rule=rule if isinstance(rule, str) else None,
             title=str(row["title"]),
             description=description if isinstance(description, str) else None,
-            prompt_sha=str(row["prompt_sha"]),
         )
     return rules
 

@@ -219,7 +219,8 @@ Built for mining offloaded files when you only need the matching lines, instead
 of reading the whole file back into context. Read-only; searches ONE file.
 
 PARAMETERS:
-- pattern (str): A regular expression (or literal text) to match.
+- pattern (str): An extended regular expression (or literal text) to match:
+  `job|recruit|hiring` matches any of the three.
 - path (str): Workspace path to ONE file. Relative paths resolve against your
   session root; absolute `/workspace/...` paths also work.
 - ignore_case (bool): If true (-i), match case-insensitively. Default false.

@@ -20,17 +20,15 @@ const API_PORT = process.env.API_PORT ?? "8000";
  * other's data — run one worktree at a time, or export a distinct `DEV_USER` for
  * both this suite and that worktree's API.
  */
-function requireDevUser(): string {
-  const devUser = process.env.DEV_USER;
-  if (!devUser) {
+export function devUser(): string {
+  const email = process.env.DEV_USER;
+  if (!email) {
     throw new Error(
       "DEV_USER is unset — it is defined in mise.toml [env]; run the suite through mise (`mise e2e:web`)",
     );
   }
-  return devUser;
+  return email;
 }
-
-export const DEV_USER = requireDevUser();
 
 /** Fail loud on malformed seed counts instead of sending NaN/negatives to the API. */
 function seedCount(name: string, fallback: number, min: number): number {
@@ -118,7 +116,7 @@ async function devRequest(
 
 /** Remove the dev user + owned data so each run starts from a clean slate. */
 export async function resetDevUser(): Promise<void> {
-  await devRequest(`/dev/users/${encodeURIComponent(DEV_USER)}`, {
+  await devRequest(`/dev/users/${encodeURIComponent(devUser())}`, {
     method: "DELETE",
     tolerate404: true,
   });
@@ -128,7 +126,7 @@ export async function resetDevUser(): Promise<void> {
 export async function mintDevUser(): Promise<void> {
   await devRequest("/dev/users", {
     method: "POST",
-    body: JSON.stringify({ email: DEV_USER }),
+    body: JSON.stringify({ email: devUser() }),
   });
 }
 
@@ -142,7 +140,7 @@ export async function seedDevData(): Promise<void> {
   await devRequest("/dev/seed", {
     method: "POST",
     body: JSON.stringify({
-      email: DEV_USER,
+      email: devUser(),
       todos: SEED_TODOS,
       conversations: SEED_CONVERSATIONS,
       pro: true,
