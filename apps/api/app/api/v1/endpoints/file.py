@@ -9,6 +9,7 @@ from fastapi import (
     Form,
     Header,
     HTTPException,
+    Request,
     UploadFile,
     status,
 )
@@ -33,12 +34,17 @@ router = APIRouter()
 @router.post("/upload", response_model=FileData, status_code=status.HTTP_201_CREATED)
 @tiered_rate_limit("file_upload")
 async def upload_file_endpoint(
+    request: Request,
     file: UploadFile = File(...),
     conversation_id: str | None = Form(default=None, pattern=SAFE_PATH_ID_PATTERN),
     content_length: int | None = Header(default=None, alias="content-length"),
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> FileData:
-    """Upload a file, persist metadata, and generate embeddings for images."""
+    """Upload a file, persist metadata, and generate embeddings for images.
+
+    A client that cancelled while the file was being stored never learns its id, so
+    the stored file is deleted here instead of being left orphaned.
+    """
     user_id = user.user_id
     if not user_id:
         raise HTTPException(
@@ -62,13 +68,16 @@ async def upload_file_endpoint(
             ),
         )
 
+        cancelled = await request.is_disconnected()
+        if cancelled:
+            await FileService.delete(file_id=uploaded.file_id, user_id=user_id)
         log.set(
             user={"id": user_id},
             operation="upload",
             file_id=uploaded.file_id,
             file_name=uploaded.filename,
             mime_type=uploaded.type,
-            outcome="success",
+            outcome="cancelled" if cancelled else "success",
         )
         return FileData(
             fileId=uploaded.file_id,

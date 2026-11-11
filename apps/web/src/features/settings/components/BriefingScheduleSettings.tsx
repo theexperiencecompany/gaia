@@ -6,6 +6,11 @@ import { formatHour12 } from "@shared/utils";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
+import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
+import {
+  formatHour,
+  isQuietHour,
+} from "@/features/settings/utils/quietHoursAxis";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
@@ -29,9 +34,15 @@ const WITH_DAILY_BRIEF: ReadonlySet<BriefingFrequency> = new Set([
 export function BriefingScheduleSettings() {
   const { schedule, loadFailed, saving, update } =
     useBriefingScheduleSettings();
+  const { hours: quietHours } = useQuietHours();
   const hasDailyBrief =
     schedule?.frequency !== undefined &&
     WITH_DAILY_BRIEF.has(schedule.frequency);
+  const isHeldByQuietHours =
+    hasDailyBrief &&
+    schedule?.hour !== undefined &&
+    !!quietHours &&
+    isQuietHour(quietHours, schedule.hour);
 
   return (
     <SettingsSection
@@ -60,7 +71,14 @@ export function BriefingScheduleSettings() {
           ))}
         </Select>
       </SettingsRow>
-      <SettingsRow label="Daily brief at">
+      <SettingsRow
+        label="Daily brief at"
+        description={
+          isHeldByQuietHours && quietHours
+            ? `Lands at ${formatHour(quietHours.end_hour)}, when your quiet hours end.`
+            : undefined
+        }
+      >
         <Select
           size="sm"
           className="w-44"

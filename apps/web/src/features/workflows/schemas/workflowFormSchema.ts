@@ -92,8 +92,8 @@ export const workflowFormSchema = z.object({
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
-  // null until chosen: a new workflow has no default delivery, and the save
-  // gate plus this refusal keep it from being created without one.
+  // null until chosen: a new workflow has no default delivery, and this refusal
+  // keeps it from being created without one.
   delivery: z
     .enum(WORKFLOW_DELIVERIES)
     .nullable()

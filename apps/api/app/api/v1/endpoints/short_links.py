@@ -10,14 +10,16 @@ the request path and a keyed hash of the slug as ``short_link.slug_hash``.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.models.short_link_models import (
     PublicShortLinkView,
     ShortLinkResponse,
+    ShortLinkShareState,
     ShortLinkTargetRequest,
+    StopSharingResult,
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
@@ -25,12 +27,17 @@ from app.services.short_link_projections import project_target
 from app.services.short_link_service import (
     get_public_file,
     get_public_view,
+    live_share_url,
     share_short_link,
     stop_sharing,
 )
 from app.services.storage import JuiceFSUnavailable
 from app.utils.log_identifiers import hash_short_link_slug
-from app.utils.loggable_path import SHORT_LINK_ROUTE_PREFIX, SHORT_LINK_UNSHARE_PATH
+from app.utils.loggable_path import (
+    SHORT_LINK_ROUTE_PREFIX,
+    SHORT_LINK_SHARE_STATE_PATH,
+    SHORT_LINK_UNSHARE_PATH,
+)
 from app.utils.sandboxed_file_response import sandboxed_file_response
 from shared.py.wide_events import log
 
@@ -68,6 +75,23 @@ async def create_short_link_route(
     return ShortLinkResponse(url=url)
 
 
+# Registered before /{slug}, which would otherwise capture "state" as a slug.
+@router.get(SHORT_LINK_SHARE_STATE_PATH)
+async def get_share_state_route(
+    target: Annotated[ShortLinkTargetRequest, Query()],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> ShortLinkShareState:
+    """Say whether one of your artifacts is shared, with its live link. Never mints one."""
+    user_id = user.user_id
+    log.set(
+        user={"id": user_id},
+        short_link={"operation": "share_state", "target_type": target.target_type.value},
+    )
+    url = await live_share_url(user_id, target.target_type, target.target_id)
+    log.set(short_link={"shared": url is not None})
+    return ShortLinkShareState(url=url)
+
+
 @router.get("/{slug}", response_model=PublicShortLinkView)
 async def resolve_short_link_route(response: Response, slug: str) -> PublicShortLinkView:
     """Resolve a capability slug to its target's public view. No auth."""
@@ -101,12 +125,12 @@ async def get_short_link_file_route(slug: str) -> FileResponse:
     return sandboxed_file_response(host_path, cache_control=_NO_STORE)
 
 
-@router.post(SHORT_LINK_UNSHARE_PATH, status_code=status.HTTP_204_NO_CONTENT)
+@router.post(SHORT_LINK_UNSHARE_PATH)
 async def stop_sharing_route(
     body: ShortLinkTargetRequest, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
-) -> Response:
+) -> StopSharingResult:
     """Stop sharing one of your artifacts: its link goes dead immediately, and GAIA
-    attaches no new one until you share it again. Idempotent."""
+    attaches no new one until you share it again. Idempotent; says whether a link died."""
     user_id = user.user_id
     log.set(
         user={"id": user_id},
@@ -114,4 +138,4 @@ async def stop_sharing_route(
     )
     revoked = await stop_sharing(user_id, body.target_type, body.target_id)
     log.set(short_link={"revoked": revoked})
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return StopSharingResult(revoked=revoked)

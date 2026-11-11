@@ -127,8 +127,14 @@ family's frame (`editions/artworks.py`), and recorded on the payload as
 
 `tests/integration/test_edition_families_render.py` renders every family in
 Chromium and fails on a script error, a dropped item, a fixture string, a `null`
-or zero-filled figure, a heading above an empty bucket, overprinted item rows, or
-an image crop that lets the paper touch the edge or keeps more than 24px of desk.
+or zero-filled figure, a heading above an empty bucket, overprinted item rows, an
+image crop that lets the paper touch the edge or keeps more than 24px past its
+shadow, or a desk painted into the image.
+
+The families whose paper lies on a desk (`edition_frame` in `editions/__init__.py`)
+are rasterized without it: the render leaves the root's background unpainted and
+captures with alpha, so the paper and its shadows lie on whatever surface shows the
+image. The explorer itself still draws the desk.
 
 ## Which families are sent
 

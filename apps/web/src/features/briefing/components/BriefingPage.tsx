@@ -1,6 +1,10 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
+import Link from "next/link";
+
+import { StandalonePage } from "@/components/layout/StandalonePage";
 
 import { useBriefingQuery } from "../hooks/useBriefingQuery";
 import { StandaloneBriefing } from "./StandaloneBriefing";
@@ -11,18 +15,23 @@ export function BriefingPage({ briefingId }: { briefingId: string }) {
 
   if (isLoading) {
     return (
-      <main className="min-h-screen w-full bg-primary-bg px-4 py-6">
-        <Skeleton className="mx-auto h-[70vh] w-full max-w-3xl rounded-2xl" />
-      </main>
+      <StandalonePage>
+        <Skeleton className="mx-auto h-[70vh] w-full max-w-[540px] rounded-2xl" />
+      </StandalonePage>
     );
   }
   if (isError || !briefing) {
     return (
-      <main className="flex min-h-screen w-full items-center justify-center bg-primary-bg px-4">
-        <p className="text-sm text-zinc-400">
-          This brief isn&apos;t available. It may belong to another account.
-        </p>
-      </main>
+      <StandalonePage>
+        <div className="flex flex-col items-center gap-4 py-24 text-center">
+          <p className="text-sm text-zinc-400">
+            This brief isn&apos;t available anymore.
+          </p>
+          <Button as={Link} href="/briefings" variant="flat" size="sm">
+            Open your briefings
+          </Button>
+        </div>
+      </StandalonePage>
     );
   }
   return (

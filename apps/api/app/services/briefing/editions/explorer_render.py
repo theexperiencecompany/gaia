@@ -15,7 +15,12 @@ import json
 from pathlib import Path
 import re
 
-from app.constants.briefing import POSTAL_FAMILY, ArtFamily
+from app.constants.briefing import (
+    DESK_FAMILIES,
+    DESK_SHADOW_BLEED_PX,
+    POSTAL_FAMILY,
+    ArtFamily,
+)
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
@@ -39,6 +44,14 @@ _TEC_MARK_WEBP = _ASSETS_DIR / "brand" / "tec_mark_black.webp"
 # axis option's `id:` further down the same object literal.
 _REGISTER_PATTERN = re.compile(
     r'EXPLORER\.register\(\{\s*\n\s*id:\s*"([a-z0-9-]+)",\s*\n\s*name:\s*"([^"]+)"'
+)
+
+# Leaves the root's backdrop (a desk family's desk) unpainted, so only the paper and
+# its shadows reach the raster; the id outranks every template's own class rule. The
+# body pad gives the shadows room past the root's box.
+_TRANSPARENT_DESK_CSS = (
+    "#root > article { background: none; }\n"
+    f"body {{ width: auto; padding: {DESK_SHADOW_BLEED_PX}px; }}"
 )
 
 # The band wallpaper in assets.json.
@@ -168,7 +181,8 @@ def render_explorer_edition(
     """Render a briefing payload through one vendored explorer family.
 
     Raises ValueError for a family not in explorer_family_ids(). skin_seed makes the skin
-    deterministic; tz_label is accepted for signature parity with EditionRenderer, unused.
+    deterministic; a desk family renders without its desk; tz_label is accepted for signature
+    parity with EditionRenderer, unused.
     """
     del tz_label  # accepted for signature parity; see docstring
     if family not in explorer_family_ids():
@@ -209,6 +223,7 @@ def render_explorer_edition(
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 html {{ -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }}
 body {{ width: {EXPLORER_CANVAS_PX}px; }}
+{_TRANSPARENT_DESK_CSS if family in DESK_FAMILIES else ""}
 </style>
 </head>
 <body>
