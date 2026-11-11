@@ -3,7 +3,8 @@ import {
   CheckmarkBadge01Icon,
   DateTimeIcon,
   GitForkIcon,
-  LayersIcon,
+  Key01Icon,
+  Tag01Icon,
   UserCircle02Icon,
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
@@ -32,7 +33,7 @@ function MetaCard({ children }: { children: ReactNode }) {
 function CategoryCard({ category }: { category: string }) {
   return (
     <MetaCard>
-      <LayersIcon width={24} height={24} className="text-zinc-400" />
+      <Tag01Icon width={24} height={24} className="text-zinc-400" />
       <div>
         <div className="text-xs text-zinc-500">Category</div>
         <div className="text-sm text-zinc-300">
@@ -115,7 +116,7 @@ function UsersCard({
 function AuthCard({ authType }: Pick<PublicIntegrationResponse, "authType">) {
   return (
     <MetaCard>
-      <LayersIcon width={24} height={24} className="text-zinc-400" />
+      <Key01Icon width={24} height={24} className="text-zinc-400" />
       <div>
         <div className="text-xs text-zinc-500">Auth</div>
         <div className="text-sm text-zinc-300">
