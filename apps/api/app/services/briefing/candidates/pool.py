@@ -8,7 +8,7 @@ from app.constants.briefing import GAIA_SOURCE
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent, UnreadSource
-from app.models.scout_models import ScoutOutcome
+from app.models.scout_models import ScoutOutcome, SignalImportance
 from app.services.briefing.candidates.app_signals import app_signal_candidates
 from app.services.briefing.candidates.approvals import approval_candidates
 from app.services.briefing.candidates.calendar import calendar_candidates
@@ -52,6 +52,43 @@ class CandidateSources:
     held: list[PendingBriefItemDocument]
     scouts: ScoutSignals
     calendar: list[BriefingEvent]
+
+
+def _found_by(candidate: BriefCandidate) -> str:
+    return f"the {candidate.app} scout" if candidate.signal is not None else candidate.app
+
+
+def _merged(first: BriefCandidate, again: BriefCandidate) -> BriefCandidate:
+    """Fold a second source's find of the same thing into the first, keeping what only it knew."""
+    high = SignalImportance.HIGH in (first.importance, again.importance)
+    return first.model_copy(
+        update={
+            "detail": first.detail or again.detail,
+            "people": list(dict.fromkeys([*first.people, *again.people])),
+            "due_at": first.due_at or again.due_at,
+            "url": first.url or again.url,
+            "importance": SignalImportance.HIGH if high else first.importance,
+            "todo_id": first.todo_id or again.todo_id,
+            "held_id": first.held_id or again.held_id,
+            "signal": first.signal or again.signal,
+            "also_in": [*first.also_in, _found_by(again), *again.also_in],
+        }
+    )
+
+
+def _one_per_thing(candidates: list[BriefCandidate]) -> list[BriefCandidate]:
+    """Fold candidates about the same outside thing into one, in the order each was first found."""
+    by_ref: dict[str, int] = {}
+    kept: list[BriefCandidate] = []
+    for candidate in candidates:
+        if candidate.ref is not None and candidate.ref in by_ref:
+            index = by_ref[candidate.ref]
+            kept[index] = _merged(kept[index], candidate)
+            continue
+        if candidate.ref is not None:
+            by_ref[candidate.ref] = len(kept)
+        kept.append(candidate)
+    return kept
 
 
 def _numbered(candidates: list[BriefCandidate]) -> tuple[dict[int, BriefCandidate], list[str]]:
@@ -104,7 +141,7 @@ async def gather_candidates(
         *gaia_work_candidates(work),
         *calendar_candidates(sources.calendar, clock.date_str),
     ]
-    pool, duplicates = _numbered(candidates)
+    pool, duplicates = _numbered(_one_per_thing(candidates))
     read, unavailable = _sources(sources.scouts, pool)
     return GatheredCandidates(pool, duplicates, read, unavailable)
 

@@ -27,13 +27,19 @@ from app.models.brief_composition_models import (
     BriefComposition,
     ChartKind,
     ComposedBlock,
+    ComposedChart,
     ComposedItem,
+    ComposedItems,
+    ComposedLead,
+    ComposedProgress,
+    ComposedQuote,
+    placed_items,
 )
 from app.models.brief_pool_models import DataSeries, SeriesShape
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.slots import SlotError, SlotValues, render_slots, slot_problems
 
-# The strings each kind of block writes; a field a kind does not own is never read, rendered or shown.
+#: The strings each kind of block writes.
 WRITTEN_FIELDS: dict[BriefBlockKind, tuple[str, ...]] = {
     "lead": ("offer",),
     "items": ("heading",),
@@ -42,8 +48,6 @@ WRITTEN_FIELDS: dict[BriefBlockKind, tuple[str, ...]] = {
     "progress": (),
     "note": ("text",),
 }
-#: The kinds of block that place pool items.
-ITEM_BLOCKS: frozenset[BriefBlockKind] = frozenset({"lead", "items"})
 
 
 def _where(index: int, block: ComposedBlock) -> str:
@@ -128,7 +132,7 @@ _CHART_MISFITS: dict[ChartKind, Callable[[ChartKind, list[DataSeries]], str | No
 
 
 def _chart_problems(
-    where: str, block: ComposedBlock, pool: FactPool, values: SlotValues
+    where: str, block: ComposedChart, pool: FactPool, values: SlotValues
 ) -> list[str]:
     problems = _text_problems(where, "title", block.title, BRIEF_CHART_TITLE_MAX_CHARS, values)
     problems += _text_problems(where, "takeaway", block.takeaway, BRIEF_TAKEAWAY_MAX_CHARS, values)
@@ -136,64 +140,67 @@ def _chart_problems(
     unknown = [i for i in block.series_ids if i not in by_id]
     if unknown:
         problems.append(f"{where}: no series {', '.join(unknown)} in the pool")
-    if block.chart is None:
-        problems.append(f"{where}: no chart kind ({', '.join(ChartKind)})")
     if not block.series_ids:
         problems.append(f"{where}: no series_ids")
-    elif block.chart is not None and not unknown:
+    elif not unknown:
         misfit = _CHART_MISFITS[block.chart](block.chart, [by_id[i] for i in block.series_ids])
         problems += [f"{where}: {misfit}"] if misfit else []
     return problems
 
 
-def _lead_problems(where: str, index: int, block: ComposedBlock, values: SlotValues) -> list[str]:
+def _lead_problems(where: str, index: int, block: ComposedLead, values: SlotValues) -> list[str]:
     problems = [] if index == 0 else [f"{where}: a lead opens the brief, so it is block 1"]
-    if len(block.items) != 1:
-        problems.append(f"{where}: a lead holds exactly one item, not {len(block.items)}")
-    if any(item.action is None for item in block.items):
+    if block.item.action is None:
         problems.append(f"{where}: a lead is something to act on, so its item has an action")
     return problems + _text_problems(where, "offer", block.offer, BRIEF_OFFER_MAX_CHARS, values)
+
+
+def _own_problems(
+    index: int, block: ComposedBlock, pool: FactPool, values: SlotValues
+) -> list[str]:
+    """Name what breaks the block's own kind of contract, its items aside."""
+    where = _where(index, block)
+    if isinstance(block, ComposedLead):
+        return _lead_problems(where, index, block, values)
+    if isinstance(block, ComposedItems):
+        problems = _text_problems(where, "heading", block.heading, BRIEF_HEADING_MAX_CHARS, values)
+        if not 1 <= len(block.items) <= MAX_ITEMS_PER_BLOCK:
+            problems.append(
+                f"{where}: {len(block.items)} items; a group holds 1 to {MAX_ITEMS_PER_BLOCK}"
+            )
+        return problems
+    if isinstance(block, ComposedChart):
+        return _chart_problems(where, block, pool, values)
+    if isinstance(block, ComposedQuote):
+        known = block.quote_id in pool.quotes_by_id
+        return [] if known else [f"{where}: no quote {block.quote_id} in the pool"]
+    if isinstance(block, ComposedProgress):
+        known = block.goal_id in pool.goals_by_id
+        return [] if known else [f"{where}: no goal {block.goal_id} in the pool"]
+    return _text_problems(where, "text", block.text, BRIEF_NOTE_MAX_CHARS, values)
 
 
 def _block_problems(
     index: int, block: ComposedBlock, pool: FactPool, values: SlotValues
 ) -> list[str]:
     where = _where(index, block)
-    problems: list[str] = []
-    if block.kind == "lead":
-        problems += _lead_problems(where, index, block, values)
-    elif block.kind == "items":
-        problems += _text_problems(where, "heading", block.heading, BRIEF_HEADING_MAX_CHARS, values)
-        if not 1 <= len(block.items) <= MAX_ITEMS_PER_BLOCK:
-            problems.append(
-                f"{where}: {len(block.items)} items; a group holds 1 to {MAX_ITEMS_PER_BLOCK}"
-            )
-    elif block.kind == "chart":
-        problems += _chart_problems(where, block, pool, values)
-    elif block.kind == "quote" and block.quote_id not in pool.quotes_by_id:
-        problems.append(f"{where}: no quote {block.quote_id} in the pool")
-    elif block.kind == "progress" and block.goal_id not in pool.goals_by_id:
-        problems.append(f"{where}: no goal {block.goal_id} in the pool")
-    elif block.kind == "note":
-        problems += _text_problems(where, "text", block.text, BRIEF_NOTE_MAX_CHARS, values)
-    if block.kind not in ITEM_BLOCKS:
-        return problems
-    leads = block.kind == "lead"
-    return problems + [
-        p for item in block.items for p in _item_problems(where, item, pool, values, leads=leads)
+    leads = isinstance(block, ComposedLead)
+    return _own_problems(index, block, pool, values) + [
+        p
+        for item in placed_items(block)
+        for p in _item_problems(where, item, pool, values, leads=leads)
     ]
 
 
 def _placed_ids(composition: BriefComposition) -> Iterator[str]:
     """Yield every id a block places, named by its kind, so a repeat is caught across kinds of block."""
     for block in composition.blocks:
-        if block.kind in ITEM_BLOCKS:
-            yield from (f"item {item.id}" for item in block.items)
-        if block.kind == "chart":
+        yield from (f"item {item.id}" for item in placed_items(block))
+        if isinstance(block, ComposedChart):
             yield from (f"series {s}" for s in block.series_ids)
-        if block.kind == "quote" and block.quote_id:
+        if isinstance(block, ComposedQuote):
             yield f"quote {block.quote_id}"
-        if block.kind == "progress" and block.goal_id:
+        if isinstance(block, ComposedProgress):
             yield f"goal {block.goal_id}"
 
 
@@ -202,7 +209,7 @@ def _budget_problems(composition: BriefComposition) -> list[str]:
     problems: list[str] = []
     if len(blocks) > MAX_BRIEF_BLOCKS:
         problems.append(f"{len(blocks)} blocks; a brief holds at most {MAX_BRIEF_BLOCKS}")
-    items = sum(len(b.items) for b in blocks)
+    items = sum(len(placed_items(b)) for b in blocks)
     if items > MAX_BRIEF_ITEMS:
         problems.append(f"{items} items in all; a brief holds at most {MAX_BRIEF_ITEMS}")
     charts = sum(1 for b in blocks if b.kind == "chart")
@@ -222,7 +229,7 @@ def _slot_problems(composition: BriefComposition, values: SlotValues) -> list[st
             text = getattr(block, name)
             if text:
                 problems += slot_problems(f"{where} {name}", text, values)
-        for item in block.items if block.kind in ITEM_BLOCKS else []:
+        for item in placed_items(block):
             for name, text in (("title", item.title), ("detail", item.detail)):
                 if text:
                     problems += slot_problems(

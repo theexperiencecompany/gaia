@@ -43,3 +43,7 @@ class BriefCandidate(BaseModel):
     held_id: str | None = None
     #: The app signal it is, marked shown when the message speaks of it.
     signal: Signal | None = None
+    #: The outside thing it is about, as integration:id, which another source may find too.
+    ref: str | None = None
+    #: The other sources that found the same thing, folded into this one item.
+    also_in: list[str] = Field(default_factory=list)

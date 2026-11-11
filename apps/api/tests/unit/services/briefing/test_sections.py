@@ -115,7 +115,13 @@ _COMPOSITION = BriefComposition.model_validate(
         "blocks": [
             {
                 "kind": "lead",
-                "items": [{"id": 1, "action": "reply", "title": "Term sheet"}],
+                "item": {
+                    "id": 1,
+                    "action": "reply",
+                    "outcome": None,
+                    "title": "Term sheet",
+                    "detail": None,
+                },
                 "offer": "Send the reply I drafted",
             },
             {"kind": "quote", "quote_id": "q1"},
@@ -123,8 +129,20 @@ _COMPOSITION = BriefComposition.model_validate(
                 "kind": "items",
                 "heading": "Worth a look",
                 "items": [
-                    {"id": 2, "outcome": "failed", "title": "CRM sync"},
-                    {"id": 3, "outcome": "finished", "title": "Investor update"},
+                    {
+                        "id": 2,
+                        "action": None,
+                        "outcome": "failed",
+                        "title": "CRM sync",
+                        "detail": None,
+                    },
+                    {
+                        "id": 3,
+                        "action": None,
+                        "outcome": "finished",
+                        "title": "Investor update",
+                        "detail": None,
+                    },
                 ],
             },
             {

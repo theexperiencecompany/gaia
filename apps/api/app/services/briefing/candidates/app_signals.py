@@ -35,6 +35,7 @@ def app_signal_candidates(
             url=item.signal.url,
             importance=item.signal.importance,
             signal=item.signal,
+            ref=f"{item.signal.integration_id}:{item.signal.external_id}",
         )
         for item in remembered
     ]

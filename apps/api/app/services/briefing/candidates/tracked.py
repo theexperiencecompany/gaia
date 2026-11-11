@@ -32,9 +32,11 @@ def _grouped(
             by_subject[key].count += 1
             continue
         source, app = _source(doc)
+        ref = doc.external_ref
         by_subject[key] = BriefCandidate(
             source=source,
             app=app,
+            ref=f"{source}:{ref.id}" if ref is not None and source != GAIA_SOURCE else None,
             state=state,
             title=doc.title,
             detail=doc.description or None,

@@ -10,7 +10,7 @@ import pytest
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.models.brief_candidate_models import BriefCandidate
-from app.models.brief_composition_models import BriefComposition
+from app.models.brief_composition_models import BriefComposition, ComposedChart, ComposedItems
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.services.briefing.composition import compose
 from app.services.briefing.composition.compose import compose_brief
@@ -61,14 +61,13 @@ _GOOD = BriefComposition.model_validate(
         "blocks": [
             {
                 "kind": "lead",
-                "items": [
-                    {
-                        "id": 1,
-                        "action": "reply",
-                        "title": "Series A term sheet",
-                        "detail": "Maya needs your sign-off",
-                    }
-                ],
+                "item": {
+                    "id": 1,
+                    "action": "reply",
+                    "outcome": None,
+                    "title": "Series A term sheet",
+                    "detail": "Maya needs your sign-off",
+                },
                 "offer": "Send Maya the reply I drafted",
             },
             {
@@ -81,13 +80,40 @@ _GOOD = BriefComposition.model_validate(
         ]
     }
 )
+_GROUPED = BriefComposition.model_validate(
+    {
+        "blocks": [
+            {
+                "kind": "items",
+                "heading": "Landed overnight",
+                "items": [
+                    {
+                        "id": 1,
+                        "action": "reply",
+                        "outcome": None,
+                        "title": "Series A term sheet",
+                        "detail": None,
+                    }
+                ],
+            }
+        ]
+    }
+)
 _UNKNOWN_ID = BriefComposition.model_validate(
     {
         "blocks": [
             {
                 "kind": "items",
                 "heading": "Waiting on you",
-                "items": [{"id": 7, "action": "reply", "title": "Nobody's thread"}],
+                "items": [
+                    {
+                        "id": 7,
+                        "action": "reply",
+                        "outcome": None,
+                        "title": "Nobody's thread",
+                        "detail": None,
+                    }
+                ],
             }
         ]
     }
@@ -108,6 +134,13 @@ def checker(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     return mock
 
 
+@pytest.fixture(autouse=True)
+def headings(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    mock = AsyncMock(return_value=[])
+    monkeypatch.setattr(compose, "heading_problems", mock)
+    return mock
+
+
 def _prompt(model: AsyncMock, call: int = 0) -> str:
     return model.await_args_list[call].args[1]
 
@@ -119,7 +152,9 @@ class TestOneCall:
         composed = await compose_brief(USER, POOL, "daily")
 
         assert composed.written == _GOOD
-        assert composed.rendered.blocks[1].takeaway == "Wednesday holds 7 hours."
+        chart = composed.rendered.blocks[1]
+        assert isinstance(chart, ComposedChart)
+        assert chart.takeaway == "Wednesday holds 7 hours."
         assert model.await_count == 1
         assert model.await_args.args[0] is BriefComposition
 
@@ -194,18 +229,28 @@ class TestTheTruthCheck:
             ("block 2 (chart) takeaway", "⟦Wednesday⟧ holds ⟦7⟧ hours."),
         )
 
-    async def test_a_string_in_a_field_its_block_does_not_own_is_never_checked(
-        self, model: AsyncMock, checker: AsyncMock
+    async def test_a_heading_is_judged_against_its_items_and_not_by_the_truth_check(
+        self, model: AsyncMock, checker: AsyncMock, headings: AsyncMock
     ) -> None:
-        stray = _GOOD.model_copy(deep=True)
-        stray.blocks[0].heading = "Something the lead never shows"
+        model.return_value = _GROUPED
 
         await compose_brief(USER, POOL, "daily")
-        model.return_value = stray
-        await compose_brief(USER, POOL, "daily")
 
-        first, second = (call.args[2] for call in checker.await_args_list)
-        assert first == second
+        user_id, shown, pool = headings.await_args.args
+        assert (user_id, pool) == (USER, POOL)
+        assert shown.blocks[0].heading == "Landed overnight"
+        assert all("heading" not in name for name, _ in checker.await_args.args[2].fields)
+
+    async def test_a_heading_untrue_of_its_items_sends_it_back_named(
+        self, model: AsyncMock, checker: AsyncMock, headings: AsyncMock
+    ) -> None:
+        model.side_effect = [_GROUPED, _GOOD]
+        headings.side_effect = [['block 1 heading "Landed overnight" is not true of item(s) 1'], []]
+
+        composed = await compose_brief(USER, POOL, "daily")
+
+        assert composed.written == _GOOD
+        assert 'block 1 heading "Landed overnight" is not true of item(s) 1' in _prompt(model, 1)
 
     async def test_a_claim_the_pool_does_not_hold_sends_it_back_named(
         self, model: AsyncMock, checker: AsyncMock
@@ -235,6 +280,7 @@ class TestItemWording:
                             {
                                 "id": 1,
                                 "action": "reply",
+                                "outcome": None,
                                 "title": "[[fact:1]]",
                                 "detail": "Maya needs it by the 14th",
                             }
@@ -247,7 +293,9 @@ class TestItemWording:
 
         composed = await compose_brief(USER, POOL, "daily")
 
-        item = composed.rendered.blocks[0].items[0]
+        group = composed.rendered.blocks[0]
+        assert isinstance(group, ComposedItems)
+        item = group.items[0]
         assert (item.title, item.detail) == ("Re: Series A term sheet", "Maya needs it by the 14th")
         assert (
             "block 1 (items) item 1 title",
@@ -267,6 +315,7 @@ class TestItemWording:
                             {
                                 "id": 1,
                                 "action": "reply",
+                                "outcome": None,
                                 "title": "Term sheet",
                                 "detail": "Overdue by [[fact:1.time]]",
                             }

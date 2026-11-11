@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from datetime import date
 
+from pydantic import ValidationError
 import pytest
 
 from app.constants.briefing import (
@@ -121,9 +122,14 @@ POOL = FactPool(
 )
 
 
+def _placed(item_id: int, **fields: object) -> dict[str, object]:
+    """Place an item as a schema-held answer does: every field present, the unset ones null."""
+    return {"id": item_id, "action": None, "outcome": None, "title": "", "detail": None, **fields}
+
+
 def _ask(item_id: int) -> dict[str, object]:
     title = POOL.items[item_id].title if item_id in POOL.items else "Somebody's thread"
-    return {"id": item_id, "action": "reply", "title": title}
+    return _placed(item_id, action="reply", title=title)
 
 
 def _items(*ids: int, heading: str = "Waiting on you") -> dict[str, object]:
@@ -151,7 +157,7 @@ class TestAHoldingComposition:
     def test_every_kind_of_block_over_real_ids_holds(self) -> None:
         assert (
             _problems(
-                {"kind": "lead", "items": [_ask(13)], "offer": "Prep the board call notes"},
+                {"kind": "lead", "item": _ask(13), "offer": "Prep the board call notes"},
                 {"kind": "quote", "quote_id": "q1"},
                 _items(1, 2),
                 _chart("meetings", takeaway="Today holds [[series:meetings.peak]] hours."),
@@ -244,10 +250,15 @@ class TestChartsFitTheirSeries:
         ]
 
     def test_a_chart_without_its_kind_or_series_is_named(self) -> None:
-        assert _problems({"kind": "chart", "title": "Week", "takeaway": "Busy."}) == [
-            "block 1 (chart): no chart kind (bar, line, spark, stacked_bar)",
-            "block 1 (chart): no series_ids",
-        ]
+        assert _problems(
+            {
+                "kind": "chart",
+                "chart": "line",
+                "series_ids": [],
+                "title": "Week",
+                "takeaway": "Busy.",
+            }
+        ) == ["block 1 (chart): no series_ids"]
 
 
 class TestThePageBudget:
@@ -287,8 +298,8 @@ class TestThePageBudget:
 
 class TestEachBlockHasItsShape:
     def test_an_item_with_both_or_neither_of_action_and_outcome_is_refused(self) -> None:
-        both = {"id": 1, "action": "reply", "outcome": "sent", "title": "Acme invoice"}
-        neither = {"id": 2, "title": "Offsite venues"}
+        both = _placed(1, action="reply", outcome="sent", title="Acme invoice")
+        neither = _placed(2, title="Offsite venues")
 
         assert _problems({"kind": "items", "heading": "Mixed", "items": [both, neither]}) == [
             "block 1 (items), item 1: give exactly one of action (it needs the user) or outcome (it got somewhere)",
@@ -296,7 +307,7 @@ class TestEachBlockHasItsShape:
         ]
 
     def test_a_title_is_measured_as_the_brief_shows_it_with_its_slots_filled(self) -> None:
-        long_title = {"id": 14, "action": "reply", "title": "[[fact:14]]"}
+        long_title = _placed(14, action="reply", title="[[fact:14]]")
 
         assert _problems({"kind": "items", "heading": "Waiting", "items": [long_title]}) == [
             f"block 1 (items), item 14: a title of 63 characters, over {BRIEF_ITEM_TITLE_MAX_CHARS}"
@@ -306,29 +317,28 @@ class TestEachBlockHasItsShape:
         untitled: dict[str, object] = {
             "kind": "items",
             "heading": "Waiting",
-            "items": [{"id": 1, "action": "reply"}],
+            "items": [_placed(1, action="reply", title="  ")],
         }
 
         assert _problems(untitled) == ["block 1 (items), item 1: no title"]
 
-    def test_a_lead_opens_the_brief_with_one_item_and_an_offer(self) -> None:
-        assert _problems(_items(1), {"kind": "lead", "items": [_ask(2), _ask(3)]}) == [
+    def test_a_lead_opens_the_brief_with_an_offer(self) -> None:
+        assert _problems(_items(1), {"kind": "lead", "item": _ask(2), "offer": " "}) == [
             "block 2 (lead): a lead opens the brief, so it is block 1",
-            "block 2 (lead): a lead holds exactly one item, not 2",
             "block 2 (lead): no offer",
         ]
 
     def test_a_lead_reports_nothing_it_asks(self) -> None:
-        reported = {"id": 1, "outcome": "failed", "title": "Acme invoice"}
+        reported = _placed(1, outcome="failed", title="Acme invoice")
 
-        assert _problems({"kind": "lead", "items": [reported], "offer": "Retry it"}) == [
+        assert _problems({"kind": "lead", "item": reported, "offer": "Retry it"}) == [
             "block 1 (lead): a lead is something to act on, so its item has an action"
         ]
 
     def test_two_leads_are_refused(self) -> None:
-        lead: dict[str, object] = {"kind": "lead", "items": [_ask(1)], "offer": "Draft it"}
+        lead: dict[str, object] = {"kind": "lead", "item": _ask(1), "offer": "Draft it"}
 
-        assert "2 leads; a brief has at most one" in _problems(lead, {**lead, "items": [_ask(2)]})
+        assert "2 leads; a brief has at most one" in _problems(lead, {**lead, "item": _ask(2)})
 
     def test_a_heading_past_its_length_or_missing_is_refused(self) -> None:
         long = "h" * (BRIEF_HEADING_MAX_CHARS + 1)
@@ -336,24 +346,41 @@ class TestEachBlockHasItsShape:
         assert _problems(_items(1, heading=long)) == [
             f"block 1 (items): a heading of {BRIEF_HEADING_MAX_CHARS + 1} characters, over {BRIEF_HEADING_MAX_CHARS}"
         ]
-        assert _problems({"kind": "items", "items": [_ask(1)]}) == ["block 1 (items): no heading"]
+        assert _problems({"kind": "items", "heading": "", "items": [_ask(1)]}) == [
+            "block 1 (items): no heading"
+        ]
 
-    def test_a_field_another_kind_of_block_owns_is_never_read(self) -> None:
-        """Gemini flash-lite set goal_id on a chart and heading on a lead; neither is shown."""
-        stray: dict[str, object] = {
-            "kind": "note",
-            "text": "Quiet day.",
-            "series_ids": ["meetings"],
-            "heading": "Typed 7 hours",
-            "items": [_ask(99)],
+    def test_a_block_missing_any_field_of_its_kind_is_no_composition(self) -> None:
+        """Gemini flash-lite dropped title and kind; the schema the provider holds requires both."""
+        with pytest.raises(ValidationError):
+            BriefComposition.model_validate(
+                {"blocks": [{"kind": "items", "heading": "Waiting", "items": [{"id": 1}]}]}
+            )
+        with pytest.raises(ValidationError):
+            BriefComposition.model_validate({"blocks": [{"heading": "Waiting", "items": []}]})
+
+
+class TestTheSchemaAProviderHolds:
+    def test_every_field_of_every_object_is_required_and_every_kind_an_enum(self) -> None:
+        schema = BriefComposition.model_json_schema()
+        objects = [schema, *schema["$defs"].values()]
+
+        for obj in (o for o in objects if o.get("type") == "object"):
+            assert set(obj["required"]) == set(obj["properties"]), obj["title"]
+        kinds = {
+            d["properties"]["kind"]["const"]
+            for d in schema["$defs"].values()
+            if "kind" in d.get("properties", {})
         }
-
-        assert _problems(stray, _chart("meetings")) == []
+        assert kinds == {"lead", "items", "chart", "quote", "progress", "note"}
 
 
 class TestNoFreeNumbers:
     def test_an_events_time_and_a_due_date_are_slots(self) -> None:
-        note = {"kind": "note", "text": "Clear until [[fact:13]] at [[fact:13.time]]."}
+        note: dict[str, object] = {
+            "kind": "note",
+            "text": "Clear until [[fact:13]] at [[fact:13.time]].",
+        }
 
         assert _problems(note) == []
         assert _problems({"kind": "note", "text": "Then [[fact:1.time]]."}) == [

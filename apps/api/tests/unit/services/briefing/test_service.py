@@ -110,7 +110,8 @@ from app.services.briefing import (
     store,
     weekly,
 )
-from app.services.briefing.composition import compose
+from app.services.briefing.composition import compose, headings as composition_headings
+from app.services.briefing.composition.headings import HeadingVerdict, HeadingVerdicts
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
@@ -227,7 +228,14 @@ class _PoolItem:
         for said_side, said in _PRODUCER_SAYS.findall(self.rest):
             if said_side == side:
                 value = said
-        return {"id": self.id, "title": self.title, side: value}
+        placed: dict[str, object] = {
+            "id": self.id,
+            "title": self.title,
+            "action": None,
+            "outcome": None,
+            "detail": None,
+        }
+        return {**placed, side: value}
 
 
 def _pool_items(prompt: str) -> list[_PoolItem]:
@@ -265,6 +273,19 @@ def _composes_by_state(
     )
 
 
+_GROUP_LINE = re.compile(r"^block (\d+), heading ", re.M)
+
+
+def _every_heading_fits(schema: type[HeadingVerdicts], prompt: str, **_: object) -> HeadingVerdicts:
+    """Stand in for the heading check: every group the prompt lists fits its heading."""
+    return schema(
+        verdicts=[
+            HeadingVerdict(block=int(n), fits=True, misfits=[], why="fits")
+            for n in _GROUP_LINE.findall(prompt)
+        ]
+    )
+
+
 def _composed(
     groups: dict[str, list[str]],
     *,
@@ -284,7 +305,7 @@ def _composed(
         blocks: list[dict[str, object]] = []
         if lead is not None:
             title, offer = lead
-            blocks.append({"kind": "lead", "items": [placed(by_title[title])], "offer": offer})
+            blocks.append({"kind": "lead", "item": placed(by_title[title]), "offer": offer})
         blocks += [
             {"kind": "items", "heading": heading, "items": [placed(by_title[t]) for t in titles]}
             for heading, titles in groups.items()
@@ -359,6 +380,8 @@ class World:
     reads: dict[str, AsyncMock] = field(default_factory=dict)
     #: The composition model; by default it groups every item by whether it asks.
     composer: AsyncMock = field(default_factory=lambda: AsyncMock(side_effect=_composes_by_state))
+    #: The heading check's model; by default every heading fits its items.
+    headings: AsyncMock = field(default_factory=lambda: AsyncMock(side_effect=_every_heading_fits))
     #: The composition's faithfulness check; by default every claim holds.
     composition_checker: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
 
@@ -527,6 +550,7 @@ def world(monkeypatch: pytest.MonkeyPatch, checker: AsyncMock) -> Iterator[World
     _seam(monkeypatch, w, context, "gather_calendar", AsyncMock(return_value=[_EVENT]))
     monkeypatch.setattr(compose, "ainvoke_structured", w.composer)
     monkeypatch.setattr(compose, "unsupported_claims", w.composition_checker)
+    monkeypatch.setattr(composition_headings, "ainvoke_structured", w.headings)
     _seam(monkeypatch, w, context, "read_calendar", AsyncMock(return_value=[]))
     for repository, read in (
         (todo_repository, "list_completed_since"),
@@ -879,7 +903,15 @@ class TestDailyBrief:
                     {
                         "kind": "items",
                         "heading": "Waiting",
-                        "items": [{"id": 99, "action": "reply", "title": "Nobody"}],
+                        "items": [
+                            {
+                                "id": 99,
+                                "action": "reply",
+                                "outcome": None,
+                                "title": "Nobody",
+                                "detail": None,
+                            }
+                        ],
                     }
                 ]
             }
@@ -897,11 +929,11 @@ class TestDailyBrief:
         self, world: World
     ) -> None:
         world.work = _brief_work()
-        world.composer.side_effect = _composed({"Priya is waiting": ["Approve the Priya reply"]})
+        world.composer.side_effect = _composed({"Waiting on you": ["Approve the Priya reply"]})
         world.composition_checker.side_effect = [
             [
                 UnsupportedClaim(
-                    quote="Priya is waiting", fact="absent", truth="no fact says Priya waits"
+                    quote="Approve the Priya reply", fact="absent", truth="no fact says so"
                 )
             ],
             [],
@@ -910,10 +942,33 @@ class TestDailyBrief:
         await daily.run_daily_briefing(_USER)
 
         assert world.composer.await_count == 2
-        assert '"Priya is waiting": no fact holds it' in world.composer.await_args_list[1].args[1]
+        assert (
+            '"Approve the Priya reply": no fact holds it'
+            in world.composer.await_args_list[1].args[1]
+        )
         checked = world.composition_checker.await_args_list[0].args[2]
-        assert ("block 1 (items) heading", "Priya is waiting") in checked.fields
+        assert ("block 1 (items) item 1 title", "Approve the Priya reply") in checked.fields
         _stored_payload(world)
+
+    async def test_a_heading_untrue_of_its_items_is_retried_with_the_items_named(
+        self, world: World
+    ) -> None:
+        """Live brief: "Landed overnight" stood over a draft still waiting on approval."""
+        world.work = _brief_work()
+        world.composer.side_effect = _composed({"Landed overnight": ["Approve the Priya reply"]})
+        world.headings.side_effect = [
+            HeadingVerdicts(
+                verdicts=[HeadingVerdict(block=1, fits=False, misfits=[1], why="still waits")]
+            ),
+            HeadingVerdicts(verdicts=[HeadingVerdict(block=1, fits=True, misfits=[], why="")]),
+        ]
+
+        await daily.run_daily_briefing(_USER)
+
+        retry = world.composer.await_args_list[1].args[1]
+        assert 'block 1 heading "Landed overnight" is not true of item(s) 1: still waits' in retry
+        judged = world.headings.await_args_list[0].args[1]
+        assert "- item 1: Approve the Priya reply | waiting on you | action review" in judged
 
     async def test_voice_the_agent_botched_stores_and_sends_nothing(self, world: World) -> None:
         world.agent.return_value = SimpleNamespace(message="Sorry, something went wrong.")

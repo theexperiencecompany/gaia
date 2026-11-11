@@ -39,6 +39,8 @@ def item_line(item_id: int, item: BriefCandidate) -> str:
         parts.append(f"outcome {item.outcome.value}")
     if item.url or item.todo_id:
         parts.append("linkable")
+    if item.also_in:
+        parts.append(f"also found by {', '.join(item.also_in)}")
     return " | ".join(parts)
 
 

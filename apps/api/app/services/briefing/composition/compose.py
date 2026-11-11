@@ -8,17 +8,21 @@ anything is stored or sent.
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from app.agents.llm.client import ainvoke_structured, metered_config
+from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.brief_composition_prompts import COMPOSITION_RETRY_NOTE
 from app.constants.briefing import BRIEF_COMPOSITION_LABEL, MAX_COMPOSITION_ATTEMPTS
-from app.models.brief_composition_models import BriefComposition, ComposedBlock, ComposedItem
-from app.models.briefing_models import BriefingKind
-from app.services.briefing.composition.checks import (
-    ITEM_BLOCKS,
-    WRITTEN_FIELDS,
-    composition_problems,
+from app.models.brief_composition_models import (
+    BriefComposition,
+    ComposedBlock,
+    ComposedItem,
+    ComposedItems,
+    ComposedLead,
+    placed_items,
 )
+from app.models.briefing_models import BriefingKind
+from app.services.briefing.composition.checks import WRITTEN_FIELDS, composition_problems
+from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.composition.prompt import composition_prompt
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.fact_pool.render import context_block, pool_block
@@ -27,8 +31,10 @@ from app.services.briefing.slots import BriefFact, SlotValues, render_slots, ser
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
-# What GAIA offers to do claims nothing about the facts, so the truth check never reads it.
-_PROPOSALS = frozenset({"offer"})
+# Not read by the truth check: an offer claims nothing, and a heading is judged against its items.
+_JUDGED_APART = frozenset({"offer", "heading"})
+#: The provider holds the composition to its schema, so no weaker model can drop a field.
+_SCHEMA_HELD = StructuredCallOptions(schema_held=True)
 
 
 @dataclass(frozen=True)
@@ -67,16 +73,16 @@ def _filled_item(item: ComposedItem, values: SlotValues, *, mark: bool) -> Compo
 
 
 def _filled(block: ComposedBlock, values: SlotValues, *, mark: bool) -> ComposedBlock:
-    return block.model_copy(
-        update={
-            **{
-                name: render_slots(text, values, {}, mark_filled=mark)
-                for name in WRITTEN_FIELDS[block.kind]
-                if (text := getattr(block, name))
-            },
-            "items": [_filled_item(item, values, mark=mark) for item in block.items],
-        }
-    )
+    update: dict[str, object] = {
+        name: render_slots(text, values, {}, mark_filled=mark)
+        for name in WRITTEN_FIELDS[block.kind]
+        if (text := getattr(block, name))
+    }
+    if isinstance(block, ComposedLead):
+        update["item"] = _filled_item(block.item, values, mark=mark)
+    if isinstance(block, ComposedItems):
+        update["items"] = [_filled_item(item, values, mark=mark) for item in block.items]
+    return block.model_copy(update=update)
 
 
 def rendered(
@@ -91,9 +97,9 @@ def _written_text(composition: BriefComposition) -> Iterator[tuple[str, str]]:
     for index, block in enumerate(composition.blocks):
         where = f"block {index + 1} ({block.kind})"
         for name in WRITTEN_FIELDS[block.kind]:
-            if name not in _PROPOSALS and (text := getattr(block, name)):
+            if name not in _JUDGED_APART and (text := getattr(block, name)):
                 yield f"{where} {name}", text
-        for item in block.items if block.kind in ITEM_BLOCKS else []:
+        for item in placed_items(block):
             if item.title:
                 yield f"{where} item {item.id} title", item.title
             if item.detail:
@@ -103,21 +109,21 @@ def _written_text(composition: BriefComposition) -> Iterator[tuple[str, str]]:
 async def _problems(
     user_id: str, answer: BriefComposition, pool: FactPool, facts: str, values: SlotValues
 ) -> list[str]:
-    """Return the contract's problems, else every claim the composition's words make that the pool does not hold."""
+    """Return the contract's problems, else every heading untrue of its items and every unsupported claim."""
     problems = composition_problems(answer, pool, values)
     if problems:
         return problems
+    misheaded = await heading_problems(user_id, rendered(answer, values), pool)
     checked = CheckedProse(fields=tuple(_written_text(rendered(answer, values, mark=True))))
-    if not checked.fields:
-        return []
-    return [claim.problem() for claim in await unsupported_claims(user_id, facts, checked)]
+    claims = await unsupported_claims(user_id, facts, checked) if checked.fields else []
+    return [*misheaded, *(claim.problem() for claim in claims)]
 
 
 async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Composed:
     """Compose the brief over the pool; a pool with nothing but the calendar needs no call."""
     values = pool_values(pool)
     if not pool.composable:
-        empty = BriefComposition()
+        empty = BriefComposition(blocks=[])
         return Composed(written=empty, rendered=empty, values=values)
     facts = pool_block(pool)
     prompt = composition_prompt(pool, kind, facts)
@@ -130,6 +136,7 @@ async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Com
                 f"{prompt}\n\n{note}" if note else prompt,
                 label=BRIEF_COMPOSITION_LABEL,
                 config=metered_config(user_id),
+                options=_SCHEMA_HELD,
             )
         except MalformedStructuredOutputError as exc:
             # A reply that is no whole composition is a broken answer like any other: named, asked again.

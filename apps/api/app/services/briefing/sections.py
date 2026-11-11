@@ -10,11 +10,18 @@ from app.models.brief_composition_models import (
     BriefComposition,
     ChartBlock,
     ComposedBlock,
+    ComposedChart,
     ComposedItem,
+    ComposedItems,
+    ComposedLead,
+    ComposedNote,
+    ComposedProgress,
+    ComposedQuote,
     NoteBlock,
     ProgressBlock,
     QuoteBlock,
     SectionBlock,
+    placed_items,
 )
 from app.models.briefing_models import (
     NEEDS_YOU_ITEM_KINDS,
@@ -58,7 +65,7 @@ def _item(placed: ComposedItem, candidate: BriefCandidate, offer: str | None) ->
     """Word a placed item; what its producer knows beats the composition's word on the same side."""
     asks = placed.action is not None
     return BriefingItem(
-        text=(placed.title or "").strip(),
+        text=placed.title.strip(),
         detail=(placed.detail or "").strip() or None,
         action=(candidate.action or placed.action) if asks else None,
         outcome=None if asks else (candidate.outcome or placed.outcome),
@@ -72,32 +79,38 @@ def _item(placed: ComposedItem, candidate: BriefCandidate, offer: str | None) ->
     )
 
 
-def _section(block: ComposedBlock, pool: FactPool, numeral: str) -> BriefingSection:
-    offer = (block.offer or "").strip() or None
+def _section(block: ComposedLead | ComposedItems, pool: FactPool, numeral: str) -> BriefingSection:
+    if isinstance(block, ComposedLead):
+        offer = block.offer.strip() or None
+        return BriefingSection(
+            numeral=numeral,
+            title=LEAD_HEADING,
+            items=[_item(block.item, pool.items[block.item.id], offer)],
+        )
     return BriefingSection(
         numeral=numeral,
-        title=LEAD_HEADING if block.kind == "lead" else (block.heading or "").strip(),
-        items=[_item(placed, pool.items[placed.id], offer) for placed in block.items],
+        title=block.heading.strip(),
+        items=[_item(placed, pool.items[placed.id], None) for placed in block.items],
     )
 
 
 def _data_block(block: ComposedBlock, pool: FactPool) -> BriefBlock:
     """Resolve a chart, quote, progress or note block's ids into the data the pool holds."""
-    if block.kind == "chart" and block.chart is not None:
+    if isinstance(block, ComposedChart):
         by_id = pool.series_by_id
         return ChartBlock(
             chart=block.chart,
-            title=(block.title or "").strip(),
-            takeaway=(block.takeaway or "").strip(),
+            title=block.title.strip(),
+            takeaway=block.takeaway.strip(),
             series=[by_id[i] for i in block.series_ids],
         )
-    if block.kind == "quote" and block.quote_id is not None:
+    if isinstance(block, ComposedQuote):
         return QuoteBlock(quote=pool.quotes_by_id[block.quote_id])
-    if block.kind == "progress" and block.goal_id is not None:
+    if isinstance(block, ComposedProgress):
         return ProgressBlock(goal=pool.goals_by_id[block.goal_id])
-    if block.kind == "note" and block.text is not None:
+    if isinstance(block, ComposedNote):
         return NoteBlock(text=block.text.strip())
-    raise ValueError(f"a {block.kind} block reached layout without the fields its check requires")
+    raise ValueError(f"a {block.kind} block is laid out as a section, not as data")
 
 
 def _uncomposed(candidate: BriefCandidate) -> BriefPoolItem:
@@ -119,13 +132,12 @@ def lay_out(composition: BriefComposition, pool: FactPool) -> Laid:
     picked: list[list[tuple[int, BriefCandidate]]] = []
     blocks: list[BriefBlock] = []
     for block in composition.blocks:
-        match block.kind:
-            case "lead" | "items" as kind:
-                blocks.append(SectionBlock(kind=kind, section=len(sections)))
-                sections.append(_section(block, pool, SECTION_NUMERALS[len(sections)]))
-                picked.append([(p.id, pool.items[p.id]) for p in block.items])
-            case _:
-                blocks.append(_data_block(block, pool))
+        if isinstance(block, ComposedLead | ComposedItems):
+            blocks.append(SectionBlock(kind=block.kind, section=len(sections)))
+            sections.append(_section(block, pool, SECTION_NUMERALS[len(sections)]))
+            picked.append([(p.id, pool.items[p.id]) for p in placed_items(block)])
+        else:
+            blocks.append(_data_block(block, pool))
     placed = {i for ids in picked for i, _ in ids}
     return Laid(
         chosen=Chosen(sections=sections, picked=picked),

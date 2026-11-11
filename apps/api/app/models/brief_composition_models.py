@@ -1,6 +1,6 @@
 """A brief as GAIA composes it: an ordered list of typed blocks over the fact pool, by id only.
 
-BriefComposition is what the composition call answers, flat so every model can fill it;
+BriefComposition is what the composition call answers, one strict schema per kind of block;
 code checks it and resolves every id into the stored BriefBlock, which carries the very
 points, words and counts the pool held.
 """
@@ -30,39 +30,80 @@ class ComposedItem(BaseModel):
 
     id: int = Field(description="The item's id in the pool")
     action: BriefAction | None = Field(
-        default=None, description="What the user does about it, when it needs them; else null"
+        description="What the user does about it, when it needs them; else null"
     )
     outcome: BriefOutcome | None = Field(
-        default=None, description="Where it got to, when it needs nothing from them; else null"
+        description="Where it got to, when it needs nothing from them; else null"
     )
-    title: str | None = Field(
-        default=None, description="A noun phrase naming the thing, never a sentence"
-    )
-    detail: str | None = Field(default=None, description="The one fact that matters, or null")
+    title: str = Field(description="A noun phrase naming the thing, never a sentence")
+    detail: str | None = Field(description="The one fact that matters, or null")
 
 
-class ComposedBlock(BaseModel):
-    """One block as the composition writes it; which fields a kind needs is checked in code."""
+class ComposedLead(BaseModel):
+    """The one thing to start on, and what GAIA will do about it."""
 
-    kind: BriefBlockKind
-    heading: str | None = Field(default=None, description="items: the group's heading")
-    items: list[ComposedItem] = Field(
-        default_factory=list, description="lead: exactly one item; items: the group's items"
-    )
-    offer: str | None = Field(default=None, description="lead: what GAIA will do about it")
-    series_ids: list[str] = Field(default_factory=list, description="chart: the series it draws")
-    chart: ChartKind | None = Field(default=None, description="chart: how it draws them")
-    title: str | None = Field(default=None, description="chart: what it shows")
-    takeaway: str | None = Field(default=None, description="chart: the one thing to see in it")
-    quote_id: str | None = Field(default=None, description="quote: the quote's id")
-    goal_id: str | None = Field(default=None, description="progress: the goal's id")
-    text: str | None = Field(default=None, description="note: the note itself")
+    kind: Literal["lead"]
+    item: ComposedItem
+    offer: str = Field(description="What GAIA does when the user says yes, one short sentence")
+
+
+class ComposedItems(BaseModel):
+    """A group of items under a heading GAIA writes."""
+
+    kind: Literal["items"]
+    heading: str
+    items: list[ComposedItem]
+
+
+class ComposedChart(BaseModel):
+    """A chart over pool series, with the one thing to see in it."""
+
+    kind: Literal["chart"]
+    chart: ChartKind
+    series_ids: list[str]
+    title: str
+    takeaway: str
+
+
+class ComposedQuote(BaseModel):
+    """Someone's own words from the pool."""
+
+    kind: Literal["quote"]
+    quote_id: str
+
+
+class ComposedProgress(BaseModel):
+    """Where one of the pool's goals stands."""
+
+    kind: Literal["progress"]
+    goal_id: str
+
+
+class ComposedNote(BaseModel):
+    """A pattern, a heads-up or a suggestion in GAIA's words."""
+
+    kind: Literal["note"]
+    text: str
+
+
+#: One block as the composition writes it. Every field is required and every kind an enum, so a
+#: provider that holds replies to their schema can only send a whole block.
+ComposedBlock = (
+    ComposedLead | ComposedItems | ComposedChart | ComposedQuote | ComposedProgress | ComposedNote
+)
 
 
 class BriefComposition(BaseModel):
     """The composition's answer: the brief's blocks in reading order."""
 
-    blocks: list[ComposedBlock] = Field(default_factory=list)
+    blocks: list[ComposedBlock]
+
+
+def placed_items(block: ComposedBlock) -> list[ComposedItem]:
+    """Return the pool items a block places: the lead's one, a group's, none for the rest."""
+    if isinstance(block, ComposedLead):
+        return [block.item]
+    return block.items if isinstance(block, ComposedItems) else []
 
 
 class SectionBlock(BaseModel):

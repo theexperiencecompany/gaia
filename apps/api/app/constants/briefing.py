@@ -75,8 +75,9 @@ BRIEF_ITEM_TITLE_MAX_CHARS: Final[int] = 50
 BRIEF_ITEM_DETAIL_MAX_CHARS: Final[int] = 80
 #: Composition calls per brief: one more when the answer breaks the contract, then the run fails.
 MAX_COMPOSITION_ATTEMPTS: Final[int] = 2
-#: The composition call's metering label.
+#: The composition call's metering label, and its heading check's.
 BRIEF_COMPOSITION_LABEL: Final[str] = "brief_composition"
+BRIEF_HEADING_CHECK_LABEL: Final[str] = "brief_heading_check"
 # The page budget a composition is held to: what one edition image and a minute's read can carry.
 MAX_BRIEF_BLOCKS: Final[int] = 7
 MAX_BRIEF_ITEMS: Final[int] = 10
