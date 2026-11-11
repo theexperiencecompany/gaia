@@ -19,12 +19,15 @@ __all__ = [
     "ReferralNudgeDismissed",
     "ReferralNudgeSent",
     "ReferralRewardGranted",
+    "ReferralRewardRevoked",
     "ReferralSentWithGaiaAppended",
     "ReferralShareClicked",
     "ReferralSignupAttributed",
+    "RevokeReason",
 ]
 
 ReferralLandingOutcome = Literal["valid", "disabled"]
+RevokeReason = Literal["refund", "dispute"]
 GiftMintFailureReason = Literal[
     "provider_unreachable", "provider_rejected", "provider_invalid_response"
 ]
@@ -165,6 +168,21 @@ class ReferralGiftMintFailed(ServerEvent):
     budget_per_user_day: ClassVar[int] = 20
 
     reason: GiftMintFailureReason
+
+
+class ReferralRewardRevoked(ServerEvent):
+    """A paying friend's first payment was refunded or disputed, so their referrer's month was taken back.
+
+    reclaimed is false when the month was already under way and could not be moved back.
+    """
+
+    event: ClassVar[str] = "referral:reward_revoked"
+    budget_per_user_day: ClassVar[int] = 50
+
+    friend_id: ObjectIdStr
+    reason: RevokeReason
+    prior_state: Identifier
+    reclaimed: bool
 
 
 class ReferralBankedMonthApplied(ServerEvent):

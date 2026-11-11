@@ -244,8 +244,13 @@ def mock_no_referral():
         patch(
             "app.services.payments.subscription_events._queue_banked_referral_months", AsyncMock()
         ) as banked,
+        patch(
+            "app.services.payments.payment_webhook_service.request_reward_revocation", AsyncMock()
+        ) as revocation,
     ):
-        yield SimpleNamespace(gift=gift, conversion=conversion, banked=banked)
+        yield SimpleNamespace(
+            gift=gift, conversion=conversion, banked=banked, revocation=revocation
+        )
 
 
 @pytest.fixture

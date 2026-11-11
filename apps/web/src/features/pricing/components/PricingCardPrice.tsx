@@ -10,6 +10,8 @@ interface PricingCardPriceProps {
   list: PriceDisplay;
   /** Non-null when an offer applies — the list figures are then struck. */
   offer: PriceDisplay | null;
+  /** Replaces the billing sub-line, e.g. how long a gift price lasts. */
+  note: string | null;
   /** The plan row's currency; every figure is in its major unit. */
   currency: string;
 }
@@ -35,6 +37,7 @@ export const PRICE_HEADLINE_ROW_CLASS = "flex min-h-18 items-baseline gap-2";
 export function PricingCardPrice({
   list,
   offer,
+  note,
   currency,
 }: PricingCardPriceProps) {
   const { perMonthDollars, yearlyTotalDollars, priceSubLine, showSavings } =
@@ -73,7 +76,7 @@ export function PricingCardPrice({
           className="text-sm font-normal text-zinc-400"
           ease={{ stiffness: 200, damping: 20 }}
         >
-          {priceSubLine}
+          {note ?? priceSubLine}
         </TextMorph>
         {!!yearlyTotalDollars && (
           <>

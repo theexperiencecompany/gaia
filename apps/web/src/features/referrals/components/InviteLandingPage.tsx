@@ -2,7 +2,7 @@
 
 import { Spinner } from "@heroui/spinner";
 import { useInviteLanding } from "../hooks/useInviteLanding";
-import { InviteLanding } from "./InviteLanding";
+import { InviteAlreadyOnGaia, InviteLanding } from "./InviteLanding";
 
 const SIGNUP_HREF = "/signup";
 
@@ -10,9 +10,11 @@ interface InviteLandingPageProps {
   code: string;
 }
 
-/** /invite/[code]: resolves in the browser (which arms attribution), then shows the gift. */
+/** /invite/[code]: a member goes back to their chat; anyone else resolves in the browser (arming attribution) and sees the gift. */
 export function InviteLandingPage({ code }: InviteLandingPageProps) {
-  const { variant, invite, isError } = useInviteLanding(code);
+  const { variant, isSignedIn, invite, isError } = useInviteLanding(code);
+
+  if (isSignedIn) return <InviteAlreadyOnGaia />;
 
   if (!variant || (!invite && !isError)) {
     return (

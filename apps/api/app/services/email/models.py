@@ -33,6 +33,6 @@ class ReferralRewardEmail(BaseModel):
 
     to: str
     user_id: str
-    user_name: str | None = None
+    first_name: str | None = None
     friend_name: str
     reward_line: str

@@ -107,6 +107,7 @@ export type ServerEventName =
   | "referral:nudge_dismissed"
   | "referral:nudge_sent"
   | "referral:reward_granted"
+  | "referral:reward_revoked"
   | "referral:sent_with_gaia_appended"
   | "referral:signup_attributed"
   | "reminder:completed"
@@ -1240,6 +1241,15 @@ export interface EventProperties {
     "friend_id": string;
     "delivery": string;
     "months": number;
+  };
+  "referral:reward_revoked": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "friend_id": string;
+    "reason": "refund" | "dispute";
+    "prior_state": string;
+    "reclaimed": boolean;
   };
   "referral:sent_with_gaia_appended": {
     "actor": "user" | "agent";

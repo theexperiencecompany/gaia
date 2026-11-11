@@ -1,14 +1,16 @@
 """The referrer's free month: earned on a referred friend's first successful payment.
 
-Delivered by moving the referrer's Dodo next_billing_date forward a month, or
-banked while they have no active subscription and applied when they come back.
-Every step is idempotent per friend, so a redelivered webhook or a retried job
-never moves a billing date twice:
+The payment webhook converts the friend and queues the referrer's settle job.
+The job moves the referrer's Dodo next_billing_date forward a month, or banks
+the month while they have no active subscription and applies it when they come
+back, and takes a month back when its payment is refunded or disputed. Every
+step is idempotent per friend, so a redelivered webhook or a retried job never
+moves a billing date twice:
 
 - the friend's joined -> paid transition is atomic, and claims the reward;
-- the billing date a reward moves to is pinned once, then only ever set, never
-  added to, and only while Dodo's date is still behind it;
-- one referrer's rewards are delivered one at a time, under a Redis lock.
+- each move is pinned on its referral once, then only ever set, never added to;
+- one referrer's rewards settle one at a time under a Redis lock, a move left
+  in flight first, so no month is pinned while an earlier one may still land.
 """
 
 import asyncio
@@ -46,18 +48,16 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.referral_models import ReferralDocument, ReferralRewardState, ReferralUpdate
-from app.models.webhook_models import DodoPaymentData, DodoSubscriptionData
+from app.models.webhook_models import DodoPaymentData
 from app.services.analytics_service import capture
 from app.services.email import ReferralRewardEmail, send_referral_reward_email
 from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
-from app.services.payments.subscription_events import (
-    SubscriptionEvent,
-    SubscriptionEventKind,
-    apply_subscription_event,
-)
+from app.services.referrals.billing_date import live_billing_date, set_billing_date
 from app.services.referrals.codes import first_name_of
 from app.services.referrals.nudges import record_announcement
+from app.services.referrals.revocation import reclaim_reward
+from app.services.referrals.settlement_queue import queue_settlement
 from app.utils.email_utils import email_identity
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.redis_lock import DistributedLock
@@ -129,7 +129,7 @@ async def _is_self_referral(referral: ReferralDocument, payment: DodoPaymentData
 
 
 async def record_friend_payment(payment: DodoPaymentData) -> None:
-    """Convert a referred friend on their first successful payment and earn their referrer a month."""
+    """Convert a referred friend on their first successful payment and queue their referrer's month."""
     # A one-off purchase or a free checkout is not a friend joining.
     if payment.total_amount <= 0 or not payment.subscription_id:
         return
@@ -141,7 +141,7 @@ async def record_friend_payment(payment: DodoPaymentData) -> None:
     )
     if referral is None:
         # Not referred, already converted, or this very payment converted them
-        # and the reward is still owed because the last delivery failed.
+        # and a redelivery must queue the still-pending month again.
         retried = await referral_repository.get(friend_user_id)
         if retried is None or retried.payment_id != payment.payment_id:
             return
@@ -167,22 +167,21 @@ async def record_friend_payment(payment: DodoPaymentData) -> None:
             friend_user_id, ReferralUpdate(reward_state=ReferralRewardState.SELF_REFERRAL)
         )
         return
-    await deliver_rewards(referral.referrer_user_id, [referral])
+    await queue_settlement(referral.referrer_user_id, friend_user_id=friend_user_id)
 
 
-async def apply_banked_months(referrer_user_id: str) -> int:
-    """Deliver every month the referrer banked while unsubscribed; returns how many moved the billing date."""
-    banked = await referral_repository.list_banked(referrer_user_id)
-    if not banked:
-        return 0
-    deliveries = await deliver_rewards(referrer_user_id, banked)
-    return sum(1 for d in deliveries if d.state is ReferralRewardState.APPLIED)
+def _move_in_flight(referral: ReferralDocument) -> bool:
+    """Whether this referral pinned a move an earlier job may have left half done."""
+    if referral.revocation_owed:
+        return referral.revoke_target_billing_date is not None
+    return (
+        referral.reward_state is ReferralRewardState.PENDING
+        and referral.reward_target_billing_date is not None
+    )
 
 
-async def deliver_rewards(
-    referrer_user_id: str, referrals: list[ReferralDocument]
-) -> list[RewardDelivery]:
-    """Apply each reward to the referrer's active subscription, or bank it, one referrer at a time."""
+async def settle_rewards(referrer_user_id: str) -> list[RewardDelivery]:
+    """Settle every reward the referrer is owed: grant or bank new months, apply banked ones, take revoked ones back."""
     lease = DistributedLock(
         REWARD_LOCK_KEY_TEMPLATE.format(user_id=referrer_user_id),
         lease_seconds=REWARD_LOCK_LEASE_S,
@@ -193,24 +192,50 @@ async def deliver_rewards(
     async with lease.hold() as held:
         if not held:
             raise RuntimeError(REWARD_LOCK_UNAVAILABLE)
-        return [await _deliver(referral) for referral in referrals]
+        # Stable, so the rest keep their oldest-paid-first order.
+        owed = sorted(
+            await referral_repository.list_owed(referrer_user_id),
+            key=lambda referral: not _move_in_flight(referral),
+        )
+        if not owed:
+            return []
+        subscription = await subscription_repository.get_active_for_user(referrer_user_id)
+        dodo_subscription_id = (
+            subscription.dodo_subscription_id
+            if subscription and subscription.dodo_subscription_id
+            else None
+        )
+        return [await _settle(referral, dodo_subscription_id) for referral in owed]
 
 
-async def _deliver(referral: ReferralDocument) -> RewardDelivery:
+async def _settle(referral: ReferralDocument, dodo_subscription_id: str | None) -> RewardDelivery:
+    if referral.revocation_owed:
+        await reclaim_reward(referral, dodo_subscription_id)
+        return RewardDelivery(ReferralRewardState.REVOKED)
+    if dodo_subscription_id is None:
+        return await _bank(referral)
+    return await _apply(referral, dodo_subscription_id)
+
+
+async def _bank(referral: ReferralDocument) -> RewardDelivery:
+    """Keep the month for a referrer with no active subscription; only a new month is announced."""
+    delivery = RewardDelivery(ReferralRewardState.BANKED)
+    if referral.reward_state is ReferralRewardState.PENDING:
+        await referral_repository.update(
+            referral.friend_user_id,
+            ReferralUpdate(
+                reward_state=ReferralRewardState.BANKED,
+                reward_subscription_id=None,
+                reward_target_billing_date=None,
+            ),
+        )
+        await _announce(referral, delivery)
+    return delivery
+
+
+async def _apply(referral: ReferralDocument, dodo_subscription_id: str) -> RewardDelivery:
     newly_earned = referral.reward_state is ReferralRewardState.PENDING
-    subscription = await subscription_repository.get_active_for_user(referral.referrer_user_id)
-    if subscription is None or not subscription.dodo_subscription_id:
-        if newly_earned:
-            await referral_repository.update(
-                referral.friend_user_id,
-                ReferralUpdate(
-                    reward_state=ReferralRewardState.BANKED, reward_target_billing_date=None
-                ),
-            )
-            await _announce(referral, RewardDelivery(ReferralRewardState.BANKED))
-        return RewardDelivery(ReferralRewardState.BANKED)
-
-    moved_to = await _move_billing_date(referral, subscription.dodo_subscription_id)
+    moved_to = await _move_billing_date(referral, dodo_subscription_id)
     applied_at = datetime.now(UTC)
     await referral_repository.update(
         referral.friend_user_id,
@@ -233,11 +258,11 @@ async def _deliver(referral: ReferralDocument) -> RewardDelivery:
 
 async def _move_billing_date(referral: ReferralDocument, dodo_subscription_id: str) -> datetime:
     """Push the referrer's next charge a month out, to a date pinned on the referral so a retry lands on it again."""
-    client = payment_service.client
-    live = await asyncio.to_thread(client.subscriptions.retrieve, dodo_subscription_id)
-    current = live.next_billing_date.astimezone(UTC)
-    pinned = await referral_repository.set_reward_target_if_unset(
-        referral.friend_user_id, pendulum.instance(current).add(months=REWARD_MONTHS_PER_FRIEND)
+    current = await live_billing_date(dodo_subscription_id)
+    pinned = await referral_repository.pin_reward_target(
+        referral.friend_user_id,
+        subscription_id=dodo_subscription_id,
+        target=pendulum.instance(current).add(months=REWARD_MONTHS_PER_FRIEND),
     )
     target = as_utc(pinned.reward_target_billing_date if pinned else None)
     if target is None:
@@ -245,24 +270,12 @@ async def _move_billing_date(referral: ReferralDocument, dodo_subscription_id: s
     if current >= target:
         log.set_ns("referral", billing_date_already_moved=True)
         return current
-
-    updated = await asyncio.to_thread(
-        client.subscriptions.update, dodo_subscription_id, next_billing_date=target
+    return await set_billing_date(
+        dodo_subscription_id,
+        target,
+        referrer_user_id=referral.referrer_user_id,
+        audit="referral free month applied",
     )
-    await apply_subscription_event(
-        SubscriptionEvent(
-            kind=SubscriptionEventKind.BILLING_DATE_MOVED,
-            occurred_at=datetime.now(UTC),
-            data=DodoSubscriptionData.model_validate(updated.model_dump(mode="json")),
-        )
-    )
-    log.audit(
-        "referral free month applied",
-        actor=referral.referrer_user_id,
-        resource=dodo_subscription_id,
-        provider="dodo",
-    )
-    return updated.next_billing_date.astimezone(UTC)
 
 
 async def _announce(referral: ReferralDocument, delivery: RewardDelivery) -> None:
@@ -303,7 +316,7 @@ async def _email_referrer(referral: ReferralDocument, friend_name: str, reward_l
             ReferralRewardEmail(
                 to=referrer.email,
                 user_id=referrer.id,
-                user_name=referrer.name,
+                first_name=first_name_of(referrer),
                 friend_name=friend_name,
                 reward_line=reward_line,
             )

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import secrets
 from typing import cast
 from urllib.parse import quote
@@ -193,8 +194,71 @@ async def login_google_mobile(redirect_uri: str | None = None) -> MobileLoginUrl
     return MobileLoginUrlResponse(url=authorization_url)
 
 
+@dataclass(frozen=True)
+class _WorkOSLogin:
+    """A finished WorkOS sign-in: its session token, and whether it spent an invite link's cookie."""
+
+    token: str
+    referral_consumed: bool
+
+
+async def _complete_workos_login(request: Request, code: str, flow: str) -> _WorkOSLogin:
+    """Trade WorkOS's code for a session and sign the user in, crediting the invite link this browser opened."""
+    auth_response = get_workos_client().user_management.authenticate_with_code(
+        code=code,
+        session={
+            "seal_session": True,
+            "cookie_password": settings.WORKOS_COOKIE_PASSWORD,
+        },
+    )
+
+    email = auth_response.user.email
+    first = auth_response.user.first_name or ""
+    last = auth_response.user.last_name or ""
+    name = f"{first} {last}".strip()
+    picture_url = auth_response.user.profile_picture_url
+    log.set(
+        fields_extracted=[
+            field
+            for field, value in [("email", email), ("name", name), ("picture", picture_url)]
+            if value
+        ]
+    )
+
+    # The invite link's first-touch cookie rides every top-level sign-in redirect,
+    # in the system browser the desktop and mobile apps sign in through too.
+    referral = ReferralAttribution.from_cookie(request.cookies.get(REFERRAL_COOKIE_NAME))
+    user_id, is_new_user = await store_user_info(
+        name,
+        email,
+        picture_url,
+        auth_method=auth_response.authentication_method,
+        referral=referral,
+    )
+    log.set(user_id=str(user_id), is_new_user=is_new_user)
+    log.audit(
+        "login succeeded",
+        actor=str(user_id),
+        flow=flow,
+        provider="authkit",
+        is_new_user=is_new_user,
+    )
+    return _WorkOSLogin(
+        token=auth_response.sealed_session or auth_response.access_token,
+        referral_consumed=referral is not None,
+    )
+
+
+def _consume_referral_cookie(response: RedirectResponse, login: _WorkOSLogin) -> RedirectResponse:
+    """Drop a spent invite cookie, so a later signup on this browser does not inherit it."""
+    if login.referral_consumed:
+        response.delete_cookie(REFERRAL_COOKIE_NAME)
+    return response
+
+
 @router.get("/workos/mobile/callback", response_class=RedirectResponse)
 async def workos_mobile_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
 ) -> RedirectResponse:
@@ -228,47 +292,11 @@ async def workos_mobile_callback(
             )
             return RedirectResponse(url=f"{mobile_redirect}?error=missing_code")
 
-        auth_response = get_workos_client().user_management.authenticate_with_code(
-            code=code,
-            session={
-                "seal_session": True,
-                "cookie_password": settings.WORKOS_COOKIE_PASSWORD,
-            },
+        login = await _complete_workos_login(request, code, OAUTH_FLOW_MOBILE)
+
+        return _consume_referral_cookie(
+            RedirectResponse(url=f"{mobile_redirect}?token={quote(login.token, safe='')}"), login
         )
-
-        # Extract user information
-        email = auth_response.user.email
-        first = auth_response.user.first_name or ""
-        last = auth_response.user.last_name or ""
-        name = f"{first} {last}".strip()
-        picture_url = auth_response.user.profile_picture_url
-
-        fields_extracted = [
-            field
-            for field, value in [
-                ("email", email),
-                ("name", name),
-                ("picture", picture_url),
-            ]
-            if value
-        ]
-        log.set(fields_extracted=fields_extracted)
-
-        # Store user info in DB
-        user_id, is_new_user = await store_user_info(
-            name, email, picture_url, auth_method=auth_response.authentication_method
-        )
-        log.set(user_id=str(user_id), is_new_user=is_new_user)
-        log.audit(
-            "login succeeded",
-            actor=str(user_id),
-            flow="mobile",
-            provider="authkit",
-            is_new_user=is_new_user,
-        )
-
-        token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(url=f"{mobile_redirect}?token={quote(token, safe='')}")
 
     except HTTPException as e:
         log.error(
@@ -312,6 +340,7 @@ async def login_workos_desktop() -> RedirectResponse:
 
 @router.get("/workos/desktop/callback", response_class=RedirectResponse)
 async def workos_desktop_callback(
+    request: Request,
     code: str | None = None,
 ) -> RedirectResponse:
     """
@@ -337,48 +366,12 @@ async def workos_desktop_callback(
             )
             return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=missing_code")
 
-        auth_response = get_workos_client().user_management.authenticate_with_code(
-            code=code,
-            session={
-                "seal_session": True,
-                "cookie_password": settings.WORKOS_COOKIE_PASSWORD,
-            },
-        )
-
-        # Extract user information
-        email = auth_response.user.email
-        first = auth_response.user.first_name or ""
-        last = auth_response.user.last_name or ""
-        name = f"{first} {last}".strip()
-        picture_url = auth_response.user.profile_picture_url
-
-        fields_extracted = [
-            field
-            for field, value in [
-                ("email", email),
-                ("name", name),
-                ("picture", picture_url),
-            ]
-            if value
-        ]
-        log.set(fields_extracted=fields_extracted)
-
-        # Store user info in our database
-        user_id, is_new_user = await store_user_info(
-            name, email, picture_url, auth_method=auth_response.authentication_method
-        )
-        log.set(user_id=str(user_id), is_new_user=is_new_user)
-        log.audit(
-            "login succeeded",
-            actor=str(user_id),
-            flow="desktop",
-            provider="authkit",
-            is_new_user=is_new_user,
-        )
+        login = await _complete_workos_login(request, code, OAUTH_FLOW_DESKTOP)
 
         # Return token via deep link - desktop app will handle storage
-        token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?token={quote(token, safe='')}")
+        return _consume_referral_cookie(
+            RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?token={quote(login.token, safe='')}"), login
+        )
 
     except HTTPException as e:
         log.error(
@@ -435,49 +428,7 @@ async def workos_callback(
             )
             return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=missing_code")
 
-        auth_response = get_workos_client().user_management.authenticate_with_code(
-            code=code,
-            session={
-                "seal_session": True,
-                "cookie_password": settings.WORKOS_COOKIE_PASSWORD,
-            },
-        )
-
-        # Extract user information
-        email = auth_response.user.email
-        first = auth_response.user.first_name or ""
-        last = auth_response.user.last_name or ""
-        name = f"{first} {last}".strip()
-        picture_url = auth_response.user.profile_picture_url
-
-        fields_extracted = [
-            field
-            for field, value in [
-                ("email", email),
-                ("name", name),
-                ("picture", picture_url),
-            ]
-            if value
-        ]
-        log.set(fields_extracted=fields_extracted)
-
-        # The invite link's first-touch cookie rides this top-level redirect.
-        referral = ReferralAttribution.from_cookie(request.cookies.get(REFERRAL_COOKIE_NAME))
-        user_id, is_new_user = await store_user_info(
-            name,
-            email,
-            picture_url,
-            auth_method=auth_response.authentication_method,
-            referral=referral,
-        )
-        log.set(user_id=str(user_id), is_new_user=is_new_user)
-        log.audit(
-            "login succeeded",
-            actor=str(user_id),
-            flow="web",
-            provider="authkit",
-            is_new_user=is_new_user,
-        )
+        login = await _complete_workos_login(request, code, OAUTH_FLOW_WEB)
 
         # Redirect to return_url if provided and safe, otherwise default /redirect
         if return_url and is_safe_redirect_path(return_url):
@@ -492,14 +443,10 @@ async def workos_callback(
             response,
             request,
             name=WOS_SESSION_COOKIE,
-            value=auth_response.sealed_session or auth_response.access_token,
+            value=login.token,
             max_age=WOS_SESSION_MAX_AGE_SECONDS,
         )
-        # Consumed: a later signup on this browser must not inherit the attribution.
-        if referral is not None:
-            response.delete_cookie(REFERRAL_COOKIE_NAME)
-
-        return response
+        return _consume_referral_cookie(response, login)
 
     except HTTPException as e:
         log.error(

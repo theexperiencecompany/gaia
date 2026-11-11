@@ -790,6 +790,9 @@ async def create_referral_indexes() -> None:
             referrals.create_index("friend_user_id", unique=True),
             referrals.create_index([("referrer_user_id", 1), ("joined_at", -1)]),
             referrals.create_index([("referrer_user_id", 1), ("reward_state", 1), ("paid_at", 1)]),
+            # A refund or dispute finds the referral its payment converted; the sweep finds stuck months.
+            referrals.create_index("payment_id", sparse=True),
+            referrals.create_index([("reward_state", 1), ("paid_at", 1)]),
             invites.create_index([("sender_user_id", 1), ("recipient_email", 1)], unique=True),
             suppressions.create_index("email", unique=True),
             nudges.create_index("user_id", unique=True),

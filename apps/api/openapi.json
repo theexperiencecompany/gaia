@@ -15347,6 +15347,66 @@
         "title": "ReferralCopyVariant",
         "type": "string"
       },
+      "ReferralFriendGift": {
+        "description": "The gift a referred friend's checkout applies, and who sent it.",
+        "properties": {
+          "offer": {
+            "$ref": "#/components/schemas/ReferralOffer"
+          },
+          "referrer_first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The referrer's first name, when their account has one",
+            "title": "Referrer First Name"
+          },
+          "referrer_picture": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The referrer's photo, when they have one",
+            "title": "Referrer Picture"
+          }
+        },
+        "required": [
+          "referrer_first_name",
+          "referrer_picture",
+          "offer"
+        ],
+        "title": "ReferralFriendGift",
+        "type": "object"
+      },
+      "ReferralGiftResponse": {
+        "description": "The caller's gift from the friend who referred them; null when they are owed none.",
+        "properties": {
+          "gift": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReferralFriendGift"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for anyone never referred, already subscribed, or while referrals are off"
+          }
+        },
+        "required": [
+          "gift"
+        ],
+        "title": "ReferralGiftResponse",
+        "type": "object"
+      },
       "ReferralInviteRequest": {
         "description": "A batch of addresses to invite; each is judged on its own, so one invalid address fails nothing.",
         "properties": {
@@ -35666,6 +35726,58 @@
         "summary": "Update Project",
         "tags": [
           "Todos"
+        ]
+      }
+    },
+    "/api/v1/referrals/gift": {
+      "get": {
+        "description": "The caller's gift from the friend who referred them, for the paywall's price; null when none is owed.",
+        "operationId": "referrals_get_my_gift",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralGiftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get My Gift",
+        "tags": [
+          "Referrals"
         ]
       }
     },

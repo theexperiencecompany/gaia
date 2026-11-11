@@ -69,6 +69,24 @@ class ReferralResolveResponse(ResponseModel):
     offer: ReferralOffer
 
 
+class ReferralFriendGift(ResponseModel):
+    """The gift a referred friend's checkout applies, and who sent it."""
+
+    referrer_first_name: str | None = Field(
+        description="The referrer's first name, when their account has one"
+    )
+    referrer_picture: str | None = Field(description="The referrer's photo, when they have one")
+    offer: ReferralOffer
+
+
+class ReferralGiftResponse(ResponseModel):
+    """The caller's gift from the friend who referred them; null when they are owed none."""
+
+    gift: ReferralFriendGift | None = Field(
+        description="Null for anyone never referred, already subscribed, or while referrals are off"
+    )
+
+
 class ReferralSuggestion(ResponseModel):
     name: str | None = Field(default=None, description="Display name, when the source carried one")
     email: str

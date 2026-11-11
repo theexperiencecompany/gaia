@@ -1,4 +1,4 @@
-"""What the referral page shows its owner, and what an invite landing page shows a friend."""
+"""What the referral page shows its owner, and what an invite landing page and paywall show a friend."""
 
 import asyncio
 from collections import Counter
@@ -18,14 +18,21 @@ from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import SubscriptionDocument
-from app.models.referral_models import ReferralRewardState
-from app.schemas.referrals import ReferralMeResponse, ReferralResolveResponse, ReferredFriend
+from app.models.referral_models import ReferralDocument, ReferralRewardState, ReferredFriendStatus
+from app.schemas.referrals import (
+    ReferralFriendGift,
+    ReferralGiftResponse,
+    ReferralMeResponse,
+    ReferralResolveResponse,
+    ReferredFriend,
+)
 from app.services.analytics_service import capture
 from app.services.feature_flags import get_variant
 from app.services.payments.payment_service import payment_service
 from app.services.referrals.attribution import ReferralAttribution, first_touch_cookie
 from app.services.referrals.availability import referrals_enabled, require_referrals
 from app.services.referrals.codes import ensure_code, first_name_of, load_user, share_link
+from app.services.referrals.gift import pending_gift_referral
 from app.services.referrals.offer import build_offer
 from app.utils.errors import AppError
 from app.utils.timezone import as_utc
@@ -35,6 +42,17 @@ from shared.py.analytics.catalog.referrals import ReferralLandingResolved
 _EARNED_STATES = frozenset(
     {ReferralRewardState.PENDING, ReferralRewardState.APPLIED, ReferralRewardState.BANKED}
 )
+
+
+def _friend_entry(referral: ReferralDocument, first_name: str | None) -> ReferredFriend:
+    """List a friend; one whose first payment was refunded or disputed earned nothing, so shows as joined."""
+    revoked = referral.reward_state is ReferralRewardState.REVOKED
+    return ReferredFriend(
+        first_name=first_name,
+        status=ReferredFriendStatus.JOINED if revoked else referral.status,
+        joined_at=referral.joined_at,
+        paid_at=None if revoked else referral.paid_at,
+    )
 
 
 async def require_referrer(user_id: str) -> SubscriptionDocument:
@@ -79,13 +97,9 @@ async def get_referral_overview(user_id: str) -> ReferralMeResponse:
         if subscription.next_billing_date
         else None,
         friends=[
-            ReferredFriend(
-                first_name=first_name_of(friends[r.friend_user_id])
-                if r.friend_user_id in friends
-                else None,
-                status=r.status,
-                joined_at=r.joined_at,
-                paid_at=r.paid_at,
+            _friend_entry(
+                r,
+                first_name_of(friends[r.friend_user_id]) if r.friend_user_id in friends else None,
             )
             for r in referrals
         ],
@@ -147,3 +161,20 @@ async def land_on_invite(
             ),
         )
     return InviteLanding(resolved=resolved, cookie=cookie)
+
+
+async def friend_gift(user_id: str) -> ReferralGiftResponse:
+    """Return the gift the caller's checkout will apply, for the paywall to price; None when they are owed none."""
+    referral = await pending_gift_referral(user_id)
+    if referral is None:
+        return ReferralGiftResponse(gift=None)
+    referrer, plans = await asyncio.gather(
+        user_repository.get(referral.referrer_user_id), payment_service.get_pro_plans()
+    )
+    return ReferralGiftResponse(
+        gift=ReferralFriendGift(
+            referrer_first_name=first_name_of(referrer) if referrer else None,
+            referrer_picture=(referrer.picture or None) if referrer else None,
+            offer=build_offer(plans),
+        )
+    )

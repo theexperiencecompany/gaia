@@ -44,6 +44,10 @@ FRIEND_YEARLY_DISCOUNT_CYCLES = 1
 # Each single-use gift code is redeemable once.
 GIFT_DISCOUNT_USAGE_LIMIT = 1
 
+# A promo code beats the gift when it takes more off the plan's first year of charges.
+MONTHLY_CHARGES_PER_YEAR = 12
+YEARLY_CHARGES_PER_YEAR = 1
+
 # What one paying friend earns the referrer.
 REWARD_MONTHS_PER_FRIEND = 1
 
@@ -213,9 +217,12 @@ REWARD_LOCK_UNAVAILABLE = (
 
 # ---- Worker ------------------------------------------------------------------
 
-#: Applies a resubscribed referrer's banked months; enqueued by the billing reducer.
-APPLY_BANKED_MONTHS_TASK = "apply_banked_referral_months"
-APPLY_BANKED_MONTHS_RETRY_DELAY = timedelta(minutes=2)
+#: Settles every reward a referrer is owed: grants, banked months, and revocations.
+SETTLE_REWARDS_TASK = "settle_referral_rewards"
+SETTLE_REWARDS_RETRY_DELAY = timedelta(minutes=2)
+# A friend's own settle job gets this long before the sweep treats their month as stuck.
+SETTLE_SWEEP_GRACE = timedelta(minutes=15)
+SETTLE_SWEEP_MAX_REFERRALS_PER_RUN = 500
 
 # ---- Notification copy -------------------------------------------------------
 

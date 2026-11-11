@@ -240,7 +240,9 @@ class TestWorkOSMobileCallback:
         )
         assert response.status_code == 307
         assert "token=" in response.headers["location"]
-        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
+        mock_store.assert_awaited_once_with(
+            *STORED_PROFILE, auth_method="GoogleOAuth", referral=None
+        )
 
     @patch(
         "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
@@ -335,7 +337,9 @@ class TestWorkOSDesktopCallback:
         )
         assert response.status_code == 307
         assert "gaia://auth/callback?token=" in response.headers["location"]
-        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
+        mock_store.assert_awaited_once_with(
+            *STORED_PROFILE, auth_method="GoogleOAuth", referral=None
+        )
 
     async def test_desktop_callback_no_code(self, client: AsyncClient):
         response = await client.get(
@@ -425,6 +429,54 @@ class TestWorkOSCallback:
             auth_method="GoogleOAuth",
             referral=ReferralAttribution(
                 code="aryan-k7f2", landing_variant=ReferralCopyVariant.TIME_BACK
+            ),
+        )
+        cleared = [
+            c for c in response.headers.get_list("set-cookie") if c.startswith(REFERRAL_COOKIE_NAME)
+        ]
+        assert cleared and "Max-Age=0" in cleared[0]
+
+    @pytest.mark.parametrize(
+        ("path", "deep_link"),
+        [
+            ("/workos/mobile/callback?code=abc&state=xyz", "gaiamobile://auth/callback"),
+            ("/workos/desktop/callback?code=abc", "gaia://auth/callback"),
+        ],
+        ids=["mobile", "desktop"],
+    )
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    @patch(
+        "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
+        new_callable=AsyncMock,
+        return_value="gaiamobile://auth/callback",
+    )
+    async def test_an_app_signup_in_the_system_browser_is_credited_to_its_invite(
+        self,
+        _mock_redirect: AsyncMock,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        client: AsyncClient,
+        path: str,
+        deep_link: str,
+    ):
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
+        )
+        mock_store.return_value = (MagicMock(), True)
+
+        response = await client.get(
+            f"{OAUTH_BASE}{path}",
+            headers={"cookie": f"{REFERRAL_COOKIE_NAME}=aryan-k7f2.gift"},
+            follow_redirects=False,
+        )
+
+        assert response.headers["location"].startswith(f"{deep_link}?token=")
+        mock_store.assert_awaited_once_with(
+            *STORED_PROFILE,
+            auth_method="GoogleOAuth",
+            referral=ReferralAttribution(
+                code="aryan-k7f2", landing_variant=ReferralCopyVariant.GIFT
             ),
         )
         cleared = [

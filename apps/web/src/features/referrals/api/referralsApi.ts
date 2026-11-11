@@ -8,6 +8,9 @@ export const referralsApi = {
   /** 403 REFERRAL_SUBSCRIPTION_REQUIRED for a non-subscriber; silent so the page can say it kindly. */
   getMe: () => api.get("/api/v1/referrals/me", { silent: true }),
 
+  /** The caller's own gift from whoever referred them; null when none is owed. */
+  getGift: () => api.get("/api/v1/referrals/gift", { silent: true }),
+
   getSuggestions: () =>
     api.get("/api/v1/referrals/suggestions", { silent: true }),
 
