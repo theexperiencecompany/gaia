@@ -9,28 +9,28 @@ import {
 import { Button } from "@heroui/button";
 import type { WorkflowDelivery } from "@shared/api/generated";
 import Link from "next/link";
+import { type Control, Controller } from "react-hook-form";
 import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
 import { cn } from "@/lib/utils";
+import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import WorkflowSection from "./WorkflowSection";
 
+const FIELD_LABEL = "When a run finishes";
+const UNCHOSEN_HINT = "Choose how you hear about each run.";
+
 interface WorkflowDeliveryFieldProps {
-  /** null until the user picks one; a new workflow cannot be saved without it. */
-  value: WorkflowDelivery | null;
-  onChange: (delivery: WorkflowDelivery) => void;
-  errorMessage?: string;
+  control: Control<WorkflowFormData>;
   isDisabled?: boolean;
 }
 
 /**
  * How each run's result reaches the user. A segmented control with no default:
- * the choice is the user's to make, so nothing is preselected. "Add to my
- * brief" follows the briefing schedule: it names the brief that will carry the
- * results, and is unavailable while briefs are off.
+ * the choice is the user's to make, so nothing is preselected. Submitting
+ * without one focuses the first segment and names the missing choice. "Add to
+ * my brief" follows the briefing schedule and is unavailable while briefs are off.
  */
 export default function WorkflowDeliveryField({
-  value,
-  onChange,
-  errorMessage,
+  control,
   isDisabled = false,
 }: WorkflowDeliveryFieldProps) {
   const { schedule } = useBriefingScheduleSettings();
@@ -39,55 +39,72 @@ export default function WorkflowDeliveryField({
     : WORKFLOW_DELIVERY_COPY.brief.description;
   const briefsOff = briefDescription === null;
   // While briefs are off, the reason line below the control speaks for "brief".
-  const helper = !value
-    ? "Choose how you hear about each run."
-    : value === "brief"
-      ? (briefDescription ?? undefined)
-      : WORKFLOW_DELIVERY_COPY[value].description;
+  const helperFor = (value: WorkflowDelivery | null) => {
+    if (!value) return UNCHOSEN_HINT;
+    if (value === "brief") return briefDescription;
+    return WORKFLOW_DELIVERY_COPY[value].description;
+  };
 
   return (
-    <WorkflowSection label="When a run finishes" description={helper}>
-      <fieldset
-        aria-label="When a run finishes"
-        className={cn(
-          "flex gap-1 rounded-xl bg-zinc-800/60 p-1",
-          errorMessage && "ring-1 ring-danger",
-        )}
-      >
-        {WORKFLOW_DELIVERIES.map((delivery) => {
-          const isSelected = value === delivery;
-          return (
-            <Button
-              key={delivery}
-              fullWidth
-              radius="lg"
-              variant="light"
-              aria-pressed={isSelected}
-              isDisabled={isDisabled || (delivery === "brief" && briefsOff)}
-              onPress={() => onChange(delivery)}
+    <Controller
+      name="delivery"
+      control={control}
+      render={({ field, fieldState }) => {
+        const errorMessage = fieldState.error?.message;
+        const helper = helperFor(field.value);
+        return (
+          <WorkflowSection label={FIELD_LABEL}>
+            <fieldset
+              aria-label={FIELD_LABEL}
               className={cn(
-                "h-9 font-medium",
-                isSelected
-                  ? "bg-zinc-700 text-zinc-100 shadow-sm data-[hover=true]:bg-zinc-700"
-                  : "text-zinc-400",
+                "flex flex-col gap-1 rounded-xl bg-zinc-800/60 p-1 sm:flex-row",
+                errorMessage && "ring-1 ring-danger",
               )}
             >
-              {WORKFLOW_DELIVERY_COPY[delivery].label}
-            </Button>
-          );
-        })}
-      </fieldset>
-      {briefsOff && (
-        <p className="px-1 text-xs text-zinc-500">
-          {BRIEFS_OFF_DELIVERY_REASON}{" "}
-          <Link href="/settings/notifications" className="text-primary">
-            Turn on briefs
-          </Link>
-        </p>
-      )}
-      {errorMessage && (
-        <p className="px-1 text-xs text-danger">{errorMessage}</p>
-      )}
-    </WorkflowSection>
+              {WORKFLOW_DELIVERIES.map((delivery, index) => {
+                const isSelected = field.value === delivery;
+                return (
+                  <Button
+                    key={delivery}
+                    ref={index === 0 ? field.ref : undefined}
+                    fullWidth
+                    radius="lg"
+                    variant="light"
+                    aria-pressed={isSelected}
+                    isDisabled={
+                      isDisabled || (delivery === "brief" && briefsOff)
+                    }
+                    onPress={() => field.onChange(delivery)}
+                    className={cn(
+                      "h-9 font-medium",
+                      isSelected
+                        ? "bg-zinc-700 text-zinc-100 shadow-sm data-[hover=true]:bg-zinc-700"
+                        : "text-zinc-400",
+                    )}
+                  >
+                    {WORKFLOW_DELIVERY_COPY[delivery].label}
+                  </Button>
+                );
+              })}
+            </fieldset>
+            {errorMessage ? (
+              <p className="px-1 pt-1 text-sm text-danger">{errorMessage}</p>
+            ) : (
+              helper && (
+                <p className="px-1 pt-1 text-sm text-zinc-400">{helper}</p>
+              )
+            )}
+            {briefsOff && (
+              <p className="px-1 text-sm text-zinc-400">
+                {BRIEFS_OFF_DELIVERY_REASON}{" "}
+                <Link href="/settings/notifications" className="text-primary">
+                  Turn on briefs
+                </Link>
+              </p>
+            )}
+          </WorkflowSection>
+        );
+      }}
+    />
   );
 }
