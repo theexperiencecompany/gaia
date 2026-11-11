@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReferralCopyVariant } from "@shared/api/generated";
+import Image from "next/image";
 import { InviteLanding } from "@/features/referrals/components/InviteLanding";
 import { FIXTURE_RESOLVE, type GalleryView } from "./fixtures";
 
@@ -46,8 +47,9 @@ function OgPreview({ copyVariant }: PreviewProps) {
     <div className="flex flex-col gap-10">
       {(["valid", "photo"] as const).map((key) => (
         <Frame key={key} label={`1200x630, ${key}`}>
-          {/* biome-ignore lint/performance/noImgElement: previews a dynamic dev route, next/image would re-encode it. */}
-          <img
+          {/* Unoptimized: the dev route renders the PNG under test, and re-encoding would alter it. */}
+          <Image
+            unoptimized
             src={`/dev/referrals/og?copy=${copyVariant}&fixture=${key}`}
             alt={
               key === "photo"

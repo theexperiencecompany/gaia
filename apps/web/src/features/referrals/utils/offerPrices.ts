@@ -1,4 +1,4 @@
-import type { ReferralOffer } from "@shared/api/generated";
+import type { ReferralFriendGift, ReferralOffer } from "@shared/api/generated";
 import type { GiftPrice } from "@/features/pricing/hooks/usePricingCardPrice";
 import { formatWholeOrCents } from "@/features/pricing/utils/money";
 import { REFERRAL_UI_COPY } from "../referralCopy";
@@ -21,14 +21,25 @@ export function offerPrices(offer: ReferralOffer): OfferPrices {
   };
 }
 
-/** The gift as the pricing card shows it: what a friend pays while it lasts, and for how long. */
-export function giftCardPrice(offer: ReferralOffer): GiftPrice {
+/** The gift as the pricing card shows it, on only the cycles checkout applies it to. */
+export function giftCardPrice({
+  offer,
+  billing_cycles,
+}: ReferralFriendGift): GiftPrice {
   return {
-    monthly: offer.monthly_intro_minor,
-    yearly: offer.yearly_regular_minor - offer.yearly_discount_minor,
-    monthlyNote: REFERRAL_UI_COPY.paywallMonthlyNote(offerPrices(offer)),
-    yearlyNote: REFERRAL_UI_COPY.paywallYearlyNote(
-      formatWholeOrCents(offer.yearly_regular_minor, offer.currency),
-    ),
+    monthly: billing_cycles.includes("monthly")
+      ? {
+          minor: offer.monthly_intro_minor,
+          note: REFERRAL_UI_COPY.paywallMonthlyNote(offerPrices(offer)),
+        }
+      : null,
+    yearly: billing_cycles.includes("yearly")
+      ? {
+          minor: offer.yearly_regular_minor - offer.yearly_discount_minor,
+          note: REFERRAL_UI_COPY.paywallYearlyNote(
+            formatWholeOrCents(offer.yearly_regular_minor, offer.currency),
+          ),
+        }
+      : null,
   };
 }

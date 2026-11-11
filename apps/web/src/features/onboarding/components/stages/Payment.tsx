@@ -39,6 +39,8 @@ export function Payment() {
   const { name, email } = useCurrentUser();
   // A referred friend's checkout applies their gift, so the card shows that price, not the list one.
   const { data: gift } = useFriendGift();
+  const giftPrice = gift ? giftCardPrice(gift) : null;
+  const giftOnCycle = isYearly ? giftPrice?.yearly : giftPrice?.monthly;
   const introLines = useMemo(
     () => paymentIntroLines(firstNameOf(name, email)),
     [name, email],
@@ -76,14 +78,14 @@ export function Payment() {
           className="flex w-full flex-col items-center gap-4 lg:[zoom:0.85]"
           {...MOTION_FADE_UP}
         >
-          {gift && <FriendGiftBadge gift={gift} />}
+          {gift && giftOnCycle && <FriendGiftBadge gift={gift} />}
           <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
           <PricingCards
             durationIsMonth={!isYearly}
             hideEnterprise
             checkoutSource="onboarding"
             hideHeader
-            gift={gift ? giftCardPrice(gift.offer) : null}
+            gift={giftPrice}
           />
         </m.div>
       ) : null}

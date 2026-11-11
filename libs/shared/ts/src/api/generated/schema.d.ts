@@ -13182,6 +13182,11 @@ export interface components {
          * @description The gift a referred friend's checkout applies, and who sent it.
          */
         ReferralFriendGift: {
+            /**
+             * Billing Cycles
+             * @description The Pro billing cycles checkout applies this gift on; the paywall's code saves more on the rest
+             */
+            billing_cycles: components["schemas"]["PlanDuration"][];
             offer: components["schemas"]["ReferralOffer"];
             /**
              * Referrer First Name
@@ -13199,7 +13204,7 @@ export interface components {
          * @description The caller's gift from the friend who referred them; null when they are owed none.
          */
         ReferralGiftResponse: {
-            /** @description Null for anyone never referred, already subscribed, or while referrals are off */
+            /** @description Null for anyone never referred, already subscribed, owed no saving over the paywall's code, or while referrals are off */
             gift: components["schemas"]["ReferralFriendGift"] | null;
         };
         /**

@@ -4,6 +4,8 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import Literal
 
+from dodopayments.types.checkout_session_create_params import BillingAddress
+
 # How many charges a payment-history read returns. Deep history belongs in the
 # billing portal; the agent only ever needs "what have I been charged lately".
 PAYMENT_HISTORY_LIMIT = 10
@@ -62,7 +64,7 @@ NO_USER_MESSAGE = "Could not identify the user, so their billing state is unavai
 #: Everything a checkout opened outside production prefills. The country
 #: matters: Dodo's test card (4242 4242 4242 4242) is a US Visa, and the
 #: Indian rail (chosen by the developer's IP) declines it.
-DODO_TEST_MODE_BILLING_ADDRESS: dict[str, str] = {
+DODO_TEST_MODE_BILLING_ADDRESS: BillingAddress = {
     "country": "US",
     "street": "548 Market St",
     "city": "San Francisco",
