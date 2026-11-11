@@ -11,7 +11,10 @@ import {
   getNativeIntegrations,
   getPublicIntegration,
 } from "@/features/integrations/lib/serverMarketplaceApi";
-import type { CommunityIntegration } from "@/features/integrations/types";
+import type {
+  CommunityIntegration,
+  PublicIntegrationResponse,
+} from "@/features/integrations/types";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import {
   getMarketplaceFallbackGuides,
@@ -233,12 +236,13 @@ async function getAutomateCombos(
     }));
 }
 
+/** A native page relates only to natives, so only a community page fetches the community catalog. */
 async function getRelatedIntegrations(
-  integration: Pick<CommunityIntegration, "slug" | "category">,
+  integration: PublicIntegrationResponse,
 ): Promise<CommunityIntegration[]> {
   const [native, community] = await Promise.all([
     getNativeIntegrations(),
-    getAllCommunityIntegrations(),
+    integration.source === "platform" ? [] : getAllCommunityIntegrations(),
   ]);
   return relatedIntegrations(integration, native, community);
 }

@@ -59,7 +59,7 @@ export const getNativeIntegrations = cache(
 );
 
 /** One page of community integrations. */
-export async function getCommunityIntegrations(options: {
+async function getCommunityIntegrations(options: {
   readonly sort: CommunitySort;
   readonly limit: number;
   readonly offset?: number;
