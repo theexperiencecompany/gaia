@@ -112,6 +112,7 @@ describe("syncing a tracked todo's chat", () => {
     vi.mocked(chatApi.batchSyncConversations).mockResolvedValue({
       conversations: [],
       missing: ["deleted-todo-chat"],
+      active_streams: {},
     });
 
     await batchSyncConversations();
@@ -140,9 +141,9 @@ describe("syncing a tracked todo's chat", () => {
       description: "Watch the deploy",
       messages: [],
       artifacts: [],
-      active_stream_id: null,
       has_live_approval: null,
       todo_id: "todo-1",
+      source: null,
       starred: null,
       is_system_generated: null,
       system_purpose: null,
@@ -155,6 +156,59 @@ describe("syncing a tracked todo's chat", () => {
       id: "todo-chat",
       title: "Watch the deploy",
       todoId: "todo-1",
+    });
+  });
+});
+
+describe("syncing a bot DM chat", () => {
+  it("keeps it locally and asks only for what changed, although the server never lists it", async () => {
+    vi.mocked(chatApi.fetchConversations).mockResolvedValue(listing([]));
+    vi.mocked(db.getAllConversations).mockResolvedValue([
+      local("whatsapp-dm", { source: "whatsapp" }),
+      local("deleted-on-server"),
+    ]);
+    vi.mocked(chatApi.batchSyncConversations).mockResolvedValue({
+      conversations: [],
+      missing: [],
+      active_streams: {},
+    });
+
+    await batchSyncConversations();
+
+    expect(db.deleteConversationsAndMessagesBulk).toHaveBeenCalledWith([
+      "deleted-on-server",
+    ]);
+    expect(chatApi.batchSyncConversations).toHaveBeenCalledWith(
+      [
+        {
+          conversation_id: "whatsapp-dm",
+          last_updated: LONG_AGO.toISOString(),
+        },
+      ],
+      {},
+    );
+  });
+
+  it("stores the source so the chat stays cached after it is opened", async () => {
+    await applySyncedConversation("telegram-dm", {
+      conversation_id: "telegram-dm",
+      description: "Telegram Chat",
+      messages: [],
+      artifacts: [],
+      has_live_approval: null,
+      todo_id: null,
+      source: "telegram",
+      starred: null,
+      is_system_generated: null,
+      system_purpose: null,
+      is_unread: null,
+      createdAt: LONG_AGO.toISOString(),
+      updatedAt: null,
+    });
+
+    expect(vi.mocked(db.putConversation).mock.calls[0][0]).toMatchObject({
+      id: "telegram-dm",
+      source: "telegram",
     });
   });
 });

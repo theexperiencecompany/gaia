@@ -9,6 +9,7 @@ import time
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import UJSONResponse
 from limits import RateLimitItem
 from limits.errors import StorageError
@@ -114,6 +115,10 @@ def configure_middleware(app: FastAPI) -> None:
     # wraps CORS, so the 500 it returns carries no Access-Control-Allow-Origin
     # and a browser cannot read it. The app-level handler is the last resort.
     app.add_middleware(UnhandledExceptionMiddleware)
+
+    # Inside CORS so the CORS headers are applied to the compressed response.
+    # Starlette skips text/event-stream, so SSE chunks still flush as produced.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 
     # CORS (inside Logging so preflight rejections are visible in Loki)
     app.add_middleware(
