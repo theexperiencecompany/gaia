@@ -64,7 +64,7 @@ EXPLORER.blocks = (() => {
   }
 
   /* Draw ed.blocks in reading order with the family's renderer for each kind. */
-  const layout = (ed, R) => ed.blocks.map((b) => R[b.kind](b)).filter(Boolean);
+  const layout = (ed, R) => ed.blocks.flatMap((b) => R[b.kind](b) || []);
 
   /* Plots. Every plot is an SVG whose user units are CSS px (viewBox == width x height), so text
      and strokes land on the export's device pixels. The family supplies its own font, sizes and
