@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.context.slots import (
@@ -24,6 +25,7 @@ from app.constants.memory import (
     MEMORY_INGEST_MARK_TTL,
     MemorySourceType,
 )
+from app.override.langgraph_bigtool.utils import State
 from app.utils.multimodal import extract_text_content
 from tests.helpers import WideEventRecorder
 
@@ -175,7 +177,10 @@ class TestThePresenceNoteIsNotTheUserSpeaking:
     """GAIA's surface-change note rides the thread as a HumanMessage; memory must never learn from it."""
 
     def test_the_note_never_reaches_the_extractor(self) -> None:
-        msgs = [_surface_change_note(), HumanMessage(content="my anniversary is October 19")]
+        msgs: list[AnyMessage] = [
+            _surface_change_note(),
+            HumanMessage(content="my anniversary is October 19"),
+        ]
 
         formatted = _format_messages_for_user_memory(msgs)
 
@@ -335,7 +340,7 @@ class TestExtractorInput:
     """What the extractor is shown: three roles, and only what is new."""
 
     @staticmethod
-    def _thread() -> list[AIMessage | HumanMessage | ToolMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             AIMessage(
@@ -381,7 +386,7 @@ class TestDeltaIngestion:
         assert context_count == 0
 
     async def test_a_second_run_only_sees_what_arrived_since(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             AIMessage(content="Noted.", id="m2"),
             HumanMessage(content="I also moved to Bangalore last week", id="m3"),
@@ -457,9 +462,30 @@ class TestSystemGeneratedConversations:
         retain = await self._ingest(system_generated=False)
         retain.assert_awaited_once()
 
+    @pytest.mark.parametrize("source", ["briefing", "day_zero_hello"])
+    async def test_a_turn_gaia_wrote_the_prompt_for_is_never_learned_from(
+        self, source: str
+    ) -> None:
+        """Live: the brief's voice turn stored its own facts as memories, then read them back as goals."""
+        state = State(messages=[HumanMessage(content="Figma team plan is awaiting approval")])
+        config: RunnableConfig = {
+            "configurable": {
+                "user_id": "u1",
+                "thread_id": "briefing-daily-u1",
+                "conversation_source": source,
+            }
+        }
+
+        with patch(f"{NODE}.spawn_background_task") as spawn:
+            await memory_node(state, config, MagicMock())
+
+        spawn.assert_not_called()
+
     async def test_the_conversation_id_reaches_the_background_task(self) -> None:
-        state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
-        config = {"configurable": {"user_id": "u1", "thread_id": "t1", "conversation_id": "c1"}}
+        state = State(messages=[HumanMessage(content="my anniversary is October 19")])
+        config: RunnableConfig = {
+            "configurable": {"user_id": "u1", "thread_id": "t1", "conversation_id": "c1"}
+        }
 
         with (
             patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock) as background,
@@ -478,7 +504,7 @@ class TestTheFencedTranscript:
     """The context/delta fence is prose inside a transcript, so a wrong marker row is invisible to any type checker."""
 
     @staticmethod
-    def _thread() -> list[HumanMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             HumanMessage(content="I moved to Bangalore last week", id="m2"),
@@ -542,7 +568,7 @@ class TestTheHighWaterMarkRead:
     """_messages_to_ingest decides what the extraction is billed for; an off-by-one here re-pays or drops disclosures."""
 
     @staticmethod
-    def _thread(count: int) -> list[HumanMessage]:
+    def _thread(count: int) -> list[AnyMessage]:
         return [HumanMessage(content=f"message {i}", id=f"m{i}") for i in range(count)]
 
     async def test_a_threadless_run_ingests_everything_as_new(self) -> None:
@@ -651,7 +677,7 @@ class TestTheIngestionHandoff:
     """What the background task passes to each collaborator: swap an id or prompt and extraction still "succeeds" wrongly."""
 
     @staticmethod
-    def _thread() -> list[HumanMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             HumanMessage(content="I moved to Bangalore last week", id="m2"),
@@ -976,8 +1002,8 @@ class TestWhatTheNodeSpawns:
     async def test_the_task_is_named_so_it_is_identifiable_in_flight(self) -> None:
         """An unnamed task is unattributable in a trace."""
         spawn, store = self._spawn_capture()
-        state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
-        config = {"configurable": {"user_id": "u1", "thread_id": "t1"}}
+        state = State(messages=[HumanMessage(content="my anniversary is October 19")])
+        config: RunnableConfig = {"configurable": {"user_id": "u1", "thread_id": "t1"}}
 
         with (
             patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock),
@@ -990,8 +1016,10 @@ class TestWhatTheNodeSpawns:
     async def test_the_subagent_s_extraction_prompt_reaches_the_task(self) -> None:
         """Drop the prompt and every integration turn extracts with generic hints."""
         spawn, store = self._spawn_capture()
-        state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
-        config = {"configurable": {"user_id": "u1", "thread_id": "t1", "subagent_id": "slack"}}
+        state = State(messages=[HumanMessage(content="my anniversary is October 19")])
+        config: RunnableConfig = {
+            "configurable": {"user_id": "u1", "thread_id": "t1", "subagent_id": "slack"}
+        }
 
         with (
             patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock) as background,
@@ -1006,8 +1034,10 @@ class TestWhatTheNodeSpawns:
     async def test_the_user_name_reaches_the_task(self) -> None:
         """Retain uses it to attribute first-person facts to a named person."""
         spawn, store = self._spawn_capture()
-        state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
-        config = {"configurable": {"user_id": "u1", "thread_id": "t1", "user_name": "Sam"}}
+        state = State(messages=[HumanMessage(content="my anniversary is October 19")])
+        config: RunnableConfig = {
+            "configurable": {"user_id": "u1", "thread_id": "t1", "user_name": "Sam"}
+        }
 
         with (
             patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock) as background,
