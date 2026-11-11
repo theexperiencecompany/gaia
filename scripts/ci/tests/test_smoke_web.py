@@ -60,7 +60,7 @@ def test_a_cached_binary_that_was_swapped_is_downloaded_again_and_refused(tmp_pa
 def test_an_unknown_subcommand_prints_the_usage(tmp_path: Path) -> None:
     proc = _run(tmp_path, "nope")
     assert proc.returncode == 2
-    assert "audit | squirrel | audit-build | indexnow" in proc.stderr
+    assert "audit | squirrel | audit-build | tighten | indexnow" in proc.stderr
 
 
 def test_the_free_port_it_picks_is_digits_under_force_color() -> None:
