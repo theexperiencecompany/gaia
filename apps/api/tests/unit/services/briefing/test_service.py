@@ -744,7 +744,7 @@ class TestDailyBrief:
         await daily.run_daily_briefing(_USER)
 
         composed = world.composer.await_args.args[1]
-        assert "the user" in composed
+        assert "composing the user's morning brief for 2026-10-14" in composed
         assert "Wednesday 14 October 2026, UTC." in composed
 
     async def test_a_winback_message_need_not_refer_to_the_lead(
