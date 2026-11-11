@@ -16,7 +16,6 @@ from langchain_core.tools import tool
 
 from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_channel import ExecutorInbox
-from app.agents.core.background.executor_progress import drop_progress
 from app.agents.core.background.executor_queue import (
     adopt_lock,
     build_lock_value,
@@ -27,29 +26,26 @@ from app.agents.core.background.executor_queue import (
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import run_executor_background
-from app.agents.core.background.running_registry import RunningSubagents, stop_stream
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
     RunKind,
     mark_executor_spawned,
 )
+from app.agents.core.background.work_cancel import cancel_all_work, cancel_named_work
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.constants.agents import TimeHorizon
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
-from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
-from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.ownership_models import ExecutorIntent
+from app.models.work_cancel_models import WorkCancelled
 from app.services.browser.chat_task import stop_report
-from app.services.browser.job_stop import requester_chat, stop_chat_jobs
-from app.services.hil.ledger_decide import cancel_ledger_approvals
-from app.services.hil.resolution import cancel_conversation_approvals
+from app.services.browser.job_stop import requester_chat
 from app.services.workflow.execution_service import get_last_run_brief
 from app.services.workflow.playbook.check import playbook_check_brief
 from app.utils.background_tasks import spawn_background_task
@@ -408,191 +404,44 @@ async def cancel_executor(
     if not conversation_id:
         return "No conversation context available."
 
-    # A browser run outlives the turn that started it, so a stop-everything stops
-    # the job itself. A targeted cancel names one executor task and leaves it running.
-    # After the pending work is cleared: the stop's notice in the inbox must survive it.
-    executor = await _cancel_executor_work(configurable, conversation_id, task_ids, message)
-    browser = await _stop_the_browser(configurable, conversation_id) if not task_ids else None
-    if browser is None:
-        return executor
-    if executor in (_NOTHING_TO_CANCEL, _NOTHING_MATCHED):
-        return browser
-    return f"{executor} {browser}"
-
-
-_NOTHING_TO_CANCEL = "No executor tasks are running or pending for this conversation."
-_NOTHING_MATCHED = "None of the specified task_ids matched any running or pending tasks."
-
-
-async def _stop_the_browser(configurable: AgentConfigurable, conversation_id: str) -> str | None:
-    """Stop the browser jobs this chat controls and say what that came to; None when none runs."""
-    requester = requester_chat(
-        configurable.get("user_id"),
-        ConversationSource.coerce(configurable.get("conversation_source")),
-    )
-    outcomes = await stop_chat_jobs(conversation_id, requester)
-    return stop_report(outcomes.values()) if outcomes else None
-
-
-async def _cancel_executor_work(
-    configurable: AgentConfigurable, conversation_id: str, task_ids: list[str], message: str | None
-) -> str:
-    """Cancel the running executor task, its pending work and its subagents, as task_ids names them."""
-    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    inbox = ExecutorInbox(conversation_id)
-    subagents = RunningSubagents(conversation_id)
-    cancel_all = len(task_ids) == 0
-
-    # Use raw client.get() — lock value is a plain string ("stream_id:task_id"),
-    # not JSON. redis_cache.get() would fail to deserialize it.
-    raw_lock = await redis_cache.client.get(lock_key)
-    lock_value: str | None = decode_raw_item(raw_lock) if raw_lock is not None else None
-    has_pending = await inbox.count() > 0
-    has_subagents = bool(await subagents.live())
-
-    if not lock_value and not has_pending and not has_subagents:
-        return _NOTHING_TO_CANCEL
-
+    user_id = configurable.get("user_id", "")
     try:
-        cancelled = await _cancel_running_task(
-            lock_key,
-            lock_value,
-            task_ids,
-            cancel_all,
-            conversation_id,
-        )
-        # Running task was present but not targeted for cancellation
-        # Whether the RUNNING task actually died — captured before `cancelled`
-        # grows to include pending entries, which say nothing about the run.
-        running_cancelled = bool(cancelled)
-        # A background subagent outlives the run that dispatched it, so "stop
-        # everything" reaches it even after that run has finished.
-        stopped_subagents = await subagents.stop_all() if cancel_all else []
-        skipped_running = bool(lock_value) and not running_cancelled
-        if cancelled:
-            # Only once the RUNNING task is actually gone: a cancel that spared it
-            # (queued-only) must leave its approvals alone — it is still waiting on them.
-            await cancel_conversation_approvals(conversation_id, configurable.get("user_id", ""))
-            await cancel_ledger_approvals(conversation_id, configurable.get("user_id", ""))
-        cancelled += await _cancel_pending_tasks(
-            inbox,
-            task_ids,
-            cancel_all,
-            conversation_id,
-        )
-        if stopped_subagents:
-            cancelled.append(f"{len(stopped_subagents)} running subagent(s)")
-
-        if not cancelled:
-            return _NOTHING_MATCHED
-
-        # Record the stop into the per-conversation thread, or the next run
-        # resumes exactly what the user stopped — but only when the RUNNING
-        # task or its subagents actually died; a spared live executor would drain the notice.
-        if running_cancelled or stopped_subagents:
-            await inbox.announce_interruption(message)
-
-        # Tell the client an agent-initiated cancel happened so it can clear the
-        # stuck executor-pending loading state and finalize in-flight tool cards
-        # — it has no other way to learn of a cancel it didn't initiate.
-        await _broadcast_executor_cancelled(
-            user_id=configurable.get("user_id", ""),
-            conversation_id=conversation_id,
-            cancelled=cancelled,
-        )
-
-        result = f"Cancelled: {', '.join(cancelled)}."
-        if skipped_running:
-            result += " Currently running task was not in the cancel list, still running."
-        return result
-
+        if task_ids:
+            # A targeted cancel names executor tasks and leaves the browser run going.
+            work = await cancel_named_work(conversation_id, user_id, task_ids, redirect=message)
+        else:
+            requester = requester_chat(
+                user_id, ConversationSource.coerce(configurable.get("conversation_source"))
+            )
+            work = await cancel_all_work(conversation_id, user_id, requester, redirect=message)
     except Exception as e:
         # Deliberately no lock cleanup here: unconditional deletion previously
         # let two executors run concurrently on one conversation. TTL recovers it.
         log.error(f"{LogTag.TOOL} cancel_executor failed", error=str(e))
         return f"Cancellation attempted but hit an error: {e}"
+    return _cancel_report(work, targeted=bool(task_ids))
 
 
-#: What the agent is told a browser stop came to, as the job's ending of record says.
-async def _broadcast_executor_cancelled(
-    *,
-    user_id: str,
-    conversation_id: str,
-    cancelled: list[str],
-) -> None:
-    """Push the executor-cancelled control event to the user's clients."""
-    if not user_id:
-        return
-    try:
-        await websocket_manager.broadcast_to_user(
-            user_id,
-            {
-                "type": WS_EVENT_EXECUTOR_CANCELLED,
-                "conversation_id": conversation_id,
-                "cancelled": cancelled,
-            },
-        )
-    except Exception as e:  # best-effort UI signal
-        log.warning(f"{LogTag.TOOL} Failed to broadcast executor.cancelled", error=str(e))
+def _cancel_report(work: WorkCancelled, *, targeted: bool) -> str:
+    """Say what a cancel stopped, the way the comms model reads it."""
+    cancelled = [
+        *([work.executor_task_id or "running"] if work.executor_stopped else []),
+        *([f"{work.pending_tasks} pending task(s)"] if work.pending_tasks else []),
+        *work.pending_task_ids,
+        *([f"{len(work.subagent_ids)} running subagent(s)"] if work.subagent_ids else []),
+        *([f"{len(work.approval_ids)} pending approval(s)"] if work.approval_ids else []),
+    ]
+    browser = stop_report(work.browser_jobs.values()) if work.browser_jobs else None
+    if not cancelled:
+        return browser or (_NOTHING_MATCHED if targeted else _NOTHING_TO_CANCEL)
+    result = f"Cancelled: {', '.join(cancelled)}."
+    if work.executor_spared:
+        result += " Currently running task was not in the cancel list, still running."
+    return f"{result} {browser}" if browser else result
 
 
-async def _cancel_running_task(
-    lock_key: str,
-    lock_value: str | None,
-    task_ids: list[str],
-    cancel_all: bool,
-    conversation_id: str,
-) -> list[str]:
-    """Cancel the currently running executor if it matches task_ids."""
-    if not lock_value:
-        return []
-
-    active_stream_id, active_task_id = parse_lock_value(lock_value)
-    should_cancel = cancel_all or active_task_id in task_ids
-
-    if not should_cancel:
-        return []
-
-    if active_stream_id and active_stream_id not in ("", "1"):
-        await stop_stream(conversation_id, active_stream_id)
-
-    await redis_cache.delete(lock_key)
-    await drop_progress(conversation_id, lock_value)
-
-    log.info(
-        f"{LogTag.TOOL} cancel_executor: stopped running task",
-        task_id=active_task_id,
-        stream_id=active_stream_id,
-        conversation_id=conversation_id,
-    )
-    return [active_task_id or "running"]
-
-
-async def _cancel_pending_tasks(
-    inbox: ExecutorInbox,
-    task_ids: list[str],
-    cancel_all: bool,
-    conversation_id: str,
-) -> list[str]:
-    """Cancel work that is waiting for the executor — all of it, or by task_id."""
-    if cancel_all:
-        cleared = await inbox.clear()
-        if cleared:
-            log.info(
-                f"{LogTag.TOOL} cancel_executor: cleared pending work",
-                pending=cleared,
-                conversation_id=conversation_id,
-            )
-        return [f"{cleared} pending task(s)"] if cleared else []
-
-    cancelled = await inbox.discard(set(task_ids))
-    if cancelled:
-        log.info(
-            f"{LogTag.TOOL} cancel_executor: removed pending tasks",
-            removed=len(cancelled),
-            conversation_id=conversation_id,
-        )
-    return cancelled
+_NOTHING_TO_CANCEL = "No executor tasks are running or pending for this conversation."
+_NOTHING_MATCHED = "None of the specified task_ids matched any running or pending tasks."
 
 
 tools = [call_executor, cancel_executor]

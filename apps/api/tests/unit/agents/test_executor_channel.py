@@ -132,6 +132,23 @@ class TestInbox:
         assert removed == 1
         assert [entry.id for entry in await inbox.read()] == ["steer"]
 
+    async def test_clear_drops_the_work_and_keeps_the_stop_notices(
+        self, inbox: ExecutorInbox
+    ) -> None:
+        """A second Stop must not report the first one's notices as pending work, or wipe them."""
+        await inbox.append("pending", "the task being cancelled")
+        await inbox.announce_interruption()
+        await inbox.append("browser", "stopped", AgentTag.BROWSER_STOPPED)
+
+        removed = await inbox.clear()
+
+        assert removed == 1
+        assert [entry.tag for entry in await inbox.read()] == [
+            AgentTag.EXECUTOR_INTERRUPTED,
+            AgentTag.BROWSER_STOPPED,
+        ]
+        assert await inbox.clear() == 0
+
     async def test_an_unreadable_entry_does_not_wedge_the_channel(
         self, inbox: ExecutorInbox, redis
     ) -> None:

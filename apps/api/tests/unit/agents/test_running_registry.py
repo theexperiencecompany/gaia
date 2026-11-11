@@ -219,6 +219,14 @@ class TestStopAll:
 
         cancel.assert_not_called()
 
+    async def test_a_run_already_stopped_is_not_reported_stopped_again(self) -> None:
+        """A second Stop finds the first one's runs still unwinding; it stopped none of them."""
+        reg = RunningSubagents(CONV)
+        assert await reg.claim(_run("done", "subagent_done", dispatched_by="turn"))
+        await stream_manager.cancel_stream("subagent_done")
+
+        assert await reg.stop_all() == []
+
     async def test_a_record_written_before_runs_carried_streams_still_decodes(self) -> None:
         reg = RunningSubagents(CONV)
         legacy = _sub("legacy")
