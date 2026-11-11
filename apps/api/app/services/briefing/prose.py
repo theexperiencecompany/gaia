@@ -8,29 +8,32 @@ stored or sent.
 from dataclasses import dataclass
 
 from pydantic import ValidationError
+from pydantic_core import ErrorDetails
 
+from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
+from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import (
+    reader_line,
     voice_correction_note,
     voice_unreadable_note,
 )
 from app.constants.briefing import (
+    BRIEF_VOICE_LABEL,
     MAX_VOICE_ATTEMPTS,
     hue_for_day,
 )
 from app.models.briefing_models import (
-    BriefingKind,
     BriefingMood,
     BriefingPayload,
     BriefVoice,
 )
 from app.models.short_link_models import ShortLinkTargetType
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import UserDocument
 from app.services.briefing.context import UserClock
 from app.services.briefing.errors import BriefingGenerationError, VoiceUnreadableError
 from app.services.briefing.facts import (
     Facts,
 )
-from app.services.briefing.silent_turn import run_briefing_turn
 from app.services.briefing.slots import (
     SlotValues,
     referenced_facts,
@@ -38,7 +41,9 @@ from app.services.briefing.slots import (
     slot_problems,
 )
 from app.services.short_link_service import optional_short_link
-from app.utils.markdown_utils import model_from_reply
+from app.utils.timezone import Timezone
+from app.utils.user_display import display_first_name
+from app.utils.user_preferences_utils import build_user_context_parts, onboarding_preferences
 from shared.py.wide_events import log
 
 
@@ -59,13 +64,43 @@ async def links_in(user_id: str, message: str, facts: Facts) -> dict[int, str]:
     return links
 
 
-def _parse_voice(raw: str) -> BriefVoice:
-    """Extract the voice-only JSON (headline/lede/caption/mood/message)."""
-    parsed = model_from_reply(raw, BriefVoice)
-    if isinstance(parsed, BriefVoice):
-        return parsed
-    log.warning("briefing.voice_unreadable", raw_length=len(raw), problems=parsed)
-    raise VoiceUnreadableError(parsed)
+#: The provider holds the voice to its schema, so every field arrives and each is a string.
+_SCHEMA_HELD = StructuredCallOptions(schema_held=True)
+
+
+def reader_block(user: UserDocument) -> str:
+    """Who the voice writes to: their name, their timezone and the profile onboarding gave them."""
+    preferences, _ = onboarding_preferences(user.onboarding)
+    return "\n".join(
+        [
+            reader_line(display_first_name(user)),
+            f"Their timezone: {user.timezone or Timezone.utc().value}.",
+            *build_user_context_parts(preferences or {}),
+        ]
+    )
+
+
+def _unreadable_problems(exc: MalformedStructuredOutputError) -> list[str]:
+    """Name each field the reply got wrong, never its text; a reply with no voice at all, why."""
+    cause = exc.__cause__
+    if not isinstance(cause, ValidationError):
+        return [exc.reason]
+    errors: list[ErrorDetails] = cause.errors(include_url=False, include_input=False)
+    return [f"{'.'.join(map(str, error['loc']))}: {error['msg']}" for error in errors]
+
+
+async def _voice(user_id: str, prompt: str) -> BriefVoice:
+    """Voice the brief in one structured call: briefing work, never charged to the user's allowance."""
+    try:
+        return await ainvoke_structured(
+            BriefVoice,
+            prompt,
+            label=BRIEF_VOICE_LABEL,
+            config=metered_config(user_id),
+            options=_SCHEMA_HELD,
+        )
+    except MalformedStructuredOutputError as exc:
+        raise VoiceUnreadableError(_unreadable_problems(exc), exc.llm_output) from exc
 
 
 @dataclass(frozen=True)
@@ -76,7 +111,6 @@ class Writing:
     #: The lead's fact, which the message refers to by a slot; None without a lead, or for a
     #: winback or wind-down note.
     lead: int | None
-    kind: BriefingKind
 
 
 _VOICED_FIELDS = ("headline", "lede", "caption", "message")
@@ -93,8 +127,10 @@ def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
 
 
 def _length_problems(exc: ValidationError) -> list[str]:
+    errors: list[ErrorDetails] = exc.errors(include_url=False, include_input=False)
     return [
-        f"the {error['loc'][0]} once its slots are filled: {error['msg']}" for error in exc.errors()
+        f"the {'.'.join(map(str, error['loc']))} once its slots are filled: {error['msg']}"
+        for error in errors
     ]
 
 
@@ -121,7 +157,7 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
 
 
 async def written_brief(
-    user: AuthenticatedUser, clock: UserClock, prompt: str, writing: Writing
+    user_id: str, prompt: str, writing: Writing
 ) -> tuple[BriefVoice, BriefVoice]:
     """Voice the brief and hold it to its facts; return what the model wrote and its rendered draft.
 
@@ -133,11 +169,12 @@ async def written_brief(
     failure: BriefingGenerationError
     for _ in range(MAX_VOICE_ATTEMPTS):
         attempt_prompt = f"{prompt}\n\n{note}" if note else prompt
-        raw = await run_briefing_turn(user, clock, attempt_prompt, conversation_key=writing.kind)
         try:
-            voice = _parse_voice(raw)
+            voice = await _voice(user_id, attempt_prompt)
         except VoiceUnreadableError as exc:
-            failure, note = exc, voice_unreadable_note(exc.problems, raw)
+            # Logged here, not where the reply failed: that error's text quotes the reply.
+            log.warning("briefing.voice_unreadable", problems=exc.problems)
+            failure, note = exc, voice_unreadable_note(exc.problems, exc.reply)
             continue
         checked = _held_to_facts(voice, writing)
         if isinstance(checked, BriefVoice):

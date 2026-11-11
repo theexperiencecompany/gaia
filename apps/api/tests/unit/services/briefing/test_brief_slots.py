@@ -258,5 +258,18 @@ class TestATimeSlotIsNotWrittenAround:
             "'11:00 AM'; drop it"
         ]
 
+    @pytest.mark.parametrize("echo", ["(11:00 AM)", "11:00 AM"])
+    def test_the_figure_a_slot_renders_written_after_it_is_named_alone(self, echo: str) -> None:
+        """Live: the voice copied the shown "[[fact:12.time]] (2:00 PM)" and was told to write the slot it had."""
+        assert slot_problems("message", f"Sequoia at [[fact:9.time]] {echo}.", _VALUES) == [
+            f"the message writes {echo!r} after [[fact:9.time]], which already renders "
+            "'11:00 AM'; drop it"
+        ]
+
+    def test_a_count_a_slot_renders_written_after_it_is_named(self) -> None:
+        assert slot_problems("lede", "[[count:needs_you]] (2) need you.", _VALUES) == [
+            "the lede writes '(2)' after [[count:needs_you]], which already renders '2'; drop it"
+        ]
+
     def test_words_after_a_time_slot_are_left_alone(self) -> None:
         assert slot_problems("lede", "Sequoia at [[fact:9.time]] and Amy at noon.", _VALUES) == []

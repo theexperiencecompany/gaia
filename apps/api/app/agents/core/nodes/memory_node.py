@@ -294,7 +294,7 @@ async def memory_node(
     if not user_id:
         return state
     if configurable.get("conversation_source") in set(SilentTurnSource):
-        # GAIA wrote this turn's prompt (the brief's facts, a hello): learning from it would
+        # GAIA wrote this turn's prompt (the day-zero hello): learning from it would
         # store GAIA's own words as the user's, and read them back as goals tomorrow.
         log.set(memory_ingest={"skipped": "silent_turn"})
         return state

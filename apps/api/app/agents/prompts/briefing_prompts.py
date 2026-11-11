@@ -1,12 +1,13 @@
 """Briefing generation prompts, the retention keystone.
 
-The builders assemble the contract the silent agent runs against; the service feeds in
-the code-built facts. The agent writes only the voice: one JSON object of headline, lede,
-caption, mood and message as its entire final message.
+The builders assemble the contract the voice call writes against; the service feeds in
+the code-built facts. The model writes only the voice: headline, lede, caption, mood and
+message, as one structured answer. The day-zero hello is still a silent agent turn.
 """
 
 from dataclasses import dataclass
 
+from app.agents.prompts.comms_prompts import GAIA_PERSONA, GAIA_VOICE
 from app.constants.briefing import (
     LEAD_HEADING,
     MAX_BRIEF_CAPTION_CHARS,
@@ -92,23 +93,23 @@ most {MAX_BRIEF_HEADLINE_CHARS} characters, lede {MAX_BRIEF_LEDE_CHARS}, caption
 """.strip()
 
 
-# The voice JSON both briefs return; each fills in what its lede sets up and its moods.
+# The voice both briefs return; each fills in what its lede sets up and its moods.
 _VOICE_OUTPUT = """
 ## OUTPUT (read twice)
 
-Your ENTIRE final message MUST be a single JSON object inside one ```json code
-fence. No prose before or after it.
-
-```json
-{{
-  "headline": "<one sharp plain-voice line, no markup, no emoji>",
-  "lede": "<{lede}>",
-  "caption": "<one witty closing line>",
-  "mood": "<{moods}>",
-  "message": "<the brief as a text, see THE MESSAGE>"
-}}
-```
+Return the brief's voice, every field filled:
+- headline: one sharp plain-voice line, no markup, no emoji
+- lede: {lede}
+- caption: one witty closing line
+- mood: {moods}
+- message: the brief as a text, see THE MESSAGE
 """.strip()
+
+# The brief is GAIA writing to the user itself, in the voice chat uses.
+_SPEAKER = (
+    f'{GAIA_PERSONA}\n{GAIA_VOICE}\nThe brief is you writing to them: say "I" for what you '
+    'did, never "GAIA", and write sentences a person would text, never "App: thing" lists.'
+)
 
 _VOICE_ONLY = """
 You are writing VOICE ONLY. The facts (what completed, what is running, what
@@ -355,7 +356,9 @@ def build_briefing_voice_prompt(
         else ""
     )
     setup_block = f"\n## THEIR GAIA SETUP (real facts)\n{blocks.setup}\n" if blocks.setup else ""
-    return f"""You are GAIA voicing this user's daily briefing for {date_local}.
+    return f"""{_SPEAKER}
+
+You are voicing this user's daily briefing for {date_local}.
 
 ## WHO YOU'RE WRITING TO
 {blocks.reader}
@@ -406,19 +409,19 @@ def voice_correction_note(problems: list[str], last: str) -> str:
         f"It did not match today's facts:\n{listed}\n"
         f"This was your last brief:\n{last}\n"
         "Change only what each problem names, keep every other word and slot as it was, "
-        "then return the whole JSON."
+        "then return the whole voice."
     )
 
 
 def voice_unreadable_note(problems: list[str], last: str) -> str:
-    """Return the retry instruction: why the last reply was not the voice JSON, and that reply."""
+    """Return the retry instruction: why the last reply was no whole voice, and that reply."""
     listed = "\n".join(f"- {problem}" for problem in problems)
     return (
         "## YOUR LAST REPLY COULD NOT BE READ\n"
-        f"It was not the voice JSON object:\n{listed}\n"
+        f"It was not a whole voice:\n{listed}\n"
         f"This was your last reply:\n{last}\n"
         "Change only what each problem names, keep everything else as it was, and return the "
-        "whole JSON in one ```json fence, with every field of the schema."
+        "whole voice, with every field filled."
     )
 
 
@@ -444,7 +447,9 @@ _WEEKLY_VOICE_CONTRACT = f"""
 
 def build_weekly_voice_prompt(*, date_local: str, blocks: VoicePromptBlocks) -> str:
     """Voice pass over the week's code-built facts: what got done since Monday and what is ahead."""
-    return f"""You are GAIA voicing this user's weekly digest for the week ending {date_local}.
+    return f"""{_SPEAKER}
+
+You are voicing this user's weekly digest for the week ending {date_local}.
 
 This is a zoom-out, not a to-do list: the week since Monday, and the seven days ahead.
 Celebrate the week honestly.

@@ -78,6 +78,8 @@ MAX_COMPOSITION_ATTEMPTS: Final[int] = 2
 #: The composition call's metering label, and its heading check's.
 BRIEF_COMPOSITION_LABEL: Final[str] = "brief_composition"
 BRIEF_HEADING_CHECK_LABEL: Final[str] = "brief_heading_check"
+#: The voice call's metering label: the brief's headline, lede, caption and message.
+BRIEF_VOICE_LABEL: Final[str] = "brief_voice"
 #: The heading check judges, it does not write: the same groups get the same verdict.
 BRIEF_HEADING_CHECK_TEMPERATURE: Final[float] = 0.0
 # The page budget a composition is held to: what one edition image and a minute's read can carry.
@@ -194,7 +196,6 @@ POSTMARKS_PATH: Final[str] = "/settings/postmarks"
 class SilentTurnSource(StrEnum):
     """The silent agent turns whose prompt GAIA writes itself, so nothing in them is the user's."""
 
-    BRIEFING = "briefing"
     DAY_ZERO_HELLO = "day_zero_hello"
 
 

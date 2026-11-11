@@ -222,21 +222,34 @@ def _typed_figure_problem(field: str, word: str, values: SlotValues) -> str:
     )
 
 
-def _meridiem_problems(field: str, text: str, values: SlotValues) -> list[str]:
-    """Name each AM or PM the prose writes after a time slot whose time already says it."""
-    problems = []
+def _echo(text: str, match: re.Match[str], value: str) -> re.Match[str] | None:
+    """Return what the prose wrote right after a slot that the slot already renders, if anything."""
+    echoed = re.compile(rf"\s*(\(?{re.escape(value)}\)?)(?![\w:])").match(text, match.end())
+    if echoed is not None:
+        return echoed
+    meridiem = _MERIDIEM_RE.match(text, match.end())
+    return meridiem if meridiem is not None and _MERIDIEM_RE.search(value) else None
+
+
+def _echo_problems(field: str, text: str, values: SlotValues) -> tuple[list[str], str]:
+    """Name each figure written after a slot that renders it; return them and the text without them."""
+    problems: list[str] = []
+    spans: list[tuple[int, int]] = []
     for match in _VALUE_SLOT_RE.finditer(text):
-        kind, key, slot_field = match.groups()
-        fact = values.facts.get(int(key)) if kind == "fact" and key.isdigit() else None
-        if slot_field != FactField.TIME or fact is None or fact.time is None:
+        try:
+            value = _value(match, values)
+        except SlotError:
             continue
-        written = _MERIDIEM_RE.match(text, match.end())
-        if written and _MERIDIEM_RE.search(fact.time):
+        echoed = _echo(text, match, value)
+        if echoed is not None:
             problems.append(
-                f"the {field} writes {written.group(1)!r} after {match.group(0)}, which already "
-                f"renders {fact.time!r}; drop it"
+                f"the {field} writes {echoed.group(1)!r} after {match.group(0)}, which already "
+                f"renders {value!r}; drop it"
             )
-    return problems
+            spans.append(echoed.span(1))
+    for start, end in reversed(spans):
+        text = text[:start] + text[end:]
+    return problems, text
 
 
 def slot_problems(
@@ -255,7 +268,8 @@ def slot_problems(
                 _value(match, values)
         except SlotError as exc:
             problems.append(f"the {field}: {exc}")
-    problems += _meridiem_problems(field, text, values)
+    echoes, text = _echo_problems(field, text, values)
+    problems += echoes
     bare = LINK_SLOT_RE.sub(r"\1", _VALUE_SLOT_RE.sub("", text))
     problems += [
         f"the {field} has a malformed slot {match.group(0)!r}; write [[count:name]], "
