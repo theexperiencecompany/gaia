@@ -72,11 +72,13 @@ def mcp_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return client
 
 
-def _subagent(managed_by: str, *, mcp: bool = False) -> SimpleNamespace:
+def _subagent(
+    managed_by: str, *, mcp: bool = False, specific_tools: list[str] | None = None
+) -> SimpleNamespace:
     return SimpleNamespace(
         managed_by=managed_by,
         mcp_config=object() if mcp else None,
-        config=SimpleNamespace(tool_space=f"{managed_by}-space", specific_tools=None),
+        config=SimpleNamespace(tool_space=f"{managed_by}-space", specific_tools=specific_tools),
     )
 
 
@@ -98,11 +100,14 @@ _COMPOSIO_TAGS = {
 }
 
 
+_LINEAR_TOOLS = ["list_open_tickets", "create_ticket"]
+
+
 @pytest.fixture
 def native(monkeypatch: pytest.MonkeyPatch) -> _Registry:
     registry = _Registry()
     subagents = {
-        "linear": _subagent("composio"),
+        "linear": _subagent("composio", specific_tools=_LINEAR_TOOLS),
         "notes": _subagent("native"),
         "todos": _subagent("internal"),
         "empty": _subagent("composio-unregistered"),
@@ -114,7 +119,7 @@ def native(monkeypatch: pytest.MonkeyPatch) -> _Registry:
         return "LINEAR"
 
     async def raw_tools(tool_kit: str, specific_tools: list[str] | None) -> list[SimpleNamespace]:
-        assert (tool_kit, specific_tools) == ("LINEAR", None)
+        assert (tool_kit, specific_tools) == ("LINEAR", _LINEAR_TOOLS)
         return [SimpleNamespace(slug=slug, tags=tags) for slug, tags in _COMPOSIO_TAGS.items()]
 
     monkeypatch.setattr(scout_tools_module, "get_subagent_by_id", subagents.get)
@@ -224,6 +229,7 @@ class TestReadOnly:
         result = await scout_tools(USER_ID, CUSTOM_MCP)
 
         assert list(result.read_only) == ["list_open_tickets"]
+        assert result.integration_id == CUSTOM_MCP
         assert (result.total, result.fingerprint) == (
             4,
             tool_fingerprint([list_open_tickets, create_ticket, purge_queue, fetch_digest]),
@@ -303,6 +309,15 @@ class TestBoundTools:
 
         assert bound == read_only
 
+    async def test_exactly_at_the_ceiling_every_read_only_tool_is_bound_without_the_index(
+        self,
+    ) -> None:
+        read_only = _many(SCOUT_MAX_BOUND_TOOLS)
+
+        bound = await bound_tools(ScoutTools("linear", read_only, total=300, fingerprint="f"))
+
+        assert bound == read_only
+
     async def test_past_the_ceiling_the_index_picks_the_most_relevant_read_only_tools(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -329,7 +344,8 @@ class TestBoundTools:
         resolved = SimpleNamespace(mcp_config=SimpleNamespace(server_url="https://mcp.acme.io/mcp"))
         monkeypatch.setattr(scout_tools_module, "get_tools_store", AsyncMock(return_value=store))
         monkeypatch.setattr(scout_tools_module, "get_subagent_by_id", {}.get)
-        monkeypatch.setattr(IntegrationResolver, "resolve", AsyncMock(return_value=resolved))
+        resolve = AsyncMock(return_value=resolved)
+        monkeypatch.setattr(IntegrationResolver, "resolve", resolve)
         monkeypatch.setattr(
             scout_tools_module,
             "derive_integration_namespace",
@@ -341,6 +357,27 @@ class TestBoundTools:
         )
 
         assert store.searches[0][0] == (f"{CUSTOM_MCP}|https://mcp.acme.io/mcp|True",)
+        resolve.assert_awaited_once_with(CUSTOM_MCP)
+
+    @pytest.mark.parametrize("resolved", [None, SimpleNamespace(mcp_config=None)])
+    async def test_a_custom_integration_with_no_mcp_config_is_searched_without_a_url(
+        self, monkeypatch: pytest.MonkeyPatch, resolved: SimpleNamespace | None
+    ) -> None:
+        store = _Store([f"get_{n}" for n in range(SCOUT_MAX_BOUND_TOOLS + 1)])
+        monkeypatch.setattr(scout_tools_module, "get_tools_store", AsyncMock(return_value=store))
+        monkeypatch.setattr(scout_tools_module, "get_subagent_by_id", {}.get)
+        monkeypatch.setattr(IntegrationResolver, "resolve", AsyncMock(return_value=resolved))
+        monkeypatch.setattr(
+            scout_tools_module,
+            "derive_integration_namespace",
+            lambda iid, url, is_custom: f"{iid}|{url}|{is_custom}",
+        )
+
+        await bound_tools(
+            ScoutTools(CUSTOM_MCP, _many(SCOUT_MAX_BOUND_TOOLS + 1), total=150, fingerprint="f")
+        )
+
+        assert store.searches[0][0] == (f"{CUSTOM_MCP}|None|True",)
 
     async def test_an_index_that_ranks_none_of_them_fails_loud(
         self, monkeypatch: pytest.MonkeyPatch
@@ -357,4 +394,9 @@ class TestBoundTools:
                 ScoutTools("github", _many(SCOUT_MAX_BOUND_TOOLS + 1), total=300, fingerprint="f")
             )
 
-        assert raised.value.message == "the tool index ranks none of github's read-only tools"
+        error = raised.value
+        assert (error.message, error.why, error.fix) == (
+            "the tool index ranks none of github's read-only tools",
+            "searching namespace 'composio-space' matched no tool the scout may use",
+            "reindex the integration's tools; the scout learns again on the next brief",
+        )

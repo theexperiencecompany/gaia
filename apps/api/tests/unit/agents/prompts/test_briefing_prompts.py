@@ -20,6 +20,7 @@ from app.agents.prompts.briefing_prompts import (
     build_weekly_digest_prompt,
     reader_line,
     voice_correction_note,
+    voice_unreadable_note,
 )
 
 _GOAL = "Raising a seed round [mentioned 2026-10-01]"
@@ -229,6 +230,18 @@ def test_the_correction_note_lists_each_problem_on_its_own_line_between_header_a
         "- headline names Dhruv",
         "- lede counts 3 drafts",
         "Write it again from today's facts only, then return the whole JSON.",
+    ]
+
+
+def test_the_unreadable_note_lists_each_problem_on_its_own_line_between_header_and_retry() -> None:
+    note = voice_unreadable_note(["mood: Field required", "lede: Field required"])
+
+    assert note.splitlines() == [
+        "## YOUR LAST REPLY COULD NOT BE READ",
+        "It was not the voice JSON object:",
+        "- mood: Field required",
+        "- lede: Field required",
+        "Return the whole JSON again in one ```json fence, with every field of the schema.",
     ]
 
 

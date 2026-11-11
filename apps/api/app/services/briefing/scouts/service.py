@@ -87,7 +87,7 @@ async def _learn(
     user: UserDocument,
     integration: ScoutIntegration,
     tools: ScoutTools,
-    stale: ScoutDocument | None,
+    stale: ScoutDocument | None = None,
 ) -> ScoutResult:
     """Learn the scout once; a learn that freezes nothing, or raises, starts or extends a backoff."""
     if not await may_learn(user.id):
@@ -118,7 +118,7 @@ async def _replay(
     A scout frozen with no criteria (before they existed) relearns: its rows cannot be judged.
     """
     if scout.playbook is None or not scout.criteria.strip():
-        return await _learn(user, integration, tools, scout)
+        return await _learn(user, integration, tools)
     try:
         signals = await watch(
             _playbook_user(user),
@@ -133,7 +133,7 @@ async def _replay(
             reason=str(exc),
             error_type=type(exc).__name__,
         )
-        return await _learn(user, integration, tools, scout)
+        return await _learn(user, integration, tools)
     return ScoutResult(
         integration_id=integration.integration_id,
         outcome=ScoutOutcome.REPLAYED,
@@ -153,7 +153,7 @@ async def _run_scout(user: UserDocument, integration: ScoutIntegration) -> Scout
         return _skipped(integration, ScoutSkipReason.NO_READ_ONLY_TOOLS)
     scout = await scouts_repository.find_for(user.id, integration.integration_id)
     if scout is None or scout.tool_fingerprint != tools.fingerprint:
-        return await _learn(user, integration, tools, scout)
+        return await _learn(user, integration, tools)
     if scout.status is ScoutStatus.NOTHING_TO_WATCH:
         return ScoutResult(
             integration_id=integration.integration_id, outcome=ScoutOutcome.NOTHING_TO_WATCH
