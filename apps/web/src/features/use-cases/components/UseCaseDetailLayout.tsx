@@ -5,6 +5,7 @@ import {
 } from "@/components/seo/PageBreadcrumbs";
 
 import { RaisedButton } from "@/components/ui/raised-button";
+import type { CommunityWorkflow } from "@/features/workflows/api/workflowApi";
 import { track } from "@/lib/analytics";
 
 import PublishWorkflowCTA from "./PublishWorkflowCTA";
@@ -23,8 +24,7 @@ interface UseCaseDetailLayoutProps {
   metaInfo: ReactNode;
   detailedContent?: ReactNode;
   steps?: ReactNode;
-  similarContent?: ReactNode;
-  categories?: string[];
+  relatedUseCases: readonly CommunityWorkflow[];
 }
 
 export default function UseCaseDetailLayout({
@@ -38,8 +38,7 @@ export default function UseCaseDetailLayout({
   metaInfo,
   detailedContent,
   steps,
-  similarContent,
-  categories,
+  relatedUseCases,
 }: UseCaseDetailLayoutProps) {
   return (
     <div className="flex min-h-screen w-full justify-center overflow-y-auto pt-34 pb-20 relative z-[1]">
@@ -90,9 +89,7 @@ export default function UseCaseDetailLayout({
           </div>
         </div>
 
-        {similarContent}
-
-        <YouMightAlsoLike currentId={id} categories={categories} />
+        <YouMightAlsoLike workflows={relatedUseCases} />
 
         <PublishWorkflowCTA />
       </div>

@@ -14,7 +14,10 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import MetaInfoCard from "@/features/use-cases/components/MetaInfoCard";
 import ToolsList from "@/features/use-cases/components/ToolsList";
 import UseCaseDetailLayout from "@/features/use-cases/components/UseCaseDetailLayout";
-import type { Workflow } from "@/features/workflows/api/workflowApi";
+import type {
+  CommunityWorkflow,
+  Workflow,
+} from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import {
   DEFAULT_WORKFLOW_ICON_COLOR,
@@ -30,6 +33,7 @@ interface UseCaseDetailClientProps {
   useCase: UseCase | null;
   communityWorkflow: Workflow | null;
   slug: string;
+  relatedUseCases: readonly CommunityWorkflow[];
 }
 
 function buildWorkflowRequest(
@@ -329,6 +333,7 @@ export default function UseCaseDetailClient({
   useCase,
   communityWorkflow,
   slug,
+  relatedUseCases,
 }: UseCaseDetailClientProps) {
   const { isCreating, handleCreateWorkflow } = useCreateFromUseCase(
     useCase,
@@ -412,7 +417,7 @@ export default function UseCaseDetailClient({
             </div>
           ) : undefined
         }
-        categories={useCase?.categories || []}
+        relatedUseCases={relatedUseCases}
       />
       <FinalSection />
     </div>

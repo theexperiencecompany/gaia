@@ -229,6 +229,7 @@ describe("landing markup accessibility", () => {
         useCase={USE_CASE}
         communityWorkflow={null}
         slug="morning-briefing"
+        relatedUseCases={[]}
       />,
     );
     expect(doc.querySelector("h1")?.textContent).toBe("Morning briefing");
