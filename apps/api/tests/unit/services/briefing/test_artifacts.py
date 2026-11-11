@@ -25,6 +25,18 @@ class TestGatherArtifacts:
 
         assert facts["t1"].snippet == "Ten slides. Covers the Q3 numbers."
 
+    def test_an_indented_heading_is_dropped_from_the_summary_too(self) -> None:
+        canvas = "   # Indented heading\nThe point.\n"
+
+        facts = gather_artifacts(TrackedWork(completed=[_todo("t1", canvas)]))
+
+        assert facts["t1"].snippet == "The point."
+
+    def test_an_item_seen_twice_does_not_hide_the_ones_after_it(self) -> None:
+        work = TrackedWork(completed=[_todo("t1"), _todo("t1")], running=[_todo("t2")])
+
+        assert list(gather_artifacts(work)) == ["t1", "t2"]
+
     def test_a_summary_is_cut_at_the_preview_length_without_trailing_space(self) -> None:
         canvas = ("word " * 100).strip()
 
