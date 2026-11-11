@@ -8,7 +8,6 @@ stored or sent.
 from dataclasses import dataclass
 
 from pydantic import ValidationError
-from pydantic_core import ErrorDetails
 
 from app.agents.prompts.briefing_prompts import (
     voice_correction_note,
@@ -94,10 +93,8 @@ def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
 
 
 def _length_problems(exc: ValidationError) -> list[str]:
-    errors: list[ErrorDetails] = exc.errors(include_url=False, include_input=False)
     return [
-        f"the {'.'.join(map(str, error['loc']))} once its slots are filled: {error['msg']}"
-        for error in errors
+        f"the {error['loc'][0]} once its slots are filled: {error['msg']}" for error in exc.errors()
     ]
 
 
@@ -133,7 +130,7 @@ async def written_brief(
     stored or sent.
     """
     note = ""
-    failure = BriefingGenerationError("the brief was never voiced")
+    failure: BriefingGenerationError
     for _ in range(MAX_VOICE_ATTEMPTS):
         attempt_prompt = f"{prompt}\n\n{note}" if note else prompt
         raw = await run_briefing_turn(user, clock, attempt_prompt, conversation_key=writing.kind)

@@ -31,7 +31,9 @@ import time_machine
 from app.agents.llm.lane import helper_lane
 from app.agents.middleware.factory import AccountingOptions
 from app.agents.prompts.scout_prompts import SCOUT_LEARN_PROMPT
+from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.llm import ModelUse
+from app.constants.log_tags import LogTag
 from app.constants.scouts import SCOUT_AGENT_NAME, SCOUT_LEARN_RECURSION_LIMIT
 from app.models.agent_config import agent_configurable
 from app.models.playbook_models import PlaybookBody, ToolStep
@@ -40,7 +42,7 @@ from app.services.briefing.scouts import learn
 from app.services.briefing.scouts.learn import learn_scout
 from app.services.briefing.scouts.spend import ScoutSpend
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools
-from app.services.briefing.scouts.watch import FrozenWatch, watch
+from app.services.briefing.scouts.watch import FrozenWatch, read_only_space, watch
 from app.services.hil.prompts import READ_ONLY_REFUSAL_TEMPLATE
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.services.workflow.playbook.evaluator import PlaybookUser
@@ -78,6 +80,7 @@ class _App:
         self.issues = issues
         self.delay = delay
         self.down = False
+        self.failure: str | None = None
         self.calls: list[dict[str, Any]] = []
         self.threads: list[str | None] = []
 
@@ -91,6 +94,8 @@ class _App:
             self.threads.append(configurable.get("conversation_id"))
             if self.down:
                 raise ConnectionError("linear is down")
+            if self.failure:
+                return json.dumps({"successful": False, "error": self.failure})
             return json.dumps({"data": {"issues": self.issues}})
 
         return {"list_issues": list_issues.model_copy(update={"metadata": _READ_ONLY})}
@@ -344,10 +349,21 @@ class TestTheLearnRun:
             "the scout learns again after its backoff",
         )
 
+    async def test_a_reply_that_fails_validation_lists_every_problem_joined(self) -> None:
+        app = _App([_ISSUE])
+        reply = '```json\n{broken\n```\n```json\n{"not": "a report"}\n```'
+        with _seams(app, reply), pytest.raises(AppError) as raised:
+            await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+
+        assert raised.value.why == (
+            "its final message (51 chars) held no ScoutReport: invalid JSON: Expecting "
+            "property name enclosed in double quotes (char 1 of 7); watching: Field required"
+        )
+
 
 class TestWhyAReportIsNotFrozen:
-    async def _problem(self, report: str) -> str | None:
-        app = _App([_ISSUE])
+    async def _problem(self, report: str, app: _App | None = None) -> str | None:
+        app = app or _App([_ISSUE])
         with _seams(app, report), patch.object(learn, "log") as log:
             learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app))
         assert learned.scout is None
@@ -403,6 +419,28 @@ class TestWhyAReportIsNotFrozen:
             "steps[0]: no tool named 'search' exists; steps[1]: no tool named 'notifications' exists"
         )
 
+    async def test_a_call_that_failed_in_the_run(self) -> None:
+        app = _App([_ISSUE])
+        app.failure = "rate limited"
+        assert await self._problem(_report(), app) == (
+            "steps[0]: list_issues failed in this run (rate limited); a playbook freezes "
+            "calls that succeeded — fix the call and run it again, or drop the step"
+        )
+
+    async def test_steps_are_checked_against_the_scouts_own_tools_not_the_executors(self) -> None:
+        app = _App([_ISSUE])
+        with (
+            _seams(app, _report()),
+            patch(
+                "app.services.workflow.playbook.parser.get_tool_registry",
+                AsyncMock(return_value=_Registry({})),
+            ),
+        ):
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+
+        assert learned.freeze_problem is None
+        assert learned.scout is not None
+
     async def test_a_call_outside_the_apps_read_only_tools(self) -> None:
         writes = [{"id": "assigned", "tool": "delete_issue", "args": {}}]
         assert await self._problem(_report(steps=writes)) == (
@@ -457,6 +495,16 @@ class TestTheReplay:
         assert [e.get("scout_integration_id") for e in event["errors"]] == ["linear", None]
 
 
+class TestTheReplaySpace:
+    def test_a_scouts_calls_run_in_a_read_only_space_of_exactly_its_tools(self) -> None:
+        tools = _App([]).tools()
+
+        space = read_only_space(tools)
+
+        assert space.read_only is True
+        assert space.tools == tools
+
+
 class TestReadOnlyAtCallTime:
     async def test_a_tool_that_slipped_into_the_scouts_tools_is_refused_when_called(
         self,
@@ -485,9 +533,15 @@ class TestReadOnlyAtCallTime:
             _seams(app, _report()),
             patch.object(learn, "resolve_model", {ModelUse.HELPER: model}.__getitem__),
             patch.object(learn, "run_tool_graph", keep_history),
+            patch("app.services.hil.gate.log") as gate_log,
         ):
             await learn_scout(USER, USER_ID, LINEAR, leaky)
 
         assert _DELETED == []
         [answer] = [m for m in histories[0] if isinstance(m, ToolMessage)]
         assert answer.content == READ_ONLY_REFUSAL_TEMPLATE.format(tool="delete_issue")
+        assert answer.additional_kwargs[HIL_STATUS_KWARG] == "denied"
+        gate_log.error.assert_called_once_with(
+            f"{LogTag.HIL} Read-only run refused a tool not classified read-only",
+            tool_name="delete_issue",
+        )

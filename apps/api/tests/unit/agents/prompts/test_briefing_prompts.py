@@ -253,6 +253,21 @@ def test_the_correction_note_shows_the_last_brief_and_asks_to_fix_only_its_probl
     ]
 
 
+def test_the_unreadable_note_lists_each_problem_on_its_own_line_between_header_and_retry() -> None:
+    note = voice_unreadable_note(["mood: Field required", "lede: Field required"], "the last reply")
+
+    assert note.splitlines() == [
+        "## YOUR LAST REPLY COULD NOT BE READ",
+        "It was not the voice JSON object:",
+        "- mood: Field required",
+        "- lede: Field required",
+        "This was your last reply:",
+        "the last reply",
+        "Change only what each problem names, keep everything else as it was, and return the "
+        "whole JSON in one ```json fence, with every field of the schema.",
+    ]
+
+
 def test_recent_openings_are_listed_for_the_model_to_avoid() -> None:
     prompt = _prompt(recent_openings=["Priya replied overnight.", "Big day for the raise."])
 

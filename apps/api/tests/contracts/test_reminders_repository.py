@@ -99,6 +99,31 @@ class TestRemindersScheduler:
         pending = await repo.find_pending_before(now)
         assert [r.id for r in pending] == [due.id]
 
+    async def test_find_scheduled_between_is_the_users_armed_reminders_in_a_half_open_window(
+        self, repo
+    ):
+        user_id = _uid()
+        start = datetime(2026, 11, 10, 0, 0, tzinfo=UTC)
+        end = start + timedelta(days=1)
+        later = await repo.create(
+            _reminder(user_id=user_id, scheduled_at=start + timedelta(hours=9))
+        )
+        at_start = await repo.create(_reminder(user_id=user_id, scheduled_at=start))
+        await repo.create(_reminder(user_id=user_id, scheduled_at=end))
+        await repo.create(_reminder(user_id=user_id, scheduled_at=start - timedelta(seconds=1)))
+        await repo.create(
+            _reminder(
+                user_id=user_id,
+                scheduled_at=start + timedelta(hours=1),
+                status=ReminderStatus.COMPLETED,
+            )
+        )
+        await repo.create(_reminder(scheduled_at=start + timedelta(hours=1)))
+
+        found = await repo.find_scheduled_between(user_id, start, end)
+
+        assert [r.id for r in found] == [at_start.id, later.id]
+
     async def test_set_status_reschedule_fields_and_user_guard(self, repo):
         owner = _uid()
         rem = await repo.create(_reminder(user_id=owner))

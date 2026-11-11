@@ -16,6 +16,7 @@ from app.constants.briefing import (
     SECTION_NUMERALS,
     WEEKLY_FAMILY,
     ArtFamily,
+    BriefAction,
     BriefOutcome,
     hue_for_day,
 )
@@ -207,6 +208,26 @@ async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user
     assert all(p.stamp_city is None for p in payloads)
     weekly = payloads[-1]
     assert weekly.week is not None and len(weekly.week.days) == 7
+    assert [
+        (s.title, [(i.text, i.action, i.outcome, i.kind) for i in s.items]) for s in weekly.sections
+    ] == [
+        (
+            "Waiting on you",
+            [
+                ("Offsite venue", BriefAction.REPLY, None, "you"),
+                ("New lease terms", BriefAction.APPROVE, None, "you"),
+            ],
+        ),
+        (
+            "Done overnight",
+            [
+                ("September expenses filed", None, BriefOutcome.FINISHED, "lookback"),
+                ("1:1 with Sam, now 3:30 PM", None, BriefOutcome.BOOKED, "lookback"),
+                ("October invoice to Acme", None, BriefOutcome.SENT, "lookback"),
+                ("Check-in for TP 1361", None, BriefOutcome.BOOKED, "lookback"),
+            ],
+        ),
+    ]
     assert seeded.deliver.await_count == 5
 
 
