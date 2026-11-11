@@ -7441,7 +7441,10 @@ export interface components {
              */
             redirect_path?: string;
         };
-        /** ConnectIntegrationResponse */
+        /**
+         * ConnectIntegrationResponse
+         * @description The outcome of a connect request: connected, a redirect to follow, or an error.
+         */
         ConnectIntegrationResponse: {
             /** Error */
             error: string | null;
@@ -9686,7 +9689,10 @@ export interface components {
             /** Maxaccounts */
             maxAccounts: number;
         };
-        /** IntegrationConfigItem */
+        /**
+         * IntegrationConfigItem
+         * @description One platform integration in the public catalog.
+         */
         IntegrationConfigItem: {
             /** Authtype */
             authType?: ("none" | "oauth" | "bearer") | null;
@@ -9870,7 +9876,10 @@ export interface components {
             /** Tools */
             tools?: components["schemas"]["StoredIntegrationTool"][];
         };
-        /** IntegrationsConfigResponse */
+        /**
+         * IntegrationsConfigResponse
+         * @description The public catalog of platform integrations.
+         */
         IntegrationsConfigResponse: {
             /** Integrations */
             integrations: components["schemas"]["IntegrationConfigItem"][];
@@ -9901,7 +9910,10 @@ export interface components {
              */
             status?: "success";
         };
-        /** IntegrationTool */
+        /**
+         * IntegrationTool
+         * @description A tool an integration exposes, as listed on its pages.
+         */
         IntegrationTool: {
             /** Description */
             description?: string | null;
