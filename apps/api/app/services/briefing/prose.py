@@ -153,7 +153,7 @@ async def written_brief(
         try:
             voice = _parse_voice(raw)
         except VoiceUnreadableError as exc:
-            failure, note = exc, voice_unreadable_note(exc.problems)
+            failure, note = exc, voice_unreadable_note(exc.problems, raw)
             continue
         checked = await _held_to_facts(user.user_id, voice, writing)
         if isinstance(checked, BriefVoice):
@@ -162,7 +162,7 @@ async def written_brief(
         failure = BriefingGenerationError(
             f"The brief's prose does not hold to its facts: {'; '.join(checked)}"
         )
-        note = voice_correction_note(checked)
+        note = voice_correction_note(checked, voice.model_dump_json(indent=2))
     raise failure
 
 

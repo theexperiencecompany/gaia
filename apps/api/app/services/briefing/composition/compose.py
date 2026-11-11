@@ -148,8 +148,9 @@ async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Com
         if not problems:
             break
         log.warning("briefing.composition_rejected", problems=problems)
+        last = answer.model_dump_json() if answer is not None else "(no whole composition)"
         answer, problems = await attempt(
-            COMPOSITION_RETRY_NOTE.format(problems="; ".join(problems))
+            COMPOSITION_RETRY_NOTE.format(problems="; ".join(problems), last=last)
         )
     if problems or answer is None:
         raise AppError(

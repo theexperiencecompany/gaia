@@ -18,7 +18,7 @@ from app.constants.briefing import (
     BriefOutcome,
 )
 from app.models.brief_candidate_models import BriefCandidate
-from app.models.brief_composition_models import BriefComposition
+from app.models.brief_composition_models import BriefComposition, ComposedItems
 from app.models.brief_pool_models import (
     DataSeries,
     GoalOrigin,
@@ -266,15 +266,6 @@ class TestChartsFitTheirSeries:
 
 
 class TestThePageBudget:
-    def test_more_blocks_than_a_brief_holds_is_refused(self) -> None:
-        notes: list[dict[str, object]] = [
-            {"kind": "note", "text": f"Note {chr(97 + n)}."} for n in range(MAX_BRIEF_BLOCKS + 1)
-        ]
-
-        assert _problems(*notes) == [
-            f"{MAX_BRIEF_BLOCKS + 1} blocks; a brief holds at most {MAX_BRIEF_BLOCKS}"
-        ]
-
     def test_more_items_than_a_brief_holds_is_refused(self) -> None:
         groups = [
             _items(1, 2, 3, 4, 5),
@@ -284,14 +275,6 @@ class TestThePageBudget:
 
         assert _problems(*groups) == [
             f"{MAX_BRIEF_ITEMS + 1} items in all; a brief holds at most {MAX_BRIEF_ITEMS}"
-        ]
-
-    def test_a_group_over_its_size_or_empty_is_refused(self) -> None:
-        assert _problems(_items(*range(1, MAX_ITEMS_PER_BLOCK + 2))) == [
-            f"block 1 (items): {MAX_ITEMS_PER_BLOCK + 1} items; a group holds 1 to {MAX_ITEMS_PER_BLOCK}"
-        ]
-        assert _problems(_items()) == [
-            f"block 1 (items): 0 items; a group holds 1 to {MAX_ITEMS_PER_BLOCK}"
         ]
 
     def test_a_third_chart_is_refused(self) -> None:
@@ -379,6 +362,19 @@ class TestEachBlockHasItsShape:
 
 
 class TestTheSchemaAProviderHolds:
+    def test_the_page_budget_is_in_the_schema_so_the_provider_holds_it(self) -> None:
+        """E2E busy day: a composition came back with 8 blocks against a budget of 7."""
+        schema = BriefComposition.model_json_schema()
+        group = schema["$defs"]["ComposedItems"]["properties"]["items"]
+
+        assert schema["properties"]["blocks"]["maxItems"] == MAX_BRIEF_BLOCKS
+        assert (group["minItems"], group["maxItems"]) == (1, MAX_ITEMS_PER_BLOCK)
+        with pytest.raises(ValidationError):
+            ComposedItems.model_validate({"kind": "items", "heading": "Empty", "items": []})
+        notes = [{"kind": "note", "text": "A note."}] * (MAX_BRIEF_BLOCKS + 1)
+        with pytest.raises(ValidationError):
+            BriefComposition.model_validate({"blocks": notes})
+
     def test_every_field_of_every_object_is_required_and_every_kind_an_enum(self) -> None:
         schema = BriefComposition.model_json_schema()
         objects = [schema, *schema["$defs"].values()]
@@ -405,14 +401,11 @@ class TestNoFreeNumbers:
             "the block 1 (note) text: [[fact:1.time]]: fact 1 has no time"
         ]
 
-    def test_a_figure_typed_into_a_takeaway_or_a_note_is_refused(self) -> None:
-        assert _problems(_chart("meetings", takeaway="Today holds 7 hours.")) == [
-            "the block 1 (chart) takeaway types '7' itself; every count, time and date is a slot, "
-            "and any other figure is said in words"
-        ]
-        assert _problems({"kind": "note", "text": "You closed 4 threads."}) == [
-            "the block 1 (note) text types '4' itself; every count, time and date is a slot, "
-            "and any other figure is said in words"
+    def test_a_figure_no_fact_carries_is_refused_in_a_takeaway_or_a_note(self) -> None:
+        assert _problems(_chart("meetings", takeaway="Today holds 7 hours.")) == []
+        assert _problems({"kind": "note", "text": "You closed 41 threads."}) == [
+            "the block 1 (note) text types '41', a figure no fact carries; say it in words, "
+            "from the facts, or leave it out"
         ]
 
     def test_a_slot_on_a_series_the_pool_does_not_hold_or_a_field_it_lacks_is_refused(self) -> None:

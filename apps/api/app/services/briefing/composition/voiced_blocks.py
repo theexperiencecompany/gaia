@@ -43,3 +43,18 @@ def charted_figures(blocks: Sequence[BriefBlock]) -> dict[str, Mapping[SeriesFie
         if isinstance(block, ChartBlock)
         for series in block.series
     }
+
+
+def block_words(blocks: Sequence[BriefBlock]) -> list[str]:
+    """Return the words and figures the blocks besides the item sections show, which prose may quote."""
+    words: list[str] = []
+    for block in blocks:
+        if isinstance(block, ChartBlock):
+            words += [block.title, block.takeaway]
+        elif isinstance(block, QuoteBlock):
+            words.append(block.quote.text)
+        elif isinstance(block, ProgressBlock):
+            words += [block.goal.statement, str(block.goal.done), str(block.goal.open)]
+        elif isinstance(block, NoteBlock):
+            words.append(block.text)
+    return words

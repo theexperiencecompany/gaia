@@ -31,6 +31,7 @@ from app.constants.briefing import (
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
     MAX_BRIEF_HEADLINE_CHARS,
+    MAX_VOICE_ATTEMPTS,
     WEEKLY_KICKER,
     WINBACK_THRESHOLD,
     ArtFamily,
@@ -625,7 +626,7 @@ class TestDailyBrief:
         assert payload.template_family == "memo"
         assert payload.calendar == [_EVENT]
         assert payload.tallies == BriefingTallies(done_by_you=1, done_by_gaia=0)
-        assert "11:00 AM: Sequoia" in _prompt(world)
+        assert "(11:00 AM): Sequoia" in _prompt(world)
         assert [(s.title, [i.text for i in s.items]) for s in payload.sections] == [
             ("Needs you", ["Approve the Priya reply"]),
             ("GAIA's work", ["Investor update"]),
@@ -966,7 +967,10 @@ class TestDailyBrief:
         await daily.run_daily_briefing(_USER)
 
         retry = world.composer.await_args_list[1].args[1]
-        assert 'block 1 heading "Landed overnight" is not true of item(s) 1: still waits' in retry
+        assert (
+            'block 1 heading "Landed overnight" is not true of item 1 (waiting on you, review)'
+            in retry
+        )
         judged = world.headings.await_args_list[0].args[1]
         assert "- item 1: Approve the Priya reply | waiting on you | action review" in judged
 
@@ -1196,7 +1200,7 @@ class TestWeeklyRecap:
 
         assert _stored_payload(world).lede == "Then Pitch to Accel on Fri 3:00 PM."
         facts = _facts_shown(_prompt(world))
-        assert "The week ahead:\n- fact " in facts and "| Fri 3:00 PM: Pitch to Accel" in facts
+        assert "The week ahead:\n- fact " in facts and "(Fri 3:00 PM): Pitch to Accel" in facts
         assert "summary: Final numbers in" in facts
         assert "weekly digest for the week ending 2026-10-14" in world.composer.await_args.args[1]
         assert "## THIS WEEK'S FACTS" in _prompt(world)
@@ -1225,7 +1229,9 @@ class TestTheWeeklyHoldsToItsFacts:
         assert "lede: You closed the Sequoia round.\n" in _checked_prompt(world)
         assert world.weekly_prompt.call_args.kwargs["blocks"].context in _checked_prompt(world)
 
-    async def test_a_recap_unsupported_twice_fails_and_sends_nothing(self, world: World) -> None:
+    async def test_a_recap_unsupported_on_every_attempt_fails_and_sends_nothing(
+        self, world: World
+    ) -> None:
         invented = UnsupportedClaim(quote="shipped twelve features", fact="absent", truth="one")
         world.agent.return_value = _weekly_voiced(lede="You shipped twelve features.")
         world.checker.return_value = _claims(invented)
@@ -1233,7 +1239,7 @@ class TestTheWeeklyHoldsToItsFacts:
         with pytest.raises(errors.BriefingGenerationError, match="no fact holds it"):
             await weekly.run_weekly_digest(_USER)
 
-        assert world.checker.await_count == 2
+        assert world.checker.await_count == MAX_VOICE_ATTEMPTS
         _assert_nothing_sent(world)
 
     async def test_a_typed_count_is_sent_back_before_the_checker_runs(self, world: World) -> None:
@@ -1242,7 +1248,7 @@ class TestTheWeeklyHoldsToItsFacts:
         await weekly.run_weekly_digest(_USER)
 
         retry = world.agent.await_args_list[1].kwargs["request"].message
-        assert "the lede types '9' itself" in retry
+        assert "the lede types '9', a figure no fact carries" in retry
         assert world.checker.await_count == 1
 
     async def test_a_message_that_skips_the_failed_run_or_the_week_ahead_is_sent_back(
@@ -1419,15 +1425,17 @@ class TestTheProseHoldsToItsFacts:
         ) in retry
         assert _stored_payload(world).headline == "The investor update is done"
 
-    async def test_a_brief_unsupported_twice_fails_and_sends_nothing(self, world: World) -> None:
+    async def test_a_brief_unsupported_on_every_attempt_fails_and_sends_nothing(
+        self, world: World
+    ) -> None:
         world.work = context.TrackedWork(completed=[_todo("c1", "Investor update")])
-        world.agent.side_effect = [_LIVE_CONTRADICTION, _LIVE_CONTRADICTION]
+        world.agent.side_effect = [_LIVE_CONTRADICTION] * MAX_VOICE_ATTEMPTS
         world.checker.return_value = _claims(_ARJUN)
 
         with pytest.raises(errors.BriefingGenerationError, match="no fact holds it"):
             await daily.run_daily_briefing(_USER)
 
-        assert world.checker.await_count == 2
+        assert world.checker.await_count == MAX_VOICE_ATTEMPTS
         _assert_nothing_sent(world)
 
     async def test_the_checker_reads_the_rendered_prose_and_everything_the_writer_was_shown(
@@ -1451,6 +1459,8 @@ class TestTheProseHoldsToItsFacts:
         await daily.run_daily_briefing(_USER)
 
         checked = _checked_prompt(world)
+        # Live brief: "Wednesday" was refused because the check never saw the date.
+        assert "Today is Wednesday 14 October 2026." in checked
         assert "headline: Sequoia at ⟦11:00 AM⟧\n" in checked
         assert "lede: Then the Accel intro.\n" in checked
         assert "message: ⟦Sequoia⟧\n" in checked
@@ -1479,14 +1489,14 @@ class TestTheProseHoldsToItsFacts:
 
         await daily.run_daily_briefing(_USER)
 
-        assert "[COUNTS] open_todos: 5\n" in _prompt(world)
+        assert "[COUNTS] [[count:open_todos]] (5)\n" in _prompt(world)
         assert world.agent.await_count == 1
         assert _stored_payload(world).headline == "5 open todos, a quiet morning"
 
     @pytest.mark.parametrize(
         ("headline", "named"),
         [
-            ("6 open todos", "the headline types '6' itself"),
+            ("6 open todos", "the headline types '6', a figure no fact carries"),
             ("[[count:done]] done overnight", "[[count:done]] is not a count the facts list"),
             ("[[fact:9]] is waiting", "fact:9 is no fact shown today"),
         ],
@@ -1639,11 +1649,11 @@ class TestAnUnreadableVoiceIsRetried:
         )
         assert _stored_payload(world).headline == _VOICE["headline"]
 
-    async def test_a_reply_unreadable_twice_fails_naming_the_shape_not_the_text(
+    async def test_a_reply_unreadable_on_every_attempt_fails_naming_the_shape_not_the_text(
         self, world: World
     ) -> None:
         cut_short = SimpleNamespace(message='```json\n{"headline": "Arjun needs the redlines\n```')
-        world.agent.side_effect = [_MOOD_LEFT_OUT, cut_short]
+        world.agent.side_effect = [_MOOD_LEFT_OUT] * (MAX_VOICE_ATTEMPTS - 1) + [cut_short]
 
         with pytest.raises(errors.VoiceUnreadableError) as err:
             await daily.run_daily_briefing(_USER)
@@ -1705,9 +1715,9 @@ class TestOneSubjectIsOneItem:
         assert items == [("Approve the Acme MSA renewal", "b1", 3), ("Reply to Daniel", "b4", 1)]
         facts = _facts_shown(_prompt(world))
         assert facts.count("Acme MSA renewal") == 1
-        assert "Approve the Acme MSA renewal | 3 requests, one item" in facts
+        assert "Approve the Acme MSA renewal | [[fact:1.count]] (3) requests, one item" in facts
         assert "Reply to Daniel | 1 requests" not in facts
-        assert "[COUNTS] needs_you: 2 · events: 1\n" in facts
+        assert "[COUNTS] [[count:needs_you]] (2) · [[count:events]] (1)\n" in facts
         assert [(s.value, s.label) for s in payload.stats] == [("2", "waiting on you")]
 
     async def test_two_requests_for_one_subject_are_counted_as_two(self, world: World) -> None:
@@ -1720,7 +1730,10 @@ class TestOneSubjectIsOneItem:
 
         await daily.run_daily_briefing(_USER)
 
-        assert "Approve the Acme MSA renewal | 2 requests, one item" in _facts_shown(_prompt(world))
+        assert (
+            "Approve the Acme MSA renewal | [[fact:1.count]] (2) requests, one item"
+            in _facts_shown(_prompt(world))
+        )
 
     async def test_subtasks_of_one_parent_are_one_item(self, world: World) -> None:
         world.work = context.TrackedWork(
@@ -1876,7 +1889,7 @@ class TestTheDailyRunWiring:
 
         await daily.run_daily_briefing(_USER)
 
-        assert "[COUNTS] in_progress: 1 · events: 1\n" in _prompt(world)
+        assert "[COUNTS] [[count:in_progress]] (1) · [[count:events]] (1)\n" in _prompt(world)
 
     async def test_delivery_opens_the_brief_and_posts_the_image_as_the_daily_brief(
         self, world: World
@@ -1972,7 +1985,7 @@ class TestTheFactsTheModelVoices:
         await daily.run_daily_briefing(_USER)
 
         assert (
-            "[COUNTS] needs_you: 3 · done: 1 · in_progress: 2 · while_away: 1 · events: 1\n"
+            "[COUNTS] [[count:needs_you]] (3) · [[count:done]] (1) · [[count:in_progress]] (2) · [[count:while_away]] (1) · [[count:events]] (1)\n"
             "[Needs you]\n"
             "- fact 1 | Waiting on you: Approve the reply | summary: Draft ready"
             " | artifact holds ~11 chars | waiting on you | linkable\n"
@@ -1985,7 +1998,7 @@ class TestTheFactsTheModelVoices:
             "- fact 7 | In progress: Outreach | artifact holds ~0 chars\n"
             "The user's own todo list is empty.\n"
             "Today's calendar:\n"
-            "- fact 8 | 11:00 AM: Sequoia"
+            "- fact 8 | [[fact:8.time]] (11:00 AM): Sequoia"
         ) in _prompt(world)
         assert "The brief holds no items today" not in _prompt(world)
         assert [(s.value, s.label) for s in _stored_payload(world).stats] == [
@@ -2045,11 +2058,11 @@ class TestTheFactsTheModelVoices:
         await daily.run_daily_briefing(_USER)
 
         assert (
-            "[COUNTS] events: 1\n"
+            "[COUNTS] [[count:events]] (1)\n"
             "The brief holds no items today. Do not claim anything ran, finished, or is "
             "pending beyond what is stated here.\n"
             "The user's own todo list is empty.\n"
-            "Today's calendar:\n- fact 1 | 11:00 AM: Sequoia"
+            "Today's calendar:\n- fact 1 | [[fact:1.time]] (11:00 AM): Sequoia"
         ) in _prompt(world)
 
     @pytest.mark.parametrize(
@@ -2057,13 +2070,13 @@ class TestTheFactsTheModelVoices:
         [
             (
                 (2, ["Gym", "Taxes"]),
-                "[COUNTS] open_todos: 2 · events: 1\n",
+                "[COUNTS] [[count:open_todos]] (2) · [[count:events]] (1)\n",
                 "The user's own open todos (first few: Gym; Taxes) are counted in [COUNTS]"
                 "; never voice that list as clear or empty.\n",
             ),
             (
                 (3, []),
-                "[COUNTS] open_todos: 3 · events: 1\n",
+                "[COUNTS] [[count:open_todos]] (3) · [[count:events]] (1)\n",
                 "The user's own open todos are counted in [COUNTS]"
                 "; never voice that list as clear or empty.\n",
             ),
@@ -2100,7 +2113,7 @@ class TestTheFactsTheModelVoices:
         await daily.run_daily_briefing(_USER)
         assert (
             "is empty.\nToday's calendar:\n"
-            "- fact 1 | all day: Offsite\n- fact 2 | 11:00 AM: Sequoia\n\n## YESTERDAY"
+            "- fact 1 | all day: Offsite\n- fact 2 | [[fact:2.time]] (11:00 AM): Sequoia\n\n## YESTERDAY"
         ) in _prompt(world)
 
         _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
@@ -2236,12 +2249,14 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
             f"[the reply]({_todo_link('b1')}) waits on you\nSequoia"
         )
 
-    async def test_a_link_malformed_twice_fails_and_sends_nothing(self, world: World) -> None:
+    async def test_a_link_malformed_on_every_attempt_fails_and_sends_nothing(
+        self, world: World
+    ) -> None:
         world.agent.side_effect = [
             _wrote(
                 "[Book flights for the Berlin offsite|[[fact:2]]]\n[the reply](fact:1) waits on you"
             )
-        ] * 2
+        ] * MAX_VOICE_ATTEMPTS
 
         with pytest.raises(errors.BriefingGenerationError, match="malformed slot"):
             await daily.run_daily_briefing(_USER)
@@ -2693,7 +2708,7 @@ class TestTheWeeklyRunWiring:
 
         assert _stored_payload(world).headline == "A good week"
 
-    async def test_a_recap_missing_from_the_output_twice_fails_naming_why(
+    async def test_a_recap_missing_from_the_output_on_every_attempt_fails_naming_why(
         self, world: World
     ) -> None:
         world.agent.return_value = SimpleNamespace(message="z" * 400)
@@ -2704,7 +2719,7 @@ class TestTheWeeklyRunWiring:
         assert str(err.value) == (
             "No valid voice JSON in agent output: invalid JSON: Expecting value (char 0 of 400)"
         )
-        assert world.agent.await_count == 2
+        assert world.agent.await_count == MAX_VOICE_ATTEMPTS
         _assert_nothing_sent(world)
 
     async def test_an_unknown_user_fails_loud(self, world: World) -> None:
@@ -2785,6 +2800,52 @@ def _scouted(*signals: Signal) -> list[ScoutResult]:
 
 def _saying(text: str) -> SimpleNamespace:
     return SimpleNamespace(message=_fenced({**_VOICE, "message": f"{_FACTS_SHOWN} {text}"}))
+
+
+class TestTheVoiceIsToldWhatItMustReferTo:
+    async def test_the_prompt_ends_on_every_fact_the_message_must_refer_to(
+        self, world: World
+    ) -> None:
+        """E2E: the message named the failed run in words, never through its slot, twice."""
+        world.work = _brief_work()
+
+        await daily.run_daily_briefing(_USER)
+
+        tail = _prompt(world).rsplit("## BEFORE YOU ANSWER", 1)[1]
+        assert "- fact 1: Approve the Priya reply" in tail
+        assert "- fact 3: Sequoia" in tail
+        assert "Investor update" not in tail
+
+
+class TestTheVoiceQuotesItsFacts:
+    async def test_a_figure_from_a_facts_own_words_may_be_typed_in_the_prose(
+        self, world: World
+    ) -> None:
+        """Live brief: the lede quoted Maya's "1x" preference and was refused on every attempt."""
+        maya = _LOGIN.model_copy(
+            update={
+                "title": "Term sheet sign-off",
+                "people": ["Maya Chen"],
+                "text": "Can you confirm the 1x non-participating preference by Friday?",
+            }
+        )
+        world.scouts = _scouted(maya)
+        world.composer.side_effect = _composed({"Waiting on you": ["Term sheet sign-off"]})
+        world.agent.return_value = SimpleNamespace(
+            message=_fenced(
+                {
+                    **_VOICE,
+                    "headline": "Maya needs an answer",
+                    "lede": "Confirm the 1x preference.",
+                    "message": "[Maya's sign-off](fact:<fact of Term sheet sign-off>), then [[fact:<fact of Sequoia>]].",
+                }
+            )
+        )
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).lede == "Confirm the 1x preference."
+        assert world.agent.await_count == 1
 
 
 class TestSignalsInTheBrief:

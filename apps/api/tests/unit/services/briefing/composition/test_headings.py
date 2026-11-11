@@ -89,8 +89,9 @@ async def test_each_group_is_shown_with_its_items_states_and_sides(model: AsyncM
 
 async def test_a_heading_untrue_of_an_item_is_named_with_the_item(model: AsyncMock) -> None:
     assert await heading_problems(USER, COMPOSITION, POOL) == [
-        'block 2 heading "Landed overnight" is not true of item(s) 1: still waits on approval; '
-        "rename the group or move them"
+        'block 2 heading "Landed overnight" is not true of item 1 (waiting on you, review): '
+        "still waits on approval; move them under a heading true of what they are, or rename "
+        "this group"
     ]
 
 

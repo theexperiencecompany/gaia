@@ -1,5 +1,8 @@
 """Eval: does the brief's heading check judge each heading by its items' actions and outcomes alone?
 
+A subject, a time or an occasion a heading names is never judged: only what it says items need
+or where they got to.
+
 Run it before changing the heading prompt or the helper model it runs on:
 uv run pytest tests/model_onboarding/test_brief_headings.py -m model_onboarding -v.
 A heading fits when every item under it satisfies it; tone and register never count. The first
@@ -81,12 +84,16 @@ _FITTING = {
     "money, over the invoices": _group("Money", 5, 8),
     "still running, over started work": _group("Still running", 4),
     "needs your review, over a retry and a reply": _group("Needs your review", 7, 6),
+    # The e2e busy day refused these three, each true of every item under it.
+    "a decision, over invoices to review": _group("Money needing a decision", 5, 8),
+    "a moment of the day, over asks and running work": _group("Before today's calls", 6, 4),
+    "two acts named, over one of them": _group("Replies and approvals", 6, 1),
 }
 # Each must be refused: an item under it does not satisfy it.
 _MISFITTING = {
     "landed overnight, over a draft waiting on approval": _group("Landed overnight", 3, 1),
     "done, over work only started": _group("Done", 2, 4),
-    "money, over offsite venues": _group("Money needing a decision", 5, 1),
+    "a done heading, over an ask and a sent item": _group("Finished for you", 3, 5),
     "waiting on you, over finished work": _group("Waiting on you", 6, 3),
     "still running, over a failed sync": _group("Still running", 4, 7),
 }

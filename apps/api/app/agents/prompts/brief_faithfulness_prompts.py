@@ -11,7 +11,8 @@ BRIEF_FAITHFULNESS_PROMPT = """You check a brief for false specifics, against th
 Every value in ⟦ ⟧ was filled in from the facts by the system and is exactly right.
 
 How the facts read: an item waiting on the user or failed is theirs to act on; GAIA's work in
-progress or done is GAIA's own, done for the user (the brief speaks as GAIA, "I", to them); the calendar lists today's only
+progress or done is GAIA's own, done for the user (the brief speaks as GAIA, "I", to them), and
+done work is ready for them; the calendar lists today's only
 events, and a reminder or todo is not a calendar event; "N requests, one item" is one item
 standing for N requests; [COUNTS] and the series' figures are the only counts; a chart's
 title and takeaway speak of the series it draws. Series, quote and goal lines are facts as
@@ -28,9 +29,18 @@ in progress). Quote the brief's own words, never the facts' words. Judge each:
   the fact lines; a wrong time, person or app; a calendar called
   clear that lists an event; failed work called fixed; done work called unfinished).
 - absent: it names a person, event, meeting, deadline, document or outcome no fact holds.
-Never list tone, wit, ordering, an offer, a question, a suggestion, anything the brief leaves
-out, or a value in ⟦ ⟧. A heading or a chart title names what follows ("Ready when you are",
-"Money", "This week's meetings"): one that names no person, count, time, deadline or outcome is
-not a specific, so it is never listed. A part of the day holds against the events' clock times: morning is before noon, so an event
-at 4:00 PM leaves the morning clear. When unsure, it holds.
+- A pattern a series shows (a spike, a peak, the heaviest day, a backlog building, a drop)
+  holds when that series' points show it.
+- A part of the day holds against the events' clock times: morning is before noon, so an event
+  at 4:00 PM leaves the morning clear.
+Never list any of these, for none is a specific:
+- tone, wit, a joke, a metaphor or any figure of speech ("Clearbit chose bureaucracy before
+  breakfast", "today's plot twist", "automation asking for supervision");
+- ordering, an offer, a question, a suggestion, or anything the brief leaves out;
+- advice or a judgement of what matters ("the cleanest first move", "the one to start with",
+  "that needs your call"), and addressing the user ("your dentist" for their own event);
+- a value in ⟦ ⟧;
+- a heading or a chart title that names no person, count, time, deadline or outcome ("Ready
+  when you are", "Money", "This week's meetings").
+When unsure, it holds.
 """

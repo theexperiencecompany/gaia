@@ -80,8 +80,20 @@ async def heading_problems(
             meta={"answer": answer.model_dump()},
         )
     return [
-        f'block {n} heading "{groups[n].heading}" is not true of item(s) '
-        f"{', '.join(map(str, v.misfits)) or 'under it'}: {v.why}; rename the group or move them"
+        f'block {n} heading "{groups[n].heading}" is not true of '
+        f"{_misfits(groups[n], v.misfits, pool) or 'its items'}: {v.why}; move "
+        "them under a heading true of what they are, or rename this group"
         for n, v in sorted(verdicts.items())
         if not v.fits
     ]
+
+
+def _misfits(group: ComposedItems, ids: list[int], pool: FactPool) -> str:
+    """Name each misfit item with what it is, so the retry knows where it belongs."""
+    named = []
+    for item in group.items:
+        if item.id in ids:
+            state = BRIEFING_ITEM_STATES[pool.items[item.id].state].lower()
+            said = item.action or item.outcome
+            named.append(f"item {item.id} ({state}{f', {said.value}' if said else ''})")
+    return ", ".join(named)

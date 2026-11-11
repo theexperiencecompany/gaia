@@ -20,6 +20,7 @@ from app.agents.prompts.briefing_prompts import (
     build_weekly_voice_prompt,
     reader_line,
     voice_correction_note,
+    voice_unreadable_note,
 )
 from app.constants.briefing import (
     MAX_BRIEF_CAPTION_CHARS,
@@ -236,15 +237,21 @@ def test_an_unknown_wind_down_stage_adds_nothing() -> None:
     assert _prompt(wind_down="paused") == _prompt()
 
 
-def test_the_correction_note_lists_each_problem_on_its_own_line_between_header_and_retry() -> None:
-    note = voice_correction_note(["headline names Dhruv", "lede counts 3 drafts"])
+def test_the_correction_note_shows_the_last_brief_and_asks_to_fix_only_its_problems() -> None:
+    """E2E busy day: told only to "write it again", the retry fixed one problem and made two."""
+    last = '{"headline": "Dhruv waits", "lede": "3 drafts"}'
+
+    note = voice_correction_note(["headline names Dhruv", "lede counts 3 drafts"], last)
 
     assert note.splitlines() == [
         "## YOUR LAST BRIEF WAS REJECTED",
         "It did not match today's facts:",
         "- headline names Dhruv",
         "- lede counts 3 drafts",
-        "Write it again from today's facts only, then return the whole JSON.",
+        "This was your last brief:",
+        last,
+        "Change only what each problem names, keep every other word and slot as it was, "
+        "then return the whole JSON.",
     ]
 
 
@@ -320,3 +327,14 @@ def test_the_day_zero_hello_asks_for_the_goal_when_none_is_known() -> None:
     assert "Say hi to Priya by name" in prompt
     assert _ASKS_FOR_THE_GOAL in prompt
     assert _OFFERS_A_DELIVERABLE not in prompt
+
+
+def test_the_unreadable_note_shows_the_last_reply_so_a_long_field_is_only_shortened() -> None:
+    """E2E spike day: a headline over its length was rewritten whole, and came back too long again."""
+    last = '```json\n{"headline": "' + "h" * 60 + '"}\n```'
+
+    note = voice_unreadable_note(["headline: String should have at most 52 characters"], last)
+
+    assert "- headline: String should have at most 52 characters" in note
+    assert f"This was your last reply:\n{last}\n" in note
+    assert "Change only what each problem names" in note

@@ -10,7 +10,12 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.briefing import BriefAction, BriefOutcome
+from app.constants.briefing import (
+    MAX_BRIEF_BLOCKS,
+    MAX_ITEMS_PER_BLOCK,
+    BriefAction,
+    BriefOutcome,
+)
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan
 
 BriefBlockKind = Literal["lead", "items", "chart", "quote", "progress", "note"]
@@ -52,7 +57,7 @@ class ComposedItems(BaseModel):
 
     kind: Literal["items"]
     heading: str
-    items: list[ComposedItem]
+    items: list[ComposedItem] = Field(min_length=1, max_length=MAX_ITEMS_PER_BLOCK)
 
 
 class ComposedChart(BaseModel):
@@ -96,7 +101,7 @@ ComposedBlock = (
 class BriefComposition(BaseModel):
     """The composition's answer: the brief's blocks in reading order."""
 
-    blocks: list[ComposedBlock]
+    blocks: list[ComposedBlock] = Field(max_length=MAX_BRIEF_BLOCKS)
 
 
 def placed_items(block: ComposedBlock) -> list[ComposedItem]:

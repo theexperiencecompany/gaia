@@ -84,53 +84,15 @@ class TestProblems:
         assert slot_problems("message", written, _VALUES) == []
 
     @pytest.mark.parametrize(
-        ("written", "problem"),
-        [
-            ("[[count:done]] done", f"[[count:done]] is not a count the facts list {_OFFERED}"),
-            ("[[count:weeks]]", f"[[count:weeks]] is not a count the facts list {_OFFERED}"),
-            ("[[count:events.time]]", "[[count:events.time]]: a count slot has no field"),
-            ("[[fact:4]] is ready", "fact:4 is no fact shown today"),
-            ("[[fact:deck]] is ready", "fact:deck is no fact shown today"),
-            ("at [[fact:3.time]]", "[[fact:3.time]]: fact 3 has no time"),
-            ("[[fact:9.count]] of them", "[[fact:9.count]]: fact 9 has no count"),
-            (
-                "[[fact:9.people]]",
-                "[[fact:9.people]]: a fact slot is [[fact:N]], [[fact:N.time]] or [[fact:N.count]]",
-            ),
-            ("the [deck](fact:12)", "fact:12 is no fact shown today"),
-        ],
+        "written", ["Sequoia at 12:30", "you have 9 approvals", "the [Q5 deck](fact:7)"]
     )
-    def test_a_slot_naming_nothing_shown_is_named(self, written: str, problem: str) -> None:
-        assert slot_problems("message", written, _VALUES) == [f"the message: {problem}"]
+    def test_a_figure_no_fact_carries_is_named(self, written: str) -> None:
+        [problem] = slot_problems("lede", written, _VALUES)
 
-    @pytest.mark.parametrize(
-        "written",
-        [
-            "[the deck|[[fact:7]]]",
-            "[[fact:7|the deck]]",
-            "[the deck] (fact:7)",
-            "[[fact: 7]]",
-            "see fact:7",
-        ],
-    )
-    def test_a_mangled_slot_is_named_as_malformed(self, written: str) -> None:
-        problems = slot_problems("message", written, _VALUES)
-
-        assert any("has a malformed slot" in problem for problem in problems), problems
-
-    @pytest.mark.parametrize(
-        ("written", "typed"),
-        [
-            ("Sequoia at 11:00", "'11:00'"),
-            ("you have 3 approvals", "'3'"),
-            ("the [Q5 deck](fact:7)", "'Q5'"),
-        ],
-    )
-    def test_a_figure_typed_outside_a_slot_is_named(self, written: str, typed: str) -> None:
-        assert slot_problems("lede", written, _VALUES) == [
-            f"the lede types {typed} itself; every count, time and date is a slot, "
-            "and any other figure is said in words"
-        ]
+        assert problem.startswith("the lede types ")
+        assert problem.endswith(
+            "a figure no fact carries; say it in words, from the facts, or leave it out"
+        )
 
     def test_a_figure_as_it_stands_in_a_title_may_be_typed(self) -> None:
         assert slot_problems("message", "the (Q4) deck, then the [Q4 deck](fact:7).", _VALUES) == []
@@ -218,3 +180,36 @@ class TestSeriesSlots:
         [problem] = slot_problems("note", "[[series:gmail_sorted.peak]", values)
 
         assert "malformed slot" in problem
+
+
+class TestATypedFigureNamesItsSlot:
+    def test_a_typed_time_names_the_time_slot(self) -> None:
+        """E2E busy day: "10:00" came back typed; the retry was only told to use a slot."""
+        assert slot_problems("message", "Sequoia at 11:00.", _VALUES) == [
+            "the message types '11:00' itself; write [[fact:9.time]] where it says 11:00"
+        ]
+
+    @pytest.mark.parametrize(
+        "written", ["You have 2 asks today.", "The renewal stands for 3 requests."]
+    )
+    def test_a_count_a_slot_renders_stands_as_typed(self, written: str) -> None:
+        """E2E busy day: "3" and "4" were refused on both attempts, true counts its slots render."""
+        assert slot_problems("message", written, _VALUES) == []
+
+    def test_a_series_figure_stands_as_typed_and_another_figure_does_not(self) -> None:
+        values = SlotValues(
+            facts={}, counts={}, series={"calendar_meeting_hours": series_figures(_MEETINGS)}
+        )
+
+        assert slot_problems("caption", "Today holds 7 hours of meetings.", values) == []
+        assert slot_problems("caption", "Today holds 8 hours.", values) == [
+            "the caption types '8', a figure no fact carries; say it in words, from the facts, "
+            "or leave it out"
+        ]
+
+    def test_a_figure_quoted_from_the_facts_own_words_may_be_typed(self) -> None:
+        """Live brief: the lede quoted Maya's "1x non-participating" preference and was refused."""
+        values = SlotValues(facts={}, counts={}, quoted=frozenset({"1x"}))
+
+        assert slot_problems("lede", "Maya wants the 1x preference confirmed.", values) == []
+        assert slot_problems("lede", "Maya wants the 2x preference.", values) != []

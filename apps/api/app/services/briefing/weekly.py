@@ -34,6 +34,7 @@ from app.services.briefing.facts import (
     WEEK_AHEAD,
     FactSources,
     build_facts,
+    references,
 )
 from app.services.briefing.lifecycle import (
     already_delivered,
@@ -123,6 +124,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         goal=goal_block,
         lookback="",
         replies="",
+        references=references(facts),
     )
     # Bounded: a stalled agent run must fail the cron loudly, not hang the
     # worker slot (observed live 2026-08-07).
@@ -133,7 +135,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
             build_weekly_voice_prompt(date_local=clock.date_str, blocks=blocks),
             Writing(
                 values=facts.values,
-                context=blocks.context,
+                context=f"Today is {clock.now_local:%A %-d %B %Y}.\n{blocks.context}",
                 must_mention=facts.must_mention,
                 kind=BRIEFING_KIND_WEEKLY,
             ),

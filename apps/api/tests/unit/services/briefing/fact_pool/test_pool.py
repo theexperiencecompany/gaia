@@ -221,6 +221,9 @@ class TestThePoolAsTheComposerReadsIt:
     async def test_every_item_series_quote_and_goal_is_laid_out_by_id(self, stores: Stores) -> None:
         block = pool_block(await _pool())
 
+        # Every reader of the pool, the composer and its checkers, reads the states alike.
+        assert block.startswith("ITEMS (done: finished since the last brief, overnight;")
+
         assert "1. [Gmail] waiting on you: Re: Series A term sheet | with Maya Chen" in block
         assert "3. [Google Calendar] calendar event: Board call" in block
         assert (

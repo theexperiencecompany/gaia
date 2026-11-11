@@ -102,6 +102,7 @@ async def test_the_model_reads_the_facts_and_every_rendered_field_at_zero_temper
     assert kwargs["label"] == BRIEF_FAITHFULNESS_LABEL
     assert kwargs["config"]["configurable"] == {"user_id": _USER}
     assert kwargs["options"].temperature == BRIEF_FAITHFULNESS_TEMPERATURE
+    assert kwargs["options"].schema_held is True
 
 
 @pytest.mark.parametrize(

@@ -9,6 +9,12 @@ from app.models.scout_models import SignalImportance
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.slots import figure, series_figures
 
+# What each item state means, said beside the items so every reader of the pool reads them alike.
+_STATES = (
+    "done: finished since the last brief, overnight; in progress: still running; "
+    "waiting on you: needs the user; failed: broke and needs the user; note: news that needs nothing"
+)
+
 
 def _day(iso: str, today: date) -> str:
     day = date.fromisoformat(iso)
@@ -75,7 +81,7 @@ def pool_block(pool: FactPool) -> str:
     """Lay out every item, series, quote and goal by id; a part with nothing in it says so."""
     today = pool.context.today
     parts = [
-        "ITEMS",
+        f"ITEMS ({_STATES})",
         "\n".join(item_line(i, c) for i, c in pool.items.items()) or "(none)",
         "SERIES",
         "\n".join(series_line(s, today) for s in pool.series) or "(none)",
