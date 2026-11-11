@@ -119,6 +119,9 @@ POSTAL_FAMILY: Final[str] = "postal"
 DESK_FAMILIES: Final[frozenset[str]] = frozenset(
     {"boardingpass", "invoice", "librarycard", "memo", "menu", POSTAL_FAMILY, "receipt"}
 )
+# Room around a desk family's root, in CSS px, so its widest shadow is captured whole
+# (Air Mail's envelope: 44px blur, 26px drop) before the trim cuts back to the paper.
+DESK_SHADOW_BLEED_PX: Final[int] = 48
 # The web page that shows the user's collected Air Mail stamps.
 POSTMARKS_PATH: Final[str] = "/settings/postmarks"
 

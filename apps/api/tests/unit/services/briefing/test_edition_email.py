@@ -217,9 +217,9 @@ class TestImageAndUpload:
         await host(make_payload(template_family="memo"))
 
         options = harness.image_calls[0]["options"]
-        assert (options.width, options.device_scale_factor) == (540, 3)
+        assert (options.width, options.device_scale_factor) == (636, 3)
         assert (options.clip_selector, options.trim_margin_px) == ("#root > article", 16)
-        assert options.omit_background is True
+        assert (options.clip_bleed_px, options.omit_background) == (48, True)
 
     async def test_a_full_bleed_family_is_its_whole_page(self, harness: Harness) -> None:
         await host(make_payload(template_family="swiss"))
@@ -227,7 +227,7 @@ class TestImageAndUpload:
         options = harness.image_calls[0]["options"]
         assert (options.width, options.device_scale_factor) == (540, 3)
         assert (options.clip_selector, options.trim_margin_px) == ("#root > article", None)
-        assert options.omit_background is False
+        assert (options.clip_bleed_px, options.omit_background) == (0, False)
 
     async def test_the_hosted_path_is_the_opaque_render_key_alone(self, harness: Harness) -> None:
         """The URL goes out in emails and on public brief links: no user id, kind or date."""
@@ -365,7 +365,9 @@ class TestTextStrip:
 
     def test_strip_markup_is_exactly_this(self, harness: Harness) -> None:
         assert (
-            edition_email._text_strip(MESSAGE, BRIEF_URL, UNSUBSCRIBE_URL, "daily briefs")
+            edition_email._text_strip(
+                MESSAGE, BRIEF_URL, UNSUBSCRIBE_URL, edition_email._DAILY_WORDING
+            )
             == EXPECTED_STRIP
         )
 
@@ -373,6 +375,8 @@ class TestTextStrip:
         html = render(make_payload(template_family="weekly"))
 
         assert "You get this because weekly digests are on in GAIA. <a" in html
+        assert "Open this week&#39;s digest in GAIA</a>" in html
+        assert "today&#39;s brief" not in html
 
     def test_the_message_is_escaped(self, harness: Harness) -> None:
         html = render(make_payload(message="Pay <Acme> & co"))

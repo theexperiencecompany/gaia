@@ -115,6 +115,14 @@ async def share_short_link(user_id: str, target_type: ShortLinkTargetType, targe
     )
 
 
+async def live_share_url(
+    user_id: str, target_type: ShortLinkTargetType, target_id: str
+) -> str | None:
+    """Return the owner's live link to a target, or None when it is not shared. Never mints."""
+    live = await short_link_repository.get_live_for_target(user_id, target_type, target_id)
+    return _build_url(live.slug) if live else None
+
+
 async def optional_short_link(
     user_id: str, target_type: ShortLinkTargetType, target_id: str
 ) -> str | None:

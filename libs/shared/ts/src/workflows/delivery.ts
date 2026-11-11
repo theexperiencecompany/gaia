@@ -1,4 +1,4 @@
-import type { WorkflowDelivery } from "../api/generated";
+import type { BriefingFrequency, WorkflowDelivery } from "../api/generated";
 
 /** Every delivery mode, in the order the workflow modal offers them. */
 export const WORKFLOW_DELIVERIES = [
@@ -31,3 +31,20 @@ export const WORKFLOW_DELIVERY_COPY: Record<
     description: "Results stay in the workflow. You only hear about failures.",
   },
 };
+
+/**
+ * What "Add to my brief" promises under each briefing frequency: the next
+ * brief that will carry the results, or null when briefs are off.
+ */
+export const BRIEF_DELIVERY_DESCRIPTION: Record<
+  BriefingFrequency,
+  string | null
+> = {
+  daily: WORKFLOW_DELIVERY_COPY.brief.description,
+  weekdays: WORKFLOW_DELIVERY_COPY.brief.description,
+  weekly_only: "Results wait for your next weekly digest.",
+  off: null,
+};
+
+export const BRIEFS_OFF_DELIVERY_REASON =
+  "Briefs are off, so there's no brief to add results to.";

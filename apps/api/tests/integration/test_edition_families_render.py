@@ -276,8 +276,6 @@ _DENSITIES = {"busy": _BUSY, "normal": _DAILY, "sparse": _SPARSE}
 _MARGIN_MIN_PX = 4
 _MARGIN_TARGET_PX = 24
 _OPAQUE = 255
-# Only a shadow's tail (the design clips it at the page box) may reach a desk family's edge.
-_EDGE_SHADOW_ALPHA_MAX = 64
 
 
 def _highest(band: Image.Image) -> float:
@@ -334,7 +332,7 @@ async def test_a_paper_on_a_desk_is_cropped_tight_with_an_even_margin(
 
 @pytest.mark.integration
 @pytest.mark.parametrize("family", _ON_A_DESK)
-async def test_a_paper_on_a_desk_ships_without_its_desk(family: str) -> None:
+async def test_a_paper_on_a_desk_ships_without_its_desk_or_a_cut_shadow(family: str) -> None:
     image = Image.open(io.BytesIO((await render_edition_png(_shipped(family, _DAILY))).image))
 
     assert image.mode == "RGBA"
@@ -345,7 +343,7 @@ async def test_a_paper_on_a_desk_ships_without_its_desk(family: str) -> None:
         alpha.crop((0, 0, 1, alpha.height)),
         alpha.crop((alpha.width - 1, 0, alpha.width, alpha.height)),
     ]
-    assert max(_highest(edge) for edge in edges) <= _EDGE_SHADOW_ALPHA_MAX
+    assert max(_highest(edge) for edge in edges) == 0
     assert _highest(alpha) == _OPAQUE
 
 

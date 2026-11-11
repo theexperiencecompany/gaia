@@ -53,9 +53,19 @@ _TEXT = "#f4f4f5"
 _MUTED = "#a1a1aa"
 _SANS = "Inter,-apple-system,Helvetica,Arial,sans-serif"
 
-# What the footer says is switched on, so the reader knows which setting sends the mail.
-_DAILY_SUBSCRIPTION = "daily briefs"
-_WEEKLY_SUBSCRIPTION = "weekly digests"
+
+@dataclass(frozen=True)
+class _EmailWording:
+    """What the strip calls the edition: its button, and the setting the footer says sends it."""
+
+    cta: str
+    subscription: str
+
+
+_DAILY_WORDING = _EmailWording(cta="Open today&#39;s brief in GAIA", subscription="daily briefs")
+_WEEKLY_WORDING = _EmailWording(
+    cta="Open this week&#39;s digest in GAIA", subscription="weekly digests"
+)
 
 
 def _edition_no(iso_date: str) -> int:
@@ -88,7 +98,7 @@ def _message_html(message: str) -> str:
     )
 
 
-def _text_strip(message: str, brief_url: str, unsubscribe_url: str, subscription: str) -> str:
+def _text_strip(message: str, brief_url: str, unsubscribe_url: str, wording: _EmailWording) -> str:
     """Build the email-safe (table + inline-styled) strip under the image.
 
     It holds the written message as real text, so the email reads with images off, then
@@ -102,12 +112,12 @@ def _text_strip(message: str, brief_url: str, unsubscribe_url: str, subscription
             f'style="display:inline-block;background:{_ACCENT};color:{_ACCENT_FG};'
             f"text-decoration:none;font:600 15px/1.2 {_SANS};"
             'padding:13px 30px;border-radius:10px;">'
-            "Open today&#39;s brief in GAIA</a></td></tr>"
+            f"{wording.cta}</a></td></tr>"
         ),
         (
             f'<tr><td align="center" style="padding:20px 24px 28px 24px;">'
             f'<div style="font:400 11px/1.5 {_SANS};color:{_MUTED};">'
-            f"You get this because {subscription} are on in GAIA. "
+            f"You get this because {wording.subscription} are on in GAIA. "
             f'<a href="{escape(unsubscribe_url)}" style="color:{_MUTED};">Unsubscribe</a>.'
             "</div></td></tr>"
         ),
@@ -132,6 +142,7 @@ async def render_edition_png(payload: BriefingPayload) -> RenderedImage:
             width=frame.width,
             device_scale_factor=frame.device_scale_factor,
             clip_selector=frame.clip_selector,
+            clip_bleed_px=frame.clip_bleed_px,
             trim_margin_px=frame.trim_margin_px,
             fold_selector=FOLD_MARKER_SELECTOR,
             paper_selector=PAPER_MARKER_SELECTOR,
@@ -224,9 +235,7 @@ def render_edition_email(
             delivered_message(payload),
             brief_url,
             unsubscribe_url,
-            _WEEKLY_SUBSCRIPTION
-            if payload.template_family == WEEKLY_FAMILY
-            else _DAILY_SUBSCRIPTION,
+            _WEEKLY_WORDING if payload.template_family == WEEKLY_FAMILY else _DAILY_WORDING,
         )
         + "</div>"
     )

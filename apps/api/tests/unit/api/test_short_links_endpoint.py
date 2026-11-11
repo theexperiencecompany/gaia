@@ -212,7 +212,8 @@ class TestStopSharing:
                     json={"target_type": "session_artifact", "target_id": "conv-1/a.html"},
                 )
 
-        assert response.status_code == 204
+        assert response.status_code == 200
+        assert response.json() == {"revoked": True}
         stop.assert_awaited_once_with(
             FAKE_USER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, "conv-1/a.html"
         )
@@ -224,14 +225,17 @@ class TestStopSharing:
         }
 
     @pytest.mark.asyncio
-    async def test_a_target_with_nothing_shared_is_still_204(self, client: AsyncClient) -> None:
-        """Stopping is idempotent: the target ends up unshared either way."""
+    async def test_a_target_with_nothing_shared_says_nothing_was_revoked(
+        self, client: AsyncClient
+    ) -> None:
+        """Stopping is idempotent, and the caller learns there was no live link to kill."""
         with patch(f"{_ENDPOINT}.stop_sharing", AsyncMock(return_value=False)):
             response = await client.post(
                 f"{BASE}/unshare", json={"target_type": "workflow_run", "target_id": "exec-1"}
             )
 
-        assert response.status_code == 204
+        assert response.status_code == 200
+        assert response.json() == {"revoked": False}
 
     @pytest.mark.asyncio
     async def test_an_unknown_target_type_is_422(self, client: AsyncClient) -> None:
@@ -242,6 +246,63 @@ class TestStopSharing:
 
         assert response.status_code == 422
         stop.assert_not_awaited()
+
+
+class TestShareState:
+    """Tests for GET /l/state."""
+
+    @pytest.mark.asyncio
+    async def test_a_shared_target_reports_its_live_link(self, client: AsyncClient) -> None:
+        url = f"https://heygaia.link/{SLUG}"
+        with patch(f"{_ENDPOINT}.live_share_url", AsyncMock(return_value=url)) as live:
+            async with captured_wide_event() as event:
+                response = await client.get(
+                    f"{BASE}/state",
+                    params={"target_type": "session_artifact", "target_id": "conv-1/a.html"},
+                )
+
+        assert response.status_code == 200
+        assert response.json() == {"url": url}
+        live.assert_awaited_once_with(
+            FAKE_USER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, "conv-1/a.html"
+        )
+        assert event["short_link"] == {
+            "operation": "share_state",
+            "target_type": "session_artifact",
+            "shared": True,
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_never_shared_target_reports_no_link(self, client: AsyncClient) -> None:
+        with patch(f"{_ENDPOINT}.live_share_url", AsyncMock(return_value=None)):
+            response = await client.get(
+                f"{BASE}/state", params={"target_type": "briefing", "target_id": "b1"}
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"url": None}
+
+    @pytest.mark.asyncio
+    async def test_the_state_route_is_not_resolved_as_a_slug(self, client: AsyncClient) -> None:
+        with (
+            patch(f"{_ENDPOINT}.live_share_url", AsyncMock(return_value=None)),
+            patch(f"{_ENDPOINT}.get_public_view", AsyncMock()) as resolve,
+        ):
+            async with captured_wide_event() as event:
+                await client.get(
+                    f"{BASE}/state", params={"target_type": "briefing", "target_id": "b1"}
+                )
+
+        resolve.assert_not_awaited()
+        assert "{slug}" not in str(event)
+
+    @pytest.mark.asyncio
+    async def test_a_missing_target_is_422(self, client: AsyncClient) -> None:
+        with patch(f"{_ENDPOINT}.live_share_url", AsyncMock()) as live:
+            response = await client.get(f"{BASE}/state", params={"target_type": "briefing"})
+
+        assert response.status_code == 422
+        live.assert_not_awaited()
 
 
 class TestSlugNeverLoggedInPlaintext:

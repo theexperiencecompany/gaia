@@ -106,6 +106,7 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
       <div className="flex items-center gap-2">
         {execution.status !== "running" && (
           <ShareLinkControls
+            iconOnly
             targetType="workflow_run"
             targetId={execution.execution_id}
           />

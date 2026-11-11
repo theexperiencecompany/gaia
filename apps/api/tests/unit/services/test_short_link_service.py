@@ -18,6 +18,7 @@ from app.services.short_link_service import (
     ShortLinkExhaustedError,
     get_public_file,
     get_public_view,
+    live_share_url,
     optional_short_link,
     share_short_link,
     stop_sharing,
@@ -280,4 +281,18 @@ class TestStopSharing:
         assert await stop_sharing(OWNER, TODO, "t1") is False
 
         repo.revoke.assert_not_awaited()
+        capture.assert_not_called()
+
+
+class TestLiveShareUrl:
+    async def test_a_live_link_is_reported_as_its_url(self, repo):
+        repo.get_live_for_target.return_value = _link("live1234567")
+
+        assert (await live_share_url(OWNER, TODO, "t1") or "").endswith("/live1234567")
+        repo.get_live_for_target.assert_awaited_once_with(OWNER, TODO, "t1")
+
+    async def test_no_live_link_is_none_and_mints_nothing(self, repo, capture):
+        assert await live_share_url(OWNER, TODO, "t1") is None
+
+        repo.create.assert_not_awaited()
         capture.assert_not_called()
