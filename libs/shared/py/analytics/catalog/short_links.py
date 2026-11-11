@@ -24,12 +24,16 @@ class ShortLinkCreated(ServerEvent):
 
 
 class ShortLinkOpened(ServerEvent):
-    """Someone opened one of the user's heygaia.links (attributed to the owner)."""
+    """Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.
+
+    Attributed to the owner. Unfurl bots building a chat preview never count.
+    """
 
     event: ClassVar[str] = "short_link:opened"
     budget_per_user_day: ClassVar[int] = 500
 
     target_type: ShortLinkTarget
+    viewer_signed_in: bool
 
 
 class ShortLinkRevoked(ServerEvent):

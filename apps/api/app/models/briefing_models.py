@@ -127,7 +127,7 @@ class BriefingItem(BaseModel):
     detail: str | None = Field(default=None, min_length=1, max_length=BRIEF_ITEM_DETAIL_MAX_CHARS)
     todo_id: str | None = None
     kind: BriefingItemKind = "note"
-    # heygaia.link handle for the item's artifact (canvas), viewer-scoped. The
+    # heygaia.link to the item's artifact (canvas), a capability anyone holding it opens. The
     # chat message links to this instead of dumping the content; the dashboard
     # card renders it as a tappable item.
     link: str | None = None

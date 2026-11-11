@@ -15,22 +15,30 @@ a brief); it never re-shares a target the owner turned sharing off for, and a
 failure to mint costs only the link, never the message carrying it.
 """
 
+from datetime import UTC, datetime
 from pathlib import Path
 import secrets
 
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from app.config.settings import settings
+from app.constants.short_links import UNFURL_BOT_USER_AGENT_MARKERS
 from app.db.repositories.short_links import (
     LIVE_TARGET_UNIQUE_INDEX,
     SLUG_UNIQUE_INDEX,
     short_link_repository,
 )
-from app.models.short_link_models import PublicShortLinkView, ShortLink, ShortLinkTargetType
-from app.services.analytics_service import capture
-from app.services.short_link_projections import project_target, session_artifact_file
-from app.utils.log_identifiers import hash_short_link_slug
-from shared.py.analytics import UserId
+from app.models.short_link_models import (
+    LinkViewer,
+    LinkViewerKind,
+    PublicShortLinkView,
+    ShortLink,
+    ShortLinkTargetType,
+)
+from app.services.analytics_service import analytics_day_start, capture
+from app.services.short_link_projections import project_target, target_file
+from app.utils.log_identifiers import hash_link_viewer, hash_short_link_slug
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.short_links import (
     ShortLinkCreated,
     ShortLinkOpened,
@@ -164,7 +172,7 @@ async def _resolve_live_link(slug: str) -> ShortLink | None:
 
 
 async def get_public_view(slug: str) -> PublicShortLinkView | None:
-    """Return the public view behind a capability slug, or None.
+    """Return the public view behind a capability slug, or None. A read: never counts an open.
 
     The target is read under the OWNER stored on the link doc, never a viewer,
     and only through its type's projection. A target the owner has since
@@ -173,22 +181,54 @@ async def get_public_view(slug: str) -> PublicShortLinkView | None:
     link = await _resolve_live_link(slug)
     if link is None:
         return None
-    view = await project_target(link.target_type, link.user_id, link.target_id)
-    if view is not None:
-        capture(UserId(link.user_id), ShortLinkOpened(target_type=link.target_type.value))
-    return view
+    return await project_target(link.target_type, link.user_id, link.target_id)
+
+
+def _viewer_kind(link: ShortLink, viewer: LinkViewer) -> LinkViewerKind:
+    if viewer.user_id == link.user_id:
+        return LinkViewerKind.OWNER
+    user_agent = viewer.user_agent.lower()
+    if any(marker in user_agent for marker in UNFURL_BOT_USER_AGENT_MARKERS):
+        return LinkViewerKind.UNFURL_BOT
+    return LinkViewerKind.RECIPIENT
+
+
+async def record_open(slug: str, viewer: LinkViewer) -> LinkViewerKind | None:
+    """Count a viewer opening a link for its owner, at most once a day per viewer.
+
+    The owner and unfurl bots are classified but never counted. None when the
+    slug is unknown or revoked.
+    """
+    link = await _resolve_live_link(slug)
+    if link is None:
+        return None
+    kind = _viewer_kind(link, viewer)
+    if kind is LinkViewerKind.RECIPIENT:
+        day = analytics_day_start(datetime.now(UTC))
+        viewer_key = viewer.user_id or hash_link_viewer(viewer.ip, viewer.user_agent)
+        capture(
+            UserId(link.user_id),
+            ShortLinkOpened(
+                target_type=link.target_type.value, viewer_signed_in=viewer.user_id is not None
+            ),
+            Dedupe(
+                key=f"{hash_short_link_slug(slug)}:{viewer_key}:{day.date().isoformat()}",
+                occurred_at=day,
+            ),
+        )
+    return kind
 
 
 async def get_public_file(slug: str) -> Path | None:
-    """Return the raw file behind a session-artifact slug.
+    """Return the raw file behind a slug, as its target type locates it.
 
-    None for any other target type, an unknown or revoked slug, or a file
-    that no longer exists.
+    None for an unknown or revoked slug, a type with no file, or a file that no
+    longer exists.
     """
     link = await _resolve_live_link(slug)
-    if link is None or link.target_type is not ShortLinkTargetType.SESSION_ARTIFACT:
+    if link is None:
         return None
-    return await session_artifact_file(link.user_id, link.target_id)
+    return await target_file(link.target_type, link.user_id, link.target_id)
 
 
 async def stop_sharing(user_id: str, target_type: ShortLinkTargetType, target_id: str) -> bool:

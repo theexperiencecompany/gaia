@@ -42,6 +42,15 @@ class OriginPolicy(StrEnum):
     INSTANCE = "instance"
 
 
+class LinkBase(StrEnum):
+    """Where this deployment's share links point."""
+
+    # The heygaia.link display domain, which only GAIA Cloud resolves.
+    GAIA_LINK_DOMAIN = "gaia_link_domain"
+    # The instance's own web app, at FRONTEND_URL/l.
+    INSTANCE_WEB_ROUTE = "instance_web_route"
+
+
 class InvalidDeploymentError(RuntimeError):
     """Raised for an ENV/AUTH_MODE/BLOB_STORE combination no deployment may run as."""
 
@@ -86,6 +95,7 @@ class DeploymentProfile:
     # GET /health/ready answers anyone; on GAIA Cloud only the METRICS_TOKEN scraper.
     public_readiness: bool
     trusted_origins: OriginPolicy
+    link_base: LinkBase
     # Every client reaches it over https: session cookies are always Secure and
     # share links refuse a plain-http HOST.
     https_only: bool
@@ -174,6 +184,9 @@ def deployment_profile(
         requires_complete_config=kind is DeploymentKind.SELFHOST,
         public_readiness=kind is not DeploymentKind.PRODUCTION,
         trusted_origins=_TRUSTED_ORIGINS[kind],
+        link_base=LinkBase.GAIA_LINK_DOMAIN
+        if kind is DeploymentKind.PRODUCTION
+        else LinkBase.INSTANCE_WEB_ROUTE,
         https_only=kind is DeploymentKind.PRODUCTION,
         private_network_endpoints=kind is not DeploymentKind.PRODUCTION,
         searxng_before_duckduckgo=kind is DeploymentKind.SELFHOST,

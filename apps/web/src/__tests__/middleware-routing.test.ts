@@ -1,10 +1,10 @@
 /**
- * The edge middleware: heygaia.link slugs bounce to /l/<slug> whatever word they
+ * The edge middleware: link-host slugs bounce to /l/<slug> whatever word they
  * start with, and the locale-invariant paths are never handed to next-intl.
  */
 
-import { NextRequest } from "next/server";
-import { describe, expect, it, vi } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const intlHandler = vi.hoisted(() => vi.fn());
 vi.mock("next-intl/middleware", () => ({ default: () => intlHandler }));
@@ -18,10 +18,15 @@ function request(url: string): NextRequest {
   return new NextRequest(url, { headers: { host: new URL(url).host } });
 }
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("heygaia.link slugs", () => {
   it.each(["apiXk3Lm9Qz", "connectAb12", "ingestZZ9xy", "sitemapQ1w2"])(
     "redirects %s even though it starts with a bypassed word",
     async (slug) => {
+      vi.stubEnv("GAIA_LINK_HOST", "heygaia.link");
       expect(matches(`/${slug}`)).toBe(true);
 
       const response = await middleware(
@@ -35,6 +40,33 @@ describe("heygaia.link slugs", () => {
       expect(intlHandler).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("the link host is the deployment's, read per request", () => {
+  it("redirects slugs on the host the runtime names", async () => {
+    vi.stubEnv("GAIA_LINK_HOST", "go.example.org");
+
+    const response = await middleware(
+      request("https://go.example.org/abcdefghijk"),
+    );
+
+    expect(response.status).toBe(307);
+    expect(new URL(response.headers.get("location") ?? "").pathname).toBe(
+      "/l/abcdefghijk",
+    );
+  });
+
+  it("treats no host as a link host when the runtime names none", async () => {
+    vi.stubEnv("GAIA_LINK_HOST", "");
+    intlHandler.mockReturnValueOnce(NextResponse.next());
+
+    const response = await middleware(
+      request("https://heygaia.link/abcdefghijk"),
+    );
+
+    expect(response.status).not.toBe(307);
+    expect(intlHandler).toHaveBeenCalledOnce();
+  });
 });
 
 describe("locale-invariant paths on the app host", () => {
