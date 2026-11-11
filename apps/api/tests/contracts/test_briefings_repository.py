@@ -77,6 +77,17 @@ class TestBriefingsUpsert:
         fetched = await repo.get(stored.id, user_id="u-image")
         assert fetched is not None and fetched.edition_image_url == _IMAGE
 
+    async def test_upsert_records_where_the_edition_folds_and_where_its_paper_sits(self, repo):
+        edition = EditionRender(image_url=_IMAGE, fold=0.4, paper=[0.1, 0.2, 0.9, 0.8])
+        stored = await repo.upsert_briefing(
+            "u-fold", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=edition
+        )
+
+        fetched = await repo.get(stored.id, user_id="u-fold")
+
+        assert fetched is not None
+        assert (fetched.edition_fold, fetched.edition_paper) == (0.4, [0.1, 0.2, 0.9, 0.8])
+
     async def test_a_new_brief_is_minted_unopened_undelivered_and_stamped_now(
         self, repo, raw_collection
     ):

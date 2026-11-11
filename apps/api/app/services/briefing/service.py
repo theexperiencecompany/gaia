@@ -365,7 +365,7 @@ async def _deliver(
                 ],
             ),
             metadata={
-                **card.model_dump(exclude={"kind"}),
+                **card.model_dump(),
                 "kind": notification_kind,
                 "brief_url": brief_url,
             },
