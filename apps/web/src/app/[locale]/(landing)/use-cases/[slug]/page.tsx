@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/client";
 import JsonLd from "@/components/seo/JsonLd";
+import { relatedUseCases } from "@/features/use-cases/lib/relatedUseCases";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import {
   getAllCommunityWorkflowsServer,
@@ -201,6 +202,10 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
 
   const display = displayFromResolved(useCase, communityWorkflow);
   const structuredData = generateUseCaseStructuredData({ ...display, slug });
+  const related = relatedUseCases(
+    { slug: data.slug ?? slug },
+    await getExploreWorkflowsCached(200),
+  );
 
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
@@ -218,6 +223,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
         useCase={useCase}
         communityWorkflow={communityWorkflow}
         slug={slug}
+        relatedUseCases={related}
       />
     </>
   );
