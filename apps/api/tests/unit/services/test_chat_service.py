@@ -12,7 +12,7 @@ All external dependencies (Redis/stream_manager, MongoDB, agent, LLM) are
 mocked so tests exercise service logic only.
 """
 
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Iterator, Sequence
 import contextlib
 from datetime import datetime, timedelta
 import json
@@ -69,7 +69,12 @@ from shared.py.analytics.context import (
     current_analytics_context,
 )
 from shared.py.wide_events import log as _log
-from tests.helpers import ScriptedGraph, agent_update_event, message_chunk_event
+from tests.helpers import (
+    GraphStreamEvent,
+    ScriptedGraph,
+    agent_update_event,
+    message_chunk_event,
+)
 
 
 def _created_conversation(conversation_id: str, description: str) -> ConversationModel:
@@ -451,6 +456,10 @@ class TestSaveBotReply:
 # ---------------------------------------------------------------------------
 # run_chat_stream_background — top-level orchestrator
 # ---------------------------------------------------------------------------
+
+
+#: What the follow-up node writes as it starts, before follow-ups generate.
+_GRAPH_COMPLETION_EVENT: GraphStreamEvent = ((), "custom", {"main_response_complete": True})
 
 
 def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
@@ -1998,6 +2007,7 @@ class TestRunChatStreamBackground:
         user: AuthenticatedUser,
         *reply_pieces: str,
         stream_manager: MagicMock | None = None,
+        after_reply: Sequence[GraphStreamEvent] = (),
     ) -> tuple[list[tuple[str, dict[str, Any]]], AsyncMock, MagicMock]:
         """Run one turn whose comms reply streams as reply_pieces; return the JSON frames published, the save and the capture.
 
@@ -2013,6 +2023,7 @@ class TestRunChatStreamBackground:
             [
                 *(message_chunk_event(message_id="m1", content=piece) for piece in reply_pieces),
                 agent_update_event(AIMessage(id="m1", content="".join(reply_pieces))),
+                *after_reply,
             ]
         )
         sm = stream_manager or _make_stream_manager_mock()
@@ -2056,6 +2067,29 @@ class TestRunChatStreamBackground:
         # Sent before the completion frame, so the client never closes the turn as an empty bubble.
         order = [next(iter(frame)) for _, frame in frames]
         assert order.index("emoji_ack") < order.index("main_response_complete")
+
+    @pytest.mark.regression
+    async def test_a_reaction_lands_before_the_graphs_early_completion_frame(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """The follow-up node announces completion before follow-ups generate; the web client dropped its spinner there and showed nothing until the reaction came seconds later."""
+        frames, _, _ = await self._run_turn(
+            test_user, "<EMOJI>😎</EMOJI>", after_reply=[_GRAPH_COMPLETION_EVENT]
+        )
+
+        order = [next(iter(frame)) for _, frame in frames]
+        first_completion = order.index("main_response_complete")
+        assert order.index("emoji_ack") < first_completion
+
+    async def test_a_text_reply_forwards_the_graphs_early_completion_frame(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, _, _ = await self._run_turn(
+            test_user, "Booked your 9am flight.", after_reply=[_GRAPH_COMPLETION_EVENT]
+        )
+
+        completions = [frame for _, frame in frames if "main_response_complete" in frame]
+        assert len(completions) == 2
 
     @pytest.mark.regression
     async def test_a_reaction_acknowledging_a_hand_off_lands_before_the_work_finishes(
