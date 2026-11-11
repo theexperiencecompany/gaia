@@ -611,6 +611,34 @@ class TestCreateSubscription:
         assert self._applied(gift_checkout.create) == [("GIFT1", False)]
 
     @pytest.mark.usefixtures("mock_redis_cache", "mock_checkout_session_repository")
+    @pytest.mark.parametrize(
+        ("duration", "basis_points", "cycles", "applied"),
+        [
+            # 20% off one charge: less than half off two months, more than a month off a year.
+            (PlanDuration.MONTHLY, 2000, 1, "GIFT1"),
+            (PlanDuration.YEARLY, 2000, 1, "FOUNDER"),
+            (PlanDuration.MONTHLY, 2000, None, "FOUNDER"),
+            (PlanDuration.YEARLY, 2000, None, "FOUNDER"),
+            # A tie goes to the gift: a quarter off four months is half off two.
+            (PlanDuration.MONTHLY, 2500, 4, "GIFT1"),
+        ],
+    )
+    async def test_the_paywall_card_shows_the_gift_on_exactly_the_cycles_checkout_applies_it(
+        self, payment_service, gift_checkout, duration, basis_points, cycles, applied
+    ):
+        gift_checkout.find.return_value = _discount(basis_points=basis_points, cycles=cycles)
+        plan = PRO_PLANS.monthly if duration is PlanDuration.MONTHLY else PRO_PLANS.yearly
+        with (
+            patch(f"{SERVICE_MODULE}.settings.PAYWALL_DISCOUNT_CODE", "FOUNDER"),
+            patch.object(payment_service, "get_pro_plan", AsyncMock(return_value=plan)),
+        ):
+            shown = await payment_service.pro_checkout_gift_cycles(PRO_PLANS)
+            await payment_service.create_pro_checkout(FAKE_USER_ID, duration)
+
+        assert self._applied(gift_checkout.create)[0][0] == applied
+        assert (duration in shown) is (applied == "GIFT1")
+
+    @pytest.mark.usefixtures("mock_redis_cache", "mock_checkout_session_repository")
     async def test_a_stored_gift_dodo_refuses_is_renewed_not_a_502(
         self, payment_service, gift_checkout
     ):

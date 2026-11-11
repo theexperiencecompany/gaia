@@ -200,10 +200,14 @@ async def friend_gift(user_id: str) -> ReferralGiftResponse:
     referrer, plans = await asyncio.gather(
         user_repository.get(referral.referrer_user_id), payment_service.get_pro_plans()
     )
+    billing_cycles = await payment_service.pro_checkout_gift_cycles(plans)
+    if not billing_cycles:
+        return ReferralGiftResponse(gift=None)
     return ReferralGiftResponse(
         gift=ReferralFriendGift(
             referrer_first_name=first_name_of(referrer) if referrer else None,
             referrer_picture=(referrer.picture or None) if referrer else None,
             offer=build_offer(plans),
+            billing_cycles=billing_cycles,
         )
     )

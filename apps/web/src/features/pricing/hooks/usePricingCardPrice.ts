@@ -8,14 +8,17 @@ import {
   type PriceDisplay,
 } from "../utils/priceDisplay";
 
-/** A price only this viewer pays, such as a referred friend's gift, and the line saying for how long. */
+/** What a viewer pays on one billing cycle while their gift lasts, and the line saying for how long. */
+export interface GiftCyclePrice {
+  /** Minor units of each monthly charge, or of the first yearly one, while the gift lasts. */
+  minor: number;
+  note: string;
+}
+
+/** A price only this viewer pays, such as a referred friend's gift; null on a cycle checkout does not apply it to. */
 export interface GiftPrice {
-  /** Minor units charged per month while the gift lasts. */
-  monthly: number;
-  /** Minor units of the first yearly charge. */
-  yearly: number;
-  monthlyNote: string;
-  yearlyNote: string;
+  monthly: GiftCyclePrice | null;
+  yearly: GiftCyclePrice | null;
 }
 
 interface PricingCardPriceInput {
@@ -59,16 +62,17 @@ export function usePricingCardPrice({
     (s) => s.offer?.discountPercent ?? null,
   );
   const list = getPriceDisplay(price, originalPrice, durationIsMonth, currency);
-  if (gift && price > 0)
+  const cycleGift = durationIsMonth ? gift?.monthly : gift?.yearly;
+  if (cycleGift && price > 0)
     return {
       list,
       offer: getPriceDisplay(
-        durationIsMonth ? gift.monthly : gift.yearly,
+        cycleGift.minor,
         originalPrice,
         durationIsMonth,
         currency,
       ),
-      note: durationIsMonth ? gift.monthlyNote : gift.yearlyNote,
+      note: cycleGift.note,
     };
   return {
     list,

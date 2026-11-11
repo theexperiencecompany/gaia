@@ -15350,6 +15350,14 @@
       "ReferralFriendGift": {
         "description": "The gift a referred friend's checkout applies, and who sent it.",
         "properties": {
+          "billing_cycles": {
+            "description": "The Pro billing cycles checkout applies this gift on; the paywall's code saves more on the rest",
+            "items": {
+              "$ref": "#/components/schemas/PlanDuration"
+            },
+            "title": "Billing Cycles",
+            "type": "array"
+          },
           "offer": {
             "$ref": "#/components/schemas/ReferralOffer"
           },
@@ -15381,7 +15389,8 @@
         "required": [
           "referrer_first_name",
           "referrer_picture",
-          "offer"
+          "offer",
+          "billing_cycles"
         ],
         "title": "ReferralFriendGift",
         "type": "object"
@@ -15398,7 +15407,7 @@
                 "type": "null"
               }
             ],
-            "description": "Null for anyone never referred, already subscribed, or while referrals are off"
+            "description": "Null for anyone never referred, already subscribed, owed no saving over the paywall's code, or while referrals are off"
           }
         },
         "required": [

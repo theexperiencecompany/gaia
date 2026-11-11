@@ -8,7 +8,7 @@
  * moves where a number comes from must leave every one of them identical.
  */
 
-import type { ReferralOffer } from "@shared/api/generated";
+import type { ReferralFriendGift, ReferralOffer } from "@shared/api/generated";
 import { act, cleanup, render } from "@testing-library/react";
 import {
   afterEach,
@@ -180,6 +180,12 @@ const FRIEND_OFFER: ReferralOffer = {
   yearly_regular_minor: 30000,
   yearly_discount_minor: 3000,
 };
+const FRIEND_GIFT: ReferralFriendGift = {
+  referrer_first_name: "Aryan",
+  referrer_picture: null,
+  offer: FRIEND_OFFER,
+  billing_cycles: ["monthly", "yearly"],
+};
 const FOUNDER_OFFER = { discountCode: "THANKYOU40", discountPercent: 40 };
 
 /** A subscription row as Dodo localised it: ZAR, while the catalogue is USD. */
@@ -307,7 +313,7 @@ describe("pricing cards", () => {
   });
 
   it("monthly and yearly with a referred friend's gift on the Pro card", () => {
-    const gift = giftCardPrice(FRIEND_OFFER);
+    const gift = giftCardPrice(FRIEND_GIFT);
     const monthly = render(<PricingCards durationIsMonth gift={gift} />);
     expect(visibleText(monthly.container)).toContain(
       "$30$15/ monthFirst 2 months, then $30Subscribe",
@@ -316,6 +322,19 @@ describe("pricing cards", () => {
     const yearly = render(<PricingCards gift={gift} />);
     expect(visibleText(yearly.container)).toContain(
       "$25$23/ monthFirst year, then $300$300$270",
+    );
+  });
+
+  it("a gift checkout applies only on monthly leaves the yearly card at its list price", () => {
+    const listOnly = visibleText(render(<PricingCards />).container);
+    cleanup();
+    const gift = giftCardPrice({ ...FRIEND_GIFT, billing_cycles: ["monthly"] });
+    const yearly = render(<PricingCards gift={gift} />);
+    expect(visibleText(yearly.container)).toBe(listOnly);
+    cleanup();
+    const monthly = render(<PricingCards durationIsMonth gift={gift} />);
+    expect(visibleText(monthly.container)).toContain(
+      "$30$15/ monthFirst 2 months, then $30Subscribe",
     );
   });
 
